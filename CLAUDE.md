@@ -53,9 +53,13 @@ the formatter, `tools/Pretty.raz`, over the shared `tools/Scan.raz`),
 `README.md` and the guide to the compiler, `doc/compiler.md`. Nothing
 further is planned; new work starts only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
-compiler changes. Left
-for later at the owner's word: tagging versions, and a rewrite of var
-parameters.
+compiler changes. Left for later at the owner's word: a rewrite of
+var parameters.
+
+A release is an annotated tag `vX.Y.Z` on `main`, named after
+`Version` in `src/raz.pas`, its message what `raz --version` prints
+(`raz 0.3.0, report 2026-10.0`); `make check` passes first. v0.3.0 is
+the first.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
