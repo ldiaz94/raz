@@ -24,7 +24,7 @@ unit elf;
 
 interface
 
-uses scan, x64, link;
+uses scan, diag, x64, link;
 
 var
   needed: array[0..31] of longint;   { the libraries to load, names interned }

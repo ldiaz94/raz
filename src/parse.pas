@@ -21,7 +21,7 @@ unit parse;
 
 interface
 
-uses scan, sym, x64, gen;
+uses scan, diag, sym, x64, gen;
 
 const
   Target = 'linux-x86_64';

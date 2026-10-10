@@ -1,1 +1,4 @@
-an F32 goes to ... as F64(x)
+test/err/F32Dots.raz:8:23: error: an F32 goes to ... as F64(x)
+    8 |     C.printf("%f\n", x);
+      |                       ^
+raz: 1 error

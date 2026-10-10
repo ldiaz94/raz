@@ -3,10 +3,10 @@
   Reads a raz source file and hands the parser one symbol at a time:
   reserved words, identifiers, numbers, characters, strings and
   operators. Identifiers are interned, so that the rest of the compiler
-  compares names as small integers. The scanner also reports errors,
-  since it knows where in the file the compiler is.
+  compares names as small integers. The scanner also says where the
+  current symbol is, for messages.
 
-  Depends on: BaseUnix, to read files.
+  Depends on: BaseUnix, to read files; diag, to report errors.
   Leaves out: recovery from errors. The first error stops the compiler. }
 
 unit scan;
@@ -14,6 +14,8 @@ unit scan;
 {$mode objfpc}{$H-}
 
 interface
+
+uses diag;
 
 type
   TSym = (sNull, sIdent, sInt, sReal, sChar, sString,
@@ -43,6 +45,7 @@ type
     ival: int64;
     rval: double;
     id: longint;
+    f: longint;        { the file, as diag knows it }
     path: shortstring;
   end;
 
@@ -63,10 +66,9 @@ function NameOf(n: longint): shortstring;
 function Open(const path: shortstring): boolean;
 procedure Next;
 procedure Mark(const msg: shortstring);
-procedure Fatal(const msg: shortstring);
 procedure SaveScan(var st: TScanState);
 procedure RestoreScan(const st: TScanState);
-function Where: shortstring;
+function TokPos: TPos;
 function CurPath: shortstring;
 function CurLine: longint;
 
@@ -161,22 +163,12 @@ end;
 
 { Errors }
 
-function Column(pos: longint): longint;
-var i, col: longint;
+{ The current symbol }
+function TokPos: TPos;
 begin
-  { counted in characters: every byte but a UTF-8 continuation byte }
-  col := 1;
-  for i := cur.tokLineStart to pos - 1 do
-    if (byte(cur.buf[i]) and $C0) <> $80 then inc(col);
-  Column := col;
-end;
-
-function Where: shortstring;
-var l, c: shortstring;
-begin
-  Str(cur.tokLine, l);
-  Str(Column(cur.tokPos), c);
-  Where := cur.path + ':' + l + ':' + c;
+  TokPos.f := cur.f;
+  TokPos.a := cur.tokPos;
+  TokPos.b := cur.pos;
 end;
 
 function CurPath: shortstring;
@@ -189,16 +181,10 @@ begin
   CurLine := cur.tokLine;
 end;
 
-procedure Fatal(const msg: shortstring);
-begin
-  writeln(StdErr, 'raz: ', msg);
-  Halt(1);
-end;
-
 procedure Mark(const msg: shortstring);
 begin
-  writeln(StdErr, Where, ': ', msg);
-  Halt(1);
+  Error(TokPos, msg);
+  Finish;
 end;
 
 { Files }
@@ -229,6 +215,7 @@ begin
   cur.tokLine := 1;
   cur.tokLineStart := 0;
   cur.path := path;
+  cur.f := AddFile(path, cur.buf, n);
   Open := true;
 end;
 

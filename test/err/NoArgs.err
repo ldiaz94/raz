@@ -1,1 +1,4 @@
-needs a type for each type parameter
+/home/luis/raz/lib/List.raz:2:13: error: needs a type for each type parameter
+    2 | module List(T);
+      |             ^
+raz: 1 error

@@ -191,7 +191,7 @@ help: did you mean x?
 T.raz:3:5: note: x is declared here
     3 | var x: I64;
       |     ^
-T.raz: 1 error
+raz: 1 error
 ```
 
 How messages are worded, for every step that writes one: lowercase,
@@ -211,9 +211,9 @@ main model reads every diff before it is committed.
 - [x] 19. The report first, for review before any code: messages,
       warnings and `-Werror` in section 10, run-time messages in
       sections 6.5 and 10, report version `2026-10.1`. *main*
-- [ ] 20. `src/diag.pas`, the one place messages are made: a position
-      (file, line, first and last column) and a message built in
-      pieces, past shortstring's 255 characters; the source excerpt
+- [x] 20. `src/diag.pas`, the one place messages are made: a position
+      (a file and a stretch of bytes, its line and columns worked out
+      only for a message); the source excerpt
       and its underline, colour, notes and help; counting errors and
       warnings, the summary, `-Werror`, the exit status. `Mark` and
       `Fatal` move there. `test/err` and `test/pretty` keep working:

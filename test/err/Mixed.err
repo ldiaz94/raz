@@ -1,1 +1,4 @@
-different types: F32 and F64
+test/err/Mixed.raz:6:15: error: different types: F32 and F64
+    6 |     y := x + y;
+      |               ^
+raz: 1 error

@@ -1,1 +1,4 @@
-field extra isn't exported
+test/err/Field.raz:6:7: error: field extra isn't exported
+    6 |     i.extra := 1;
+      |       ^^^^^
+raz: 1 error

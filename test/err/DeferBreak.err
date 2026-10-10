@@ -1,1 +1,4 @@
-break outside a loop
+test/err/DeferBreak.raz:5:20: error: break outside a loop
+    5 |         defer break;
+      |                    ^
+raz: 1 error

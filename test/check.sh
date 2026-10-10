@@ -64,8 +64,8 @@ for f in test/err/*.raz; do
     if $raz -I test/err/mods -I test/run/mods -o $out/$name $f 2>$out/$name.cerr; then
         echo "FAIL $f: compiles"
         fail=$((fail + 1))
-    elif ! grep -qF "$(cat test/err/$name.err)" $out/$name.cerr; then
-        echo "FAIL $f: says $(cat $out/$name.cerr)"
+    elif ! cmp -s test/err/$name.err $out/$name.cerr; then
+        echo "FAIL $f: says"; diff test/err/$name.err $out/$name.cerr
         fail=$((fail + 1))
     else
         pass=$((pass + 1))

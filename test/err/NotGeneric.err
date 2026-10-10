@@ -1,1 +1,4 @@
-Str isn't generic
+/home/luis/raz/lib/Str.raz:3:11: error: Str isn't generic
+    3 | module Str;
+      |           ^
+raz: 1 error

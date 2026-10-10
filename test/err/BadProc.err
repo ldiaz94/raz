@@ -1,1 +1,4 @@
-needs a procedure with the signature of hash
+/home/luis/raz/lib/Map.raz:4:39: error: needs a procedure with the signature of hash
+    4 | module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
+      |                                       ^
+raz: 1 error

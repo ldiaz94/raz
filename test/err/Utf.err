@@ -1,1 +1,4 @@
-Utf.raz:2:5: text outside strings, characters and comments must be ASCII
+test/err/Utf.raz:2:5: error: text outside strings, characters and comments must be ASCII
+    2 | var é: I64;
+      |     ^
+raz: 1 error

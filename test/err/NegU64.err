@@ -1,1 +1,4 @@
-constant doesn't fit U64
+test/err/NegU64.raz:5:12: error: constant doesn't fit U64
+    5 |     u := -1;
+      |            ^
+raz: 1 error

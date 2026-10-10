@@ -1,1 +1,4 @@
-... is only for extern procedures
+test/err/Variadic.raz:3:16: error: ... is only for extern procedures
+    3 | proc f(a: I64; ...);
+      |                ^^^
+raz: 1 error

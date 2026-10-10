@@ -1,1 +1,4 @@
-can't use List(I32).List as List(I64).List
+test/err/TwoTypes.raz:6:11: error: can't use List(I32).List as List(I64).List
+    6 |     a := b;
+      |           ^
+raz: 1 error

@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eight files of Free Pascal, under 5,000 lines of code.
+The compiler is nine files of Free Pascal, under 6,000 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -8,14 +8,15 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/scan.pas` | 548 | 471 | Symbols, literals, comments, error messages |
+| `src/diag.pas` | 227 | 162 | Messages: positions, source excerpts, colour, counts |
+| `src/scan.pas` | 535 | 459 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 508 | 422 | Types, objects, scopes, layout |
 | `src/x64.pas` | 680 | 546 | Code buffer, chunks, fixups, line notes, instruction encoder |
 | `src/gen.pas` | 1,414 | 1,240 | Items: loading, storing, copying, frames, calls |
 | `src/parse.pas` | 1,816 | 1,685 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 216 | 169 | The command line, the entry points |
+| `src/raz.pas` | 219 | 172 | The command line, the entry points |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -111,6 +112,18 @@ and pops are `Op1` and `Op2`, the frame `EnterBody` and `EndProc`. It
 is not fast code. It is code whose every instruction you can account
 for, which is the point.
 
+## diag.pas: messages
+
+Every message the compiler prints is made here. A position, `TPos`, is
+a file and a stretch of bytes in it; `Error`, `Warning` and `Note` show
+it as `file:line:column`, then the line of source with the stretch
+underlined, and `Help` adds a line of advice. The line and column are
+worked out only when a message is printed (`Locate`, `Chars`), so
+positions cost nothing while compiling. `AddFile` keeps every source
+file the scanner opens, so a note can show a line of any of them.
+`Finish` prints the count of errors and warnings and stops if there
+were errors; `Fatal` is for errors with no place in the source.
+
 ## scan.pas: the scanner
 
 The scanner turns bytes into symbols (`TSym`). The current symbol is in
@@ -132,9 +145,9 @@ reserved word.
 Source is UTF-8, checked by `Utf8` wherever a byte above 127 appears:
 in strings, characters and comments. Anywhere else it is an error.
 
-Errors go through `Mark`, which prints `file:line:column` (the column
-counted in characters, by `Column`) and stops. There is no recovery:
-the first error ends the compilation. `SaveScan` and `RestoreScan` keep
+`TokPos` is the position of the current symbol. Errors go through
+`Mark`, which reports one there (`diag.Error`) and stops. There is no
+recovery: the first error ends the compilation. `SaveScan` and `RestoreScan` keep
 the scanner's state while an imported module is compiled.
 
 ## sym.pas: types, objects and scopes

@@ -25,7 +25,7 @@ program raz;
 
 {$mode objfpc}{$H-}
 
-uses math, BaseUnix, syscall, scan, sym, x64, gen, parse, link, elf;
+uses math, BaseUnix, syscall, scan, diag, sym, x64, gen, parse, link, elf;
 
 const
   { what git describe says, made by make: 0.3.0 at the tag v0.3.0,
@@ -113,7 +113,9 @@ begin
     end else if s = '-o' then begin
       inc(i);
       outPath := ParamStr(i);
-    end else if s = '--version' then begin
+    end else if s = '-Werror' then
+      werror := true
+    else if s = '--version' then begin
       writeln('raz ', Version, ', report ', Report);
       Halt(0);
     end else if (s <> '') and (s[1] = '-') then
@@ -126,7 +128,7 @@ begin
     inc(i);
   end;
   if path = '' then
-    Fatal('usage: raz [-I dir]... [-o file] Main.raz, or raz run [-I dir]... Main.raz [arg]...');
+    Fatal('usage: raz [-I dir]... [-o file] [-Werror] Main.raz, or raz run [options] Main.raz [arg]...');
   if run and (outPath <> '') then Fatal('raz run takes no -o');
   dir := ParamStr(0);
   i := length(dir);
@@ -140,6 +142,7 @@ begin
   end;
 
   m := CompileMain(path);
+  Finish;
 
   Use(m);
   rt := firstModule;

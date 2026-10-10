@@ -68,8 +68,8 @@ emacs is installed.
 
 ## Using it
 
-    raz [-I dir]... [-o file] Main.raz
-    raz run [-I dir]... Main.raz [arg]...
+    raz [-I dir]... [-o file] [-Werror] Main.raz
+    raz run [-I dir]... [-Werror] Main.raz [arg]...
     raz --version
 
 `raz Main.raz` compiles module `Main` and every module it imports, and
@@ -77,7 +77,8 @@ writes the executable `Main`. A module `Name` lives in `Name.raz`, found
 in the main module's directory, then in each `-I` directory, then in
 `lib`. A module whose code depends on the system comes in one file per
 target, `Name.linux-x86_64.raz` before `Name.raz`; the compiler checks
-that all of them export the same things.
+that all of them export the same things. `-Werror` makes warnings
+errors.
 
 `raz run Main.raz a b` compiles the same way, then runs the program
 with the arguments `a b`, writing no file: its output and exit status

@@ -1,1 +1,4 @@
-can't use ^VOLATILE I64 as ^I64
+test/err/Volatile.raz:6:11: error: can't use ^VOLATILE I64 as ^I64
+    6 |     q := p;
+      |           ^
+raz: 1 error

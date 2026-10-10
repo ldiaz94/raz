@@ -1,1 +1,4 @@
-can't use U64 as I64
+test/err/BigI64.raz:5:28: error: can't use U64 as I64
+    5 |     i := 0FFFFFFFFFFFFFFFFH;
+      |                            ^
+raz: 1 error

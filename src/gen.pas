@@ -27,7 +27,7 @@ unit gen;
 
 interface
 
-uses scan, sym, x64;
+uses scan, diag, sym, x64;
 
 type
   TMode = (mConst, mVar, mReg, mStack, mProc, mType, mStr, mBuiltin, mCase, mNone);

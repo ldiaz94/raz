@@ -1,13 +1,13 @@
 { Prints the symbols of a file, one per line: a test of scan.pas. }
 program scantest;
 {$mode objfpc}{$H-}
-uses scan;
+uses diag, scan;
 var i: longint;
 begin
   if not Open(ParamStr(1)) then Fatal('no file');
   repeat
     Next;
-    write(Where, ' ', ord(tok));
+    write(LineOf(TokPos), ':', TokPos.a, ' ', ord(tok));
     case tok of
       sIdent: write(' ', NameOf(id));
       sInt, sChar: write(' ', ival);

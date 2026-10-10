@@ -21,7 +21,7 @@ unit link;
 
 interface
 
-uses scan, x64;
+uses scan, diag, x64;
 
 const
   Base = $400000;
