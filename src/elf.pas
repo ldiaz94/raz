@@ -134,6 +134,7 @@ var
   files: array[0..255] of longint; nfiles, i, f, c, cf, cl: longint;
   at: int64; cwd: array[0..255] of char;
 begin
+  FillChar(files, SizeOf(files), 0);
   nfiles := 0;
   for i := 0 to numLines - 1 do
     if chunks^[lines^[i].chunk].live then begin
