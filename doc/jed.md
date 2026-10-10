@@ -59,6 +59,12 @@ up to the largest `I64`. A hexadecimal number above that, such as
 `0FFFFFFFFFFFFFFFFH`, has type `U64`: so `-1` never fits a `U64`, and
 the big number goes nowhere else without a conversion.
 
+A real is an untyped constant too, which takes `F32` or `F64`,
+whichever it is used as, rounded to the nearest value of that type;
+where nothing says which, it is an `F64`. A real never becomes an
+integer, nor an integer a real, without a conversion: `x := 1;` is an
+error for `x: F64`, and `x := 1.0;` is right.
+
 **Characters.** `'a'` is the code point of one character, an integer:
 `'a'` is 97 and `'é'` is 233.
 
@@ -88,7 +94,7 @@ Module     = "module" ident [ "(" ModParams ")" ] ";"
 ModParams  = ident { "," ident } { ";" ident ":" "proc" Signature } .
 Import     = "import" ImportItem { "," ImportItem } ";" .
 ImportItem = ident [ ":=" ident [ "(" Type { "," Type } ")" ] ] .
-Link       = "link" string ";" .
+Link       = "link" ( string | "static" ) ";" .
 ```
 
 A module lives in a file of its own name: module `Out` is `Out.jed`.
@@ -171,7 +177,9 @@ instance of a generic module has its body run once. Module variables
 are zero before any body runs. `return;` ends a body early.
 
 **`link "libX11.so.6";`** names a shared library to load at run time,
-for the `extern` procedures of section 9.
+for the `extern` declarations of section 9. **`link static;`** says the
+module needs a program without C (section 10): it makes its own system
+calls, or its own threads, which the C library wouldn't know about.
 
 ## 4. Declarations
 
@@ -195,11 +203,11 @@ literals, other constants, operators, `SIZE` and the `LEN` of arrays.
 
 **Variables** of a module live as long as the program; variables of a
 procedure live as long as its call. Both start at zero: every byte of
-them is zero. So a number starts as `0` (`0.0` for `F64`), a `BOOL` as
-`false`, a pointer, procedure or `ERROR` as `nil`, a slice as the empty
-slice (`ptr` is `nil`, `len` is 0), a variant as its first case with
-its fields zero, a set as the empty set, and an enumeration as its
-first name. No variable is ever read before it has a value.
+them is zero. So a number starts as `0` (`0.0` for `F32` and `F64`),
+a `BOOL` as `false`, a pointer, procedure or `ERROR` as `nil`, a slice
+as the empty slice (`ptr` is `nil`, `len` is 0), a variant as its
+first case with its fields zero, a set as the empty set, and an
+enumeration as its first name. No variable is ever read before it has a value.
 
 ## 5. Types
 
@@ -225,6 +233,7 @@ QualIdent = [ ident "." ] ident .
 | `I8` `I16` `I32` `I64` | 1, 2, 4, 8 | signed integers, two's complement |
 | `U8` `U16` `U32` `U64` | 1, 2, 4, 8 | unsigned integers |
 | `BOOL` | 1 | `false` (0), `true` (1) |
+| `F32` | 4 | IEEE 754 single precision |
 | `F64` | 8 | IEEE 754 double precision |
 
 ### 5.2 Arrays
@@ -368,8 +377,8 @@ the same type, or if:
 - `A` is a procedure and `B` a procedure type with the same signature.
 
 Nothing else converts silently. In particular, there is no conversion
-between integer types, or between integers and `F64`, without a written
-conversion (section 6.7).
+between integer types, between integers and reals, or between `F32`
+and `F64`, without a written conversion (section 6.7).
 
 ## 6. Expressions
 
@@ -421,8 +430,12 @@ decides the result. `not` negates, `xor` is "different", and `=` and
 
 ### 6.3 Reals
 
-`+ - * /` and the relations work on `F64`, both operands `F64`. A real
-literal has type `F64`.
+`+ - * /` and the relations work on `F32` and on `F64`. Both operands
+have the same type, or one is a real constant, which takes the other's
+type (section 2). The result has that type: `F32` arithmetic is done in
+single precision, rounded at each step as C rounds `float`. A
+constant expression of reals is evaluated in double precision, then
+rounded once to the type it takes.
 
 ### 6.4 Pointers
 
@@ -487,8 +500,10 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 | From | To | Result |
 |---|---|---|
 | integer | integer | the value cut to the new width, or extended by its sign (signed) or zeros (unsigned) |
-| integer | `F64` | the nearest real |
-| `F64` | integer | rounded toward zero; a NaN, or a real out of the range of `I64`, gives the smallest `I64`, then cut |
+| integer | `F32`, `F64` | the nearest real |
+| `F32`, `F64` | integer | rounded toward zero; a NaN, or a real out of the range of `I64`, gives the smallest `I64`, then cut |
+| `F32` | `F64` | the same value |
+| `F64` | `F32` | the nearest `F32`; too big a value gives an infinity |
 | enumeration | integer | its position |
 | integer | enumeration | the name at that position; a position out of range is a failed check (6.5) |
 | set | integer | its bits |
@@ -692,31 +707,56 @@ code 0FH, 31H,              (* rdtsc *)
 
 It is called like any procedure, with the System V convention: integer
 and pointer arguments arrive in `rdi`, `rsi`, `rdx`, `rcx`, `r8` and
-`r9`, `F64` ones in `xmm0` to `xmm7`, and the result goes in `rax` (and
-`rdx` for a second) or `xmm0`. Its parameters and results are therefore
-of the types C can take (section 9), at most six integer and eight
-`F64` parameters, and at most two results. The bytes are the whole
+`r9`, `F32` and `F64` ones in `xmm0` to `xmm7`, and the result goes in
+`rax` (and `rdx` for a second) or `xmm0`. Its parameters and results
+are therefore of the types C can take (section 9), at most six integer
+and eight real parameters, and at most two results. The bytes are the whole
 procedure, `ret` included; they must keep `rbx`, `rbp`, `rsp` and `r12`
 to `r15` as they found them. The compiler doesn't look inside them.
 
 ## 9. Calling C
 
 ```
-ExternDeclaration = "extern" "proc" IdentDef Signature .
+ExternDeclaration = "extern" ( "proc" IdentDef Signature
+                             | "var" IdentDef ":" Type ) .
 ```
 
 ```
 link "libX11.so.6";
 extern proc XOpenDisplay(name: ^U8): ^U8;
 extern proc printf(format: ^U8; ...): I32;
+extern var environ: ^^U8;
 ```
 
-An `extern` procedure is found by its name in the C libraries the
-program links: the C library always, and each library named by `link`.
-Its parameters and result are integers, `BOOL`, `F64`, pointers or
-procedures; a record goes to C by pointer, never by value. `...`
-accepts any number of further arguments of those types, and is allowed
-only in an `extern`.
+An `extern` procedure or variable is found by its name in the C
+libraries the program links: the C library always, and each library
+named by `link`.
+
+An `extern` procedure's parameters and result are integers, `BOOL`,
+`F32`, `F64`, pointers or procedures; a record goes to C by pointer,
+never by value. `...` accepts any number of further arguments of those
+types, and is allowed only in an `extern`. As C does, an `F32` given
+to `...` is passed as an `F64`, and a real constant there is an `F64`.
+
+An `extern` variable is C's variable itself: reading it reads C's,
+assigning it writes C's. It can be of any type, declared as C declares
+it, a record laid out as C lays it out (section 5.5); the compiler
+can't check that it is. A C variable that is local to each thread,
+such as `errno`, can't be reached this way; the C library has a
+procedure for it (`__errno_location`).
+
+A C union has no jed type. A program reads one as an array of words,
+and the member it wants through a pointer conversion:
+
+```
+var ev: [24]I64;                       (* XEvent: 192 bytes *)
+...
+XNextEvent(dpy, ADR(ev));
+if I32(ev[0]) = KeyPress then
+    key := ^XKeyEvent(ADR(ev));
+    ...
+end;
+```
 
 Every jed procedure uses the System V calling convention, so a jed
 procedure whose parameters and result are of those types can be given
@@ -727,12 +767,29 @@ to C as a callback.
 Any module may export a procedure `main`, declared `proc main*;` or
 `proc main*: I64;`. The program runs the bodies of all its modules
 (section 3), then the main module's `main`, if it has one, and ends
-with status 0, or with the status `main` returns. The `main` of an
-imported module is an ordinary procedure, which runs only if something
-calls it; so a library module can carry a `main` that tests it.
-A program that calls no C is a static executable with no run time
-besides the code it uses. One that does is linked dynamically and
-starts through the C library, so that C's own set-up and clean-up run.
+with status 0, or with the status `main` returns, by calling
+`Rt.exit`. The `main` of an imported module is an ordinary procedure,
+which runs only if something calls it; so a library module can carry a
+`main` that tests it.
+A program uses C if any of its modules has an `extern` declaration or
+a `link` of a library. A program that doesn't is a static executable
+with no run time besides the code it uses. One that does is linked
+dynamically and starts through the C library, so that C's own set-up
+and clean-up run. A program with a module that says `link static;`
+must not use C, and the compiler reports an error if it does.
+
+**Ending.** `Rt.exit(status)` ends the program. First it runs the
+procedures registered with `Rt.atExit`, the last registered first,
+each at most once; then it ends the program with `status`, through
+C's `exit` in a program that uses C, so that C flushes its own
+buffers. A failed check (section 6.5) runs them too, after its
+message, so that `Out`'s buffer is written out. `Sys.exit` ends the
+program at once, and a program stopped by a signal runs none of them.
+
+```
+proc atExit*(p: proc): ERROR;   (* Rt.Full if 32 are registered *)
+proc exit*(status: I64);
+```
 
 Only what can be reached from `main` and the module bodies goes into
 the executable: unused procedures, variables and strings are left out.
@@ -751,9 +808,9 @@ Modules written in jed, in the compiler's `lib` directory:
 
 | Module | What |
 |---|---|
-| `Rt` | what the compiler's checks call when they fail, and string comparison |
-| `Sys` | system calls: `write`, `mmap`, `munmap`, `exit`; one file per target |
-| `Out` | writing text and numbers to standard output |
+| `Rt` | ending the program, `exit` and `atExit`; what the compiler's checks call when they fail; string comparison |
+| `Sys` | system calls: `write`, `mmap`, `munmap`, `exit`; one file per target, and `Sys.jed` over the C library for the others |
+| `Out` | writing text and numbers to standard output, buffered |
 | `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
 | `Heap` | a general allocator, `Heap.heap` |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
@@ -772,4 +829,23 @@ type
     end;
 ...
 end Mem.
+```
+
+**Out and C's stdio.** `Out` keeps a buffer of 4 KB. It writes it out
+when it is full, at each line feed when standard output is a terminal,
+at `Out.flush`, and when the program ends by `Rt.exit`. C's `stdio`
+keeps a buffer of its own for the same standard output. A program that
+writes with both flushes one before writing with the other, or the
+text comes out of order:
+
+```
+extern proc printf(format: ^U8; ...): I32;
+extern proc fflush(f: ^U8): I32;
+extern var stdout: ^U8;                  (* C's FILE *stdout *)
+...
+Out.str("from jed\n");
+Out.flush;
+printf("from C\n");
+fflush(stdout);
+Out.str("from jed again\n");
 ```
