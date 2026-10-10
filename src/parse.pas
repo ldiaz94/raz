@@ -12,8 +12,7 @@
   interface.
 
   Depends on: scan, sym, x64, gen.
-  Leaves out (for later stages): multiple results, errors, enumerations
-  and sets, record literals, defer, NEW, generic modules, extern. }
+  Leaves out (for stage 3): extern and link. }
 
 unit parse;
 

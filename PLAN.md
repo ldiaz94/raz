@@ -54,20 +54,20 @@ disagree, the report wins and this plan is fixed.
 
 ## The compiler, in reading order
 
-Lines after stage 1, all of them and those of code (neither blank nor
+Lines after stage 2, all of them and those of code (neither blank nor
 only comment), as `make loc` counts them:
 
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/scan.pas` | 548 | 471 | Symbols, literals, comments, error messages |
-| `src/sym.pas` | 476 | 396 | Types, objects, scopes, layout |
-| `src/x64.pas` | 613 | 491 | Code buffer, chunks, fixups, instruction encoder |
-| `src/gen.pas` | 1,177 | 1,035 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 1,347 | 1,250 | Declarations, statements, expressions, built-ins |
+| `src/sym.pas` | 492 | 410 | Types, objects, scopes, layout |
+| `src/x64.pas` | 620 | 497 | Code buffer, chunks, fixups, instruction encoder |
+| `src/gen.pas` | 1,354 | 1,193 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 1,754 | 1,626 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 123 | 92 | Tree shaking, layout, patching |
 | `src/elf.pas` | 185 | 147 | Static ELF, symbol table |
 | `src/jed.pas` | 111 | 83 | The command line, the entry point |
-| total | 4,580 | 3,965 | |
+| total | 5,187 | 4,519 | |
 
 ## Steps
 
