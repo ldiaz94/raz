@@ -23,8 +23,9 @@ disagree, the report wins and this plan is fixed.
   what wherever a layout or encoding isn't obvious.
 - One commit per step, as `Luis <42945842+ldiaz94@users.noreply.github.com>`, unsigned, with
   no attribution trailer.
-- Work stops after every stage for review. A step starts only on an
-  explicit go-ahead.
+- Work stops after every stage for review. A stage starts only on an
+  explicit go-ahead; within it, each step is committed and pushed as it
+  is done.
 - Not in scope for now: man pages, QEMU or bare metal tests, aarch64,
   macOS and Windows (Mach-O, PE), an optimizer.
 
