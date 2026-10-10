@@ -4,8 +4,16 @@
 FPC = fpc
 FPCFLAGS = -O2 -Mobjfpc -Sh- -vew -FUbuild
 
-raz: src/*.pas | build
-	$(FPC) $(FPCFLAGS) -FE. -oraz src/raz.pas
+raz: src/*.pas build/version.inc | build
+	$(FPC) $(FPCFLAGS) -Fibuild -FE. -oraz src/raz.pas
+
+# The version is git's name for the commit; the file changes only when
+# that does, so raz isn't rebuilt for nothing.
+build/version.inc: FORCE | build
+	@v=$$(git describe --tags --dirty 2>/dev/null || echo unknown); \
+	v="'$${v#v}'"; echo "$$v" | cmp -s - $@ || echo "$$v" >$@
+
+FORCE:
 
 units: src/*.pas | build
 	for u in scan sym x64 link elf; do $(FPC) $(FPCFLAGS) src/$$u.pas || exit 1; done

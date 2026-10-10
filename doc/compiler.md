@@ -15,7 +15,7 @@ disassembly.
 | `src/parse.pas` | 1,816 | 1,685 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 214 | 169 | The command line, the entry points |
+| `src/raz.pas` | 216 | 169 | The command line, the entry points |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.

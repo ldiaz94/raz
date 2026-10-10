@@ -28,7 +28,9 @@ program raz;
 uses math, BaseUnix, syscall, scan, sym, x64, gen, parse, link, elf;
 
 const
-  Version = '0.3.0';
+  { what git describe says, made by make: 0.3.0 at the tag v0.3.0,
+    0.3.0-5-g38d29a8 five commits past it }
+  Version = {$I version.inc};
   Report = '2026-10.0';    { the version of doc/raz.md it follows }
   MemfdCreate = 319;       { the system call; FPC 3.2.2 has no name for it }
   MfdCloexec = 1;          { an ELF still executes: the kernel opens it first }

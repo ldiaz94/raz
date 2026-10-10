@@ -132,10 +132,15 @@ after `,` and `;`, and keeps every line break and comment where it is.
 
 ## Versions
 
-The compiler says which version of the report it follows:
+The compiler says its own version and that of the report it follows:
 
     $ ./raz --version
     raz 0.3.0, report 2026-10.0
+
+The compiler's version is git's name for the commit it was built from:
+`0.3.0` at the tag `v0.3.0`, `0.3.0-5-g38d29a8` five commits past it.
+A release is a tag `vX.Y.Z` pushed to GitHub, which builds it, checks
+it, and attaches `raz` with its `lib/` to the release.
 
 A version of the report is named by its month and a count; the report's
 last section says what each version changed.
