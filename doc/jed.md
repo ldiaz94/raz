@@ -23,9 +23,11 @@ end;
 end Hello.
 ```
 
-A program is a set of modules. One of them, the main module, has a
-procedure `main`; the program starts there. Saved as `Hello.jed`, it is
-compiled with `jed Hello.jed`, which writes the executable `Hello`.
+A program is a set of modules. The one named on the command line is
+the main module, and it exports a procedure `main`; the program starts
+there, once every module's body has run (section 3). Saved as
+`Hello.jed`, it is compiled with `jed Hello.jed`, which writes the
+executable `Hello`.
 
 ## 2. Words and symbols
 
@@ -39,9 +41,9 @@ names.
 **Reserved words** are lowercase, except `VOLATILE`:
 
 ```
-and begin by const div do else elsif end extern for forward if import
-link match mod module not of or proc record repeat return shl shr then
-to type until var variant VOLATILE while xor
+and begin break by const div do else elsif end extern for forward if
+import in link match mod module not of or packed proc record repeat
+return set shl shr then to type until var variant VOLATILE while xor
 ```
 
 **Numbers.** `123` is decimal. `0FFH` is hexadecimal: it starts with a
@@ -60,14 +62,15 @@ hexadecimal value HH).
 **Operators and delimiters:**
 
 ```
-+  -  *  /  =  #  <  <=  >  >=  :=  :  ;  ,  .  ..  ...  (  )  [  ]  ^  |
++  -  *  /  =  #  <  <=  >  >=  :=  :  ;  ,  .  ..  ...  (  )  [  ]  {  }  ^  |
 ```
 
 ## 3. Modules
 
 ```
 Module     = "module" ident [ "(" ident { "," ident } ")" ] ";"
-             { Import } { Link } { Declaration } "end" ident "." .
+             { Import } { Link } { Declaration }
+             [ "begin" Statements ] "end" ident "." .
 Import     = "import" ImportItem { "," ImportItem } ";" .
 ImportItem = ident [ ":=" ident [ "(" Type { "," Type } ")" ] ] .
 Link       = "link" string ";" .
@@ -105,9 +108,12 @@ is reported as an error in that instance.
 module's directory, then in each directory given with `-I`, then in the
 `lib` directory beside the compiler.
 
-**No module bodies.** Module variables start at zero, and there is no
-code that runs when a module starts. A module that needs setting up
-does it on first use.
+**Module bodies.** A module may end with `begin` and statements, its
+body. Every module's body runs once, before the main module's `main`:
+a module's body runs after the bodies of the modules it imports, in the
+order of its `import`s, and once however many modules import it. Each
+instance of a generic module has its body run once. Module variables
+are zero before any body runs. `return;` ends a body early.
 
 **`link "libX11.so.6";`** names a shared library to load at run time,
 for the `extern` procedures of section 9.
@@ -115,7 +121,7 @@ for the `extern` procedures of section 9.
 ## 4. Declarations
 
 ```
-Declaration = "const" { IdentDef "=" Expr ";" }
+Declaration = "const" { IdentDef [ ":" "ERROR" ] "=" Expr ";" }
             | "type" { IdentDef "=" Type ";" }
             | "var" { IdentList ":" Type ";" }
             | ProcDeclaration ";"
@@ -133,7 +139,12 @@ procedure may be declared `forward` and defined later (section 8).
 literals, other constants, operators, `SIZE` and the `LEN` of arrays.
 
 **Variables** of a module live as long as the program; variables of a
-procedure live as long as its call. Both start at zero.
+procedure live as long as its call. Both start at zero: every byte of
+them is zero. So a number starts as `0` (`0.0` for `F64`), a `BOOL` as
+`false`, a pointer, procedure or `ERROR` as `nil`, a slice as the empty
+slice (`ptr` is `nil`, `len` is 0), a variant as its first case with
+its fields zero, a set as the empty set, and an enumeration as its
+first name. No variable is ever read before it has a value.
 
 ## 5. Types
 
@@ -142,8 +153,10 @@ Type      = QualIdent
           | "[" Expr "]" Type                 (* array *)
           | "[" "]" Type                      (* slice *)
           | "^" [ "VOLATILE" ] Type           (* pointer *)
-          | "record" { IdentList ":" Type ";" } "end"
+          | [ "packed" ] "record" { IdentList ":" Type ";" } "end"
           | "variant" { Case ";" } "end"
+          | "(" ident { "," ident } ")"       (* enumeration *)
+          | "set" "of" QualIdent
           | "proc" Signature .
 Case      = ident [ "(" FieldList { ";" FieldList } ")" ] .
 FieldList = ident { "," ident } ":" Type .
@@ -196,6 +209,12 @@ multiple of its own alignment, and the whole record padded to a
 multiple of its largest alignment. A record declared like a C struct
 has the same layout as that struct.
 
+A `packed record` has no padding: each field starts at the byte after
+the field before it, and the record's alignment is 1. A field of a
+packed record may be misaligned. x86-64 reads and writes it anyway, but
+an atomic operation on it is slow, and a volatile access to it is one
+instruction that needn't be atomic.
+
 ### 5.6 Variants
 
 A variant holds one of several cases, each with its own fields:
@@ -217,8 +236,50 @@ way to read the fields is `match` (section 7.4).
 
 Layout: an `I64` tag (0 for the first case, 1 for the second, and so
 on) followed by the fields of the largest case, laid out as a record.
+A variant that starts at zero therefore holds its first case.
 
-### 5.7 Procedure types
+### 5.7 Enumerations and sets
+
+```
+type
+    Color* = (red, green, blue);
+    Colors* = set of Color;
+```
+
+An enumeration is a list of names, in order. Like the cases of a
+variant, the names are declared in the scope around the type. An
+enumeration has at most 256 names and takes 1 byte; the first name is
+0, the next 1, and so on.
+
+`set of E`, for an enumeration `E` of at most 64 names, holds any
+choice of `E`'s names: bit `i` stands for the name at position `i`. It
+takes the smallest of 1, 2, 4 and 8 bytes that has a bit for each name,
+so a set can stand for a C flags word.
+
+### 5.8 Errors
+
+```
+const NotFound*: ERROR = "not found";
+```
+
+`ERROR` is a basic type of 8 bytes. A value of it is made only by a
+constant declared as above, and each such declaration makes an error
+different from every other, whatever its message: two modules that
+both declare `"not found"` have two different errors. A generic module
+makes its errors once per instance. `nil` is no error.
+
+Errors compare with `=` and `#` only, by which declaration made them,
+never by their message. `MSG(e)` is the message, a `[]U8`; `MSG(nil)`
+is `""`.
+
+```
+proc find*(key: I64): (^Node, ERROR);
+...
+n, err := Table.find(7);
+if err = Table.NotFound then ... end;
+```
+
+### 5.9 Procedure types
 
 ```
 type Compare = proc(a, b: I64): BOOL;
@@ -227,7 +288,7 @@ type Compare = proc(a, b: I64): BOOL;
 A value of a procedure type is the address of a procedure with that
 signature, 8 bytes, or `nil`.
 
-### 5.8 Same and assignable
+### 5.10 Same and assignable
 
 Two named types are the same only if they are the same declaration.
 Two anonymous types are the same if they are built alike: `^I64` is
@@ -238,7 +299,7 @@ passed to a parameter of type `B`, and returned as a `B`) if they are
 the same type, or if:
 
 - `A` is an integer constant whose value fits in the integer type `B`;
-- `A` is `nil` and `B` is a pointer or procedure type;
+- `A` is `nil` and `B` is a pointer, procedure or `ERROR` type;
 - `A` is `^T` and `B` is `^VOLATILE T`;
 - `A` is `[n]T` and `B` is `[]T`;
 - `A` is a string literal and `B` is `[]U8`, `^U8` (a pointer to the
@@ -248,13 +309,13 @@ the same type, or if:
 
 Nothing else converts silently. In particular, there is no conversion
 between integer types, or between integers and `F64`, without a written
-conversion (section 6.6).
+conversion (section 6.7).
 
 ## 6. Expressions
 
 ```
 Expr       = SimpleExpr [ Relation SimpleExpr ] .
-Relation   = "=" | "#" | "<" | "<=" | ">" | ">=" .
+Relation   = "=" | "#" | "<" | "<=" | ">" | ">=" | "in" .
 SimpleExpr = [ "-" ] Term { AddOp Term } .
 AddOp      = "+" | "-" | "or" | "xor" .
 Term       = Factor { MulOp Factor } .
@@ -262,7 +323,9 @@ MulOp      = "*" | "/" | "div" | "mod" | "and" | "shl" | "shr" .
 Factor     = number | char | string | Designator | "(" Expr ")"
            | "not" Factor
            | "[" [ Expr { "," Expr } ] "]"
+           | "{" [ Element { "," Element } ] "}"
            | "^" [ "VOLATILE" ] Type "(" Expr ")" .
+Element    = Expr | ident ":" Expr .
 Designator = QualIdent { Selector } .
 Selector   = "." ident | "^" | "[" Expr [ ".." Expr ] "]"
            | "(" [ Expr { "," Expr } ] ")" .
@@ -281,11 +344,11 @@ result has that type and wraps around at its width: in `U8`,
 `200 + 100` is `44`.
 
 `div` rounds toward zero and `mod` takes the sign of the dividend, as
-in C: `-7 div 2` is `-3`, `-7 mod 2` is `-1`. Dividing by zero stops
-the program (`SIGFPE`).
+in C: `-7 div 2` is `-3`, `-7 mod 2` is `-1`. Dividing by zero, and
+dividing the smallest `I64` by `-1`, stop the program (`SIGFPE`).
 
 `and`, `or`, `xor` and `not` work on every bit. `x shl n` and
-`x shr n` shift by `n mod 64`; `shr` brings in copies of the sign bit
+`x shr n` shift by `n and 63`; `shr` brings in copies of the sign bit
 for signed types and zeros for unsigned ones.
 
 Relations compare as signed or unsigned according to the type.
@@ -321,14 +384,39 @@ checked: `i` must be below the length, and `0 <= lo <= hi <= length`.
 A check that fails prints the file and line to standard error and stops
 the program with status 2.
 
-`[e1, e2, ...]` builds an array where the type it must have is known:
-assigned to an array or slice variable, passed to such a parameter, or
-returned as one. Its elements must be assignable to the element type.
+**Literals.** `[e1, e2, ...]` builds an array, and `{f: e, g: e, ...}`
+a record, where the type it must have is known: assigned to a variable,
+passed to a parameter, returned, compared with a value of that type, or
+an element of a bigger literal. The elements must be assignable to the
+element type, and an array literal for `[n]T` has exactly `n` of them.
+A record literal names its fields, in any order, each at most once; the
+fields it leaves out are zero. An array literal used as a slice is a
+hidden variable of the procedure, and lives as long as its call.
 
-Arrays, slices, records and variants can't be compared; write a loop,
-or use the library's `Str.eq` for strings.
+```
+c := {ch: 'A', attr: 7};
+Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.int(m)]);
+```
 
-### 6.6 Conversions
+**Strings compare.** Two operands that are each a `[]U8`, a `[n]U8` or
+a string literal are `=` when they have the same length and the same
+bytes, and `#` otherwise. Other arrays and slices, records and variants
+can't be compared; write a loop. Ordering strings is the library's
+`Str.cmp`.
+
+### 6.6 Enumerations and sets
+
+Enumerations compare with all six relations, by position, and an
+enumeration can be the variable of a `for` loop and the expression of a
+`match` (section 7.4).
+
+`{red, blue}` is a set, of the set type of its names' enumeration;
+`{}` is the empty set, where the type it must have is known. On two sets
+of the same type, `+` is union, `*` intersection and `-` difference;
+`=` and `#` compare, and `<=` and `>=` are "is a subset of" and "is a
+superset of". `x in s` is `true` if the name `x` is in the set `s`.
+
+### 6.7 Conversions
 
 A type name applied like a procedure converts: `I32(x)`, `F64(n)`,
 `^Cell(addr)`. A pointer type written out uses the `^` form of the
@@ -338,20 +426,24 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 |---|---|---|
 | integer | integer | the value cut to the new width, or extended by its sign (signed) or zeros (unsigned) |
 | integer | `F64` | the nearest real |
-| `F64` | integer | rounded toward zero |
+| `F64` | integer | rounded toward zero; a NaN, or a real out of the range of `I64`, gives the smallest `I64`, then cut |
+| enumeration | integer | its position |
+| integer | enumeration | the name at that position; a position out of range is a failed check (6.5) |
+| set | integer | its bits |
+| integer | set | the low bits, as many as the set has |
 | integer | pointer, procedure | the address |
 | pointer, procedure | integer | the address |
 | pointer, procedure | pointer, procedure | the same address, seen as the new type |
 
-### 6.7 Built-in procedures
+### 6.8 Built-in procedures
 
 | Call | Result |
 |---|---|
 | `SIZE(T)` | the size of type `T` in bytes, a constant |
 | `ADR(x)` | the address of variable `x`, a `^T` |
 | `LEN(a)` | the number of elements of an array (a constant) or a slice, an `I64` |
-| `NEW(p)` | sets `p: ^T` to a fresh, zeroed `T` from `Heap`; the module must import `Heap` |
-| `NEW(p, a)` | the same, from the allocator `a: ^Mem.Allocator` |
+| `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
+| `MSG(e)` | the message of the error `e`, a `[]U8` |
 | `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six integer or pointer arguments; the raw result, an `I64` (a negative number is `-errno`) |
 | `CODE(b1, b2, ...)` | puts the constant bytes in the code, see 7.7 |
 | `FENCE` | a full memory barrier |
@@ -377,7 +469,8 @@ Statement  = Designator [ ":=" Expr ]
            | "repeat" Statements "until" Expr
            | "for" ident ":=" Expr "to" Expr [ "by" Expr ] "do" Statements "end"
            | "match" Expr "of" { "|" Arm } "end"
-           | "return" [ Expr { "," Expr } ] .
+           | "return" [ Expr { "," Expr } ]
+           | "break" .
 Arm        = ( ident [ "(" ident { "," ident } ")" ] | "else" ) ":" Statements .
 ```
 
@@ -403,14 +496,15 @@ body at least once and stops when the condition is true.
 negative). `s` is 1 if left out. `b` is evaluated once, before the
 first round.
 
-There is no `break` or `goto`. A loop that must stop early tests a
-condition, or its body is a procedure that returns.
+`break` ends the innermost `while`, `repeat` or `for` it stands in,
+and the program goes on after it. There is no `goto`.
 
 ### 7.3 Return
 
 `return e;` ends the procedure with the result `e`; `return a, b;` with
 several results; `return;` from a procedure without results. A
-procedure with results that runs off its end returns an undefined value.
+procedure with results that runs off its end returns zeros, each result
+as a variable of its type starts (section 4).
 
 ### 7.4 Match
 
@@ -428,6 +522,9 @@ itself, so assigning to one changes `s`. An arm may also leave the
 fields unnamed. Every case must have an arm, unless there is an
 `| else:` arm, which must come last.
 
+`match` on an enumeration works the same way: each arm names one of the
+enumeration's names.
+
 ### 7.5 Order of evaluation
 
 Operands, arguments and the designators of an assignment are evaluated
@@ -437,9 +534,9 @@ from left to right.
 
 A variable reached through a `^VOLATILE T` is volatile, and so is any
 field or element of it. Each read or write of a volatile variable of a
-basic or pointer type is exactly one memory access, of exactly its
-size, and volatile accesses happen in the order the program writes
-them. Copying a whole record or array through a volatile pointer is
+basic, enumeration, set or pointer type is exactly one memory access,
+of exactly its size, and volatile accesses happen in the order the
+program writes them. Copying a whole record or array through a volatile pointer is
 not allowed, since it can't be one access.
 
 A `^VOLATILE T` doesn't convert to `^T` without a written conversion.
@@ -466,7 +563,7 @@ end;
 ```
 ProcDeclaration   = "proc" IdentDef Signature ";"
                     ( "forward" | { LocalDeclaration } "begin" Statements "end" [ ident ] ) .
-LocalDeclaration  = "const" { ident "=" Expr ";" }
+LocalDeclaration  = "const" { ident [ ":" "ERROR" ] "=" Expr ";" }
                   | "type" { ident "=" Type ";" }
                   | "var" { ident { "," ident } ":" Type ";" } .
 Signature         = "(" [ Params { ";" Params } [ ";" "..." ] ] ")" [ ":" Results ]
@@ -529,19 +626,26 @@ to C as a callback.
 
 ## 10. Programs
 
-The main module declares `proc main;` or `proc main: I64;`. The program
-runs `main`, and ends with status 0, or with the status `main` returns.
+Any module may export a procedure `main`, declared `proc main*;` or
+`proc main*: I64;`. The program runs the bodies of all its modules
+(section 3), then the main module's `main`, if it has one, and ends
+with status 0, or with the status `main` returns. The `main` of an
+imported module is an ordinary procedure, which runs only if something
+calls it; so a library module can carry a `main` that tests it.
 A program that calls no C is a static executable with no run time
 besides the code it uses. One that does is linked dynamically and
 starts through the C library, so that C's own set-up and clean-up run.
 
-Only what can be reached from `main` goes into the executable: unused
-procedures, variables and strings are left out.
+Only what can be reached from `main` and the module bodies goes into
+the executable: unused procedures, variables and strings are left out.
 
-**Not checked.** Dereferencing `nil` or a stale pointer, indexing
-through a pointer, integer overflow (it wraps), and a missing `return`
-in a procedure with results. Dividing by zero and dereferencing `nil`
-stop the program with a signal.
+**Defined behaviour.** Every variable starts at zero, integers wrap,
+and indexing arrays and slices is checked, so a program's behaviour is
+defined by this report, with one exception: memory reached through a
+pointer. Dereferencing a stale or made-up pointer, indexing through a
+pointer, `CODE` that breaks its rules, and C code can read or write any
+memory, and what follows isn't defined. Dereferencing `nil`, dividing
+by zero and calling a `nil` procedure stop the program with a signal.
 
 ## 11. The library
 
@@ -549,10 +653,10 @@ Modules written in jed, in the compiler's `lib` directory:
 
 | Module | What |
 |---|---|
-| `Rt` | what the compiler's checks call when they fail |
+| `Rt` | what the compiler's checks call when they fail, and string comparison |
 | `Out` | writing text and numbers to standard output |
 | `Mem` | `mmap`, and `Allocator`, the interface of every allocator |
-| `Heap` | a general allocator; what `NEW(p)` uses |
+| `Heap` | a general allocator |
 | `Arena` | an allocator that frees everything at once |
 | `Str` | operations on `[]U8` strings |
 | `Buf` | a growable byte buffer |

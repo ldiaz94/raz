@@ -3,7 +3,7 @@
 jed (Polish *jeden*, one) is a small systems language in Wirth's
 tradition: full control of memory, volatile access, atomics, calls into
 C, generic modules. Its compiler is meant to be read in a long weekend:
-about 4,000 lines of Free Pascal, one pass, no IR, no optimizer, writing
+about 4,300 lines of Free Pascal, one pass, no IR, no optimizer, writing
 x86-64 machine code and the ELF file itself.
 
 The language is defined by `doc/jed.md`. Where this plan and the report
@@ -44,17 +44,18 @@ disagree, the report wins and this plan is fixed.
    literals reachable from the entry point.
 9. Variadic arguments exist only to call C. jed code gets the same
    effect from a slice of a variant (`Fmt.print`).
-10. Strings are a library over `[]U8`, not part of the language.
+10. Strings are `[]U8`. The language compares them with `=`; the rest
+    is a library.
 
 ## The compiler, in reading order
 
 | File | Lines | What |
 |---|---|---|
-| `src/scan.pas` | ~350 | Symbols, literals, comments, error messages |
-| `src/sym.pas` | ~350 | Types, objects, scopes, layout |
+| `src/scan.pas` | ~360 | Symbols, literals, comments, error messages |
+| `src/sym.pas` | ~390 | Types, objects, scopes, layout |
 | `src/x64.pas` | ~400 | Code buffer, chunks, fixups, instruction encoder |
-| `src/gen.pas` | ~600 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | ~1,500 | Declarations, statements, expressions, built-ins |
+| `src/gen.pas` | ~660 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | ~1,750 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | ~200 | Tree shaking, layout, patching |
 | `src/elf.pas` | ~450 | Static and dynamic ELF, symbol table |
 | `src/jed.pas` | ~100 | The command line |
