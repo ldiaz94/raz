@@ -138,7 +138,19 @@ Tools
       The test runner stays in the Makefile: it must work when the
       compiler doesn't.
 
+- [ ] 16. Editor support: `editor/vim` (`syntax/jed.vim`, `indent/jed.vim`
+      by `shiftwidth()`, and `ftdetect/jed.vim`, which sets 4 spaces)
+      and `editor/emacs/jed-mode.el` (indenting by `jed-indent-offset`,
+      4 unless set). Both colour reserved words, basic types, built-in
+      procedures, numbers, characters, strings and nested comments.
+      `make check` loads each, headless, on the examples. And a stress
+      test of native threads, `make stress`: 40,000 threads spawned and
+      joined, about 200 alive at once and waiting on one `Mutex`, so a
+      stack `join` failed to free would run the process out of mappings;
+      `spawn` under a low thread limit fails with `Thread.Failed`. A small
+      version of it runs in `make check`.
+
 Wrap up
 
-- [ ] 16. `README.md` and `doc/compiler.md`, a guide to reading the
+- [ ] 17. `README.md` and `doc/compiler.md`, a guide to reading the
       compiler file by file.
