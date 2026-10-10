@@ -129,7 +129,12 @@ Stage 3: calling C, and what comes with it
 
 Tools
 
-- [ ] 15. `tools/Doc.jed`, a jed program: prints a module's own
+- [ ] 15. Versions first: the report says its version, by date
+      (`2026-10.0`, then `.1` for the next change that month), and
+      ends with what each version changed; `jed --version` prints its
+      own and the report's, `jed 0.3.0, report 2026-10.0`. Each
+      finished stage is tagged, `v0.3.0` for stage 3. Then
+      `tools/Doc.jed`, a jed program: prints a module's own
       comment, the one before `module`, then its exported
       declarations, each with the comment just before it; and pulls
       out the examples of `doc/jed.md` that are whole modules.
@@ -154,3 +159,12 @@ Wrap up
 
 - [ ] 17. `README.md` and `doc/compiler.md`, a guide to reading the
       compiler file by file.
+
+Later
+
+- [ ] 18. `tools/Pretty.jed`, a formatter that keeps every line break
+      and comment where it is: it fixes indentation (4 spaces a level)
+      and the spaces around operators and after `,` and `;`, and
+      leaves formatted code as it is. It shares with `Doc.jed` a
+      scanner that keeps comments. `make fmt` checks that `lib/`,
+      `examples/` and `tools/` come through unchanged.
