@@ -1,0 +1,113 @@
+(* Threads for programs without C, made with the clone system call.
+   Each runs on a stack of its own, mmaped, with a page below it that
+   can't be touched, so that running off the stack stops the program
+   rather than spoiling what lies below. join waits on the thread's id,
+   which the kernel clears, and wakes it for, when the thread ends;
+   a Mutex sleeps on a futex. A program with C threads uses C's,
+   through pthread_create, and so can't use these. *)
+module Thread;
+import Sys;
+link static;
+
+const
+    Failed*: ERROR = "can't start a thread";
+    Stack = 1 shl 20;
+    Page = 4096;
+    (* clone: share memory, files, signal handlers, the thread group;
+       write the id to tid, and clear it at the end *)
+    Flags = 350F00H;
+    FutexWait = 0;
+    FutexWake = 1;
+    Private = 128;
+
+type
+    Thread* = record
+        tid: I64;        (* the kernel's id, until the thread ends *)
+        base: ^U8;       (* its stack's mapping, the guard page first *)
+        size: I64;
+    end;
+    (* 0 free, 1 taken, 2 taken with a thread waiting *)
+    Mutex* = record state: I64; end;
+
+(* clone(flags, stack, tid, tid), the new thread starting with fn(arg)
+   on stack and ending, when fn returns, with the exit system call.
+   fn and arg go on the new stack first, since the new thread has no
+   registers but rsp of its own to find them by. Returns the new
+   thread's id, or minus an errno. *)
+proc start(flags: I64; stack: ^U8; ptid, ctid: ^I64; fn: proc(arg: ^U8); arg: ^U8): I64;
+code 48H, 83H, 0EEH, 10H,           (* sub rsi, 16 *)
+     4CH, 89H, 06H,                 (* mov [rsi], r8 *)
+     4CH, 89H, 4EH, 08H,            (* mov [rsi + 8], r9 *)
+     49H, 89H, 0CAH,                (* mov r10, rcx *)
+     45H, 31H, 0C0H,                (* xor r8d, r8d: no tls *)
+     0B8H, 38H, 0, 0, 0,            (* mov eax, 56: clone *)
+     0FH, 05H,                      (* syscall *)
+     48H, 85H, 0C0H,                (* test rax, rax *)
+     75H, 0DH,                      (* jnz parent *)
+     58H,                           (* pop rax: fn *)
+     5FH,                           (* pop rdi: arg *)
+     0FFH, 0D0H,                    (* call rax *)
+     31H, 0FFH,                     (* xor edi, edi *)
+     0B8H, 3CH, 0, 0, 0,            (* mov eax, 60: exit, this thread only *)
+     0FH, 05H,                      (* syscall *)
+     0C3H;                          (* parent: ret *)
+
+proc futex(word: ^I64; op, val: I64): I64;
+begin
+    return SYSCALL(202, word, op, val, 0);
+end;
+
+(* Starts p(arg) in a new thread. *)
+proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);
+var base: ^U8; t: ^Thread; size: I64;
+begin
+    size := Stack + Page;
+    base := Sys.mmap(size);
+    if base = nil then return nil, Failed; end;
+    SYSCALL(10, base, Page, 0);   (* mprotect: the guard page, no access *)
+    (* the Thread at the top, the stack below it, aligned to 16 *)
+    t := ^Thread(base + size - 32);
+    t^.base := base;
+    t^.size := size;
+    if start(Flags, base + size - 32, ADR(t^.tid), ADR(t^.tid), p, arg) < 0 then
+        Sys.munmap(base, size);
+        return nil, Failed;
+    end;
+    return t, nil;
+end;
+
+(* Waits for t to end, then frees its stack. *)
+proc join*(t: ^Thread);
+var tid: ^VOLATILE I64; v: I64; base: ^U8; size: I64;
+begin
+    tid := ADR(t^.tid);
+    v := tid^;
+    while v # 0 do
+        futex(ADR(t^.tid), FutexWait, v);
+        v := tid^;
+    end;
+    base := t^.base;
+    size := t^.size;
+    Sys.munmap(base, size);
+end;
+
+proc lock*(m: ^Mutex);
+var c: I64;
+begin
+    if CAS(ADR(m^.state), 0, 1) then return; end;
+    c := XCHG(ADR(m^.state), 2);
+    while c # 0 do
+        futex(ADR(m^.state), FutexWait + Private, 2);
+        c := XCHG(ADR(m^.state), 2);
+    end;
+end;
+
+proc unlock*(m: ^Mutex);
+begin
+    if XADD(ADR(m^.state), -1) # 1 then
+        XCHG(ADR(m^.state), 0);
+        futex(ADR(m^.state), FutexWake + Private, 1);
+    end;
+end;
+
+end Thread.

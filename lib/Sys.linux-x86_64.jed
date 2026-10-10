@@ -38,6 +38,12 @@ begin
     return SYSCALL(16, fd, 5401H, ADR(t)) = 0;
 end;
 
+(* Gives the processor to another thread. *)
+proc yield*;
+begin
+    SYSCALL(24);
+end;
+
 (* Ends the program, at once, with status. *)
 proc exit*(status: I64);
 begin

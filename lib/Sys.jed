@@ -48,6 +48,11 @@ begin
     return C.isatty(I32(fd)) = 1;
 end;
 
+proc yield*;
+begin
+    C.sched_yield();
+end;
+
 (* Ends the program, at once, with status. *)
 proc exit*(status: I64);
 begin

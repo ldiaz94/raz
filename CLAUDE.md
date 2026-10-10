@@ -38,8 +38,8 @@ the text in `X.err`. Examples in `examples/` work the same way.
 ## Where things stand
 
 Stages 1 and 2 are done (steps 1-10). Stage 3 (steps 11-14) is under
-way: its report changes are written and approved, and steps 11 and 12
-are done. Next is step 13, threads and a thread-safe heap.
+way: its report changes are written and approved, and steps 11 to 13
+are done. Next is step 14, line numbers for gdb.
 
 `test/libc` runs its programs over `lib/Sys.jed`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
@@ -80,6 +80,8 @@ otherwise.
 - A real constant is held as an F64; one typed `F32` holds a value an
   F32 can hold. An `F32` in a register is its low 32 bits; the upper
   ones are left as they fall.
+- `Heap` and `Out` lock with `Lock`, a spinlock that yields, since they
+  serve C's threads and `Thread`'s alike; `Thread.Mutex` is a futex.
 - Every failed check says "index out of range"; some errors point at
   the symbol after the offending expression. Error messages are to be
   improved later, all together.

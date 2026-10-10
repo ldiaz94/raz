@@ -1,0 +1,52 @@
+(* Threads from C's pthread_create, each summing its part of an array
+   and using the heap and Out, which lock themselves. *)
+module Pthreads;
+import Out, C, Heap, Mem;
+
+const
+    Workers = 4;
+    N = 1000000;
+
+type
+    Part = record lo, hi, sum: I64; end;
+    Numbers = [N]I64;
+
+var numbers: ^Numbers;
+
+proc work(arg: ^U8): ^U8;
+var p: ^Part; i: I64; scratch: ^U8;
+begin
+    p := ^Part(arg);
+    for i := p^.lo to p^.hi - 1 do
+        p^.sum := p^.sum + numbers^[i];
+        if i mod 1000 = 0 then
+            scratch := Mem.alloc(Heap.heap, 100, 8);
+            Mem.free(Heap.heap, scratch);
+        end;
+    end;
+    Out.str("a part summed\n");
+    return nil;
+end;
+
+proc main*: I64;
+var t: [Workers]U64; parts: [Workers]Part; i, total: I64;
+begin
+    NEW(numbers, Heap.heap);
+    for i := 0 to N - 1 do numbers^[i] := i + 1; end;
+    for i := 0 to Workers - 1 do
+        parts[i] := {lo: i * N div Workers, hi: (i + 1) * N div Workers};
+        if C.pthread_create(ADR(t[i]), nil, work, ^U8(ADR(parts[i]))) # 0 then
+            Out.str("can't start a thread\n");
+            return 1;
+        end;
+    end;
+    total := 0;
+    for i := 0 to Workers - 1 do
+        C.pthread_join(t[i], nil);
+        total := total + parts[i].sum;
+    end;
+    Out.str("total "); Out.int(total); Out.ln;
+    return 0;
+end;
+
+end Pthreads.

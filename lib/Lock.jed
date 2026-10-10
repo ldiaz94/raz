@@ -1,0 +1,25 @@
+(* A lock for short sections of code: a word set to 1, atomically, by
+   the thread that takes it. A thread that finds it taken tries again,
+   giving up the processor now and then. It works with C's threads and
+   with Thread's alike; Thread.Mutex is the one that sleeps. *)
+module Lock;
+import Sys;
+
+type Lock* = record held: I64; end;
+
+proc take*(l: ^Lock);
+var tries: I64;
+begin
+    tries := 0;
+    while not CAS(ADR(l^.held), 0, 1) do
+        INC(tries);
+        if tries = 64 then Sys.yield; tries := 0; end;
+    end;
+end;
+
+proc give*(l: ^Lock);
+begin
+    XCHG(ADR(l^.held), 0);
+end;
+
+end Lock.

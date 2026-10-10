@@ -1,0 +1,14 @@
+(* Freeing what the heap never gave out stops the program. *)
+module HeapStray;
+import Out, Heap, Mem;
+
+var a: [4]I64;
+
+proc main*;
+begin
+    Out.str("freeing a stray pointer\n");
+    Mem.free(Heap.heap, ^U8(ADR(a[2])));
+    Out.str("not reached\n");
+end;
+
+end HeapStray.

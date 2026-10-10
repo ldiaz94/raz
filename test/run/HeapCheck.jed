@@ -1,0 +1,34 @@
+(* The heap refuses bad sizes and alignments, and stops the program
+   when a block is freed twice. *)
+module HeapCheck;
+import Out, Heap, Mem;
+
+proc show(p: ^U8);
+begin
+    if p = nil then Out.str("nil\n"); else Out.str("a block\n"); end;
+end;
+
+proc main*;
+var p, q: ^U8;
+begin
+    show(Mem.alloc(Heap.heap, -1, 8));
+    show(Mem.alloc(Heap.heap, 1 shl 60, 8));
+    show(Mem.alloc(Heap.heap, 7FFFFFFFFFFFFFF0H, 8));
+    show(Mem.alloc(Heap.heap, 10, 3));
+    show(Mem.alloc(Heap.heap, 10, 0));
+    show(Mem.alloc(Heap.heap, 10, 8192));
+    p := Mem.alloc(Heap.heap, 10, 64);
+    show(p);
+    if I64(p) mod 64 = 0 then Out.str("aligned\n"); end;
+    Mem.free(Heap.heap, p);
+    q := Mem.alloc(Heap.heap, 100000, 8);
+    show(q);
+    Mem.free(Heap.heap, q);
+    p := Mem.alloc(Heap.heap, 24, 8);
+    Mem.free(Heap.heap, p);
+    Out.str("freeing it again\n");
+    Mem.free(Heap.heap, p);
+    Out.str("not reached\n");
+end;
+
+end HeapCheck.

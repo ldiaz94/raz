@@ -1,41 +1,65 @@
 (* A general allocator: Heap.heap. Small blocks come in nine sizes,
    16 to 4096 bytes with their header, each with a list of the free
    ones; a block bigger than that gets pages of its own. Every block
-   has a 16-byte header before it: its size class, or minus its size
-   in bytes for a big one. *)
+   has a 16-byte header before it: its size class, or minus the size
+   of its pages for a big one, which start less than a page before it;
+   then a marker, which says the block is out,
+   so that freeing it twice, or freeing what the heap never gave out,
+   stops the program. One lock keeps it whole across threads. *)
 module Heap;
-import Mem;
+import Mem, Lock, Rt;
 
 const
     Classes = 9;
     Header = 16;
     Refill = 65536;
+    Largest = 1 shl 46;           (* bigger sizes are refused *)
+    Out = 5A6564426C6F636BH;      (* the marker, xor the header's address *)
 
 type
     Block = record next: ^Block; end;
+    Head = record size, mark: I64; end;
 
 var
     lists: [Classes]^Block;
     cur: ^U8;            (* where the next new small block comes from *)
     left: I64;
+    lock: Lock.Lock;
     std: Mem.Allocator;
     heap*: ^Mem.Allocator;
 
-proc alloc(a: ^Mem.Allocator; size, align: I64): ^U8;
-var c, n: I64; b: ^Block; p: ^U8; h: ^I64;
+(* The block p, with size for its header, given out. *)
+proc give(p: ^U8; size: I64): ^U8;
+var h: ^Head;
 begin
+    h := ^Head(p);
+    h^.size := size;
+    h^.mark := Out xor I64(h);
+    return p + Header;
+end;
+
+(* size bytes aligned to align, or nil: also for a size below zero or
+   too big, and an alignment that isn't a power of two up to a page. *)
+proc alloc(a: ^Mem.Allocator; size, align: I64): ^U8;
+var c, n: I64; b: ^Block; p: ^U8;
+begin
+    if (size < 0) or (size > Largest) or (align < 1) or (align > Mem.Page)
+        or (align and (align - 1) # 0) then
+        return nil;
+    end;
     n := size + Header;
-    if (size < 0) or (align > Header) and (align > Mem.Page) then return nil; end;
     c := 0;
     while (c < Classes) and (16 shl c < n) do INC(c); end;
     if (c = Classes) or (align > Header) then
-        n := (n + Mem.Page - 1) div Mem.Page * Mem.Page;
+        (* pages of its own, the block at align from their start *)
+        if align < Header then align := Header; end;
+        n := (size + align + Mem.Page - 1) div Mem.Page * Mem.Page;
         p := Mem.pages(n);
         if p = nil then return nil; end;
-        h := ^I64(p);
-        h^ := -n;
-        return p + Header;
+        return give(p + align - Header, -n);
     end;
+    Lock.take(ADR(lock));
+    defer Lock.give(ADR(lock));
     b := lists[c];
     if b # nil then
         lists[c] := b^.next;
@@ -50,22 +74,27 @@ begin
         cur := cur + (16 shl c);
         left := left - (16 shl c);
     end;
-    h := ^I64(p);
-    h^ := c;
-    return p + Header;
+    return give(p, c);
 end;
 
 proc free(a: ^Mem.Allocator; p: ^U8);
-var h: ^I64; b: ^Block;
+var h: ^Head; b: ^Block;
 begin
     if p = nil then return; end;
-    h := ^I64(p - Header);
-    if h^ < 0 then
-        Mem.unmap(^U8(h), -h^);
+    h := ^Head(p - Header);
+    Lock.take(ADR(lock));
+    if h^.mark # Out xor I64(h) then
+        Rt.stop("Heap: a block freed twice, or never given out");
+    end;
+    h^.mark := 0;
+    if h^.size < 0 then
+        Lock.give(ADR(lock));
+        Mem.unmap(^U8(I64(h) - I64(h) mod Mem.Page), -h^.size);
     else
         b := ^Block(h);
-        b^.next := lists[h^];
-        lists[h^] := b;
+        b^.next := lists[h^.size];
+        lists[h^.size] := b;
+        Lock.give(ADR(lock));
     end;
 end;
 

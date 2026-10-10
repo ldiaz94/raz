@@ -2,17 +2,20 @@
    4 KB. The buffer is written out when it is full, at each line feed
    when standard output is a terminal, by flush, and when the program
    ends by Rt.exit. C's stdio keeps a buffer of its own: a program that
-   writes with both flushes one before writing with the other. *)
+   writes with both flushes one before writing with the other. A lock
+   keeps what each call writes together when threads write at once. *)
 module Out;
-import Rt, Sys;
+import Rt, Sys, Lock;
 
 var
     buf: [4096]U8;
     n: I64;          (* bytes in buf *)
     tty: BOOL;       (* standard output is a terminal *)
+    lock: Lock.Lock;
 
-(* Writes out the buffer. What can't be written is dropped. *)
-proc flush*;
+(* Writes out the buffer, with the lock held. What can't be written is
+   dropped. *)
+proc out;
 var i, k: I64;
 begin
     i := 0;
@@ -25,18 +28,31 @@ begin
     n := 0;
 end;
 
-proc char*(c: U8);
+proc flush*;
 begin
-    if n = LEN(buf) then flush; end;
-    buf[n] := c;
-    INC(n);
-    if (c = '\n') and tty then flush; end;
+    Lock.take(ADR(lock));
+    out;
+    Lock.give(ADR(lock));
 end;
 
 proc str*(s: []U8);
 var i: I64;
 begin
-    for i := 0 to LEN(s) - 1 do char(s[i]); end;
+    Lock.take(ADR(lock));
+    for i := 0 to LEN(s) - 1 do
+        if n = LEN(buf) then out; end;
+        buf[n] := s[i];
+        INC(n);
+        if (s[i] = '\n') and tty then out; end;
+    end;
+    Lock.give(ADR(lock));
+end;
+
+proc char*(c: U8);
+var b: [1]U8;
+begin
+    b[0] := c;
+    str(b);
 end;
 
 proc ln*;

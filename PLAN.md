@@ -114,7 +114,7 @@ Stage 3: calling C, and what comes with it
       with C's `stdio`: flush one before using the other.
 - [x] 12. `F32`: arithmetic, conversions, calls; real literals become
       untyped constants that take `F32` or `F64`.
-- [ ] 13. A thread-safe `lib/Heap.jed`: its bad sizes refused, and a
+- [x] 13. A thread-safe `lib/Heap.jed`: its bad sizes refused, and a
       marker in each block's header so that freeing a block twice, or
       one it never gave out, stops the program; `Out` locks its buffer.
       An example with threads from `pthread_create`.

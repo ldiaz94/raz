@@ -1,5 +1,6 @@
 (* The run time: ending the program, and what the compiler's code
-   calls: fail when a check fails, eq when = or # compares two strings.
+   calls: fail when a check fails, eq when = or # compares two strings;
+   and stop, for the library's own failures.
    The compiler finds fail, eq, exit and cExit by these names. *)
 module Rt;
 import Sys;
@@ -37,6 +38,15 @@ begin
     end;
     if cExit # nil then cExit(I32(status)); end;
     Sys.exit(status);
+end;
+
+(* Stops the program: says msg on standard error, then ends it by exit
+   with status 2, as a failed check does. *)
+proc stop*(msg: []U8);
+begin
+    Sys.write(Sys.stderr, msg);
+    Sys.write(Sys.stderr, "\n");
+    exit(2);
 end;
 
 (* A check failed at line of file: says so on standard error and ends
