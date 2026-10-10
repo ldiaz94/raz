@@ -77,7 +77,8 @@ byte with hexadecimal value HH, which needn't make valid UTF-8).
 
 Error messages give the line and the column, counted in characters.
 
-**Comments** are `(*` ... `*)` and nest.
+**Comments** are `(*` ... `*)` and nest. By convention, the comment
+just before an exported declaration is its documentation.
 
 **Operators and delimiters:**
 
@@ -735,8 +736,9 @@ named by `link`.
 An `extern` procedure's parameters and result are integers, `BOOL`,
 `F32`, `F64`, pointers or procedures; a record goes to C by pointer,
 never by value. `...` accepts any number of further arguments of those
-types, and is allowed only in an `extern`. As C does, an `F32` given
-to `...` is passed as an `F64`, and a real constant there is an `F64`.
+types, and is allowed only in an `extern`. C takes no `float` there,
+so an `F32` given to `...` is an error: the program writes `F64(x)`.
+A real constant there is an `F64`.
 
 An `extern` variable is C's variable itself: reading it reads C's,
 assigning it writes C's. It can be of any type, declared as C declares
