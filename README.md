@@ -65,6 +65,7 @@ emacs is installed.
 ## Using it
 
     jed [-I dir]... [-o file] Main.jed
+    jed run [-I dir]... Main.jed [arg]...
     jed --version
 
 `jed Main.jed` compiles module `Main` and every module it imports, and
@@ -73,6 +74,10 @@ in the main module's directory, then in each `-I` directory, then in
 `lib`. A module whose code depends on the system comes in one file per
 target, `Name.linux-x86_64.jed` before `Name.jed`; the compiler checks
 that all of them export the same things.
+
+`jed run Main.jed a b` compiles the same way, then runs the program
+with the arguments `a b`, writing no file: its output and exit status
+are the command's.
 
 A program that calls no C is a static executable of a few kilobytes,
 holding only the code it reaches. One that declares an `extern`

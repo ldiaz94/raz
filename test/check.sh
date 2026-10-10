@@ -47,6 +47,18 @@ run() {   # run dir name
 for f in examples/*.jed test/run/*.jed test/libc/*.jed; do
     run $(dirname $f) $(basename $f .jed)
 done
+
+# jed run: a static program and one over C, from memory, with their
+# arguments, output and status passed through
+runs() {   # runs file status [arg]...
+    f=$1; want=$2; shift 2
+    $jed run -I $(dirname $f)/mods $f "$@" > $out/run.out 2>/dev/null
+    status=$?
+    if cmp -s $out/run.out ${f%.jed}.expect && [ $status = $want ]; then pass=$((pass + 1))
+    else echo "FAIL jed run $f: status $status, not $want, or output differs"; fail=$((fail + 1)); fi
+}
+runs test/run/Args.jed 4 one 'two words' é
+runs test/libc/Through.jed 2
 for f in test/err/*.jed; do
     name=$(basename $f .jed)
     if $jed -I test/err/mods -I test/run/mods -o $out/$name $f 2>$out/$name.cerr; then

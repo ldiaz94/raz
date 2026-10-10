@@ -15,7 +15,7 @@ disassembly.
 | `src/parse.pas` | 1,816 | 1,685 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/jed.pas` | 191 | 151 | The command line, the entry points |
+| `src/jed.pas` | 214 | 169 | The command line, the entry points |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -335,6 +335,11 @@ the entry point. A static program starts at `_start` itself. A dynamic
 one starts at a `_start` that calls `__libc_start_main` the way C's own
 start-up does, which sets C up and calls back a `main` that runs the
 module bodies and the program's `main`.
+
+`jed run` writes the executable to a memfd, a file only in memory, and
+executes it through `/proc/self/fd` in jed's own place, handing it the
+rest of jed's `argv`. Nothing is left on disk, and the program's
+status is the command's.
 
 ## Where to start changing it
 
