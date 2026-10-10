@@ -39,7 +39,7 @@ type
     buf: PChar;
     len, pos, line, lineStart: longint;
     tokPos, tokLine, tokLineStart: longint;
-    sym: TSym;
+    tok: TSym;
     ival: int64;
     rval: double;
     id: longint;
@@ -51,7 +51,7 @@ const
   MaxStr = 65536;
 
 var
-  sym: TSym;          { the current symbol }
+  tok: TSym;          { the current symbol }
   ival: int64;        { sInt, sChar: its value }
   rval: double;       { sReal: its value }
   id: longint;        { sIdent: its name }
@@ -64,8 +64,8 @@ function Open(const path: shortstring): boolean;
 procedure Next;
 procedure Mark(const msg: shortstring);
 procedure Fatal(const msg: shortstring);
-procedure Save(var st: TScanState);
-procedure Restore(const st: TScanState);
+procedure SaveScan(var st: TScanState);
+procedure RestoreScan(const st: TScanState);
 function Where: shortstring;
 function CurPath: shortstring;
 function CurLine: longint;
@@ -84,7 +84,7 @@ const
     'to', 'type', 'until', 'var', 'variant', 'VOLATILE', 'while', 'xor');
 
 var
-  cur: TScanState;   { buf .. path; sym, ival, rval and id live above }
+  cur: TScanState;   { buf .. path; tok, ival, rval and id live above }
 
   { The name table: every distinct identifier once, in a pool of
     characters, found through an open-addressed hash table. }
@@ -232,16 +232,16 @@ begin
   Open := true;
 end;
 
-procedure Save(var st: TScanState);
+procedure SaveScan(var st: TScanState);
 begin
   st := cur;
-  st.sym := sym; st.ival := ival; st.rval := rval; st.id := id;
+  st.tok := tok; st.ival := ival; st.rval := rval; st.id := id;
 end;
 
-procedure Restore(const st: TScanState);
+procedure RestoreScan(const st: TScanState);
 begin
   cur := st;
-  sym := st.sym; ival := st.ival; rval := st.rval; id := st.id;
+  tok := st.tok; ival := st.ival; rval := st.rval; id := st.id;
 end;
 
 { UTF-8 }
@@ -400,7 +400,7 @@ begin
       v := v * 16 + qword(HexVal(cur.buf[i]));
     end;
     inc(cur.pos);
-    sym := sInt;
+    tok := sInt;
     ival := int64(v);   { 16 digits are the bits of a 64-bit word }
   end else if (cur.buf[cur.pos] = '.') and (cur.buf[cur.pos + 1] in ['0'..'9']) then begin
     if not allDec then Mark('bad number');
@@ -417,7 +417,7 @@ begin
     Move(cur.buf[start], s[1], cur.pos - start);
     Val(s, rval, code);
     if code <> 0 then Mark('bad real');
-    sym := sReal;
+    tok := sReal;
   end else begin
     if not allDec then Mark('hex number needs H');
     v := 0;
@@ -426,7 +426,7 @@ begin
       if v > (qword(high(int64)) - qword(d)) div 10 then Mark('number too big');
       v := v * 10 + qword(d);
     end;
-    sym := sInt;
+    tok := sInt;
     ival := int64(v);
   end;
   if cur.buf[cur.pos] in ['A'..'Z', 'a'..'z', '_', '0'..'9'] then Mark('bad number');
@@ -458,8 +458,8 @@ begin
       until not (cur.buf[cur.pos] in ['A'..'Z', 'a'..'z', '0'..'9', '_']);
       if cur.pos - start > MaxIdent then Mark('name too long');
       h := Intern(@cur.buf[start], cur.pos - start);
-      if h < NumWords then sym := TSym(ord(sAnd) + h)
-      else begin sym := sIdent; id := h end;
+      if h < NumWords then tok := TSym(ord(sAnd) + h)
+      else begin tok := sIdent; id := h end;
     end;
     '0'..'9': Number;
     '''': begin
@@ -468,7 +468,7 @@ begin
       v := LitChar(false);
       if cur.buf[cur.pos] <> '''' then Mark('character not closed');
       inc(cur.pos);
-      sym := sChar;
+      tok := sChar;
       ival := v;
     end;
     '"': begin
@@ -480,50 +480,50 @@ begin
       end;
       inc(cur.pos);
       sbuf[slen] := 0;
-      sym := sString;
+      tok := sString;
     end;
-    '+': begin inc(cur.pos); sym := sPlus end;
-    '-': begin inc(cur.pos); sym := sMinus end;
-    '*': begin inc(cur.pos); sym := sTimes end;
-    '/': begin inc(cur.pos); sym := sSlash end;
-    '=': begin inc(cur.pos); sym := sEql end;
-    '#': begin inc(cur.pos); sym := sNeq end;
+    '+': begin inc(cur.pos); tok := sPlus end;
+    '-': begin inc(cur.pos); tok := sMinus end;
+    '*': begin inc(cur.pos); tok := sTimes end;
+    '/': begin inc(cur.pos); tok := sSlash end;
+    '=': begin inc(cur.pos); tok := sEql end;
+    '#': begin inc(cur.pos); tok := sNeq end;
     '<': begin
       inc(cur.pos);
-      if cur.buf[cur.pos] = '=' then begin inc(cur.pos); sym := sLeq end
-      else sym := sLss;
+      if cur.buf[cur.pos] = '=' then begin inc(cur.pos); tok := sLeq end
+      else tok := sLss;
     end;
     '>': begin
       inc(cur.pos);
-      if cur.buf[cur.pos] = '=' then begin inc(cur.pos); sym := sGeq end
-      else sym := sGtr;
+      if cur.buf[cur.pos] = '=' then begin inc(cur.pos); tok := sGeq end
+      else tok := sGtr;
     end;
     ':': begin
       inc(cur.pos);
-      if cur.buf[cur.pos] = '=' then begin inc(cur.pos); sym := sBecomes end
-      else sym := sColon;
+      if cur.buf[cur.pos] = '=' then begin inc(cur.pos); tok := sBecomes end
+      else tok := sColon;
     end;
-    ';': begin inc(cur.pos); sym := sSemicolon end;
-    ',': begin inc(cur.pos); sym := sComma end;
+    ';': begin inc(cur.pos); tok := sSemicolon end;
+    ',': begin inc(cur.pos); tok := sComma end;
     '.': begin
       inc(cur.pos);
       if cur.buf[cur.pos] = '.' then begin
         inc(cur.pos);
-        if cur.buf[cur.pos] = '.' then begin inc(cur.pos); sym := sEllipsis end
-        else sym := sUpto;
-      end else sym := sPeriod;
+        if cur.buf[cur.pos] = '.' then begin inc(cur.pos); tok := sEllipsis end
+        else tok := sUpto;
+      end else tok := sPeriod;
     end;
-    '(': begin inc(cur.pos); sym := sLparen end;
-    ')': begin inc(cur.pos); sym := sRparen end;
-    '[': begin inc(cur.pos); sym := sLbrak end;
-    ']': begin inc(cur.pos); sym := sRbrak end;
-    '{': begin inc(cur.pos); sym := sLbrace end;
-    '}': begin inc(cur.pos); sym := sRbrace end;
-    '^': begin inc(cur.pos); sym := sArrow end;
-    '|': begin inc(cur.pos); sym := sBar end;
+    '(': begin inc(cur.pos); tok := sLparen end;
+    ')': begin inc(cur.pos); tok := sRparen end;
+    '[': begin inc(cur.pos); tok := sLbrak end;
+    ']': begin inc(cur.pos); tok := sRbrak end;
+    '{': begin inc(cur.pos); tok := sLbrace end;
+    '}': begin inc(cur.pos); tok := sRbrace end;
+    '^': begin inc(cur.pos); tok := sArrow end;
+    '|': begin inc(cur.pos); tok := sBar end;
     #0: begin
       if cur.pos < cur.len then Mark('NUL character');
-      sym := sEof;
+      tok := sEof;
     end;
   else
     if byte(c) >= $80 then

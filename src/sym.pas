@@ -66,6 +66,7 @@ type
     isCode: boolean;   { oProc: a code procedure }
     fields: PObj;      { oCase: its fields }
     module: PModule;   { oModule: the module; others: where declared }
+    link: PObj;        { the next top-level declaration of its module }
   end;
 
   TImport = record
@@ -82,6 +83,7 @@ type
     body: longint;       { the chunk of its body, or -1 }
     done: boolean;       { compiled to the end }
     checkOnly: boolean;  { read only to check another file's interface }
+    used: boolean;       { imported, through others, by the main module }
     next: PModule;       { modules in the order they were finished }
   end;
 
@@ -89,6 +91,8 @@ const
   { built-in procedures }
   bSize = 0; bAdr = 1; bLen = 2; bNew = 3; bMsg = 4; bSyscall = 5;
   bFence = 6; bCas = 7; bXchg = 8; bXadd = 9; bArgc = 10; bArgv = 11;
+
+  MaxDepth = 64;   { scopes open at once }
 
 var
   tI8, tI16, tI32, tI64, tU8, tU16, tU32, tU64: PType;
@@ -101,6 +105,8 @@ function NewScope: longint;
 procedure OpenScope(s: longint);
 procedure CloseScope;
 function TopScope: longint;
+procedure SaveScopes(var d: longint; var saved: array of longint);
+procedure RestoreScopes(d: longint; const saved: array of longint);
 procedure Insert(obj: PObj; s: longint);
 function Find(s, name: longint): PObj;
 function Lookup(name: longint): PObj;
@@ -112,13 +118,9 @@ function IsScalar(t: PType): boolean;
 function IsAggregate(t: PType): boolean;
 function Fits(v: int64; t: PType): boolean;
 function TypeName(t: PType): shortstring;
-function SameAcross(a, b: PType; ma, mb: PModule): boolean;
-function SameSig(a, b: PType; ma, mb: PModule): boolean;
+function Fingerprint(o: PObj): qword;
 
 implementation
-
-const
-  MaxDepth = 64;
 
 type
   PObjTab = ^TObjTab;
@@ -175,6 +177,23 @@ end;
 procedure CloseScope;
 begin
   dec(depth);
+end;
+
+{ An imported module is compiled in the middle of another, and must
+  see only the universe and itself. }
+procedure SaveScopes(var d: longint; var saved: array of longint);
+var i: longint;
+begin
+  d := depth;
+  for i := 0 to depth - 1 do saved[i] := scopes[i];
+  depth := 1;
+end;
+
+procedure RestoreScopes(d: longint; const saved: array of longint);
+var i: longint;
+begin
+  depth := d;
+  for i := 0 to depth - 1 do scopes[i] := saved[i];
 end;
 
 function TopScope: longint;
@@ -343,50 +362,52 @@ begin
   end;
 end;
 
-{ The interface check: types of two files of one module, where a type
-  declared in one file stands for the type of the same name in the
-  other. }
-function SameAcross(a, b: PType; ma, mb: PModule): boolean;
-var p, q: PObj;
+{ A fingerprint of what a declaration exports, for the interface
+  check: two files of one module export the same thing when their
+  fingerprints agree. A named type counts by its name, so that a type
+  declared in each file stands for the other's. }
+procedure Mix(var h: qword; v: int64);
 begin
-  if a = b then exit(true);
-  if (a = nil) or (b = nil) then exit(false);
-  if (a^.obj <> nil) or (b^.obj <> nil) then begin
-    if (a^.obj = nil) or (b^.obj = nil) then exit(false);
-    exit((a^.obj^.module = ma) and (b^.obj^.module = mb)
-      and (a^.obj^.name = b^.obj^.name));
+  h := (h xor qword(v)) * 1099511628211;
+end;
+
+procedure Shape(var h: qword; t: PType; top: boolean);
+var f, g: PObj;
+begin
+  if t = nil then begin Mix(h, -1); exit end;
+  if (t^.obj <> nil) and not top then begin
+    Mix(h, t^.obj^.name);
+    if t^.obj^.module <> nil then Mix(h, t^.obj^.module^.name);
+    exit;
   end;
-  if a^.form <> b^.form then exit(false);
-  case a^.form of
-    fPtr: SameAcross := (a^.vol = b^.vol) and SameAcross(a^.base, b^.base, ma, mb);
-    fArray: SameAcross := (a^.len = b^.len) and SameAcross(a^.base, b^.base, ma, mb);
-    fSlice: SameAcross := SameAcross(a^.base, b^.base, ma, mb);
-    fProc: SameAcross := SameSig(a, b, ma, mb);
-    fRecord, fVariant: begin
-      { anonymous: every field, exported or not, in order }
-      p := a^.fields; q := b^.fields;
-      while (p <> nil) and (q <> nil) do begin
-        if (p^.name <> q^.name) or not SameAcross(p^.typ, q^.typ, ma, mb) then exit(false);
-        p := p^.next; q := q^.next;
-      end;
-      SameAcross := (p = nil) and (q = nil);
+  Mix(h, ord(t^.form));
+  Mix(h, ord(t^.vol) + 2 * ord(t^.variadic));
+  Mix(h, t^.len);
+  if t^.form in [fPtr, fArray, fSlice, fProc] then Shape(h, t^.base, false);
+  f := t^.fields;
+  while f <> nil do begin
+    if (t^.form <> fRecord) or f^.exported then begin
+      Mix(h, f^.name);
+      Mix(h, ord(f^.isVar));
+      Shape(h, f^.typ, false);
+      g := f^.fields;
+      while g <> nil do begin Shape(h, g^.typ, false); g := g^.next end;
     end;
-  else SameAcross := false;
+    f := f^.next;
   end;
 end;
 
-function SameSig(a, b: PType; ma, mb: PModule): boolean;
-var p, q: PObj;
+function Fingerprint(o: PObj): qword;
+var h: qword; f: PObj;
 begin
-  if (a^.len <> b^.len) or (a^.variadic <> b^.variadic) then exit(false);
-  if (a^.base = nil) <> (b^.base = nil) then exit(false);
-  if (a^.base <> nil) and not SameAcross(a^.base, b^.base, ma, mb) then exit(false);
-  p := a^.fields; q := b^.fields;
-  while p <> nil do begin
-    if (p^.isVar <> q^.isVar) or not SameAcross(p^.typ, q^.typ, ma, mb) then exit(false);
-    p := p^.next; q := q^.next;
-  end;
-  SameSig := true;
+  h := 14695981039346656037;
+  Mix(h, ord(o^.cls));
+  if o^.cls = oCase then begin
+    Mix(h, o^.val);
+    f := o^.fields;
+    while f <> nil do begin Shape(h, f^.typ, false); f := f^.next end;
+  end else Shape(h, o^.typ, o^.cls = oType);
+  Fingerprint := h;
 end;
 
 { The universe }
