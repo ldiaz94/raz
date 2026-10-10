@@ -3,7 +3,7 @@
 raz (Polish for *one*, as in counting) is a small systems language in Wirth's
 tradition: full control of memory, volatile access, atomics, calls into
 C, generic modules. Its compiler is meant to be read in a long weekend:
-under 5,000 lines of Free Pascal, one pass, no IR, no optimizer, writing
+under 6,000 lines of Free Pascal, one pass, no IR, no optimizer, writing
 x86-64 machine code and the ELF file itself.
 
 The language is defined by `doc/raz.md`. Where this plan and the report
@@ -14,7 +14,8 @@ disagree, the report wins and this plan is fixed.
 - The compiler is Free Pascal 3.2.2, `{$mode objfpc}{$H-}`: records,
   pointers, shortstrings. No classes, ansistrings, exceptions, dynamic
   arrays or SysUtils.
-- The compiler stays near 5,000 lines of code (not counting blank and
+- The compiler stays near 6,000 lines of code (5,000 until stage 4,
+  which bought its diagnostics with the rest) (not counting blank and
   comment lines), within 10%, and compiles at least 400,000 lines of
   raz a second, from reading the sources to writing the executable.
   `make loc` and `make bench` measure them, and a step that breaks
@@ -171,3 +172,104 @@ Later
       scanner that keeps comments, `tools/Scan.raz`. `make fmt` checks
       that `lib/`, `examples/` and `tools/` come through unchanged, and
       `make check` does too, with the cases in `test/pretty`.
+
+Stage 4: diagnostics
+
+Messages second to none: each error exact and alone, with the source
+under it, notes and suggestions; every error in a run, not just the
+first; warnings for what is never used; and run-time failures that say
+what failed and where. The budget grows to 6,000 lines for it.
+
+A message looks like this, with colour when standard error is a
+terminal and `NO_COLOR` is unset:
+
+```
+T.raz:5:10: error: y isn't declared
+    5 |     x := y + 1;
+      |          ^
+help: did you mean x?
+T.raz:3:5: note: x is declared here
+    3 | var x: I64;
+      |     ^
+T.raz: 1 error
+```
+
+How messages are worded, for every step that writes one: lowercase,
+no full stop, the report's plain words; name the things involved
+(`a`, an `I64`) rather than describe them; say what was expected and
+what was found; one fact per line, the rest in notes and help.
+Symbols are quoted with `"`, names and types are not.
+
+The work splits between the main model, which designs the machinery
+and writes the tricky code (marked *main*), and subagents on weaker
+models, which do the wide, mechanical parts against an interface the
+main model has fixed first (marked *agent*). Agents work one per
+file, so that they can run side by side without touching each
+other's lines; each runs `make check` before handing back, and the
+main model reads every diff before it is committed.
+
+- [x] 19. The report first, for review before any code: messages,
+      warnings and `-Werror` in section 10, run-time messages in
+      sections 6.5 and 10, report version `2026-10.1`. *main*
+- [ ] 20. `src/diag.pas`, the one place messages are made: a position
+      (file, line, first and last column) and a message built in
+      pieces, past shortstring's 255 characters; the source excerpt
+      and its underline, colour, notes and help; counting errors and
+      warnings, the summary, `-Werror`, the exit status. `Mark` and
+      `Fatal` move there. `test/err` and `test/pretty` keep working:
+      `X.err` becomes the whole message, without colour, and the
+      Makefile compares all of it. *main*; regenerating and checking
+      the 57 `.err` files, *agent*.
+- [ ] 21. Exact positions. An item and a statement remember where
+      they start, so an error points at the whole offending
+      expression, not the symbol after it; a missing `;`, `then` or
+      `end` points just after the symbol before it. The scanner keeps
+      the previous symbol's end. The machinery, *main*; moving each
+      of the 200 `Mark` calls onto the right position, *agent*, one
+      per file.
+- [ ] 22. Going on after an error. A poison type that every check
+      accepts without a word, so one mistake makes one message; a name
+      not declared is declared as poison where it is first used; after
+      a syntax error the parser skips to the next `proc` or the end of
+      the module; code is still generated, then thrown away; at most
+      20 errors. A module with errors stops the run after it. *main*.
+      `tools/Mutate.raz`, which deletes, doubles and swaps symbols in
+      the tests that compile; `make check` runs it with fixed seeds
+      and fails on a crash or two messages at one place. Writing it
+      and sorting what it finds, *agent*; the fixes in `gen.pas`,
+      *main*.
+- [ ] 23. Every message reworded to the rules above, each with a test
+      in `test/err` that pins its position too. *agent*, one per file
+      (`scan.pas`, `parse.pas` in two halves, `gen.pas`, the rest),
+      against a list of messages and their tests the main model writes
+      first; *main* reviews the wording as a whole.
+- [ ] 24. Notes and help. Objects remember where they are declared:
+      "declared here", "the first one is here", "the signature is
+      here". Did you mean: the closest name by edit distance in the
+      scopes in reach, in a module's exports, among the built-ins
+      (`len` for `LEN`). Slips from other languages: `!=`, `==`, `=`
+      for `:=`, `&&`, `||`, `!`, `elif`, a missing `then` or `do`, a
+      missing import. The machinery, *main*; the catalogue of slips
+      and their tests, *agent*.
+- [ ] 25. Warnings: an unused import; an unused constant, type,
+      variable or procedure that isn't exported; an unused parameter
+      of a procedure written in raz; a variable assigned but never
+      read. A name starting with `_` is never warned about. `-Werror`
+      makes them errors, and `make check` builds `lib/`, `examples/`
+      and `tools/` with it. The machinery, *main*; clearing the
+      warnings it finds in `lib/`, `examples/` and `tools/`, *agent*.
+- [ ] 26. Run-time messages. A failed check says which and with what
+      values: `index 7 is out of range for a length of 5`, the slice,
+      the enumeration position, at file, line and column. A table from
+      code addresses to lines goes into the executable, and `Rt` sets
+      handlers for SIGSEGV and SIGFPE that print where the program was
+      and why (a `nil` pointer, a `nil` procedure, stack overflow, a
+      bad address, a division fault) before it dies by that signal.
+      Run tests gain an optional `X.stderr`. And the lowest `I64`
+      divided by -1 wraps, as the report says, instead of trapping.
+      The compiler and `Rt`,
+      *main*; the tests, *agent*.
+- [ ] 27. `doc/compiler.md` (its table and routine names), `README.md`
+      and `CLAUDE.md` brought up to date; `make loc` within 6,000 and
+      10%, `make bench` at 400,000 lines a second. *agent*, checked by
+      *main*.

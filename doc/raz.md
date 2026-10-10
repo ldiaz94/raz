@@ -78,7 +78,8 @@ escapes `\n` (line feed), `\t` (tab), `\r` (carriage return), `\0`
 value H..., in a string its UTF-8) and, in strings only, `\xHH` (the
 byte with hexadecimal value HH, which needn't make valid UTF-8).
 
-Error messages give the line and the column, counted in characters.
+Messages give the line and the column, counted in characters
+(section 10).
 
 **Comments** are `(*` ... `*)` and nest. By convention, the comment
 just before an exported declaration is its documentation, and the one
@@ -461,8 +462,9 @@ rounded once to the type it takes.
 `a[i]` is an element of an array or slice, and `a[lo..hi]` is the slice
 of the elements from `lo` up to but not including `hi`. Both are
 checked: `i` must be below the length, and `0 <= lo <= hi <= length`.
-A check that fails prints the file and line to standard error and stops
-the program with status 2.
+A check that fails prints to standard error where it is, as file, line
+and column, and what failed, with the values involved (`index 7 is out
+of range for a length of 5`), and stops the program with status 2.
 
 **Literals.** `[e1, e2, ...]` builds an array, and `{f: e, g: e, ...}`
 a record, where the type it must have is known: assigned to a variable,
@@ -840,7 +842,27 @@ defined by this report, with one exception: memory reached through a
 pointer. Dereferencing a stale or made-up pointer, indexing through a
 pointer, a code procedure that breaks its rules, and C code can read or
 write any memory, and what follows isn't defined. Dereferencing `nil`, dividing
-by zero and calling a `nil` procedure stop the program with a signal.
+by zero, calling a `nil` procedure and running out of stack stop the
+program with a signal. Before it stops, the program prints to standard
+error where it was, as file, line and column, and why, as far as it can
+tell: a `nil` pointer, a `nil` procedure, a stack overflow, a bad
+address or a division fault.
+
+**Messages.** The compiler reports an error with its file, line and
+column, the line of source with the offending part underlined, and,
+where they help, notes pointing at other places, such as where a name
+is declared, and a suggestion, such as a name in reach spelled almost
+alike. It goes on after an error to find the others, up to 20, and
+writes no executable. After an error of syntax it skips to the next
+procedure, so that one misplaced symbol brings no false reports after
+it. A module with errors stops the compile after it.
+
+The compiler also warns of what is declared and never used: an import;
+a constant, type, variable or procedure that isn't exported; a
+parameter of a procedure written in raz. It warns of a variable that is
+assigned but never read, too. A name that starts with `_` is never
+warned about. Warnings don't stop the compile; `raz -Werror` makes them
+errors.
 
 ## 11. The library
 
@@ -905,3 +927,6 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 
 - **2026-10.0.** The first numbered version: the language of compiler
   0.3.0.
+- **2026-10.1.** Messages: every error in a run, warnings of what is
+  never used and `-Werror` (section 10); failed checks say what failed,
+  and signals say where (sections 6.5 and 10).

@@ -41,7 +41,7 @@ Examples in `examples/` work the same way.
   `Luis <42945842+ldiaz94@users.noreply.github.com>`, unsigned
   (`--no-gpg-sign`), no attribution trailer. Push to `main`. No pull
   requests unless asked.
-- Budget: about 5,000 lines of code (blank and comment lines not
+- Budget: about 6,000 lines of code (blank and comment lines not
   counted), within 10%; at least 400,000 lines of raz a second.
 - Style: clarity over cleverness; each unit opens with what it is, what
   it depends on and what it leaves out; comments say why. Match the
