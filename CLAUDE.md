@@ -62,7 +62,8 @@ check` passes first. The compiler takes its version from `git
 describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
-to `main`. v0.3.0 is the first.
+to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
+the first.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
