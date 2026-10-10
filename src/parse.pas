@@ -35,7 +35,7 @@ var
   firstModule, lastModule: PModule;   { in the order they were finished }
 
 function CompileMain(const path: shortstring): PModule;
-function ImportModule(name: longint): PModule;
+function ImportModule(name: longint; const args: TArgs): PModule;
 
 implementation
 
@@ -1322,7 +1322,7 @@ begin
     p^.exported := exp;
     if (curModule^.name = nameRt) and not checkMode and (n = nameFail) then p^.chunk := rtFail
     else if (curModule^.name = nameRt) and not checkMode and (n = nameEq) then p^.chunk := rtEq
-    else p^.chunk := NewChunk(secText, curModule^.name, n);
+    else p^.chunk := NewChunk(secText, curModule^.sname, n);
     Declare(p);
   end;
   if tok = sForward then begin
@@ -1367,7 +1367,7 @@ begin
           o^.exported := exp and top;
           if t = tError then begin
             o^.typ := tError;
-            o^.val := ErrorChunk(x, curModule^.name, n) + 1;
+            o^.val := ErrorChunk(x, curModule^.sname, n) + 1;
           end else if x.mode = mStr then begin o^.val := x.val; o^.chunk := x.chunk end
           else o^.val := ConstValue(x);
           Declare(o);
@@ -1419,7 +1419,7 @@ begin
             o^.isVar := false;
             if top then begin
               o^.lev := 0;
-              o^.chunk := NewChunk(secBss, curModule^.name, names[i]);
+              o^.chunk := NewChunk(secBss, curModule^.sname, names[i]);
               SetBss(o^.chunk, t^.size, t^.align);
             end else begin
               o^.lev := 1;
@@ -1443,12 +1443,85 @@ end;
 
 { Modules }
 
-function FindModule(n: longint): PModule;
+{ Whether m is module n with these arguments. }
+function IsModule(m: PModule; n: longint; const args: TArgs): boolean;
+var i: longint;
+begin
+  IsModule := false;
+  if (m^.name <> n) or (m^.args.n <> args.n) then exit;
+  for i := 0 to args.n - 1 do
+    if (m^.args.o[i] <> args.o[i]) or not Same(m^.args.t[i], args.t[i]) then exit;
+  IsModule := true;
+end;
+
+function FindModule(n: longint; const args: TArgs): PModule;
 var m: PModule;
 begin
   m := firstModule;
-  while (m <> nil) and (m^.name <> n) do m := m^.next;
+  while (m <> nil) and not IsModule(m, n, args) do m := m^.next;
   FindModule := m;
+end;
+
+{ The arguments of an instance: types, or procedures named. }
+procedure ParseArgs(var args: TArgs);
+var o: PObj;
+begin
+  Next;
+  repeat
+    if args.n > High(args.t) then Mark('too many arguments');
+    args.o[args.n] := nil;
+    if tok = sIdent then begin
+      o := QualIdent;
+      if o^.cls = oProc then args.o[args.n] := o
+      else if o^.cls <> oType then Mark('a type or a procedure expected');
+      args.t[args.n] := o^.typ;
+    end else args.t[args.n] := ParseType;
+    inc(args.n);
+    if tok <> sComma then break;
+    Next;
+  until false;
+  Expect(sRparen, ')');
+end;
+
+{ A generic module's parameters, bound to the instance's arguments: a
+  type parameter names its type, a procedure parameter its procedure. }
+procedure Params(m: PModule);
+var i: longint; o, a: PObj; sig: PType; s: shortstring;
+begin
+  i := 0;
+  s := NameOf(m^.name) + '(';
+  Next;
+  repeat
+    if (tok <> sIdent) or (i >= m^.args.n) or (m^.args.o[i] <> nil) then
+      Mark('needs a type for each type parameter');
+    Declare(NewObj(oType, id, m^.args.t[i]));
+    s := s + TypeName(m^.args.t[i]) + ',';
+    inc(i);
+    Next;
+    if tok <> sComma then break;
+    Next;
+  until false;
+  while tok = sSemicolon do begin
+    Next;
+    if tok <> sIdent then Mark('name expected');
+    o := NewObj(oProc, id, nil);
+    Next;
+    Expect(sColon, ':');
+    Expect(sProc, 'proc');
+    sig := Signature;
+    if i >= m^.args.n then Mark('needs a procedure for ' + NameOf(o^.name));
+    a := m^.args.o[i];
+    if (a = nil) or not Same(a^.typ, sig) then
+      Mark('needs a procedure with the signature of ' + NameOf(o^.name));
+    o^.typ := a^.typ; o^.chunk := a^.chunk; o^.isCode := a^.isCode;
+    Declare(o);
+    s := s + NameOf(a^.module^.name) + '.' + NameOf(a^.name) + ',';
+    inc(i);
+  end;
+  Expect(sRparen, ')');
+  if i <> m^.args.n then Mark('too many arguments');
+  s[length(s)] := ')';
+  m^.sname := Name(s);
 end;
 
 { Modules being compiled, not yet finished: for finding a cycle. }
@@ -1463,11 +1536,11 @@ begin
   Exists := (FpStat(@p[1], st) = 0) and ((st.st_mode and S_IFMT) = S_IFREG);
 end;
 
-function CompileFile(const path: shortstring; n: longint; checkOnly: boolean): PModule;
+function CompileFile(const path: shortstring; n: longint; const args: TArgs; checkOnly: boolean): PModule;
 var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
   oldMod: PModule; oldFile: longint; oldCheck: boolean; m, im: PModule;
-  imp: PImport; alias, mname: longint; o: PObj; body: longint;
+  imp: PImport; alias, mname: longint; o: PObj; body: longint; iargs: TArgs;
 begin
   SaveScan(st);
   SaveScopes(d, saved);
@@ -1476,6 +1549,8 @@ begin
   New(m);
   FillChar(m^, SizeOf(TModule), 0);
   m^.name := n;
+  m^.sname := n;
+  m^.args := args;
   m^.scope := NewScope;
   m^.path := path;
   m^.body := -1;
@@ -1493,7 +1568,8 @@ begin
   Expect(sModule, 'module');
   if (tok <> sIdent) or (id <> n) then Mark('this file must hold module ' + NameOf(n));
   Next;
-  if tok = sLparen then Mark('generic modules come in stage 2');
+  if tok = sLparen then Params(m)
+  else if args.n > 0 then Mark(NameOf(n) + ' isn''t generic');
   Expect(sSemicolon, ';');
   while tok = sImport do begin
     Next;
@@ -1501,15 +1577,16 @@ begin
       if tok <> sIdent then Mark('module name expected');
       alias := id;
       mname := id;
+      iargs.n := 0;
       Next;
       if tok = sBecomes then begin
         Next;
         if tok <> sIdent then Mark('module name expected');
         mname := id;
         Next;
-        if tok = sLparen then Mark('generic modules come in stage 2');
+        if tok = sLparen then ParseArgs(iargs);
       end;
-      im := ImportModule(mname);
+      im := ImportModule(mname, iargs);
       o := NewObj(oModule, alias, nil);
       o^.module := im;
       Declare(o);
@@ -1528,7 +1605,7 @@ begin
     if checkMode then SkipBody
     else begin
       Next;
-      body := NewChunk(secText, n, nameBody);
+      body := NewChunk(secText, m^.sname, nameBody);
       m^.body := body;
       BeginProc(tBodySig, nil);
       deferSlot := 0;
@@ -1584,7 +1661,7 @@ end;
 
 { Reads every other file of module n in dir, and checks its interface
   against m, compiled from the file named chosen. }
-procedure CheckSiblings(const dir, chosen: shortstring; n: longint; m: PModule);
+procedure CheckSiblings(const dir, chosen: shortstring; n: longint; m: PModule; const args: TArgs);
 var
   dp: pDir; e: pDirent; f, prefix: shortstring; i: longint;
   others: array[0..31] of shortstring; numOthers: longint;
@@ -1611,17 +1688,17 @@ begin
   until false;
   FpCloseDir(dp^);
   for i := 0 to numOthers - 1 do
-    CompareIface(m, CompileFile(dir + '/' + others[i], n, true));
+    CompareIface(m, CompileFile(dir + '/' + others[i], n, args, true));
 end;
 
-function ImportModule(name: longint): PModule;
+function ImportModule(name: longint; const args: TArgs): PModule;
 const Suffixes: array[0..3] of string[16] = ('.' + Target, '.' + TargetOS, '.' + TargetArch, '');
 var m: PModule; i, j: longint; dir, f: shortstring;
 begin
-  m := FindModule(name);
+  m := FindModule(name, args);
   if m <> nil then exit(m);
   for i := 0 to numPending - 1 do
-    if pending[i]^.name = name then Mark(NameOf(name) + ' imports itself');
+    if IsModule(pending[i], name, args) then Mark(NameOf(name) + ' imports itself');
   for i := -1 to numInc do begin
     if i = -1 then dir := mainDir
     else if i = numInc then dir := libDir
@@ -1629,8 +1706,8 @@ begin
     for j := 0 to 3 do begin
       f := NameOf(name) + Suffixes[j] + '.jed';
       if Exists(dir + '/' + f) then begin
-        m := CompileFile(dir + '/' + f, name, false);
-        CheckSiblings(dir, f, name, m);
+        m := CompileFile(dir + '/' + f, name, args, false);
+        CheckSiblings(dir, f, name, m, args);
         exit(m);
       end;
     end;
@@ -1640,8 +1717,9 @@ begin
 end;
 
 function CompileMain(const path: shortstring): PModule;
-var base: shortstring; i, n: longint;
+var base: shortstring; i, n: longint; none: TArgs;
 begin
+  none.n := 0;
   i := length(path);
   while (i > 0) and (path[i] <> '/') do dec(i);
   if i = 0 then mainDir := '.' else mainDir := copy(path, 1, i - 1);
@@ -1650,9 +1728,9 @@ begin
   if i > 0 then base := copy(base, 1, i - 1);
   if base = '' then Fatal('no module in ' + path);
   n := Name(base);
-  if n <> nameRt then ImportModule(nameRt);
-  if FindModule(n) <> nil then CompileMain := FindModule(n)
-  else CompileMain := CompileFile(path, n, false);
+  if n <> nameRt then ImportModule(nameRt, none);
+  if FindModule(n, none) <> nil then CompileMain := FindModule(n, none)
+  else CompileMain := CompileFile(path, n, none, false);
 end;
 
 initialization

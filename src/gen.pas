@@ -496,6 +496,7 @@ end;
 
 procedure IndexPrep(var x: TItem);
 begin
+  if x.mode = mStr then Coerce(x, tBytes);
   if (x.typ^.form = fPtr) and (x.typ^.base^.form = fArray) then
     Mark('a pointer to an array is indexed as p^[i]');
   if x.typ^.form = fPtr then begin

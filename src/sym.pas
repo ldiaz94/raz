@@ -70,6 +70,14 @@ type
     link: PObj;        { the next top-level declaration of its module }
   end;
 
+  { The arguments of a generic module's instance: a type, or a
+    procedure (o) and its type. }
+  TArgs = record
+    n: longint;
+    t: array[0..7] of PType;
+    o: array[0..7] of PObj;
+  end;
+
   TImport = record
     module: PModule;
     next: PImport;
@@ -77,6 +85,8 @@ type
 
   TModule = record
     name: longint;
+    sname: longint;      { the name of its symbols: List(I64) for an instance }
+    args: TArgs;
     scope: longint;
     path: shortstring;
     first, last: PObj;   { its top-level declarations, in order }
@@ -345,7 +355,7 @@ begin
   if t = nil then exit('nothing');
   if t^.obj <> nil then begin
     if (t^.obj^.module <> nil) and (t^.obj^.module <> curModule) then
-      exit(NameOf(t^.obj^.module^.name) + '.' + NameOf(t^.obj^.name));
+      exit(NameOf(t^.obj^.module^.sname) + '.' + NameOf(t^.obj^.name));
     exit(NameOf(t^.obj^.name));
   end;
   case t^.form of
@@ -378,7 +388,7 @@ begin
   if t = nil then begin Mix(h, -1); exit end;
   if (t^.obj <> nil) and not top then begin
     Mix(h, t^.obj^.name);
-    if t^.obj^.module <> nil then Mix(h, t^.obj^.module^.name);
+    if t^.obj^.module <> nil then Mix(h, t^.obj^.module^.sname);
     exit;
   end;
   Mix(h, ord(t^.form));

@@ -1,0 +1,53 @@
+(* Operations on strings, which are []U8. = and # compare them; this
+   module orders, searches and hashes them. *)
+module Str;
+
+(* -1, 0 or 1 as a sorts before, with or after b, byte by byte. *)
+proc cmp*(a, b: []U8): I64;
+var i, n: I64;
+begin
+    n := LEN(a);
+    if LEN(b) < n then n := LEN(b); end;
+    for i := 0 to n - 1 do
+        if a[i] # b[i] then
+            if a[i] < b[i] then return -1; end;
+            return 1;
+        end;
+    end;
+    if LEN(a) < LEN(b) then return -1; end;
+    if LEN(a) > LEN(b) then return 1; end;
+    return 0;
+end;
+
+proc eq*(a, b: []U8): BOOL;
+begin
+    return a = b;
+end;
+
+(* FNV-1a, 64 bits. *)
+proc hash*(s: []U8): U64;
+var h: U64; i: I64;
+begin
+    h := 0CBF29CE484222325H;
+    for i := 0 to LEN(s) - 1 do
+        h := (h xor U64(s[i])) * 100000001B3H;
+    end;
+    return h;
+end;
+
+(* Where sub first starts in s, or -1. *)
+proc find*(s, sub: []U8): I64;
+var i: I64;
+begin
+    for i := 0 to LEN(s) - LEN(sub) do
+        if s[i..i + LEN(sub)] = sub then return i; end;
+    end;
+    return -1;
+end;
+
+proc hasPrefix*(s, p: []U8): BOOL;
+begin
+    return (LEN(s) >= LEN(p)) and (s[0..LEN(p)] = p);
+end;
+
+end Str.

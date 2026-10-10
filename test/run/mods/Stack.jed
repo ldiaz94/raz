@@ -1,0 +1,13 @@
+module Stack;
+import Ints := List(I64), Heap;
+
+var s*: Ints.List;
+
+proc top*(): I64;
+begin
+    return s.head^.val;
+end;
+
+begin
+    Ints.init(ADR(s), Heap.heap);
+end Stack.

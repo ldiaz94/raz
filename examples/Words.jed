@@ -1,0 +1,37 @@
+(* Generic modules: counts the words of a text in a Map from []U8 to
+   I64, hashed and compared by Str's procedures, keeps them in order of
+   first sight in a List([]U8), and prints them with Fmt. *)
+module Words;
+import Fmt, Str, Heap, Count := Map([]U8, I64, Str.hash, Str.eq), Names := List([]U8);
+
+const Text = "the cat and the hat and the bat";
+
+proc main*;
+var
+    counts: Count.Map; order: Names.List; n: ^Names.Node;
+    i, start, k, total: I64; found, ok: BOOL; w: []U8;
+begin
+    Count.init(ADR(counts), Heap.heap);
+    Names.init(ADR(order), Heap.heap);
+    start := 0;
+    for i := 0 to LEN(Text) do
+        if (i = LEN(Text)) or (Text[i] = ' ') then
+            w := Text[start..i];
+            INC(total);
+            k, found := Count.get(ADR(counts), w);
+            if not found then ok := Names.push(ADR(order), w); end;
+            ok := Count.put(ADR(counts), w, k + 1);
+            start := i + 1;
+        end;
+    end;
+    Names.reverse(ADR(order));
+    n := order.head;
+    while n # nil do
+        k, found := Count.get(ADR(counts), n^.val);
+        Fmt.print("{} {}\n", [Fmt.str(n^.val), Fmt.int(k)]);
+        n := n^.next;
+    end;
+    Fmt.print("{} words, {} different\n", [Fmt.int(total), Fmt.int(counts.len)]);
+end;
+
+end Words.

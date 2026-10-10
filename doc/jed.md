@@ -759,8 +759,9 @@ Modules written in jed, in the compiler's `lib` directory:
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
 | `Str` | operations on `[]U8` strings |
 | `Buf` | a growable byte buffer |
-| `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.int(m)])` |
+| `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.int(m)])`, or into a `Buf` with `Fmt.write` |
 | `List` | a generic singly linked list, `List(T)` |
+| `Map` | a generic hash map, `Map(K, V; hash, eq)` |
 
 ```
 module Mem;

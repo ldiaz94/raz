@@ -1,0 +1,3 @@
+module NotGeneric;
+import S := Str(I64);
+end NotGeneric.

@@ -1,0 +1,8 @@
+module TwoTypes;
+import A := List(I64), B := List(I32);
+proc main*;
+var a: A.List; b: B.List;
+begin
+    a := b;
+end;
+end TwoTypes.

@@ -1,0 +1,90 @@
+(* Formatted output. Each {} in the format takes the next argument:
+       Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.int(m)]);
+   {{ and }} stand for { and }. print writes to standard output,
+   write appends to a Buf. *)
+module Fmt;
+import Out, Buf;
+
+type
+    Arg* = variant
+        int(i: I64);
+        uint(u: U64);
+        hex(h: U64);
+        str(s: []U8);
+        char(c: U8);
+        bool(b: BOOL);
+    end;
+
+(* The digits of u in base, at the end of the array: it and where they start. *)
+proc digits(u: U64; base: U64): ([24]U8, I64);
+var d: [24]U8; i: I64; v: U8;
+begin
+    i := 24;
+    repeat
+        DEC(i);
+        v := U8(u mod base);
+        if v < 10 then d[i] := v + '0'; else d[i] := v - 10 + 'A'; end;
+        u := u div base;
+    until u = 0;
+    return d, i;
+end;
+
+(* Where the pieces go: to b, or to standard output if b is nil. *)
+proc put(b: ^Buf.Buf; s: []U8);
+begin
+    if b = nil then Out.str(s); else Buf.str(b, s); end;
+end;
+
+proc arg(b: ^Buf.Buf; a: Arg);
+var d: [24]U8; at: I64; one: [1]U8;
+begin
+    match a of
+    | int(i):
+        if i < 0 then
+            put(b, "-");
+            d, at := digits(0 - U64(i), 10);
+        else
+            d, at := digits(U64(i), 10);
+        end;
+        put(b, d[at..24]);
+    | uint(u): d, at := digits(u, 10); put(b, d[at..24]);
+    | hex(h):  d, at := digits(h, 16); put(b, d[at..24]);
+    | str(s):  put(b, s);
+    | char(c): one[0] := c; put(b, one);
+    | bool(t): if t then put(b, "true"); else put(b, "false"); end;
+    end;
+end;
+
+proc format(b: ^Buf.Buf; f: []U8; args: []Arg);
+var i, start, n: I64;
+begin
+    i := 0; start := 0; n := 0;
+    while i < LEN(f) do
+        if (f[i] = '{') or (f[i] = '}') then
+            put(b, f[start..i]);
+            if (i + 1 < LEN(f)) and (f[i + 1] = f[i]) then
+                put(b, f[i..i + 1]);
+                INC(i);
+            elsif (f[i] = '{') and (i + 1 < LEN(f)) and (f[i + 1] = '}') then
+                if n < LEN(args) then arg(b, args[n]); end;
+                INC(n);
+                INC(i);
+            end;
+            start := i + 1;
+        end;
+        INC(i);
+    end;
+    put(b, f[start..LEN(f)]);
+end;
+
+proc print*(f: []U8; args: []Arg);
+begin
+    format(nil, f, args);
+end;
+
+proc write*(b: ^Buf.Buf; f: []U8; args: []Arg);
+begin
+    format(b, f, args);
+end;
+
+end Fmt.

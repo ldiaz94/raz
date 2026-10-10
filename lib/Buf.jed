@@ -1,0 +1,71 @@
+(* A growable byte buffer, its memory from an allocator. *)
+module Buf;
+import Mem;
+
+type
+    Buf* = record
+        a: ^Mem.Allocator;
+        data: ^U8;
+        len*, cap: I64;
+    end;
+
+proc init*(b: ^Buf; a: ^Mem.Allocator);
+begin
+    b^ := {a: a};
+end;
+
+(* Room for n more bytes; false if the allocator has none. *)
+proc room*(b: ^Buf; n: I64): BOOL;
+var cap, i: I64; p: ^U8;
+begin
+    if b^.len + n <= b^.cap then return true; end;
+    cap := b^.cap * 2;
+    if cap < 64 then cap := 64; end;
+    while cap < b^.len + n do cap := cap * 2; end;
+    p := Mem.alloc(b^.a, cap, 1);
+    if p = nil then return false; end;
+    for i := 0 to b^.len - 1 do p[i] := b^.data[i]; end;
+    if b^.data # nil then Mem.free(b^.a, b^.data); end;
+    b^.data := p;
+    b^.cap := cap;
+    return true;
+end;
+
+proc add*(b: ^Buf; c: U8);
+begin
+    if room(b, 1) then
+        b^.data[b^.len] := c;
+        INC(b^.len);
+    end;
+end;
+
+proc str*(b: ^Buf; s: []U8);
+var i: I64;
+begin
+    if room(b, LEN(s)) then
+        for i := 0 to LEN(s) - 1 do b^.data[b^.len + i] := s[i]; end;
+        INC(b^.len, LEN(s));
+    end;
+end;
+
+(* What the buffer holds, until it next grows. *)
+proc bytes*(b: ^Buf): []U8;
+begin
+    if b^.len = 0 then return ""; end;
+    return b^.data[0..b^.len];
+end;
+
+proc reset*(b: ^Buf);
+begin
+    b^.len := 0;
+end;
+
+proc done*(b: ^Buf);
+begin
+    if b^.data # nil then Mem.free(b^.a, b^.data); end;
+    b^.data := nil;
+    b^.len := 0;
+    b^.cap := 0;
+end;
+
+end Buf.

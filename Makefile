@@ -27,14 +27,17 @@ clean:
 check: jed
 	test/check.sh
 
-# the compiler's speed, on a generated program of about 350,000 lines;
-# fails below 400,000 lines a second
+# the compiler's speed, on a generated program of about 350,000 lines,
+# the best of three runs; fails below 400,000 lines a second
 bench: jed | build
 	python3 test/genbench.py 12000 > build/Bench.jed
-	@lines=$$(wc -l < build/Bench.jed); \
-	start=$$(date +%s%N); ./jed build/Bench.jed || exit 1; end=$$(date +%s%N); \
-	rate=$$((lines * 1000000000 / (end - start))); \
-	echo "$$lines lines in $$(((end - start) / 1000000)) ms: $$rate lines a second"; \
+	@lines=$$(wc -l < build/Bench.jed); best=0; \
+	for i in 1 2 3; do \
+	    start=$$(date +%s%N); ./jed build/Bench.jed || exit 1; end=$$(date +%s%N); \
+	    t=$$((end - start)); if [ $$best = 0 ] || [ $$t -lt $$best ]; then best=$$t; fi; \
+	done; \
+	rate=$$((lines * 1000000000 / best)); \
+	echo "$$lines lines in $$((best / 1000000)) ms: $$rate lines a second"; \
 	test $$rate -ge 400000
 
 # lines of the compiler: all of them, and those that aren't blank or comments

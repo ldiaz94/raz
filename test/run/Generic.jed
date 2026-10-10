@@ -1,0 +1,30 @@
+module Generic;
+import Fmt, Buf, Str, Heap, Stack, Ints := List(I64), More := List(I64), Strs := List([]U8);
+
+proc twice(x: I64): I64; begin return x * 2; end;
+
+proc main*;
+var l: Strs.List; v: I64; s: []U8; ok: BOOL; b: Buf.Buf; n: ^Ints.Node;
+begin
+    ok := Ints.push(ADR(Stack.s), 7);
+    ok := More.push(ADR(Stack.s), 8);
+    Fmt.print("{} {} {}\n", [Fmt.int(Stack.top()), Fmt.int(Stack.s.len), Fmt.bool(ok)]);
+    n := Stack.s.head;
+    v, ok := Ints.pop(ADR(Stack.s));
+    Fmt.print("{} {}\n", [Fmt.int(v), Fmt.int(Stack.s.len)]);
+    Strs.init(ADR(l), Heap.heap);
+    ok := Strs.push(ADR(l), "b");
+    ok := Strs.push(ADR(l), "a");
+    s, ok := Strs.pop(ADR(l));
+    Fmt.print("{}{}{}\n", [Fmt.str(s), Fmt.str(l.head^.val), Fmt.bool(ok)]);
+    s, ok := Strs.pop(ADR(l));
+    s, ok := Strs.pop(ADR(l));
+    Fmt.print("[{}] {}\n", [Fmt.str(s), Fmt.bool(ok)]);
+    Buf.init(ADR(b), Heap.heap);
+    for v := 1 to 40 do Fmt.write(ADR(b), "{},", [Fmt.int(v * v)]); end;
+    Fmt.print("{} {} {}\n", [Fmt.int(b.len), Fmt.int(Str.find(Buf.bytes(ADR(b)), "1600")), Fmt.int(Str.cmp("ab", "b"))]);
+    Buf.done(ADR(b));
+    Fmt.print("{{ {} }} {}{}\n", [Fmt.hex(48879), Fmt.char('x'), Fmt.uint(0FFFFFFFFFFFFFFFFH)]);
+end;
+
+end Generic.
