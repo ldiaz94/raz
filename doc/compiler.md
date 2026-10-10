@@ -12,7 +12,7 @@ disassembly.
 | `src/scan.pas` | 584 | 495 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 510 | 424 | Types, objects, scopes, layout |
 | `src/x64.pas` | 680 | 546 | Code buffer, chunks, fixups, line notes, instruction encoder |
-| `src/gen.pas` | 1,421 | 1,247 | Items: loading, storing, copying, frames, calls |
+| `src/gen.pas` | 1,443 | 1,264 | Items: loading, storing, copying, frames, calls |
 | `src/parse.pas` | 1,851 | 1,720 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
@@ -247,7 +247,8 @@ its left operand, `Op2` when it has the right one. `Op1` saves the left
 operand (or, for `and` and `or`, emits the test that skips the right
 one). `Op2` checks the types, folds constants (`FoldInt`, `FoldReal`),
 and otherwise puts the left operand in `rax`, the right in `rcx`, and
-emits the operation. Narrow integers are brought back to their width
+emits the operation. A power of two on the right of `*`, `div` or
+`mod` becomes shifts (`DivPow2`), since `idiv` is slow. Narrow integers are brought back to their width
 after each operation (`Norm`), which is how `U8` arithmetic wraps.
 
 Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a

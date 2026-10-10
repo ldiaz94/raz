@@ -701,6 +701,24 @@ begin
   Log2 := n;
 end;
 
+{ rax div or mod 2^k, 1 <= k <= 62, with shifts: div truncates towards
+  zero, so a negative dividend first gets 2^k - 1 added (the bias). }
+procedure DivPow2(op: TSym; k: longint; unsign: boolean);
+begin
+  if unsign then begin
+    if op = sDiv then ShiftI(shShr, RAX, k)
+    else begin ShiftI(shShl, RAX, 64 - k); ShiftI(shShr, RAX, 64 - k) end;
+    exit;
+  end;
+  MovRR(RCX, RAX);
+  ShiftI(shSar, RCX, 63);
+  ShiftI(shShr, RCX, 64 - k);
+  Alu(aluAdd, RCX, RAX);
+  ShiftI(shSar, RCX, k);
+  if op = sDiv then MovRR(RAX, RCX)
+  else begin ShiftI(shShl, RCX, k); Alu(aluSub, RAX, RCX) end;
+end;
+
 function FoldInt(op: TSym; a, b: int64; t: PType; const p: TPos): int64;
 var u: boolean;
 begin
@@ -763,7 +781,7 @@ const
   CcSigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccL, ccLE, ccG, ccGE);
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
 var
-  xt, yt, t: PType; r: TItem; scale, sh: longint; isPtr, unsign, f: boolean; a, b: int64;
+  xt, yt, t: PType; r: TItem; scale, sh, k: longint; isPtr, unsign, f: boolean; a, b: int64;
 begin
   xt := x.typ; yt := y.typ;
   if y.mode in [mType, mBuiltin, mNone, mCase] then MarkAt(y.pos, 'not a value');
@@ -870,10 +888,14 @@ begin
     exit;
   end;
 
+  { a power of two on the right: shifts instead of imul and idiv }
+  k := -1;
+  if (y.mode = mConst) and (op in [sTimes, sDiv, sMod]) and (t^.form = fInt) then k := Log2(y.val);
+
   { x into rax, y into rcx }
   if y.mode = mConst then begin
     if x.mode = mStack then PopR(RAX) else Value(x);
-    ConstTo(RCX, y);
+    if k < 1 then ConstTo(RCX, y);
   end else begin
     Value(y);
     MovRR(RCX, RAX);
@@ -931,8 +953,8 @@ begin
           else begin MovRI(RCX, scale); Cqo; Unary(7, RCX) end;
         end;
       end;
-      sTimes: Imul(RAX, RCX);
-      sDiv, sMod: begin
+      sTimes: if k >= 1 then ShiftI(shShl, RAX, k) else Imul(RAX, RCX);
+      sDiv, sMod: if k >= 1 then DivPow2(op, k, unsign) else begin
         if unsign then begin MovRI(RDX, 0); Unary(6, RCX) end
         else begin Cqo; Unary(7, RCX) end;
         if op = sMod then MovRR(RAX, RDX);
