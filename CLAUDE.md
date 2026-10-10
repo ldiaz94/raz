@@ -15,6 +15,7 @@ plan disagrees, the report wins and the plan is fixed.
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version
     make fmt       # lib/, examples/ and tools/ are formatted
+    make install   # raz on PATH via ~/.local (PREFIX=...); make uninstall
 
 `make check` also runs `tools/Doc.raz` and `tools/Pretty.raz`, the
 report's whole examples, each library module's own `main` (its test),

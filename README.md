@@ -50,6 +50,10 @@ The compiler needs Free Pascal 3.2.2 (`apt-get install fp-compiler`)
 and builds into the repository's root:
 
     make            # ./raz
+    make install    # ~/.local/bin/raz, its library in ~/.local/lib/raz
+    make uninstall  # removes them again
+
+Both take `PREFIX=/usr/local` (or another place) instead of `~/.local`.
 
 The tests need a shell and Python 3; the editor checks run if vim or
 emacs is installed.

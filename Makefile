@@ -72,4 +72,17 @@ fmt: raz | build
 loc:
 	@python3 test/loc.py src/*.pas
 
-.PHONY: units tests check gdb bench stress fmt loc clean
+# raz and its library go together under $(PREFIX)/lib/raz; the link
+# on PATH works since raz finds lib/ beside its real path.
+PREFIX = $(HOME)/.local
+
+install: raz
+	rm -rf $(PREFIX)/lib/raz
+	mkdir -p $(PREFIX)/lib/raz $(PREFIX)/bin
+	cp -r raz lib $(PREFIX)/lib/raz
+	ln -sf $(PREFIX)/lib/raz/raz $(PREFIX)/bin/raz
+
+uninstall:
+	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz
+
+.PHONY: units tests check gdb bench stress fmt loc clean install uninstall
