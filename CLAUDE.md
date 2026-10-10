@@ -12,6 +12,7 @@ plan disagrees, the report wins and the plan is fixed.
     make bench     # must report at least 400,000 lines a second
     make loc       # lines of the compiler; the code column is the budget
     make tests     # the small Pascal tests of scan, x64, link and elf
+    make gdb       # gdb stops at a line of a test and names it
 
 `make check` must pass before every commit. Tests: `test/run/X.jed`
 with `X.expect` (stdout), optional `X.status` and `X.args`; modules they
@@ -37,9 +38,8 @@ the text in `X.err`. Examples in `examples/` work the same way.
 
 ## Where things stand
 
-Stages 1 and 2 are done (steps 1-10). Stage 3 (steps 11-14) is under
-way: its report changes are written and approved, and steps 11 to 13
-are done. Next is step 14, line numbers for gdb.
+Stages 1 to 3 are done (steps 1-14), waiting for review. Next is step
+15, `tools/Doc.jed` and the checked examples, on the owner's go-ahead.
 
 `test/libc` runs its programs over `lib/Sys.jed`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only

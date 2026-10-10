@@ -178,5 +178,6 @@ begin
   Ud2;
   EndChunk(start);
 
+  mainPath := path;
   WriteElf(outPath, entry);
 end.

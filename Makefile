@@ -27,6 +27,10 @@ clean:
 check: jed
 	test/check.sh
 
+# line numbers: gdb stops at a line and names it
+gdb: jed
+	test/gdb.sh
+
 # the compiler's speed, on a generated program of about 350,000 lines,
 # the best of three runs; fails below 400,000 lines a second
 bench: jed | build
@@ -44,4 +48,4 @@ bench: jed | build
 loc:
 	@python3 test/loc.py src/*.pas
 
-.PHONY: units tests check bench loc clean
+.PHONY: units tests check gdb bench loc clean

@@ -61,6 +61,12 @@ type
     ext: boolean;                  { bss: the address of a C symbol, its name }
   end;
 
+  { A source line whose code starts at a place in text, for gdb }
+  TLine = record
+    at, chunk: longint;   { the place in text, and its chunk }
+    path, line: longint;  { the file's path, interned, and the line }
+  end;
+
   TFixup = record
     at: longint;      { the rel32 field, as an offset in text }
     chunk: longint;   { the chunk it refers to }
@@ -69,6 +75,8 @@ type
 
   PChunks = ^TChunkArray;
   TChunkArray = array[0..MaxInt div SizeOf(TChunk) - 1] of TChunk;
+  PLines = ^TLineArray;
+  TLineArray = array[0..MaxInt div SizeOf(TLine) - 1] of TLine;
   PFixups = ^TFixupArray;
   TFixupArray = array[0..MaxInt div SizeOf(TFixup) - 1] of TFixup;
 
@@ -81,6 +89,9 @@ var
   numChunks: longint;
   fixups: PFixups;
   numFixups: longint;
+  lines: PLines;
+  numLines: longint;
+  curFile: longint;   { the file being compiled, for NoteLine }
 
 function NewChunk(sec: TSection; module, name: longint): longint;
 procedure BeginChunk(c: longint);
@@ -88,6 +99,7 @@ procedure EndChunk(c: longint);
 procedure SetData(c: longint; p: PBytes; n, align: longint);
 procedure SetBss(c: longint; size, align: longint);
 function ExternChunk(name: longint): longint;
+procedure NoteLine(line: longint);
 
 procedure Put1(b: longint);
 procedure Put4(v: longint);
@@ -152,7 +164,8 @@ procedure FixLinkTo(L, target: longint);
 implementation
 
 var
-  codeCap, roCap, chunkCap, fixCap: longint;
+  codeCap, roCap, chunkCap, fixCap, lineCap: longint;
+  curChunk: longint;
 
 { Buffers and chunks }
 
@@ -214,6 +227,7 @@ procedure BeginChunk(c: longint);
 begin
   { code is aligned to 16 bytes, padded with int3 }
   while pc and 15 <> 0 do Put1($CC);
+  curChunk := c;
   chunks^[c].start := pc;
   chunks^[c].align := 16;
   chunks^[c].firstFix := numFixups;
@@ -242,6 +256,24 @@ procedure SetBss(c: longint; size, align: longint);
 begin
   chunks^[c].size := size;
   chunks^[c].align := align;
+end;
+
+{ The code from here on is for line of the current file. A line with
+  no code of its own gives way to the next. }
+procedure NoteLine(line: longint);
+begin
+  if (numLines > 0) and (lines^[numLines - 1].at = pc) then dec(numLines);
+  if (numLines > 0) and (lines^[numLines - 1].chunk = curChunk)
+    and (lines^[numLines - 1].line = line) and (lines^[numLines - 1].path = curFile) then exit;
+  if numLines = lineCap then begin
+    lineCap := lineCap * 2;
+    lines := ReAllocMem(lines, lineCap * SizeOf(TLine));
+  end;
+  lines^[numLines].at := pc;
+  lines^[numLines].chunk := curChunk;
+  lines^[numLines].path := curFile;
+  lines^[numLines].line := line;
+  inc(numLines);
 end;
 
 { The quadword that holds the address of C's symbol name, filled in
@@ -642,4 +674,7 @@ initialization
   fixCap := 1 shl 12;
   fixups := GetMem(fixCap * SizeOf(TFixup));
   numFixups := 0;
+  lineCap := 1 shl 12;
+  lines := GetMem(lineCap * SizeOf(TLine));
+  numLines := 0;
 end.

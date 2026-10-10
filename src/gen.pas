@@ -113,7 +113,7 @@ procedure ReleaseTemps(m: int64);
 procedure KeepTemps;
 
 procedure BeginProc(sig: PType; params: PObj);
-procedure EnterBody(c: longint);
+procedure EnterBody(c, line: longint);
 procedure ReturnValue(var x: TItem);
 procedure ReturnField(f: PObj; var x: TItem);
 procedure ReturnJump;
@@ -1258,10 +1258,12 @@ begin
   end;
 end;
 
-procedure EnterBody(c: longint);
+{ The prologue, which is for the procedure's first line. }
+procedure EnterBody(c, line: longint);
 var i, top: longint;
 begin
   BeginChunk(c);
+  NoteLine(line);
   Push(RBP);
   MovRR(RBP, RSP);
   Put1($48); Put1($81); Put1($EC);           { sub rsp, imm32 }

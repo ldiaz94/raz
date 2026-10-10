@@ -55,20 +55,20 @@ disagree, the report wins and this plan is fixed.
 
 ## The compiler, in reading order
 
-Lines after stage 2, all of them and those of code (neither blank nor
+Lines after stage 3, all of them and those of code (neither blank nor
 only comment), as `make loc` counts them:
 
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/scan.pas` | 548 | 471 | Symbols, literals, comments, error messages |
-| `src/sym.pas` | 492 | 410 | Types, objects, scopes, layout |
-| `src/x64.pas` | 620 | 497 | Code buffer, chunks, fixups, instruction encoder |
-| `src/gen.pas` | 1,354 | 1,193 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 1,754 | 1,626 | Declarations, statements, expressions, built-ins |
-| `src/link.pas` | 123 | 92 | Tree shaking, layout, patching |
-| `src/elf.pas` | 185 | 147 | Static ELF, symbol table |
-| `src/jed.pas` | 111 | 83 | The command line, the entry point |
-| total | 5,187 | 4,519 | |
+| `src/sym.pas` | 508 | 422 | Types, objects, scopes, layout |
+| `src/x64.pas` | 680 | 546 | Code buffer, chunks, fixups, line notes, instruction encoder |
+| `src/gen.pas` | 1,414 | 1,240 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 1,816 | 1,685 | Declarations, statements, expressions, built-ins |
+| `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
+| `src/elf.pas` | 424 | 350 | Static and dynamic ELF, symbol table, line numbers |
+| `src/jed.pas` | 183 | 145 | The command line, the entry points |
+| total | 5,704 | 4,954 | |
 
 ## Steps
 
@@ -124,7 +124,7 @@ Stage 3: calling C, and what comes with it
       and a `Mutex` through `futex`. `link static;` marks a module that
       needs a program without C; the compiler refuses a program that
       uses both.
-- [ ] 14. Line numbers for gdb: `.debug_line`, with the least of
+- [x] 14. Line numbers for gdb: `.debug_line`, with the least of
       `.debug_info` and `.debug_abbrev` that gdb needs.
 
 Tools

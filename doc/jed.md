@@ -796,6 +796,8 @@ proc exit*(status: I64);
 
 Only what can be reached from `main` and the module bodies goes into
 the executable: unused procedures, variables and strings are left out.
+The executable names its procedures and carries line numbers, so that
+gdb can stop at a line of the source and show where it is.
 
 **Defined behaviour.** Every variable starts at zero, integers wrap,
 and indexing arrays and slices is checked, so a program's behaviour is

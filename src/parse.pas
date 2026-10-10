@@ -1145,6 +1145,7 @@ end;
 procedure Statement;
 var x, y: TItem; called: boolean; m: int64; c: TCall;
 begin
+  NoteLine(CurLine);
   m := TempMark;
   case tok of
     sIdent: begin
@@ -1242,7 +1243,7 @@ end;
 
 procedure Declarations(top: boolean); forward;
 
-procedure Body(p: PObj; sig: PType);
+procedure Body(p: PObj; sig: PType; line: longint);
 var q, params, last, o: PObj; old: PType;
 begin
   OpenScope(NewScope);
@@ -1268,8 +1269,9 @@ begin
   Expect(sBegin, 'begin');
   old := curResult;
   curResult := sig^.base;
-  EnterBody(p^.chunk);
+  EnterBody(p^.chunk, line);
   Statements;
+  NoteLine(CurLine);
   Expect(sEnd, 'end');
   EndProc(p^.chunk);
   curResult := old;
@@ -1308,8 +1310,9 @@ begin
 end;
 
 procedure ProcDecl;
-var n: longint; exp: boolean; sig: PType; p: PObj;
+var n, line: longint; exp: boolean; sig: PType; p: PObj;
 begin
+  line := CurLine;
   Next;
   IdentDef(n, exp);
   sig := Signature;
@@ -1339,7 +1342,7 @@ begin
     CodeBody(p, sig);
     exit;
   end;
-  if checkMode then SkipBody else Body(p, sig);
+  if checkMode then SkipBody else Body(p, sig, line);
   if tok = sIdent then begin
     if id <> n then Mark('the procedure is ' + NameOf(n));
     Next;
@@ -1583,11 +1586,12 @@ function CompileFile(const path: shortstring; n: longint; const args: TArgs; che
 var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
   oldMod: PModule; oldFile: longint; oldCheck: boolean; m, im: PModule;
-  imp: PImport; lib: PLib; alias, mname: longint; o: PObj; body: longint; iargs: TArgs;
+  imp: PImport; lib: PLib; alias, mname, line, oldPath: longint; o: PObj; body: longint; iargs: TArgs;
 begin
   SaveScan(st);
   SaveScopes(d, saved);
-  oldMod := curModule; oldFile := fileChunk; oldCheck := checkMode;
+  oldMod := curModule; oldFile := fileChunk; oldCheck := checkMode; oldPath := curFile;
+  curFile := Name(path);
   if not Open(path) then Fatal('can''t read ' + path);
   New(m);
   FillChar(m^, SizeOf(TModule), 0);
@@ -1659,14 +1663,16 @@ begin
   if tok = sBegin then begin
     if checkMode then SkipBody
     else begin
+      line := CurLine;
       Next;
       body := NewChunk(secText, m^.sname, nameBody);
       m^.body := body;
       BeginProc(tBodySig, nil);
       deferSlot := 0;
       curResult := nil;
-      EnterBody(body);
+      EnterBody(body, line);
       Statements;
+      NoteLine(CurLine);
       Expect(sEnd, 'end');
       EndProc(body);
     end;
@@ -1686,7 +1692,7 @@ begin
     if lastModule = nil then firstModule := m else lastModule^.next := m;
     lastModule := m;
   end;
-  curModule := oldMod; fileChunk := oldFile; checkMode := oldCheck;
+  curModule := oldMod; fileChunk := oldFile; checkMode := oldCheck; curFile := oldPath;
   RestoreScopes(d, saved);
   RestoreScan(st);
   CompileFile := m;
