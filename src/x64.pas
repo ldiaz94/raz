@@ -92,6 +92,7 @@ var
   lines: PLines;
   numLines: longint;
   curFile: longint;   { the file being compiled, for NoteLine }
+  labelAt: longint;   { the last place a jump was made to land }
 
 function NewChunk(sec: TSection; module, name: longint): longint;
 procedure BeginChunk(c: longint);
@@ -649,6 +650,7 @@ end;
 procedure FixLinkTo(L, target: longint);
 var next: longint;
 begin
+  if L <> NoLabel then labelAt := target;
   while L <> NoLabel do begin
     next := Get4At(L);
     Put4At(L, target - (L + 4));

@@ -134,6 +134,7 @@ var
   frameTop, frameMax, permTop: int64;
   frameFix, zeroFix: longint;   { where the frame size is patched in }
   retSlot: int64;               { holds the hidden result pointer }
+  pushEnd: longint;             { the code just after the last push of rax }
   result: PType;                { the procedure's result, or nil }
   exitL: longint;
   { parameters arriving in registers: where each is stored on entry }
@@ -237,6 +238,7 @@ procedure PushRax;
 begin
   Push(RAX);
   inc(depth);
+  pushEnd := pc;
 end;
 
 procedure PopR(r: longint);
@@ -304,16 +306,26 @@ begin
   end;
 end;
 
+procedure LoadVar(var x: TItem; r: longint);
+begin
+  if not IsScalar(x.typ) then MarkAt(x.pos, 'not a single value');
+  Load(r, MemOf(x, r), ScalarSize(x.typ), (x.typ^.form = fInt) and x.typ^.signed);
+end;
+
+{ Takes back the push of rax just emitted, if it is the last code, and
+  neither a jump nor a line starts after it: the value is still in rax. }
+function Unpush: boolean;
+begin
+  Unpush := (pc = pushEnd) and (labelAt <> pc)
+    and ((numLines = 0) or (lines^[numLines - 1].at < pc));
+  if Unpush then begin dec(pc); dec(depth); pushEnd := -1 end;
+end;
+
 procedure Value(var x: TItem);
-var m: TMem;
 begin
   case x.mode of
     mConst: ConstTo(RAX, x);
-    mVar: begin
-      if not IsScalar(x.typ) then MarkAt(x.pos, 'not a single value');
-      m := MemOf(x, RAX);
-      Load(RAX, m, ScalarSize(x.typ), (x.typ^.form = fInt) and x.typ^.signed);
-    end;
+    mVar: LoadVar(x, RAX);
     mReg: ;
     mStack: PopR(RAX);
     mProc: begin
@@ -892,11 +904,16 @@ begin
   k := -1;
   if (y.mode = mConst) and (op in [sTimes, sDiv, sMod]) and (t^.form = fInt) then k := Log2(y.val);
 
-  { x into rax, y into rcx }
+  { x into rax, y into rcx; a left operand just pushed stays in rax when
+  the right one needs no code of its own }
   if y.mode = mConst then begin
-    if x.mode = mStack then PopR(RAX) else Value(x);
+    if x.mode <> mStack then Value(x)
+    else if not Unpush then PopR(RAX);
     if k < 1 then ConstTo(RCX, y);
-  end else begin
+  end else if (x.mode = mStack) and (y.mode = mVar) and (y.base in [bFrame, bGlobal])
+    and Unpush then
+    LoadVar(y, RCX)
+  else begin
     Value(y);
     MovRR(RCX, RAX);
     if x.mode = mConst then ConstTo(RAX, x) else PopR(RAX);

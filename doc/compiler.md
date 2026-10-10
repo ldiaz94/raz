@@ -11,8 +11,8 @@ disassembly.
 | `src/diag.pas` | 243 | 174 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 584 | 495 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 510 | 424 | Types, objects, scopes, layout |
-| `src/x64.pas` | 680 | 546 | Code buffer, chunks, fixups, line notes, instruction encoder |
-| `src/gen.pas` | 1,443 | 1,264 | Items: loading, storing, copying, frames, calls |
+| `src/x64.pas` | 682 | 548 | Code buffer, chunks, fixups, line notes, instruction encoder |
+| `src/gen.pas` | 1,460 | 1,276 | Items: loading, storing, copying, frames, calls |
 | `src/parse.pas` | 1,851 | 1,720 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
@@ -30,7 +30,9 @@ the symbol table for as long as the compiler runs.
 
 The code generator is a stack machine through `rax`. An expression's
 value is computed into `rax`; when a second operand has to be computed,
-the first is pushed, and popped into `rcx` when both are ready. No
+the first is pushed, and popped into `rax` when both are ready, the
+second going to `rcx`; if the second needed no code of its own (a
+constant, or a plain variable), the push is taken back instead. No
 register is ever allocated, so there is no register allocator, and
 every access the program writes is one instruction, in the order
 written. That is also why `VOLATILE` costs the compiler nothing: it
@@ -92,11 +94,8 @@ mov    QWORD PTR [rbp-0x8],rdi        ; the parameters, into their slots
 mov    QWORD PTR [rbp-0x10],rsi
 mov    rax,QWORD PTR [rbp-0x8]        ; a
 push   rax                            ;   kept while b * 2 is computed
-mov    rax,QWORD PTR [rbp-0x10]       ; b
-push   rax                            ;   kept while 2 is read
-pop    rax
-mov    ecx,0x2                        ; the constant goes straight to rcx
-imul   rax,rcx
+mov    rax,QWORD PTR [rbp-0x10]       ; b, its push taken back for the 2
+shl    rax,0x1                        ; times 2 is a shift
 mov    rcx,rax
 pop    rax                            ; a again
 add    rax,rcx
@@ -247,8 +246,12 @@ its left operand, `Op2` when it has the right one. `Op1` saves the left
 operand (or, for `and` and `or`, emits the test that skips the right
 one). `Op2` checks the types, folds constants (`FoldInt`, `FoldReal`),
 and otherwise puts the left operand in `rax`, the right in `rcx`, and
-emits the operation. A power of two on the right of `*`, `div` or
-`mod` becomes shifts (`DivPow2`), since `idiv` is slow. Narrow integers are brought back to their width
+emits the operation. When the left was the last thing pushed and the
+right needs no code (a constant, or a variable on the frame or in a
+chunk), `Unpush` takes the push back, and the right goes straight to
+`rcx`; not if a jump or a line starts after the push. A power of two
+on the right of `*`, `div` or `mod` becomes shifts (`DivPow2`), since
+`idiv` is slow. Narrow integers are brought back to their width
 after each operation (`Norm`), which is how `U8` arithmetic wraps.
 
 Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a
