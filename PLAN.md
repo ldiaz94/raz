@@ -144,7 +144,7 @@ Tools
       compiler doesn't. (Tagging is left for later, at the owner's
       word.)
 
-- [ ] 16. Editor support: `editor/vim` (`syntax/jed.vim`, `indent/jed.vim`
+- [x] 16. Editor support: `editor/vim` (`syntax/jed.vim`, `indent/jed.vim`
       by `shiftwidth()`, and `ftdetect/jed.vim`, which sets 4 spaces)
       and `editor/emacs/jed-mode.el` (indenting by `jed-indent-offset`,
       4 unless set). Both colour reserved words, basic types, built-in

@@ -13,6 +13,12 @@ plan disagrees, the report wins and the plan is fixed.
     make loc       # lines of the compiler; the code column is the budget
     make tests     # the small Pascal tests of scan, x64, link and elf
     make gdb       # gdb stops at a line of a test and names it
+    make stress    # 40,000 native threads; make check runs a small version
+
+`make check` also runs `tools/Doc.jed`, the report's whole examples,
+each library module's own `main` (its test), and the vim and emacs
+support headless where they are installed (`apt-get install -y vim
+emacs-nox`): each example must indent back exactly as written.
 
 `make check` must pass before every commit. Tests: `test/run/X.jed`
 with `X.expect` (stdout), optional `X.status` and `X.args`; modules they
@@ -38,8 +44,10 @@ the text in `X.err`. Examples in `examples/` work the same way.
 
 ## Where things stand
 
-Stages 1 to 3 are done (steps 1-14), waiting for review. Next is step
-15, `tools/Doc.jed` and the checked examples, on the owner's go-ahead.
+Stages 1 to 4 are done (steps 1-16), waiting for review. Next is step
+17, `README.md` and `doc/compiler.md`, on the owner's go-ahead. Left
+for later at the owner's word: tagging versions, and a rewrite of var
+parameters.
 
 `test/libc` runs its programs over `lib/Sys.jed`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only

@@ -103,5 +103,13 @@ for f in lib/*.jed; do
     else pass=$((pass + 1)); fi
 done
 
+# Thread's test again, with too little memory for all its threads:
+# spawn must fail, with Thread.Failed
+if (ulimit -v 60000; $out/lib_Thread.linux-x86_64 fail) > /dev/null 2>&1; then pass=$((pass + 1))
+else echo "FAIL Thread under a memory limit"; fail=$((fail + 1)); fi
+
+# the editors' support, headless, where the editors are installed
+if test/editors.sh; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
+
 echo "$pass passed, $fail failed"
 [ $fail = 0 ]

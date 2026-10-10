@@ -44,8 +44,16 @@ bench: jed | build
 	echo "$$lines lines in $$((best / 1000000)) ms: $$rate lines a second"; \
 	test $$rate -ge 400000
 
+# native threads under load: 40,000 spawned and joined, 200 alive at a
+# time, all waiting on one Mutex; then, with little memory, spawn must
+# fail with Thread.Failed. make check runs a small version.
+stress: jed | build
+	./jed -o build/Stress lib/Thread.linux-x86_64.jed
+	build/Stress 40000 200
+	(ulimit -v 60000; build/Stress fail)
+
 # lines of the compiler: all of them, and those that aren't blank or comments
 loc:
 	@python3 test/loc.py src/*.pas
 
-.PHONY: units tests check gdb bench loc clean
+.PHONY: units tests check gdb bench stress loc clean

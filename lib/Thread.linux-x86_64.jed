@@ -6,7 +6,7 @@
    a Mutex sleeps on a futex. A program with C threads uses C's,
    through pthread_create, and so can't use these. *)
 module Thread;
-import Sys;
+import Sys, Rt;
 link static;
 
 const
@@ -64,7 +64,12 @@ begin
     size := Stack + Page;
     base := Sys.mmap(size);
     if base = nil then return nil, Failed; end;
-    SYSCALL(10, base, Page, 0);   (* mprotect: the guard page, no access *)
+    (* mprotect: the guard page, no access; it fails when the process
+       has as many mappings as it may *)
+    if SYSCALL(10, base, Page, 0) < 0 then
+        Sys.munmap(base, size);
+        return nil, Failed;
+    end;
     (* the Thread at the top, the stack below it, aligned to 16 *)
     t := ^Thread(base + size - 32);
     t^.base := base;
@@ -108,6 +113,66 @@ begin
         XCHG(ADR(m^.state), 0);
         futex(ADR(m^.state), FutexWake + Private, 1);
     end;
+end;
+
+(* The module's test, and make stress's. It starts n threads, in waves
+   of up to alive at a time, all waiting on one Mutex the test holds
+   until the wave is out; each, given it, adds one to a count. Every
+   thread is joined, so that a stack join didn't free would, over
+   enough of them, run the process out of mappings. With "fail", it
+   starts threads, all waiting, until spawn fails, which it must do
+   with Failed: make stress and make check run it with little memory.
+       Thread [n alive], Thread fail *)
+var
+    testLock: Mutex;
+    testCount: I64;
+    wave: [1000]^Thread;
+
+proc testWork(arg: ^U8);
+begin
+    lock(ADR(testLock));
+    INC(testCount);
+    unlock(ADR(testLock));
+end;
+
+proc testArg(i: I64): I64;
+var s: ^U8; n, v: I64;
+begin
+    s := ARGV()[i];
+    v := 0;
+    n := 0;
+    while s[n] # 0 do v := v * 10 + I64(s[n]) - '0'; INC(n); end;
+    return v;
+end;
+
+proc main*;
+var n, alive, started, k, i: I64; t: ^Thread; err: ERROR; fail: BOOL;
+begin
+    n := 2000; alive := 50;
+    fail := (ARGC() = 2) and (ARGV()[1][0] = 'f');
+    if ARGC() = 3 then n := testArg(1); alive := testArg(2); end;
+    if fail then n := LEN(wave); alive := LEN(wave); end;
+    if (alive < 1) or (alive > LEN(wave)) then Rt.stop("Thread: alive is 1 to 1000"); end;
+    started := 0;
+    while started < n do
+        lock(ADR(testLock));
+        k := 0;
+        while (k < alive) and (started + k < n) do
+            t, err := spawn(testWork, nil);
+            if err # nil then
+                if not fail or (err # Failed) then Rt.stop("Thread.spawn failed"); end;
+                n := started + k;
+                break;
+            end;
+            wave[k] := t;
+            INC(k);
+        end;
+        unlock(ADR(testLock));
+        for i := 0 to k - 1 do join(wave[i]); end;
+        started := started + k;
+    end;
+    if testCount # started then Rt.stop("Thread: a thread didn't run"); end;
+    if fail and (started = LEN(wave)) then Rt.stop("Thread: spawn never failed"); end;
 end;
 
 end Thread.

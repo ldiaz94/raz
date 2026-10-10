@@ -27,3 +27,5 @@ proc join*(t: ^Thread);
 proc lock*(m: ^Mutex);
 
 proc unlock*(m: ^Mutex);
+
+proc main*;

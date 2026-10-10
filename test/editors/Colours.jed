@@ -1,0 +1,7 @@
+(* outer (* nested *) still comment *)
+module Colours;
+const big = 0FFH; small = 2.5E-3; q = '\''; s = "a\"b";
+var x: I64; ok: BOOL;
+begin
+    INC(x); ok := true;
+end Colours.
