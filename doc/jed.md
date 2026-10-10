@@ -54,6 +54,11 @@ xor
 digit and ends in `H`. `1.5` and `2.0E-3` are reals; a real always has
 a digit on both sides of its point.
 
+An integer is an untyped constant, which takes the type it is used as,
+up to the largest `I64`. A hexadecimal number above that, such as
+`0FFFFFFFFFFFFFFFFH`, has type `U64`: so `-1` never fits a `U64`, and
+the big number goes nowhere else without a conversion.
+
 **Characters.** `'a'` is the code point of one character, an integer:
 `'a'` is 97 and `'é'` is 233.
 
@@ -342,7 +347,12 @@ signature, 8 bytes, or `nil`.
 
 Two named types are the same only if they are the same declaration.
 Two anonymous types are the same if they are built alike: `^I64` is
-`^I64` wherever it is written.
+`^I64` wherever it is written. A named and an anonymous type are the
+same if the named one is built like the anonymous one, so that
+`p := ADR(n)` works for `p: NodePtr` with `type NodePtr = ^Node`.
+
+A type declared with only a name on the right, `type Count = I64;`, is
+another name for that type, not a new one.
 
 A value of type `A` can be assigned to a variable of type `B` (and
 passed to a parameter of type `B`, and returned as a `B`) if they are
@@ -422,7 +432,9 @@ literal has type `F64`.
 - `p - q`, with both of the same pointer type, is the number of
   elements between them, an `I64`.
 - `p[i]` is `(p + i)^`. `p[lo..hi]` is the slice of the `hi - lo`
-  elements from `p + lo`. Neither is checked.
+  elements from `p + lo`. Neither is checked. A pointer to an array
+  isn't indexed this way, since a step would be a whole array: its
+  elements are `p^[i]`.
 - Pointers compare with `= # < <= > >=` as unsigned addresses.
   Procedure values compare with `=` and `#` only.
 

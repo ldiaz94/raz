@@ -1,0 +1,8 @@
+module PtrArray;
+proc main*;
+var a: [4]I64; p: ^[4]I64;
+begin
+    p := ADR(a);
+    p[1] := 0;
+end;
+end PtrArray.

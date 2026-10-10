@@ -1,0 +1,7 @@
+module BigI64;
+proc main*;
+var i: I64;
+begin
+    i := 0FFFFFFFFFFFFFFFFH;
+end;
+end BigI64.

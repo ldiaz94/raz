@@ -590,7 +590,11 @@ procedure Factor(var x: TItem; want: PType);
 var called, vol: boolean; t: PType;
 begin
   case tok of
-    sInt, sChar: begin MakeConst(x, tConst, ival); Next end;
+    sInt, sChar: begin
+      { only a hex number can be above high(I64), and it is a U64 }
+      if ival < 0 then MakeConst(x, tU64, ival) else MakeConst(x, tConst, ival);
+      Next;
+    end;
     sReal: begin MakeReal(x, rval); Next end;
     sString: begin MakeStr(x); Next end;
     sIdent: begin

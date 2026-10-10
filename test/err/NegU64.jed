@@ -1,0 +1,7 @@
+module NegU64;
+proc main*;
+var u: U64;
+begin
+    u := -1;
+end;
+end NegU64.

@@ -296,10 +296,7 @@ begin
        else Fits := (v >= 0) and (v <= 65535);
     4: if t^.signed then Fits := (v >= -2147483648) and (v <= 2147483647)
        else Fits := (v >= 0) and (v <= 4294967295);
-  else
-    { an untyped constant is 64 bits; one with the top bit set came from
-      a hex literal, and stands for a U64 above high(I64) }
-    Fits := true;
+  else Fits := t^.signed or (v >= 0);
   end;
 end;
 

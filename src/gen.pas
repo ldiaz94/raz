@@ -463,6 +463,8 @@ end;
 
 procedure IndexPrep(var x: TItem);
 begin
+  if (x.typ^.form = fPtr) and (x.typ^.base^.form = fArray) then
+    Mark('a pointer to an array is indexed as p^[i]');
   if x.typ^.form = fPtr then begin
     Value(x); PushRax; x.mode := mStack
   end else if (x.mode = mVar) and (x.typ^.form in [fArray, fSlice]) then
