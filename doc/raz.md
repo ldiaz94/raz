@@ -1,13 +1,13 @@
-# The programming language jed
+# The programming language raz
 
-jed is a small systems language for x86-64 Linux. A jed program can lay
+raz is a small systems language for x86-64 Linux. A raz program can lay
 a record over a device's registers, read and write memory exactly as
 written, take part in lock-free algorithms, make system calls and call
 C libraries. It has no garbage collector and no hidden run time: what
 the program does is what its text says.
 
 This report defines the language. It is short on purpose. Whatever it
-doesn't allow, jed doesn't have.
+doesn't allow, raz doesn't have.
 
 This is version 2026-10.0 of the report; section 12 says what each
 version changed.
@@ -29,7 +29,7 @@ end Hello.
 A program is a set of modules. The one named on the command line is
 the main module, and it exports a procedure `main`; the program starts
 there, once every module's body has run (section 3). Saved as
-`Hello.jed`, it is compiled with `jed Hello.jed`, which writes the
+`Hello.raz`, it is compiled with `raz Hello.raz`, which writes the
 executable `Hello`.
 
 ## 2. Words and symbols
@@ -102,7 +102,7 @@ ImportItem = ident [ ":=" ident [ "(" Type { "," Type } ")" ] ] .
 Link       = "link" ( string | "static" ) ";" .
 ```
 
-A module lives in a file of its own name: module `Out` is `Out.jed`.
+A module lives in a file of its own name: module `Out` is `Out.raz`.
 The name after `end` repeats the module's name.
 
 **Exports.** A name declared at the top of a module with `*` after it
@@ -150,16 +150,16 @@ are the same.
 **Finding modules.** The compiler looks for module `Name` in the main
 module's directory, then in each directory given with `-I`, then in the
 `lib` directory beside the compiler. In each directory it takes the
-first of `Name.OS-ARCH.jed`, `Name.OS.jed`, `Name.ARCH.jed` and
-`Name.jed` that exists, where `OS-ARCH` is the target, for now only
+first of `Name.OS-ARCH.raz`, `Name.OS.raz`, `Name.ARCH.raz` and
+`Name.raz` that exists, where `OS-ARCH` is the target, for now only
 `linux-x86_64`. So a module whose code depends on the machine or the
 system comes in one file per target, and the modules that import it
 don't change. Machine code (section 8) and system calls belong in such
 files.
 
 The compiler holds every file of such a module to the same interface.
-When it takes one of `Name.*.jed`, it also reads the declarations of
-the others beside it, and of `Name.jed` if there is one, and reports an
+When it takes one of `Name.*.raz`, it also reads the declarations of
+the others beside it, and of `Name.raz` if there is one, and reports an
 error unless they all export the same names, each the same kind of
 thing:
 
@@ -783,7 +783,7 @@ can't check that it is. A C variable that is local to each thread,
 such as `errno`, can't be reached this way; the C library has a
 procedure for it (`__errno_location`).
 
-A C union has no jed type. A program reads one as an array of words,
+A C union has no raz type. A program reads one as an array of words,
 and the member it wants through a pointer conversion:
 
 ```
@@ -796,7 +796,7 @@ if I32(ev[0]) = KeyPress then
 end;
 ```
 
-Every jed procedure uses the System V calling convention, so a jed
+Every raz procedure uses the System V calling convention, so a raz
 procedure whose parameters and result are of those types can be given
 to C as a callback.
 
@@ -844,12 +844,12 @@ by zero and calling a `nil` procedure stop the program with a signal.
 
 ## 11. The library
 
-Modules written in jed, in the compiler's `lib` directory:
+Modules written in raz, in the compiler's `lib` directory:
 
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; what the compiler's checks call when they fail; string comparison |
-| `Sys` | system calls: `openRead`, `create`, `read`, `write`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; one file per target, and `Sys.jed` over the C library for the others |
+| `Sys` | system calls: `openRead`, `create`, `read`, `write`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; one file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -887,11 +887,11 @@ import Out, C;      (* C: printf, fflush and C's FILE *stdout *)
 
 proc main*;
 begin
-    Out.str("from jed\n");
+    Out.str("from raz\n");
     Out.flush;
     C.printf("from C\n");
     C.fflush(C.stdout);
-    Out.str("from jed again\n");
+    Out.str("from raz again\n");
 end;
 
 end Both.
@@ -901,7 +901,7 @@ end Both.
 
 A version of this report is named by the month it was made in and a
 count: `2026-10.0`, then `2026-10.1` for the next change that month.
-`jed --version` says which version the compiler follows.
+`raz --version` says which version the compiler follows.
 
 - **2026-10.0.** The first numbered version: the language of compiler
   0.3.0.

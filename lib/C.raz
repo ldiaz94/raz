@@ -1,4 +1,4 @@
-(* The C library: what jed's own library calls in it, and what most
+(* The C library: what raz's own library calls in it, and what most
    programs reach for. A program that imports C uses C, and so is
    linked dynamically and starts through the C library. *)
 module C;

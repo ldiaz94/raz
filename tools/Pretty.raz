@@ -1,9 +1,9 @@
-(* Pretty: jed source laid out the one way.
+(* Pretty: raz source laid out the one way.
 
-       Pretty Module.jed
+       Pretty Module.raz
    prints the module, formatted.
 
-       Pretty -w File.jed...
+       Pretty -w File.raz...
    rewrites each file that isn't formatted already.
 
    Every line break and comment stays where it is. A line is indented
@@ -332,7 +332,7 @@ begin
         format(Buf.bytes(ADR(b)));
         Out.str(Buf.bytes(ADR(out)));
     else
-        Rt.stop("usage: Pretty Module.jed, or Pretty -w File.jed...");
+        Rt.stop("usage: Pretty Module.raz, or Pretty -w File.raz...");
     end;
 end;
 

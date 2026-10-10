@@ -1,9 +1,9 @@
-# Reading the jed compiler
+# Reading the raz compiler
 
 The compiler is eight files of Free Pascal, under 5,000 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
-you know the language from `doc/jed.md`, and enough x86-64 to read a
+you know the language from `doc/raz.md`, and enough x86-64 to read a
 disassembly.
 
 | File | Lines | Code | What |
@@ -15,7 +15,7 @@ disassembly.
 | `src/parse.pas` | 1,816 | 1,685 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/jed.pas` | 214 | 169 | The command line, the entry points |
+| `src/raz.pas` | 214 | 169 | The command line, the entry points |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -47,20 +47,20 @@ files, no symbol files, and nothing to keep up to date.
 
 ## Following one program
 
-`jed Hello.jed` does this:
+`raz Hello.raz` does this:
 
-1. `jed.pas` reads the command line and calls `CompileMain`
+1. `raz.pas` reads the command line and calls `CompileMain`
    (`parse.pas`).
 2. `CompileMain` imports `Rt` first, since every program needs it, and
-   then compiles `Hello.jed` with `CompileFile`.
+   then compiles `Hello.raz` with `CompileFile`.
 3. `CompileFile` opens the file in the scanner and parses the module.
-   At `import Out;` it calls `ImportModule`, which finds `Out.jed` and
+   At `import Out;` it calls `ImportModule`, which finds `Out.raz` and
    compiles it there and then, saving and restoring the scanner and the
    scopes around it. So modules are finished in an order where each
    comes after those it imports; that is the order their bodies run.
 4. Each procedure becomes a chunk of code; `Out.str("hello, world\n")`
    becomes a string chunk, a call, and a fixup to `Out.str`'s chunk.
-5. Back in `jed.pas`, `Use` marks the modules the program uses; the
+5. Back in `raz.pas`, `Use` marks the modules the program uses; the
    entry point, `_start`, is written as one more chunk: save `argc` and
    `argv`, call every used module's body, call `main`, call `Rt.exit`.
 6. `WriteElf` (`elf.pas`) has `link.pas` mark what `_start` reaches,
@@ -325,9 +325,9 @@ sequence per procedure, from the notes `NoteLine` made, and the single
 compile unit gdb needs to find it. There are no types or variables in
 it; gdb can stop at a line and show where it is, not print a variable.
 
-## jed.pas: the command line
+## raz.pas: the command line
 
-`jed.pas` parses the arguments, calls `CompileMain`, and works out what
+`raz.pas` parses the arguments, calls `CompileMain`, and works out what
 the program uses: `Use` marks the modules imported from the main module
 and `Rt`; `UsesC` decides whether the program is dynamic, refusing one
 that both uses C and has a module saying `link static`. Then it writes
@@ -336,9 +336,9 @@ one starts at a `_start` that calls `__libc_start_main` the way C's own
 start-up does, which sets C up and calls back a `main` that runs the
 module bodies and the program's `main`.
 
-`jed run` writes the executable to a memfd, a file only in memory, and
-executes it through `/proc/self/fd` in jed's own place, handing it the
-rest of jed's `argv`. Nothing is left on disk, and the program's
+`raz run` writes the executable to a memfd, a file only in memory, and
+executes it through `/proc/self/fd` in raz's own place, handing it the
+rest of raz's `argv`. Nothing is left on disk, and the program's
 status is the command's.
 
 ## Where to start changing it
@@ -351,6 +351,6 @@ status is the command's.
   in the same order), a case in `Statement`, and a routine beside the
   others.
 - **A check that fails:** `Check` in `gen.pas`, and the message in
-  `lib/Rt.jed`'s `fail`.
+  `lib/Rt.raz`'s `fail`.
 
 After any change: `make check`, `make bench`, `make loc`.

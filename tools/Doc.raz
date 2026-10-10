@@ -1,13 +1,13 @@
 (* Doc: what a module offers, from its source.
 
-       Doc Module.jed
+       Doc Module.raz
    prints the module's own comment, the one just before module, then
    each exported declaration as it is written, with the comment just
    before it.
 
        Doc examples report.md dir
    writes each example of the report that is a whole module, from
-   module to end, with no ... left out, to dir/Name.jed, and prints
+   module to end, with no ... left out, to dir/Name.raz, and prints
    the names, one a line. *)
 module Doc;
 import Out, Rt, Str, Buf, Heap, Scan, Files;
@@ -277,7 +277,7 @@ begin
                 name := name[0..n];
                 Buf.reset(ADR(out));
                 Buf.str(ADR(out), dir); Buf.str(ADR(out), "/"); Buf.str(ADR(out), name);
-                Buf.str(ADR(out), ".jed");
+                Buf.str(ADR(out), ".raz");
                 if not Files.write(Buf.bytes(ADR(out)), s[start..i]) then
                     Rt.stop("Doc: can't write an example");
                 end;
@@ -302,7 +302,7 @@ proc main*;
 begin
     if (ARGC() = 4) and (Files.arg(1) = "examples") then examples(Files.arg(2), Files.arg(3));
     elsif ARGC() = 2 then document(Files.arg(1));
-    else Rt.stop("usage: Doc Module.jed, or Doc examples report.md dir");
+    else Rt.stop("usage: Doc Module.raz, or Doc examples report.md dir");
     end;
 end;
 

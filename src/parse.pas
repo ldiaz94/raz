@@ -6,7 +6,7 @@
   each comes after the modules it imports; that is the order in which
   their bodies run.
 
-  A module may come in one file per target (Name.linux-x86_64.jed and
+  A module may come in one file per target (Name.linux-x86_64.raz and
   so on). The file for this target is compiled; the others beside it
   are read for their declarations only, and must export the same
   interface.
@@ -1741,7 +1741,7 @@ begin
       inc(i);
     end;
     if (copy(f, 1, length(prefix)) = prefix) and (length(f) > 4)
-      and (copy(f, length(f) - 3, 4) = '.jed') and (f <> chosen)
+      and (copy(f, length(f) - 3, 4) = '.raz') and (f <> chosen)
       and (numOthers <= High(others)) then begin
       others[numOthers] := f;
       inc(numOthers);
@@ -1765,7 +1765,7 @@ begin
     else if i = numInc then dir := libDir
     else dir := incDirs[i];
     for j := 0 to 3 do begin
-      f := NameOf(name) + Suffixes[j] + '.jed';
+      f := NameOf(name) + Suffixes[j] + '.raz';
       if Exists(dir + '/' + f) then begin
         m := CompileFile(dir + '/' + f, name, args, false);
         CheckSiblings(dir, f, name, m, args);

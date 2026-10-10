@@ -4,11 +4,11 @@
 # caller.
 out=build/check
 mkdir -p $out
-./jed -I test/run/mods -o $out/Procs test/run/Procs.jed || exit 1
-gdb -batch -ex 'break test/run/Procs.jed:13' -ex run -ex bt $out/Procs > $out/gdb.out 2>&1
-for want in 'Breakpoint 1, Procs.odd () at test/run/Procs.jed:13' \
-            'in Procs.even () at test/run/Procs.jed:20' \
-            'in Procs.main () at test/run/Procs.jed:'; do
+./raz -I test/run/mods -o $out/Procs test/run/Procs.raz || exit 1
+gdb -batch -ex 'break test/run/Procs.raz:13' -ex run -ex bt $out/Procs > $out/gdb.out 2>&1
+for want in 'Breakpoint 1, Procs.odd () at test/run/Procs.raz:13' \
+            'in Procs.even () at test/run/Procs.raz:20' \
+            'in Procs.main () at test/run/Procs.raz:'; do
     if ! grep -qF "$want" $out/gdb.out; then
         echo "FAIL gdb: no \"$want\""; cat $out/gdb.out; exit 1
     fi

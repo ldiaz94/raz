@@ -52,7 +52,7 @@ begin
     s := XDefaultScreen(d);
     w := XCreateSimpleWindow(d, XRootWindow(d, s), 0, 0, 320, 80, 1,
         XBlackPixel(d, s), XWhitePixel(d, s));
-    XStoreName(d, w, "jed");
+    XStoreName(d, w, "raz");
     XSelectInput(d, w, ExposureMask + KeyPressMask);
     XMapWindow(d, w);
     repeat

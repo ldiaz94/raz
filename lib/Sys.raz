@@ -111,11 +111,11 @@ end;
 proc main*;
 var fd, n: I64; buf: [16]U8; p: ^U8;
 begin
-    fd := create("/tmp/jed-sys-test");
+    fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
     if write(fd, "hello") # 5 then exit(2); end;
     close(fd);
-    fd := openRead("/tmp/jed-sys-test");
+    fd := openRead("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
     n := read(fd, buf);
     if (n # 5) or (buf[0..5] # "hello") or (read(fd, buf) # 0) then exit(2); end;

@@ -1,17 +1,17 @@
 #!/bin/sh
 # Compiles and runs every example and test, and compares what each
 # prints, and its exit status, with what is expected:
-#   X.jed     the program
+#   X.raz     the program
 #   X.expect  its standard output
 #   X.args    its arguments, one per line (optional)
 #   X.status  its exit status (optional; 0 if missing)
 # A program without X.expect is compiled, not run. test/libc puts
-# lib/Sys.jed, over the C library, before the system call one.
+# lib/Sys.raz, over the C library, before the system call one.
 # Programs in test/err must not compile, and must print X.err. Then
-# the version, tools/Doc.jed, the report's examples, tools/Pretty.jed,
+# the version, tools/Doc.raz, the report's examples, tools/Pretty.raz,
 # and the library's own tests.
 
-jed=./jed
+raz=./raz
 out=build/check
 mkdir -p $out
 pass=0
@@ -19,7 +19,7 @@ fail=0
 
 run() {   # run dir name
     dir=$1; name=$2
-    if ! $jed -I $dir/mods -o $out/$name $dir/$name.jed 2>$out/$name.cerr; then
+    if ! $raz -I $dir/mods -o $out/$name $dir/$name.raz 2>$out/$name.cerr; then
         echo "FAIL $dir/$name: doesn't compile: $(cat $out/$name.cerr)"
         fail=$((fail + 1)); return
     fi
@@ -44,24 +44,24 @@ run() {   # run dir name
     fi
 }
 
-for f in examples/*.jed test/run/*.jed test/libc/*.jed; do
-    run $(dirname $f) $(basename $f .jed)
+for f in examples/*.raz test/run/*.raz test/libc/*.raz; do
+    run $(dirname $f) $(basename $f .raz)
 done
 
-# jed run: a static program and one over C, from memory, with their
+# raz run: a static program and one over C, from memory, with their
 # arguments, output and status passed through
 runs() {   # runs file status [arg]...
     f=$1; want=$2; shift 2
-    $jed run -I $(dirname $f)/mods $f "$@" > $out/run.out 2>/dev/null
+    $raz run -I $(dirname $f)/mods $f "$@" > $out/run.out 2>/dev/null
     status=$?
-    if cmp -s $out/run.out ${f%.jed}.expect && [ $status = $want ]; then pass=$((pass + 1))
-    else echo "FAIL jed run $f: status $status, not $want, or output differs"; fail=$((fail + 1)); fi
+    if cmp -s $out/run.out ${f%.raz}.expect && [ $status = $want ]; then pass=$((pass + 1))
+    else echo "FAIL raz run $f: status $status, not $want, or output differs"; fail=$((fail + 1)); fi
 }
-runs test/run/Args.jed 4 one 'two words' é
-runs test/libc/Through.jed 2
-for f in test/err/*.jed; do
-    name=$(basename $f .jed)
-    if $jed -I test/err/mods -I test/run/mods -o $out/$name $f 2>$out/$name.cerr; then
+runs test/run/Args.raz 4 one 'two words' é
+runs test/libc/Through.raz 2
+for f in test/err/*.raz; do
+    name=$(basename $f .raz)
+    if $raz -I test/err/mods -I test/run/mods -o $out/$name $f 2>$out/$name.cerr; then
         echo "FAIL $f: compiles"
         fail=$((fail + 1))
     elif ! grep -qF "$(cat test/err/$name.err)" $out/$name.cerr; then
@@ -72,19 +72,19 @@ for f in test/err/*.jed; do
     fi
 done
 # the report's version is the one the compiler says it follows
-want=$(sed -n 's/^This is version \([0-9.-]*\) of the report.*/\1/p' doc/jed.md)
-if ./jed --version | grep -qF "report $want"; then pass=$((pass + 1))
-else echo "FAIL jed --version: not report $want"; fail=$((fail + 1)); fi
+want=$(sed -n 's/^This is version \([0-9.-]*\) of the report.*/\1/p' doc/raz.md)
+if ./raz --version | grep -qF "report $want"; then pass=$((pass + 1))
+else echo "FAIL raz --version: not report $want"; fail=$((fail + 1)); fi
 
-# tools/Doc.jed: on every library module, and as test/doc expects
-if ./jed -o $out/Doc tools/Doc.jed 2>$out/Doc.cerr; then
-    for f in lib/*.jed; do
+# tools/Doc.raz: on every library module, and as test/doc expects
+if ./raz -o $out/Doc tools/Doc.raz 2>$out/Doc.cerr; then
+    for f in lib/*.raz; do
         if ! $out/Doc $f > $out/doc.out; then echo "FAIL Doc $f"; fail=$((fail + 1)); fi
     done
     for f in test/doc/*.expect; do
         name=$(basename $f .expect)
-        m=lib/$name.jed
-        [ -f $m ] || m=lib/$name.linux-x86_64.jed
+        m=lib/$name.raz
+        [ -f $m ] || m=lib/$name.linux-x86_64.raz
         if $out/Doc $m | cmp -s - $f; then pass=$((pass + 1))
         else echo "FAIL Doc $m: output differs"; fail=$((fail + 1)); fi
     done
@@ -92,42 +92,42 @@ if ./jed -o $out/Doc tools/Doc.jed 2>$out/Doc.cerr; then
     # the report's examples that are whole modules: each compiles, and
     # each with a main runs and ends with status 0
     rm -rf $out/report; mkdir -p $out/report
-    for name in $($out/Doc examples doc/jed.md $out/report); do
-        if ! $jed -o $out/report/$name $out/report/$name.jed 2>$out/report/$name.cerr; then
+    for name in $($out/Doc examples doc/raz.md $out/report); do
+        if ! $raz -o $out/report/$name $out/report/$name.raz 2>$out/report/$name.cerr; then
             echo "FAIL report example $name: $(cat $out/report/$name.cerr)"; fail=$((fail + 1))
-        elif grep -q '^proc main\*' $out/report/$name.jed && ! $out/report/$name > /dev/null 2>&1; then
+        elif grep -q '^proc main\*' $out/report/$name.raz && ! $out/report/$name > /dev/null 2>&1; then
             echo "FAIL report example $name: status $?"; fail=$((fail + 1))
         else pass=$((pass + 1)); fi
     done
 else
-    echo "FAIL tools/Doc.jed: $(cat $out/Doc.cerr)"; fail=$((fail + 1))
+    echo "FAIL tools/Doc.raz: $(cat $out/Doc.cerr)"; fail=$((fail + 1))
 fi
 
-# tools/Pretty.jed: each test/pretty/X.jed comes out as X.expect, which
+# tools/Pretty.raz: each test/pretty/X.raz comes out as X.expect, which
 # comes out as it is; so do the library, the examples and the tools
-if ./jed -o $out/Pretty tools/Pretty.jed 2>$out/Pretty.cerr; then
-    for f in test/pretty/*.jed; do
-        want=test/pretty/$(basename $f .jed).expect
+if ./raz -o $out/Pretty tools/Pretty.raz 2>$out/Pretty.cerr; then
+    for f in test/pretty/*.raz; do
+        want=test/pretty/$(basename $f .raz).expect
         if $out/Pretty $f | cmp -s - $want && $out/Pretty $want | cmp -s - $want; then
             pass=$((pass + 1))
         else echo "FAIL Pretty $f: output differs"; fail=$((fail + 1)); fi
     done
-    for f in lib/*.jed examples/*.jed tools/*.jed; do
+    for f in lib/*.raz examples/*.raz tools/*.raz; do
         if ! $out/Pretty $f | cmp -s - $f; then
             echo "FAIL Pretty $f: not formatted"; fail=$((fail + 1))
         fi
     done
     pass=$((pass + 1))
 else
-    echo "FAIL tools/Pretty.jed: $(cat $out/Pretty.cerr)"; fail=$((fail + 1))
+    echo "FAIL tools/Pretty.raz: $(cat $out/Pretty.cerr)"; fail=$((fail + 1))
 fi
 
 # each library module's main is its test; Sys over C is tested in test/libc
-for f in lib/*.jed; do
-    [ $f = lib/Sys.jed ] && continue
+for f in lib/*.raz; do
+    [ $f = lib/Sys.raz ] && continue
     grep -q '^proc main\*' $f || continue
-    name=lib_$(basename $f .jed)
-    if ! $jed -o $out/$name $f 2>$out/$name.cerr; then
+    name=lib_$(basename $f .raz)
+    if ! $raz -o $out/$name $f 2>$out/$name.cerr; then
         echo "FAIL $f: doesn't compile: $(cat $out/$name.cerr)"; fail=$((fail + 1))
     elif ! $out/$name > $out/$name.out 2>&1; then
         echo "FAIL $f: its test says $(cat $out/$name.out)"; fail=$((fail + 1))

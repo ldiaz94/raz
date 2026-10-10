@@ -195,7 +195,7 @@ begin
   PutStr(mainPath);
   if FpGetcwd(@cwd, SizeOf(cwd)) = nil then cwd[0] := #0;
   PutStr(PChar(@cwd));
-  PutStr('jed');
+  PutStr('raz');
   PutN(0, 4);                                 { the line table, at 0 }
   PutN(Base + textOff, 8); PutN(textSize, 8);  { the code, all of it }
   Patch(off[1], len - off[1] - 4, 4);

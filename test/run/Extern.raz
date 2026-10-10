@@ -1,5 +1,5 @@
 (* Calling C: arguments in registers and on the stack, reals, ...,
-   C variables, jed procedures as C's callbacks. *)
+   C variables, raz procedures as C's callbacks. *)
 module Extern;
 import Out, C;
 link "libm.so.6";
@@ -46,8 +46,8 @@ begin
         1, 2, 3, 4, 5, 6, 7, "eight", 3.14159, 0.5);
     Out.str(buf[0..I64(n)]); Out.ln;
 
-    setenv("JED_TEST", "yes", 1);
-    Out.int(I64(strlen(getenv("JED_TEST")))); Out.ln;
+    setenv("RAZ_TEST", "yes", 1);
+    Out.int(I64(strlen(getenv("RAZ_TEST")))); Out.ln;
     e := environ;
     i := 0;
     while e^ # nil do INC(i); e := e + 1; end;

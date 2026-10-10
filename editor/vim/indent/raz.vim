@@ -1,4 +1,4 @@
-" Vim indent file for jed, by shiftwidth(): a block's statements one
+" Vim indent file for raz, by shiftwidth(): a block's statements one
 " level in from the word that opens it; end, until, else and elsif at
 " that word's level; match arms at the level of match; procedures,
 " sections (const, type, var) and module bodies at the left margin.
@@ -10,11 +10,11 @@ if exists("b:did_indent")
 endif
 let b:did_indent = 1
 
-setlocal indentexpr=GetJedIndent(v:lnum)
+setlocal indentexpr=GetRazIndent(v:lnum)
 setlocal indentkeys=o,O,0=end,0=else,0=elsif,0=until,0=\|,!^F
 setlocal nolisp nosmartindent
 
-if exists("*GetJedIndent")
+if exists("*GetRazIndent")
   finish
 endif
 
@@ -96,7 +96,7 @@ function! s:InComment(lnum)
         \ && getline(a:lnum) !~ '^\s*(\*'
 endfunction
 
-function! GetJedIndent(lnum)
+function! GetRazIndent(lnum)
   let cur = getline(a:lnum)
   if s:InComment(a:lnum)
     return -1

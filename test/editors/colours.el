@@ -3,7 +3,7 @@
                              (insert-file-contents "test/editors/Colours.expect")
                              (buffer-string))
                            "\n" t)))
-  (find-file "test/editors/Colours.jed")
+  (find-file "test/editors/Colours.raz")
   (font-lock-ensure)
   (dolist (want wants)
     (let* ((w (split-string want))

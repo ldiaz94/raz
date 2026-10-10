@@ -1,6 +1,6 @@
 { scan.pas: the scanner.
 
-  Reads a jed source file and hands the parser one symbol at a time:
+  Reads a raz source file and hands the parser one symbol at a time:
   reserved words, identifiers, numbers, characters, strings and
   operators. Identifiers are interned, so that the rest of the compiler
   compares names as small integers. The scanner also reports errors,
@@ -191,7 +191,7 @@ end;
 
 procedure Fatal(const msg: shortstring);
 begin
-  writeln(StdErr, 'jed: ', msg);
+  writeln(StdErr, 'raz: ', msg);
   Halt(1);
 end;
 

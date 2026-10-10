@@ -1,13 +1,13 @@
-# Working on jed
+# Working on raz
 
-Read `PLAN.md` (the plan, ground rules, steps) and `doc/jed.md` (the
+Read `PLAN.md` (the plan, ground rules, steps) and `doc/raz.md` (the
 language report) first. The report defines the language; where the
 plan disagrees, the report wins and the plan is fixed.
 
 ## Setup and checks
 
     apt-get install -y fp-compiler   # Free Pascal 3.2.2, if fpc is missing
-    make jed       # the compiler, ./jed; its library is lib/
+    make raz       # the compiler, ./raz; its library is lib/
     make check     # every example and test against its expected output
     make bench     # must report at least 400,000 lines a second
     make loc       # lines of the compiler; the code column is the budget
@@ -16,16 +16,16 @@ plan disagrees, the report wins and the plan is fixed.
     make stress    # 40,000 native threads; make check runs a small version
     make fmt       # lib/, examples/ and tools/ are formatted
 
-`make check` also runs `tools/Doc.jed` and `tools/Pretty.jed`, the
+`make check` also runs `tools/Doc.raz` and `tools/Pretty.raz`, the
 report's whole examples, each library module's own `main` (its test),
 and the vim and emacs support headless where they are installed
 (`apt-get install -y vim emacs-nox`): each example must indent back
 exactly as written.
 
-`make check` must pass before every commit. Tests: `test/run/X.jed`
+`make check` must pass before every commit. Tests: `test/run/X.raz`
 with `X.expect` (stdout), optional `X.status` and `X.args`; modules they
-import in `test/run/mods`. `test/err/X.jed` must fail to compile with
-the text in `X.err`. `test/pretty/X.jed` must format to `X.expect`.
+import in `test/run/mods`. `test/err/X.raz` must fail to compile with
+the text in `X.err`. `test/pretty/X.raz` must format to `X.expect`.
 Examples in `examples/` work the same way.
 
 ## How we work
@@ -34,21 +34,22 @@ Examples in `examples/` work the same way.
   go-ahead; within it, one commit per step, pushed as it is done, then
   stop for review. Never start a stage, or change the report's
   language, without being asked.
-- Language changes go into `doc/jed.md` first, for the owner to review,
+- Language changes go into `doc/raz.md` first, for the owner to review,
   before any code.
-- Commits: author `Luis <42945842+ldiaz94@users.noreply.github.com>`, unsigned
+- Commits: author
+  `Luis <42945842+ldiaz94@users.noreply.github.com>`, unsigned
   (`--no-gpg-sign`), no attribution trailer. Push to `main`. No pull
   requests unless asked.
 - Budget: about 5,000 lines of code (blank and comment lines not
-  counted), within 10%; at least 400,000 lines of jed a second.
+  counted), within 10%; at least 400,000 lines of raz a second.
 - Style: clarity over cleverness; each unit opens with what it is, what
   it depends on and what it leaves out; comments say why. Match the
   report's plain, short prose in documentation.
 
 ## Where things stand
 
-Steps 1-18 are done: the language, the tools (`tools/Doc.jed`, and
-the formatter, `tools/Pretty.jed`, over the shared `tools/Scan.jed`),
+Steps 1-18 are done: the language, the tools (`tools/Doc.raz`, and
+the formatter, `tools/Pretty.raz`, over the shared `tools/Scan.raz`),
 `README.md` and the guide to the compiler, `doc/compiler.md`. Nothing
 further is planned; new work starts only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
@@ -56,9 +57,9 @@ compiler changes. Left
 for later at the owner's word: tagging versions, and a rewrite of var
 parameters.
 
-`test/libc` runs its programs over `lib/Sys.jed`, the C one, through
+`test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
-compiled (`examples/Window.jed` needs a display).
+compiled (`examples/Window.raz` needs a display).
 
 ## Readings of the report already taken
 

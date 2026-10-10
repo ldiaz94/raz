@@ -1,4 +1,4 @@
-(* The library over C's Sys, lib/Sys.jed, which this directory puts
+(* The library over C's Sys, lib/Sys.raz, which this directory puts
    first: output, memory from the heap, and a failed check that still
    writes out what Out holds. *)
 module Through;

@@ -1,4 +1,4 @@
-(* Scan: the symbols of jed source, for the tools. Unlike the
+(* Scan: the symbols of raz source, for the tools. Unlike the
    compiler's scanner it keeps comments, as symbols of their own, and
    says where each symbol is in the text and whether a line break comes
    before it. It doesn't check what it reads: a malformed number is

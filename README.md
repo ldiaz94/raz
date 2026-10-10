@@ -1,7 +1,7 @@
-# jed
+# raz
 
-jed (Polish *jeden*, one) is a small systems language in Wirth's
-tradition, for x86-64 Linux. A jed program can lay a record over a
+raz (Polish for *one*, as in counting) is a small systems language in Wirth's
+tradition, for x86-64 Linux. A raz program can lay a record over a
 device's registers, read and write memory exactly as written, take part
 in lock-free algorithms, make system calls and call C libraries. It has
 no garbage collector and no hidden run time: what the program does is
@@ -20,7 +20,7 @@ end Hello.
 ```
 
     $ make
-    $ ./jed examples/Hello.jed
+    $ ./raz examples/Hello.raz
     $ examples/Hello
     hello, world
 
@@ -33,13 +33,13 @@ a million lines a second.
 
 | Path | What |
 |---|---|
-| `doc/jed.md` | The language report: the definition of jed |
+| `doc/raz.md` | The language report: the definition of raz |
 | `doc/compiler.md` | A guide to reading the compiler, file by file |
 | `src/` | The compiler, in Free Pascal |
-| `lib/` | The library, in jed; the compiler finds it beside itself |
+| `lib/` | The library, in raz; the compiler finds it beside itself |
 | `examples/` | Small programs, each with the output it should give |
-| `tools/Doc.jed` | Prints what a module exports, with its comments |
-| `tools/Pretty.jed` | The formatter: fixes indentation and spacing |
+| `tools/Doc.raz` | Prints what a module exports, with its comments |
+| `tools/Pretty.raz` | The formatter: fixes indentation and spacing |
 | `editor/` | Support for vim and emacs |
 | `test/` | Tests, and the scripts that run them |
 | `PLAN.md` | How the compiler was built, step by step |
@@ -49,7 +49,7 @@ a million lines a second.
 The compiler needs Free Pascal 3.2.2 (`apt-get install fp-compiler`)
 and builds into the repository's root:
 
-    make            # ./jed
+    make            # ./raz
 
 The tests need a shell and Python 3; the editor checks run if vim or
 emacs is installed.
@@ -57,25 +57,25 @@ emacs is installed.
     make check      # every example and test, against what it should give
     make bench      # the compiler's speed on a program of 350,000 lines
     make stress     # 40,000 threads, started and joined
-    make gdb        # gdb stops at a line of jed and names it
+    make gdb        # gdb stops at a line of raz and names it
     make fmt        # the library, examples and tools are formatted
     make loc        # the compiler's lines
     make tests      # tests of the scanner, encoder and linker on their own
 
 ## Using it
 
-    jed [-I dir]... [-o file] Main.jed
-    jed run [-I dir]... Main.jed [arg]...
-    jed --version
+    raz [-I dir]... [-o file] Main.raz
+    raz run [-I dir]... Main.raz [arg]...
+    raz --version
 
-`jed Main.jed` compiles module `Main` and every module it imports, and
-writes the executable `Main`. A module `Name` lives in `Name.jed`, found
+`raz Main.raz` compiles module `Main` and every module it imports, and
+writes the executable `Main`. A module `Name` lives in `Name.raz`, found
 in the main module's directory, then in each `-I` directory, then in
 `lib`. A module whose code depends on the system comes in one file per
-target, `Name.linux-x86_64.jed` before `Name.jed`; the compiler checks
+target, `Name.linux-x86_64.raz` before `Name.raz`; the compiler checks
 that all of them export the same things.
 
-`jed run Main.jed a b` compiles the same way, then runs the program
+`raz run Main.raz a b` compiles the same way, then runs the program
 with the arguments `a b`, writing no file: its output and exit status
 are the command's.
 
@@ -102,40 +102,40 @@ by number.
 - `extern` procedures and variables from C; code procedures written as
   bytes of machine code; `SYSCALL`.
 
-The report, `doc/jed.md`, says all of it in about 900 lines.
+The report, `doc/raz.md`, says all of it in about 900 lines.
 
 ## The library
 
 `Rt` (ending the program, checks), `Sys` (system calls), `Out`
 (buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
 `Heap`, `Arena`, `Str`, `Buf`, `Fmt`, `List(T)` and `Map(K, V; hash,
-eq)`. `tools/Doc.jed` prints any of them:
+eq)`. `tools/Doc.raz` prints any of them:
 
-    $ ./jed -o Doc tools/Doc.jed && ./Doc lib/Str.jed
+    $ ./raz -o Doc tools/Doc.raz && ./Doc lib/Str.raz
 
 Each library module's `main` is its test, which `make check` runs.
 
 ## Editors
 
 `editor/vim` holds a syntax file, an indent file and file type
-detection: add it to `runtimepath`. `editor/emacs/jed-mode.el` is a
-major mode: put it on `load-path` and `(require 'jed-mode)`. Both
+detection: add it to `runtimepath`. `editor/emacs/raz-mode.el` is a
+major mode: put it on `load-path` and `(require 'raz-mode)`. Both
 colour the language and indent it as the examples are indented.
 
-`tools/Pretty.jed` formats a whole file the same way: it fixes the
+`tools/Pretty.raz` formats a whole file the same way: it fixes the
 indentation, 4 spaces a level, and the spaces around operators and
 after `,` and `;`, and keeps every line break and comment where it is.
 
-    $ ./jed -o Pretty tools/Pretty.jed
-    $ ./Pretty Module.jed       # prints it, formatted
-    $ ./Pretty -w *.jed         # rewrites those that aren't, and names them
+    $ ./raz -o Pretty tools/Pretty.raz
+    $ ./Pretty Module.raz       # prints it, formatted
+    $ ./Pretty -w *.raz         # rewrites those that aren't, and names them
 
 ## Versions
 
 The compiler says which version of the report it follows:
 
-    $ ./jed --version
-    jed 0.3.0, report 2026-10.0
+    $ ./raz --version
+    raz 0.3.0, report 2026-10.0
 
 A version of the report is named by its month and a count; the report's
 last section says what each version changed.
@@ -145,3 +145,7 @@ last section says what each version changed.
 Other systems and processors (Mach-O, PE, aarch64), an optimizer,
 separate compilation, records passed to C by value, thread-local
 variables, and type information for debuggers.
+
+## License
+
+ISC; see `LICENSE`.

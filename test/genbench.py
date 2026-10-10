@@ -1,4 +1,4 @@
-"""Writes a large jed program to standard output, for timing the
+"""Writes a large raz program to standard output, for timing the
 compiler: n procedures of loops, conditions, records, slices and calls,
 each calling the one before, so that none is left out."""
 import sys

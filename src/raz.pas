@@ -1,15 +1,15 @@
-{ jed.pas: the command line.
+{ raz.pas: the command line.
 
-    jed [-I dir]... [-o file] Main.jed
-    jed run [-I dir]... Main.jed [arg]...
-    jed --version
+    raz [-I dir]... [-o file] Main.raz
+    raz run [-I dir]... Main.raz [arg]...
+    raz --version
 
   Compiles the main module and every module it imports, writes the
   entry point, links what it reaches, and writes the executable: by
-  default the main module's file without its .jed. jed run writes it
+  default the main module's file without its .raz. raz run writes it
   to a memfd instead, a file that lives only in memory, and executes
-  it in jed's place with the arguments after Main.jed, so its status
-  is the program's; its argv[0] is Main.jed.
+  it in raz's place with the arguments after Main.raz, so its status
+  is the program's; its argv[0] is Main.raz.
 
   The program starts by saving argc and argv, runs every module's body
   (those of the modules the program imports, imported modules first),
@@ -21,7 +21,7 @@
 
   Depends on: everything else. }
 
-program jed;
+program raz;
 
 {$mode objfpc}{$H-}
 
@@ -29,7 +29,7 @@ uses math, BaseUnix, syscall, scan, sym, x64, gen, parse, link, elf;
 
 const
   Version = '0.3.0';
-  Report = '2026-10.0';    { the version of doc/jed.md it follows }
+  Report = '2026-10.0';    { the version of doc/raz.md it follows }
   MemfdCreate = 319;       { the system call; FPC 3.2.2 has no name for it }
   MfdCloexec = 1;          { an ELF still executes: the kernel opens it first }
 
@@ -112,7 +112,7 @@ begin
       inc(i);
       outPath := ParamStr(i);
     end else if s = '--version' then begin
-      writeln('jed ', Version, ', report ', Report);
+      writeln('raz ', Version, ', report ', Report);
       Halt(0);
     end else if (s <> '') and (s[1] = '-') then
       Fatal('unknown option ' + s)
@@ -124,15 +124,15 @@ begin
     inc(i);
   end;
   if path = '' then
-    Fatal('usage: jed [-I dir]... [-o file] Main.jed, or jed run [-I dir]... Main.jed [arg]...');
-  if run and (outPath <> '') then Fatal('jed run takes no -o');
+    Fatal('usage: raz [-I dir]... [-o file] Main.raz, or raz run [-I dir]... Main.raz [arg]...');
+  if run and (outPath <> '') then Fatal('raz run takes no -o');
   dir := ParamStr(0);
   i := length(dir);
   while (i > 0) and (dir[i] <> '/') do dec(i);
   if i = 0 then libDir := 'lib' else libDir := copy(dir, 1, i) + 'lib';
   if outPath = '' then begin
     outPath := path;
-    if copy(outPath, length(outPath) - 3, 4) = '.jed' then
+    if copy(outPath, length(outPath) - 3, 4) = '.raz' then
       outPath := copy(outPath, 1, length(outPath) - 4)
     else outPath := outPath + '.out';
   end;
@@ -201,8 +201,8 @@ begin
 
   mainPath := path;
   if run then begin
-    { argv from Main.jed on is the program's, ending in nil as it must }
-    fd := Do_SysCall(MemfdCreate, TSysParam(PChar('jed')), MfdCloexec);
+    { argv from Main.raz on is the program's, ending in nil as it must }
+    fd := Do_SysCall(MemfdCreate, TSysParam(PChar('raz')), MfdCloexec);
     if fd < 0 then Fatal('can''t create a memfd');
     Str(fd, s);
     outPath := '/proc/self/fd/' + s + #0;
