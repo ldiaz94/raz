@@ -1,0 +1,8 @@
+module DeferBreak;
+proc f;
+begin
+    while true do
+        defer break;
+    end;
+end;
+end DeferBreak.

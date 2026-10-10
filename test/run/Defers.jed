@@ -1,0 +1,71 @@
+module Defers;
+import Out;
+
+type Pair = record a, b: I64; end;
+
+var depth: I64;
+
+proc enter(s: []U8);
+begin
+    Out.str(s); INC(depth);
+end;
+
+proc leave(s: []U8);
+begin
+    Out.str(s); DEC(depth);
+end;
+
+proc real(x: F64): F64;
+begin
+    enter("(");
+    defer leave(")");
+    return x * 2.0;
+end;
+
+proc pair(n: I64): Pair;
+var p: Pair;
+begin
+    defer p.a := 99;
+    p.a := n; p.b := n + 1;
+    return p;
+end;
+
+proc begin_end(i: I64);
+var k: I64;
+begin
+    defer for k := 1 to i do Out.str("*"); end;
+    if i = 1 then return; end;
+    Out.str("+");
+end;
+
+proc nested;
+var i, j: I64;
+begin
+    for i := 1 to 2 do
+        enter("[");
+        defer leave("]");
+        defer begin_end(i);
+        j := 0;
+        while true do
+            defer Out.str(".");
+            INC(j);
+            if j = 3 then break; end;
+        end;
+    end;
+end;
+
+proc main*;
+var p: Pair;
+begin
+    Out.int(I64(real(1.5) * 10.0)); Out.ln;
+    p := pair(5);
+    Out.int(p.a); Out.int(p.b); Out.ln;
+    nested;
+    Out.ln;
+    Out.int(depth); Out.ln;
+end;
+
+begin
+    defer Out.str("body done\n");
+    Out.str("body ");
+end Defers.

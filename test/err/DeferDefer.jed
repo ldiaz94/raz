@@ -1,0 +1,6 @@
+module DeferDefer;
+proc f;
+begin
+    defer defer f;
+end;
+end DeferDefer.

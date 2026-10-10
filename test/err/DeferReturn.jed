@@ -1,0 +1,7 @@
+module DeferReturn;
+proc f: I64;
+begin
+    defer return 1;
+    return 0;
+end;
+end DeferReturn.

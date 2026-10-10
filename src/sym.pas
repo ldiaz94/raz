@@ -313,7 +313,7 @@ begin
   case a^.form of
     fPtr: Alike := (a^.vol = b^.vol) and Same(a^.base, b^.base);
     fArray: Alike := (a^.len = b^.len) and Same(a^.base, b^.base);
-    fSlice: Alike := Same(a^.base, b^.base);
+    fSlice, fSet: Alike := Same(a^.base, b^.base);
     fProc, fRecord: begin
       { a record is the same only as itself, but for several results }
       if (a^.form = fRecord) and not (a^.tuple and b^.tuple) then exit(false);
@@ -384,7 +384,7 @@ begin
   Mix(h, ord(t^.form));
   Mix(h, ord(t^.vol) + 2 * ord(t^.variadic));
   Mix(h, t^.len);
-  if t^.form in [fPtr, fArray, fSlice, fProc] then Shape(h, t^.base, false);
+  if t^.form in [fPtr, fArray, fSlice, fProc, fSet] then Shape(h, t^.base, false);
   f := t^.fields;
   while f <> nil do begin
     if (t^.form <> fRecord) or f^.exported then begin

@@ -93,7 +93,7 @@ Stage 1: the core
 Stage 2: the rest of the language
 
 - [x] 7. Multiple results and errors; `INC` and `DEC`.
-- [ ] 8. Enumerations and sets, record literals, `defer`; examples.
+- [x] 8. Enumerations and sets, record literals, `defer`; examples.
 - [ ] 9. `NEW`; `lib/Mem.jed`, `lib/Arena.jed`, `lib/Heap.jed`.
 - [ ] 10. Generic modules, with type and procedure arguments;
       `lib/Str.jed`, `lib/Buf.jed`, `lib/Fmt.jed`; examples.

@@ -116,6 +116,7 @@ procedure TestRR(a, b: longint);
 procedure Push(r: longint);
 procedure Pop(r: longint);
 procedure CallChunk(c: longint);
+procedure CallBack(target: longint);
 procedure CallR(r: longint);
 procedure Ret;
 procedure Leave;
@@ -474,6 +475,12 @@ begin
   Put1($E8);
   AddFixup(pc, c, 0);
   Put4(0);
+end;
+
+procedure CallBack(target: longint);
+begin
+  Put1($E8);
+  Put4(target - (pc + 4));
 end;
 
 procedure CallR(r: longint);

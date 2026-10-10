@@ -1,0 +1,44 @@
+(* Enumerations, sets, record literals and defer: Unix permissions as
+   sets, which are their bits, and a report that closes its brackets
+   however it leaves. *)
+module Flags;
+import Out;
+
+type
+    Perm = (x, w, r);               (* bits 0, 1, 2, as chmod has them *)
+    Perms = set of Perm;
+    Mode = record user, group, other: Perms; end;
+
+proc digit(p: Perms): I64;
+begin
+    return I64(U8(p));
+end;
+
+proc show(p: Perms);
+begin
+    if r in p then Out.str("r"); else Out.str("-"); end;
+    if w in p then Out.str("w"); else Out.str("-"); end;
+    if x in p then Out.str("x"); else Out.str("-"); end;
+end;
+
+proc report(m: Mode);
+begin
+    Out.str("[");
+    defer Out.str("]\n");
+    show(m.user); show(m.group); show(m.other);
+    if m.other = {} then return; end;
+    Out.str(" octal ");
+    Out.int(digit(m.user)); Out.int(digit(m.group)); Out.int(digit(m.other));
+end;
+
+proc main*;
+var m: Mode;
+begin
+    m := {user: {r, w, x}, group: {r, x}, other: {r}};
+    report(m);
+    m.user := m.user - {x};
+    m.other := {};
+    report(m);
+end;
+
+end Flags.

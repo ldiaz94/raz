@@ -92,10 +92,11 @@ procedure BeginCall(var c: TCall; var x: TItem);
 procedure PassArg(var c: TCall; var a: TItem);
 procedure EndCall(var c: TCall; var x: TItem);
 
+procedure ZeroTemp(var x: TItem; t: PType);
 procedure Construct(var x: TItem; c: PObj);
 procedure SetField(const x: TItem; f: PObj; var a: TItem);
 function MatchBegin(var x: TItem): int64;
-procedure MatchTag(p: int64; tag: int64; var L: longint);
+procedure MatchTag(p: int64; tag: int64; var L: longint; isEnum: boolean);
 procedure CondJump(var x: TItem; var L: longint);
 
 procedure SliceOf(var x: TItem; t: PType; len: int64);
@@ -107,6 +108,7 @@ function AllocTemp(size, align: int64): int64;
 function AllocPerm(size, align: int64): int64;
 function TempMark: int64;
 procedure ReleaseTemps(m: int64);
+procedure KeepTemps;
 
 procedure BeginProc(sig: PType; params: PObj);
 procedure EnterBody(c: longint);
@@ -341,6 +343,14 @@ procedure ReleaseTemps(m: int64);
 begin
   if m < permTop then m := permTop;
   frameTop := m;
+end;
+
+{ Every slot used so far stays reserved for the rest of the procedure:
+  a deferred statement's temporaries live until it runs. }
+procedure KeepTemps;
+begin
+  frameTop := frameMax;
+  permTop := frameMax;
 end;
 
 procedure TempItem(var x: TItem; t: PType; off: int64);
@@ -715,7 +725,7 @@ const
   CcSigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccL, ccLE, ccG, ccGE);
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
 var
-  xt, yt, t: PType; r: TItem; scale, sh: longint; isPtr, unsign: boolean;
+  xt, yt, t: PType; r: TItem; scale, sh: longint; isPtr, unsign: boolean; a, b: int64;
 begin
   xt := x.typ; yt := y.typ;
   if y.mode in [mType, mBuiltin, mNone, mCase] then Mark('not a value');
@@ -783,7 +793,15 @@ begin
       if not ((xt^.form = fPtr) and (yt^.form = fPtr) and Same(xt^.base, yt^.base)) then
         Mark('different pointer types');
     t := tU64;
-  end else
+  end else if (xt^.form = fEnum) and Same(xt, yt) then begin
+    if not (op in Rel) then Mark('enumerations only compare');
+    t := xt;
+  end else if (xt^.form = fSet) and Same(xt, yt) then begin
+    if not (op in [sPlus, sTimes, sMinus, sEql, sNeq, sLeq, sGeq]) then Mark('not a set operator');
+    t := xt;
+  end else if (op = sIn) and (yt^.form = fSet) and Same(xt, yt^.base) then
+    t := yt
+  else
     Mark('can''t combine ' + TypeName(xt) + ' and ' + TypeName(yt));
   unsign := (t^.form = fInt) and not t^.signed;
 
@@ -792,6 +810,17 @@ begin
     if t^.form = fReal then begin
       if not FoldReal(op, x, y, r) then Mark('not an F64 operator');
       x := r;
+    end else if t^.form = fSet then begin
+      a := x.val; b := y.val;
+      case op of
+        sPlus: MakeConst(x, t, a or b);
+        sTimes: MakeConst(x, t, a and b);
+        sMinus: MakeConst(x, t, a and not b);
+        sIn: MakeConst(x, tBool, (b shr a) and 1);
+        sLeq: MakeConst(x, tBool, ord(a and not b = 0));
+        sGeq: MakeConst(x, tBool, ord(b and not a = 0));
+      else MakeConst(x, tBool, ord((a = b) = (op = sEql)));
+      end;
     end else if op in Rel then
       MakeConst(x, tBool, FoldInt(op, x.val, y.val, t))
     else
@@ -825,6 +854,24 @@ begin
       sGeq: begin Ucomisd(0, 1); SetCC(ccAE, RAX) end;
     end;
     if not (op in Rel) then MovqRX(RAX, 0);
+  end else if t^.form = fSet then begin
+    case op of
+      sPlus: Alu(aluOr, RAX, RCX);
+      sTimes: Alu(aluAnd, RAX, RCX);
+      sMinus: begin Unary(2, RCX); Alu(aluAnd, RAX, RCX) end;
+      sLeq, sGeq: begin
+        if op = sLeq then Unary(2, RCX) else Unary(2, RAX);
+        Alu(aluAnd, RAX, RCX);
+        TestRR(RAX, RAX);
+        SetCC(ccE, RAX);
+      end;
+      sIn: begin
+        MovRR(RDX, RCX); MovRR(RCX, RAX); MovRR(RAX, RDX);
+        Shift(shShr, RAX);
+        AluI(aluAnd, RAX, 1);
+      end;
+    else Alu(aluCmp, RAX, RCX); SetCC(CcUnsigned[op], RAX);
+    end;
   end else if op in Rel then begin
     Alu(aluCmp, RAX, RCX);
     if (t^.form = fInt) and t^.signed or (t^.form = fConst) then SetCC(CcSigned[op], RAX)
@@ -857,7 +904,7 @@ begin
     Norm(t);
   end;
   x.mode := mReg;
-  if op in Rel then x.typ := tBool else x.typ := t;
+  if op in Rel + [sIn] then x.typ := tBool else x.typ := t;
 end;
 
 procedure Convert(var x: TItem; t: PType);
@@ -866,9 +913,20 @@ begin
   s := x.typ;
   if x.mode in [mType, mBuiltin, mNone, mCase, mStr] then Mark('can''t convert this');
   if Same(s, t) then exit;
-  if IsInt(s) and (t^.form = fInt) then begin
+  if (IsInt(s) or (s^.form in [fEnum, fSet])) and (t^.form = fInt) then begin
     if x.mode = mConst then x.val := Cut(x.val, t)
     else begin Value(x); Norm(t) end;
+  end else if IsInt(s) and (t^.form = fEnum) then begin
+    if x.mode = mConst then begin
+      if (x.val < 0) or (x.val >= t^.len) then Mark('not a position of ' + TypeName(t))
+    end else begin Value(x); CmpI(RAX, t^.len); Check(ccB) end;
+  end else if IsInt(s) and (t^.form = fSet) then begin
+    if x.mode = mConst then begin
+      if t^.len < 64 then x.val := x.val and ((int64(1) shl t^.len) - 1)
+    end else begin
+      Value(x);
+      if t^.len < 64 then begin MovRI(RCX, (int64(1) shl t^.len) - 1); Alu(aluAnd, RAX, RCX) end;
+    end;
   end else if IsInt(s) and (t^.form = fReal) then begin
     if x.mode = mConst then begin
       if (s^.form = fInt) and not s^.signed then r := qword(x.val) else r := x.val;
@@ -1018,18 +1076,23 @@ end;
 
 { Variants }
 
-procedure Construct(var x: TItem; c: PObj);
-var t: PType; tmp: int64;
+{ A temporary of type t, all zero: for variants and record literals. }
+procedure ZeroTemp(var x: TItem; t: PType);
+var tmp: int64;
 begin
-  t := c^.typ;
   tmp := AllocTemp(t^.size, t^.align);
   Lea(RDI, Mem(RBP, tmp));
   MovRI(RCX, t^.size);
   MovRI(RAX, 0);
   RepStosb;
-  MovRI(RAX, c^.val);
-  Store(Mem(RBP, tmp), RAX, 8);
   TempItem(x, t, tmp);
+end;
+
+procedure Construct(var x: TItem; c: PObj);
+begin
+  ZeroTemp(x, c^.typ);
+  MovRI(RAX, c^.val);
+  Store(Mem(RBP, x.off), RAX, 8);
 end;
 
 procedure SetField(const x: TItem; f: PObj; var a: TItem);
@@ -1046,20 +1109,22 @@ begin
   end;
 end;
 
+{ The slot match tests: a variant's address, or an enumeration's value. }
 function MatchBegin(var x: TItem): int64;
 var p: int64;
 begin
-  if (x.mode <> mVar) or (x.typ^.form <> fVariant) then Mark('match needs a variant');
+  if x.typ^.form = fEnum then exit(ToSlot(x));
+  if (x.mode <> mVar) or (x.typ^.form <> fVariant) then Mark('match needs a variant or an enumeration');
   Address(x, RAX);
   p := AllocTemp(8, 8);
   Store(Mem(RBP, p), RAX, 8);
   MatchBegin := p;
 end;
 
-procedure MatchTag(p: int64; tag: int64; var L: longint);
+procedure MatchTag(p: int64; tag: int64; var L: longint; isEnum: boolean);
 begin
   Load(RAX, Mem(RBP, p), 8, false);
-  Load(RAX, Mem(RAX, 0), 8, false);
+  if not isEnum then Load(RAX, Mem(RAX, 0), 8, false);
   CmpI(RAX, tag);
   Jcc(ccNE, L);
 end;

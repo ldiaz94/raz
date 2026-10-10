@@ -1,0 +1,95 @@
+module Kinds;
+import Out;
+
+type
+    Color* = (red, green, blue, black);
+    Colors* = set of Color;
+    Cell = record ch: U8; attr: U8; fg: Color; end;
+    Point = record x, y: I64; name: []U8; end;
+    Line = record a, b: Point; end;
+
+var log: [8]U8; nlog: I64;
+
+proc note(c: U8);
+begin
+    log[nlog] := c;
+    INC(nlog);
+end;
+
+proc show(s: Colors);
+var c: Color;
+begin
+    for c := red to black do
+        if c in s then Out.int(I64(c)); end;
+    end;
+    Out.str(" ");
+end;
+
+proc name(c: Color): []U8;
+begin
+    match c of
+    | red: return "red";
+    | green: return "green";
+    | else: return "other";
+    end;
+end;
+
+proc deferred(n: I64): I64;
+var i: I64;
+begin
+    defer note('A');
+    defer note('B');
+    for i := 1 to 3 do
+        defer note('L');
+        if i = 2 then break; end;
+    end;
+    if n > 0 then
+        defer note('C');
+        return n * 10;
+    end;
+    note('D');
+    return -1;
+end;
+
+proc mid(a, b: Point): Point;
+begin
+    return {x: (a.x + b.x) div 2, y: (a.y + b.y) div 2, name: "mid"};
+end;
+
+proc main*;
+var s, t: Colors; c: Color; cell: Cell; p: Point; l: Line; r: I64; one: Colors;
+begin
+    s := {red, blue};
+    t := {blue, black};
+    show(s + t); show(s * t); show(s - t); show({});
+    if red in s then Out.str("in "); end;
+    if not (green in s) then Out.str("out "); end;
+    if s * t <= t then Out.str("sub "); end;
+    if s + t >= s then Out.str("sup "); end;
+    if s # t then Out.str("ne "); end;
+    if s = {blue, red} then Out.str("eq"); end;
+    Out.ln;
+    c := green;
+    one := {c, black};
+    show(one);
+    Out.int(I64(U8(one))); Out.str(" ");
+    Out.int(SIZE(Colors)); Out.str(" ");
+    Out.int(I64(Color(2))); Out.str(" ");
+    if c < blue then Out.str("lt "); end;
+    Out.str(name(c)); Out.str(" "); Out.str(name(black)); Out.ln;
+    cell := {ch: 'x', fg: blue};
+    Out.int(I64(cell.ch)); Out.str(" "); Out.int(I64(cell.attr)); Out.str(" "); Out.int(I64(cell.fg)); Out.ln;
+    p := mid({x: 2, y: 4}, {y: 10, x: 6});
+    Out.int(p.x); Out.int(p.y); Out.str(p.name); Out.ln;
+    l := {a: {x: 1, y: 2}, b: p};
+    Out.int(l.a.y); Out.int(l.b.x); Out.ln;
+    r := deferred(5);
+    Out.int(r); Out.str(" "); Out.str(log[0..nlog]); Out.ln;
+    nlog := 0;
+    r := deferred(0);
+    Out.int(r); Out.str(" "); Out.str(log[0..nlog]); Out.ln;
+    Out.int(I64(Color(I64(c) + 2)));
+    c := Color(nlog);
+end;
+
+end Kinds.

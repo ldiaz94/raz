@@ -41,13 +41,25 @@ implementation
 
 uses BaseUnix;
 
+type
+  PLoop = ^TLoop;
+  TLoop = record
+    brk: longint;     { the chain of its breaks }
+    base: longint;    { the deferred statements in force outside it }
+  end;
+
 var
   checkMode: boolean;     { reading a file only for its interface }
   inTypes: boolean;       { in a type section: ^T may name a later type }
   fwdTypes: array[0..255] of PType;
   numFwd: longint;
   declExported: boolean;  { the export mark of the declaration being read }
-  curBreak: PLongint;     { the break chain of the innermost loop, or nil }
+  curLoop: PLoop;         { the innermost loop, or nil }
+  defers: array[0..63] of longint;   { the deferred statements in force }
+  numDefers: longint;
+  deferring: boolean;     { compiling a deferred statement }
+  directDefer: boolean;   { ... as the statement itself, not in a list }
+  deferSlot: int64;       { keeps a result while deferred statements run }
   curResult: PType;       { the result type of the procedure being compiled }
   tArgv, tBodySig: PType;
   nameRt, nameFail, nameEq, nameMain, nameBody: longint;
@@ -55,6 +67,7 @@ var
 procedure Expression(var x: TItem; want: PType); forward;
 function ParseType: PType; forward;
 procedure Statements; forward;
+procedure Statement; forward;
 
 { Little helpers }
 
@@ -306,6 +319,42 @@ begin
   Signature := t;
 end;
 
+function EnumType: PType;
+var t: PType; o, last: PObj;
+begin
+  t := NewType(fEnum, 1, 1);
+  last := nil;
+  repeat
+    Next;
+    if tok <> sIdent then Mark('name expected');
+    o := NewObj(oConst, id, t);
+    o^.val := t^.len;
+    o^.exported := declExported;
+    Declare(o);
+    if last = nil then t^.fields := o else last^.next := o;
+    last := o;
+    inc(t^.len);
+    Next;
+  until tok <> sComma;
+  Expect(sRparen, ')');
+  if t^.len > 256 then Mark('more than 256 names');
+  EnumType := t;
+end;
+
+function SetOf(e: PType): PType;
+var t: PType;
+begin
+  if (e^.form <> fEnum) or (e^.len > 64) then Mark('a set is of an enumeration of at most 64 names');
+  t := NewType(fSet, 8, 8);
+  if e^.len <= 8 then t^.size := 1
+  else if e^.len <= 16 then t^.size := 2
+  else if e^.len <= 32 then t^.size := 4;
+  t^.align := t^.size;
+  t^.base := e;
+  t^.len := e^.len;
+  SetOf := t;
+end;
+
 function ParseType: PType;
 var t: PType; o: PObj; n: int64; vol: boolean;
 begin
@@ -350,7 +399,12 @@ begin
     sPacked, sRecord: t := RecordType;
     sVariant: t := VariantType;
     sProc: begin Next; t := Signature end;
-    sLparen, sSet: Mark('enumerations and sets come in stage 2');
+    sLparen: t := EnumType;
+    sSet: begin
+      Next;
+      Expect(sOf, 'of');
+      t := SetOf(ParseType());
+    end;
   else Mark('type expected');
   end;
   ParseType := t;
@@ -626,6 +680,76 @@ begin
   TempItem(x, at, off);
 end;
 
+{ A record literal: a zeroed temporary, with the fields named filled in. }
+procedure RecordLiteral(var x: TItem; t: PType);
+var f: PObj; a: TItem; seen: array[0..63] of longint; n, i: longint;
+begin
+  Next;
+  ZeroTemp(x, t);
+  n := 0;
+  if tok <> sRbrace then
+    repeat
+      if tok <> sIdent then Mark('field expected');
+      f := Find(t^.scope, id);
+      if f = nil then Mark('no field ' + NameOf(id));
+      if not f^.exported and (t^.module <> curModule) then Mark('field ' + NameOf(id) + ' isn''t exported');
+      for i := 0 to n - 1 do if seen[i] = id then Mark(NameOf(id) + ' twice');
+      if n <= High(seen) then begin seen[n] := id; inc(n) end;
+      Next;
+      Expect(sColon, ':');
+      Expression(a, f^.typ);
+      SetField(x, f, a);
+      if tok <> sComma then break;
+      Next;
+    until false;
+  Expect(sRbrace, '}');
+end;
+
+{ A set literal: the bits of the constant names, or'd at run time with
+  those of the others. }
+procedure SetLiteral(var x: TItem; t: PType);
+var e: TItem; bits, slot: int64;
+begin
+  Next;
+  if (t <> nil) and (t^.form <> fSet) then Mark('a set literal needs a set type');
+  bits := 0;
+  slot := 0;
+  if tok <> sRbrace then
+    repeat
+      if t = nil then Expression(e, nil) else Expression(e, t^.base);
+      if t = nil then begin
+        if e.typ^.form <> fEnum then Mark('a set holds names of an enumeration');
+        t := SetOf(e.typ);
+      end;
+      if not Same(e.typ, t^.base) then Mark('not a name of ' + TypeName(t^.base));
+      if e.mode = mConst then bits := bits or (int64(1) shl e.val)
+      else begin
+        if slot = 0 then begin
+          slot := AllocTemp(8, 8);
+          MovRI(RAX, 0);
+          Store(Mem(RBP, slot), RAX, 8);
+        end;
+        Value(e);
+        MovRR(RCX, RAX);
+        MovRI(RAX, 1);
+        Shift(shShl, RAX);
+        AluM(aluOr, RAX, Mem(RBP, slot));
+        Store(Mem(RBP, slot), RAX, 8);
+      end;
+      if tok <> sComma then break;
+      Next;
+    until false;
+  Expect(sRbrace, '}');
+  if t = nil then Mark('{} needs a known set type');
+  MakeConst(x, t, bits);
+  if slot <> 0 then begin
+    Load(RAX, Mem(RBP, slot), 8, false);
+    MovRI(RCX, bits);
+    Alu(aluOr, RAX, RCX);
+    x.mode := mReg;
+  end;
+end;
+
 procedure Factor(var x: TItem; want: PType);
 var called, vol: boolean; t: PType;
 begin
@@ -645,7 +769,8 @@ begin
     sLparen: begin Next; Expression(x, want); Expect(sRparen, ')') end;
     sNot: begin Next; Factor(x, nil); NotOp(x) end;
     sLbrak: ArrayLiteral(x, want);
-    sLbrace: Mark('record and set literals come in stage 2');
+    sLbrace: if (want <> nil) and (want^.form = fRecord) then RecordLiteral(x, want)
+             else SetLiteral(x, want);
     sArrow: begin
       Next;
       vol := tok = sVolatile;
@@ -694,22 +819,30 @@ procedure Expression(var x: TItem; want: PType);
 var op: TSym; y: TItem; L: longint;
 begin
   SimpleExpr(x, want);
-  if tok in [sEql, sNeq, sLss, sLeq, sGtr, sGeq] then begin
+  if tok in [sEql, sNeq, sLss, sLeq, sGtr, sGeq, sIn] then begin
     op := tok;
     Next;
     Op1(op, x, L);
-    SimpleExpr(y, nil);
+    if op = sIn then SimpleExpr(y, nil) else SimpleExpr(y, x.typ);
     Op2(op, x, y, L);
-  end else if tok = sIn then Mark('sets come in stage 2');
+  end;
 end;
 
 { Statements }
 
-procedure Loop(var brk: longint; var old: PLongint);
+procedure Loop(var lp: TLoop; var old: PLoop);
 begin
-  brk := NoLabel;
-  old := curBreak;
-  curBreak := @brk;
+  lp.brk := NoLabel;
+  lp.base := numDefers;
+  old := curLoop;
+  curLoop := @lp;
+end;
+
+{ Runs the deferred statements in force above base, newest first. }
+procedure RunDefers(base: longint);
+var i: longint;
+begin
+  for i := numDefers - 1 downto base do CallBack(defers[i]);
 end;
 
 procedure IfStatement;
@@ -743,7 +876,7 @@ begin
 end;
 
 procedure WhileStatement;
-var x: TItem; top, L, brk: longint; old: PLongint;
+var x: TItem; top, L: longint; lp: TLoop; old: PLoop;
 begin
   Next;
   top := pc;
@@ -751,41 +884,41 @@ begin
   Expect(sDo, 'do');
   L := NoLabel;
   CondJump(x, L);
-  Loop(brk, old);
+  Loop(lp, old);
   Statements;
   JmpBack(top);
   Expect(sEnd, 'end');
   FixLink(L);
-  FixLink(brk);
-  curBreak := old;
+  FixLink(lp.brk);
+  curLoop := old;
 end;
 
 procedure RepeatStatement;
-var x: TItem; top, L, brk: longint; old: PLongint;
+var x: TItem; top, L: longint; lp: TLoop; old: PLoop;
 begin
   Next;
   top := pc;
-  Loop(brk, old);
+  Loop(lp, old);
   Statements;
-  curBreak := old;
+  curLoop := old;
   Expect(sUntil, 'until');
   Expression(x, nil);
   L := NoLabel;
   CondJump(x, L);
   FixLinkTo(L, top);
-  FixLink(brk);
+  FixLink(lp.brk);
 end;
 
 procedure ForStatement;
 var
-  o: PObj; v, a, b, s: TItem; bslot, step: int64; top, exitL, brk: longint;
-  old: PLongint;
+  o: PObj; v, a, b, s: TItem; bslot, step: int64; top, exitL: longint;
+  lp: TLoop; old: PLoop;
 begin
   Next;
   if tok <> sIdent then Mark('name expected');
   o := Lookup(id);
-  if (o = nil) or (o^.cls <> oVar) or (o^.typ^.form <> fInt) then
-    Mark('a for loop needs an integer variable');
+  if (o = nil) or (o^.cls <> oVar) or not (o^.typ^.form in [fInt, fEnum]) then
+    Mark('a for loop needs an integer or enumeration variable');
   Next;
   Expect(sBecomes, ':=');
   MakeItem(v, o);
@@ -815,13 +948,13 @@ begin
   end else begin
     if step > 0 then Jcc(ccA, exitL) else Jcc(ccB, exitL)
   end;
-  Loop(brk, old);
+  Loop(lp, old);
   Statements;
-  curBreak := old;
+  curLoop := old;
   Expect(sEnd, 'end');
   ForNext(o, bslot, step, exitL, top);
   FixLink(exitL);
-  FixLink(brk);
+  FixLink(lp.brk);
 end;
 
 procedure MatchStatement;
@@ -854,7 +987,7 @@ begin
       if c^.val <= High(seen) then seen[c^.val] := true;
       Next;
       L := NoLabel;
-      MatchTag(p, c^.val, L);
+      MatchTag(p, c^.val, L, t^.form = fEnum);
       OpenScope(NewScope);
       if tok = sLparen then begin
         Next;
@@ -935,6 +1068,32 @@ begin
   end;
 end;
 
+{ defer s: s is compiled where it stands, as a little subroutine of the
+  procedure, jumped over; each way out of the statement list calls it. }
+procedure Defer;
+var L, pos, oldDepth: longint; oldLoop: PLoop; oldDeferring: boolean;
+begin
+  Next;
+  if directDefer then Mark('defer can''t be deferred');
+  if numDefers > High(defers) then Mark('too many deferred statements');
+  L := NoLabel;
+  Jmp(L);
+  pos := pc;
+  oldDepth := depth; oldLoop := curLoop; oldDeferring := deferring;
+  depth := 1;           { the return address }
+  curLoop := nil;
+  deferring := true;
+  directDefer := true;
+  Statement;
+  directDefer := false;
+  KeepTemps;
+  depth := oldDepth; curLoop := oldLoop; deferring := oldDeferring;
+  Ret;
+  FixLink(L);
+  defers[numDefers] := pos;
+  inc(numDefers);
+end;
+
 procedure Statement;
 var x, y: TItem; called: boolean; m: int64; c: TCall;
 begin
@@ -964,33 +1123,50 @@ begin
     sMatch: MatchStatement;
     sReturn: begin
       Next;
-      if tok = sSemicolon then ReturnNone
-      else begin
+      if deferring then Mark('return can''t leave a deferred statement');
+      if tok = sSemicolon then begin
+        RunDefers(0);
+        ReturnNone;
+      end else begin
         if (curResult <> nil) and curResult^.tuple then ReturnResults
         else begin
           Expression(x, curResult);
           ReturnValue(x);
+        end;
+        if numDefers > 0 then begin
+          if deferSlot = 0 then deferSlot := AllocPerm(8, 8);
+          Store(Mem(RBP, deferSlot), RAX, 8);
+          RunDefers(0);
+          Load(RAX, Mem(RBP, deferSlot), 8, false);
         end;
         ReturnJump;
       end;
     end;
     sBreak: begin
       Next;
-      if curBreak = nil then Mark('break outside a loop');
-      Jmp(curBreak^);
+      if curLoop = nil then Mark('break outside a loop');
+      RunDefers(curLoop^.base);
+      Jmp(curLoop^.brk);
     end;
-    sDefer: Mark('defer comes in stage 2');
+    sDefer: Defer;
   else Mark('statement expected');
   end;
   ReleaseTemps(m);
 end;
 
 procedure Statements;
+var base: longint; old: boolean;
 begin
+  base := numDefers;
+  old := directDefer;
+  directDefer := false;
   while not (tok in [sEnd, sElse, sElsif, sUntil, sBar, sEof]) do begin
     Statement;
     Expect(sSemicolon, ';');
   end;
+  RunDefers(base);
+  numDefers := base;
+  directDefer := old;
 end;
 
 { Declarations }
@@ -1033,6 +1209,7 @@ begin
     q := q^.next;
   end;
   BeginProc(sig, params);
+  deferSlot := 0;
   o := params;
   while o <> nil do begin
     q := o^.next;
@@ -1308,6 +1485,7 @@ begin
       body := NewChunk(secText, n, nameBody);
       m^.body := body;
       BeginProc(tBodySig, nil);
+      deferSlot := 0;
       curResult := nil;
       EnterBody(body);
       Statements;
@@ -1445,7 +1623,7 @@ initialization
   SetBss(argvChunk, 8, 8);
   tArgv := NewPtr(NewPtr(tU8, false), false);
   tBodySig := NewType(fProc, 8, 8);
-  curBreak := nil;
+  curLoop := nil;
   numPending := 0;
   firstModule := nil;
   lastModule := nil;
