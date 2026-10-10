@@ -1,2 +1,8 @@
 build/
 /raz
+# Programs make check builds next to their sources
+/examples/*
+!/examples/*.*
+/test/*/*
+!/test/*/*.*
+!/test/*/mods/
