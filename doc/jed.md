@@ -137,9 +137,26 @@ module's directory, then in each directory given with `-I`, then in the
 first of `Name.OS-ARCH.jed`, `Name.OS.jed`, `Name.ARCH.jed` and
 `Name.jed` that exists, where `OS-ARCH` is the target, for now only
 `linux-x86_64`. So a module whose code depends on the machine or the
-system comes in one file per target, each with the same exports, and
-the modules that import it don't change. Machine code (section 8) and
-system calls belong in such files.
+system comes in one file per target, and the modules that import it
+don't change. Machine code (section 8) and system calls belong in such
+files.
+
+The compiler holds every file of such a module to the same interface.
+When it takes one of `Name.*.jed`, it also reads the declarations of
+the others beside it, and of `Name.jed` if there is one, and reports an
+error unless they all export the same names, each the same kind of
+thing:
+
+- a constant of the same type (its value may differ: a system call
+  number, say);
+- a type of the same kind, and for a record or variant the same
+  exported fields and cases, with the same types (unexported fields,
+  and so the size and layout, may differ);
+- a variable of the same type;
+- a procedure of the same signature.
+
+Two types here are the same if they are built alike, a name in one file
+standing for the same name in another.
 
 **Module bodies.** A module may end with `begin` and statements, its
 body. Every module's body runs once, before the main module's `main`:

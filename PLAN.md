@@ -3,7 +3,7 @@
 jed (Polish *jeden*, one) is a small systems language in Wirth's
 tradition: full control of memory, volatile access, atomics, calls into
 C, generic modules. Its compiler is meant to be read in a long weekend:
-about 4,500 lines of Free Pascal, one pass, no IR, no optimizer, writing
+about 4,550 lines of Free Pascal, one pass, no IR, no optimizer, writing
 x86-64 machine code and the ELF file itself.
 
 The language is defined by `doc/jed.md`. Where this plan and the report
@@ -14,6 +14,10 @@ disagree, the report wins and this plan is fixed.
 - The compiler is Free Pascal 3.2.2, `{$mode objfpc}{$H-}`: records,
   pointers, shortstrings. No classes, ansistrings, exceptions, dynamic
   arrays or SysUtils.
+- The compiler stays under 5,000 lines, and compiles at least 400,000
+  lines of jed a second, from reading the sources to writing the
+  executable. `make bench` measures it, and a step that breaks either
+  limit isn't done.
 - Clarity over cleverness. Every unit opens with a header comment: what
   it is, what it depends on, what it leaves out. Comments say why, and
   what wherever a layout or encoding isn't obvious.
@@ -52,7 +56,7 @@ disagree, the report wins and this plan is fixed.
 | File | Lines | What |
 |---|---|---|
 | `src/scan.pas` | ~430 | Symbols, literals, comments, error messages |
-| `src/sym.pas` | ~390 | Types, objects, scopes, layout |
+| `src/sym.pas` | ~450 | Types, objects, scopes, layout |
 | `src/x64.pas` | ~400 | Code buffer, chunks, fixups, instruction encoder |
 | `src/gen.pas` | ~660 | Items: loading, storing, copying, frames, calls |
 | `src/parse.pas` | ~1,900 | Declarations, statements, expressions, built-ins |
@@ -64,7 +68,7 @@ disagree, the report wins and this plan is fixed.
 
 Stage 1: the core
 
-- [ ] 1. Language report, `doc/jed.md`. Reviewed and approved before
+- [x] 1. Language report, `doc/jed.md`. Reviewed and approved before
       any more code.
 - [ ] 2. Scanner and symbol table, `scan.pas` and `sym.pas` (drafts
       exist), brought in line with the report; they compile.
@@ -76,7 +80,7 @@ Stage 1: the core
       modules and `extern`.
 - [ ] 6. `lib/Rt.jed`, `lib/Out.jed`; examples (hello, args, variants
       and slices, volatile); `make check` runs them against expected
-      output.
+      output; `make bench` times the compiler on generated jed.
 
 Stage 2: allocation, results, generics
 
