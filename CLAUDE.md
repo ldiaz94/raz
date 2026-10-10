@@ -1,0 +1,72 @@
+# Working on jed
+
+Read `PLAN.md` (the plan, ground rules, steps) and `doc/jed.md` (the
+language report) first. The report defines the language; where the
+plan disagrees, the report wins and the plan is fixed.
+
+## Setup and checks
+
+    apt-get install -y fp-compiler   # Free Pascal 3.2.2, if fpc is missing
+    make jed       # the compiler, ./jed; its library is lib/
+    make check     # every example and test against its expected output
+    make bench     # must report at least 400,000 lines a second
+    make loc       # lines of the compiler; the code column is the budget
+    make tests     # the small Pascal tests of scan, x64, link and elf
+
+`make check` must pass before every commit. Tests: `test/run/X.jed`
+with `X.expect` (stdout), optional `X.status` and `X.args`; modules they
+import in `test/run/mods`. `test/err/X.jed` must fail to compile with
+the text in `X.err`. Examples in `examples/` work the same way.
+
+## How we work
+
+- Work goes stage by stage. A stage starts only on the owner's explicit
+  go-ahead; within it, one commit per step, pushed as it is done, then
+  stop for review. Never start a stage, or change the report's
+  language, without being asked.
+- Language changes go into `doc/jed.md` first, for the owner to review,
+  before any code.
+- Commits: author `Luis <42945842+ldiaz94@users.noreply.github.com>`, unsigned
+  (`--no-gpg-sign`), no attribution trailer. Push to `main`. No pull
+  requests unless asked.
+- Budget: about 5,000 lines of code (blank and comment lines not
+  counted), within 10%; at least 400,000 lines of jed a second.
+- Style: clarity over cleverness; each unit opens with what it is, what
+  it depends on and what it leaves out; comments say why. Match the
+  report's plain, short prose in documentation.
+
+## Where things stand
+
+Stages 1 and 2 are done (steps 1-10). Next is stage 3 (steps 11-14),
+waiting for a go-ahead. Its first task is to write into the report, for
+review: `F32` and untyped real literals, `extern var`, `link static`,
+`Rt.exit` and `Rt.atExit`, and how to mix `Out` with C's `stdio` (flush
+one before using the other). Unions are not added: the report shows
+reading a C union as an array of words through pointer conversions.
+
+## Readings of the report already taken
+
+These are how the compiler behaves; keep them unless the owner says
+otherwise.
+
+- A named and an anonymous type built alike are the same; `type A = B`
+  is an alias. A hex literal above high(I64) is a `U64`.
+- `p^.f` and `p^[i]` are explicit; `p[i]` on a pointer to an array is
+  an error. A statement starts with a name, so `^T(x)^ := v` isn't one.
+- No `BOOL` to integer conversion (left out until needed).
+- `for`: the step is a constant; the loop never steps past the limit, so
+  it can't wrap; afterwards the variable holds the last value it took;
+  the body may assign it. Leave as is.
+- Several results come back through a hidden pointer; a code procedure
+  returns two in rax and rdx.
+- `NEW(p, a)` requires `a: ^Mem.Allocator` and calls its `alloc` field:
+  the one library type the compiler knows by name. `Rt.fail` and
+  `Rt.eq` are found by name too.
+- A set literal takes its type from its first name when nothing else
+  gives it; `{}` needs a known type. String constants can be indexed
+  and sliced.
+- A deferred statement's frame slots stay reserved for the rest of its
+  procedure.
+- Every failed check says "index out of range"; some errors point at
+  the symbol after the offending expression. Error messages are to be
+  improved later, all together.
