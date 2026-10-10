@@ -154,10 +154,26 @@ begin
   x.val := v;
 end;
 
+{ A real constant: untyped, unless typed later. Its value is an F64,
+  which for an F32 is one an F32 can hold. }
 procedure MakeReal(var x: TItem; r: double);
 begin
-  MakeConst(x, tReal, 0);
+  MakeConst(x, tRConst, 0);
   Move(r, x.val, 8);
+end;
+
+function IsF32(t: PType): boolean;
+begin
+  IsF32 := (t^.form = fReal) and (t^.size = 4);
+end;
+
+{ Gives a real constant the real type t, rounded to it. }
+procedure RealTo(var x: TItem; t: PType);
+var r: double;
+begin
+  r := RealOf(x);
+  if IsF32(t) then MakeReal(x, single(r)) else MakeReal(x, r);
+  x.typ := t;
 end;
 
 function RealOf(const x: TItem): double;
@@ -233,9 +249,13 @@ end;
 
 { A constant into r: an error constant is the address of its chunk. }
 procedure ConstTo(r: longint; const x: TItem);
+var f: single;
 begin
   if (x.typ^.form = fError) and (x.val > 0) then Lea(r, MemRip(x.val - 1, 0))
-  else MovRI(r, x.val);
+  else if IsF32(x.typ) then begin
+    f := RealOf(x);
+    MovRI(r, PLongword(@f)^);
+  end else MovRI(r, x.val);
 end;
 
 function MemOf(var x: TItem; r: longint): TMem;
@@ -259,7 +279,7 @@ end;
 
 function ScalarSize(t: PType): longint;
 begin
-  if t^.form in [fInt, fBool, fEnum, fSet] then ScalarSize := t^.size
+  if t^.form in [fInt, fBool, fEnum, fSet, fReal] then ScalarSize := t^.size
   else ScalarSize := 8;
 end;
 
@@ -427,7 +447,8 @@ begin
   end;
   if x.mode in [mType, mBuiltin, mNone, mCase] then Mark('not a value');
   if Same(s, t) then exit;
-  if (s^.form = fConst) and (t^.form = fInt) then begin
+  if (s = tRConst) and (t^.form = fReal) then RealTo(x, t)
+  else if (s^.form = fConst) and (t^.form = fInt) then begin
     if (x.mode = mConst) and not Fits(x.val, t) then Mark('constant doesn''t fit ' + TypeName(t));
     x.typ := t;
   end else if (s^.form = fNil) and (t^.form in [fPtr, fProc, fError]) then
@@ -605,7 +626,7 @@ procedure Neg(var x: TItem);
 begin
   if x.typ^.form = fReal then begin
     if x.mode = mConst then x.val := x.val xor low(int64)
-    else begin Value(x); Btc(RAX, 63) end;
+    else begin Value(x); if IsF32(x.typ) then Btc(RAX, 31) else Btc(RAX, 63) end;
   end else if IsInt(x.typ) then begin
     if x.mode = mConst then x.val := Cut(-x.val, x.typ)
     else begin Value(x); Unary(3, RAX); Norm(x.typ) end;
@@ -706,7 +727,9 @@ begin
   end;
 end;
 
-function FoldReal(op: TSym; const x, y: TItem; var r: TItem): boolean;
+{ Folds x op y, of the real type t: an F32 rounded at each step, as
+  the machine would. }
+function FoldReal(op: TSym; const x, y: TItem; t: PType; var r: TItem): boolean;
 var a, b: double;
 begin
   a := RealOf(x); b := RealOf(y);
@@ -724,6 +747,7 @@ begin
     sGeq: MakeConst(r, tBool, ord(a >= b));
   else FoldReal := false;
   end;
+  if r.typ^.form = fReal then RealTo(r, t);
 end;
 
 procedure Op2(op: TSym; var x, y: TItem; L: longint);
@@ -732,7 +756,7 @@ const
   CcSigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccL, ccLE, ccG, ccGE);
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
 var
-  xt, yt, t: PType; r: TItem; scale, sh: longint; isPtr, unsign: boolean; a, b: int64;
+  xt, yt, t: PType; r: TItem; scale, sh: longint; isPtr, unsign, f: boolean; a, b: int64;
 begin
   xt := x.typ; yt := y.typ;
   if y.mode in [mType, mBuiltin, mNone, mCase] then Mark('not a value');
@@ -768,7 +792,7 @@ begin
   { the type of the result, and the checks }
   t := nil; scale := 1; isPtr := false;
   if IsInt(xt) and IsInt(yt) then begin
-    if op = sSlash then Mark('/ is for F64; integers use div');
+    if op = sSlash then Mark('/ is for reals; integers use div');
     if op in [sShl, sShr] then begin
       if xt^.form = fConst then t := tConst else t := xt
     end else if (xt^.form = fConst) and (yt^.form = fConst) then t := tConst
@@ -781,8 +805,12 @@ begin
     end else if Same(xt, yt) then t := xt
     else Mark('different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
   end else if (xt^.form = fReal) and (yt^.form = fReal) then begin
-    if not (op in Rel + [sPlus, sMinus, sTimes, sSlash]) then Mark('not an F64 operator');
-    t := tReal;
+    if not (op in Rel + [sPlus, sMinus, sTimes, sSlash]) then Mark('not a real operator');
+    if xt = tRConst then t := yt
+    else if (yt = tRConst) or Same(xt, yt) then t := xt
+    else Mark('different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
+    if (x.mode = mConst) and (x.typ <> t) then RealTo(x, t);
+    if (y.mode = mConst) and (y.typ <> t) then RealTo(y, t);
   end else if (xt^.form = fBool) and (yt^.form = fBool) then begin
     if not (op in [sXor, sEql, sNeq]) then Mark('not a BOOL operator');
     t := tBool;
@@ -815,7 +843,7 @@ begin
   { constants }
   if (x.mode = mConst) and (y.mode = mConst) and not isPtr then begin
     if t^.form = fReal then begin
-      if not FoldReal(op, x, y, r) then Mark('not an F64 operator');
+      if not FoldReal(op, x, y, t, r) then Mark('not a real operator');
       x := r;
     end else if t^.form = fSet then begin
       a := x.val; b := y.val;
@@ -848,17 +876,18 @@ begin
   if t^.form = fReal then begin
     MovqXR(0, RAX);
     MovqXR(1, RCX);
+    f := IsF32(t);
     case op of
-      sPlus: Sse($58, 0, 1);
-      sMinus: Sse($5C, 0, 1);
-      sTimes: Sse($59, 0, 1);
-      sSlash: Sse($5E, 0, 1);
-      sEql: begin Ucomisd(0, 1); SetCC(ccE, RAX); SetCC(ccNP, RCX); Alu(aluAnd, RAX, RCX) end;
-      sNeq: begin Ucomisd(0, 1); SetCC(ccNE, RAX); SetCC(ccP, RCX); Alu(aluOr, RAX, RCX) end;
-      sLss: begin Ucomisd(1, 0); SetCC(ccA, RAX) end;
-      sLeq: begin Ucomisd(1, 0); SetCC(ccAE, RAX) end;
-      sGtr: begin Ucomisd(0, 1); SetCC(ccA, RAX) end;
-      sGeq: begin Ucomisd(0, 1); SetCC(ccAE, RAX) end;
+      sPlus: Sse($58, 0, 1, f);
+      sMinus: Sse($5C, 0, 1, f);
+      sTimes: Sse($59, 0, 1, f);
+      sSlash: Sse($5E, 0, 1, f);
+      sEql: begin Ucomis(0, 1, f); SetCC(ccE, RAX); SetCC(ccNP, RCX); Alu(aluAnd, RAX, RCX) end;
+      sNeq: begin Ucomis(0, 1, f); SetCC(ccNE, RAX); SetCC(ccP, RCX); Alu(aluOr, RAX, RCX) end;
+      sLss: begin Ucomis(1, 0, f); SetCC(ccA, RAX) end;
+      sLeq: begin Ucomis(1, 0, f); SetCC(ccAE, RAX) end;
+      sGtr: begin Ucomis(0, 1, f); SetCC(ccA, RAX) end;
+      sGeq: begin Ucomis(0, 1, f); SetCC(ccAE, RAX) end;
     end;
     if not (op in Rel) then MovqRX(RAX, 0);
   end else if t^.form = fSet then begin
@@ -915,7 +944,7 @@ begin
 end;
 
 procedure Convert(var x: TItem; t: PType);
-var s: PType; r: double; L1, L2: longint;
+var s: PType; r: double; L1, L2: longint; f: boolean;
 begin
   s := x.typ;
   if x.mode in [mType, mBuiltin, mNone, mCase, mStr] then Mark('can''t convert this');
@@ -935,9 +964,11 @@ begin
       if t^.len < 64 then begin MovRI(RCX, (int64(1) shl t^.len) - 1); Alu(aluAnd, RAX, RCX) end;
     end;
   end else if IsInt(s) and (t^.form = fReal) then begin
+    f := IsF32(t);
     if x.mode = mConst then begin
       if (s^.form = fInt) and not s^.signed then r := qword(x.val) else r := x.val;
       MakeReal(x, r);
+      RealTo(x, t);
     end else begin
       Value(x);
       if (s^.form = fInt) and not s^.signed and (s^.size = 8) then begin
@@ -945,18 +976,24 @@ begin
         L1 := NoLabel; L2 := NoLabel;
         TestRR(RAX, RAX);
         Jcc(ccS, L1);
-        Cvtsi2sd(0, RAX);
+        Cvtsi2s(0, RAX, f);
         Jmp(L2);
         FixLink(L1);
         MovRR(RCX, RAX);
         ShiftI(shShr, RCX, 1);
         AluI(aluAnd, RAX, 1);
         Alu(aluOr, RCX, RAX);
-        Cvtsi2sd(0, RCX);
-        Sse($58, 0, 0);
+        Cvtsi2s(0, RCX, f);
+        Sse($58, 0, 0, f);
         FixLink(L2);
-      end else Cvtsi2sd(0, RAX);
+      end else Cvtsi2s(0, RAX, f);
       MovqRX(RAX, 0);
+    end;
+  end else if (s^.form = fReal) and (t^.form = fReal) then begin
+    { F32 to F64, F64 to F32, or a real constant to either }
+    if x.mode = mConst then RealTo(x, t)
+    else begin
+      Value(x); MovqXR(0, RAX); Sse($5A, 0, 0, IsF32(s)); MovqRX(RAX, 0)
     end;
   end else if (s^.form = fReal) and (t^.form = fInt) then begin
     if x.mode = mConst then begin
@@ -965,7 +1002,7 @@ begin
         x.val := Cut(low(int64), t)
       else x.val := Cut(trunc(r), t);
     end else begin
-      Value(x); MovqXR(0, RAX); Cvttsd2si(RAX, 0); Norm(t)
+      Value(x); MovqXR(0, RAX); Cvtts2si(RAX, 0, IsF32(s)); Norm(t)
     end;
   end else if (IsInt(s) or (s^.form in [fPtr, fProc, fNil])) and (t^.form in [fPtr, fProc]) then begin
     if x.mode <> mConst then Value(x);
@@ -1000,10 +1037,13 @@ begin
   if c.n > High(c.slots) then Mark('too many arguments');
   if p = nil then begin
     { past the parameters of a C procedure that ends in ...: a string
-      goes as a C string, an integer constant as an I64 }
+      goes as a C string, an integer constant as an I64, a real
+      constant as an F64; C takes no F32 there }
     if not c.sig^.variadic then Mark('too many arguments');
     if a.mode = mStr then Coerce(a, tPtrU8)
     else if a.typ^.form = fConst then Coerce(a, tI64)
+    else if a.typ = tRConst then Coerce(a, tReal)
+    else if IsF32(a.typ) then Mark('an F32 goes to ... as F64(x)')
     else if not IsScalar(a.typ) then Mark('only a single value goes to ...');
     c.isF[c.n] := a.typ^.form = fReal;
     c.slots[c.n] := ToSlot(a);

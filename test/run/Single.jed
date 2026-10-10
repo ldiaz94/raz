@@ -1,0 +1,81 @@
+(* F32: arithmetic rounded at each step, conversions, real constants
+   that take either type, calls to C and to code. *)
+module Single;
+import Out, C;
+link "libm.so.6";
+
+const
+    third = 1.0 / 3.0;          (* in double precision, then rounded once *)
+    tenth = 0.1;
+
+type
+    Vec = record x, y, z: F32; end;
+
+extern proc sqrtf(x: F32): F32;
+extern proc fabsf(x: F32): F32;
+extern proc sqrt(x: F64): F64;
+
+(* addss xmm0, xmm0; ret *)
+proc twice(x: F32): F32;
+code 0F3H, 0FH, 58H, 0C0H, 0C3H;
+
+proc dot(a, b: Vec): F32;
+begin
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+end;
+
+proc mix(a: F32; n: I64; b: F64; c: F32): F64;
+begin
+    return F64(a) + F64(n) + b + F64(c);
+end;
+
+proc show(name: ^U8; x: F64);
+begin
+    Out.flush;
+    C.printf("%s %.9g\n", name, x);
+    C.fflush(C.stdout);
+end;
+
+proc main*;
+var
+    a, b, s: F32; d: F64; v, w: Vec; i: I64; big: U64; arr: [4]F32;
+begin
+    Out.int(SIZE(F32)); Out.char(' '); Out.int(SIZE(Vec)); Out.ln;
+    a := tenth;
+    b := 0.2;
+    show("a+b", F64(a + b));
+    d := tenth;
+    show("d+0.2", d + 0.2);
+    a := third;
+    show("third", F64(a));
+    a := 1.0;
+    b := 3.0;
+    show("1/3", F64(a / b));
+    s := 0.0;
+    for i := 1 to 10 do s := s + tenth; end;
+    show("ten tenths", F64(s));
+    if s # 1.0 then Out.str("not one\n"); end;
+    if (s > 0.9) and (s <= 1.1) and not (s < 0.0) then Out.str("near one\n"); end;
+    a := -a;
+    show("negated", F64(a));
+    show("I64(-2.75)", F64(I64(F32(-2.75))));
+    Out.int(I64(F32(1.0E10))); Out.ln;
+    big := 0FFFFFFFFFFFFFFFFH;
+    show("U64 max", F64(F32(big)));
+    show("I32 big", F64(F32(I32(16777217))));
+    show("F32(1E40)", F64(F32(d * 1.0E41)));
+    show("F32(1/3)", F64(F32(1.0 / 3.0)));
+    v := {x: 1.0, y: 2.0, z: 3.0};
+    w := {x: 0.5, y: 0.25, z: 2.0};
+    show("dot", F64(dot(v, w)));
+    show("sqrtf", F64(sqrtf(2.0)));
+    show("fabsf", F64(fabsf(-1.5)));
+    show("twice", F64(twice(1.25)));
+    show("mix", mix(1.5, 2, 0.25, 0.125));
+    for i := 0 to 3 do arr[i] := F32(i) * 0.5; end;
+    show("arr", F64(arr[3]));
+    C.printf("%f %f\n", F64(arr[1]), 0.5);
+    C.fflush(C.stdout);
+end;
+
+end Single.

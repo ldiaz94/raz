@@ -135,10 +135,11 @@ procedure MovqXR(x, r: longint);
 procedure MovqRX(r, x: longint);
 procedure MovsdXM(x: longint; const m: TMem);
 procedure MovsdMX(const m: TMem; x: longint);
-procedure Sse(op, x, y: longint);   { F2 0F op: 58 add, 59 mul, 5C sub, 5E div }
-procedure Ucomisd(x, y: longint);
-procedure Cvtsi2sd(x, r: longint);
-procedure Cvttsd2si(r, x: longint);
+{ The real instructions take single: F32 (ss) rather than F64 (sd) }
+procedure Sse(op, x, y: longint; single: boolean);   { 58 add, 59 mul, 5C sub, 5E div, 5A convert }
+procedure Ucomis(x, y: longint; single: boolean);
+procedure Cvtsi2s(x, r: longint; single: boolean);
+procedure Cvtts2si(r, x: longint; single: boolean);
 procedure Btc(r, bit: longint);
 
 procedure Jmp(var L: longint);
@@ -554,24 +555,27 @@ begin
   OpM($F2, false, $110F, x, m);
 end;
 
-procedure Sse(op, x, y: longint);
+const
+  RealPfx: array[boolean] of longint = ($F2, $F3);
+
+procedure Sse(op, x, y: longint; single: boolean);
 begin
-  OpR($F2, false, $0F or op shl 8, x, y);
+  OpR(RealPfx[single], false, $0F or op shl 8, x, y);
 end;
 
-procedure Ucomisd(x, y: longint);
+procedure Ucomis(x, y: longint; single: boolean);
 begin
-  OpR($66, false, $2E0F, x, y);
+  if single then OpR(0, false, $2E0F, x, y) else OpR($66, false, $2E0F, x, y);
 end;
 
-procedure Cvtsi2sd(x, r: longint);
+procedure Cvtsi2s(x, r: longint; single: boolean);
 begin
-  OpR($F2, true, $2A0F, x, r);
+  OpR(RealPfx[single], true, $2A0F, x, r);
 end;
 
-procedure Cvttsd2si(r, x: longint);
+procedure Cvtts2si(r, x: longint; single: boolean);
 begin
-  OpR($F2, true, $2C0F, r, x);
+  OpR(RealPfx[single], true, $2C0F, r, x);
 end;
 
 procedure Btc(r, bit: longint);

@@ -112,7 +112,7 @@ Stage 3: calling C, and what comes with it
       at each newline when standard output is a terminal, when full,
       by `Out.flush`, and at exit. The report says how to mix `Out`
       with C's `stdio`: flush one before using the other.
-- [ ] 12. `F32`: arithmetic, conversions, calls; real literals become
+- [x] 12. `F32`: arithmetic, conversions, calls; real literals become
       untyped constants that take `F32` or `F64`.
 - [ ] 13. A thread-safe `lib/Heap.jed`: its bad sizes refused, and a
       marker in each block's header so that freeing a block twice, or

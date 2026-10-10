@@ -1,0 +1,11 @@
+module F32Dots;
+import C;
+
+proc main*;
+var x: F32;
+begin
+    x := 1.5;
+    C.printf("%f\n", x);
+end;
+
+end F32Dots.

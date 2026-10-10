@@ -38,9 +38,8 @@ the text in `X.err`. Examples in `examples/` work the same way.
 ## Where things stand
 
 Stages 1 and 2 are done (steps 1-10). Stage 3 (steps 11-14) is under
-way: its report changes are written and approved, and step 11 is done.
-Next is step 12, `F32`, which also makes an `F32` given to `...` an
-error.
+way: its report changes are written and approved, and steps 11 and 12
+are done. Next is step 13, threads and a thread-safe heap.
 
 `test/libc` runs its programs over `lib/Sys.jed`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
@@ -78,6 +77,9 @@ otherwise.
   name like `Rt.exit`, before any module body runs.
 - Past an extern's parameters, a string goes as a C string and an
   integer constant as an `I64`.
+- A real constant is held as an F64; one typed `F32` holds a value an
+  F32 can hold. An `F32` in a register is its low 32 bits; the upper
+  ones are left as they fall.
 - Every failed check says "index out of range"; some errors point at
   the symbol after the offending expression. Error messages are to be
   improved later, all together.

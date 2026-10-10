@@ -1283,7 +1283,7 @@ begin
   q := sig^.fields;
   while q <> nil do begin
     if not q^.isVar and not IsScalar(q^.typ) then
-      Mark('a code procedure takes integers, BOOL, F64, pointers and procedures');
+      Mark('a code procedure takes integers, BOOL, reals, pointers and procedures');
     if (q^.typ^.form = fReal) and not q^.isVar then inc(nf) else inc(ni);
     q := q^.next;
   end;
@@ -1362,7 +1362,7 @@ begin
     q := t^.fields;
     while q <> nil do begin
       if q^.isVar or not IsScalar(q^.typ) then
-        Mark('C takes integers, BOOL, F64, pointers and procedures');
+        Mark('C takes integers, BOOL, reals, pointers and procedures');
       q := q^.next;
     end;
     if (t^.base <> nil) and not IsScalar(t^.base) then Mark('C returns a single value');

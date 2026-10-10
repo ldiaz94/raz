@@ -23,7 +23,8 @@ type
   TForm = (fNone, fBool, fInt, fReal, fConst, fNil, fStr, fPtr, fArray,
     fSlice, fRecord, fVariant, fProc, fEnum, fSet, fError);
   { fConst is the type of an untyped integer constant; fStr of a string
-    literal, whose length the literal carries }
+    literal, whose length the literal carries. F32 and F64 are fReal,
+    told apart by size, and so is tRConst, an untyped real constant. }
 
   TClass = (oConst, oType, oVar, oProc, oModule, oField, oCase, oBuiltin);
 
@@ -120,7 +121,7 @@ const
 
 var
   tI8, tI16, tI32, tI64, tU8, tU16, tU32, tU64: PType;
-  tBool, tReal, tError, tConst, tNil, tStr, tNone, tPtrU8, tBytes: PType;
+  tBool, tF32, tReal, tRConst, tError, tConst, tNil, tStr, tNone, tPtrU8, tBytes: PType;
   curModule: PModule;
 
 function NewType(form: TForm; size, align: int64): PType;
@@ -372,6 +373,7 @@ begin
   end;
   case t^.form of
     fConst: TypeName := 'an integer constant';
+    fReal: TypeName := 'a real constant';
     fNil: TypeName := 'nil';
     fStr: TypeName := 'a string';
     fPtr: if t^.vol then TypeName := '^VOLATILE ' + TypeName(t^.base)
@@ -473,7 +475,9 @@ initialization
   tU32 := Basic('U32', fInt, 4, false);
   tU64 := Basic('U64', fInt, 8, false);
   tBool := Basic('BOOL', fBool, 1, false);
+  tF32 := Basic('F32', fReal, 4, false);
   tReal := Basic('F64', fReal, 8, false);
+  tRConst := NewType(fReal, 8, 8);
   tError := Basic('ERROR', fError, 8, false);
   tConst := NewType(fConst, 8, 8);
   tConst^.signed := true;

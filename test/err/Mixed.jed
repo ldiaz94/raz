@@ -1,0 +1,9 @@
+module Mixed;
+
+proc main*;
+var x: F32; y: F64;
+begin
+    y := x + y;
+end;
+
+end Mixed.
