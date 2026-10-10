@@ -8,8 +8,8 @@
 # A program without X.expect is compiled, not run. test/libc puts
 # lib/Sys.jed, over the C library, before the system call one.
 # Programs in test/err must not compile, and must print X.err. Then
-# the version, tools/Doc.jed, the report's examples, and the library's
-# own tests.
+# the version, tools/Doc.jed, the report's examples, tools/Pretty.jed,
+# and the library's own tests.
 
 jed=./jed
 out=build/check
@@ -89,6 +89,25 @@ if ./jed -o $out/Doc tools/Doc.jed 2>$out/Doc.cerr; then
     done
 else
     echo "FAIL tools/Doc.jed: $(cat $out/Doc.cerr)"; fail=$((fail + 1))
+fi
+
+# tools/Pretty.jed: each test/pretty/X.jed comes out as X.expect, which
+# comes out as it is; so do the library, the examples and the tools
+if ./jed -o $out/Pretty tools/Pretty.jed 2>$out/Pretty.cerr; then
+    for f in test/pretty/*.jed; do
+        want=test/pretty/$(basename $f .jed).expect
+        if $out/Pretty $f | cmp -s - $want && $out/Pretty $want | cmp -s - $want; then
+            pass=$((pass + 1))
+        else echo "FAIL Pretty $f: output differs"; fail=$((fail + 1)); fi
+    done
+    for f in lib/*.jed examples/*.jed tools/*.jed; do
+        if ! $out/Pretty $f | cmp -s - $f; then
+            echo "FAIL Pretty $f: not formatted"; fail=$((fail + 1))
+        fi
+    done
+    pass=$((pass + 1))
+else
+    echo "FAIL tools/Pretty.jed: $(cat $out/Pretty.cerr)"; fail=$((fail + 1))
 fi
 
 # each library module's main is its test; Sys over C is tested in test/libc

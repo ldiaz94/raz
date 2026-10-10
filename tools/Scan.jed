@@ -1,0 +1,171 @@
+(* Scan: the symbols of jed source, for the tools. Unlike the
+   compiler's scanner it keeps comments, as symbols of their own, and
+   says where each symbol is in the text and whether a line break comes
+   before it. It doesn't check what it reads: a malformed number is
+   read as far as it goes, and a string, character or comment left open
+   ends with its line or the text. *)
+module Scan;
+
+type
+    Kind* = (word, number, literal, symbol, comment, eof);
+
+    (* word is an identifier or a reserved word; literal a string or a
+       character; symbol an operator or delimiter. *)
+    Scanner* = record
+        src*: []U8;
+        pos*: I64;            (* where the next symbol is looked for *)
+        kind*: Kind;          (* the current symbol *)
+        start*, stop*: I64;   (* its text: src[start..stop] *)
+        lineBreak*: BOOL;     (* a line break comes before it, or it is the first *)
+    end;
+
+const
+    words = "and begin break by code const defer div do else elsif end extern for forward if import in link match mod module not of or packed proc record repeat return set shl shr then to type until var variant VOLATILE while xor";
+
+proc isSpace*(c: U8): BOOL;
+begin
+    return (c = ' ') or (c = '\t') or (c = '\n') or (c = '\r');
+end;
+
+proc isWord*(c: U8): BOOL;
+begin
+    return (c >= 'a') and (c <= 'z') or (c >= 'A') and (c <= 'Z')
+        or (c >= '0') and (c <= '9') or (c = '_');
+end;
+
+proc isDigit(c: U8): BOOL;
+begin
+    return (c >= '0') and (c <= '9');
+end;
+
+(* Whether w is one of the words of list, which are separated by
+   single spaces. *)
+proc among*(w, list: []U8): BOOL;
+var i, j: I64;
+begin
+    i := 0;
+    while i < LEN(list) do
+        j := i;
+        while (j < LEN(list)) and (list[j] # ' ') do INC(j); end;
+        if list[i..j] = w then return true; end;
+        i := j + 1;
+    end;
+    return false;
+end;
+
+(* Whether w is one of the report's reserved words. *)
+proc reserved*(w: []U8): BOOL;
+begin
+    return among(w, words);
+end;
+
+(* The scanner at the start of src; next gives the first symbol. *)
+proc init*(s: ^Scanner; src: []U8);
+begin
+    s^ := {src: src, kind: eof};
+end;
+
+(* Past the comment that starts at p, its nested comments with it. *)
+proc pastComment(src: []U8; p: I64): I64;
+var depth: I64;
+begin
+    depth := 0;
+    repeat
+        if (src[p] = '(') and (p + 1 < LEN(src)) and (src[p + 1] = '*') then
+            INC(depth); INC(p, 2);
+        elsif (src[p] = '*') and (p + 1 < LEN(src)) and (src[p + 1] = ')') then
+            DEC(depth); INC(p, 2);
+        else
+            INC(p);
+        end;
+    until (depth = 0) or (p >= LEN(src));
+    return p;
+end;
+
+(* Past the number that starts at p: digits and letters, then a real's
+   point, digits and exponent, as in 0FFH and 2.0E-3. *)
+proc pastNumber(src: []U8; p: I64): I64;
+begin
+    while (p < LEN(src)) and isWord(src[p]) do INC(p); end;
+    if (p + 1 < LEN(src)) and (src[p] = '.') and isDigit(src[p + 1]) then
+        INC(p);
+        while (p < LEN(src)) and isWord(src[p]) do INC(p); end;
+        if (src[p - 1] = 'E') and (p < LEN(src)) and ((src[p] = '-') or (src[p] = '+')) then
+            INC(p);
+            while (p < LEN(src)) and isWord(src[p]) do INC(p); end;
+        end;
+    end;
+    return p;
+end;
+
+(* Past the string or character that starts at p, or to its line's end. *)
+proc pastLiteral(src: []U8; p: I64): I64;
+var q: U8;
+begin
+    q := src[p];
+    INC(p);
+    while (p < LEN(src)) and (src[p] # q) and (src[p] # '\n') do
+        if (src[p] = '\\') and (p + 1 < LEN(src)) then INC(p); end;
+        INC(p);
+    end;
+    if (p < LEN(src)) and (src[p] = q) then INC(p); end;
+    return p;
+end;
+
+(* Whether src[p..] starts with the symbol t. *)
+proc at(src: []U8; p: I64; t: []U8): BOOL;
+begin
+    return (p + LEN(t) <= LEN(src)) and (src[p..p + LEN(t)] = t);
+end;
+
+(* On to the next symbol. *)
+proc next*(s: ^Scanner);
+var src: []U8; p: I64; c: U8;
+begin
+    src := s^.src;
+    p := s^.pos;
+    s^.lineBreak := p = 0;
+    while (p < LEN(src)) and isSpace(src[p]) do
+        if src[p] = '\n' then s^.lineBreak := true; end;
+        INC(p);
+    end;
+    s^.start := p;
+    if p >= LEN(src) then
+        s^.kind := eof;
+    else
+        c := src[p];
+        if at(src, p, "(*") then
+            s^.kind := comment; p := pastComment(src, p);
+        elsif isDigit(c) then
+            s^.kind := number; p := pastNumber(src, p);
+        elsif isWord(c) then
+            s^.kind := word;
+            while (p < LEN(src)) and isWord(src[p]) do INC(p); end;
+        elsif (c = '"') or (c = '\'') then
+            s^.kind := literal; p := pastLiteral(src, p);
+        else
+            s^.kind := symbol;
+            if at(src, p, "...") then INC(p, 3);
+            elsif at(src, p, ":=") or at(src, p, "<=") or at(src, p, ">=") or at(src, p, "..") then
+                INC(p, 2);
+            else
+                INC(p);
+            end;
+        end;
+    end;
+    s^.stop := p;
+    s^.pos := p;
+end;
+
+proc text*(s: ^Scanner): []U8;
+begin
+    return s^.src[s^.start..s^.stop];
+end;
+
+(* Whether the current symbol is t. *)
+proc is*(s: ^Scanner; t: []U8): BOOL;
+begin
+    return text(s) = t;
+end;
+
+end Scan.

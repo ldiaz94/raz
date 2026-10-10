@@ -1,0 +1,339 @@
+(* Pretty: jed source laid out the one way.
+
+       Pretty Module.jed
+   prints the module, formatted.
+
+       Pretty -w File.jed...
+   rewrites each file that isn't formatted already.
+
+   Every line break and comment stays where it is. A line is indented
+   4 spaces for each block it stands in: the statements of if, while,
+   for, repeat and begin, the fields of a record or variant, the
+   declarations of const, type and var. end, until, else, elsif and a
+   match's arms stand at the level of the statement that opened them;
+   module, import, proc, the sections and begin at the margin, with the
+   comment just before them. A line that goes on with the expression of
+   the line before keeps its indent, moved as far as the statement's
+   first line moved; so does the text of a comment.
+
+   Within a line, a binary operator has one space on each side, a unary
+   minus none after it, and , and ; none before them and one after. A
+   comment after code keeps its column. Other spaces stay as written,
+   so that lined-up match arms stay lined up. No line ends in spaces. *)
+module Pretty;
+import Out, Rt, Buf, Heap, Scan, Files;
+
+const
+    width = 4;   (* the spaces of a level *)
+    openers = "if while for match record variant begin repeat";
+    declarations = "module import link extern proc const type var begin code";
+    binaryWords = "div mod and or xor shl shr in";
+    binarySymbols = "+ - * / = # < <= > >= :=";
+
+var
+    sc: Scan.Scanner;   (* the source, at the symbol being written *)
+    src: []U8;
+    out: Buf.Buf;
+    lineAt: I64;        (* where the line being written starts in out *)
+    lineDelta: I64;     (* how far this line's indent moved *)
+
+    (* the blocks open, each with the indent of the statement that
+       opened it *)
+    bases: [100]I64;
+    depth: I64;
+    brackets: I64;      (* brackets open *)
+    inSection: BOOL;    (* among the declarations of const, type or var *)
+    stmtIndent: I64;    (* the indent of the current statement's first line *)
+    stmtDelta: I64;     (* and how far that moved *)
+
+    (* the last symbol that wasn't a comment, and the one before it *)
+    prev, prev2: Scan.Scanner;
+    prevBinary, prevUnary: BOOL;
+    afterComment: BOOL; (* the last symbol written was a comment *)
+    last: I64;          (* where the last symbol written ends in src *)
+
+proc spaces(n: I64);
+begin
+    while n > 0 do Buf.add(ADR(out), ' '); DEC(n); end;
+end;
+
+(* Drops the spaces at the end of the line in out. *)
+proc trim;
+var s: []U8;
+begin
+    s := Buf.bytes(ADR(out));
+    while (out.len > lineAt) and ((s[out.len - 1] = ' ') or (s[out.len - 1] = '\t')) do
+        DEC(out.len);
+    end;
+end;
+
+proc newLine;
+begin
+    trim;
+    Buf.add(ADR(out), '\n');
+    lineAt := out.len;
+end;
+
+(* Where the line holding p starts in src. *)
+proc lineStart(p: I64): I64;
+begin
+    while (p > 0) and (src[p - 1] # '\n') do DEC(p); end;
+    return p;
+end;
+
+(* The column src[p] is at, a tab going on to the next multiple of 8. *)
+proc column(p: I64): I64;
+var i, col: I64;
+begin
+    col := 0;
+    for i := lineStart(p) to p - 1 do
+        if src[i] = '\t' then col := (col div 8 + 1) * 8; else INC(col); end;
+    end;
+    return col;
+end;
+
+(* Whether s ends an operand, so that a - after it subtracts. *)
+proc endsOperand(s: ^Scan.Scanner): BOOL;
+begin
+    if s^.kind = Scan.word then return not Scan.reserved(Scan.text(s)); end;
+    return (s^.kind = Scan.number) or (s^.kind = Scan.literal)
+        or Scan.is(s, ")") or Scan.is(s, "]") or Scan.is(s, "}") or Scan.is(s, "^");
+end;
+
+(* The symbol after the current one that isn't a comment. *)
+proc following: Scan.Scanner;
+var s: Scan.Scanner;
+begin
+    s := sc;
+    repeat Scan.next(ADR(s)); until s.kind # Scan.comment;
+    return s;
+end;
+
+(* Whether the current symbol is a binary operator. A * after a name
+   and before ; , : = ) or a procedure's parameters exports the name. *)
+proc binary: BOOL;
+var n: Scan.Scanner;
+begin
+    if sc.kind = Scan.word then return Scan.among(Scan.text(ADR(sc)), binaryWords); end;
+    if (sc.kind # Scan.symbol) or not Scan.among(Scan.text(ADR(sc)), binarySymbols) then
+        return false;
+    end;
+    if Scan.is(ADR(sc), "-") or Scan.is(ADR(sc), "+") then return endsOperand(ADR(prev)); end;
+    if Scan.is(ADR(sc), "*") and (prev.kind = Scan.word) then
+        n := following();
+        if Scan.among(Scan.text(ADR(n)), "; , : = )") then return false; end;
+        if Scan.is(ADR(n), "(") and Scan.is(ADR(prev2), "proc") then return false; end;
+    end;
+    return true;
+end;
+
+(* Whether the current symbol, first on its line, goes on with the
+   expression of the line before. *)
+proc continues: BOOL;
+var t: []U8;
+begin
+    if (brackets > 0) or prevBinary or Scan.is(ADR(prev), ",") then return true; end;
+    t := Scan.text(ADR(sc));
+    if sc.kind = Scan.word then return Scan.among(t, binaryWords) or Scan.among(t, "then do of"); end;
+    return (sc.kind = Scan.symbol) and Scan.among(t, binarySymbols);
+end;
+
+(* Whether s starts a declaration at the margin: proc( starts a
+   procedure type. *)
+proc declaration(s: Scan.Scanner): BOOL;
+begin
+    if (s.kind # Scan.word) or not Scan.among(Scan.text(ADR(s)), declarations) then return false; end;
+    if not Scan.is(ADR(s), "proc") then return true; end;
+    Scan.next(ADR(s));
+    return not Scan.is(ADR(s), "(");
+end;
+
+(* The indent of the block's own lines, or of its end. *)
+proc inner: I64;
+begin
+    if depth > 0 then return bases[depth - 1] + width; end;
+    if inSection then return width; end;
+    return 0;
+end;
+
+proc outer: I64;
+begin
+    if depth > 0 then return bases[depth - 1]; end;
+    return 0;
+end;
+
+(* The indent of the line the current symbol starts, which was at old. *)
+proc indent(old: I64): I64;
+var n: Scan.Scanner;
+begin
+    if continues() then
+        if old + stmtDelta < 0 then return 0; end;
+        return old + stmtDelta;
+    end;
+    if sc.kind = Scan.comment then
+        n := following();
+        if n.lineBreak and declaration(n) then return 0; end;
+        return inner();
+    end;
+    if declaration(sc) then
+        depth := 0;
+        inSection := Scan.among(Scan.text(ADR(sc)), "const type var");
+        return 0;
+    end;
+    if Scan.among(Scan.text(ADR(sc)), "end until else elsif |") then
+        return outer();
+    end;
+    return inner();
+end;
+
+(* Starts the line of the current symbol, at its indent. *)
+proc startLine;
+var old, new: I64;
+begin
+    old := column(sc.start);
+    new := indent(old);
+    lineDelta := new - old;
+    if (sc.kind # Scan.comment) and not continues() then
+        stmtIndent := new;
+        stmtDelta := lineDelta;
+    end;
+    spaces(new);
+end;
+
+(* The spaces between the last symbol written and the current one, on
+   the same line. *)
+proc gap(binaryNow: BOOL);
+var n: I64;
+begin
+    if sc.kind = Scan.comment then
+        n := column(sc.start) + lineDelta - (out.len - lineAt);
+        if (n < 1) and (sc.start > last) then n := 1; end;
+        spaces(n);
+    elsif afterComment then
+        Buf.str(ADR(out), src[last..sc.start]);
+    elsif Scan.is(ADR(sc), ",") or Scan.is(ADR(sc), ";") then
+    elsif Scan.is(ADR(prev), ",") or Scan.is(ADR(prev), ";") or binaryNow or prevBinary then
+        if not prevUnary then spaces(1); end;
+    elsif not prevUnary then
+        Buf.str(ADR(out), src[last..sc.start]);
+    end;
+end;
+
+(* The current symbol as written; each line of a comment after its
+   first is moved as far as the line the comment starts on. *)
+proc write;
+var i, k: I64;
+begin
+    i := sc.start;
+    while i < sc.stop do
+        if src[i] = '\n' then
+            newLine;
+            k := i + 1;
+            while (k < sc.stop) and (src[k] = ' ') do INC(k); end;
+            if (k < sc.stop) and (src[k] # '\n') then spaces(k - (i + 1) + lineDelta); end;
+            i := k;
+        else
+            Buf.add(ADR(out), src[i]);
+            INC(i);
+        end;
+    end;
+end;
+
+(* After a symbol that isn't a comment: the blocks and brackets it opens
+   or closes. *)
+proc track(binaryNow: BOOL);
+var t: []U8;
+begin
+    t := Scan.text(ADR(sc));
+    if sc.kind = Scan.word then
+        if Scan.among(t, openers) then
+            if depth = LEN(bases) then Rt.stop("Pretty: blocks nested too deep"); end;
+            bases[depth] := stmtIndent;
+            INC(depth);
+        elsif ((t = "end") or (t = "until")) and (depth > 0) then
+            DEC(depth);
+        end;
+    elsif sc.kind = Scan.symbol then
+        if Scan.among(t, "( [ {") then INC(brackets);
+        elsif Scan.among(t, ") ] }") and (brackets > 0) then DEC(brackets);
+        end;
+    end;
+    prevUnary := (Scan.is(ADR(sc), "-") or Scan.is(ADR(sc), "+")) and not binaryNow;
+    prevBinary := binaryNow;
+    prev2 := prev;
+    prev := sc;
+end;
+
+(* The line breaks in src[from..upto]. *)
+proc lineBreaks(from, upto: I64);
+var i: I64;
+begin
+    for i := from to upto - 1 do
+        if src[i] = '\n' then newLine; end;
+    end;
+end;
+
+(* src, formatted, into out. *)
+proc format(text: []U8);
+var b: BOOL;
+begin
+    src := text;
+    Buf.reset(ADR(out));
+    lineAt := 0;
+    depth := 0;
+    brackets := 0;
+    inSection := false;
+    stmtIndent := 0;
+    stmtDelta := 0;
+    Scan.init(ADR(sc), src);
+    prev := sc;
+    prev2 := sc;
+    prevBinary := false;
+    prevUnary := false;
+    afterComment := false;
+    last := 0;
+    Scan.next(ADR(sc));
+    while sc.kind # Scan.eof do
+        b := (sc.kind # Scan.comment) and binary();
+        if sc.lineBreak then
+            lineBreaks(last, sc.start);
+            startLine;
+        else
+            gap(b);
+        end;
+        write;
+        afterComment := sc.kind = Scan.comment;
+        if not afterComment then track(b); end;
+        last := sc.stop;
+        Scan.next(ADR(sc));
+    end;
+    lineBreaks(last, LEN(src));
+    trim;
+end;
+
+proc main*;
+var b: Buf.Buf; i: I64; path: []U8;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    Buf.init(ADR(out), Heap.heap);
+    if (ARGC() >= 3) and (Files.arg(1) = "-w") then
+        for i := 2 to ARGC() - 1 do
+            path := Files.arg(i);
+            Buf.reset(ADR(b));
+            if not Files.read(path, ADR(b)) then Rt.stop("Pretty: can't read a file"); end;
+            format(Buf.bytes(ADR(b)));
+            if Buf.bytes(ADR(out)) # Buf.bytes(ADR(b)) then
+                if not Files.write(path, Buf.bytes(ADR(out))) then Rt.stop("Pretty: can't write a file"); end;
+                Out.str(path); Out.ln;
+            end;
+        end;
+    elsif ARGC() = 2 then
+        if not Files.read(Files.arg(1), ADR(b)) then Rt.stop("Pretty: can't read the file"); end;
+        format(Buf.bytes(ADR(b)));
+        Out.str(Buf.bytes(ADR(out)));
+    else
+        Rt.stop("usage: Pretty Module.jed, or Pretty -w File.jed...");
+    end;
+end;
+
+end Pretty.

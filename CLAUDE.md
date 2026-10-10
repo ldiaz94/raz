@@ -14,8 +14,9 @@ plan disagrees, the report wins and the plan is fixed.
     make tests     # the small Pascal tests of scan, x64, link and elf
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version
+    make fmt       # lib/, examples/ and tools/ are formatted
 
-`make check` also runs `tools/Doc.jed`, the report's whole examples,
+`make check` also runs `tools/Doc.jed` and `tools/Pretty.jed`, the report's whole examples,
 each library module's own `main` (its test), and the vim and emacs
 support headless where they are installed (`apt-get install -y vim
 emacs-nox`): each example must indent back exactly as written.
@@ -23,7 +24,7 @@ emacs-nox`): each example must indent back exactly as written.
 `make check` must pass before every commit. Tests: `test/run/X.jed`
 with `X.expect` (stdout), optional `X.status` and `X.args`; modules they
 import in `test/run/mods`. `test/err/X.jed` must fail to compile with
-the text in `X.err`. Examples in `examples/` work the same way.
+the text in `X.err`. `test/pretty/X.jed` must format to `X.expect`. Examples in `examples/` work the same way.
 
 ## How we work
 
@@ -44,9 +45,10 @@ the text in `X.err`. Examples in `examples/` work the same way.
 
 ## Where things stand
 
-Steps 1-17 are done: the language, the tools, `README.md` and the
-guide to the compiler, `doc/compiler.md`. Next, only on the owner's
-word, is step 18, the formatter. Keep `doc/compiler.md`'s table of
+Steps 1-18 are done: the language, the tools (`tools/Doc.jed`, and
+the formatter, `tools/Pretty.jed`, over the shared `tools/Scan.jed`),
+`README.md` and the guide to the compiler, `doc/compiler.md`. Nothing
+further is planned; new work starts only on the owner's word. Keep `doc/compiler.md`'s table of
 lines and its routine names true when the compiler changes. Left
 for later at the owner's word: tagging versions, and a rewrite of var
 parameters.

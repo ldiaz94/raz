@@ -1,0 +1,46 @@
+(* Files: what the tools need of the command line and of files: an
+   argument as a string, and a whole file read or written. *)
+module Files;
+import Sys, Buf;
+
+(* Argument i, a C string, as a slice. *)
+proc arg*(i: I64): []U8;
+var s: ^U8; n: I64;
+begin
+    s := ARGV()[i];
+    n := 0;
+    while s[n] # 0 do INC(n); end;
+    return s[0..n];
+end;
+
+(* Adds the file at path to b; false if it can't be read. *)
+proc read*(path: []U8; b: ^Buf.Buf): BOOL;
+var fd, n: I64; chunk: [4096]U8;
+begin
+    fd := Sys.openRead(path);
+    if fd < 0 then return false; end;
+    repeat
+        n := Sys.read(fd, chunk);
+        if n > 0 then Buf.str(b, chunk[0..n]); end;
+    until n <= 0;
+    Sys.close(fd);
+    return n = 0;
+end;
+
+(* Makes the file at path hold data; false if it can't be written. *)
+proc write*(path, data: []U8): BOOL;
+var fd, n, at: I64;
+begin
+    fd := Sys.create(path);
+    if fd < 0 then return false; end;
+    at := 0;
+    while at < LEN(data) do
+        n := Sys.write(fd, data[at..LEN(data)]);
+        if n <= 0 then Sys.close(fd); return false; end;
+        at := at + n;
+    end;
+    Sys.close(fd);
+    return true;
+end;
+
+end Files.

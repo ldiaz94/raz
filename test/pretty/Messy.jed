@@ -1,0 +1,57 @@
+(* A module laid out badly. *)
+  module Messy;
+import Out,Rt;
+
+const
+max* =10;
+  min=-1;
+
+type
+      Pair* = record
+  a*,b: I64;   (* two numbers *)
+          end;
+  Shape = variant
+  circle(r: I64);
+  dot;
+  end;
+
+    (* the bigger *)
+  proc max2*(a,b:I64):I64;
+var m : I64;
+       begin
+if a>b then m:=a;
+   elsif a=b then
+ m :=a ;
+      else
+  m:= b;end;
+ return m;
+     end;
+
+proc area(s: Shape): I64;
+begin
+match s of
+    | circle(r):  return 3*r*r;
+| dot:
+    return 0;
+  end;
+end;
+
+proc main*;
+var i,s:I64; p: Pair;
+begin
+  s:=0;
+      for i:=-3 to max-1 do s:=s+i*2- -1;end;
+    repeat
+  s := s-1 ;
+      until s<0;
+  if (s # -1) or (max2(3,4) # 4)
+         or (area({dot}) # 0) then Rt.stop("Messy"); end;
+  p := {a: -s, b:2};
+   Out.int(p.a);    (* the first *)
+     Out.ln;
+       (* and done:
+          a comment that moves
+          with its line *)
+end;
+
+end Messy.

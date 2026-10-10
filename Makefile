@@ -52,8 +52,16 @@ stress: jed | build
 	build/Stress 40000 200
 	(ulimit -v 60000; build/Stress fail)
 
+# the formatter, tools/Pretty.jed: the library, examples and tools are
+# formatted already
+fmt: jed | build
+	./jed -o build/Pretty tools/Pretty.jed
+	@fail=0; for f in lib/*.jed examples/*.jed tools/*.jed; do \
+	    build/Pretty $$f | cmp -s - $$f || { echo "not formatted: $$f"; fail=1; }; \
+	done; test $$fail = 0
+
 # lines of the compiler: all of them, and those that aren't blank or comments
 loc:
 	@python3 test/loc.py src/*.pas
 
-.PHONY: units tests check gdb bench stress loc clean
+.PHONY: units tests check gdb bench stress fmt loc clean

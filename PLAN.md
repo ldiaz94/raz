@@ -163,9 +163,10 @@ Wrap up
 
 Later
 
-- [ ] 18. `tools/Pretty.jed`, a formatter that keeps every line break
+- [x] 18. `tools/Pretty.jed`, a formatter that keeps every line break
       and comment where it is: it fixes indentation (4 spaces a level)
       and the spaces around operators and after `,` and `;`, and
       leaves formatted code as it is. It shares with `Doc.jed` a
-      scanner that keeps comments. `make fmt` checks that `lib/`,
-      `examples/` and `tools/` come through unchanged.
+      scanner that keeps comments, `tools/Scan.jed`. `make fmt` checks
+      that `lib/`, `examples/` and `tools/` come through unchanged, and
+      `make check` does too, with the cases in `test/pretty`.

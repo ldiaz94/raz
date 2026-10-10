@@ -39,6 +39,7 @@ a million lines a second.
 | `lib/` | The library, in jed; the compiler finds it beside itself |
 | `examples/` | Small programs, each with the output it should give |
 | `tools/Doc.jed` | Prints what a module exports, with its comments |
+| `tools/Pretty.jed` | The formatter: fixes indentation and spacing |
 | `editor/` | Support for vim and emacs |
 | `test/` | Tests, and the scripts that run them |
 | `PLAN.md` | How the compiler was built, step by step |
@@ -57,6 +58,7 @@ emacs is installed.
     make bench      # the compiler's speed on a program of 350,000 lines
     make stress     # 40,000 threads, started and joined
     make gdb        # gdb stops at a line of jed and names it
+    make fmt        # the library, examples and tools are formatted
     make loc        # the compiler's lines
     make tests      # tests of the scanner, encoder and linker on their own
 
@@ -114,6 +116,14 @@ Each library module's `main` is its test, which `make check` runs.
 detection: add it to `runtimepath`. `editor/emacs/jed-mode.el` is a
 major mode: put it on `load-path` and `(require 'jed-mode)`. Both
 colour the language and indent it as the examples are indented.
+
+`tools/Pretty.jed` formats a whole file the same way: it fixes the
+indentation, 4 spaces a level, and the spaces around operators and
+after `,` and `;`, and keeps every line break and comment where it is.
+
+    $ ./jed -o Pretty tools/Pretty.jed
+    $ ./Pretty Module.jed       # prints it, formatted
+    $ ./Pretty -w *.jed         # rewrites those that aren't, and names them
 
 ## Versions
 
