@@ -60,13 +60,14 @@ only comment), as `make loc` counts them:
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/scan.pas` | 548 | 471 | Symbols, literals, comments, error messages |
-| `src/sym.pas` | 452 | 380 | Types, objects, scopes, layout |
+| `src/sym.pas` | 476 | 396 | Types, objects, scopes, layout |
 | `src/x64.pas` | 613 | 491 | Code buffer, chunks, fixups, instruction encoder |
 | `src/gen.pas` | 1,177 | 1,035 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 1,370 | 1,265 | Declarations, statements, expressions, built-ins |
+| `src/parse.pas` | 1,347 | 1,250 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 123 | 92 | Tree shaking, layout, patching |
 | `src/elf.pas` | 185 | 147 | Static ELF, symbol table |
-| `src/jed.pas` | 113 | 85 | The command line, the entry point |
+| `src/jed.pas` | 111 | 83 | The command line, the entry point |
+| total | 4,580 | 3,965 | |
 
 ## Steps
 
