@@ -78,7 +78,8 @@ byte with hexadecimal value HH, which needn't make valid UTF-8).
 Error messages give the line and the column, counted in characters.
 
 **Comments** are `(*` ... `*)` and nest. By convention, the comment
-just before an exported declaration is its documentation.
+just before an exported declaration is its documentation, and the one
+before `module` is the module's.
 
 **Operators and delimiters:**
 

@@ -129,8 +129,9 @@ Stage 3: calling C, and what comes with it
 
 Tools
 
-- [ ] 15. `tools/Doc.jed`, a jed program: prints a module's exported
-      declarations, each with the comment just before it, and pulls
+- [ ] 15. `tools/Doc.jed`, a jed program: prints a module's own
+      comment, the one before `module`, then its exported
+      declarations, each with the comment just before it; and pulls
       out the examples of `doc/jed.md` that are whole modules.
       `make check` also compiles those examples, running the ones with
       a `main`, and runs each library module's `main` as its test.
