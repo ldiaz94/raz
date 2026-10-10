@@ -1,0 +1,3 @@
+module Cycle;
+import CycleB;
+end Cycle.

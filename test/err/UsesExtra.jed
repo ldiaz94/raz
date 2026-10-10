@@ -1,0 +1,3 @@
+module UsesExtra;
+import Extra;
+end UsesExtra.

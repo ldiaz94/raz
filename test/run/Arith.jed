@@ -1,0 +1,74 @@
+module Arith;
+import Out;
+
+const
+    K = 10;
+    M = K * 3 + 2;
+    Big = 0FFFFFFFFFFFFFFFFH;
+
+var g: I64;
+
+proc show(s: []U8; n: I64);
+begin
+    Out.str(s); Out.str(" "); Out.int(n); Out.ln;
+end;
+
+proc showb(s: []U8; t: BOOL);
+begin
+    if t then show(s, 1); else show(s, 0); end;
+end;
+
+proc main*;
+var a, b: I64; u: U8; i8: I8; w: U32; x: U64; r: F64; t: BOOL;
+begin
+    show("M", M);
+    a := 17; b := 5;
+    show("add", a + b);
+    show("sub", a - b);
+    show("mul", a * b);
+    show("div", -7 div 2);
+    show("mod", -7 mod 2);
+    show("divv", (0 - a) div b);
+    show("modv", (0 - a) mod b);
+    show("prec", 2 + 3 * 4);
+    show("neg", -a * b);
+    u := 200;
+    u := u + 100;
+    show("u8wrap", I64(u));
+    i8 := 127;
+    i8 := i8 + 1;
+    show("i8wrap", I64(i8));
+    w := 0FFFFFFFFH;
+    w := w + 2;
+    show("u32wrap", I64(w));
+    x := Big;
+    showb("u64>i", x > 5);
+    showb("i64<", -1 < 5);
+    show("shl", 1 shl 10);
+    show("shr", -16 shr 2);
+    show("ushr", I64(U64(-16) shr 60));
+    show("and", 12 and 10);
+    show("or", 12 or 3);
+    show("xor", 12 xor 10);
+    show("not", not 0);
+    r := F64(a) / 2.0;
+    show("real", I64(r * 10.0));
+    r := -2.75;
+    show("trunc", I64(r));
+    showb("nan", 0.0 / 0.0 = 0.0 / 0.0);
+    showb("rlt", 1.5 < 2.5);
+    show("u64real", I64(F64(x) / 1.0E18));
+    t := (a > 3) and (b < 3);
+    if not t then show("bool", 1); end;
+    t := (a > 3) or (g div 0 = 1);
+    if t then show("shortcut", 1); end;
+    g := 42;
+    show("global", g);
+    show("char", 'A');
+    show("utf8", 'é');
+    show("hexconst", 0FFH);
+    show("cut", I64(U8(300)));
+    show("sext", I64(I8(U8(255))));
+end;
+
+end Arith.

@@ -1,0 +1,3 @@
+module UsesRec;
+import Rec;
+end UsesRec.

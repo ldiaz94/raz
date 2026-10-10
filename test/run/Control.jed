@@ -1,0 +1,42 @@
+module Control;
+import Out;
+
+proc main*;
+var i, j, n: I64; u: U8; k: I8;
+begin
+    for i := 1 to 5 do Out.int(i); end; Out.ln;
+    for i := 10 to 1 by -3 do Out.int(i); Out.str(" "); end; Out.ln;
+    for i := 0 to 10 by 4 do Out.int(i); Out.str(" "); end; Out.ln;
+    for i := 5 to 1 do Out.str("never"); end;
+    n := 0;
+    for u := 250 to 255 do n := n + 1; end;
+    Out.int(n); Out.ln;
+    n := 0;
+    for k := 120 to 127 by 3 do n := n + 1; end;
+    Out.int(n); Out.ln;
+    i := 0;
+    while i < 3 do
+        j := 0;
+        while true do
+            if j = 2 then break; end;
+            Out.int(i * 10 + j); Out.str(" ");
+            j := j + 1;
+        end;
+        i := i + 1;
+    end;
+    Out.ln;
+    i := 0;
+    repeat i := i + 1; if i = 4 then break; end; until i = 10;
+    Out.int(i); Out.ln;
+    for i := 1 to 4 do
+        if i = 1 then Out.str("one");
+        elsif i = 2 then Out.str("two");
+        elsif i = 3 then Out.str("three");
+        else Out.str("many");
+        end;
+        Out.str(" ");
+    end;
+    Out.ln;
+end;
+
+end Control.

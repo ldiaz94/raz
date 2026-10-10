@@ -1,0 +1,3 @@
+module Utf;
+var é: I64;
+end Utf.

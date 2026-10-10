@@ -1,0 +1,11 @@
+module Bodies;
+import Out, A := First, Second;
+
+proc main*;
+begin
+    Out.str("main "); Out.int(A.count); Out.int(Second.count); Out.ln;
+end;
+
+begin
+    Out.str("Bodies ");
+end Bodies.

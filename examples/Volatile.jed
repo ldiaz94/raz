@@ -1,0 +1,32 @@
+(* A record laid over memory that something else may change: here a
+   page of the program's own, as a device's registers would be. Every
+   access through the ^VOLATILE pointer is one instruction of its
+   size, in the order written. *)
+module Volatile;
+import Out;
+
+type
+    Uart = record
+        data: U32;
+        status: U32;
+        control: U8;
+    end;
+
+var page: [64]U8;
+
+proc main*;
+var dev: ^VOLATILE Uart; i: I64;
+begin
+    dev := ^VOLATILE Uart(ADR(page));
+    dev^.control := 1;
+    dev^.status := 0FFH;
+    for i := 0 to 2 do
+        dev^.data := U32('a' + i);
+        Out.char(U8(dev^.data));
+    end;
+    Out.ln;
+    FENCE;
+    Out.int(I64(page[8])); Out.str(" "); Out.int(I64(dev^.status)); Out.ln;
+end;
+
+end Volatile.

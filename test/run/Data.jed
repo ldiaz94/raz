@@ -1,0 +1,72 @@
+module Data;
+import Out;
+
+type
+    Cell = record ch: U8; attr: U8; end;
+    Mixed = record a: U8; b: I64; c: U16; end;
+    Packed = packed record a: U8; b: I64; c: U16; end;
+    Node = record next: ^Node; val: I64; end;
+    Grid = [3][4]I32;
+    Pair = record x, y: I64; end;
+
+var
+    nodes: [5]Node;
+    grid: Grid;
+    gp: Pair;
+
+proc sum(p: ^Node): I64;
+var s: I64;
+begin
+    s := 0;
+    while p # nil do
+        s := s + p^.val;
+        p := p^.next;
+    end;
+    return s;
+end;
+
+proc main*;
+var
+    c: Cell; cells: [4]Cell; m: Mixed; i, j: I64; p, q: ^I64; arr: [8]I64;
+    s: []I64; pp: Pair; bp: ^U8;
+begin
+    Out.int(SIZE(Cell)); Out.str(" ");
+    Out.int(SIZE(Mixed)); Out.str(" ");
+    Out.int(SIZE(Packed)); Out.str(" ");
+    Out.int(SIZE(Grid)); Out.str(" ");
+    Out.int(SIZE([]U8)); Out.ln;
+    c.ch := 'x'; c.attr := 7;
+    cells[2] := c;
+    Out.int(I64(cells[2].ch)); Out.str(" "); Out.int(I64(cells[2].attr)); Out.ln;
+    for i := 0 to 4 do
+        nodes[i].val := i * i;
+        if i < 4 then nodes[i].next := ADR(nodes[i + 1]); end;
+    end;
+    Out.int(sum(ADR(nodes[0]))); Out.ln;
+    for i := 0 to 2 do
+        for j := 0 to 3 do grid[i][j] := I32(i * 10 + j); end;
+    end;
+    Out.int(I64(grid[2][3])); Out.str(" "); Out.int(I64(grid[1][0])); Out.ln;
+    for i := 0 to 7 do arr[i] := i * 100; end;
+    p := ADR(arr[0]);
+    q := p + 5;
+    Out.int(q^); Out.str(" "); Out.int(q - p); Out.str(" "); Out.int(p[3]); Out.ln;
+    s := arr[2..6];
+    Out.int(LEN(s)); Out.str(" "); Out.int(s[0]); Out.str(" "); Out.int(s[3]); Out.ln;
+    s := s[1..3];
+    Out.int(LEN(s)); Out.str(" "); Out.int(s[0]); Out.ln;
+    s := p[1..3];
+    Out.int(s[1]); Out.ln;
+    s := arr;
+    Out.int(LEN(s)); Out.ln;
+    pp.x := 3; pp.y := 4;
+    gp := pp;
+    pp.x := 99;
+    Out.int(gp.x); Out.str(" "); Out.int(gp.y); Out.ln;
+    m.a := 1; m.b := -2; m.c := 65535;
+    Out.int(m.b); Out.str(" "); Out.int(I64(m.c)); Out.ln;
+    bp := ^U8(ADR(m));
+    Out.int(I64(ADR(m.c)) - I64(bp)); Out.ln;
+end;
+
+end Data.

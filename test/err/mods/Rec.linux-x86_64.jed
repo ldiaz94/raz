@@ -1,0 +1,4 @@
+module Rec;
+type R* = record a*: I64; b: I64; end;
+proc f*(r: ^R); begin end;
+end Rec.

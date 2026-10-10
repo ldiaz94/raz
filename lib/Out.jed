@@ -1,0 +1,57 @@
+(* Writing text and numbers to standard output. Nothing is buffered:
+   each call is one write. *)
+module Out;
+import Sys;
+
+proc str*(s: []U8);
+begin
+    Sys.write(Sys.stdout, s);
+end;
+
+proc char*(c: U8);
+var b: [1]U8;
+begin
+    b[0] := c;
+    Sys.write(Sys.stdout, b);
+end;
+
+proc ln*;
+begin
+    str("\n");
+end;
+
+(* n in decimal *)
+proc int*(n: I64);
+var buf: [20]U8; i: I64; u: U64;
+begin
+    u := U64(n);
+    if n < 0 then u := 0 - u; end;
+    i := 20;
+    repeat
+        i := i - 1;
+        buf[i] := U8(u mod 10) + '0';
+        u := u div 10;
+    until u = 0;
+    if n < 0 then
+        i := i - 1;
+        buf[i] := '-';
+    end;
+    str(buf[i..20]);
+end;
+
+(* n in hexadecimal, digits digits at least *)
+proc hex*(n: U64; digits: I64);
+var buf: [16]U8; i: I64; d: U8;
+begin
+    i := 16;
+    repeat
+        i := i - 1;
+        d := U8(n and 15);
+        if d < 10 then buf[i] := d + '0'; else buf[i] := d - 10 + 'A'; end;
+        n := n shr 4;
+        digits := digits - 1;
+    until (n = 0) and (digits <= 0) or (i = 0);
+    str(buf[i..16]);
+end;
+
+end Out.

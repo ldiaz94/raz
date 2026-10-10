@@ -1,0 +1,25 @@
+(* Prints its arguments, one per line, and exits with how many. *)
+module Args;
+import Out;
+
+(* The length of a C string. *)
+proc len(s: ^U8): I64;
+var n: I64;
+begin
+    n := 0;
+    while s[n] # 0 do n := n + 1; end;
+    return n;
+end;
+
+proc main*: I64;
+var i: I64; s: ^U8;
+begin
+    for i := 1 to ARGC() - 1 do
+        s := ARGV()[i];
+        Out.str(s[0..len(s)]);
+        Out.ln;
+    end;
+    return ARGC() - 1;
+end;
+
+end Args.

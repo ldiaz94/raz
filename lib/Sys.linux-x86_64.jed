@@ -1,0 +1,24 @@
+(* System calls on Linux for x86-64. Other targets supply their own
+   Sys, with the same exports. *)
+module Sys;
+
+const
+    stdin* = 0;
+    stdout* = 1;
+    stderr* = 2;
+
+(* Writes s to the file descriptor fd; the number of bytes written, or
+   minus an errno. *)
+proc write*(fd: I64; s: []U8): I64;
+begin
+    if LEN(s) = 0 then return 0; end;
+    return SYSCALL(1, fd, ADR(s[0]), LEN(s));
+end;
+
+(* Ends the program, at once, with status. *)
+proc exit*(status: I64);
+begin
+    SYSCALL(231, status);
+end;
+
+end Sys.

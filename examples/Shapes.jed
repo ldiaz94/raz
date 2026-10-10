@@ -1,0 +1,39 @@
+(* Variants and slices: a list of shapes, measured. *)
+module Shapes;
+import Out;
+
+type
+    Shape = variant
+        circle(r: I64);
+        rect(w, h: I64);
+        dot;
+    end;
+
+(* Twice the area, rounded down, of a circle taken as pi = 22/7. *)
+proc area(s: Shape): I64;
+begin
+    match s of
+    | circle(r):  return 44 * r * r div 7;
+    | rect(w, h): return 2 * w * h;
+    | dot:        return 0;
+    end;
+end;
+
+proc total(shapes: []Shape): I64;
+var i, sum: I64;
+begin
+    sum := 0;
+    for i := 0 to LEN(shapes) - 1 do sum := sum + area(shapes[i]); end;
+    return sum;
+end;
+
+proc main*;
+var shapes: [4]Shape;
+begin
+    shapes := [circle(7), rect(3, 4), dot, rect(1, 1)];
+    Out.str("all: "); Out.int(total(shapes)); Out.ln;
+    Out.str("last two: "); Out.int(total(shapes[2..4])); Out.ln;
+    Out.str("none: "); Out.int(total(shapes[0..0])); Out.ln;
+end;
+
+end Shapes.

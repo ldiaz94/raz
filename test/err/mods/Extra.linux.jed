@@ -1,0 +1,3 @@
+module Extra;
+type R* = record a*: I64; hidden: U8; end;
+end Extra.

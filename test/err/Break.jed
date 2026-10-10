@@ -1,0 +1,6 @@
+module Break;
+proc main*;
+begin
+    break;
+end;
+end Break.

@@ -1,0 +1,11 @@
+module Match;
+type S = variant a; b; c; end;
+proc main*;
+var s: S;
+begin
+    match s of
+    | a: s := b;
+    | b:
+    end;
+end;
+end Match.

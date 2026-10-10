@@ -1,0 +1,14 @@
+module First;
+import Out;
+
+var count*: I64;
+
+proc main*;
+begin
+    Out.str("First.main must not run");
+end;
+
+begin
+    count := 1;
+    Out.str("First ");
+end First.

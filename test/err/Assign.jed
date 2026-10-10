@@ -1,0 +1,7 @@
+module Assign;
+proc main*;
+var a: I64; b: I32;
+begin
+    a := b;
+end;
+end Assign.

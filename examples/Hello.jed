@@ -1,0 +1,9 @@
+module Hello;
+import Out;
+
+proc main*;
+begin
+    Out.str("hello, world\n");
+end;
+
+end Hello.

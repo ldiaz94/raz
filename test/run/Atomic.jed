@@ -1,0 +1,35 @@
+module Atomic;
+import Out;
+
+var counter: I64; flag: U64; p: ^I64;
+
+proc add3*(a, b, c: I64): I64;
+code 48H, 8DH, 04H, 37H,   (* lea rax, [rdi+rsi] *)
+     48H, 01H, 0D0H,       (* add rax, rdx *)
+     0C3H;                 (* ret *)
+
+proc main*;
+var old: I64; ok: BOOL; v: ^VOLATILE I64; x: I64;
+begin
+    old := XADD(ADR(counter), 5);
+    old := XADD(ADR(counter), 2);
+    Out.int(old); Out.str(" "); Out.int(counter); Out.ln;
+    ok := CAS(ADR(counter), 7, 100);
+    if ok then Out.str("cas1 "); end;
+    ok := CAS(ADR(counter), 7, 200);
+    if not ok then Out.str("cas2 "); end;
+    Out.int(counter); Out.ln;
+    Out.int(I64(XCHG(ADR(flag), 9))); Out.str(" ");
+    Out.int(I64(XCHG(ADR(flag), 3))); Out.ln;
+    FENCE;
+    FENCE();
+    Out.int(add3(1, 20, 300)); Out.ln;
+    v := ADR(x);
+    v^ := 5;
+    v^ := v^ + 1;
+    Out.int(x); Out.ln;
+    v := ^VOLATILE I64(ADR(counter));
+    Out.int(v^); Out.ln;
+end;
+
+end Atomic.

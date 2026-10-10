@@ -1,0 +1,3 @@
+module UsesIface;
+import Iface;
+end UsesIface.

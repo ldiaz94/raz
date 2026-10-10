@@ -1,0 +1,11 @@
+module Second;
+import Out, First;
+
+var count*: I64;
+
+begin
+    count := First.count + 1;
+    Out.str("Second ");
+    if count = 2 then return; end;
+    Out.str("not reached");
+end Second.

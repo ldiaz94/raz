@@ -1,0 +1,4 @@
+module Extra;
+type R* = record a*: I64; secret: [4]I64; end;
+const more* = 1;
+end Extra.

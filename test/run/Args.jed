@@ -1,0 +1,18 @@
+module Args;
+import Out;
+
+proc main*: I64;
+var i, n: I64; a: ^^U8; s: ^U8;
+begin
+    a := ARGV();
+    for i := 1 to ARGC() - 1 do
+        s := a[i];
+        n := 0;
+        while s[n] # 0 do n := n + 1; end;
+        Out.str(s[0..n]);
+        Out.ln;
+    end;
+    return ARGC();
+end;
+
+end Args.

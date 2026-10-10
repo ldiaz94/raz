@@ -1,0 +1,64 @@
+module Edge;
+import Out;
+
+type
+    Inner = record vals: [4]I64; name: []U8; end;
+    Outer = record items: [3]Inner; n: I64; end;
+
+var g: Outer; calls: I64;
+
+(* rsp mod 16 at the call, as the callee sees it after its return
+   address: always 8 when the caller keeps the stack aligned *)
+proc rspmod: I64;
+code 48H, 89H, 0E0H,          (* mov rax, rsp *)
+     48H, 83H, 0E0H, 0FH,     (* and rax, 15 *)
+     0C3H;
+
+proc next: I64;
+begin
+    calls := calls + 1;
+    return calls;
+end;
+
+proc setall(var o: Outer; v: I64);
+var i, j: I64;
+begin
+    for i := 0 to 2 do
+        for j := 0 to 3 do o.items[i].vals[j] := v + i * 10 + j; end;
+        o.items[i].name := "item";
+    end;
+    o.n := 3;
+end;
+
+proc sumInner(xs: []Inner): I64;
+var i, j, s: I64;
+begin
+    s := 0;
+    for i := 0 to LEN(xs) - 1 do
+        for j := 0 to 3 do s := s + xs[i].vals[j]; end;
+    end;
+    return s;
+end;
+
+proc main*;
+var a: [5]I64; i, r: I64; o: Outer; pa: ^[5]I64;
+begin
+    r := rspmod() + (1 + (2 + (3 + rspmod())));
+    Out.int(r); Out.ln;
+    a[next()] := next() * 10;
+    Out.int(a[1]); Out.str(" "); Out.int(calls); Out.ln;
+    setall(g, 100);
+    Out.int(g.items[2].vals[3]); Out.str(" "); Out.str(g.items[1].name); Out.ln;
+    o := g;
+    o.items[0].vals[0] := -1;
+    Out.int(g.items[0].vals[0]); Out.str(" "); Out.int(o.items[0].vals[0]); Out.ln;
+    Out.int(sumInner(g.items)); Out.str(" "); Out.int(sumInner(g.items[1..3])); Out.ln;
+    pa := ADR(a);
+    pa^[4] := 44;
+    Out.int(a[4]); Out.str(" "); Out.int(LEN(pa^)); Out.ln;
+    i := 2;
+    g.items[i].vals[i + 1] := g.items[i - 1].vals[i] + 1000;
+    Out.int(g.items[2].vals[3]); Out.ln;
+end;
+
+end Edge.

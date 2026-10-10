@@ -1,0 +1,117 @@
+module Procs;
+import Out;
+
+type
+    Pair = record x, y: I64; end;
+    Op = proc(a, b: I64): I64;
+    Big = record a: [10]I64; end;
+
+proc even(n: I64): BOOL; forward;
+
+proc odd(n: I64): BOOL;
+begin
+    if n = 0 then return false; end;
+    return even(n - 1);
+end;
+
+proc even(n: I64): BOOL;
+begin
+    if n = 0 then return true; end;
+    return odd(n - 1);
+end;
+
+proc swap(var a, b: I64);
+var t: I64;
+begin
+    t := a; a := b; b := t;
+end;
+
+proc bump(p: Pair): Pair;
+begin
+    p.x := p.x + 1;
+    p.y := p.y + 1;
+    return p;
+end;
+
+proc add(a, b: I64): I64; begin return a + b; end;
+proc mul(a, b: I64): I64; begin return a * b; end;
+
+proc apply(f: Op; a, b: I64): I64;
+begin
+    return f(a, b);
+end;
+
+proc many(a, b, c, d, e, f, g, h: I64; x: F64; i: I64; y: F64): I64;
+begin
+    return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + I64(x) * 100 + 9 * i + I64(y) * 1000;
+end;
+
+proc fact(n: I64): I64;
+begin
+    if n <= 1 then return 1; end;
+    return n * fact(n - 1);
+end;
+
+proc fill(var b: Big; v: I64);
+var i: I64;
+begin
+    for i := 0 to 9 do b.a[i] := v + i; end;
+end;
+
+proc total(b: Big): I64;
+var i, s: I64;
+begin
+    s := 0;
+    for i := 0 to 9 do s := s + b.a[i]; end;
+    b.a[0] := 1000;
+    return s;
+end;
+
+proc noresult(n: I64): I64;
+begin
+    if n > 100 then return 1; end;
+end;
+
+proc mk(n: I64): Big;
+var b: Big;
+begin
+    fill(b, n);
+    return b;
+end;
+
+proc mkzero(n: I64): Big;
+begin
+end;
+
+proc fsum(a, b: F64): F64;
+begin
+    return a + b;
+end;
+
+proc main*: I64;
+var a, b: I64; p, q: Pair; f: Op; bg: Big;
+begin
+    if even(10) and odd(7) and not even(3) then Out.str("parity ok"); Out.ln; end;
+    a := 1; b := 2;
+    swap(a, b);
+    Out.int(a); Out.int(b); Out.ln;
+    p.x := 10; p.y := 20;
+    q := bump(p);
+    Out.int(p.x); Out.str(" "); Out.int(q.x); Out.str(" "); Out.int(q.y); Out.ln;
+    Out.int(bump(bump(p)).y); Out.ln;
+    f := add;
+    Out.int(apply(f, 3, 4)); Out.str(" "); Out.int(apply(mul, 3, 4)); Out.ln;
+    if f = add then Out.str("same"); Out.ln; end;
+    f := nil;
+    if f = nil then Out.str("nil"); Out.ln; end;
+    Out.int(many(1, 1, 1, 1, 1, 1, 1, 1, 2.5, 1, 3.9)); Out.ln;
+    Out.int(fact(20)); Out.ln;
+    fill(bg, 5);
+    Out.int(total(bg)); Out.str(" "); Out.int(bg.a[0]); Out.ln;
+    Out.int(noresult(5)); Out.ln;
+    Out.int(mk(7).a[9]); Out.str(" "); Out.int(mkzero(1).a[3]); Out.ln;
+    Out.int(I64(fsum(1.25, 2.5) * 4.0)); Out.ln;
+    return 7;
+end;
+
+end Procs.

@@ -1,0 +1,5 @@
+module Plat;
+const name* = "macos";
+type Info* = record kind*: I64; other: U8; end;
+proc id*(x: I64): I64; begin return SOMETHING_UNKNOWN_HERE(x); end;
+end Plat.

@@ -1,0 +1,63 @@
+module Shapes;
+import Out;
+
+type
+    Shape* = variant
+        circle(r: F64);
+        rect(w, h: F64);
+        label(text: []U8; size: I64);
+        dot;
+    end;
+
+proc area(s: Shape): I64;
+var a: F64;
+begin
+    match s of
+    | circle(r):  a := 3.0 * r * r;
+    | rect(w, h): a := w * h;
+    | label:      a := 0.0;
+    | dot:        a := 1.0;
+    end;
+    return I64(a);
+end;
+
+proc grow(var s: Shape);
+begin
+    match s of
+    | rect(w, h): w := w * 2.0;
+    | else:
+    end;
+end;
+
+proc main*;
+var s, t: Shape; shapes: [4]Shape; i: I64; z: Shape;
+begin
+    s := circle(2.0);
+    Out.int(area(s)); Out.ln;
+    s := rect(3.0, 4.0);
+    Out.int(area(s)); Out.ln;
+    grow(s);
+    Out.int(area(s)); Out.ln;
+    t := s;
+    s := dot;
+    Out.int(area(s)); Out.str(" "); Out.int(area(t)); Out.ln;
+    shapes[0] := circle(1.0);
+    shapes[1] := label("hi", 12);
+    shapes[2] := dot;
+    shapes[3] := rect(1.5, 2.0);
+    for i := 0 to 3 do
+        match shapes[i] of
+        | label(text, size): Out.str(text); Out.int(size);
+        | else: Out.int(area(shapes[i]));
+        end;
+        Out.str(" ");
+    end;
+    Out.ln;
+    match z of
+    | circle(r): Out.str("zero is a circle of "); Out.int(I64(r)); Out.ln;
+    | else: Out.str("?");
+    end;
+    Out.int(SIZE(Shape)); Out.ln;
+end;
+
+end Shapes.

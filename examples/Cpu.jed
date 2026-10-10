@@ -1,0 +1,29 @@
+(* A code procedure: machine code written as bytes, called like any
+   other procedure. cpuid's vendor string, from leaf 0. *)
+module Cpu;
+import Out;
+
+(* cpuid leaf 0: puts the 12 bytes of the vendor in buf, rdi. *)
+proc vendor(buf: ^U8);
+code 53H,                        (* push rbx *)
+     49H, 89H, 0F8H,             (* mov r8, rdi *)
+     31H, 0C0H,                  (* xor eax, eax *)
+     0FH, 0A2H,                  (* cpuid *)
+     41H, 89H, 18H,              (* mov [r8], ebx *)
+     41H, 89H, 50H, 04H,         (* mov [r8+4], edx *)
+     41H, 89H, 48H, 08H,         (* mov [r8+8], ecx *)
+     5BH,                        (* pop rbx *)
+     0C3H;                       (* ret *)
+
+proc main*;
+var buf: [12]U8; i: I64; ok: BOOL;
+begin
+    vendor(ADR(buf[0]));
+    ok := true;
+    for i := 0 to 11 do
+        if (buf[i] < ' ') or (buf[i] > '~') then ok := false; end;
+    end;
+    if ok then Out.str("vendor is printable\n"); end;
+end;
+
+end Cpu.

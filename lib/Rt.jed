@@ -1,0 +1,37 @@
+(* What the compiler's code calls: fail when a check fails, eq when =
+   or # compares two strings. The compiler finds them by these names. *)
+module Rt;
+import Sys;
+
+(* A check failed at line of file: says so on standard error and stops
+   the program with status 2. *)
+proc fail*(file: ^U8; line: I64);
+var buf: [20]U8; i, n: I64;
+begin
+    n := 0;
+    while file[n] # 0 do n := n + 1; end;
+    Sys.write(Sys.stderr, file[0..n]);
+    i := 20;
+    repeat
+        i := i - 1;
+        buf[i] := U8(line mod 10) + '0';
+        line := line div 10;
+    until line = 0;
+    i := i - 1;
+    buf[i] := ':';
+    Sys.write(Sys.stderr, buf[i..20]);
+    Sys.write(Sys.stderr, ": index out of range\n");
+    Sys.exit(2);
+end;
+
+proc eq*(a, b: []U8): BOOL;
+var i: I64;
+begin
+    if LEN(a) # LEN(b) then return false; end;
+    for i := 0 to LEN(a) - 1 do
+        if a[i] # b[i] then return false; end;
+    end;
+    return true;
+end;
+
+end Rt.

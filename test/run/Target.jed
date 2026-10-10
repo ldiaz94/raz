@@ -1,0 +1,11 @@
+module Target;
+import Out, Plat;
+
+proc main*;
+var i: Plat.Info;
+begin
+    i.kind := 41;
+    Out.str(Plat.name); Out.int(Plat.id(i.kind)); Out.ln;
+end;
+
+end Target.
