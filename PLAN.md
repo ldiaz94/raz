@@ -158,7 +158,7 @@ Tools
 
 Wrap up
 
-- [ ] 17. `README.md` and `doc/compiler.md`, a guide to reading the
+- [x] 17. `README.md` and `doc/compiler.md`, a guide to reading the
       compiler file by file.
 
 Later

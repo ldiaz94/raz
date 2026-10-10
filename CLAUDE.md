@@ -44,8 +44,10 @@ the text in `X.err`. Examples in `examples/` work the same way.
 
 ## Where things stand
 
-Stages 1 to 4 are done (steps 1-16), waiting for review. Next is step
-17, `README.md` and `doc/compiler.md`, on the owner's go-ahead. Left
+Steps 1-17 are done: the language, the tools, `README.md` and the
+guide to the compiler, `doc/compiler.md`. Next, only on the owner's
+word, is step 18, the formatter. Keep `doc/compiler.md`'s table of
+lines and its routine names true when the compiler changes. Left
 for later at the owner's word: tagging versions, and a rewrite of var
 parameters.
 
