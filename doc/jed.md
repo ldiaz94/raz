@@ -31,31 +31,40 @@ executable `Hello`.
 
 ## 2. Words and symbols
 
-A program is written in ASCII. Spaces, tabs and line breaks separate
-symbols and are otherwise ignored.
+A program is written in UTF-8. The compiler rejects a file that isn't
+valid UTF-8: a malformed or overlong sequence, a surrogate, or a code
+point beyond 10FFFFH. Everything outside strings, characters and
+comments is ASCII. Spaces, tabs and line breaks separate symbols and
+are otherwise ignored.
 
-**Identifiers** are a letter or `_` followed by letters, digits and `_`,
+**Identifiers** are an ASCII letter or `_` followed by letters, digits and `_`,
 up to 63 characters. Case matters: `count` and `Count` are different
 names.
 
 **Reserved words** are lowercase, except `VOLATILE`:
 
 ```
-and begin break by const div do else elsif end extern for forward if
-import in link match mod module not of or packed proc record repeat
-return set shl shr then to type until var variant VOLATILE while xor
+and begin break by code const defer div do else elsif end extern for
+forward if import in link match mod module not of or packed proc record
+repeat return set shl shr then to type until var variant VOLATILE while
+xor
 ```
 
 **Numbers.** `123` is decimal. `0FFH` is hexadecimal: it starts with a
 digit and ends in `H`. `1.5` and `2.0E-3` are reals; a real always has
 a digit on both sides of its point.
 
-**Characters.** `'a'` is the code of one character, an integer.
+**Characters.** `'a'` is the code point of one character, an integer:
+`'a'` is 97 and `'é'` is 233.
 
-**Strings.** `"hello\n"` is a sequence of bytes. Both characters and
-strings take the escapes `\n` (line feed), `\t` (tab), `\r` (carriage
-return), `\0` (zero), `\\`, `\'`, `\"` and `\xHH` (the byte with
-hexadecimal value HH).
+**Strings.** `"héllo\n"` is a sequence of bytes, the UTF-8 of its text:
+`"é"` is the two bytes 0C3H, 0A9H. Both characters and strings take the
+escapes `\n` (line feed), `\t` (tab), `\r` (carriage return), `\0`
+(zero), `\\`, `\'`, `\"`, `\u{H...}` (the code point with hexadecimal
+value H..., in a string its UTF-8) and, in strings only, `\xHH` (the
+byte with hexadecimal value HH, which needn't make valid UTF-8).
+
+Error messages give the line and the column, counted in characters.
 
 **Comments** are `(*` ... `*)` and nest.
 
@@ -68,9 +77,10 @@ hexadecimal value HH).
 ## 3. Modules
 
 ```
-Module     = "module" ident [ "(" ident { "," ident } ")" ] ";"
+Module     = "module" ident [ "(" ModParams ")" ] ";"
              { Import } { Link } { Declaration }
              [ "begin" Statements ] "end" ident "." .
+ModParams  = ident { "," ident } { ";" ident ":" "proc" Signature } .
 Import     = "import" ImportItem { "," ImportItem } ";" .
 ImportItem = ident [ ":=" ident [ "(" Type { "," Type } ")" ] ] .
 Link       = "link" string ";" .
@@ -104,9 +114,32 @@ share one instance. Since every instance is checked on its own, an
 operation the argument type doesn't support (adding two records, say)
 is reported as an error in that instance.
 
-**Finding modules.** The compiler looks for `Name.jed` in the main
+What a generic module needs to do with its types, beyond moving them
+about, it is given as procedures, after the types:
+
+```
+module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
+```
+
+```
+import Names := Map([]U8, I64, Str.hash, Str.eq);
+```
+
+A procedure argument names a procedure, not a variable or an
+expression, and its signature, with the type arguments put in, must be
+the parameter's. Inside the module, `hash(k)` calls it directly. Two
+imports make the same instance only if their types and their procedures
+are the same.
+
+**Finding modules.** The compiler looks for module `Name` in the main
 module's directory, then in each directory given with `-I`, then in the
-`lib` directory beside the compiler.
+`lib` directory beside the compiler. In each directory it takes the
+first of `Name.OS-ARCH.jed`, `Name.OS.jed`, `Name.ARCH.jed` and
+`Name.jed` that exists, where `OS-ARCH` is the target, for now only
+`linux-x86_64`. So a module whose code depends on the machine or the
+system comes in one file per target, each with the same exports, and
+the modules that import it don't change. Machine code (section 8) and
+system calls belong in such files.
 
 **Module bodies.** A module may end with `begin` and statements, its
 body. Every module's body runs once, before the main module's `main`:
@@ -445,13 +478,16 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
 | `MSG(e)` | the message of the error `e`, a `[]U8` |
 | `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six integer or pointer arguments; the raw result, an `I64` (a negative number is `-errno`) |
-| `CODE(b1, b2, ...)` | puts the constant bytes in the code, see 7.7 |
 | `FENCE` | a full memory barrier |
 | `CAS(p, old, new)` | if `p^ = old`, sets `p^ := new` and returns `true`; atomically |
 | `XCHG(p, x)` | sets `p^ := x` and returns the value before, atomically |
 | `XADD(p, x)` | adds `x` to `p^` and returns the value before, atomically |
 | `ARGC()` | the number of command line arguments, an `I64` |
 | `ARGV()` | the arguments, a `^^U8` (C strings) |
+
+`SYSCALL` exists only on Linux targets. Other systems have no stable
+system call interface, and their modules call the C library instead
+(section 9).
 
 For `CAS`, `XCHG` and `XADD`, `p` is a `^T` or `^VOLATILE T` where `T`
 is an 8-byte integer or pointer type (an integer type for `XADD`). They
@@ -470,7 +506,8 @@ Statement  = Designator [ ":=" Expr ]
            | "for" ident ":=" Expr "to" Expr [ "by" Expr ] "do" Statements "end"
            | "match" Expr "of" { "|" Arm } "end"
            | "return" [ Expr { "," Expr } ]
-           | "break" .
+           | "break"
+           | "defer" Statement .
 Arm        = ( ident [ "(" ident { "," ident } ")" ] | "else" ) ":" Statements .
 ```
 
@@ -544,25 +581,31 @@ A `^VOLATILE T` doesn't convert to `^T` without a written conversion.
 `FENCE` also orders the program's ordinary accesses against those of
 other processors and devices.
 
-### 7.7 CODE
+### 7.7 Defer
 
-`CODE` puts machine code where it stands. Between two statements the
-compiler keeps nothing in registers but `rsp` and `rbp`, so code there
-may use any other register. It must leave `rsp` and `rbp` as it found
-them.
+`defer s;` runs the statement `s` when the program leaves the statement
+list the `defer` stands in: at its end, or by a `return`, or by a
+`break` out of it. Statements deferred in the same list run in the
+opposite order to their `defer`s, and only those whose `defer` has been
+reached run.
 
 ```
-proc halt;
-begin
-    CODE(0FAH, 0F4H);    (* cli; hlt *)
-end;
+fd := Sys.open(name, Sys.rdonly);
+if fd < 0 then return Sys.Failed; end;
+defer Sys.close(fd);
+...
 ```
+
+`return e;` evaluates `e` before the deferred statements run. A
+deferred statement can't contain `return`, `break` or `defer` that
+would leave it.
 
 ## 8. Procedures
 
 ```
 ProcDeclaration   = "proc" IdentDef Signature ";"
-                    ( "forward" | { LocalDeclaration } "begin" Statements "end" [ ident ] ) .
+                    ( "forward" | { LocalDeclaration } "begin" Statements "end" [ ident ]
+                    | "code" Expr { "," Expr } ) .
 LocalDeclaration  = "const" { ident [ ":" "ERROR" ] "=" Expr ";" }
                   | "type" { ident "=" Type ";" }
                   | "var" { ident { "," ident } ":" Type ";" } .
@@ -600,6 +643,26 @@ can be called before its body appears; the body comes later with the
 same signature.
 
 Procedures don't nest.
+
+**Code procedures.** A procedure whose body is `code` and a list of
+constant bytes is machine code, written by hand:
+
+```
+proc rdtsc*: U64;
+code 0FH, 31H,              (* rdtsc *)
+     48H, 0C1H, 0E2H, 20H,  (* shl rdx, 32 *)
+     48H, 09H, 0D0H,        (* or rax, rdx *)
+     0C3H;                  (* ret *)
+```
+
+It is called like any procedure, with the System V convention: integer
+and pointer arguments arrive in `rdi`, `rsi`, `rdx`, `rcx`, `r8` and
+`r9`, `F64` ones in `xmm0` to `xmm7`, and the result goes in `rax` (and
+`rdx` for a second) or `xmm0`. Its parameters and results are therefore
+of the types C can take (section 9), at most six integer and eight
+`F64` parameters, and at most two results. The bytes are the whole
+procedure, `ret` included; they must keep `rbx`, `rbp`, `rsp` and `r12`
+to `r15` as they found them. The compiler doesn't look inside them.
 
 ## 9. Calling C
 
@@ -643,7 +706,7 @@ the executable: unused procedures, variables and strings are left out.
 and indexing arrays and slices is checked, so a program's behaviour is
 defined by this report, with one exception: memory reached through a
 pointer. Dereferencing a stale or made-up pointer, indexing through a
-pointer, `CODE` that breaks its rules, and C code can read or write any
+pointer, a code procedure that breaks its rules, and C code can read or write any
 memory, and what follows isn't defined. Dereferencing `nil`, dividing
 by zero and calling a `nil` procedure stop the program with a signal.
 
