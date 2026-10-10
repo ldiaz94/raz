@@ -26,7 +26,7 @@ disagree, the report wins and this plan is fixed.
 - Work stops after every stage for review. A step starts only on an
   explicit go-ahead.
 - Not in scope for now: man pages, QEMU or bare metal tests, aarch64,
-  an optimizer.
+  macOS and Windows (Mach-O, PE), an optimizer.
 
 ## Decisions
 
@@ -43,7 +43,7 @@ disagree, the report wins and this plan is fixed.
 6. Records are laid out as C lays them out.
 7. Modules are compiled together, from source, in one run: no symbol
    files, no separate compilation. A generic module is compiled once
-   per distinct list of type arguments.
+   per distinct list of arguments, its types and its procedures.
 8. Tree shaking: the linker keeps only the procedures, variables and
    literals reachable from the entry point.
 9. Variadic arguments exist only to call C. jed code gets the same
@@ -70,31 +70,37 @@ Stage 1: the core
 
 - [x] 1. Language report, `doc/jed.md`. Reviewed and approved before
       any more code.
-- [ ] 2. Scanner and symbol table, `scan.pas` and `sym.pas` (drafts
-      exist), brought in line with the report; they compile.
+- [ ] 2. Scanner and symbol table, `scan.pas` and `sym.pas`, written
+      against the report; they compile.
 - [ ] 3. Machine code, `x64.pas`.
 - [ ] 4. Linking and output, `link.pas` and `elf.pas`: tree shaking,
       static ELF, symbol table. A hand built chunk runs.
 - [ ] 5. Parser and code generator, `gen.pas` and `parse.pas`:
-      everything in the report except multiple results, `NEW`, generic
-      modules and `extern`.
-- [ ] 6. `lib/Rt.jed`, `lib/Out.jed`; examples (hello, args, variants
-      and slices, volatile); `make check` runs them against expected
-      output; `make bench` times the compiler on generated jed.
+      everything in the report except multiple results, errors,
+      enumerations and sets, record literals, `defer`, `NEW`, generic
+      modules and `extern`. Module bodies, per-target modules and their
+      interface check, and code procedures are in.
+- [ ] 6. `lib/Rt.jed`, `lib/Sys.linux-x86_64.jed`, `lib/Out.jed`;
+      examples (hello, args, variants and slices, volatile, a code
+      procedure); `make check` runs them against expected output;
+      `make bench` times the compiler on generated jed.
 
-Stage 2: allocation, results, generics
+Stage 2: the rest of the language
 
-- [ ] 7. Multiple results.
-- [ ] 8. `NEW`; `lib/Mem.jed`, `lib/Arena.jed`, `lib/Heap.jed`.
-- [ ] 9. Generic modules; `lib/Str.jed`, `lib/Buf.jed`, `lib/Fmt.jed`;
-      examples.
+- [ ] 7. Multiple results and errors.
+- [ ] 8. Enumerations and sets, record literals, `defer`; examples.
+- [ ] 9. `NEW`; `lib/Mem.jed`, `lib/Arena.jed`, `lib/Heap.jed`.
+- [ ] 10. Generic modules, with type and procedure arguments;
+      `lib/Str.jed`, `lib/Buf.jed`, `lib/Fmt.jed`; examples.
 
 Stage 3: calling C
 
-- [ ] 10. `extern`, `link`, dynamic ELF, start through
+- [ ] 11. `extern`, `link`, dynamic ELF, start through
       `__libc_start_main`; examples with `printf` and an X11 window.
+      A module whose per-target file calls the C library instead of
+      `SYSCALL`, the way other systems would be reached.
 
 Wrap up
 
-- [ ] 11. `README.md` and `doc/compiler.md`, a guide to reading the
+- [ ] 12. `README.md` and `doc/compiler.md`, a guide to reading the
       compiler file by file.
