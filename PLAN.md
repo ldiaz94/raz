@@ -108,8 +108,10 @@ Stage 3: calling C, and what comes with it
       `XEvent` as an array of words through pointer conversions.
 - [ ] 12. `F32`: arithmetic, conversions, calls; real literals become
       untyped constants that take `F32` or `F64`.
-- [ ] 13. A thread-safe `lib/Heap.jed`, and its bad sizes refused; an
-      example with threads from `pthread_create`.
+- [ ] 13. A thread-safe `lib/Heap.jed`: its bad sizes refused, and a
+      marker in each block's header so that freeing a block twice, or
+      one it never gave out, stops the program. An example with
+      threads from `pthread_create`.
 - [ ] 14. Line numbers for gdb: `.debug_line`, with the least of
       `.debug_info` and `.debug_abbrev` that gdb needs.
 
