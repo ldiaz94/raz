@@ -1,0 +1,41 @@
+(* Rt.exit runs what Rt.atExit registered, the last first, each once,
+   then ends the program with main's status. *)
+module AtExit;
+import Out, Rt;
+
+proc first;
+begin
+    Out.str("first\n");
+end;
+
+proc second;
+begin
+    Out.str("second, which exits again\n");
+    Rt.exit(5);   (* the rest still run, once each; the status is now 5 *)
+end;
+
+proc third;
+begin
+    Out.str("third\n");
+end;
+
+proc nothing;
+begin
+end;
+
+proc main*: I64;
+var i, full: I64;
+begin
+    Rt.atExit(first);
+    Rt.atExit(second);
+    Rt.atExit(third);
+    full := 0;
+    for i := 1 to 40 do
+        if Rt.atExit(nothing) = Rt.Full then INC(full); end;
+    end;
+    Out.int(full); Out.str(" refused\n");
+    Out.str("main ends\n");
+    return 3;
+end;
+
+end AtExit.

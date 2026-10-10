@@ -12,7 +12,8 @@
   interface.
 
   Depends on: scan, sym, x64, gen.
-  Leaves out (for stage 3): extern and link. }
+  Leaves out: linking; a module only records the libraries it names,
+  and whether it uses C or says link static. }
 
 unit parse;
 
@@ -60,8 +61,9 @@ var
   directDefer: boolean;   { ... as the statement itself, not in a list }
   deferSlot: int64;       { keeps a result while deferred statements run }
   curResult: PType;       { the result type of the procedure being compiled }
+  inExtern: boolean;      { reading an extern's signature: ... allowed }
   tArgv, tBodySig: PType;
-  nameRt, nameFail, nameEq, nameMain, nameBody: longint;
+  nameRt, nameFail, nameEq, nameMain, nameBody, nameStatic: longint;
 
 procedure Expression(var x: TItem; want: PType); forward;
 function ParseType: PType; forward;
@@ -284,6 +286,7 @@ begin
     if tok <> sRparen then
       repeat
         if tok = sEllipsis then begin
+          if not inExtern then Mark('... is only for extern procedures');
           Next; t^.variadic := true; break
         end;
         isVar := tok = sVar;
@@ -1343,6 +1346,43 @@ begin
   end;
 end;
 
+{ An extern procedure or variable: C's, reached through the quadword
+  that holds its address. }
+procedure ExternDecl;
+var n: longint; exp: boolean; o, q: PObj; t: PType;
+begin
+  Next;
+  curModule^.usesC := true;
+  if tok = sProc then begin
+    Next;
+    IdentDef(n, exp);
+    inExtern := true;
+    t := Signature;
+    inExtern := false;
+    q := t^.fields;
+    while q <> nil do begin
+      if q^.isVar or not IsScalar(q^.typ) then
+        Mark('C takes integers, BOOL, F64, pointers and procedures');
+      q := q^.next;
+    end;
+    if (t^.base <> nil) and not IsScalar(t^.base) then Mark('C returns a single value');
+    o := NewObj(oProc, n, t);
+  end else begin
+    if tok <> sVar then Mark('proc or var expected');
+    Next;
+    IdentDef(n, exp);
+    Expect(sColon, ':');
+    declExported := exp;
+    t := ParseType;
+    declExported := false;
+    o := NewObj(oVar, n, t);
+  end;
+  o^.exported := exp;
+  o^.ext := true;
+  o^.chunk := ExternChunk(n);
+  Declare(o);
+end;
+
 procedure Declarations(top: boolean);
 var
   n, i, k: longint; exp: boolean; x: TItem; o: PObj; t: PType;
@@ -1434,7 +1474,11 @@ begin
         ProcDecl;
         Expect(sSemicolon, ';');
       end;
-      sExtern: Mark('extern comes in stage 3');
+      sExtern: begin
+        if not top then Mark('extern only at the top of a module');
+        ExternDecl;
+        Expect(sSemicolon, ';');
+      end;
     else exit;
     end;
   until false;
@@ -1512,7 +1556,7 @@ begin
     a := m^.args.o[i];
     if (a = nil) or not Same(a^.typ, sig) then
       Mark('needs a procedure with the signature of ' + NameOf(o^.name));
-    o^.typ := a^.typ; o^.chunk := a^.chunk; o^.isCode := a^.isCode;
+    o^.typ := a^.typ; o^.chunk := a^.chunk; o^.isCode := a^.isCode; o^.ext := a^.ext;
     Declare(o);
     s := s + NameOf(a^.module^.name) + '.' + NameOf(a^.name) + ',';
     inc(i);
@@ -1539,7 +1583,7 @@ function CompileFile(const path: shortstring; n: longint; const args: TArgs; che
 var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
   oldMod: PModule; oldFile: longint; oldCheck: boolean; m, im: PModule;
-  imp: PImport; alias, mname: longint; o: PObj; body: longint; iargs: TArgs;
+  imp: PImport; lib: PLib; alias, mname: longint; o: PObj; body: longint; iargs: TArgs;
 begin
   SaveScan(st);
   SaveScopes(d, saved);
@@ -1598,7 +1642,19 @@ begin
     until false;
     Expect(sSemicolon, ';');
   end;
-  if tok = sLink then Mark('link comes in stage 3');
+  while tok = sLink do begin
+    Next;
+    if (tok = sIdent) and (id = nameStatic) then m^.linkStatic := true
+    else if tok = sString then begin
+      New(lib);
+      lib^.name := Intern(@sbuf, slen);
+      lib^.next := m^.libs;
+      m^.libs := lib;
+      m^.usesC := true;
+    end else Mark('a library or static expected');
+    Next;
+    Expect(sSemicolon, ';');
+  end;
   Declarations(true);
   if tok = sBegin then begin
     if checkMode then SkipBody
@@ -1738,6 +1794,7 @@ initialization
   nameEq := Name('eq');
   nameMain := Name('main');
   nameBody := Name('body');
+  nameStatic := Name('static');
   rtFail := NewChunk(secText, nameRt, nameFail);
   rtEq := NewChunk(secText, nameRt, nameEq);
   argcChunk := NewChunk(secBss, -1, Name('argc'));

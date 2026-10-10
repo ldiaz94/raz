@@ -31,6 +31,7 @@ type
   PObj = ^TObj;
   PModule = ^TModule;
   PImport = ^TImport;
+  PLib = ^TLib;
 
   TType = record
     form: TForm;
@@ -65,6 +66,8 @@ type
     isVar: boolean;    { a var parameter }
     fwd: boolean;      { oProc: declared forward, no body yet }
     isCode: boolean;   { oProc: a code procedure }
+    ext: boolean;      { oProc, oVar: C's, reached through its chunk, which
+                         holds its address }
     fields: PObj;      { oCase: its fields }
     module: PModule;   { oModule: the module; others: where declared }
     link: PObj;        { the next top-level declaration of its module }
@@ -83,6 +86,12 @@ type
     next: PImport;
   end;
 
+  { A library a module links, by its name, as interned }
+  TLib = record
+    name: longint;
+    next: PLib;
+  end;
+
   TModule = record
     name: longint;
     sname: longint;      { the name of its symbols: List(I64) for an instance }
@@ -95,6 +104,9 @@ type
     done: boolean;       { compiled to the end }
     checkOnly: boolean;  { read only to check another file's interface }
     used: boolean;       { imported, through others, by the main module }
+    usesC: boolean;      { has an extern, or links a library }
+    linkStatic: boolean; { says link static }
+    libs: PLib;          { the libraries it links }
     next: PModule;       { modules in the order they were finished }
   end;
 

@@ -6,9 +6,13 @@
   entry point, links what it reaches, and writes the executable: by
   default the main module's file without its .jed.
 
-  The entry point saves argc and argv, runs every module's body (those
-  of the modules the program imports, imported modules first), then
-  the main module's main, and exits with its status.
+  The program starts by saving argc and argv, runs every module's body
+  (those of the modules the program imports, imported modules first),
+  then the main module's main, and ends with Rt.exit and main's
+  status. A static program does this from its entry point. One that
+  uses C starts through the C library, __libc_start_main, which sets
+  C up and calls this as C's main; first it gives Rt C's exit, which
+  Rt.exit then ends the program with.
 
   Depends on: everything else. }
 
@@ -32,12 +36,51 @@ begin
   end;
 end;
 
+{ Whether the program uses C: if so, the libraries it needs go to
+  elf.pas, the C library first. }
+function UsesC: boolean;
+var m, st, c: PModule; l: PLib; i: longint; seen: boolean;
+begin
+  st := nil; c := nil;
+  numNeeded := 1;
+  needed[0] := Intern(PChar('libc.so.6'), 9);
+  m := firstModule;
+  while m <> nil do begin
+    if m^.used and m^.linkStatic then st := m;
+    if m^.used and m^.usesC then c := m;
+    l := m^.libs;
+    while m^.used and (l <> nil) do begin
+      seen := false;
+      for i := 0 to numNeeded - 1 do seen := seen or (needed[i] = l^.name);
+      if not seen then begin
+        if numNeeded > High(needed) then Fatal('too many libraries');
+        needed[numNeeded] := l^.name;
+        inc(numNeeded);
+      end;
+      l := l^.next;
+    end;
+    m := m^.next;
+  end;
+  if (st <> nil) and (c <> nil) then
+    Fatal(NameOf(st^.name) + ' says link static, but ' + NameOf(c^.name) + ' uses C');
+  if c = nil then numNeeded := 0;
+  UsesC := c <> nil;
+end;
+
+function RtObj(rt: PModule; const n: shortstring): PObj;
+var o: PObj;
+begin
+  o := Find(rt^.scope, Intern(@n[1], length(n)));
+  if o = nil then Fatal('Rt has no ' + n);
+  RtObj := o;
+end;
+
 var
   path, outPath, dir, s: shortstring;
-  i, entry: longint;
+  i, entry, start: longint;
   m, rt: PModule;
   main: PObj;
-  hasResult: boolean;
+  hasResult, dynamic: boolean;
 
 begin
   { constants fold as the machine computes: NaN and infinities, no traps }
@@ -89,12 +132,41 @@ begin
     hasResult := main^.typ^.base <> nil;
   end;
 
+  if rt = nil then Fatal('can''t find module Rt');
+  dynamic := UsesC;
   entry := NewChunk(secText, -1, Intern('_start', 6));
-  BeginChunk(entry);
-  Load(RAX, Mem(RSP, 0), 8, false);
-  Store(MemRip(argcChunk, 0), RAX, 8);
-  Lea(RAX, Mem(RSP, 8));
-  Store(MemRip(argvChunk, 0), RAX, 8);
+  if dynamic then begin
+    { _start as C's crt1 does it: __libc_start_main(main, argc, argv,
+      nil, nil, rtld_fini, stack_end), with rsp aligned }
+    start := NewChunk(secText, -1, Intern('main', 4));
+    BeginChunk(entry);
+    MovRI(RBP, 0);
+    MovRR(R9, RDX);
+    Pop(RSI);
+    MovRR(RDX, RSP);
+    AluI(aluAnd, RSP, -16);
+    Push(RAX);
+    Push(RSP);
+    MovRI(R8, 0);
+    MovRI(RCX, 0);
+    Lea(RDI, MemRip(start, 0));
+    CallM(MemRip(ExternChunk(Intern('__libc_start_main', 17)), 0));
+    Ud2;
+    EndChunk(entry);
+    BeginChunk(start);
+    Push(RBP);   { aligns the stack again }
+    Store(MemRip(argcChunk, 0), RDI, 8);
+    Store(MemRip(argvChunk, 0), RSI, 8);
+    Load(RAX, MemRip(ExternChunk(Intern('exit', 4)), 0), 8, false);
+    Store(MemRip(RtObj(rt, 'cExit')^.chunk, 0), RAX, 8);
+  end else begin
+    start := entry;
+    BeginChunk(entry);
+    Load(RAX, Mem(RSP, 0), 8, false);
+    Store(MemRip(argcChunk, 0), RAX, 8);
+    Lea(RAX, Mem(RSP, 8));
+    Store(MemRip(argvChunk, 0), RAX, 8);
+  end;
   m := firstModule;
   while m <> nil do begin
     if m^.used and (m^.body >= 0) then CallChunk(m^.body);
@@ -102,10 +174,9 @@ begin
   end;
   if main <> nil then CallChunk(main^.chunk);
   if hasResult then MovRR(RDI, RAX) else MovRI(RDI, 0);
-  MovRI(RAX, 231);    { exit_group }
-  Syscall;
-  EndChunk(entry);
+  CallChunk(RtObj(rt, 'exit')^.chunk);
+  Ud2;
+  EndChunk(start);
 
-  LinkAll(entry, HeaderSize);
   WriteElf(outPath, entry);
 end.

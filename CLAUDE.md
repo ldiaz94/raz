@@ -37,12 +37,14 @@ the text in `X.err`. Examples in `examples/` work the same way.
 
 ## Where things stand
 
-Stages 1 and 2 are done (steps 1-10). Next is stage 3 (steps 11-14),
-waiting for a go-ahead. Its first task is to write into the report, for
-review: `F32` and untyped real literals, `extern var`, `link static`,
-`Rt.exit` and `Rt.atExit`, and how to mix `Out` with C's `stdio` (flush
-one before using the other). Unions are not added: the report shows
-reading a C union as an array of words through pointer conversions.
+Stages 1 and 2 are done (steps 1-10). Stage 3 (steps 11-14) is under
+way: its report changes are written and approved, and step 11 is done.
+Next is step 12, `F32`, which also makes an `F32` given to `...` an
+error.
+
+`test/libc` runs its programs over `lib/Sys.jed`, the C one, through
+a link in its `mods`. A test or example without `.expect` is only
+compiled (`examples/Window.jed` needs a display).
 
 ## Readings of the report already taken
 
@@ -67,6 +69,15 @@ otherwise.
   and sliced.
 - A deferred statement's frame slots stay reserved for the rest of its
   procedure.
+- A program uses C if a module it uses (not one read only for an
+  interface check) has an `extern` or a `link` of a library. `static`
+  in `link static;` is not a reserved word.
+- C symbols are reached through quadwords the loader fills in
+  (GLOB_DAT), with no PLT; the executable exports nothing. In a C
+  program the entry point stores C's `exit` in `Rt.cExit`, found by
+  name like `Rt.exit`, before any module body runs.
+- Past an extern's parameters, a string goes as a C string and an
+  integer constant as an `I64`.
 - Every failed check says "index out of range"; some errors point at
   the symbol after the offending expression. Error messages are to be
   improved later, all together.

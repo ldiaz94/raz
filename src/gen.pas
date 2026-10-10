@@ -54,6 +54,8 @@ type
     target: int64;     { the frame slot of a procedure value, if any }
     chunk: longint;    { else the procedure's chunk }
     code: boolean;     { a code procedure: two results come in rax and rdx }
+    ext: boolean;      { C's: called through the chunk holding its address }
+    isF: array[0..63] of boolean;   { each argument: goes in an xmm register }
   end;
 
 var
@@ -191,7 +193,10 @@ begin
     oVar: begin
       x.mode := mVar;
       x.isVar := true;
-      if o^.lev = 0 then begin
+      if o^.ext then begin
+        Load(RAX, MemRip(o^.chunk, 0), 8, false);
+        x.base := bReg; x.reg := RAX;
+      end else if o^.lev = 0 then begin
         x.base := bGlobal; x.chunk := o^.chunk
       end else if o^.ind then begin
         Load(RAX, Mem(RBP, o^.val), 8, false);
@@ -290,7 +295,8 @@ begin
     mProc: begin
       if x.obj^.isCode and (x.obj^.typ^.base <> nil) and x.obj^.typ^.base^.tuple then
         Mark('a code procedure with two results can only be called');
-      Lea(RAX, MemRip(x.obj^.chunk, 0));
+      if x.obj^.ext then Load(RAX, MemRip(x.obj^.chunk, 0), 8, false)
+      else Lea(RAX, MemRip(x.obj^.chunk, 0));
     end;
   else Mark('not a value');
   end;
@@ -976,9 +982,9 @@ procedure BeginCall(var c: TCall; var x: TItem);
 begin
   if x.mode = mProc then begin
     c.sig := x.obj^.typ; c.chunk := x.obj^.chunk; c.target := 0;
-    c.code := x.obj^.isCode;
+    c.code := x.obj^.isCode; c.ext := x.obj^.ext;
   end else begin
-    c.code := false;
+    c.code := false; c.ext := false;
     if x.typ^.form <> fProc then Mark('not a procedure');
     c.sig := x.typ; c.chunk := -1;
     c.target := ToSlot(x);
@@ -991,8 +997,20 @@ procedure PassArg(var c: TCall; var a: TItem);
 var p: PObj; s: int64;
 begin
   p := c.param;
-  if p = nil then Mark('too many arguments');
   if c.n > High(c.slots) then Mark('too many arguments');
+  if p = nil then begin
+    { past the parameters of a C procedure that ends in ...: a string
+      goes as a C string, an integer constant as an I64 }
+    if not c.sig^.variadic then Mark('too many arguments');
+    if a.mode = mStr then Coerce(a, tPtrU8)
+    else if a.typ^.form = fConst then Coerce(a, tI64)
+    else if not IsScalar(a.typ) then Mark('only a single value goes to ...');
+    c.isF[c.n] := a.typ^.form = fReal;
+    c.slots[c.n] := ToSlot(a);
+    inc(c.n);
+    exit;
+  end;
+  c.isF[c.n] := (p^.typ^.form = fReal) and not p^.isVar;
   if p^.isVar then begin
     if (a.mode <> mVar) or not a.isVar then Mark('a var parameter needs a variable');
     if not Same(a.typ, p^.typ) then Mark('a var parameter needs exactly ' + TypeName(p^.typ));
@@ -1017,8 +1035,8 @@ end;
 
 procedure EndCall(var c: TCall; var x: TItem);
 var
-  p: PObj; res: PType; i, ni, nf, k, pad: longint; ret: int64;
-  isF: array[0..63] of boolean; onStack: array[0..63] of boolean;
+  res: PType; i, ni, nf, k, pad: longint; ret: int64;
+  onStack: array[0..63] of boolean;
 begin
   if c.param <> nil then Mark('too few arguments');
   res := c.sig^.base;
@@ -1030,14 +1048,11 @@ begin
   end;
   { the System V classes: each argument in the next free register of
     its kind, or else on the stack }
-  p := c.sig^.fields;
   k := 0;
   for i := 0 to c.n - 1 do begin
-    isF[i] := (p^.typ^.form = fReal) and not p^.isVar;
-    if isF[i] then begin onStack[i] := nf >= 8; if nf < 8 then inc(nf) end
+    if c.isF[i] then begin onStack[i] := nf >= 8; if nf < 8 then inc(nf) end
     else begin onStack[i] := ni >= 6; if ni < 6 then inc(ni) end;
     if onStack[i] then inc(k);
-    p := p^.next;
   end;
   pad := ord(odd(depth + k));
   if pad <> 0 then AluI(aluSub, RSP, 8);
@@ -1050,9 +1065,12 @@ begin
   if (ret <> 0) and not c.code then begin Lea(RDI, Mem(RBP, ret)); ni := 1 end;
   for i := 0 to c.n - 1 do
     if not onStack[i] then
-      if isF[i] then begin MovsdXM(nf, Mem(RBP, c.slots[i])); inc(nf) end
+      if c.isF[i] then begin MovsdXM(nf, Mem(RBP, c.slots[i])); inc(nf) end
       else begin Load(IntRegs[ni], Mem(RBP, c.slots[i]), 8, false); inc(ni) end;
-  if c.chunk >= 0 then CallChunk(c.chunk)
+  { a procedure taking ... is told in al how many xmm registers it got }
+  if c.sig^.variadic then MovRI(RAX, nf);
+  if c.ext then CallM(MemRip(c.chunk, 0))
+  else if c.chunk >= 0 then CallChunk(c.chunk)
   else begin
     Load(R11, Mem(RBP, c.target), 8, false);
     CallR(R11);

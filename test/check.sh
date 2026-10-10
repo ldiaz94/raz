@@ -5,6 +5,8 @@
 #   X.expect  its standard output
 #   X.args    its arguments, one per line (optional)
 #   X.status  its exit status (optional; 0 if missing)
+# A program without X.expect is compiled, not run. test/libc puts
+# lib/Sys.jed, over the C library, before the system call one.
 # Programs in test/err must not compile, and must print X.err.
 
 jed=./jed
@@ -19,6 +21,7 @@ run() {   # run dir name
         echo "FAIL $dir/$name: doesn't compile: $(cat $out/$name.cerr)"
         fail=$((fail + 1)); return
     fi
+    if [ ! -f $dir/$name.expect ]; then pass=$((pass + 1)); return; fi
     set --
     if [ -f $dir/$name.args ]; then
         while IFS= read -r a; do set -- "$@" "$a"; done < $dir/$name.args
@@ -39,7 +42,7 @@ run() {   # run dir name
     fi
 }
 
-for f in examples/*.jed test/run/*.jed; do
+for f in examples/*.jed test/run/*.jed test/libc/*.jed; do
     run $(dirname $f) $(basename $f .jed)
 done
 for f in test/err/*.jed; do

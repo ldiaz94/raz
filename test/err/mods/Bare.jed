@@ -1,0 +1,10 @@
+(* A module that needs a program without C. *)
+module Bare;
+link static;
+
+proc f*: I64;
+begin
+    return 1;
+end;
+
+end Bare.

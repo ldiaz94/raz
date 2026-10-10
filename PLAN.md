@@ -101,7 +101,7 @@ Stage 2: the rest of the language
 
 Stage 3: calling C, and what comes with it
 
-- [ ] 11. `extern proc`, `extern var` and `link`; dynamic ELF, start
+- [x] 11. `extern proc`, `extern var` and `link`; dynamic ELF, start
       through `__libc_start_main`. A plain `lib/Sys.jed` over the C
       library, the default for targets with no file of their own.
       Examples with `printf` to `stdout`, and an X11 window, reading

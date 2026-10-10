@@ -1,0 +1,9 @@
+module Static;
+import Bare, C;
+
+proc main*;
+begin
+    C.printf("%d\n", Bare.f());
+end;
+
+end Static.

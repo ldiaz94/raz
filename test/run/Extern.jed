@@ -1,0 +1,65 @@
+(* Calling C: arguments in registers and on the stack, reals, ...,
+   C variables, jed procedures as C's callbacks. *)
+module Extern;
+import Out, C;
+link "libm.so.6";
+
+extern proc strlen(s: ^U8): U64;
+extern proc qsort(base: ^U8; n, size: U64; cmp: proc(a, b: ^I64): I32);
+extern proc snprintf(buf: ^U8; n: U64; format: ^U8; ...): I32;
+extern proc atoi(s: ^U8): I32;
+extern proc abs(n: I32): I32;
+extern proc sqrt(x: F64): F64;
+extern proc getenv(name: ^U8): ^U8;
+extern proc setenv(name, value: ^U8; overwrite: I32): I32;
+extern var environ: ^^U8;
+extern var optind: I32;
+
+var calls: I64;
+
+proc cmp(a, b: ^I64): I32;
+begin
+    INC(calls);
+    if a^ < b^ then return -1; elsif a^ > b^ then return 1; end;
+    return 0;
+end;
+
+proc main*;
+var
+    a: [6]I64; i: I64; buf: [64]U8; n: I32;
+    len: proc(s: ^U8): U64; e: ^^U8;
+begin
+    Out.int(I64(strlen("hello"))); Out.ln;
+    len := strlen;
+    Out.int(I64(len("hi there"))); Out.ln;
+    Out.int(I64(abs(-7)) + I64(atoi("35"))); Out.ln;
+    Out.int(I64(sqrt(2.0) * 1000.0)); Out.ln;
+
+    a := [5, -3, 9, 0, 12, 1];
+    qsort(^U8(ADR(a)), 6, 8, cmp);
+    for i := 0 to 5 do Out.int(a[i]); Out.char(' '); end;
+    Out.ln;
+    if calls > 0 then Out.str("cmp called\n"); end;
+
+    (* nine arguments after the format: some go on the stack *)
+    n := snprintf(ADR(buf[0]), 64, "%d %d %d %d %d %d %d %s|%.3f %g",
+        1, 2, 3, 4, 5, 6, 7, "eight", 3.14159, 0.5);
+    Out.str(buf[0..I64(n)]); Out.ln;
+
+    setenv("JED_TEST", "yes", 1);
+    Out.int(I64(strlen(getenv("JED_TEST")))); Out.ln;
+    e := environ;
+    i := 0;
+    while e^ # nil do INC(i); e := e + 1; end;
+    if i > 0 then Out.str("environ has entries\n"); end;
+    Out.int(I64(optind)); Out.ln;
+    optind := 5;
+    Out.int(I64(optind)); Out.ln;
+
+    Out.flush;
+    C.printf("printf %d %s %.1f\n", -42, "too", 2.5);
+    C.fflush(C.stdout);
+    Out.str("done\n");
+end;
+
+end Extern.

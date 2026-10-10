@@ -1,0 +1,7 @@
+module Variadic;
+
+proc f(a: I64; ...);
+begin
+end;
+
+end Variadic.

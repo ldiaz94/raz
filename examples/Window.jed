@@ -1,0 +1,70 @@
+(* An X11 window that says hello, and closes at a key press. An XEvent
+   is a C union: it is read as an array of words, and the member its
+   type says it holds through a pointer conversion. Compiled by make
+   check, not run: it needs a display. *)
+module Window;
+import Out;
+link "libX11.so.6";
+
+const
+    KeyPress = 2;
+    Expose = 12;
+    KeyPressMask = 1;
+    ExposureMask = 8000H;
+
+type
+    (* XKeyEvent, laid out as C lays it out *)
+    KeyEvent = record
+        typ: I32;
+        serial: U64;
+        sendEvent: I32;
+        display: ^U8;
+        window, root, subwindow, time: U64;
+        x, y, xRoot, yRoot: I32;
+        state, keycode: U32;
+        sameScreen: I32;
+    end;
+
+extern proc XOpenDisplay(name: ^U8): ^U8;
+extern proc XDefaultScreen(d: ^U8): I32;
+extern proc XRootWindow(d: ^U8; screen: I32): U64;
+extern proc XBlackPixel(d: ^U8; screen: I32): U64;
+extern proc XWhitePixel(d: ^U8; screen: I32): U64;
+extern proc XDefaultGC(d: ^U8; screen: I32): ^U8;
+extern proc XCreateSimpleWindow(d: ^U8; parent: U64; x, y: I32;
+    width, height, border: U32; borderColor, background: U64): U64;
+extern proc XStoreName(d: ^U8; w: U64; name: ^U8): I32;
+extern proc XSelectInput(d: ^U8; w: U64; mask: I64): I32;
+extern proc XMapWindow(d: ^U8; w: U64): I32;
+extern proc XNextEvent(d: ^U8; ev: ^U8): I32;
+extern proc XDrawString(d: ^U8; w: U64; gc: ^U8; x, y: I32; s: ^U8; n: I32): I32;
+extern proc XCloseDisplay(d: ^U8): I32;
+
+proc main*: I64;
+const text = "hello, world: press a key";
+var
+    d: ^U8; s: I32; w: U64;
+    ev: [24]I64;            (* XEvent: 192 bytes *)
+    key: ^KeyEvent;
+begin
+    d := XOpenDisplay(nil);
+    if d = nil then Out.str("no display\n"); return 1; end;
+    s := XDefaultScreen(d);
+    w := XCreateSimpleWindow(d, XRootWindow(d, s), 0, 0, 320, 80, 1,
+        XBlackPixel(d, s), XWhitePixel(d, s));
+    XStoreName(d, w, "jed");
+    XSelectInput(d, w, ExposureMask + KeyPressMask);
+    XMapWindow(d, w);
+    repeat
+        XNextEvent(d, ^U8(ADR(ev)));
+        if I32(ev[0]) = Expose then
+            XDrawString(d, w, XDefaultGC(d, s), 20, 45, text, I32(LEN(text)));
+        end;
+    until I32(ev[0]) = KeyPress;
+    key := ^KeyEvent(ADR(ev));
+    Out.str("key "); Out.int(I64(key^.keycode)); Out.ln;
+    XCloseDisplay(d);
+    return 0;
+end;
+
+end Window.

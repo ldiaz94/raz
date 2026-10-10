@@ -814,6 +814,7 @@ Modules written in jed, in the compiler's `lib` directory:
 | `Rt` | ending the program, `exit` and `atExit`; what the compiler's checks call when they fail; string comparison |
 | `Sys` | system calls: `write`, `mmap`, `munmap`, `exit`; one file per target, and `Sys.jed` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered |
+| `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`; a program that imports it uses C |
 | `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
 | `Heap` | a general allocator, `Heap.heap` |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |

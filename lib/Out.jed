@@ -1,23 +1,47 @@
-(* Writing text and numbers to standard output. Nothing is buffered:
-   each call is one write. *)
+(* Writing text and numbers to standard output, through a buffer of
+   4 KB. The buffer is written out when it is full, at each line feed
+   when standard output is a terminal, by flush, and when the program
+   ends by Rt.exit. C's stdio keeps a buffer of its own: a program that
+   writes with both flushes one before writing with the other. *)
 module Out;
-import Sys;
+import Rt, Sys;
 
-proc str*(s: []U8);
+var
+    buf: [4096]U8;
+    n: I64;          (* bytes in buf *)
+    tty: BOOL;       (* standard output is a terminal *)
+
+(* Writes out the buffer. What can't be written is dropped. *)
+proc flush*;
+var i, k: I64;
 begin
-    Sys.write(Sys.stdout, s);
+    i := 0;
+    while i < n do
+        k := Sys.write(Sys.stdout, buf[i..n]);
+        if k > 0 then i := i + k;
+        elsif k # -4 then break;   (* -EINTR: try again *)
+        end;
+    end;
+    n := 0;
 end;
 
 proc char*(c: U8);
-var b: [1]U8;
 begin
-    b[0] := c;
-    Sys.write(Sys.stdout, b);
+    if n = LEN(buf) then flush; end;
+    buf[n] := c;
+    INC(n);
+    if (c = '\n') and tty then flush; end;
+end;
+
+proc str*(s: []U8);
+var i: I64;
+begin
+    for i := 0 to LEN(s) - 1 do char(s[i]); end;
 end;
 
 proc ln*;
 begin
-    str("\n");
+    char('\n');
 end;
 
 (* n in decimal *)
@@ -54,4 +78,7 @@ begin
     str(buf[i..16]);
 end;
 
+begin
+    tty := Sys.isTerminal(Sys.stdout);
+    Rt.atExit(flush);
 end Out.

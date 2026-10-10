@@ -1,0 +1,57 @@
+(* System calls through the C library: Sys for the targets that have no
+   file of their own, with the same exports. A program that imports it
+   uses C. *)
+module Sys;
+import C;
+
+const
+    stdin* = 0;
+    stdout* = 1;
+    stderr* = 2;
+
+(* minus errno, as a system call returns it *)
+proc failed: I64;
+var e: ^I32;
+begin
+    e := C.__errno_location();
+    return -I64(e^);
+end;
+
+(* Writes s to the file descriptor fd; the number of bytes written, or
+   minus an errno. *)
+proc write*(fd: I64; s: []U8): I64;
+var r: I64;
+begin
+    if LEN(s) = 0 then return 0; end;
+    r := C.write(I32(fd), ADR(s[0]), U64(LEN(s)));
+    if r < 0 then return failed(); end;
+    return r;
+end;
+
+(* size bytes of fresh, zeroed memory from the system, a multiple of
+   pages, or nil. *)
+proc mmap*(size: I64): ^U8;
+var p: ^U8;
+begin
+    p := C.mmap(nil, U64(size), 3, 22H, -1, 0);   (* read, write; private, anonymous *)
+    if I64(p) = -1 then return nil; end;
+    return p;
+end;
+
+proc munmap*(p: ^U8; size: I64);
+begin
+    C.munmap(p, U64(size));
+end;
+
+proc isTerminal*(fd: I64): BOOL;
+begin
+    return C.isatty(I32(fd)) = 1;
+end;
+
+(* Ends the program, at once, with status. *)
+proc exit*(status: I64);
+begin
+    C._exit(I32(status));
+end;
+
+end Sys.

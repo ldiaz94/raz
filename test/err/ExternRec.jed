@@ -1,0 +1,7 @@
+module ExternRec;
+
+type R = record a, b: I64; end;
+
+extern proc f(r: R);
+
+end ExternRec.

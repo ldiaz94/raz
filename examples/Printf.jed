@@ -1,0 +1,17 @@
+(* Out and C's printf, writing to the same standard output. Each keeps
+   a buffer of its own, so each is flushed before the other writes. *)
+module Printf;
+import Out, C;
+
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("jed says "); Out.int(i); Out.ln;
+        Out.flush;
+        C.printf("C says %d, %s\n", I32(i * i), "squared");
+        C.fflush(C.stdout);
+    end;
+end;
+
+end Printf.

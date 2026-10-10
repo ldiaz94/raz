@@ -41,6 +41,5 @@ begin
   Syscall;
   EndChunk(entry);
 
-  LinkAll(entry, HeaderSize);
   WriteElf(ParamStr(1), entry);
 end.

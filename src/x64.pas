@@ -58,6 +58,7 @@ type
     module, name: longint;         { for the symbol table; -1 if none }
     adr: int64;                    { its address, set by the linker }
     live: boolean;                 { reached from the entry point }
+    ext: boolean;                  { bss: the address of a C symbol, its name }
   end;
 
   TFixup = record
@@ -86,6 +87,7 @@ procedure BeginChunk(c: longint);
 procedure EndChunk(c: longint);
 procedure SetData(c: longint; p: PBytes; n, align: longint);
 procedure SetBss(c: longint; size, align: longint);
+function ExternChunk(name: longint): longint;
 
 procedure Put1(b: longint);
 procedure Put4(v: longint);
@@ -118,6 +120,7 @@ procedure Pop(r: longint);
 procedure CallChunk(c: longint);
 procedure CallBack(target: longint);
 procedure CallR(r: longint);
+procedure CallM(const m: TMem);
 procedure Ret;
 procedure Leave;
 procedure Syscall;
@@ -238,6 +241,19 @@ procedure SetBss(c: longint; size, align: longint);
 begin
   chunks^[c].size := size;
   chunks^[c].align := align;
+end;
+
+{ The quadword that holds the address of C's symbol name, filled in
+  when the program starts; one for each name. }
+function ExternChunk(name: longint): longint;
+var c: longint;
+begin
+  for c := 0 to numChunks - 1 do
+    if chunks^[c].ext and (chunks^[c].name = name) then exit(c);
+  c := NewChunk(secBss, -1, name);
+  SetBss(c, 8, 8);
+  chunks^[c].ext := true;
+  ExternChunk := c;
 end;
 
 procedure AddFixup(at, chunk, addend: longint);
@@ -486,6 +502,11 @@ end;
 procedure CallR(r: longint);
 begin
   OpR(0, false, $FF, 2, r);
+end;
+
+procedure CallM(const m: TMem);
+begin
+  OpM(0, false, $FF, 2, m);
 end;
 
 procedure Ret; begin Put1($C3) end;

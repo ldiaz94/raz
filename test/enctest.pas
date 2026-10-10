@@ -21,12 +21,11 @@ begin
   Unary(2, RAX); Unary(3, RAX); Unary(6, RCX); Unary(7, RCX); Cqo;
   Extend(RAX, 1, true); Extend(RAX, 1, false); Extend(RAX, 2, true); Extend(RAX, 2, false); Extend(RAX, 4, true); Extend(RAX, 4, false);
   SetCC(ccL, RAX); SetCC(ccA, RCX); TestRR(RAX, RAX);
-  Push(RAX); Push(12); Pop(RCX); Pop(R11); CallR(R11); Ret; Leave; Syscall; Mfence; Ud2; RepMovsb; RepStosb;
+  Push(RAX); Push(12); Pop(RCX); Pop(R11); CallR(R11); CallM(Mem(RCX, 8)); Ret; Leave; Syscall; Mfence; Ud2; RepMovsb; RepStosb;
   LockCmpxchg(Mem(RCX, 0), RDX); Xchg(Mem(RCX, 0), RAX); LockXadd(Mem(RCX, 0), RAX);
   MovqXR(0, RAX); MovqXR(1, RCX); MovqRX(RAX, 0); MovsdXM(2, Mem(RBP, -8)); MovsdMX(Mem(RBP, -8), 7);
   Sse($58, 0, 1); Sse($5E, 0, 1); Ucomisd(0, 1); Cvtsi2sd(0, RAX); Cvttsd2si(RAX, 0); Btc(RAX, 63);
   L := NoLabel; Jcc(ccE, L); Jmp(L); FixLink(L); JmpBack(chunks^[e].start); JccBack(ccNE, chunks^[e].start);
   EndChunk(e);
-  LinkAll(e, HeaderSize);
   WriteElf(ParamStr(1), e);
 end.

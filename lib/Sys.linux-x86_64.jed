@@ -30,6 +30,14 @@ begin
     SYSCALL(11, p, size);
 end;
 
+(* Whether the file descriptor fd is a terminal: whether it has a
+   terminal's settings to read (ioctl TCGETS). *)
+proc isTerminal*(fd: I64): BOOL;
+var t: [8]I64;   (* struct termios: 60 bytes *)
+begin
+    return SYSCALL(16, fd, 5401H, ADR(t)) = 0;
+end;
+
 (* Ends the program, at once, with status. *)
 proc exit*(status: I64);
 begin

@@ -6,8 +6,11 @@
   every fixup patched.
 
   The file is laid out so that each section can be mapped as it lies:
-  text right after the headers, rodata on the next page, bss after
-  that, in memory only.
+  text right after the headers, rodata on the next page, then a
+  writable page that starts with the table the dynamic loader reads
+  (none in a static program) and goes on as bss, in memory only. The
+  loader's other tables come at the end of rodata; elf.pas writes them
+  in the room left there.
 
   Depends on: x64 for chunks and fixups, scan for names and errors.
   Leaves out: the file format; that is elf.pas. }
@@ -26,11 +29,13 @@ const
 
 var
   textOff, textSize: int64;    { file offset and size of text }
-  roOff, roSize: int64;
-  bssAdr, bssSize: int64;
+  roOff, roSize: int64;        { rodata, the room for the loader's tables included }
+  extraAdr: int64;             { that room }
+  bssAdr, bssSize: int64;      { the writable segment, the loader's table first }
   textImg, roImg: PBytes;
 
-procedure LinkAll(entry: longint; headerSize: longint);
+procedure MarkLive(entry: longint);
+procedure LinkAll(headerSize, roExtra, dynSize: int64);
 function ChunkName(c: longint): shortstring;
 
 implementation
@@ -82,18 +87,21 @@ begin
   Place := a;
 end;
 
-procedure LinkAll(entry: longint; headerSize: longint);
+{ Places the live chunks, leaving roExtra bytes at the end of rodata
+  and dynSize at the start of the writable segment. }
+procedure LinkAll(headerSize, roExtra, dynSize: int64);
 var c, f, at: longint; e, p, v: int64;
 begin
-  MarkLive(entry);
   textOff := (headerSize + 15) div 16 * 16;
   e := Place(secText, Base + textOff);
   textSize := e - (Base + textOff);
   roOff := (textOff + textSize + Page - 1) div Page * Page;
   e := Place(secRodata, Base + roOff);
+  extraAdr := (e + 7) div 8 * 8;
+  if roExtra > 0 then e := extraAdr + roExtra;
   roSize := e - (Base + roOff);
   bssAdr := (Base + roOff + roSize + Page - 1) div Page * Page;
-  e := Place(secBss, bssAdr);
+  e := Place(secBss, bssAdr + dynSize);
   bssSize := e - bssAdr;
 
   textImg := GetMem(textSize + 1);

@@ -1,0 +1,33 @@
+(* The library over C's Sys, lib/Sys.jed, which this directory puts
+   first: output, memory from the heap, and a failed check that still
+   writes out what Out holds. *)
+module Through;
+import Out, Heap, Mem;
+
+type Node = record next: ^Node; n: I64; end;
+
+proc main*;
+var p, list: ^Node; i, sum: I64; a: [3]I64;
+begin
+    Out.str("through C\n");
+    list := nil;
+    for i := 1 to 1000 do
+        NEW(p, Heap.heap);
+        p^.n := i;
+        p^.next := list;
+        list := p;
+    end;
+    sum := 0;
+    while list # nil do
+        sum := sum + list^.n;
+        p := list;
+        list := list^.next;
+        Mem.free(Heap.heap, ^U8(p));
+    end;
+    Out.int(sum); Out.ln;
+    i := 3;
+    a[i] := 1;
+    Out.str("not reached\n");
+end;
+
+end Through.

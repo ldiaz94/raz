@@ -1,9 +1,45 @@
-(* What the compiler's code calls: fail when a check fails, eq when =
-   or # compares two strings. The compiler finds them by these names. *)
+(* The run time: ending the program, and what the compiler's code
+   calls: fail when a check fails, eq when = or # compares two strings.
+   The compiler finds fail, eq, exit and cExit by these names. *)
 module Rt;
 import Sys;
 
-(* A check failed at line of file: says so on standard error and stops
+const
+    Full*: ERROR = "too many procedures to run at exit";
+    MaxAtExit = 32;
+
+var
+    atExits: [MaxAtExit]proc;
+    numAtExit: I64;
+    cExit: proc(status: I32);   (* C's exit, set first thing in a program that uses C *)
+
+(* Registers p to run when the program ends by exit. *)
+proc atExit*(p: proc): ERROR;
+begin
+    if numAtExit = MaxAtExit then return Full; end;
+    atExits[numAtExit] := p;
+    INC(numAtExit);
+    return nil;
+end;
+
+(* Runs the procedures registered with atExit, the last first, then
+   ends the program with status: through C's exit in a program that
+   uses C, so that C flushes its buffers too. Each procedure is taken
+   off the list before it runs, so it runs once even if it fails or
+   calls exit itself. *)
+proc exit*(status: I64);
+var p: proc;
+begin
+    while numAtExit > 0 do
+        DEC(numAtExit);
+        p := atExits[numAtExit];
+        p();
+    end;
+    if cExit # nil then cExit(I32(status)); end;
+    Sys.exit(status);
+end;
+
+(* A check failed at line of file: says so on standard error and ends
    the program with status 2. *)
 proc fail*(file: ^U8; line: I64);
 var buf: [20]U8; i, n: I64;
@@ -21,7 +57,7 @@ begin
     buf[i] := ':';
     Sys.write(Sys.stderr, buf[i..20]);
     Sys.write(Sys.stderr, ": index out of range\n");
-    Sys.exit(2);
+    exit(2);
 end;
 
 proc eq*(a, b: []U8): BOOL;
