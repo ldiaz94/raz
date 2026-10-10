@@ -473,6 +473,51 @@ begin
   x.mode := mReg;
 end;
 
+{ NEW(p, a): p := a^.alloc(a, SIZE(T), alignment), zeroed if not nil.
+  a is a ^Mem.Allocator, the one interface the compiler knows. }
+procedure New_(var x: TItem);
+var y, z: TItem; t: PType; f: PObj; s: int64; c: TCall; L: longint;
+begin
+  Expression(x, nil);
+  if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fPtr) then Mark('NEW needs a pointer variable');
+  t := x.typ^.base;
+  Save(x);
+  Expect(sComma, ',');
+  Expression(y, nil);
+  if (y.typ^.form <> fPtr) or (y.typ^.base^.obj = nil) or (y.typ^.base^.obj^.module = nil)
+    or (NameOf(y.typ^.base^.obj^.name) <> 'Allocator')
+    or (NameOf(y.typ^.base^.obj^.module^.name) <> 'Mem') then Mark('NEW needs a ^Mem.Allocator');
+  f := Find(y.typ^.base^.scope, Name('alloc'));
+  s := ToSlot(y);
+  Load(RAX, Mem(RBP, s), 8, false);
+  MakeConst(z, f^.typ, 0);
+  z.mode := mVar; z.base := bReg; z.reg := RAX; z.off := f^.val;
+  BeginCall(c, z);
+  Load(RAX, Mem(RBP, s), 8, false);
+  MakeConst(z, y.typ, 0);
+  z.mode := mReg;
+  PassArg(c, z);
+  MakeConst(z, tI64, t^.size);
+  PassArg(c, z);
+  MakeConst(z, tI64, t^.align);
+  PassArg(c, z);
+  EndCall(c, z);
+  L := NoLabel;
+  TestRR(RAX, RAX);
+  Jcc(ccE, L);
+  MovRR(RDX, RAX);
+  MovRR(RDI, RAX);
+  MovRI(RCX, t^.size);
+  MovRI(RAX, 0);
+  RepStosb;
+  MovRR(RAX, RDX);
+  FixLink(L);
+  z.typ := x.typ;
+  Assign(x, z);
+  MakeConst(x, tNone, 0);
+  x.mode := mNone;
+end;
+
 procedure Builtin(var x: TItem);
 const SysRegs: array[0..6] of longint = (RAX, RDI, RSI, RDX, R10, R8, R9);
 var which, n, i: longint; y: TItem; t: PType; slots: array[0..6] of int64;
@@ -544,7 +589,7 @@ begin
       MakeConst(x, tNone, 0);
       x.mode := mNone;
     end;
-    bNew: Mark('NEW comes in step 9');
+    bNew: New_(x);
   end;
   Expect(sRparen, ')');
 end;
@@ -686,6 +731,7 @@ var f: PObj; a: TItem; seen: array[0..63] of longint; n, i: longint;
 begin
   Next;
   ZeroTemp(x, t);
+  FillChar(seen, SizeOf(seen), 0);
   n := 0;
   if tok <> sRbrace then
     repeat

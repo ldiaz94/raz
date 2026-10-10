@@ -15,6 +15,21 @@ begin
     return SYSCALL(1, fd, ADR(s[0]), LEN(s));
 end;
 
+(* size bytes of fresh, zeroed memory from the system, a multiple of
+   pages, or nil. *)
+proc mmap*(size: I64): ^U8;
+var p: I64;
+begin
+    p := SYSCALL(9, 0, size, 3, 22H, -1, 0);   (* read, write; private, anonymous *)
+    if p < 0 then return nil; end;
+    return ^U8(p);
+end;
+
+proc munmap*(p: ^U8; size: I64);
+begin
+    SYSCALL(11, p, size);
+end;
+
 (* Ends the program, at once, with status. *)
 proc exit*(status: I64);
 begin

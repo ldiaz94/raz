@@ -1,0 +1,66 @@
+module Alloc;
+import Out, Mem, Arena, Heap;
+
+type
+    Node = record next: ^Node; val: I64; pad: [5]I64; end;
+    Big = record data: [1000]I64; end;
+
+proc build(a: ^Mem.Allocator; n: I64): ^Node;
+var head, p: ^Node; i: I64;
+begin
+    head := nil;
+    for i := 1 to n do
+        NEW(p, a);
+        if p = nil then return nil; end;
+        if p^.val # 0 then Out.str("not zeroed "); end;
+        p^.val := i;
+        p^.pad[4] := i;
+        p^.next := head;
+        head := p;
+    end;
+    return head;
+end;
+
+proc sum(p: ^Node): I64;
+var s: I64;
+begin
+    s := 0;
+    while p # nil do s := s + p^.val + p^.pad[4]; p := p^.next; end;
+    return s;
+end;
+
+proc release(a: ^Mem.Allocator; p: ^Node);
+var next: ^Node;
+begin
+    while p # nil do
+        next := p^.next;
+        Mem.free(a, ^U8(p));
+        p := next;
+    end;
+end;
+
+proc main*;
+var ar: Arena.Arena; l, m: ^Node; b: ^Big; i: I64; small: ^U8; again: ^Node;
+begin
+    l := build(Heap.heap, 1000);
+    Out.int(sum(l)); Out.ln;
+    release(Heap.heap, l);
+    m := build(Heap.heap, 1000);
+    Out.int(sum(m)); Out.ln;
+    NEW(b, Heap.heap);
+    b^.data[999] := 7;
+    Out.int(b^.data[999] + b^.data[0]); Out.ln;
+    Mem.free(Heap.heap, ^U8(b));
+    if not Arena.init(ADR(ar), 8192) then Out.str("no arena"); end;
+    l := build(ADR(ar.base), 100);
+    Out.int(sum(l)); Out.ln;
+    l := build(ADR(ar.base), 1000);
+    if l = nil then Out.str("nil "); end;
+    Arena.reset(ADR(ar));
+    NEW(again, ADR(ar.base));
+    if again # nil then Out.str("again "); Out.int(again^.val); end;
+    Out.ln;
+    Arena.done(ADR(ar));
+end;
+
+end Alloc.

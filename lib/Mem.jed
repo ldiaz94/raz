@@ -1,0 +1,35 @@
+(* Memory: Allocator, the interface every allocator offers, and pages
+   from the system. NEW(p, a) calls a^.alloc. *)
+module Mem;
+import Sys;
+
+type
+    Allocator* = record
+        alloc*: proc(a: ^Allocator; size, align: I64): ^U8;   (* nil if out of room *)
+        free*:  proc(a: ^Allocator; p: ^U8);
+    end;
+
+const Page* = 4096;
+
+(* size bytes, rounded up to whole pages, zeroed; or nil. *)
+proc pages*(size: I64): ^U8;
+begin
+    return Sys.mmap((size + Page - 1) div Page * Page);
+end;
+
+proc unmap*(p: ^U8; size: I64);
+begin
+    Sys.munmap(p, (size + Page - 1) div Page * Page);
+end;
+
+proc alloc*(a: ^Allocator; size, align: I64): ^U8;
+begin
+    return a^.alloc(a, size, align);
+end;
+
+proc free*(a: ^Allocator; p: ^U8);
+begin
+    a^.free(a, p);
+end;
+
+end Mem.

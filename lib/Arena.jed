@@ -1,0 +1,52 @@
+(* An allocator that hands out memory from one block and frees it all
+   at once: free does nothing, reset forgets everything. An Arena is
+   its allocator: ADR(arena.base) is the ^Mem.Allocator to give NEW. *)
+module Arena;
+import Mem;
+
+type
+    Arena* = record
+        base*: Mem.Allocator;     (* first, so that ^Arena(a) finds the rest *)
+        buf: ^U8;
+        used, cap: I64;
+    end;
+
+proc alloc(a: ^Mem.Allocator; size, align: I64): ^U8;
+var ar: ^Arena; at: I64;
+begin
+    ar := ^Arena(a);
+    at := (ar^.used + align - 1) div align * align;
+    if (size < 0) or (at + size > ar^.cap) then return nil; end;
+    ar^.used := at + size;
+    return ar^.buf + at;
+end;
+
+proc free(a: ^Mem.Allocator; p: ^U8);
+begin
+end;
+
+(* An arena of size bytes; false if the system has none. *)
+proc init*(ar: ^Arena; size: I64): BOOL;
+begin
+    ar^.base := {alloc: alloc, free: free};
+    ar^.buf := Mem.pages(size);
+    ar^.used := 0;
+    ar^.cap := size;
+    if ar^.buf = nil then ar^.cap := 0; end;
+    return ar^.buf # nil;
+end;
+
+(* Forgets every allocation; the memory is used again. *)
+proc reset*(ar: ^Arena);
+begin
+    ar^.used := 0;
+end;
+
+proc done*(ar: ^Arena);
+begin
+    if ar^.buf # nil then Mem.unmap(ar^.buf, ar^.cap); end;
+    ar^.buf := nil;
+    ar^.cap := 0;
+end;
+
+end Arena.

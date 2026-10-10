@@ -1,0 +1,75 @@
+(* A general allocator: Heap.heap. Small blocks come in nine sizes,
+   16 to 4096 bytes with their header, each with a list of the free
+   ones; a block bigger than that gets pages of its own. Every block
+   has a 16-byte header before it: its size class, or minus its size
+   in bytes for a big one. *)
+module Heap;
+import Mem;
+
+const
+    Classes = 9;
+    Header = 16;
+    Refill = 65536;
+
+type
+    Block = record next: ^Block; end;
+
+var
+    lists: [Classes]^Block;
+    cur: ^U8;            (* where the next new small block comes from *)
+    left: I64;
+    std: Mem.Allocator;
+    heap*: ^Mem.Allocator;
+
+proc alloc(a: ^Mem.Allocator; size, align: I64): ^U8;
+var c, n: I64; b: ^Block; p: ^U8; h: ^I64;
+begin
+    n := size + Header;
+    if (size < 0) or (align > Header) and (align > Mem.Page) then return nil; end;
+    c := 0;
+    while (c < Classes) and (16 shl c < n) do INC(c); end;
+    if (c = Classes) or (align > Header) then
+        n := (n + Mem.Page - 1) div Mem.Page * Mem.Page;
+        p := Mem.pages(n);
+        if p = nil then return nil; end;
+        h := ^I64(p);
+        h^ := -n;
+        return p + Header;
+    end;
+    b := lists[c];
+    if b # nil then
+        lists[c] := b^.next;
+        p := ^U8(b);
+    else
+        if left < 16 shl c then
+            cur := Mem.pages(Refill);
+            if cur = nil then left := 0; return nil; end;
+            left := Refill;
+        end;
+        p := cur;
+        cur := cur + (16 shl c);
+        left := left - (16 shl c);
+    end;
+    h := ^I64(p);
+    h^ := c;
+    return p + Header;
+end;
+
+proc free(a: ^Mem.Allocator; p: ^U8);
+var h: ^I64; b: ^Block;
+begin
+    if p = nil then return; end;
+    h := ^I64(p - Header);
+    if h^ < 0 then
+        Mem.unmap(^U8(h), -h^);
+    else
+        b := ^Block(h);
+        b^.next := lists[h^];
+        lists[h^] := b;
+    end;
+end;
+
+begin
+    std := {alloc: alloc, free: free};
+    heap := ADR(std);
+end Heap.

@@ -752,11 +752,11 @@ Modules written in jed, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | what the compiler's checks call when they fail, and string comparison |
-| `Sys` | system calls: `write`, `exit`; one file per target |
+| `Sys` | system calls: `write`, `mmap`, `munmap`, `exit`; one file per target |
 | `Out` | writing text and numbers to standard output |
-| `Mem` | `mmap`, and `Allocator`, the interface of every allocator |
-| `Heap` | a general allocator |
-| `Arena` | an allocator that frees everything at once |
+| `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
+| `Heap` | a general allocator, `Heap.heap` |
+| `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
 | `Str` | operations on `[]U8` strings |
 | `Buf` | a growable byte buffer |
 | `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.int(m)])` |
