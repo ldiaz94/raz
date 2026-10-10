@@ -1,0 +1,7 @@
+module ErrOrder;
+const A: ERROR = "a"; B: ERROR = "b";
+proc main*;
+begin
+    if A < B then end;
+end;
+end ErrOrder.

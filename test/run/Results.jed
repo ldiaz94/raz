@@ -1,0 +1,79 @@
+module Results;
+import Out;
+
+const
+    NotFound*: ERROR = "not found";
+    Empty: ERROR = "empty";
+    Other: ERROR = "not found";
+
+type Pair = record a, b: I64; end;
+
+var table: [4]I64; g: Pair;
+
+proc divmod(a, b: I64): (I64, I64);
+begin
+    return a div b, a mod b;
+end;
+
+proc find(key: I64): (I64, ERROR);
+var i: I64;
+begin
+    for i := 0 to 3 do
+        if table[i] = key then return i, nil; end;
+    end;
+    return -1, NotFound;
+end;
+
+proc mixed(x: F64): (F64, []U8, Pair, BOOL);
+var p: Pair;
+begin
+    p.a := 1; p.b := 2;
+    return x * 2.0, "two", p, true;
+end;
+
+proc minmax(a, b: I64): (I64, I64);
+code 48H, 89H, 0F8H,         (* mov rax, rdi *)
+     48H, 89H, 0F2H,         (* mov rdx, rsi *)
+     48H, 39H, 0F7H,         (* cmp rdi, rsi *)
+     7EH, 06H,               (* jle +6 *)
+     48H, 89H, 0F0H,         (* mov rax, rsi *)
+     48H, 89H, 0FAH,         (* mov rdx, rdi *)
+     0C3H;
+
+proc nothing: (I64, ERROR);
+begin
+end;
+
+proc main*;
+var q, r, i: I64; e: ERROR; x: F64; s: []U8; p: Pair; ok: BOOL; a: [3]I64; u: U8;
+begin
+    q, r := divmod(17, 5);
+    Out.int(q); Out.str(" "); Out.int(r); Out.ln;
+    table := [10, 20, 30, 40];
+    i, e := find(30);
+    Out.int(i); if e = nil then Out.str(" nil"); end; Out.ln;
+    i, e := find(7);
+    Out.int(i); Out.str(" "); Out.str(MSG(e));
+    if e = NotFound then Out.str(" is NotFound"); end;
+    if e # Other then Out.str(", not Other"); end;
+    if e # Empty then Out.str(", not Empty"); end;
+    Out.ln;
+    Out.str("["); Out.str(MSG(nil)); Out.str("]"); Out.ln;
+    x, s, p, ok := mixed(1.5);
+    Out.int(I64(x * 10.0)); Out.str(" "); Out.str(s); Out.str(" "); Out.int(p.b);
+    if ok then Out.str(" ok"); end; Out.ln;
+    a[1], g.b := divmod(9, 4);
+    Out.int(a[1]); Out.str(" "); Out.int(g.b); Out.ln;
+    q, r := minmax(9, 3);
+    Out.int(q); Out.int(r); Out.ln;
+    divmod(1, 1);
+    i, e := nothing();
+    Out.int(i); if e = nil then Out.str(" zero"); end; Out.ln;
+    i := 5;
+    INC(i); INC(i, 10); DEC(i, 2);
+    a[2] := 7; DEC(a[2]);
+    u := 255; INC(u);
+    Out.int(i); Out.str(" "); Out.int(a[2]); Out.str(" "); Out.int(I64(u)); Out.ln;
+end;
+
+end Results.

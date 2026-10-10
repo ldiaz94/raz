@@ -507,6 +507,8 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
 | `MSG(e)` | the message of the error `e`, a `[]U8` |
 | `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six integer or pointer arguments; the raw result, an `I64` (a negative number is `-errno`) |
+| `INC(v)`, `INC(v, k)` | adds 1, or `k`, to the integer variable `v`; it wraps, like `+` |
+| `DEC(v)`, `DEC(v, k)` | subtracts 1, or `k`, from `v` |
 | `FENCE` | a full memory barrier |
 | `CAS(p, old, new)` | if `p^ = old`, sets `p^ := new` and returns `true`; atomically |
 | `XCHG(p, x)` | sets `p^ := x` and returns the value before, atomically |
@@ -517,6 +519,10 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 `SYSCALL` exists only on Linux targets. Other systems have no stable
 system call interface, and their modules call the C library instead
 (section 9).
+
+`INC` and `DEC` evaluate `v` once, so `INC(a[f(i)])` calls `f` once. They
+read `v` and then write it: two accesses, even through a `^VOLATILE`
+pointer, and not atomic; `XADD` is the atomic one.
 
 For `CAS`, `XCHG` and `XADD`, `p` is a `^T` or `^VOLATILE T` where `T`
 is an 8-byte integer or pointer type (an integer type for `XADD`). They

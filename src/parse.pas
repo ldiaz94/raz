@@ -11,7 +11,7 @@
   are read for their declarations only, and must export the same
   interface.
 
-  Depends on: scan, tok, x64, gen.
+  Depends on: scan, sym, x64, gen.
   Leaves out (for later stages): multiple results, errors, enumerations
   and sets, record literals, defer, NEW, generic modules, extern. }
 
@@ -234,6 +234,33 @@ begin
   VariantType := t;
 end;
 
+{ Several results: a record of them, laid out as C would, and
+  returned through a hidden pointer. }
+function Results: PType;
+var t, ft: PType; f, last: PObj; off: int64;
+begin
+  Next;
+  t := NewType(fRecord, 0, 1);
+  t^.tuple := true;
+  off := 0; last := nil;
+  repeat
+    ft := ParseType;
+    off := AlignUp(off, ft^.align);
+    f := NewObj(oField, -1, ft);
+    f^.val := off;
+    off := off + ft^.size;
+    if ft^.align > t^.align then t^.align := ft^.align;
+    if last = nil then t^.fields := f else last^.next := f;
+    last := f;
+    inc(t^.len);
+    if tok <> sComma then break;
+    Next;
+  until false;
+  Expect(sRparen, ')');
+  t^.size := AlignUp(off, t^.align);
+  if t^.len = 1 then Results := t^.fields^.typ else Results := t;
+end;
+
 function Signature: PType;
 var
   t, pt: PType; p, first, last: PObj; isVar: boolean; n: longint;
@@ -274,8 +301,7 @@ begin
   t^.len := n;
   if tok = sColon then begin
     Next;
-    if tok = sLparen then Mark('several results come in stage 2');
-    t^.base := ParseType;
+    if tok = sLparen then t^.base := Results else t^.base := ParseType;
   end;
   Signature := t;
 end;
@@ -450,7 +476,21 @@ begin
       x.mode := mReg;
     end;
     bCas, bXchg, bXadd: Atomic(x, which);
-    bNew, bMsg: Mark('NEW and MSG come in stage 2');
+    bMsg: begin Expression(x, tError); Msg(x) end;
+    bInc, bDec: begin
+      Expression(x, nil);
+      if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fInt) then
+        Mark('INC and DEC need an integer variable');
+      Save(x);
+      if tok = sComma then begin
+        Next;
+        Expression(y, x.typ);
+      end else MakeConst(y, x.typ, 1);
+      IncDec(x, y, which = bDec);
+      MakeConst(x, tNone, 0);
+      x.mode := mNone;
+    end;
+    bNew: Mark('NEW comes in step 9');
   end;
   Expect(sRparen, ')');
 end;
@@ -600,6 +640,7 @@ begin
     sIdent: begin
       Designator(x, called);
       if x.mode = mNone then Mark('this procedure returns nothing');
+      if x.typ^.tuple then Mark('several results go only to a, b := ...');
     end;
     sLparen: begin Next; Expression(x, want); Expect(sRparen, ')') end;
     sNot: begin Next; Factor(x, nil); NotOp(x) end;
@@ -853,6 +894,47 @@ begin
   FixLink(endL);
 end;
 
+{ a, b := f(x): the variables first, left to right, then the call;
+  then each result to its variable, in order. }
+procedure MultiAssign(var x: TItem);
+var d: array[0..15] of TItem; y, z: TItem; n, i: longint; called: boolean; f: PObj;
+begin
+  n := 0;
+  d[0] := x;
+  repeat
+    if (d[n].mode <> mVar) or not d[n].isVar then Mark('can''t assign to this');
+    Pin(d[n]);
+    inc(n);
+    if tok <> sComma then break;
+    if n > High(d) then Mark('too many variables');
+    Next;
+    Designator(d[n], called);
+  until false;
+  Expect(sBecomes, ':=');
+  Designator(y, called);
+  if not called or not y.typ^.tuple or (y.typ^.len <> n) then
+    Mark('needs a call with as many results as variables');
+  f := y.typ^.fields;
+  for i := 0 to n - 1 do begin
+    z := y;
+    Field(z, f);
+    Assign(d[i], z);
+    f := f^.next;
+  end;
+end;
+
+procedure ReturnResults;
+var f: PObj; x: TItem;
+begin
+  f := curResult^.fields;
+  while f <> nil do begin
+    Expression(x, f^.typ);
+    ReturnField(f, x);
+    f := f^.next;
+    if f <> nil then Expect(sComma, ',');
+  end;
+end;
+
 procedure Statement;
 var x, y: TItem; called: boolean; m: int64; c: TCall;
 begin
@@ -867,7 +949,7 @@ begin
         Expression(y, x.typ);
         Assign(x, y);
       end else if tok = sComma then
-        Mark('several results come in stage 2')
+        MultiAssign(x)
       else if not called then begin
         if (x.mode = mProc) or ((x.mode in [mVar, mReg]) and (x.typ^.form = fProc)) then begin
           BeginCall(c, x);
@@ -884,8 +966,12 @@ begin
       Next;
       if tok = sSemicolon then ReturnNone
       else begin
-        Expression(x, curResult);
-        ReturnValue(x);
+        if (curResult <> nil) and curResult^.tuple then ReturnResults
+        else begin
+          Expression(x, curResult);
+          ReturnValue(x);
+        end;
+        ReturnJump;
       end;
     end;
     sBreak: begin
@@ -977,7 +1063,14 @@ begin
     q := q^.next;
   end;
   if (ni > 6) or (nf > 8) or sig^.variadic then Mark('too many parameters for a code procedure');
-  if (sig^.base <> nil) and not IsScalar(sig^.base) then Mark('a code procedure returns a single value');
+  if sig^.base <> nil then
+    if sig^.base^.tuple then begin
+      q := sig^.base^.fields;
+      if (sig^.base^.len <> 2) or (q^.typ^.size <> 8) or (q^.next^.typ^.size <> 8)
+        or not IsScalar(q^.typ) or not IsScalar(q^.next^.typ)
+        or (q^.typ^.form = fReal) or (q^.next^.typ^.form = fReal) then
+        Mark('a code procedure returns two results only in rax and rdx');
+    end else if not IsScalar(sig^.base) then Mark('a code procedure returns a single value');
   BeginChunk(p^.chunk);
   repeat
     v := ConstExpr;
@@ -1039,12 +1132,20 @@ begin
         Next;
         while tok = sIdent do begin
           IdentDef(n, exp);
-          if tok = sColon then Mark('errors come in stage 2');
+          t := nil;
+          if tok = sColon then begin
+            Next;
+            t := ParseType;
+            if t <> tError then Mark('only an ERROR constant has a type');
+          end;
           Expect(sEql, '=');
           Expression(x, nil);
           o := NewObj(oConst, n, x.typ);
           o^.exported := exp and top;
-          if x.mode = mStr then begin o^.val := x.val; o^.chunk := x.chunk end
+          if t = tError then begin
+            o^.typ := tError;
+            o^.val := ErrorChunk(x, curModule^.name, n) + 1;
+          end else if x.mode = mStr then begin o^.val := x.val; o^.chunk := x.chunk end
           else o^.val := ConstValue(x);
           Declare(o);
           Expect(sSemicolon, ';');

@@ -31,7 +31,7 @@ uses scan, sym, x64;
 
 type
   TMode = (mConst, mVar, mReg, mStack, mProc, mType, mStr, mBuiltin, mCase, mNone);
-  TBase = (bFrame, bGlobal, bReg, bStack);
+  TBase = (bFrame, bGlobal, bReg, bStack, bSlot);   { bSlot: address in a frame slot, chunk }
 
   TItem = record
     mode: TMode;
@@ -53,6 +53,7 @@ type
     n: longint;
     target: int64;     { the frame slot of a procedure value, if any }
     chunk: longint;    { else the procedure's chunk }
+    code: boolean;     { a code procedure: two results come in rax and rdx }
   end;
 
 var
@@ -110,7 +111,13 @@ procedure ReleaseTemps(m: int64);
 procedure BeginProc(sig: PType; params: PObj);
 procedure EnterBody(c: longint);
 procedure ReturnValue(var x: TItem);
+procedure ReturnField(f: PObj; var x: TItem);
+procedure ReturnJump;
 procedure ReturnNone;
+procedure Pin(var x: TItem);
+procedure IncDec(var v, k: TItem; dec: boolean);
+procedure Msg(var x: TItem);
+function ErrorChunk(var x: TItem; module, name: longint): longint;
 procedure EndProc(c: longint);
 procedure CmpI(r: longint; v: int64);
 procedure PushRax;
@@ -217,6 +224,13 @@ begin
   else begin MovRI(R11, v); Alu(aluCmp, r, R11) end;
 end;
 
+{ A constant into r: an error constant is the address of its chunk. }
+procedure ConstTo(r: longint; const x: TItem);
+begin
+  if (x.typ^.form = fError) and (x.val > 0) then Lea(r, MemRip(x.val - 1, 0))
+  else MovRI(r, x.val);
+end;
+
 function MemOf(var x: TItem; r: longint): TMem;
 begin
   case x.base of
@@ -224,6 +238,11 @@ begin
     bGlobal: MemOf := MemRip(x.chunk, x.off);
     bStack: begin
       PopR(r);
+      x.base := bReg; x.reg := r;
+      MemOf := Mem(r, x.off);
+    end;
+    bSlot: begin
+      Load(r, Mem(RBP, x.chunk), 8, false);
       x.base := bReg; x.reg := r;
       MemOf := Mem(r, x.off);
     end;
@@ -258,7 +277,7 @@ procedure Value(var x: TItem);
 var m: TMem;
 begin
   case x.mode of
-    mConst: MovRI(RAX, x.val);
+    mConst: ConstTo(RAX, x);
     mVar: begin
       if not IsScalar(x.typ) then Mark('not a single value');
       m := MemOf(x, RAX);
@@ -266,7 +285,11 @@ begin
     end;
     mReg: ;
     mStack: PopR(RAX);
-    mProc: Lea(RAX, MemRip(x.obj^.chunk, 0));
+    mProc: begin
+      if x.obj^.isCode and (x.obj^.typ^.base <> nil) and x.obj^.typ^.base^.tuple then
+        Mark('a code procedure with two results can only be called');
+      Lea(RAX, MemRip(x.obj^.chunk, 0));
+    end;
   else Mark('not a value');
   end;
   x.mode := mReg;
@@ -391,7 +414,7 @@ begin
   if (s^.form = fConst) and (t^.form = fInt) then begin
     if (x.mode = mConst) and not Fits(x.val, t) then Mark('constant doesn''t fit ' + TypeName(t));
     x.typ := t;
-  end else if (s^.form = fNil) and (t^.form in [fPtr, fProc]) then
+  end else if (s^.form = fNil) and (t^.form in [fPtr, fProc, fError]) then
     x.typ := t
   else if (s^.form = fPtr) and (t^.form = fPtr) and t^.vol and not s^.vol
     and Same(s^.base, t^.base) then
@@ -752,10 +775,10 @@ begin
   end else if (xt^.form = fPtr) and (yt^.form = fPtr) and (op = sMinus) then begin
     if not Same(xt, yt) then Mark('different pointer types');
     t := tI64; scale := xt^.base^.size; isPtr := true;
-  end else if (xt^.form in [fPtr, fProc, fNil]) and (yt^.form in [fPtr, fProc, fNil]) then begin
+  end else if (xt^.form in [fPtr, fProc, fNil, fError]) and (yt^.form in [fPtr, fProc, fNil, fError]) then begin
     if not (op in Rel) then Mark('not a pointer operator');
-    if (xt^.form = fProc) or (yt^.form = fProc) then
-      if not (op in [sEql, sNeq]) then Mark('procedures compare only with = and #');
+    if (xt^.form in [fProc, fError]) or (yt^.form in [fProc, fError]) then
+      if not (op in [sEql, sNeq]) then Mark('procedures and errors compare only with = and #');
     if (xt^.form <> fNil) and (yt^.form <> fNil) and not Same(xt, yt) then
       if not ((xt^.form = fPtr) and (yt^.form = fPtr) and Same(xt^.base, yt^.base)) then
         Mark('different pointer types');
@@ -779,11 +802,11 @@ begin
   { x into rax, y into rcx }
   if y.mode = mConst then begin
     if x.mode = mStack then PopR(RAX) else Value(x);
-    MovRI(RCX, y.val);
+    ConstTo(RCX, y);
   end else begin
     Value(y);
     MovRR(RCX, RAX);
-    if x.mode = mConst then MovRI(RAX, x.val) else PopR(RAX);
+    if x.mode = mConst then ConstTo(RAX, x) else PopR(RAX);
   end;
 
   if t^.form = fReal then begin
@@ -893,8 +916,10 @@ end;
 procedure BeginCall(var c: TCall; var x: TItem);
 begin
   if x.mode = mProc then begin
-    c.sig := x.obj^.typ; c.chunk := x.obj^.chunk; c.target := 0
+    c.sig := x.obj^.typ; c.chunk := x.obj^.chunk; c.target := 0;
+    c.code := x.obj^.isCode;
   end else begin
+    c.code := false;
     if x.typ^.form <> fProc then Mark('not a procedure');
     c.sig := x.typ; c.chunk := -1;
     c.target := ToSlot(x);
@@ -942,7 +967,7 @@ begin
   ni := 0; nf := 0;
   if (res <> nil) and IsAggregate(res) then begin
     ret := AllocTemp(res^.size, res^.align);
-    ni := 1;
+    if not c.code then ni := 1;
   end;
   { the System V classes: each argument in the next free register of
     its kind, or else on the stack }
@@ -963,7 +988,7 @@ begin
       Push(RAX);
     end;
   ni := 0; nf := 0;
-  if ret <> 0 then begin Lea(RDI, Mem(RBP, ret)); ni := 1 end;
+  if (ret <> 0) and not c.code then begin Lea(RDI, Mem(RBP, ret)); ni := 1 end;
   for i := 0 to c.n - 1 do
     if not onStack[i] then
       if isF[i] then begin MovsdXM(nf, Mem(RBP, c.slots[i])); inc(nf) end
@@ -974,6 +999,10 @@ begin
     CallR(R11);
   end;
   if k + pad > 0 then AluI(aluAdd, RSP, 8 * (k + pad));
+  if (ret <> 0) and c.code then begin
+    Store(Mem(RBP, ret), RAX, 8);
+    Store(Mem(RBP, ret + 8), RDX, 8);
+  end;
   FillChar(x, SizeOf(x), 0);
   if res = nil then begin
     x.mode := mNone; x.typ := tNone
@@ -1136,11 +1165,91 @@ begin
     Load(RDI, Mem(RBP, retSlot), 8, false);
     Copy(result^.size);
     Load(RAX, Mem(RBP, retSlot), 8, false);
-  end else begin
+  end else Value(x);
+end;
+
+{ One of several results, into its place behind the hidden pointer. }
+procedure ReturnField(f: PObj; var x: TItem);
+begin
+  Coerce(x, f^.typ);
+  if IsScalar(f^.typ) then begin
     Value(x);
-    if result^.form = fReal then MovqXR(0, RAX);
+    Load(RCX, Mem(RBP, retSlot), 8, false);
+    Store(Mem(RCX, f^.val), RAX, ScalarSize(f^.typ));
+  end else begin
+    if x.vol then Mark('can''t copy through a volatile pointer');
+    Address(x, RSI);
+    Load(RDI, Mem(RBP, retSlot), 8, false);
+    Lea(RDI, Mem(RDI, f^.val));
+    Copy(f^.typ^.size);
   end;
+end;
+
+{ With the result in rax, as ReturnValue left it. }
+procedure ReturnJump;
+begin
+  if IsAggregate(result) then Load(RAX, Mem(RBP, retSlot), 8, false)
+  else if result^.form = fReal then MovqXR(0, RAX);
   Jmp(exitL);
+end;
+
+{ Keeps a variable's address in a frame slot, rather than in a register
+  or on the stack, while other code runs. }
+procedure Pin(var x: TItem);
+var s: int64;
+begin
+  if (x.mode = mVar) and (x.base in [bReg, bStack]) then begin
+    Address(x, RAX);
+    s := AllocTemp(8, 8);
+    Store(Mem(RBP, s), RAX, 8);
+    x.base := bSlot;
+    x.chunk := s;
+  end;
+end;
+
+procedure IncDec(var v, k: TItem; dec: boolean);
+var n: longint;
+begin
+  Coerce(k, v.typ);
+  Value(k);
+  MovRR(RCX, RAX);
+  Address(v, RDX);
+  n := ScalarSize(v.typ);
+  Load(RAX, Mem(RDX, 0), n, v.typ^.signed);
+  if dec then Alu(aluSub, RAX, RCX) else Alu(aluAdd, RAX, RCX);
+  Store(Mem(RDX, 0), RAX, n);
+end;
+
+{ An error is the address of its length, followed by its message. }
+function ErrorChunk(var x: TItem; module, name: longint): longint;
+var c: longint; p: PBytes;
+begin
+  if x.mode <> mStr then Mark('an error is made from a string');
+  p := GetMem(x.val + 8);
+  PInt64(p)^ := x.val;
+  Move(rodata^[chunks^[x.chunk].start], p^[8], x.val);
+  c := NewChunk(secRodata, module, name);
+  SetData(c, p, x.val + 8, 8);
+  FreeMem(p);
+  ErrorChunk := c;
+end;
+
+procedure Msg(var x: TItem);
+var L: longint; s: int64;
+begin
+  Coerce(x, tError);
+  Value(x);
+  s := AllocTemp(16, 8);
+  MovRI(RCX, 0);
+  L := NoLabel;
+  TestRR(RAX, RAX);
+  Jcc(ccE, L);
+  Load(RCX, Mem(RAX, 0), 8, false);
+  Lea(RAX, Mem(RAX, 8));
+  FixLink(L);
+  Store(Mem(RBP, s), RAX, 8);
+  Store(Mem(RBP, s + 8), RCX, 8);
+  TempItem(x, tBytes, s);
 end;
 
 procedure ReturnNone;

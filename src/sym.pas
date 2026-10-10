@@ -39,6 +39,7 @@ type
     vol: boolean;      { fPtr: ^VOLATILE }
     packd: boolean;    { fRecord }
     variadic: boolean; { fProc: ends in ... }
+    tuple: boolean;    { fRecord: the results of a procedure that has several }
     base: PType;       { fPtr, fArray, fSlice: what it holds; fProc: result }
     len: int64;        { fArray: elements; fProc: parameters; fVariant: cases }
     fields: PObj;      { fRecord: fields; fVariant: cases; fProc: parameters }
@@ -91,12 +92,13 @@ const
   { built-in procedures }
   bSize = 0; bAdr = 1; bLen = 2; bNew = 3; bMsg = 4; bSyscall = 5;
   bFence = 6; bCas = 7; bXchg = 8; bXadd = 9; bArgc = 10; bArgv = 11;
+  bInc = 12; bDec = 13;
 
   MaxDepth = 64;   { scopes open at once }
 
 var
   tI8, tI16, tI32, tI64, tU8, tU16, tU32, tU64: PType;
-  tBool, tReal, tConst, tNil, tStr, tNone, tPtrU8: PType;
+  tBool, tReal, tError, tConst, tNil, tStr, tNone, tPtrU8, tBytes: PType;
   curModule: PModule;
 
 function NewType(form: TForm; size, align: int64): PType;
@@ -312,7 +314,9 @@ begin
     fPtr: Alike := (a^.vol = b^.vol) and Same(a^.base, b^.base);
     fArray: Alike := (a^.len = b^.len) and Same(a^.base, b^.base);
     fSlice: Alike := Same(a^.base, b^.base);
-    fProc: begin
+    fProc, fRecord: begin
+      { a record is the same only as itself, but for several results }
+      if (a^.form = fRecord) and not (a^.tuple and b^.tuple) then exit(false);
       if (a^.len <> b^.len) or (a^.variadic <> b^.variadic) then exit(false);
       if (a^.base = nil) <> (b^.base = nil) then exit(false);
       if (a^.base <> nil) and not Same(a^.base, b^.base) then exit(false);
@@ -448,6 +452,7 @@ initialization
   tU64 := Basic('U64', fInt, 8, false);
   tBool := Basic('BOOL', fBool, 1, false);
   tReal := Basic('F64', fReal, 8, false);
+  tError := Basic('ERROR', fError, 8, false);
   tConst := NewType(fConst, 8, 8);
   tConst^.signed := true;
   tNil := NewType(fNil, 8, 8);
@@ -455,6 +460,8 @@ initialization
   tNone := NewType(fNone, 0, 1);
   tPtrU8 := NewType(fPtr, 8, 8);
   tPtrU8^.base := tU8;
+  tBytes := NewType(fSlice, 16, 8);
+  tBytes^.base := tU8;
   Enter('true', oConst, tBool, 1);
   Enter('false', oConst, tBool, 0);
   Enter('nil', oConst, tNil, 0);
@@ -470,4 +477,6 @@ initialization
   Enter('XADD', oBuiltin, nil, bXadd);
   Enter('ARGC', oBuiltin, nil, bArgc);
   Enter('ARGV', oBuiltin, nil, bArgv);
+  Enter('INC', oBuiltin, nil, bInc);
+  Enter('DEC', oBuiltin, nil, bDec);
 end.
