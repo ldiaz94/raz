@@ -37,8 +37,8 @@ point beyond 10FFFFH. Everything outside strings, characters and
 comments is ASCII. Spaces, tabs and line breaks separate symbols and
 are otherwise ignored.
 
-**Identifiers** are an ASCII letter or `_` followed by letters, digits and `_`,
-up to 63 characters. Case matters: `count` and `Count` are different
+**Identifiers** are an ASCII letter or `_` followed by letters, digits
+and `_`, up to 63 characters. Case matters: `count` and `Count` are different
 names.
 
 **Reserved words** are lowercase, except `VOLATILE`:
@@ -590,8 +590,8 @@ A variable reached through a `^VOLATILE T` is volatile, and so is any
 field or element of it. Each read or write of a volatile variable of a
 basic, enumeration, set or pointer type is exactly one memory access,
 of exactly its size, and volatile accesses happen in the order the
-program writes them. Copying a whole record or array through a volatile pointer is
-not allowed, since it can't be one access.
+program writes them. Copying a whole record or array through a
+volatile pointer is not allowed, since it can't be one access.
 
 A `^VOLATILE T` doesn't convert to `^T` without a written conversion.
 
@@ -723,8 +723,8 @@ the executable: unused procedures, variables and strings are left out.
 and indexing arrays and slices is checked, so a program's behaviour is
 defined by this report, with one exception: memory reached through a
 pointer. Dereferencing a stale or made-up pointer, indexing through a
-pointer, a code procedure that breaks its rules, and C code can read or write any
-memory, and what follows isn't defined. Dereferencing `nil`, dividing
+pointer, a code procedure that breaks its rules, and C code can read or
+write any memory, and what follows isn't defined. Dereferencing `nil`, dividing
 by zero and calling a `nil` procedure stop the program with a signal.
 
 ## 11. The library
@@ -734,6 +734,7 @@ Modules written in jed, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | what the compiler's checks call when they fail, and string comparison |
+| `Sys` | system calls: `write`, `exit`; one file per target |
 | `Out` | writing text and numbers to standard output |
 | `Mem` | `mmap`, and `Allocator`, the interface of every allocator |
 | `Heap` | a general allocator |

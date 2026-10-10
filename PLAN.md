@@ -3,7 +3,7 @@
 jed (Polish *jeden*, one) is a small systems language in Wirth's
 tradition: full control of memory, volatile access, atomics, calls into
 C, generic modules. Its compiler is meant to be read in a long weekend:
-about 4,550 lines of Free Pascal, one pass, no IR, no optimizer, writing
+under 5,000 lines of Free Pascal, one pass, no IR, no optimizer, writing
 x86-64 machine code and the ELF file itself.
 
 The language is defined by `doc/jed.md`. Where this plan and the report
@@ -54,16 +54,19 @@ disagree, the report wins and this plan is fixed.
 
 ## The compiler, in reading order
 
-| File | Lines | What |
-|---|---|---|
-| `src/scan.pas` | ~430 | Symbols, literals, comments, error messages |
-| `src/sym.pas` | ~450 | Types, objects, scopes, layout |
-| `src/x64.pas` | ~400 | Code buffer, chunks, fixups, instruction encoder |
-| `src/gen.pas` | ~660 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | ~1,900 | Declarations, statements, expressions, built-ins |
-| `src/link.pas` | ~200 | Tree shaking, layout, patching |
-| `src/elf.pas` | ~450 | Static and dynamic ELF, symbol table |
-| `src/jed.pas` | ~115 | The command line |
+Lines after stage 1, all of them and those of code (neither blank nor
+only comment), as `make loc` counts them:
+
+| File | Lines | Code | What |
+|---|---|---|---|
+| `src/scan.pas` | 548 | 471 | Symbols, literals, comments, error messages |
+| `src/sym.pas` | 452 | 380 | Types, objects, scopes, layout |
+| `src/x64.pas` | 613 | 491 | Code buffer, chunks, fixups, instruction encoder |
+| `src/gen.pas` | 1,177 | 1,035 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 1,370 | 1,265 | Declarations, statements, expressions, built-ins |
+| `src/link.pas` | 123 | 92 | Tree shaking, layout, patching |
+| `src/elf.pas` | 185 | 147 | Static ELF, symbol table |
+| `src/jed.pas` | 113 | 85 | The command line, the entry point |
 
 ## Steps
 
@@ -71,17 +74,17 @@ Stage 1: the core
 
 - [x] 1. Language report, `doc/jed.md`. Reviewed and approved before
       any more code.
-- [ ] 2. Scanner and symbol table, `scan.pas` and `sym.pas`, written
+- [x] 2. Scanner and symbol table, `scan.pas` and `sym.pas`, written
       against the report; they compile.
-- [ ] 3. Machine code, `x64.pas`.
-- [ ] 4. Linking and output, `link.pas` and `elf.pas`: tree shaking,
+- [x] 3. Machine code, `x64.pas`.
+- [x] 4. Linking and output, `link.pas` and `elf.pas`: tree shaking,
       static ELF, symbol table. A hand built chunk runs.
-- [ ] 5. Parser and code generator, `gen.pas` and `parse.pas`:
+- [x] 5. Parser and code generator, `gen.pas` and `parse.pas`:
       everything in the report except multiple results, errors,
       enumerations and sets, record literals, `defer`, `NEW`, generic
       modules and `extern`. Module bodies, per-target modules and their
       interface check, and code procedures are in.
-- [ ] 6. `lib/Rt.jed`, `lib/Sys.linux-x86_64.jed`, `lib/Out.jed`;
+- [x] 6. `lib/Rt.jed`, `lib/Sys.linux-x86_64.jed`, `lib/Out.jed`;
       examples (hello, args, variants and slices, volatile, a code
       procedure); `make check` runs them against expected output;
       `make bench` times the compiler on generated jed.
