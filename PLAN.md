@@ -14,10 +14,11 @@ disagree, the report wins and this plan is fixed.
 - The compiler is Free Pascal 3.2.2, `{$mode objfpc}{$H-}`: records,
   pointers, shortstrings. No classes, ansistrings, exceptions, dynamic
   arrays or SysUtils.
-- The compiler stays under 5,000 lines, and compiles at least 400,000
-  lines of jed a second, from reading the sources to writing the
-  executable. `make bench` measures it, and a step that breaks either
-  limit isn't done.
+- The compiler stays near 5,000 lines of code (not counting blank and
+  comment lines), within 10%, and compiles at least 400,000 lines of
+  jed a second, from reading the sources to writing the executable.
+  `make loc` and `make bench` measure them, and a step that breaks
+  either limit isn't done.
 - Clarity over cleverness. Every unit opens with a header comment: what
   it is, what it depends on, what it leaves out. Comments say why, and
   what wherever a layout or encoding isn't obvious.
@@ -98,14 +99,21 @@ Stage 2: the rest of the language
 - [x] 10. Generic modules, with type and procedure arguments;
       `lib/Str.jed`, `lib/Buf.jed`, `lib/Fmt.jed`; examples.
 
-Stage 3: calling C
+Stage 3: calling C, and what comes with it
 
-- [ ] 11. `extern`, `link`, dynamic ELF, start through
-      `__libc_start_main`; examples with `printf` and an X11 window.
-      A module whose per-target file calls the C library instead of
-      `SYSCALL`, the way other systems would be reached.
+- [ ] 11. `extern proc`, `extern var` and `link`; dynamic ELF, start
+      through `__libc_start_main`. A plain `lib/Sys.jed` over the C
+      library, the default for targets with no file of their own.
+      Examples with `printf` to `stdout`, and an X11 window, reading
+      `XEvent` as an array of words through pointer conversions.
+- [ ] 12. `F32`: arithmetic, conversions, calls; real literals become
+      untyped constants that take `F32` or `F64`.
+- [ ] 13. A thread-safe `lib/Heap.jed`, and its bad sizes refused; an
+      example with threads from `pthread_create`.
+- [ ] 14. Line numbers for gdb: `.debug_line`, with the least of
+      `.debug_info` and `.debug_abbrev` that gdb needs.
 
 Wrap up
 
-- [ ] 12. `README.md` and `doc/compiler.md`, a guide to reading the
+- [ ] 15. `README.md` and `doc/compiler.md`, a guide to reading the
       compiler file by file.
