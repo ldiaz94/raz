@@ -106,12 +106,24 @@ Stage 3: calling C, and what comes with it
       library, the default for targets with no file of their own.
       Examples with `printf` to `stdout`, and an X11 window, reading
       `XEvent` as an array of words through pointer conversions.
+      Ending a program: the entry point calls `Rt.exit(status)`, which
+      runs the procedures registered with `Rt.atExit`, then ends it;
+      `Rt.fail` runs them too. A buffered `lib/Out.jed`: 4 KB, flushed
+      at each newline when standard output is a terminal, when full,
+      by `Out.flush`, and at exit. The report says how to mix `Out`
+      with C's `stdio`: flush one before using the other.
 - [ ] 12. `F32`: arithmetic, conversions, calls; real literals become
       untyped constants that take `F32` or `F64`.
 - [ ] 13. A thread-safe `lib/Heap.jed`: its bad sizes refused, and a
       marker in each block's header so that freeing a block twice, or
-      one it never gave out, stops the program. An example with
-      threads from `pthread_create`.
+      one it never gave out, stops the program; `Out` locks its buffer.
+      An example with threads from `pthread_create`.
+      Native threads for programs without C, in
+      `lib/Thread.linux-x86_64.jed`: `spawn` on an `mmap`ed stack with
+      a guard page, through `clone` and a small code procedure; `join`
+      and a `Mutex` through `futex`. `link static;` marks a module that
+      needs a program without C; the compiler refuses a program that
+      uses both.
 - [ ] 14. Line numbers for gdb: `.debug_line`, with the least of
       `.debug_info` and `.debug_abbrev` that gdb needs.
 
