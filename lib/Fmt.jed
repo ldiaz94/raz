@@ -3,7 +3,7 @@
    {{ and }} stand for { and }. print writes to standard output,
    write appends to a Buf. *)
 module Fmt;
-import Out, Buf;
+import Out, Buf, Arena, Rt;
 
 type
     Arg* = variant
@@ -85,6 +85,21 @@ end;
 proc write*(b: ^Buf.Buf; f: []U8; args: []Arg);
 begin
     format(b, f, args);
+end;
+
+(* The module's test: formats into a buffer over an arena. *)
+proc main*;
+var ar: Arena.Arena; b: Buf.Buf;
+begin
+    if not Arena.init(ADR(ar), 1 shl 16) then Rt.stop("Fmt: no arena"); end;
+    Buf.init(ADR(b), ADR(ar.base));
+    write(ADR(b), "{} {} {} {}|{}{}{} {{}}", [int(-42), uint(0FFFFFFFFFFFFFFFFH), hex(48879),
+        str("s"), char('c'), bool(true), int(0)]);
+    if Buf.bytes(ADR(b)) # "-42 18446744073709551615 BEEF s|ctrue0 {}" then Rt.stop("Fmt.write"); end;
+    Buf.reset(ADR(b));
+    write(ADR(b), "{} and {}", [int(1)]);
+    if Buf.bytes(ADR(b)) # "1 and " then Rt.stop("Fmt: too few arguments"); end;
+    Arena.done(ADR(ar));
 end;
 
 end Fmt.

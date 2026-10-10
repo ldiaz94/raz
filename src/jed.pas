@@ -1,6 +1,7 @@
 { jed.pas: the command line.
 
     jed [-I dir]... [-o file] Main.jed
+    jed --version
 
   Compiles the main module and every module it imports, writes the
   entry point, links what it reaches, and writes the executable: by
@@ -21,6 +22,10 @@ program jed;
 {$mode objfpc}{$H-}
 
 uses math, scan, sym, x64, gen, parse, link, elf;
+
+const
+  Version = '0.3.0';
+  Report = '2026-10.0';    { the version of doc/jed.md it follows }
 
 { The modules the program uses: the main module, Rt, and every module
   they import. A module read only for the interface check is not. }
@@ -99,6 +104,9 @@ begin
     end else if s = '-o' then begin
       inc(i);
       outPath := ParamStr(i);
+    end else if s = '--version' then begin
+      writeln('jed ', Version, ', report ', Report);
+      Halt(0);
     end else if (s <> '') and (s[1] = '-') then
       Fatal('unknown option ' + s)
     else path := s;

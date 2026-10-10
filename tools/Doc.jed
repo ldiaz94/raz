@@ -1,0 +1,422 @@
+(* Doc: what a module offers, from its source.
+
+       Doc Module.jed
+   prints the module's own comment, the one just before module, then
+   each exported declaration as it is written, with the comment just
+   before it.
+
+       Doc examples report.md dir
+   writes each example of the report that is a whole module, from
+   module to end, with no ... left out, to dir/Name.jed, and prints
+   the names, one a line. *)
+module Doc;
+import Out, Sys, Rt, Str, Buf, Heap;
+
+type
+    Kind = (ident, other, eof);
+
+var
+    src: []U8;                (* the text being read *)
+    pos: I64;
+    kind: Kind;               (* the current token *)
+    tokStart, tokEnd: I64;
+    docStart, docEnd: I64;    (* the comment just before it, or -1 *)
+
+(* Argument i, a C string, as a slice. *)
+proc arg(i: I64): []U8;
+var s: ^U8; n: I64;
+begin
+    s := ARGV()[i];
+    n := 0;
+    while s[n] # 0 do INC(n); end;
+    return s[0..n];
+end;
+
+proc readFile(path: []U8; b: ^Buf.Buf): BOOL;
+var fd, n: I64; chunk: [4096]U8;
+begin
+    fd := Sys.openRead(path);
+    if fd < 0 then return false; end;
+    repeat
+        n := Sys.read(fd, chunk);
+        if n > 0 then Buf.str(b, chunk[0..n]); end;
+    until n <= 0;
+    Sys.close(fd);
+    return n = 0;
+end;
+
+proc writeFile(path, data: []U8): BOOL;
+var fd, n, at: I64;
+begin
+    fd := Sys.create(path);
+    if fd < 0 then return false; end;
+    at := 0;
+    while at < LEN(data) do
+        n := Sys.write(fd, data[at..LEN(data)]);
+        if n <= 0 then Sys.close(fd); return false; end;
+        at := at + n;
+    end;
+    Sys.close(fd);
+    return true;
+end;
+
+proc isSpace(c: U8): BOOL;
+begin
+    return (c = ' ') or (c = 9) or (c = 10) or (c = 13);
+end;
+
+proc isWord(c: U8): BOOL;
+begin
+    return (c >= 'a') and (c <= 'z') or (c >= 'A') and (c <= 'Z')
+        or (c >= '0') and (c <= '9') or (c = '_');
+end;
+
+(* Past a string or character literal that starts at pos. *)
+proc skipLiteral;
+var q: U8;
+begin
+    q := src[pos];
+    INC(pos);
+    while (pos < LEN(src)) and (src[pos] # q) do
+        if src[pos] = '\\' then INC(pos); end;
+        INC(pos);
+    end;
+    INC(pos);
+end;
+
+(* Past the comment at pos. *)
+proc skipComment;
+var depth: I64;
+begin
+    depth := 0;
+    repeat
+        if (src[pos] = '(') and (pos + 1 < LEN(src)) and (src[pos + 1] = '*') then
+            INC(depth); INC(pos, 2);
+        elsif (src[pos] = '*') and (pos + 1 < LEN(src)) and (src[pos + 1] = ')') then
+            DEC(depth); INC(pos, 2);
+        else
+            INC(pos);
+        end;
+    until (depth = 0) or (pos >= LEN(src));
+end;
+
+proc atComment(p: I64): BOOL;
+begin
+    return (p + 1 < LEN(src)) and (src[p] = '(') and (src[p + 1] = '*');
+end;
+
+(* Past spaces and comments, keeping where the last comment that starts
+   a line was: one after code on its line belongs to that code. *)
+proc skipSpace;
+var start: I64; newLine: BOOL;
+begin
+    docStart := -1;
+    newLine := pos = 0;
+    while pos < LEN(src) do
+        if isSpace(src[pos]) then
+            if src[pos] = 10 then newLine := true; end;
+            INC(pos);
+        elsif atComment(pos) then
+            start := pos;
+            skipComment;
+            if newLine then docStart := start; docEnd := pos; end;
+        else
+            break;
+        end;
+    end;
+end;
+
+proc next;
+begin
+    skipSpace;
+    tokStart := pos;
+    if pos >= LEN(src) then
+        kind := eof;
+    elsif isWord(src[pos]) then
+        while (pos < LEN(src)) and isWord(src[pos]) do INC(pos); end;
+        kind := ident;
+    elsif (src[pos] = '"') or (src[pos] = '\'') then
+        skipLiteral;
+        kind := other;
+    else
+        INC(pos);
+        kind := other;
+    end;
+    tokEnd := pos;
+end;
+
+proc text: []U8;
+begin
+    return src[tokStart..tokEnd];
+end;
+
+proc is(s: []U8): BOOL;
+begin
+    return text() = s;
+end;
+
+(* Whether the current word starts a declaration, a section or the end. *)
+proc reserved: BOOL;
+begin
+    return is("const") or is("type") or is("var") or is("proc") or is("extern")
+        or is("import") or is("link") or is("begin") or is("end");
+end;
+
+(* On to the ; that ends what starts here, past anything bracketed and
+   any record or variant; returns where it ends. *)
+proc toSemicolon: I64;
+var depth: I64;
+begin
+    depth := 0;
+    while kind # eof do
+        if is("(") or is("[") or is("{") or is("record") or is("variant") then INC(depth);
+        elsif is(")") or is("]") or is("}") or is("end") then DEC(depth);
+        elsif is(";") and (depth <= 0) then return tokEnd;
+        end;
+        next;
+    end;
+    return pos;
+end;
+
+(* stop, or the end of a comment that follows it on its line. *)
+proc trailing(stop: I64): I64;
+var save: I64;
+begin
+    while (stop < LEN(src)) and ((src[stop] = ' ') or (src[stop] = 9)) do INC(stop); end;
+    if not atComment(stop) then return stop; end;
+    save := pos;
+    pos := stop;
+    skipComment;
+    stop := pos;
+    pos := save;
+    return stop;
+end;
+
+(* Where the line holding p starts. *)
+proc lineStart(p: I64): I64;
+begin
+    while (p > 0) and (src[p - 1] # 10) do DEC(p); end;
+    return p;
+end;
+
+(* src[start..stop] as written, each line after the first moved left as
+   far as the first one's column. *)
+proc block(start, stop: I64);
+var col, i, n: I64;
+begin
+    col := start - lineStart(start);
+    i := start;
+    while i < stop do
+        Out.char(src[i]);
+        if src[i] = 10 then
+            n := 0;
+            while (n < col) and (i + 1 < stop) and (src[i + 1] = ' ') do INC(i); INC(n); end;
+        end;
+        INC(i);
+    end;
+    Out.ln;
+end;
+
+(* The comment from start to stop, without its brackets, each line
+   indented by four. *)
+proc comment(start, stop: I64);
+var i, j: I64; atLine: BOOL;
+begin
+    if start < 0 then return; end;
+    i := start + 2;
+    j := stop - 2;
+    while (i < j) and isSpace(src[i]) do INC(i); end;
+    while (j > i) and isSpace(src[j - 1]) do DEC(j); end;
+    atLine := true;
+    while i < j do
+        if atLine then Out.str("    "); atLine := false; end;
+        Out.char(src[i]);
+        if src[i] = 10 then
+            atLine := true;
+            while (i + 1 < j) and (src[i + 1] = ' ') do INC(i); end;
+        end;
+        INC(i);
+    end;
+    Out.ln;
+end;
+
+(* One declaration, from its first token, the comment before it kept. *)
+proc declaration(prefix: []U8; exported: BOOL; start, ds, de, stop: I64);
+begin
+    if not exported then return; end;
+    Out.ln;
+    Out.str(prefix);
+    block(start, trailing(stop));
+    comment(ds, de);
+end;
+
+(* name, and whether a * follows it; leaves the token after them. *)
+proc name: BOOL;
+begin
+    next;
+    next;
+    if is("*") then next; return true; end;
+    return false;
+end;
+
+(* A procedure's body: to the end that closes its begin, the procedure
+   name after it and its ;. *)
+proc skipBody;
+var depth: I64; sawBegin: BOOL;
+begin
+    depth := 0;
+    sawBegin := false;
+    while kind # eof do
+        if is("begin") then
+            if depth = 0 then sawBegin := true; end;
+            INC(depth);
+        elsif is("if") or is("while") or is("for") or is("match") or is("record") or is("variant") then
+            INC(depth);
+        elsif is("end") then
+            DEC(depth);
+            if (depth = 0) and sawBegin then
+                next;
+                if kind = ident then next; end;
+                return;
+            end;
+        end;
+        next;
+    end;
+end;
+
+proc procedure;
+var start, ds, de, stop: I64; exp: BOOL;
+begin
+    start := tokStart; ds := docStart; de := docEnd;
+    exp := name();
+    stop := toSemicolon();
+    next;
+    if is("forward") or is("code") then toSemicolon();
+    else skipBody;
+    end;
+    declaration("", exp, start, ds, de, stop);
+    next;
+end;
+
+proc section;
+var word: []U8; start, ds, de, stop: I64; exp: BOOL;
+begin
+    word := text();
+    next;
+    while (kind = ident) and not reserved() do
+        start := tokStart; ds := docStart; de := docEnd;
+        pos := tokStart;          (* name reads the name again *)
+        exp := name();
+        stop := toSemicolon();
+        if exp then
+            Out.ln;
+            Out.str(word); Out.str(" ");
+            block(start, trailing(stop));
+            comment(ds, de);
+        end;
+        next;
+    end;
+end;
+
+proc external;
+var start, ds, de, stop: I64; exp: BOOL;
+begin
+    start := tokStart; ds := docStart; de := docEnd;
+    next;
+    exp := name();
+    stop := toSemicolon();
+    declaration("", exp, start, ds, de, stop);
+    next;
+end;
+
+proc document(path: []U8);
+var b: Buf.Buf; start, ds, de: I64;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    if not readFile(path, ADR(b)) then Rt.stop("Doc: can't read the file"); end;
+    src := Buf.bytes(ADR(b));
+    pos := 0;
+    next;
+    while (kind # eof) and not is("module") do next; end;
+    if kind = eof then Rt.stop("Doc: no module"); end;
+    start := tokStart;
+    ds := docStart; de := docEnd;
+    block(start, toSemicolon());
+    comment(ds, de);
+    next;
+    while (kind # eof) and not is("begin") and not is("end") do
+        if is("const") or is("type") or is("var") then section;
+        elsif is("proc") then procedure;
+        elsif is("extern") then external;
+        elsif is("import") or is("link") then toSemicolon(); next;
+        else next;
+        end;
+    end;
+end;
+
+(* line, without the spaces at its ends *)
+proc trim(line: []U8): []U8;
+var i, j: I64;
+begin
+    i := 0;
+    j := LEN(line);
+    while (i < j) and isSpace(line[i]) do INC(i); end;
+    while (j > i) and isSpace(line[j - 1]) do DEC(j); end;
+    return line[i..j];
+end;
+
+(* The report's examples that are whole modules, each to dir. *)
+proc examples(path, dir: []U8);
+var
+    b, out: Buf.Buf; s, line, first, last, name: []U8; i, start, k, n: I64;
+    inBlock, whole: BOOL;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    Buf.init(ADR(out), Heap.heap);
+    if not readFile(path, ADR(b)) then Rt.stop("Doc: can't read the report"); end;
+    s := Buf.bytes(ADR(b));
+    inBlock := false;
+    start := 0;
+    i := 0;
+    while i < LEN(s) do
+        k := i;
+        while (k < LEN(s)) and (s[k] # 10) do INC(k); end;
+        line := s[i..k];
+        if trim(line) = "```" then
+            if inBlock and whole and Str.hasPrefix(first, "module ") and Str.hasPrefix(last, "end ") then
+                name := first[7..LEN(first)];
+                n := 0;
+                while (n < LEN(name)) and isWord(name[n]) do INC(n); end;
+                name := name[0..n];
+                Buf.reset(ADR(out));
+                Buf.str(ADR(out), dir); Buf.str(ADR(out), "/"); Buf.str(ADR(out), name);
+                Buf.str(ADR(out), ".jed");
+                if not writeFile(Buf.bytes(ADR(out)), s[start..i]) then
+                    Rt.stop("Doc: can't write an example");
+                end;
+                Out.str(name); Out.ln;
+            end;
+            inBlock := not inBlock;
+            start := k + 1;
+            first := ""; last := "";
+            whole := true;
+        elsif inBlock then
+            if trim(line) = "..." then whole := false; end;
+            if LEN(trim(line)) > 0 then
+                if LEN(first) = 0 then first := trim(line); end;
+                last := trim(line);
+            end;
+        end;
+        i := k + 1;
+    end;
+end;
+
+proc main*;
+begin
+    if (ARGC() = 4) and (arg(1) = "examples") then examples(arg(2), arg(3));
+    elsif ARGC() = 2 then document(arg(1));
+    else Rt.stop("usage: Doc Module.jed, or Doc examples report.md dir");
+    end;
+end;
+
+end Doc.

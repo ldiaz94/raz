@@ -1,6 +1,7 @@
 (* Operations on strings, which are []U8. = and # compare them; this
    module orders, searches and hashes them. *)
 module Str;
+import Rt;
 
 (* -1, 0 or 1 as a sorts before, with or after b, byte by byte. *)
 proc cmp*(a, b: []U8): I64;
@@ -48,6 +49,18 @@ end;
 proc hasPrefix*(s, p: []U8): BOOL;
 begin
     return (LEN(s) >= LEN(p)) and (s[0..LEN(p)] = p);
+end;
+
+(* The module's test: stops the program if something is wrong. *)
+proc main*;
+begin
+    if (cmp("a", "b") # -1) or (cmp("b", "a") # 1) or (cmp("ab", "ab") # 0)
+        or (cmp("a", "ab") # -1) or (cmp("", "") # 0) then Rt.stop("Str.cmp"); end;
+    if not eq("x", "x") or eq("x", "y") then Rt.stop("Str.eq"); end;
+    if (hash("") # 0CBF29CE484222325H) or (hash("a") # 0AF63DC4C8601EC8CH) then Rt.stop("Str.hash"); end;
+    if (find("hello", "ll") # 2) or (find("hello", "x") # -1) or (find("", "") # 0)
+        or (find("ab", "abc") # -1) then Rt.stop("Str.find"); end;
+    if not hasPrefix("hello", "he") or hasPrefix("he", "hello") then Rt.stop("Str.hasPrefix"); end;
 end;
 
 end Str.

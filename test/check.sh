@@ -7,7 +7,9 @@
 #   X.status  its exit status (optional; 0 if missing)
 # A program without X.expect is compiled, not run. test/libc puts
 # lib/Sys.jed, over the C library, before the system call one.
-# Programs in test/err must not compile, and must print X.err.
+# Programs in test/err must not compile, and must print X.err. Then
+# the version, tools/Doc.jed, the report's examples, and the library's
+# own tests.
 
 jed=./jed
 out=build/check
@@ -57,5 +59,49 @@ for f in test/err/*.jed; do
         pass=$((pass + 1))
     fi
 done
+# the report's version is the one the compiler says it follows
+want=$(sed -n 's/^This is version \([0-9.-]*\) of the report.*/\1/p' doc/jed.md)
+if ./jed --version | grep -qF "report $want"; then pass=$((pass + 1))
+else echo "FAIL jed --version: not report $want"; fail=$((fail + 1)); fi
+
+# tools/Doc.jed: on every library module, and as test/doc expects
+if ./jed -o $out/Doc tools/Doc.jed 2>$out/Doc.cerr; then
+    for f in lib/*.jed; do
+        if ! $out/Doc $f > $out/doc.out; then echo "FAIL Doc $f"; fail=$((fail + 1)); fi
+    done
+    for f in test/doc/*.expect; do
+        name=$(basename $f .expect)
+        m=lib/$name.jed
+        [ -f $m ] || m=lib/$name.linux-x86_64.jed
+        if $out/Doc $m | cmp -s - $f; then pass=$((pass + 1))
+        else echo "FAIL Doc $m: output differs"; fail=$((fail + 1)); fi
+    done
+
+    # the report's examples that are whole modules: each compiles, and
+    # each with a main runs and ends with status 0
+    rm -rf $out/report; mkdir -p $out/report
+    for name in $($out/Doc examples doc/jed.md $out/report); do
+        if ! $jed -o $out/report/$name $out/report/$name.jed 2>$out/report/$name.cerr; then
+            echo "FAIL report example $name: $(cat $out/report/$name.cerr)"; fail=$((fail + 1))
+        elif grep -q '^proc main\*' $out/report/$name.jed && ! $out/report/$name > /dev/null 2>&1; then
+            echo "FAIL report example $name: status $?"; fail=$((fail + 1))
+        else pass=$((pass + 1)); fi
+    done
+else
+    echo "FAIL tools/Doc.jed: $(cat $out/Doc.cerr)"; fail=$((fail + 1))
+fi
+
+# each library module's main is its test; Sys over C is tested in test/libc
+for f in lib/*.jed; do
+    [ $f = lib/Sys.jed ] && continue
+    grep -q '^proc main\*' $f || continue
+    name=lib_$(basename $f .jed)
+    if ! $jed -o $out/$name $f 2>$out/$name.cerr; then
+        echo "FAIL $f: doesn't compile: $(cat $out/$name.cerr)"; fail=$((fail + 1))
+    elif ! $out/$name > $out/$name.out 2>&1; then
+        echo "FAIL $f: its test says $(cat $out/$name.out)"; fail=$((fail + 1))
+    else pass=$((pass + 1)); fi
+done
+
 echo "$pass passed, $fail failed"
 [ $fail = 0 ]

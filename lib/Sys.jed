@@ -28,6 +28,54 @@ begin
     return r;
 end;
 
+(* Reads into buf from fd; the number of bytes read, 0 at the end, or
+   minus an errno. *)
+proc read*(fd: I64; buf: []U8): I64;
+var r: I64;
+begin
+    if LEN(buf) = 0 then return 0; end;
+    r := C.read(I32(fd), ADR(buf[0]), U64(LEN(buf)));
+    if r < 0 then return failed(); end;
+    return r;
+end;
+
+(* path, a C string in buf, or false if it doesn't fit. *)
+proc cstr(path: []U8; var buf: [4096]U8): BOOL;
+var i: I64;
+begin
+    if LEN(path) >= LEN(buf) then return false; end;
+    for i := 0 to LEN(path) - 1 do buf[i] := path[i]; end;
+    buf[LEN(path)] := 0;
+    return true;
+end;
+
+(* The file at path, opened for reading: its file descriptor, or minus
+   an errno. *)
+proc openRead*(path: []U8): I64;
+var buf: [4096]U8; r: I64;
+begin
+    if not cstr(path, buf) then return -36; end;
+    r := I64(C.open(ADR(buf[0]), 0));               (* O_RDONLY is 0 everywhere *)
+    if r < 0 then return failed(); end;
+    return r;
+end;
+
+(* The file at path, made empty or new, opened for writing, readable by
+   all: its file descriptor, or minus an errno. *)
+proc create*(path: []U8): I64;
+var buf: [4096]U8; r: I64;
+begin
+    if not cstr(path, buf) then return -36; end;
+    r := I64(C.creat(ADR(buf[0]), 420));            (* mode 644 *)
+    if r < 0 then return failed(); end;
+    return r;
+end;
+
+proc close*(fd: I64);
+begin
+    C.close(I32(fd));
+end;
+
 (* size bytes of fresh, zeroed memory from the system, a multiple of
    pages, or nil. *)
 proc mmap*(size: I64): ^U8;
@@ -57,6 +105,26 @@ end;
 proc exit*(status: I64);
 begin
     C._exit(I32(status));
+end;
+
+(* The module's test: a file written, read back and closed. *)
+proc main*;
+var fd, n: I64; buf: [16]U8; p: ^U8;
+begin
+    fd := create("/tmp/jed-sys-test");
+    if fd < 0 then exit(2); end;
+    if write(fd, "hello") # 5 then exit(2); end;
+    close(fd);
+    fd := openRead("/tmp/jed-sys-test");
+    if fd < 0 then exit(2); end;
+    n := read(fd, buf);
+    if (n # 5) or (buf[0..5] # "hello") or (read(fd, buf) # 0) then exit(2); end;
+    close(fd);
+    if openRead("/no/such/file") >= 0 then exit(2); end;
+    if isTerminal(-1) then exit(2); end;
+    p := mmap(100);
+    if (p = nil) or (p[99] # 0) then exit(2); end;
+    munmap(p, 100);
 end;
 
 end Sys.

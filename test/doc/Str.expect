@@ -1,0 +1,19 @@
+module Str;
+    Operations on strings, which are []U8. = and # compare them; this
+    module orders, searches and hashes them.
+
+proc cmp*(a, b: []U8): I64;
+    -1, 0 or 1 as a sorts before, with or after b, byte by byte.
+
+proc eq*(a, b: []U8): BOOL;
+
+proc hash*(s: []U8): U64;
+    FNV-1a, 64 bits.
+
+proc find*(s, sub: []U8): I64;
+    Where sub first starts in s, or -1.
+
+proc hasPrefix*(s, p: []U8): BOOL;
+
+proc main*;
+    The module's test: stops the program if something is wrong.

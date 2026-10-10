@@ -78,7 +78,7 @@ begin
 end;
 
 proc free(a: ^Mem.Allocator; p: ^U8);
-var h: ^Head; b: ^Block;
+var h: ^Head; b: ^Block; c: I64;
 begin
     if p = nil then return; end;
     h := ^Head(p - Header);
@@ -91,11 +91,35 @@ begin
         Lock.give(ADR(lock));
         Mem.unmap(^U8(I64(h) - I64(h) mod Mem.Page), -h^.size);
     else
+        c := h^.size;          (* before next, which takes its place, is set *)
         b := ^Block(h);
-        b^.next := lists[h^.size];
-        lists[h^.size] := b;
+        b^.next := lists[c];
+        lists[c] := b;
         Lock.give(ADR(lock));
     end;
+end;
+
+(* The module's test: blocks of every class and big ones, written,
+   freed and taken again. *)
+proc main*;
+var p: [40]^U8; i, j, n: I64; again: ^U8;
+begin
+    for i := 0 to 39 do
+        n := (i * i * 37) mod 9000 + 1;
+        p[i] := Mem.alloc(heap, n, 8);
+        if (p[i] = nil) or (I64(p[i]) mod 8 # 0) then Rt.stop("Heap: alloc"); end;
+        for j := 0 to n - 1 do p[i][j] := U8(i); end;
+    end;
+    for i := 0 to 39 do
+        n := (i * i * 37) mod 9000 + 1;
+        if (p[i][0] # U8(i)) or (p[i][n - 1] # U8(i)) then Rt.stop("Heap: overlap"); end;
+    end;
+    Mem.free(heap, p[5]);
+    again := Mem.alloc(heap, (25 * 37) mod 9000 + 1, 8);
+    if again # p[5] then Rt.stop("Heap: a freed block isn't taken again"); end;
+    for i := 0 to 39 do Mem.free(heap, p[i]); end;
+    if Mem.alloc(heap, -1, 8) # nil then Rt.stop("Heap: negative size"); end;
+    if Mem.alloc(heap, 7FFFFFFFFFFFFFFFH - 4, 8) # nil then Rt.stop("Heap: huge size"); end;
 end;
 
 begin

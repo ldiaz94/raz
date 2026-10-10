@@ -9,6 +9,9 @@ the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, jed doesn't have.
 
+This is version 2026-10.0 of the report; section 12 says what each
+version changed.
+
 ## 1. A first look
 
 ```
@@ -642,10 +645,32 @@ opposite order to their `defer`s, and only those whose `defer` has been
 reached run.
 
 ```
-fd := Sys.open(name, Sys.rdonly);
-if fd < 0 then return Sys.Failed; end;
-defer Sys.close(fd);
-...
+module Head;
+import Sys, Out;
+
+(* Prints the first line of the file at path. *)
+proc head(path: []U8): BOOL;
+var fd, n, i: I64; buf: [256]U8;
+begin
+    fd := Sys.openRead(path);
+    if fd < 0 then return false; end;
+    defer Sys.close(fd);
+    n := Sys.read(fd, buf);
+    if n < 0 then return false; end;
+    for i := 0 to n - 1 do
+        if buf[i] = 10 then n := i; break; end;
+    end;
+    Out.str(buf[0..n]);
+    Out.ln;
+    return true;
+end;
+
+proc main*;
+begin
+    if not head("/etc/hostname") then Out.str("no hostname\n"); end;
+end;
+
+end Head.
 ```
 
 `return e;` evaluates `e` before the deferred statements run. A
@@ -682,12 +707,22 @@ that returns several values can only stand on the right of a multiple
 assignment, or alone as a statement.
 
 ```
+module Divide;
+import Out;
+
 proc divmod(a, b: I64): (I64, I64);
 begin
     return a div b, a mod b;
 end;
 
-q, r := divmod(17, 5);
+proc main*;
+var q, r: I64;
+begin
+    q, r := divmod(17, 5);
+    Out.int(q); Out.str(" rest "); Out.int(r); Out.ln;
+end;
+
+end Divide.
 ```
 
 **forward.** `proc f(x: I64): I64; forward;` declares `f` so that it
@@ -814,7 +849,7 @@ Modules written in jed, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; what the compiler's checks call when they fail; string comparison |
-| `Sys` | system calls: `write`, `mmap`, `munmap`, `yield`, `exit`; one file per target, and `Sys.jed` over the C library for the others |
+| `Sys` | system calls: `openRead`, `create`, `read`, `write`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; one file per target, and `Sys.jed` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -847,13 +882,26 @@ writes with both flushes one before writing with the other, or the
 text comes out of order:
 
 ```
-extern proc printf(format: ^U8; ...): I32;
-extern proc fflush(f: ^U8): I32;
-extern var stdout: ^U8;                  (* C's FILE *stdout *)
-...
-Out.str("from jed\n");
-Out.flush;
-printf("from C\n");
-fflush(stdout);
-Out.str("from jed again\n");
+module Both;
+import Out, C;      (* C: printf, fflush and C's FILE *stdout *)
+
+proc main*;
+begin
+    Out.str("from jed\n");
+    Out.flush;
+    C.printf("from C\n");
+    C.fflush(C.stdout);
+    Out.str("from jed again\n");
+end;
+
+end Both.
 ```
+
+## 12. Versions
+
+A version of this report is named by the month it was made in and a
+count: `2026-10.0`, then `2026-10.1` for the next change that month.
+`jed --version` says which version the compiler follows.
+
+- **2026-10.0.** The first numbered version: the language of compiler
+  0.3.0.

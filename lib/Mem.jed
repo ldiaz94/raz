@@ -1,7 +1,7 @@
 (* Memory: Allocator, the interface every allocator offers, and pages
    from the system. NEW(p, a) calls a^.alloc. *)
 module Mem;
-import Sys;
+import Sys, Rt;
 
 type
     Allocator* = record
@@ -30,6 +30,19 @@ end;
 proc free*(a: ^Allocator; p: ^U8);
 begin
     a^.free(a, p);
+end;
+
+(* The module's test. *)
+proc main*;
+var p: ^U8; i: I64;
+begin
+    p := pages(10000);
+    if p = nil then Rt.stop("Mem.pages"); end;
+    for i := 0 to 12287 do
+        if p[i] # 0 then Rt.stop("Mem.pages: not zeroed"); end;
+    end;
+    p[12287] := 1;
+    unmap(p, 10000);
 end;
 
 end Mem.

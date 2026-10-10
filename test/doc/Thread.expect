@@ -1,0 +1,29 @@
+module Thread;
+    Threads for programs without C, made with the clone system call.
+    Each runs on a stack of its own, mmaped, with a page below it that
+    can't be touched, so that running off the stack stops the program
+    rather than spoiling what lies below. join waits on the thread's id,
+    which the kernel clears, and wakes it for, when the thread ends;
+    a Mutex sleeps on a futex. A program with C threads uses C's,
+    through pthread_create, and so can't use these.
+
+const Failed*: ERROR = "can't start a thread";
+
+type Thread* = record
+    tid: I64;        (* the kernel's id, until the thread ends *)
+    base: ^U8;       (* its stack's mapping, the guard page first *)
+    size: I64;
+end;
+
+type Mutex* = record state: I64; end;
+    0 free, 1 taken, 2 taken with a thread waiting
+
+proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);
+    Starts p(arg) in a new thread.
+
+proc join*(t: ^Thread);
+    Waits for t to end, then frees its stack.
+
+proc lock*(m: ^Mutex);
+
+proc unlock*(m: ^Mutex);

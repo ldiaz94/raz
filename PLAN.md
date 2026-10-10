@@ -129,7 +129,7 @@ Stage 3: calling C, and what comes with it
 
 Tools
 
-- [ ] 15. Versions first: the report says its version, by date
+- [x] 15. Versions first: the report says its version, by date
       (`2026-10.0`, then `.1` for the next change that month), and
       ends with what each version changed; `jed --version` prints its
       own and the report's, `jed 0.3.0, report 2026-10.0`. Each
@@ -141,7 +141,8 @@ Tools
       `make check` also compiles those examples, running the ones with
       a `main`, and runs each library module's `main` as its test.
       The test runner stays in the Makefile: it must work when the
-      compiler doesn't.
+      compiler doesn't. (Tagging is left for later, at the owner's
+      word.)
 
 - [ ] 16. Editor support: `editor/vim` (`syntax/jed.vim`, `indent/jed.vim`
       by `shiftwidth()`, and `ftdetect/jed.vim`, which sets 4 spaces)

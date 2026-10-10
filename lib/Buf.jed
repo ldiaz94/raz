@@ -1,6 +1,6 @@
 (* A growable byte buffer, its memory from an allocator. *)
 module Buf;
-import Mem;
+import Mem, Arena, Rt;
 
 type
     Buf* = record
@@ -66,6 +66,26 @@ begin
     b^.data := nil;
     b^.len := 0;
     b^.cap := 0;
+end;
+
+(* The module's test, over an arena. *)
+proc main*;
+var ar: Arena.Arena; b: Buf; i: I64; s: []U8;
+begin
+    if not Arena.init(ADR(ar), 1 shl 20) then Rt.stop("Buf: no arena"); end;
+    init(ADR(b), ADR(ar.base));
+    if LEN(bytes(ADR(b))) # 0 then Rt.stop("Buf: not empty"); end;
+    for i := 0 to 9999 do add(ADR(b), U8(i mod 251)); end;
+    str(ADR(b), "end");
+    s := bytes(ADR(b));
+    if (LEN(s) # 10003) or (s[9998] # U8(9998 mod 251)) or (s[10000..10003] # "end") then
+        Rt.stop("Buf: contents");
+    end;
+    reset(ADR(b));
+    str(ADR(b), "again");
+    if bytes(ADR(b)) # "again" then Rt.stop("Buf.reset"); end;
+    done(ADR(b));
+    Arena.done(ADR(ar));
 end;
 
 end Buf.

@@ -3,7 +3,7 @@
    giving up the processor now and then. It works with C's threads and
    with Thread's alike; Thread.Mutex is the one that sleeps. *)
 module Lock;
-import Sys;
+import Sys, Rt;
 
 type Lock* = record held: I64; end;
 
@@ -20,6 +20,18 @@ end;
 proc give*(l: ^Lock);
 begin
     XCHG(ADR(l^.held), 0);
+end;
+
+(* The module's test, in one thread: taken, given, taken again. *)
+proc main*;
+var l: Lock;
+begin
+    take(ADR(l));
+    if l.held # 1 then Rt.stop("Lock.take"); end;
+    give(ADR(l));
+    take(ADR(l));
+    give(ADR(l));
+    if l.held # 0 then Rt.stop("Lock.give"); end;
 end;
 
 end Lock.

@@ -2,7 +2,7 @@
    at once: free does nothing, reset forgets everything. An Arena is
    its allocator: ADR(arena.base) is the ^Mem.Allocator to give NEW. *)
 module Arena;
-import Mem;
+import Mem, Rt;
 
 type
     Arena* = record
@@ -47,6 +47,22 @@ begin
     if ar^.buf # nil then Mem.unmap(ar^.buf, ar^.cap); end;
     ar^.buf := nil;
     ar^.cap := 0;
+end;
+
+(* The module's test. *)
+proc main*;
+var ar: Arena; a: ^Mem.Allocator; p, q: ^U8;
+begin
+    if not init(ADR(ar), 4096) then Rt.stop("Arena.init"); end;
+    a := ADR(ar.base);
+    p := Mem.alloc(a, 3, 1);
+    q := Mem.alloc(a, 8, 8);
+    if (p = nil) or (q # p + 8) then Rt.stop("Arena: alignment"); end;
+    if Mem.alloc(a, 5000, 1) # nil then Rt.stop("Arena: too big"); end;
+    if Mem.alloc(a, -1, 1) # nil then Rt.stop("Arena: negative"); end;
+    reset(ADR(ar));
+    if Mem.alloc(a, 4096, 1) # p then Rt.stop("Arena.reset"); end;
+    done(ADR(ar));
 end;
 
 end Arena.

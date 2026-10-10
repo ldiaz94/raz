@@ -1,0 +1,10 @@
+(* Sys over the C library, through its own test. *)
+module SysTest;
+import Sys;
+
+proc main*;
+begin
+    Sys.main;
+end;
+
+end SysTest.
