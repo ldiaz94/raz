@@ -132,7 +132,8 @@ implementation
 
 var
   frameTop, frameMax, permTop: int64;
-  frameFix, zeroFix: longint;   { where the frame size is patched in }
+  frameFix: longint;            { where the frame size is patched in }
+  paramTop: int64;              { the parameters' slots end here }
   retSlot: int64;               { holds the hidden result pointer }
   pushEnd: longint;             { the code just after the last push of rax }
   result: PType;                { the procedure's result, or nil }
@@ -1302,11 +1303,15 @@ begin
     end;
     p := p^.next;
   end;
+  paramTop := frameTop;
 end;
 
 { The prologue, which is for the procedure's first line. }
+{ Only the locals are zeroed: the parameters are stored over their
+  slots next, and every temporary is written before it is read. The
+  locals are all declared by now, below the parameters' slots. }
 procedure EnterBody(c, line: longint);
-var i, top: longint;
+var i, top: longint; n: int64;
 begin
   BeginChunk(c);
   NoteLine(line);
@@ -1314,14 +1319,18 @@ begin
   MovRR(RBP, RSP);
   Put1($48); Put1($81); Put1($EC);           { sub rsp, imm32 }
   frameFix := pc; Put4(0);
-  { zero the frame, a quadword at a time: r10 counts up to zero }
-  Put1($49); Put1($C7); Put1($C2);           { mov r10, imm32 }
-  zeroFix := pc; Put4(0);
-  MovRI(RAX, 0);
-  top := pc;
-  Store(MemIdx(RBP, R10, 8, 0), RAX, 8);
-  AluI(aluAdd, R10, 1);
-  JccBack(ccNE, top);
+  n := (AlignUp(frameMax, 8) - paramTop) div 8;
+  if n > 0 then MovRI(RAX, 0);
+  if n <= 4 then
+    for i := 1 to n do Store(Mem(RBP, -paramTop - 8 * i), RAX, 8)
+  else begin
+    { a quadword at a time: r10 counts up to zero }
+    MovRI(R10, -n);
+    top := pc;
+    Store(MemIdx(RBP, R10, 8, -paramTop), RAX, 8);
+    AluI(aluAdd, R10, 1);
+    JccBack(ccNE, top);
+  end;
   for i := 0 to numIn - 1 do
     if inReg[i] < 0 then MovsdMX(Mem(RBP, inSlot[i]), -1 - inReg[i])
     else Store(Mem(RBP, inSlot[i]), inReg[i], inSize[i]);
@@ -1453,7 +1462,6 @@ begin
   if n < 16 then n := 16;
   if n > high(longint) then Mark('frame too big');
   Put4At(frameFix, n);
-  Put4At(zeroFix, -(n div 8));
   EndChunk(c);
 end;
 

@@ -12,7 +12,7 @@ disassembly.
 | `src/scan.pas` | 584 | 495 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 510 | 424 | Types, objects, scopes, layout |
 | `src/x64.pas` | 682 | 548 | Code buffer, chunks, fixups, line notes, instruction encoder |
-| `src/gen.pas` | 1,460 | 1,276 | Items: loading, storing, copying, frames, calls |
+| `src/gen.pas` | 1,468 | 1,281 | Items: loading, storing, copying, frames, calls |
 | `src/parse.pas` | 1,851 | 1,720 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
@@ -85,11 +85,6 @@ comes out as this (from `objdump -d -M intel`):
 push   rbp                            ; EnterBody: the frame
 mov    rbp,rsp
 sub    rsp,0x10                       ; its size, patched in by EndProc
-mov    r10,0xfffffffffffffffe         ; zero the frame, a quadword at a
-xor    eax,eax                        ;   time, r10 counting up to zero
-mov    QWORD PTR [rbp+r10*8+0x0],rax
-add    r10,0x1
-jne    <back to the mov>
 mov    QWORD PTR [rbp-0x8],rdi        ; the parameters, into their slots
 mov    QWORD PTR [rbp-0x10],rsi
 mov    rax,QWORD PTR [rbp-0x8]        ; a
@@ -273,7 +268,9 @@ the address of a copy; one returned comes back through a hidden pointer
 in `rdi`, as C's structs do, and so do several results.
 
 Frames: `BeginProc` gives the parameters their slots; `EnterBody`
-writes the prologue, including the loop that zeroes the frame;
+writes the prologue, which zeroes the locals (with a few stores, or a
+loop for more; there are none to zero in `scale`) but not the
+temporaries, since each is written before it is read;
 `EndProc` writes the epilogue and patches the frame's size in. Within
 a statement, scratch space comes from `AllocTemp` and is given back by
 `ReleaseTemps`; `AllocPerm` reserves space for the whole procedure.
