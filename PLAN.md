@@ -66,7 +66,7 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 
 ## Proposed, v0.6.0: raz to be rebuilt by anyone
 
-Under way: step 1 is in review. The freeze doesn't hold for this
+Under way: step 2, the report's draft 2026-10.11, is in review. The freeze doesn't hold for this
 work, by the owner's word.
 
 **For:** a language a person alone can implement again, from the
@@ -84,7 +84,7 @@ passes; a new code budget is written down; `v0.6.0` is tagged.
 **Kept out:** a second back end (aarch64 is the milestone after, to
 measure a port); an optimiser; the wishes below.
 
-- [ ] 1. The report as it stands, made complete: the whole grammar;
+- [x] 1. The report as it stands, made complete: the whole grammar;
       the readings in CLAUDE.md moved into the report; what every
       implementation must do set apart from what each may choose
       (code procedures, `SYSCALL`, `extern`'s convention, how several
@@ -92,7 +92,7 @@ measure a port); an optimiser; the wishes below.
       have (the language, `Rt` and `Out`, over writing, exiting and
       getting memory) and what it may leave out. No language change.
       For review before anything else.
-- [ ] 2. The report, the new language, for review before any code: the
+- [x] 2. The report, the new language, for review before any code: the
       system integers `INT` and `UINT`, the size of an address, which
       `LEN`, indexes, sizes and `p - q` give, and through which
       integers and pointers convert (the owner's choices), and how

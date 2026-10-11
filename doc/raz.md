@@ -10,7 +10,8 @@ This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
 This is version 2026-10.10 of the report; section 12 says what each
-version changed.
+version changed. Version 2026-10.11, written into it, is a draft for
+review: the compiler doesn't follow it yet.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -117,12 +118,13 @@ where a statement could, never after an operand, so the two don't mix.
 
 ```
 Module     = "module" ident [ "(" ModParams ")" ] ";"
-             { Import } { Link } { Declaration }
+             { Import } { Link } [ Check ] { Declaration }
              [ "begin" Statements ] "end" ident "." .
 ModParams  = ident { "," ident } { ";" ident ":" "proc" Signature } .
 Import     = "import" ImportItem { "," ImportItem } ";" .
 ImportItem = ident [ ":=" ident [ "(" Type { "," Type } ")" ] ] .
 Link       = "link" ( string | "static" ) ";" .
+Check      = "check" "off" ";" .
 ```
 
 A module lives in a file of its own name: module `Out` is `Out.raz`.
@@ -131,8 +133,12 @@ The name after `end` repeats the module's name.
 **Exports.** A name declared at the top of a module with `*` after it
 is exported: other modules can use it as `Module.name`. Record fields
 are exported the same way. Everything else is private to the module.
-An exported variable can be read and assigned by the modules that
-import it.
+An exported variable can be read by the modules that import it, but
+only its own module changes it. Outside it, the variable, and every
+field and element of it, can't be assigned, given to a `var`
+parameter, `INC`ed or `DEC`ed, or have its address taken with `ADR`.
+What a pointer in it points at is another variable, and isn't held to
+this.
 
 **Imports.** `import Out;` makes `Out`'s exports available as `Out.x`.
 `import O := Out;` uses the name `O` instead. A module can't import
@@ -246,6 +252,13 @@ for the `extern` declarations of section 9. **`link static;`** says the
 module needs a program without C (section 10): it makes its own system
 calls, or its own threads, which the C library wouldn't know about.
 
+**`check off;`**, after the links, leaves out of the module's own code
+the checks of indexes and slices (section 6.5), for speed where the
+program is sure of them. An index out of range there reads or writes
+whatever memory it reaches, and what follows isn't defined. Every
+other check stays, and the module's callers keep theirs. `check` and
+`off` aren't reserved words.
+
 ## 4. Declarations
 
 ```
@@ -307,13 +320,25 @@ QualIdent = [ ident "." ] ident .
 | Type | Size | Values |
 |---|---|---|
 | `I8` `I16` `I32` `I64` | 1, 2, 4, 8 | signed integers, two's complement |
+| `INT` | an address's: 8 on x86-64 | the machine's word, signed |
+| `UINT` | an address's | the machine's word, unsigned |
 | `U8` `U16` `U32` `U64` | 1, 2, 4, 8 | unsigned integers |
 | `BOOL` | 1 | `false` (0), `true` (1) |
 | `F32` | 4 | IEEE 754 single precision |
 | `F64` | 8 | IEEE 754 double precision |
 
+`INT` is the everyday integer: lengths, indexes and sizes are `INT`s.
+It is as big as an address, so it is the integer a pointer converts
+to (section 6.7), and the one the atomic built-ins work on (section
+6.8).
+
+`F32` and `F64` exist only on a target that has reals (appendix A). On
+one that hasn't, they, real literals and anything made of them are
+errors.
+
 Each is aligned to its size. So are `ERROR` (section 5.8), pointers
-and procedures, 8 bytes; a slice is aligned to 8.
+and procedures, each as big as an address; a slice is aligned as an
+address is.
 
 ### 5.2 Arrays
 
@@ -323,10 +348,10 @@ constant greater than zero. Arrays are values: assigning one copies it.
 ### 5.3 Slices
 
 `[]T` is a view of elements that live elsewhere: a pointer to the first
-and a count, 16 bytes in all.
+and a count, two addresses' worth, 16 bytes on x86-64.
 
 ```
-Slice = record ptr: ^T; len: I64; end;    (* its layout *)
+Slice = record ptr: ^T; len: INT; end;    (* its layout *)
 ```
 
 A slice is made from an array (`a[2..5]`, or an array used where a
@@ -335,7 +360,8 @@ doesn't own what it points at.
 
 ### 5.4 Pointers
 
-`^T` is the address of a `T`, 8 bytes. `nil` is the pointer to nothing.
+`^T` is the address of a `T`, as big as an `INT`. `nil` is the pointer
+to nothing.
 
 `^VOLATILE T` is the address of a `T` that something besides the
 program may read or change: a device register, memory shared with
@@ -389,12 +415,12 @@ can be used directly, and as `Shapes.circle` from another module if
 procedure, `circle(2.0)`; a case without fields is just `dot`. The only
 way to read the fields is `match` (section 7.4).
 
-Layout: an `I64` tag (0 for the first case, 1 for the second, and so
+Layout: an `INT` tag (0 for the first case, 1 for the second, and so
 on), then the space for the fields. Each case's fields are laid out
 in that space as a record's would be, after the tag, and the cases
 share it, so the variant is as big as its largest case needs, padded
-to its alignment, the largest of 8 and its fields'. `variant a(x:
-U8); b(y: I64; z: U8); end` is 24 bytes. A variant that starts at zero
+to its alignment, the largest of `INT`'s and its fields'. `variant
+a(x: U8); b(y: I64; z: U8); end` is 24 bytes on x86-64. A variant that starts at zero
 therefore holds its first case.
 
 ### 5.7 Enumerations and sets
@@ -421,7 +447,7 @@ so a set can stand for a C flags word.
 const NotFound*: ERROR = "not found";
 ```
 
-`ERROR` is a basic type of 8 bytes. A value of it is made only by a
+`ERROR` is a basic type as big as an address. A value of it is made only by a
 constant declared as above, and each such declaration makes an error
 different from every other, whatever its message: two modules that
 both declare `"not found"` have two different errors. A generic module
@@ -445,7 +471,7 @@ type Compare = proc(a, b: I64): BOOL;
 ```
 
 A value of a procedure type is the address of a procedure with that
-signature, 8 bytes, or `nil`. Two signatures are alike when their
+signature, as big as an address, or `nil`. Two signatures are alike when their
 parameters have the same types, each `var` or not alike, in order, and
 their results are the same types; the parameters' names don't matter.
 
@@ -477,10 +503,12 @@ the same type, or if:
 - `A` is a string literal and `B` is `[]U8`, `^U8` (a pointer to the
   bytes followed by a zero byte, as C wants), or `[n]U8` with `n` at
   least the string's length (the rest is zero);
-- `A` is a procedure and `B` a procedure type with the same signature.
+- `A` is a procedure and `B` a procedure type with the same signature;
+- `A` is `INT` and `B` is `I64`, or `A` is `UINT` and `B` is `U64`,
+  which loses nothing on any target.
 
-Nothing else converts silently. In particular, there is no conversion
-between integer types, between integers and reals, or between `F32`
+Nothing else converts silently. In particular, there is no other
+conversion between integer types, between integers and reals, or between `F32`
 and `F64`, without a written conversion (section 6.7).
 
 ## 6. Expressions
@@ -564,7 +592,7 @@ never stops the program.
 - `p + i` and `p - i`, with `i` an integer, move `p` by `i` elements:
   by `i * SIZE(T)` bytes for `p: ^T`.
 - `p - q`, with both of the same pointer type, is the number of
-  elements between them, an `I64`.
+  elements between them, an `INT`.
 - `p[i]` is `(p + i)^`. `p[lo..hi]` is the slice of the `hi - lo`
   elements from `p + lo`. Neither is checked against a length, which a
   pointer doesn't have, but a slice of a pointer that runs backwards,
@@ -582,6 +610,8 @@ checked: `i` must be below the length, and `0 <= lo <= hi <= length`.
 A check that fails prints to standard error where it is, as file, line
 and column, and what failed, with the values involved (`index 7 is out
 of range for a length of 5`), and stops the program with status 2.
+An index or a bound may be of any integer type. A module that says
+`check off;` (section 3) leaves these checks out of its code.
 
 **Literals.** `[e1, e2, ...]` builds an array, and `{f: e, g: e, ...}`
 a record, where the type it must have is known: assigned to a variable,
@@ -641,12 +671,13 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 | integer | enumeration | the name at that position; a position out of range is a failed check (6.5) |
 | set | integer | its bits |
 | integer | set | the low bits, as many as the set has |
-| integer | pointer, procedure | the address |
-| pointer, procedure | integer | the address |
+| `INT`, `UINT` | pointer, procedure | the address |
+| pointer, procedure | `INT`, `UINT` | the address |
 | pointer, procedure | pointer, procedure | the same address, seen as the new type |
 
-There are no others: no conversion between `BOOL` and integers, and
-none to or from records, arrays, slices, variants or `ERROR`. A
+There are no others: no conversion between `BOOL` and integers, none
+between pointers and integers other than `INT` and `UINT`, and none to
+or from records, arrays, slices, variants or `ERROR`. A
 conversion of a constant is made by the compiler, by the same rules:
 `U8(300)` is 44.
 
@@ -656,17 +687,17 @@ conversion of a constant is made by the compiler, by the same rules:
 |---|---|
 | `SIZE(T)` | the size of type `T` in bytes, a constant; `T` is a type, not a variable |
 | `ADR(x)` | the address of variable `x`, a `^T` |
-| `LEN(a)` | the number of elements of an array or a string constant (a constant) or of a slice, an `I64` |
+| `LEN(a)` | the number of elements of an array or a string constant (a constant) or of a slice, an `INT` |
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
 | `MSG(e)` | the message of the error `e`, a `[]U8` |
-| `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six integer or pointer arguments; the raw result, an `I64` (a negative number is `-errno`) |
+| `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six integer or pointer arguments; the raw result, an `INT` (a negative number is `-errno`) |
 | `INC(v)`, `INC(v, k)` | adds 1, or `k`, to the integer variable `v`; it wraps, like `+` |
 | `DEC(v)`, `DEC(v, k)` | subtracts 1, or `k`, from `v` |
 | `FENCE` | a full memory barrier |
 | `CAS(p, old, new)` | if `p^ = old`, sets `p^ := new` and returns `true`; atomically |
 | `XCHG(p, x)` | sets `p^ := x` and returns the value before, atomically |
 | `XADD(p, x)` | adds `x` to `p^` and returns the value before, atomically |
-| `ARGC()` | the number of command line arguments, an `I64` |
+| `ARGC()` | the number of command line arguments, an `INT` |
 | `ARGV()` | the arguments, a `^^U8` (C strings) |
 
 `SYSCALL` exists only on Linux targets. Other systems have no stable
@@ -683,7 +714,10 @@ read `v` and then write it: two accesses, even through a `^VOLATILE`
 pointer, and not atomic; `XADD` is the atomic one.
 
 For `CAS`, `XCHG` and `XADD`, `p` is a `^T` or `^VOLATILE T` where `T`
-is an 8-byte integer or pointer type (an integer type for `XADD`). They
+is an integer or pointer type as big as an address: `INT`, `UINT` or a
+pointer, and on x86-64 `I64` and `U64` too (an integer type for
+`XADD`). A machine with one processor and no atomic instructions makes
+them atomic by holding off interrupts while they run. They
 are sequentially consistent.
 
 ## 7. Statements
@@ -1017,6 +1051,23 @@ bad address or a division fault. Whether the machine catches these or
 the compiled code checks for them is the implementation's choice
 (appendix A); that they stop the program isn't.
 
+**Object files.** A module can be compiled on its own, into an object
+file: its interface, what it exports as an importer sees it, and its
+code, in an intermediate form that a back end turns into any target's
+machine code. A program is made from the object files of its modules.
+An object file records the fingerprint of every interface it was
+compiled against, and stays current while its source and those
+interfaces don't change; when it isn't current, the compiler compiles
+the module again from its source. A program comes out the same
+whether its modules were compiled one at a time or all at once.
+
+An instance of a generic module goes into the object file of the
+module that made it, named by the generic module, its arguments, and
+the fingerprints of the generic module's declarations and of each
+argument's. A type argument is named as it is built, a private type
+with the name of its module. Two object files that hold an instance of
+the same name hold the same code, and the program keeps one.
+
 **Messages.** The compiler reports an error with its file, line and
 column, the line of source with the offending part underlined, and,
 where they help, notes pointing at other places, such as where a name
@@ -1064,7 +1115,7 @@ Modules written in raz, in the compiler's `lib` directory:
 module Mem;
 type
     Allocator* = record
-        alloc*: proc(a: ^Allocator; size, align: I64): ^U8;
+        alloc*: proc(a: ^Allocator; size, align: INT): ^U8;
         free*:  proc(a: ^Allocator; p: ^U8);
     end;
 ...
@@ -1562,6 +1613,16 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   2); a slice of a pointer can't run backwards (section 6.4). Ordinary
   accesses are no longer promised to be made exactly as written, only
   volatile and atomic ones (section 7.6).
+- **2026-10.11, a draft for review.** `INT` and `UINT`, as big as an
+  address, are the integers of lengths, indexes, sizes, pointer
+  differences and pointer conversions; an `INT` widens to an `I64`
+  silently; pointers, procedures, `ERROR`s, slices and variants' tags
+  are sized by the address (section 5). Reals are a target's to have
+  or not (section 5.1). An exported variable is read only outside its
+  module (section 3). `check off;` leaves a module's index and slice
+  checks out (sections 3 and 6.5). The atomic built-ins work on words
+  (section 6.8). Modules compile on their own, into object files
+  (section 10).
 
 ## Appendix A. What an implementation chooses
 
@@ -1570,7 +1631,10 @@ what follows, which each chooses for itself and documents. This
 compiler's choices are in `doc/compiler.md`.
 
 - **The target.** Which machines and systems it compiles for, and the
-  names of their files (`linux-x86_64`, section 3).
+  names of their files (`linux-x86_64`, section 3); for each, the size
+  of an address, and so of `INT`, and whether it has reals.
+- **Object files.** Their format, and the intermediate form of the
+  code in them (section 10); this compiler's is in `doc/ir.md`.
 - **The calling convention.** On x86-64 Linux it is System V
   (sections 8 and 9); elsewhere it is the C library's own, so that
   `extern` procedures and callbacks work. How a procedure returns
@@ -1625,12 +1689,13 @@ escape     = "\n" | "\t" | "\r" | "\0" | "\\" | "\'" | '\"'
 anyHex     = hexDigit | "a" .. "f" .
 
 Module     = "module" ident [ "(" ModParams ")" ] ";"
-             { Import } { Link } { Declaration }
+             { Import } { Link } [ Check ] { Declaration }
              [ "begin" Statements ] "end" ident "." .
 ModParams  = ident { "," ident } { ";" ident ":" "proc" Signature } .
 Import     = "import" ImportItem { "," ImportItem } ";" .
 ImportItem = ident [ ":=" ident [ "(" Type { "," Type } ")" ] ] .
 Link       = "link" ( string | "static" ) ";" .
+Check      = "check" "off" ";" .
 
 Declaration = "const" { IdentDef [ ":" "ERROR" ] "=" Expr ";" }
             | "type" { IdentDef "=" Type ";" }
