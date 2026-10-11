@@ -936,6 +936,8 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Map` | a generic hash map, `Map(K, V; hash, eq)` |
 | `Sort` | sorting a slice in place, `Sort(T; less)` |
 | `Math` | `sqrt`, `floor`, `sin`, `cos`, `atan2`, `exp`, `ln` and `pi`, for `F64` |
+| `Files` | an argument as a string, and a whole file read or written |
+| `Opt` | a command line read through one table, by `getopt`'s rules with long options; its help and its mistakes |
 
 ```
 module Mem;
@@ -1214,6 +1216,135 @@ has them, to within the last bit or so. `Fmt.real(x, places)` writes
 nearest; from 1e15 on, with an exponent, as `1.50e17`; and `nan`,
 `inf` and `-inf` as themselves.
 
+**Files and Opt** are what most programs need of their command line.
+
+```
+module Files;
+proc arg*(i: I64): []U8;                     (* argument i; 0 is the program's name *)
+proc read*(path: []U8; b: ^Buf.Buf): BOOL;   (* the whole file added to b *)
+proc write*(path, data: []U8): BOOL;         (* the file made to hold data *)
+
+module Opt;
+type
+    Row* = variant
+        usage(scope, line: []U8);           (* a synopsis line, without "usage: " *)
+        sub(scope, name, help: []U8);       (* a subcommand *)
+        option(scope: []U8; letter: U8; long, value, help: []U8);
+    end;
+    Parser* = record
+        letter*: U8;    (* the option just read *)
+        value*: []U8;   (* its value; "" for a flag *)
+        long*: BOOL;    (* it was written by its long name *)
+        ...
+    end;
+proc init*(p: ^Parser; name: []U8; table: []Row);  (* the arguments from 1 on, by table *)
+proc next*(p: ^Parser): BOOL;                     (* the next option; false when they end *)
+proc operand*(p: ^Parser): ([]U8, BOOL);          (* the next operand; false when there are no more *)
+proc scope*(p: ^Parser; name: []U8);              (* subcommand name's options, from the word after it *)
+proc number*(p: ^Parser; lo, hi: I64): I64;       (* the value just read, a number from lo to hi *)
+proc fail*(p: ^Parser; text: []U8);               (* the program's own mistake *)
+```
+
+`Opt` reads a command line by the rules of the C library's `getopt`,
+with GNU's long options, so that a program's options behave as every
+other Unix program's. The program describes itself once, in a table of
+`Row`s: its synopsis lines, its subcommands and its options. The help
+and the messages for mistakes are made from the table, so they can't
+drift from it; the program's test of `p.letter` is the only other
+place an option appears. The parser is a record the program owns, and
+the table a slice it keeps as long as the parser: a literal written in
+the call to `init` lives as long as the procedure that makes it.
+
+A row's `scope` is `""` for the program itself, or a subcommand's
+name: `"start"`, or `"remote.add"` for a subcommand of `remote`. An
+option has a `letter`, a `long` name, or both. One with a long name
+only has a key of its own below `'!'` for a letter, so that the
+program can tell it from the others. With a `value`, the name the
+help and the messages give it, the option takes a value; with `""` it
+is a flag.
+
+```
+const wait = 1;     (* the key of --wait, which has no letter *)
+...
+Opt.init(ADR(p), "keep", [
+    Opt.usage("", "keep [-v] [--wait secs] start ..."),
+    Opt.sub("", "start", "start a job"),
+    Opt.option("", 'v', "verbose", "", "say more"),
+    Opt.option("", wait, "wait", "secs", "give the job secs to start"),
+    Opt.usage("start", "keep start [-b label] name command [argument ...]"),
+    Opt.option("start", 'b', "bar", "label", "show the job in the bar as label")]);
+while Opt.next(ADR(p)) do
+    if p.letter = 'v' then verbose := true;
+    elsif p.letter = wait then secs := Opt.number(ADR(p), 1, 600);
+    end;
+end;
+w, ok := Opt.operand(ADR(p));
+if not ok or (w # "start") then Opt.fail(ADR(p), "no command; see keep -h"); end;
+Opt.scope(ADR(p), "start");
+while Opt.next(ADR(p)) do
+    if p.letter = 'b' then bar := p.value; end;
+end;
+job, ok := Opt.operand(ADR(p));
+```
+
+The rules are `getopt`'s:
+
+- Flags may share a dash: `-lw` is `-l -w`. A letter's value is the
+  rest of its word, `-bdev`, or the whole next word, `-b dev`, even one
+  that starts with a dash or is empty; in a group, the first letter
+  that takes a value takes the rest, `-qn12`.
+- A long option is written in full, with its value after a `=` or in
+  the next word: `--bar=dev`, `--bar dev`. An abbreviation is unknown,
+  not guessed, so that adding an option never breaks a script. A value
+  given to a flag, `--follow=x`, is a mistake.
+- `--` ends the options, and isn't an operand; `-` alone is one. The
+  options end at the first operand, so in `keep start site python -m
+  http.server` the `-m` is python's.
+- Each scope has its own options. An option given twice is read twice.
+
+`number` reads the value as `Str.toInt` does. `operand` reads what
+options are left first, and the program doesn't see them.
+
+`-h` or `--help` among a scope's options prints its help on standard
+output and ends the program with status 0. `init` and `scope` answer
+it, looking through the scope's options before `next` gives one, so
+that the program has done nothing yet: `keep -v -h -x` prints the
+help, and the program never sees `-v`, nor the mistake. The help is
+the scope's synopsis lines, a blank line, and its subcommands, its
+options and the help itself, each with its line of help:
+
+```
+usage: keep start [-b label] name command [argument ...]
+
+  -b, --bar label   show the job in the bar as label
+  -h, --help        print this and exit
+```
+
+A scope with several synopsis lines has the others indented under the
+first; one with none, `usage:` and its words, as `usage: keep start`.
+
+A mistake on the command line is a sentence on standard error, the
+program's name first, then the scope's synopsis lines, as the help
+begins, and status 2:
+
+```
+keep: unknown option -x
+usage: keep start [-b label] name command [argument ...]
+```
+
+The sentences are `unknown option -x` (or `--name`, up to its `=`),
+`-b needs a label`, `--follow takes no value` and `--wait wants a
+number from 1 to 600, not '0'`. `fail` writes the program's own
+mistakes the same way, but alone, so that the sentence can say where
+the help is: `keep: no command; see keep -h`.
+
+A mistake in the table is the program's, not its user's. `init` checks
+the table before it reads a word, and ends the program with status 1:
+`keep: option table, row 3: the option is in the scope already`. The
+others are an option with neither a letter nor a long name, a long
+name with `=` in it, a letter `-`, and `-h` or `--help` in the table,
+since they are `Opt`'s.
+
 **Out and C's stdio.** `Out` keeps a buffer of 4 KB. It writes it out
 when it is full, at each line feed when standard output is a terminal,
 at `Out.flush`, and when the program ends by `Rt.exit`. C's `stdio`
@@ -1278,4 +1409,4 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   sleeping and random bytes; and network sockets. `Sys.spawn` takes a
   `Program`, and `Sys.wait` says which program changed and how. `Str`
   gains UTF-8 and reading a number, `Map` removing and walking, `Fmt`
-  reals; `Sort` and `Math` are new (section 11).
+  reals; `Sort`, `Math`, `Files` and `Opt` are new (section 11).
