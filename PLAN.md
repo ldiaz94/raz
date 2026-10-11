@@ -487,3 +487,22 @@ that takes. Not started: each step waits for the owner's word.
       stopped by `kill`; `readyOf` on two pipes; `connect` refused on
       a path with nothing at it, and taken by a listener the test
       makes with Python, in `test/libc` and beside the library's own.
+
+Stage 8: one module to a name, report 2026-10.5
+
+A module found in two directories was taken from the first, silently,
+by every module that imports it: a program's `C.raz` stood in for the
+library's `C` inside `Rt`, and the compiler said only "Rt imports
+itself". Not started: each step waits for the owner's word.
+
+- [x] 50. The report, version 2026-10.5: one module to a name, the
+      link that chooses a file, libraries' prefixes (section 3), for
+      review before any code.
+- [ ] 51. `ModuleFile` goes on through the later directories once it
+      has found a module's file, and an error names the files of each
+      other directory that has the module, unless the file found is a
+      symbolic link to one of them (compared by device and inode). A
+      test in `test/err` with a `C.raz` of its own; `test/libc`, and
+      ravite's `ravite-c`, still build through their link to
+      `lib/Sys.raz`. `Report` in `src/raz.pas` goes to 2026-10.5
+      with it, or with step 49, whichever comes last.

@@ -174,6 +174,21 @@ system comes in one file per target, and the modules that import it
 don't change. Machine code (section 8) and system calls belong in such
 files.
 
+**One module to a name.** A program has one module of each name, so
+the compiler reports an error, naming the files, if a module it looks
+for has files in more than one of these directories, rather than take
+the first: a `Buf.raz` beside a program would otherwise stand in for
+the library's `Buf` in every module that imports it, the library's own
+among them. A link is the exception: a file that is a symbolic link to
+one of the module's files in a later directory chooses that file, so
+that a directory holding a link to `lib/Sys.raz` builds a program over
+the C library's `Sys` on Linux too.
+
+Since the names of a program's modules are one space, the modules of
+a library share a prefix of their own, as an X11 library's `Xauth` and
+`Xkeys` do, and programs leave the library's short names (`Buf`,
+`Map`, `Out`, `C` and the rest of section 11) to it.
+
 The compiler holds every file of such a module to the same interface.
 When it takes one of `Name.*.raz`, it also reads the declarations of
 the others beside it, and of `Name.raz` if there is one, and reports an
@@ -1045,3 +1060,6 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.4.** `Sys` gains a connection to a Unix socket, waiting on
   several files at once, pseudo-terminals, and starting, waiting for
   and stopping programs (section 11).
+- **2026-10.5.** A module with files in more than one of the
+  directories searched is an error, unless the first is a link to one
+  of the others (section 3).
