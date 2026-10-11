@@ -479,6 +479,9 @@ that takes. Approved; under way, each step on the owner's word.
       files' tests: `connect` refused where nothing listens, and taken
       by a listener the test makes, which `readyOf` then finds ready;
       a byte across, and the end of the connection.
+- [x] 49c. `send` (report 2026-10.7), at the owner's word: `write` to
+      a socket with `MSG_NOSIGNAL`, -32 (EPIPE) where `write` would
+      bring SIGPIPE. Both tests send to a connection closed.
 - [ ] 49b. The rest, for rat: `/dev/ptmx` with `TIOCSPTLCK` and
       `TIOCGPTN` for the pseudo-terminal, `TIOCSWINSZ` for its size;
       `fork`, then in the child `setsid`, the terminal opened as its

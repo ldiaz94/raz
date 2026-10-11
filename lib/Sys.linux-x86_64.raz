@@ -247,6 +247,15 @@ begin
     return fd;
 end;
 
+(* Writes s to the socket fd, as write does, but returns -32 (EPIPE)
+   where write would stop the program with SIGPIPE: when the other end
+   has closed it. *)
+proc send*(fd: I64; s: []U8): I64;
+begin
+    if LEN(s) = 0 then return 0; end;
+    return SYSCALL(44, fd, ADR(s[0]), LEN(s), 4000H, 0, 0);   (* sendto, MSG_NOSIGNAL, no address *)
+end;
+
 (* The first of fds that has something to read within ms milliseconds,
    or that has reached its end or failed, so that a read won't wait; -1
    if none has. ms < 0 waits as long as it takes. At most 64 fds. *)
@@ -321,7 +330,8 @@ begin
 end;
 
 (* The module's test: a file written, read back and closed; a
-   directory made, listed and emptied; no terminal; a socket. *)
+   directory made, listed and emptied; no terminal; a socket, sent to
+   after its end. *)
 proc main*;
 var fd, n, err, w, h, l, c, a: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
     dir: [4096]U8;
@@ -379,10 +389,11 @@ begin
     if readyOf([c], 0) # -1 then exit(2); end;
     if readyOf([c, l], 1000) # l then exit(2); end;
     a := SYSCALL(43, l, 0, 0);                         (* accept *)
-    if (a < 0) or (write(a, "x") # 1) or (readyOf([l, c], 1000) # c) then exit(2); end;
+    if (a < 0) or (send(a, "x") # 1) or (readyOf([l, c], 1000) # c) then exit(2); end;
     if (read(c, buf) # 1) or (buf[0] # 'x') then exit(2); end;
     close(a);
     if (readyOf([c], 1000) # c) or (read(c, buf) # 0) then exit(2); end;   (* its end *)
+    if send(c, "x") # -32 then exit(2); end;           (* EPIPE, and no SIGPIPE *)
     close(c);
     close(l);
     remove("/tmp/raz-sys-socket");

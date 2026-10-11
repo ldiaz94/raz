@@ -31,6 +31,7 @@ extern proc ioctl*(fd: I32; request: U64; ...): I32;
 extern proc poll*(fds: ^U8; n: U64; ms: I32): I32;
 extern proc socket*(domain, kind, protocol: I32): I32;
 extern proc connect*(fd: I32; addr: ^U8; len: U32): I32;
+extern proc send*(fd: I32; buf: ^U8; n: U64; flags: I32): I64;
 extern proc bind*(fd: I32; addr: ^U8; len: U32): I32;
 extern proc listen*(fd, backlog: I32): I32;
 extern proc accept*(fd: I32; addr: ^U8; len: ^U32): I32;
