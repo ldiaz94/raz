@@ -1,0 +1,8 @@
+module NoteLocal;
+proc main*;
+var x, y, count: I64;
+begin
+
+    cuont := 1;
+end;
+end NoteLocal.

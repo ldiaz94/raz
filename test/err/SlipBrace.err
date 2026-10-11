@@ -1,0 +1,5 @@
+test/err/SlipBrace.raz:5:14: error: expected "then", found "{"
+    5 |     if x = 1 { x := 2 }
+      |              ^
+help: a block is written "then" ... end
+raz: 1 error

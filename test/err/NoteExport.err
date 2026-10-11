@@ -1,0 +1,5 @@
+test/err/NoteExport.raz:6:9: error: Int isn't exported by Out
+    6 |     Out.Int(x);
+      |         ^^^
+help: did you mean int?
+raz: 1 error

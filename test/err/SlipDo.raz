@@ -1,0 +1,7 @@
+module SlipDo;
+proc main*;
+var x, y: I64;
+begin
+    while x < 3 { x := x + 1 }
+end;
+end SlipDo.

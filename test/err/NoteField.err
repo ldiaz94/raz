@@ -1,0 +1,5 @@
+test/err/NoteField.raz:6:7: error: P has no field cuont
+    6 |     p.cuont := 1;
+      |       ^^^^^
+help: did you mean count?
+raz: 1 error

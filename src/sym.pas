@@ -58,6 +58,7 @@ type
     typ: PType;
     next: PObj;        { the next in its list: scope, fields, parameters }
     scope: longint;    { where it is declared }
+    pos: TPos;         { where its name is declared, for messages }
     val: int64;        { oConst: value; oBuiltin: which; oCase: tag;
                          oField: offset; oVar: frame offset }
     chunk: longint;    { global oVar, oProc, string oConst: its chunk }
@@ -140,6 +141,7 @@ procedure RestoreScopes(d: longint; const saved: array of longint);
 procedure Insert(obj: PObj; s: longint);
 function Find(s, name: longint): PObj;
 function Lookup(name: longint): PObj;
+function Closest(name, s: longint): PObj;
 
 function AlignUp(x, a: int64): int64;
 function Same(a, b: PType): boolean;
@@ -151,6 +153,8 @@ function TypeName(t: PType): shortstring;
 function Fingerprint(o: PObj): qword;
 
 implementation
+
+uses math;
 
 type
   PObjTab = ^TObjTab;
@@ -186,6 +190,7 @@ begin
   o^.typ := typ;
   o^.chunk := -1;
   o^.module := curModule;
+  o^.pos := TokPos;
   NewObj := o;
 end;
 
@@ -270,8 +275,11 @@ begin
   i := Slot(s, obj^.name);
   o := hashTab^[i];
   while o <> nil do begin
-    if (o^.scope = s) and (o^.name = obj^.name) then
-      Mark(NameOf(obj^.name) + ' is declared twice');
+    if (o^.scope = s) and (o^.name = obj^.name) then begin
+      Error(obj^.pos, NameOf(obj^.name) + ' is declared twice');
+      Note(o^.pos, 'the first one is here');
+      Fail;
+    end;
     i := (i + 1) and hashMask;
     o := hashTab^[i];
   end;
@@ -302,6 +310,50 @@ begin
     if o <> nil then exit(o);
   end;
   Lookup := nil;
+end;
+
+{ How far apart two names are: the edits, a character put in, taken out,
+  changed or swapped with the next, that make one the other, ignoring
+  case. }
+function Distance(const a, b: shortstring): longint;
+var d: array[0..MaxIdent + 1, 0..MaxIdent + 1] of longint; i, j, c: longint;
+begin
+  for i := 0 to length(a) do d[i, 0] := i;
+  for j := 0 to length(b) do d[0, j] := j;
+  for i := 1 to length(a) do
+    for j := 1 to length(b) do begin
+      c := ord(UpCase(a[i]) <> UpCase(b[j]));
+      d[i, j] := Min(Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + c);
+      if (i > 1) and (j > 1) and (UpCase(a[i]) = UpCase(b[j - 1]))
+        and (UpCase(a[i - 1]) = UpCase(b[j])) then
+        d[i, j] := Min(d[i, j], d[i - 2, j - 2] + 1);
+    end;
+  Distance := d[length(a), length(b)];
+end;
+
+{ The name spelled most like name, for "did you mean": in scope s, if
+  it can be reached from here, or in the scopes in reach if s < 0; nil
+  if none is within an edit for every three characters. Only after an
+  error, so it looks at every object. }
+function Closest(name, s: longint): PObj;
+var i, j, d, best: longint; o: PObj; n: shortstring; reach: boolean;
+begin
+  n := NameOf(name);
+  best := length(n) div 3 + 1;
+  Closest := nil;
+  for i := 0 to hashMask do begin
+    o := hashTab^[i];
+    if (o = nil) or (o^.name = name) or (o^.name < 0) or (o^.typ = tPoison) then continue;
+    if s >= 0 then reach := (o^.scope = s) and (o^.exported or (o^.module = curModule))
+    else begin
+      reach := false;
+      for j := 0 to depth - 1 do reach := reach or (o^.scope = scopes[j]);
+    end;
+    if reach then begin
+      d := Distance(n, NameOf(o^.name));
+      if d < best then begin best := d; Closest := o end;
+    end;
+  end;
 end;
 
 { Types }

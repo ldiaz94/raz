@@ -1,0 +1,7 @@
+module SlipBrace;
+proc main*;
+var x, y: I64;
+begin
+    if x = 1 { x := 2 }
+end;
+end SlipBrace.

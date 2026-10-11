@@ -249,7 +249,7 @@ main model reads every diff before it is committed.
       (`scan.pas`, `parse.pas` in two halves, `gen.pas`, the rest),
       against a list of messages and their tests the main model writes
       first; *main* reviews the wording as a whole.
-- [ ] 24. Notes and help. Objects remember where they are declared:
+- [x] 24. Notes and help. Objects remember where they are declared:
       "declared here", "the first one is here", "the signature is
       here". The checks on `main` in `raz.pas` point at
       it, so that every error has a place (the fuzzer finds them). Did you mean: the closest name by edit distance in the

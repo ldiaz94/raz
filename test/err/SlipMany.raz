@@ -1,0 +1,7 @@
+module SlipMany;
+proc main*;
+var x, y: I64;
+begin
+    if x != 1 && z then x := y; end;
+end;
+end SlipMany.

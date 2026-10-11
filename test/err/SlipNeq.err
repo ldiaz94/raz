@@ -1,0 +1,4 @@
+test/err/SlipNeq.raz:5:10: error: "not equal" is written #, not !=
+    5 |     if x != 1 then x := 2; end;
+      |          ^^
+raz: 1 error

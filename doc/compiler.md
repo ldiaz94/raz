@@ -8,15 +8,15 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 260 | 187 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 659 | 529 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 526 | 437 | Types, objects, scopes, layout |
+| `src/diag.pas` | 267 | 191 | Messages: positions, source excerpts, colour, counts |
+| `src/scan.pas` | 687 | 553 | Symbols, literals, comments, positions |
+| `src/sym.pas` | 578 | 479 | Types, objects, scopes, layout |
 | `src/x64.pas` | 682 | 548 | Code buffer, chunks, fixups, line notes, instruction encoder |
-| `src/gen.pas` | 1,512 | 1,318 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,094 | 1,908 | Declarations, statements, expressions, built-ins, recovery |
+| `src/gen.pas` | 1,515 | 1,319 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,151 | 1,955 | Declarations, statements, expressions, built-ins, recovery |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 219 | 172 | The command line, the entry points |
+| `src/raz.pas` | 220 | 173 | The command line, the entry points |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -111,7 +111,10 @@ for, which is the point.
 Every message the compiler prints is made here. A position, `TPos`, is
 a file and a stretch of bytes in it; `Error`, `Warning` and `Note` show
 it as `file:line:column`, then the line of source with the stretch
-underlined, and `Help` adds a line of advice. The line and column are
+underlined, and `Help` adds a line of advice. Notes and help are shown
+only with an error that was: not one at the place of the last, and
+not one under `quiet`, which the parser sets when an error follows
+from another (see parse.pas). The line and column are
 worked out only when a message is printed (`Locate`, `Chars`), so
 positions cost nothing while compiling. `AddFile` keeps every source
 file the scanner opens, so a note can show a line of any of them.
@@ -146,13 +149,16 @@ symbol before, when the current one starts a new line. Errors go
 through `Mark`, at the current symbol, `MarkAt`, at a position, or
 `MarkHelp`, which adds a line of help; each reports the error
 (`diag.Error`) and jumps to `recovery`, the parser's place to go on
-from (see parse.pas). A message names what it found: `Found` describes
+from (see parse.pas), through `Fail`. An error with notes is reported
+with `Error` and `Note`, then `Fail`. A message names what it found: `Found` describes
 the current symbol and `SymText` spells an operator or reserved word,
 so that the parser's `Expect` and `Expected` say `expected ";", found
 "end"`. Errors in the text itself stop the
 compiler (`MarkBytes`, `LexError`): past a string left open, the
-symbols can't be trusted. There is no
-recovery: the first error ends the compilation. `SaveScan` and `RestoreScan` keep
+symbols can't be trusted. A slip from another language, such as `!=`
+for `#`, is reported by `Slip`, which reads on as if the right symbol
+were written; not while the parser is `skipping` what it read once
+before an error. `SaveScan` and `RestoreScan` keep
 the scanner's state while an imported module is compiled.
 
 ## sym.pas: types, objects and scopes
@@ -168,7 +174,8 @@ elements. `size` and `align` are worked out when the type is built, by
 the C rules. `obj` is the declaration that named the type, if any.
 
 `TObj` is anything a name can stand for: a constant, type, variable,
-procedure, module, field, variant case or built-in (`cls`). Where it
+procedure, module, field, variant case or built-in (`cls`), and `pos`
+is where its name is declared, for notes. Where it
 lives is decided here too: a module variable's chunk, a local's frame
 offset in `val`, a procedure's chunk.
 
@@ -177,7 +184,9 @@ and match arm gets a new one from `NewScope`. All objects of all scopes
 sit in one open-addressed hash table, keyed by scope and name: `Find`
 looks in one scope, `Lookup` in each open scope from the innermost out.
 A lookup costs the same however big a program grows, which matters at
-a million lines a second.
+a million lines a second. After an error, `Closest` looks through the
+whole table for the name in reach spelled most like one not found
+(`Distance`), for "did you mean".
 
 `Same` and `Alike` decide whether two types are the same: one
 declaration for named types, built alike otherwise. `Fingerprint`
@@ -329,9 +338,11 @@ the state back, the construct's first symbol current again, and
 blocks. A symbol at the start of a line ends the skip: by the usual
 layout it starts the next declaration, so the statement gives up its
 procedure (`GiveUp`), and `SkipProc` reads to the procedure's
-`end Name;`. A name not declared is declared where it is used, with
-the type `tPoison` (`Poison`), as are the names of a declaration that
-had an error; a construct that uses poison sets `quiet`, and its errors
+`end Name;`. A name not declared is reported by `NotDeclared`, with
+what it may have meant: a module to import (`ModuleFile`) or a name
+spelled alike. It is then declared where it is used, with the type
+`tPoison` (`Poison`), as are the names of a declaration that had an
+error; a construct that uses poison sets `quiet`, and its errors
 aren't reported, since they follow from one that was. Nothing breaks
 for the half-made code: once there is an error, no executable is
 written.

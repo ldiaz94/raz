@@ -32,6 +32,9 @@ const
 var
   errors, warnings: longint;
   werror: boolean;     { -Werror: a warning counts as an error }
+  { The construct being read uses a name already reported as not
+    declared: its errors follow from that one, and aren't shown. }
+  quiet: boolean;
 
 function AddFile(const path: shortstring; buf: PChar; len: longint): longint;
 function PathOf(f: longint): shortstring;
@@ -63,6 +66,7 @@ var
   colour, colourKnown: boolean;
   cwd: shortstring;    { the working directory and a /, or '' if unknown }
   lastError: TPos;     { where the last error was }
+  shown: boolean;      { whether it was shown: its notes and help are only then }
 
 { Paths are shown from the working directory where they are under it,
   so messages read the same wherever the compiler or its library is. }
@@ -204,7 +208,8 @@ procedure Error(const p: TPos; const msg: shortstring);
 begin
   { a second error at one place follows from the first: when a symbol
     ends a construct with an error, the one around it may stop there too }
-  if (errors > 0) and (p.f = lastError.f) and (p.a = lastError.a) then exit;
+  shown := not quiet and not ((errors > 0) and (p.f = lastError.f) and (p.a = lastError.a));
+  if not shown then exit;
   lastError := p;
   Show(p, 'error', Red, msg);
   inc(errors);
@@ -219,18 +224,20 @@ begin
   if werror then Error(p, msg)
   else begin
     Show(p, 'warning', Yellow, msg);
+    shown := true;
     inc(warnings);
   end;
 end;
 
+{ Notes and help follow an error or a warning, and are shown with it }
 procedure Note(const p: TPos; const msg: shortstring);
 begin
-  Show(p, 'note', Cyan, msg);
+  if shown then Show(p, 'note', Cyan, msg);
 end;
 
 procedure Help(const msg: shortstring);
 begin
-  writeln(StdErr, Paint(Green, 'help:'), ' ', msg);
+  if shown then writeln(StdErr, Paint(Green, 'help:'), ' ', msg);
 end;
 
 { An error with no place in the source, such as a file that can't be

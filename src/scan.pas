@@ -71,6 +71,7 @@ procedure Next;
 procedure Mark(const msg: shortstring);
 procedure MarkAt(const p: TPos; const msg: shortstring);
 procedure MarkHelp(const p: TPos; const msg, hint: shortstring);
+procedure Fail;
 function AtLineStart: boolean;
 function SymText(s: TSym): shortstring;
 function Found: shortstring;
@@ -79,9 +80,9 @@ var
   { Where the parser goes on after an error: the innermost statement or
     declaration being read. nil stops the compiler at the first error. }
   recovery: ^jmp_buf;
-  { The construct being read uses a name already reported as not
-    declared: its errors follow from that one, and aren't reported. }
-  quiet: boolean;
+  { The parser is skipping what it has read once already, after an
+    error, so slips in it aren't reported again. }
+  skipping: boolean;
 procedure SaveScan(var st: TScanState);
 procedure RestoreScan(const st: TScanState);
 function TokPos: TPos;
@@ -237,21 +238,26 @@ begin
   MarkAt(TokPos, msg);
 end;
 
-{ An error in the parser's construct at p: reported, then the parser
-  goes on from the recovery point. }
-procedure MarkAt(const p: TPos; const msg: shortstring);
+{ After an error in the parser's construct, reported with its notes
+  and help: the parser goes on from the recovery point. }
+procedure Fail;
 begin
-  if not quiet then Error(p, msg);
   if recovery = nil then Finish;
   longjmp(recovery^, 1);
+end;
+
+procedure MarkAt(const p: TPos; const msg: shortstring);
+begin
+  Error(p, msg);
+  Fail;
 end;
 
 { MarkAt, with a line of help after the message. }
 procedure MarkHelp(const p: TPos; const msg, hint: shortstring);
 begin
-  if not quiet then begin Error(p, msg); Help(hint) end;
-  if recovery = nil then Finish;
-  longjmp(recovery^, 1);
+  Error(p, msg);
+  Help(hint);
+  Fail;
 end;
 
 { An error in the text at bytes a to b of the file being read, which
@@ -260,6 +266,7 @@ procedure MarkBytes(a, b: longint; const msg: shortstring);
 var p: TPos;
 begin
   p.f := cur.f; p.a := a; p.b := b;
+  quiet := false;
   Error(p, msg);
   Finish;
 end;
@@ -267,6 +274,17 @@ end;
 procedure LexError(const msg: shortstring);
 begin
   MarkBytes(cur.tokPos, cur.pos, msg);
+end;
+
+{ The n characters at the scanner are how another language writes t:
+  an error, but reading goes on as if t were written. }
+procedure Slip(n: longint; t: TSym; const msg: shortstring);
+var p: TPos;
+begin
+  p.f := cur.f; p.a := cur.pos; p.b := cur.pos + n;
+  if not skipping then Error(p, msg);
+  inc(cur.pos, n);
+  tok := t;
 end;
 
 { How an operator or reserved word is written, quoted, for messages. }
@@ -597,7 +615,12 @@ begin
     '-': begin inc(cur.pos); tok := sMinus end;
     '*': begin inc(cur.pos); tok := sTimes end;
     '/': begin inc(cur.pos); tok := sSlash end;
-    '=': begin inc(cur.pos); tok := sEql end;
+    '=':
+      if cur.buf[cur.pos + 1] = '=' then Slip(2, sEql, 'comparing is written =, not ==')
+      else begin inc(cur.pos); tok := sEql end;
+    '&':
+      if cur.buf[cur.pos + 1] = '&' then Slip(2, sAnd, '"and" is written and, not &&')
+      else MarkBytes(cur.pos, cur.pos + 1, 'unexpected character "&"');
     '#': begin inc(cur.pos); tok := sNeq end;
     '<': begin
       inc(cur.pos);
@@ -631,7 +654,12 @@ begin
     '{': begin inc(cur.pos); tok := sLbrace end;
     '}': begin inc(cur.pos); tok := sRbrace end;
     '^': begin inc(cur.pos); tok := sArrow end;
-    '|': begin inc(cur.pos); tok := sBar end;
+    '|':
+      if cur.buf[cur.pos + 1] = '|' then Slip(2, sOr, '"or" is written or, not ||')
+      else begin inc(cur.pos); tok := sBar end;
+    '!':
+      if cur.buf[cur.pos + 1] = '=' then Slip(2, sNeq, '"not equal" is written #, not !=')
+      else Slip(1, sNot, '"not" is written not, not !');
     #0: begin
       if cur.pos < cur.len then MarkBytes(cur.pos, cur.pos + 1, 'NUL byte in the text');
       tok := sEof;

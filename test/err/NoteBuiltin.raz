@@ -1,0 +1,7 @@
+module NoteBuiltin;
+proc main*;
+var x, y: I64;
+begin
+    x := len(y);
+end;
+end NoteBuiltin.

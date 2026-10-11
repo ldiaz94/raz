@@ -1,0 +1,7 @@
+module SlipAnd;
+proc main*;
+var x, y: I64;
+begin
+    if (x = 1) && (y = 2) then x := 2; end;
+end;
+end SlipAnd.

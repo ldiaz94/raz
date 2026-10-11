@@ -1,0 +1,8 @@
+module NoteField;
+type P = record count: I64; end;
+proc main*;
+var p: P;
+begin
+    p.cuont := 1;
+end;
+end NoteField.

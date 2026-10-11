@@ -1,4 +1,7 @@
 test/err/AtMany.raz:7:16: error: too many arguments: Id takes 1
     7 |     x := Id(1, 2 * 3);
       |                ^^^^^
+test/err/AtMany.raz:2:6: note: the signature is here
+    2 | proc Id(a: I64): I64;
+      |      ^^
 raz: 1 error

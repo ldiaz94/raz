@@ -1,0 +1,8 @@
+module NoteExport;
+import Out;
+proc main*;
+var x, y: I64;
+begin
+    Out.Int(x);
+end;
+end NoteExport.

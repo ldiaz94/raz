@@ -1,0 +1,7 @@
+module NoteImport;
+proc main*;
+var x, y: I64;
+begin
+    Fmt.print(x);
+end;
+end NoteImport.

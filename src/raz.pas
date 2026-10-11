@@ -152,9 +152,10 @@ begin
   main := Find(m^.scope, Intern('main', 4));
   hasResult := false;
   if main <> nil then begin
-    if (main^.cls <> oProc) or not main^.exported then Fatal('main must be an exported procedure');
-    if (main^.typ^.len <> 0) or ((main^.typ^.base <> nil) and (main^.typ^.base <> tI64)) then
-      Fatal('main must be proc main* or proc main*: I64');
+    if (main^.cls <> oProc) or not main^.exported then Error(main^.pos, 'main must be an exported procedure')
+    else if (main^.typ^.len <> 0) or ((main^.typ^.base <> nil) and (main^.typ^.base <> tI64)) then
+      Error(main^.pos, 'main must be proc main* or proc main*: I64');
+    Finish;
     hasResult := main^.typ^.base <> nil;
   end;
 

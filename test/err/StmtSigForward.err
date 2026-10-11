@@ -1,6 +1,9 @@
 test/err/StmtSigForward.raz:3:6: error: f doesn't have the signature it was declared forward with
     3 | proc f(a: BOOL); begin end;
       |      ^
+test/err/StmtSigForward.raz:2:6: note: the signature is here
+    2 | proc f(a: I64); forward;
+      |      ^
 test/err/StmtSigForward.raz:4:19: error: f is declared forward but never defined
     4 | end StmtSigForward.
       |                   ^

@@ -1,0 +1,4 @@
+test/err/SlipAnd.raz:5:16: error: "and" is written and, not &&
+    5 |     if (x = 1) && (y = 2) then x := 2; end;
+      |                ^^
+raz: 1 error

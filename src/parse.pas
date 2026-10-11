@@ -85,6 +85,8 @@ end;
 
 procedure Expect(s: TSym);
 begin
+  if (tok = sLbrace) and (s in [sThen, sDo]) then
+    MarkHelp(MissingPos, 'expected ' + SymText(s) + ', found ' + Found, 'a block is written ' + SymText(s) + ' ... end');
   if tok <> s then Expected(SymText(s));
   Next;
 end;
@@ -94,10 +96,12 @@ begin
   Name := Intern(@s[1], length(s));
 end;
 
-procedure IdentDef(var n: longint; var exp: boolean);
+{ A name being declared, and whether it is exported; at is the name }
+procedure IdentDef(var n: longint; var exp: boolean; var at: TPos);
 begin
   if tok <> sIdent then Expected('a name');
   n := id;
+  at := TokPos;
   Next;
   exp := false;
   if tok = sTimes then begin
@@ -162,6 +166,7 @@ procedure Unguard(var r: TRecover);
 begin
   recovery := r.outer;
   quiet := r.quiet;
+  skipping := false;
 end;
 
 { After an error: the state as it was at the start of r's construct,
@@ -169,6 +174,7 @@ end;
 procedure Restore(var r: TRecover);
 begin
   RestoreScan(r.scan);
+  skipping := true;
   CutScopes(r.scopes); depth := r.depth; numDefers := r.numDefers;
   curLoop := r.loop; curResult := r.result;
   deferring := r.deferring; directDefer := r.directDefer;
@@ -247,6 +253,25 @@ begin
   ConstExpr := ConstValue(x);
 end;
 
+{ Help after a name that isn't found: o, the closest name in reach }
+procedure DidYouMean(o: PObj);
+begin
+  if o <> nil then Help('did you mean ' + NameOf(o^.name) + '?');
+end;
+
+{ Where module n is found, if it is: dir and the file in it }
+function ModuleFile(n: longint; var dir, f: shortstring): boolean; forward;
+
+{ Reports name n at p as not declared, with what it may have meant }
+procedure NotDeclared(const p: TPos; n: longint);
+var dir, f: shortstring;
+begin
+  Error(p, NameOf(n) + ' isn''t declared');
+  if ModuleFile(n, dir, f) then Help(NameOf(n) + ' is a module: import ' + NameOf(n))
+  else if (NameOf(n) = 'elif') or (NameOf(n) = 'elseif') then Help('raz writes elsif')
+  else DidYouMean(Closest(n, -1));
+end;
+
 function QualIdent: PObj;
 var o: PObj; m: PModule;
 begin
@@ -255,7 +280,8 @@ begin
   if o = nil then begin
     Poison(id);
     quiet := false;
-    Mark(NameOf(id) + ' isn''t declared');
+    NotDeclared(TokPos, id);
+    Fail;
   end;
   if o^.typ = tPoison then quiet := true;
   Next;
@@ -264,10 +290,33 @@ begin
     if tok <> sIdent then Expected('a name');
     m := o^.module;
     o := Find(m^.scope, id);
-    if (o = nil) or not o^.exported then Mark(NameOf(id) + ' isn''t exported by ' + NameOf(m^.name));
+    if (o = nil) or not o^.exported then begin
+      Error(TokPos, NameOf(id) + ' isn''t exported by ' + NameOf(m^.name));
+      if o <> nil then Note(o^.pos, NameOf(id) + ' is declared here, without a *')
+      else DidYouMean(Closest(id, m^.scope));
+      Fail;
+    end;
     Next;
   end;
   QualIdent := o;
+end;
+
+{ The field of record type t named by the current symbol }
+function FieldOf(t: PType): PObj;
+var f: PObj;
+begin
+  f := Find(t^.scope, id);
+  if f = nil then begin
+    Error(TokPos, TypeName(t) + ' has no field ' + NameOf(id));
+    DidYouMean(Closest(id, t^.scope));
+    Fail;
+  end;
+  if not f^.exported and (t^.module <> curModule) then begin
+    Error(TokPos, 'field ' + NameOf(id) + ' of ' + TypeName(t) + ' isn''t exported');
+    Note(f^.pos, NameOf(id) + ' is declared here, without a *');
+    Fail;
+  end;
+  FieldOf := f;
 end;
 
 function NewPtr(base: PType; vol: boolean): PType;
@@ -284,7 +333,8 @@ end;
 function RecordType: PType;
 var
   t, ft: PType; f, last: PObj; names: array[0..63] of longint;
-  exps: array[0..63] of boolean; n, i: longint; off, a, maxA: int64;
+  exps: array[0..63] of boolean; poss: array[0..63] of TPos;
+  n, i: longint; off, a, maxA: int64;
 begin
   t := NewType(fRecord, 0, 1);
   if tok = sPacked then begin t^.packd := true; Next end;
@@ -295,7 +345,7 @@ begin
     n := 0;
     repeat
       if n > High(names) then Mark('more than ' + IntStr(High(names) + 1) + ' names in one declaration');
-      IdentDef(names[n], exps[n]);
+      IdentDef(names[n], exps[n], poss[n]);
       inc(n);
       if tok <> sComma then break;
       Next;
@@ -307,6 +357,7 @@ begin
       off := AlignUp(off, a);
       f := NewObj(oField, names[i], ft);
       f^.exported := exps[i];
+      f^.pos := poss[i];
       f^.val := off;
       Insert(f, t^.scope);
       if last = nil then t^.fields := f else last^.next := f;
@@ -778,10 +829,7 @@ begin
         Next;
         if (x.mode <> mVar) or (x.typ^.form <> fRecord) then MarkAt(x.pos, 'expected a record, found ' + What(x));
         if tok <> sIdent then Expected('a field');
-        f := Find(x.typ^.scope, id);
-        if f = nil then Mark(TypeName(x.typ) + ' has no field ' + NameOf(id));
-        if not f^.exported and (x.typ^.module <> curModule) then
-          Mark('field ' + NameOf(id) + ' of ' + TypeName(x.typ) + ' isn''t exported');
+        f := FieldOf(x.typ);
         Next;
         Field(x, f);
         called := false;
@@ -885,10 +933,7 @@ begin
   if tok <> sRbrace then
     repeat
       if tok <> sIdent then Expected('a field');
-      f := Find(t^.scope, id);
-      if f = nil then Mark(TypeName(t) + ' has no field ' + NameOf(id));
-      if not f^.exported and (t^.module <> curModule) then
-        Mark('field ' + NameOf(id) + ' of ' + TypeName(t) + ' isn''t exported');
+      f := FieldOf(t);
       for i := 0 to n - 1 do if seen[i] = id then Mark('field ' + NameOf(id) + ' is given twice');
       if n <= High(seen) then begin seen[n] := id; inc(n) end;
       Next;
@@ -1131,7 +1176,7 @@ begin
   Next;
   if tok <> sIdent then Expected('a name');
   o := Lookup(id);
-  if o = nil then Mark(NameOf(id) + ' isn''t declared');
+  if o = nil then begin NotDeclared(TokPos, id); Fail end;
   if (o^.cls <> oVar) or not (o^.typ^.form in [fInt, fEnum]) then
     if o^.cls = oVar then
       Mark('a for loop needs an integer or enumeration variable, found ' + TypeName(o^.typ))
@@ -1346,7 +1391,9 @@ begin
         if (x.mode = mProc) or ((x.mode in [mVar, mReg]) and (x.typ^.form = fProc)) then begin
           BeginCall(c, x);
           EndCall(c, x);
-        end else MarkAt(x.pos, Subject(x, first) + ' isn''t a statement');
+        end else if tok = sEql then
+          MarkHelp(x.pos, Subject(x, first) + ' isn''t a statement', 'assignment is written :=')
+        else MarkAt(x.pos, Subject(x, first) + ' isn''t a statement');
       end;
     end;
     sIf: IfStatement;
@@ -1518,18 +1565,21 @@ var n, line: longint; exp: boolean; sig: PType; p: PObj; at: TPos;
 begin
   line := CurLine;
   Next;
-  at := TokPos;
-  IdentDef(n, exp);
-  at := SpanFrom(at);
+  IdentDef(n, exp, at);
   sig := Signature;
   Expect(sSemicolon);
   p := Find(TopScope, n);
   if (p <> nil) and (p^.cls = oProc) and p^.fwd then begin
-    if not Same(p^.typ, sig) then MarkAt(at, NameOf(n) + ' doesn''t have the signature it was declared forward with');
+    if not Same(p^.typ, sig) then begin
+      Error(at, NameOf(n) + ' doesn''t have the signature it was declared forward with');
+      Note(p^.pos, 'the signature is here');
+      Fail;
+    end;
     if tok = sForward then Mark(NameOf(n) + ' is declared forward twice');
     p^.exported := p^.exported or exp;
   end else begin
     p := NewObj(oProc, n, sig);
+    p^.pos := at;
     p^.exported := exp;
     if (curModule^.name = nameRt) and not checkMode and (n = nameFail) then p^.chunk := rtFail
     else if (curModule^.name = nameRt) and not checkMode and (n = nameEq) then p^.chunk := rtEq
@@ -1564,10 +1614,8 @@ begin
   curModule^.usesC := true;
   if tok = sProc then begin
     Next;
-    at := TokPos;
-    IdentDef(n, exp);
+    IdentDef(n, exp, at);
     WillDeclare(n);
-    at := SpanFrom(at);
     inExtern := true;
     t := Signature;
     inExtern := false;
@@ -1582,7 +1630,7 @@ begin
   end else begin
     if tok <> sVar then Expected('"proc" or "var"');
     Next;
-    IdentDef(n, exp);
+    IdentDef(n, exp, at);
     WillDeclare(n);
     Expect(sColon);
     declExported := exp;
@@ -1590,6 +1638,7 @@ begin
     declExported := false;
     o := NewObj(oVar, n, t);
   end;
+  o^.pos := at;
   o^.exported := exp;
   o^.ext := true;
   o^.chunk := ExternChunk(n);
@@ -1597,9 +1646,9 @@ begin
 end;
 
 procedure ConstDecl(top: boolean);
-var n: longint; exp: boolean; x: TItem; o: PObj; t: PType; start: TPos;
+var n: longint; exp: boolean; x: TItem; o: PObj; t: PType; start, at: TPos;
 begin
-  IdentDef(n, exp);
+  IdentDef(n, exp, at);
   WillDeclare(n);
   t := nil;
   if tok = sColon then begin
@@ -1611,6 +1660,7 @@ begin
   Expect(sEql);
   Expression(x, nil);
   o := NewObj(oConst, n, x.typ);
+  o^.pos := at;
   o^.exported := exp and top;
   if t = tError then begin
     o^.typ := tError;
@@ -1622,15 +1672,16 @@ begin
 end;
 
 procedure TypeDecl(top: boolean);
-var n: longint; exp: boolean; o: PObj; t: PType;
+var n: longint; exp: boolean; o: PObj; t: PType; at: TPos;
 begin
-  IdentDef(n, exp);
+  IdentDef(n, exp, at);
   WillDeclare(n);
   Expect(sEql);
   declExported := exp and top;
   inTypes := true;
   t := ParseType;
   o := NewObj(oType, n, t);
+  o^.pos := at;
   o^.exported := exp and top;
   if t^.obj = nil then t^.obj := o;
   Declare(o);
@@ -1641,11 +1692,12 @@ procedure VarDecl(top: boolean);
 var
   i, k: longint; o: PObj; t: PType;
   names: array[0..63] of longint; exps: array[0..63] of boolean;
+  poss: array[0..63] of TPos;
 begin
   k := 0;
   repeat
     if k > High(names) then Mark('more than ' + IntStr(High(names) + 1) + ' names in one declaration');
-    IdentDef(names[k], exps[k]);
+    IdentDef(names[k], exps[k], poss[k]);
     WillDeclare(names[k]);
     inc(k);
     if tok <> sComma then break;
@@ -1657,6 +1709,7 @@ begin
   declExported := false;
   for i := 0 to k - 1 do begin
     o := NewObj(oVar, names[i], t);
+    o^.pos := poss[i];
     o^.exported := exps[i] and top;
     o^.isVar := false;
     if top then begin
@@ -1741,7 +1794,7 @@ begin
         for i := 0 to numFwd - 1 do begin
           o := Lookup(fwdTypes[i]^.fwd);
           if (o = nil) or (o^.cls <> oType) then begin
-            Error(fwdPos[i], NameOf(fwdTypes[i]^.fwd) + ' isn''t declared');
+            NotDeclared(fwdPos[i], fwdTypes[i]^.fwd);
             fwdTypes[i]^.base := tPoison;
           end else fwdTypes[i]^.base := o^.typ;
           fwdTypes[i]^.fwd := -1;
@@ -1830,7 +1883,7 @@ begin
     if a = nil then MarkAt(m^.args.pos[i], NameOf(m^.name) + ' needs a procedure for ' + NameOf(o^.name));
     if not Same(a^.typ, sig) then begin
       Error(m^.args.pos[i], NameOf(a^.name) + ' doesn''t have the signature of ' + NameOf(o^.name));
-      Note(at, NameOf(o^.name) + ' is declared here');
+      Note(at, 'the signature is here');
       Finish;
     end;
     o^.typ := a^.typ; o^.chunk := a^.chunk; o^.isCode := a^.isCode; o^.ext := a^.ext;
@@ -2029,29 +2082,33 @@ begin
     CompareIface(m, CompileFile(dir + '/' + others[i], n, args, true));
 end;
 
-function ImportModule(name: longint; const args: TArgs): PModule;
+function ModuleFile(n: longint; var dir, f: shortstring): boolean;
 const Suffixes: array[0..3] of string[16] = ('.' + Target, '.' + TargetOS, '.' + TargetArch, '');
-var m: PModule; i, j: longint; dir, f: shortstring;
+var i, j: longint;
 begin
-  m := FindModule(name, args);
-  if m <> nil then exit(m);
-  for i := 0 to numPending - 1 do
-    if IsModule(pending[i], name, args) then MarkAt(args.at, NameOf(name) + ' imports itself');
   for i := -1 to numInc do begin
     if i = -1 then dir := mainDir
     else if i = numInc then dir := libDir
     else dir := incDirs[i];
     for j := 0 to 3 do begin
-      f := NameOf(name) + Suffixes[j] + '.raz';
-      if Exists(dir + '/' + f) then begin
-        m := CompileFile(dir + '/' + f, name, args, false);
-        CheckSiblings(dir, f, name, m, args);
-        exit(m);
-      end;
+      f := NameOf(n) + Suffixes[j] + '.raz';
+      if Exists(dir + '/' + f) then exit(true);
     end;
   end;
-  MarkAt(args.at, 'can''t find module ' + NameOf(name));
-  ImportModule := nil;
+  ModuleFile := false;
+end;
+
+function ImportModule(name: longint; const args: TArgs): PModule;
+var m: PModule; i: longint; dir, f: shortstring;
+begin
+  m := FindModule(name, args);
+  if m <> nil then exit(m);
+  for i := 0 to numPending - 1 do
+    if IsModule(pending[i], name, args) then MarkAt(args.at, NameOf(name) + ' imports itself');
+  if not ModuleFile(name, dir, f) then MarkAt(args.at, 'can''t find module ' + NameOf(name));
+  m := CompileFile(dir + '/' + f, name, args, false);
+  CheckSiblings(dir, f, name, m, args);
+  ImportModule := m;
 end;
 
 function CompileMain(const path: shortstring): PModule;

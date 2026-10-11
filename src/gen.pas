@@ -1115,6 +1115,15 @@ begin
   c.n := 0;
 end;
 
+{ Too many arguments or too few, at p }
+procedure WrongCount(var c: TCall; const p: TPos; const what: shortstring);
+begin
+  if c.obj = nil then MarkAt(p, what);
+  Error(p, what + ': ' + NameOf(c.obj^.name) + ' takes ' + IntStr(c.sig^.len));
+  if c.obj^.module <> nil then Note(c.obj^.pos, 'the signature is here');
+  Fail;
+end;
+
 procedure PassArg(var c: TCall; var a: TItem);
 var p: PObj; s: int64;
 begin
@@ -1124,10 +1133,7 @@ begin
     { past the parameters of a C procedure that ends in ...: a string
       goes as a C string, an integer constant as an I64, a real
       constant as an F64; C takes no F32 there }
-    if not c.sig^.variadic then begin
-      if c.obj = nil then MarkAt(a.pos, 'too many arguments');
-      MarkAt(a.pos, 'too many arguments: ' + NameOf(c.obj^.name) + ' takes ' + IntStr(c.sig^.len));
-    end;
+    if not c.sig^.variadic then WrongCount(c, a.pos, 'too many arguments');
     if a.mode = mStr then Coerce(a, tPtrU8)
     else if a.typ^.form = fConst then Coerce(a, tI64)
     else if a.typ = tRConst then Coerce(a, tReal)
@@ -1166,10 +1172,7 @@ var
   res: PType; i, ni, nf, k, pad: longint; ret: int64;
   onStack: array[0..63] of boolean;
 begin
-  if c.param <> nil then begin
-    if c.obj = nil then Mark('too few arguments');
-    Mark('too few arguments: ' + NameOf(c.obj^.name) + ' takes ' + IntStr(c.sig^.len));
-  end;
+  if c.param <> nil then WrongCount(c, TokPos, 'too few arguments');
   res := c.sig^.base;
   ret := 0;
   ni := 0; nf := 0;

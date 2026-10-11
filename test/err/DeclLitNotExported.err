@@ -1,4 +1,7 @@
 test/err/DeclLitNotExported.raz:6:11: error: field extra of Plat.Info isn't exported
     6 |     i := {extra: 1};
       |           ^^^^^
+test/run/mods/Plat.linux-x86_64.raz:3:33: note: extra is declared here, without a *
+    3 | type Info* = record kind*: I64; extra: I64; end;
+      |                                 ^^^^^
 raz: 1 error
