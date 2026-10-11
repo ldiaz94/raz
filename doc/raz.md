@@ -610,7 +610,9 @@ checked: `i` must be below the length, and `0 <= lo <= hi <= length`.
 A check that fails prints to standard error where it is, as file, line
 and column, and what failed, with the values involved (`index 7 is out
 of range for a length of 5`), and stops the program with status 2.
-An index or a bound may be of any integer type. A module that says
+An index or a bound may be of any integer type, and is checked by its
+value, whatever its type: a negative `I8`, or a `U64` past the length,
+fails like any other. A module that says
 `check off;` (section 3) leaves these checks out of its code.
 
 **Literals.** `[e1, e2, ...]` builds an array, and `{f: e, g: e, ...}`
