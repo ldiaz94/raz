@@ -94,7 +94,8 @@ measure a port); an optimiser; the wishes below.
       For review before anything else.
 - [ ] 2. The report, the new language, for review before any code: the
       system integer, the size of an address, which `LEN`, indexes and
-      sizes give, and how it converts to and from `I64`; reals a
+      sizes give (the owner's choice), and how it converts to and from
+      `I64`; reals a
       target may leave out; object files, a module's interface and its
       IR, and a generic's instances in them, named by their arguments
       and the fingerprints they were built from.

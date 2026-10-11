@@ -58,9 +58,19 @@ repeat return set shl shr then to type until var variant VOLATILE while
 xor
 ```
 
+`static`, in `link static;` (section 3), isn't one.
+
+**Predeclared names** are the basic types (section 5.1), `ERROR`,
+`true`, `false`, `nil` and the built-in procedures (section 6.8). They
+belong to a scope around every module, so a module or a procedure may
+declare the same name for something else, which hides them there.
+
 **Numbers.** `123` is decimal. `0FFH` is hexadecimal: it starts with a
-digit and ends in `H`. `1.5` and `2.0E-3` are reals; a real always has
-a digit on both sides of its point.
+digit, its digits are `0` to `9` and `A` to `F`, and it ends in `H`,
+all in capitals. `1.5` and `2.0E-3` are reals; a real always has a
+digit on both sides of its point, and its exponent, if it has one, is
+`E`, a sign if wanted, and digits. A decimal number above the largest
+`I64`, or a hexadecimal one above the largest `U64`, is an error.
 
 An integer is an untyped constant, which takes the type it is used as,
 up to the largest `I64`. A hexadecimal number above that, such as
@@ -81,7 +91,9 @@ error for `x: F64`, and `x := 1.0;` is right.
 escapes `\n` (line feed), `\t` (tab), `\r` (carriage return), `\0`
 (zero), `\\`, `\'`, `\"`, `\u{H...}` (the code point with hexadecimal
 value H..., in a string its UTF-8) and, in strings only, `\xHH` (the
-byte with hexadecimal value HH, which needn't make valid UTF-8).
+byte with hexadecimal value HH, which needn't make valid UTF-8). In
+an escape, the hexadecimal digits may be capitals or not. A character
+or a string ends on the line it starts on.
 
 Messages give the line and the column, counted in characters
 (section 10).
@@ -117,6 +129,8 @@ The name after `end` repeats the module's name.
 **Exports.** A name declared at the top of a module with `*` after it
 is exported: other modules can use it as `Module.name`. Record fields
 are exported the same way. Everything else is private to the module.
+An exported variable can be read and assigned by the modules that
+import it.
 
 **Imports.** `import Out;` makes `Out`'s exports available as `Out.x`.
 `import O := Out;` uses the name `O` instead. A module can't import
@@ -142,7 +156,9 @@ is reported as an error in that instance.
 An instance is made where its module is first used, not at the
 import: so the arguments may name types the importing module declares
 after its imports, as long as they are declared before that first
-use.
+use. The instance is made before the code of the procedure, or the
+module body, that first uses it, and its arguments are read in the
+scope there.
 
 ```
 import Table := Map([]U8, Colour, Str.hash, Str.eq);
@@ -241,7 +257,18 @@ base type of a pointer may name a type declared later in the same
 procedure may be declared `forward` and defined later (section 8).
 
 **Constants** are evaluated by the compiler. Their expressions use only
-literals, other constants, operators, `SIZE` and the `LEN` of arrays.
+literals, other constants, operators, conversions, `SIZE` and the `LEN`
+of arrays and strings. A constant is an integer, a real, a `BOOL`, a
+name of an enumeration, a set, a string or an `ERROR`. A constant of an integer type wraps as the
+program would: `U8(250) + 10` is 4. Dividing by zero in a constant is
+an error. A string constant can be indexed and sliced as an array of
+`U8` is, and its `LEN` is its length in bytes:
+
+```
+const Text = "the cat";
+...
+w := Text[4..7];    (* "cat" *)
+```
 
 **Variables** of a module live as long as the program; variables of a
 procedure live as long as its call. Both start at zero: every byte of
@@ -278,6 +305,9 @@ QualIdent = [ ident "." ] ident .
 | `F32` | 4 | IEEE 754 single precision |
 | `F64` | 8 | IEEE 754 double precision |
 
+Each is aligned to its size. So are `ERROR` (section 5.8), pointers
+and procedures, 8 bytes; a slice is aligned to 8.
+
 ### 5.2 Arrays
 
 `[n]T` is `n` elements of type `T`, one after another. `n` is a
@@ -313,7 +343,8 @@ type Cell = record ch: U8; attr: U8; end;
 Fields are laid out in order as C lays them out: each at the next
 multiple of its own alignment, and the whole record padded to a
 multiple of its largest alignment. A record declared like a C struct
-has the same layout as that struct.
+has the same layout as that struct. A record may have no fields; its
+size is then 0.
 
 A `packed record` has no padding: each field starts at the byte after
 the field before it, and the record's alignment is 1. A field of a
@@ -341,8 +372,12 @@ procedure, `circle(2.0)`; a case without fields is just `dot`. The only
 way to read the fields is `match` (section 7.4).
 
 Layout: an `I64` tag (0 for the first case, 1 for the second, and so
-on) followed by the fields of the largest case, laid out as a record.
-A variant that starts at zero therefore holds its first case.
+on), then the space for the fields. Each case's fields are laid out
+in that space as a record's would be, after the tag, and the cases
+share it, so the variant is as big as its largest case needs, padded
+to its alignment, the largest of 8 and its fields'. `variant a(x:
+U8); b(y: I64; z: U8); end` is 24 bytes. A variant that starts at zero
+therefore holds its first case.
 
 ### 5.7 Enumerations and sets
 
@@ -392,7 +427,9 @@ type Compare = proc(a, b: I64): BOOL;
 ```
 
 A value of a procedure type is the address of a procedure with that
-signature, 8 bytes, or `nil`.
+signature, 8 bytes, or `nil`. Two signatures are alike when their
+parameters have the same types, each `var` or not alike, in order, and
+their results are the same types; the parameters' names don't matter.
 
 ### 5.10 Same and assignable
 
@@ -401,6 +438,9 @@ Two anonymous types are the same if they are built alike: `^I64` is
 `^I64` wherever it is written. A named and an anonymous type are the
 same if the named one is built like the anonymous one, so that
 `p := ADR(n)` works for `p: NodePtr` with `type NodePtr = ^Node`.
+Sameness doesn't pass through the anonymous type: with `type P1 =
+^Node; P2 = ^Node;`, each of `P1` and `P2` is the same as `^Node`, but
+they are two declarations, so not the same as each other.
 
 A type declared with only a name on the right, `type Count = I64;`, is
 another name for that type, not a new one.
@@ -454,12 +494,17 @@ unary minus applies to the first term: `-a * b` is `-(a * b)`.
 `and`, `or` and `not` are for `BOOL`s only; `&`, `|`, `xor` and `~`
 are for integers only.
 
+A pointer to a record isn't the record: its fields are `p^.f`, never
+`p.f`, and the elements of a pointer to an array are `p^[i]`. A
+statement starts with a name, so `^T(x)^ := v` isn't one.
+
 ### 6.1 Integers
 
 Both operands of `+ - * div mod & | xor` have the same integer
 type, or one is an untyped constant that takes the other's type. The
 result has that type and wraps around at its width: in `U8`,
-`200 + 100` is `44`.
+`200 + 100` is `44`. A unary minus wraps too: for `x` of an unsigned
+type, `-x` is `0 - x`.
 
 `div` rounds toward zero and `mod` takes the sign of the dividend, as
 in C: `-7 div 2` is `-3`, `-7 mod 2` is `-1`. Dividing by zero, and
@@ -467,7 +512,9 @@ dividing the smallest `I64` by `-1`, stop the program (`SIGFPE`).
 
 `&` (and), `|` (or), `xor` and `~` (not) work on every bit. `x shl n`
 and `x shr n` shift by `n & 63`; `shr` brings in copies of the sign bit
-for signed types and zeros for unsigned ones.
+for signed types and zeros for unsigned ones. `n` may be of any integer
+type. The result has `x`'s type, cut to its width: in `U8`, `0C0H shl
+1` is `80H`.
 
 Relations compare as signed or unsigned according to the type.
 
@@ -484,6 +531,11 @@ type (section 2). The result has that type: `F32` arithmetic is done in
 single precision, rounded at each step as C rounds `float`. A
 constant expression of reals is evaluated in double precision, then
 rounded once to the type it takes.
+
+Relations are IEEE 754's: a NaN is equal to nothing, itself included,
+so for a NaN `x`, `x # x` is true and every other relation with it is
+false. Dividing by zero gives an infinity or a NaN; arithmetic on reals
+never stops the program.
 
 ### 6.4 Pointers
 
@@ -514,7 +566,8 @@ passed to a parameter, returned, compared with a value of that type, or
 an element of a bigger literal. The elements must be assignable to the
 element type, and an array literal for `[n]T` has exactly `n` of them.
 A record literal names its fields, in any order, each at most once; the
-fields it leaves out are zero. An array literal used as a slice is a
+fields it leaves out are zero, so `{}` is the record with every field
+zero. An array literal used as a slice is a
 hidden variable of the procedure, and lives as long as its call.
 
 ```
@@ -545,7 +598,8 @@ enumeration can be the variable of a `for` loop and the expression of a
 `{}` is the empty set, where the type it must have is known. On two sets
 of the same type, `+` is union, `*` intersection and `-` difference;
 `=` and `#` compare, and `<=` and `>=` are "is a subset of" and "is a
-superset of". `x in s` is `true` if the name `x` is in the set `s`.
+superset of". `x in s` is `true` if `x`, a value of the enumeration,
+is in the set `s`.
 
 ### 6.7 Conversions
 
@@ -568,13 +622,18 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 | pointer, procedure | integer | the address |
 | pointer, procedure | pointer, procedure | the same address, seen as the new type |
 
+There are no others: no conversion between `BOOL` and integers, and
+none to or from records, arrays, slices, variants or `ERROR`. A
+conversion of a constant is made by the compiler, by the same rules:
+`U8(300)` is 44.
+
 ### 6.8 Built-in procedures
 
 | Call | Result |
 |---|---|
-| `SIZE(T)` | the size of type `T` in bytes, a constant |
+| `SIZE(T)` | the size of type `T` in bytes, a constant; `T` is a type, not a variable |
 | `ADR(x)` | the address of variable `x`, a `^T` |
-| `LEN(a)` | the number of elements of an array (a constant) or a slice, an `I64` |
+| `LEN(a)` | the number of elements of an array or a string constant (a constant) or of a slice, an `I64` |
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
 | `MSG(e)` | the message of the error `e`, a `[]U8` |
 | `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six integer or pointer arguments; the raw result, an `I64` (a negative number is `-errno`) |
@@ -590,6 +649,11 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 `SYSCALL` exists only on Linux targets. Other systems have no stable
 system call interface, and their modules call the C library instead
 (section 9).
+
+`NEW(p, a)` calls `a^.alloc(a, SIZE(T), A)`, where `A` is the
+alignment of `T`, and zeroes the bytes it gets if they aren't `nil`.
+`Mem.Allocator` (section 11) is the one type of the library the
+language names.
 
 `INC` and `DEC` evaluate `v` once, so `INC(a[f(i)])` calls `f` once. They
 read `v` and then write it: two accesses, even through a `^VOLATILE`
@@ -634,10 +698,18 @@ it returns is dropped: `Out.ln;`, `write(fd, buf);`.
 `if`, `while` and `repeat` take `BOOL` expressions. `repeat` runs its
 body at least once and stops when the condition is true.
 
-`for i := a to b by s do ... end;` sets the integer variable `i` to `a`,
-`a + s`, ... while `i <= b` (or `i >= b` if the constant `s` is
-negative). `s` is 1 if left out. `b` is evaluated once, before the
-first round.
+`for i := a to b by s do ... end;` sets `i` to `a`, `a + s`, ... while
+`i <= b` (or `i >= b` if `s` is negative). `i` is a variable of an
+integer or enumeration type, named by its name alone; `a` and then `b`
+are evaluated once, before the first round; `s` is a constant other
+than zero, and 1 if left out.
+
+The loop never steps past `b`, so `i` can't wrap: afterwards `i`
+holds the last value it took, or `a` if the body never ran. The body
+may assign `i`. Precisely, for a positive `s`: at the end of a round,
+if `i <= b` and `b - i < s`, the loop ends with `i` as it is;
+otherwise `i` becomes `i + s`, wrapping, and the loop goes on while
+`i <= b`. A negative `s` is the same, the other way round.
 
 `break` ends the innermost `while`, `repeat` or `for` it stands in,
 and the program goes on after it. There is no `goto`.
@@ -663,8 +735,9 @@ end;
 
 `match` runs the arm of the case `s` holds. An arm may name the case's
 fields, in order, all of them; the names stand for those fields of `s`
-itself, so assigning to one changes `s`. An arm may also leave the
-fields unnamed. Every case must have an arm, unless there is an
+itself, so assigning to one changes `s`; if `s` isn't a variable, they
+stand for the fields of a copy. An arm may also leave the fields
+unnamed. Every case must have an arm, and only one, unless there is an
 `| else:` arm, which must come last.
 
 `match` on an enumeration works the same way: each arm names one of the
@@ -673,7 +746,8 @@ enumeration's names.
 ### 7.5 Order of evaluation
 
 Operands, arguments and the designators of an assignment are evaluated
-from left to right.
+from left to right, and the designators of an assignment before its
+right side: `a[i()] := g()` calls `i` and then `g`.
 
 ### 7.6 Volatile
 
@@ -728,7 +802,8 @@ end Head.
 
 `return e;` evaluates `e` before the deferred statements run. A
 deferred statement can't contain `return`, `break` or `defer` that
-would leave it.
+would leave it. A failed check, `Rt.exit` and `Sys.exit` end the
+program without running the deferred statements still pending.
 
 ## 8. Procedures
 
@@ -782,7 +857,9 @@ end Divide.
 
 **forward.** `proc f(x: I64): I64; forward;` declares `f` so that it
 can be called before its body appears; the body comes later with the
-same signature.
+same signature, though its parameters may have other names.
+
+A name after a procedure's `end`, if written, is the procedure's own.
 
 Procedures don't nest.
 
@@ -829,7 +906,9 @@ An `extern` procedure's parameters and result are integers, `BOOL`,
 never by value. `...` accepts any number of further arguments of those
 types, and is allowed only in an `extern`. C takes no `float` there,
 so an `F32` given to `...` is an error: the program writes `F64(x)`.
-A real constant there is an `F64`.
+Past the parameters, a real constant goes as an `F64`, an integer
+constant as an `I64`, and a string literal as a pointer to its bytes
+followed by a zero byte.
 
 An `extern` variable is C's variable itself: reading it reads C's,
 assigning it writes C's. It can be of any type, declared as C declares
@@ -865,7 +944,8 @@ with status 0, or with the status `main` returns, by calling
 which runs only if something calls it; so a library module can carry a
 `main` that tests it.
 A program uses C if any of its modules has an `extern` declaration or
-a `link` of a library. A program that doesn't is a static executable
+a `link` of a library; a module's other files, read only to check its
+interface (section 3), don't count. A program that doesn't is a static executable
 with no run time besides the code it uses. One that does is linked
 dynamically and starts through the C library, so that C's own set-up
 and clean-up run. A program with a module that says `link static;`
@@ -1415,3 +1495,130 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   `Program`, and `Sys.wait` says which program changed and how. `Str`
   gains UTF-8 and reading a number, `Map` removing and walking, `Fmt`
   reals; `Sort`, `Math`, `Files` and `Opt` are new (section 11).
+
+## Appendix A. What an implementation chooses
+
+Everything in this report binds every implementation of raz, except
+what follows, which each chooses for itself and documents. This
+compiler's choices are in `doc/compiler.md`.
+
+- **The target.** Which machines and systems it compiles for, and the
+  names of their files (`linux-x86_64`, section 3).
+- **The calling convention.** On x86-64 Linux it is System V
+  (sections 8 and 9); elsewhere it is the C library's own, so that
+  `extern` procedures and callbacks work. How a procedure returns
+  several results, and how its frame is laid out, are the
+  implementation's.
+- **What is the target's.** Code procedures (section 8) hold the
+  target's machine code, and exist only where the implementation says
+  so; `SYSCALL` exists only on Linux targets (section 6.8). A record's
+  layout is the target's C layout (section 5.5).
+- **The executable.** Its format, and the names and line numbers it
+  carries for a debugger (section 10).
+- **Messages and warnings.** The text of the compiler's messages, how
+  many errors it reports before it stops, and which warnings it gives
+  (section 10). A program that is an error in this report is one in
+  every implementation; the words that say so are free.
+- **The command line.** How the compiler is run, its options, and
+  where its library lives (sections 1 and 3).
+
+## Appendix B. The grammar
+
+The whole syntax of raz, gathered from the sections above, with the
+symbols of section 2. `{ x }` is any number of `x`, `[ x ]` is `x` or
+nothing, and `( x | y )` is one of them.
+
+```
+ident      = letter { letter | digit } .
+letter     = "A" .. "Z" | "a" .. "z" | "_" .
+digit      = "0" .. "9" .
+hexDigit   = digit | "A" .. "F" .
+number     = digit { digit }
+           | digit { hexDigit } "H"
+           | digit { digit } "." digit { digit } [ "E" [ "+" | "-" ] digit { digit } ] .
+char       = "'" ( character | escape ) "'" .
+string     = '"' { character | escape | "\x" anyHex anyHex } '"' .
+escape     = "\n" | "\t" | "\r" | "\0" | "\\" | "\'" | '\"'
+           | "\u{" anyHex { anyHex } "}" .
+anyHex     = hexDigit | "a" .. "f" .
+
+Module     = "module" ident [ "(" ModParams ")" ] ";"
+             { Import } { Link } { Declaration }
+             [ "begin" Statements ] "end" ident "." .
+ModParams  = ident { "," ident } { ";" ident ":" "proc" Signature } .
+Import     = "import" ImportItem { "," ImportItem } ";" .
+ImportItem = ident [ ":=" ident [ "(" Type { "," Type } ")" ] ] .
+Link       = "link" ( string | "static" ) ";" .
+
+Declaration = "const" { IdentDef [ ":" "ERROR" ] "=" Expr ";" }
+            | "type" { IdentDef "=" Type ";" }
+            | "var" { IdentList ":" Type ";" }
+            | ProcDeclaration ";"
+            | ExternDeclaration ";" .
+IdentDef    = ident [ "*" ] .
+IdentList   = IdentDef { "," IdentDef } .
+
+Type      = QualIdent
+          | "[" Expr "]" Type
+          | "[" "]" Type
+          | "^" [ "VOLATILE" ] Type
+          | [ "packed" ] "record" { IdentList ":" Type ";" } "end"
+          | "variant" { Case ";" } "end"
+          | "(" ident { "," ident } ")"
+          | "set" "of" QualIdent
+          | "proc" Signature .
+Case      = ident [ "(" FieldList { ";" FieldList } ")" ] .
+FieldList = ident { "," ident } ":" Type .
+QualIdent = [ ident "." ] ident .
+
+Expr       = Conjunct { "or" Conjunct } .
+Conjunct   = Relation { "and" Relation } .
+Relation   = SimpleExpr [ RelOp SimpleExpr ] .
+RelOp      = "=" | "#" | "<" | "<=" | ">" | ">=" | "in" .
+SimpleExpr = [ "-" ] Term { AddOp Term } .
+AddOp      = "+" | "-" | "|" | "xor" .
+Term       = Factor { MulOp Factor } .
+MulOp      = "*" | "/" | "div" | "mod" | "&" | "shl" | "shr" .
+Factor     = number | char | string | Designator | "(" Expr ")"
+           | "not" Factor | "~" Factor
+           | "[" [ Expr { "," Expr } ] "]"
+           | "{" [ Element { "," Element } ] "}"
+           | "^" [ "VOLATILE" ] Type "(" Expr ")" .
+Element    = Expr | ident ":" Expr .
+Designator = QualIdent { Selector } .
+Selector   = "." ident | "^" | "[" Expr [ ".." Expr ] "]"
+           | "(" [ Expr { "," Expr } ] ")" .
+
+Statements = { Statement ";" } .
+Statement  = Designator [ ":=" Expr ]
+           | Designator "," Designator { "," Designator } ":=" Expr
+           | "if" Expr "then" Statements
+             { "elsif" Expr "then" Statements } [ "else" Statements ] "end"
+           | "while" Expr "do" Statements "end"
+           | "repeat" Statements "until" Expr
+           | "for" ident ":=" Expr "to" Expr [ "by" Expr ] "do" Statements "end"
+           | "match" Expr "of" { "|" Arm } "end"
+           | "return" [ Expr { "," Expr } ]
+           | "break"
+           | "defer" Statement .
+Arm        = ( ident [ "(" ident { "," ident } ")" ] | "else" ) ":" Statements .
+
+ProcDeclaration   = "proc" IdentDef Signature ";"
+                    ( "forward" | { LocalDeclaration } "begin" Statements "end" [ ident ]
+                    | "code" Expr { "," Expr } ) .
+LocalDeclaration  = "const" { ident [ ":" "ERROR" ] "=" Expr ";" }
+                  | "type" { ident "=" Type ";" }
+                  | "var" { ident { "," ident } ":" Type ";" } .
+Signature         = "(" [ Params { ";" Params } [ ";" "..." ] ] ")" [ ":" Results ]
+                  | [ ":" Results ] .
+Params            = [ "var" ] ident { "," ident } ":" Type .
+Results           = Type | "(" Type { "," Type } ")" .
+ExternDeclaration = "extern" ( "proc" IdentDef Signature
+                             | "var" IdentDef ":" Type ) .
+```
+
+`character` is any character but a line break, and in a string any
+but `"` and `\`, in a character any but `'` and `\`. A procedure
+argument of a generic module (section 3) is written as a `QualIdent`,
+which is a `Type` here. `...` comes last in a `Signature`, and only in
+an `extern`.
