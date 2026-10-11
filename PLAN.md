@@ -52,7 +52,7 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
       `Files.arg`. The report first, for review; then the module,
       its test in its `main`, and `Doc`, `Pretty` and `Mutate` on it.
       Kept out: concha's completion from the table, until asked.
-- [ ] 6. `examples/Sh.raz`: pipelines, redirection, `cd`, `&`, `wait`,
+- [x] 6. `examples/Sh.raz`: pipelines, redirection, `cd`, `&`, `wait`,
       and Ctrl-C to the job in the foreground, in a few hundred lines.
       Its test runs scripts given with `-c`.
 - [ ] 7. rat, rlX11, rmacs and ravite on this raz, in their own

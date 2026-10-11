@@ -1,0 +1,379 @@
+(* A small shell: commands, pipelines (a | b), redirection (< f, > f,
+   >> f, 2> f), quotes ('...' and "..."), $NAME and $?, comments, lists
+   (a; b) and background programs (a &); and cd, wait and exit. Words
+   aren't split after $NAME: "$x" and $x are one word each.
+
+       Sh                  reads commands, a line at a time
+       Sh -c 'echo hi'     runs its argument
+       Sh script           runs the file
+
+   On a terminal it does job control: each pipeline is a process group
+   of its own, which has the terminal while it runs, so that Ctrl-C
+   stops the pipeline and not the shell. Left out: stopped jobs (fg,
+   bg), assignments, globs, $(...), if and while. *)
+module Sh;
+import Opt, Files, Sys, Str, Buf, Fmt, Out, Arena, Heap, Rt;
+
+const
+    maxWords = 64;   (* of a command *)
+    maxCmds = 16;    (* of a pipeline *)
+
+type
+    Command = record
+        args: [maxWords][]U8;
+        n: I64;
+        input, output, errors: []U8;   (* the files of <, > or >>, and 2>; "" for none *)
+        append: BOOL;                  (* output is >> *)
+    end;
+    Pipeline = record
+        cmds: [maxCmds]Command;
+        n: I64;
+        background: BOOL;
+    end;
+    (* What the parser reads: a word, |, &, ; or a line's end, <, >, >>, 2>,
+       and the end of the script. *)
+    Token = (word, pipe, amp, sep, from, into, onto, errTo, eof);
+
+var
+    status: I64;         (* of the last pipeline: $? *)
+    interactive: BOOL;   (* commands come from a terminal: job control *)
+    group: I64;          (* the shell's process group *)
+    arena: Arena.Arena;  (* the words of what is being run *)
+    s: []U8;             (* the script being read *)
+    at: I64;             (* where in it *)
+    text: []U8;          (* the last word read *)
+
+(* "Sh: " and a message on standard error. *)
+proc say(f: []U8; args: []Fmt.Arg);
+var b: Buf.Buf; _n: I64;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    Fmt.write(ADR(b), "Sh: ", []);
+    Fmt.write(ADR(b), f, args);
+    Buf.add(ADR(b), 10);
+    _n := Sys.write(Sys.stderr, Buf.bytes(ADR(b)));
+    Buf.done(ADR(b));
+end;
+
+proc special(c: U8): BOOL;
+begin
+    return (c = ' ') or (c = 9) or (c = 10) or (c = ';') or (c = '|') or (c = '&')
+        or (c = '<') or (c = '>');
+end;
+
+(* $NAME or $? at s[at], its value added to b; a $ before anything else
+   is itself. *)
+proc dollar(b: ^Buf.Buf);
+var start: I64;
+begin
+    INC(at);
+    if (at < LEN(s)) and (s[at] = '?') then
+        INC(at);
+        Fmt.write(b, "{}", [Fmt.int(status)]);
+        return;
+    end;
+    start := at;
+    while (at < LEN(s)) and ((s[at] >= 'A') and (s[at] <= 'Z') or (s[at] >= 'a') and (s[at] <= 'z')
+        or (s[at] >= '0') and (s[at] <= '9') or (s[at] = '_')) do INC(at); end;
+    if at = start then Buf.add(b, '$'); else Buf.str(b, Sys.env(s[start..at])); end;
+end;
+
+(* A word, into text: up to a blank or a special character, its quotes
+   taken away and its dollars put in. *)
+proc readWord;
+var b: Buf.Buf; q: U8;
+begin
+    Buf.init(ADR(b), ADR(arena.base));
+    while (at < LEN(s)) and not special(s[at]) do
+        q := s[at];
+        if q = 39 then             (* '...': every character as it is *)
+            INC(at);
+            while (at < LEN(s)) and (s[at] # 39) do Buf.add(ADR(b), s[at]); INC(at); end;
+            INC(at);
+        elsif q = '"' then         (* "...": dollars, and \" and \\ *)
+            INC(at);
+            while (at < LEN(s)) and (s[at] # '"') do
+                if s[at] = '$' then dollar(ADR(b));
+                else
+                    if (s[at] = '\\') and (at + 1 < LEN(s)) and ((s[at + 1] = '"') or (s[at + 1] = '\\')) then INC(at); end;
+                    Buf.add(ADR(b), s[at]);
+                    INC(at);
+                end;
+            end;
+            INC(at);
+        elsif q = '$' then
+            dollar(ADR(b));
+        else
+            if (q = '\\') and (at + 1 < LEN(s)) then INC(at); end;
+            Buf.add(ADR(b), s[at]);
+            INC(at);
+        end;
+    end;
+    text := Buf.bytes(ADR(b));
+end;
+
+proc next: Token;
+var c: U8;
+begin
+    while (at < LEN(s)) and ((s[at] = ' ') or (s[at] = 9)) do INC(at); end;
+    if (at < LEN(s)) and (s[at] = '#') then
+        while (at < LEN(s)) and (s[at] # 10) do INC(at); end;
+    end;
+    if at >= LEN(s) then return eof; end;
+    c := s[at];
+    INC(at);
+    if (c = ';') or (c = 10) then return sep;
+    elsif c = '|' then return pipe;
+    elsif c = '&' then return amp;
+    elsif c = '<' then return from;
+    elsif c = '>' then
+        if (at < LEN(s)) and (s[at] = '>') then INC(at); return onto; end;
+        return into;
+    elsif (c = '2') and (at < LEN(s)) and (s[at] = '>') then
+        INC(at);
+        return errTo;
+    end;
+    DEC(at);
+    readWord;
+    return word;
+end;
+
+(* A pipeline, up to the ; or & or line that ends it, which is the
+   result; or eof. false, after saying why, if it isn't one. *)
+proc parse(p: ^Pipeline): (Token, BOOL);
+var t: Token; c: ^Command;
+begin
+    p^ := {n: 1};
+    c := ADR(p^.cmds[0]);
+    t := next();
+    while (t # sep) and (t # amp) and (t # eof) do
+        if t = word then
+            if c^.n = maxWords then say("too many words", []); return t, false; end;
+            c^.args[c^.n] := text;
+            INC(c^.n);
+        elsif t = pipe then
+            if (c^.n = 0) or (p^.n = maxCmds) then say("a | without a command", []); return t, false; end;
+            c := ADR(p^.cmds[p^.n]);
+            INC(p^.n);
+        else
+            if next() # word then say("a redirection without a file", []); return t, false; end;
+            if t = from then c^.input := text;
+            elsif t = errTo then c^.errors := text;
+            else c^.output := text; c^.append := t = onto;
+            end;
+        end;
+        t := next();
+    end;
+    if (c^.n = 0) and ((p^.n > 1) or (t = amp)) then say("a | or & without a command", []); return t, false; end;
+    p^.background := t = amp;
+    return t, true;
+end;
+
+(* The program a command names: the name itself if it has a /, else the
+   first executable file of that name in a directory of $PATH. *)
+proc find(name: []U8): ([]U8, BOOL);
+var path, dir: []U8; i, start, err: I64; b: Buf.Buf; info: Sys.Info;
+begin
+    if Str.find(name, "/") >= 0 then return name, true; end;
+    path := Sys.env("PATH");
+    start := 0;
+    for i := 0 to LEN(path) do
+        if (i = LEN(path)) or (path[i] = ':') then
+            dir := path[start..i];
+            start := i + 1;
+            Buf.init(ADR(b), ADR(arena.base));
+            Fmt.write(ADR(b), "{}/{}", [Fmt.str(dir), Fmt.str(name)]);
+            info, err := Sys.info(Buf.bytes(ADR(b)));
+            if (err = 0) and info.file and (info.mode & 49H # 0) then return Buf.bytes(ADR(b)), true; end;
+        end;
+    end;
+    return "", false;
+end;
+
+(* The fd of a redirection's file, or -1 after saying why not. *)
+proc redirect(path: []U8; how: Sys.Accesses): I64;
+var fd: I64;
+begin
+    fd := Sys.open(path, how);
+    if fd < 0 then say("{}: can't open it", [Fmt.str(path)]); return -1; end;
+    return fd;
+end;
+
+(* cd, wait and exit, which change the shell itself, so it can't start
+   them as programs; true if c is one. *)
+proc builtin(c: ^Command): BOOL;
+var dir: []U8; n, pid, _code: I64; ok: BOOL; _st: Sys.Status;
+begin
+    if c^.args[0] = "cd" then
+        if c^.n > 1 then dir := c^.args[1]; else dir := Sys.env("HOME"); end;
+        status := 0;
+        if Sys.setWorkDir(dir) < 0 then say("cd: can't go to {}", [Fmt.str(dir)]); status := 1; end;
+    elsif c^.args[0] = "wait" then
+        repeat pid, _st, _code := Sys.wait(-1, true); until pid < 0;
+        status := 0;
+    elsif c^.args[0] = "exit" then
+        n := status;
+        if c^.n > 1 then
+            n, ok := Str.toInt(c^.args[1]);
+            if not ok then say("exit: {} isn't a number", [Fmt.str(c^.args[1])]); n := 2; end;
+        end;
+        Rt.exit(n);
+    else
+        return false;
+    end;
+    return true;
+end;
+
+(* What the shell itself says on standard output, out before any
+   program it starts writes. *)
+proc show(f: []U8; args: []Fmt.Arg);
+begin
+    Fmt.print(f, args);
+    Out.flush;
+end;
+
+(* The pipeline started, each program reading what the one before it
+   writes; then, unless it runs in the background, waited for. On a
+   terminal its programs are a process group, led by the first, which
+   has the terminal until they end. *)
+proc start(p: ^Pipeline);
+var
+    pids: [maxCmds]I64; fds: [3]I64; i, j, inNext, r, w, leader, joins, how, _pid: I64;
+    c: ^Command; path: []U8; found, _ok: BOOL; st: Sys.Status;
+begin
+    if (p^.n = 1) and not p^.background and builtin(ADR(p^.cmds[0])) then return; end;
+    leader := 0;
+    inNext := 0;
+    for i := 0 to p^.n - 1 do
+        c := ADR(p^.cmds[i]);
+        fds := [inNext, 0, 0];
+        inNext := 0;
+        if i < p^.n - 1 then r, w := Sys.pipe(); fds[1] := w; inNext := r; end;
+        if LEN(c^.input) > 0 then fds[0] := redirect(c^.input, {Sys.reading}); end;
+        if c^.append then fds[1] := redirect(c^.output, {Sys.writing, Sys.creating, Sys.appending});
+        elsif LEN(c^.output) > 0 then fds[1] := redirect(c^.output, {Sys.writing, Sys.creating, Sys.truncating});
+        end;
+        if LEN(c^.errors) > 0 then fds[2] := redirect(c^.errors, {Sys.writing, Sys.creating, Sys.truncating}); end;
+        pids[i] := -1;
+        path, found := find(c^.args[0]);
+        if not found then say("{}: not found", [Fmt.str(c^.args[0])]);
+        elsif (fds[0] >= 0) and (fds[1] >= 0) and (fds[2] >= 0) then
+            joins := 0;                   (* the shell's group *)
+            if interactive and (leader = 0) then joins := -1;
+            elsif interactive then joins := leader;
+            end;
+            pids[i] := Sys.spawn({path: path, args: c^.args[0..c^.n], fds: fds, group: joins,
+                foreground: interactive and not p^.background});
+            if not interactive or (pids[i] < 0) then
+            elsif leader = 0 then leader := pids[i];
+            else _ok := Sys.setGroup(pids[i], leader) = 0;   (* whichever of it and the program runs first *)
+            end;
+        end;
+        for j := 0 to 2 do
+            if fds[j] > 0 then Sys.close(fds[j]); end;
+        end;
+    end;
+    status := 0;
+    if p^.background then
+        if interactive then show("[{}]\n", [Fmt.int(pids[p^.n - 1])]); end;
+        return;
+    end;
+    for i := 0 to p^.n - 1 do
+        if pids[i] > 0 then
+            repeat _pid, st, how := Sys.wait(pids[i], true); until st # Sys.stopped;
+        end;
+    end;
+    if pids[p^.n - 1] < 0 then status := 127;
+    elsif st = Sys.exited then status := how;
+    else status := 128 + how;
+    end;
+    if interactive then
+        _ok := Sys.foreground(Sys.stdin, group) = 0;   (* the terminal back to the shell *)
+        if (st = Sys.killed) and (how = Sys.sigInt) then show("\n", []); end;
+    end;
+end;
+
+(* Runs script: each pipeline as it is read. *)
+proc run(script: []U8);
+var p: Pipeline; t: Token; ok: BOOL;
+begin
+    Arena.reset(ADR(arena));
+    s := script;
+    at := 0;
+    repeat
+        t, ok := parse(ADR(p));
+        if not ok then status := 2; return; end;
+        if p.cmds[0].n > 0 then start(ADR(p)); end;
+    until t = eof;
+end;
+
+(* A line from standard input, a byte at a time, so that what follows
+   it is left for the programs the line starts; false at its end. *)
+proc readLine(b: ^Buf.Buf): BOOL;
+var c: [1]U8;
+begin
+    Buf.reset(b);
+    while Sys.read(Sys.stdin, c) = 1 do
+        if c[0] = 10 then return true; end;
+        Buf.add(b, c[0]);
+    end;
+    return LEN(Buf.bytes(b)) > 0;
+end;
+
+(* Before a prompt: the background programs that have ended. *)
+proc reap;
+var pid, _code: I64; _st: Sys.Status;
+begin
+    repeat
+        pid, _st, _code := Sys.wait(-1, false);
+        if pid > 0 then show("[{}] done\n", [Fmt.int(pid)]); end;
+    until pid <= 0;
+end;
+
+(* Commands from standard input. On a terminal, with a prompt, and the
+   shell in a process group of its own, which ignores the keys that
+   stop or end the pipeline in front of it. *)
+proc interact;
+var line: Buf.Buf; keys: [5]I64; i: I64; _ok: BOOL;
+begin
+    interactive := Sys.isTerminal(Sys.stdin);
+    if interactive then
+        keys := [Sys.sigInt, Sys.sigQuit, Sys.sigTstp, Sys.sigTtin, Sys.sigTtou];
+        for i := 0 to 4 do _ok := Sys.ignore(keys[i], true) = 0; end;
+        _ok := Sys.setGroup(0, 0) = 0;
+        group := Sys.pid();
+        _ok := Sys.foreground(Sys.stdin, group) = 0;
+    end;
+    Buf.init(ADR(line), Heap.heap);
+    if interactive then reap; show("$ ", []); end;
+    while readLine(ADR(line)) do
+        run(Buf.bytes(ADR(line)));
+        if interactive then reap; show("$ ", []); end;
+    end;
+    if interactive then show("\n", []); end;
+end;
+
+proc main*: I64;
+var p: Opt.Parser; script, file: []U8; given, found: BOOL; b: Buf.Buf;
+begin
+    if not Arena.init(ADR(arena), 1 shl 24) then Rt.stop("Sh: no memory"); end;
+    Opt.init(ADR(p), "Sh", [
+        Opt.usage("", "Sh [-c script | file]"),
+        Opt.option("", 'c', "command", "script", "run script, not standard input")]);
+    while Opt.next(ADR(p)) do
+        if p.letter = 'c' then script := p.value; given := true; end;
+    end;
+    file, found := Opt.operand(ADR(p));
+    if given then
+        run(script);
+    elsif found then
+        Buf.init(ADR(b), Heap.heap);
+        if not Files.read(file, ADR(b)) then say("{}: can't read it", [Fmt.str(file)]); return 127; end;
+        run(Buf.bytes(ADR(b)));
+    else
+        interact;
+    end;
+    return status;
+end;
+
+end Sh.

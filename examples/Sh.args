@@ -1,0 +1,2 @@
+-c
+echo hello world | tr a-z A-Z | tr -d O; cd /tmp; pwd; echo one > raz-Sh-test; echo two >> raz-Sh-test; wc -l < raz-Sh-test; false; echo "status $?"; nosuch 2> /dev/null; echo "not found: $?"; ls /nonexistent 2> /dev/null; echo "ls said $?"; echo 'single $HOME' "x\"y$NOSUCH" a\ b; /bin/sh -c 'sleep 0.2; echo late' & echo started; wait; echo waited; /bin/sh -c 'kill -INT $$'; echo "after Ctrl-C: $?"; cd; exit 3 # a comment; echo not this
