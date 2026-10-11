@@ -956,6 +956,7 @@ type
     Info* = record
         size*: I64;      (* in bytes *)
         dir*: BOOL;      (* a directory *)
+        file*: BOOL;     (* a regular file: not a directory, device, pipe or socket *)
         link*: BOOL;     (* the path itself is a symbolic link *)
     end;
     Dir* = record ... end;   (* an open directory; its fields are the target's *)
@@ -988,10 +989,11 @@ proc wait*(pid: I64; block: BOOL): (I64, I64);   (* its status, and 1 if it has 
 proc kill*(pid, signal: I64): I64;
 ```
 
-`info` follows a symbolic link: `size` and `dir` are those of what it
-names, and `link` says the path was a link, so that a program walking
+`info` follows a symbolic link: `size`, `dir` and `file` are those of
+what it names, and `link` says the path was a link, so that a program walking
 a tree can choose not to follow one back up it. A link to nothing is
-`-ENOENT`, as a missing file is.
+`-ENOENT`, as a missing file is. `file` lets a walk open only what
+holds data: opening a pipe would wait for a program to write to it.
 
 `nextEntry` gives every name in the directory except `.` and `..`, in
 no particular order. `rawMode` turns off what the terminal does with
@@ -1077,7 +1079,7 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.5.** A module with files in more than one of the
   directories searched is an error, unless the first is a link to one
   of the others (section 3).
-- **2026-10.6.** `Sys.Info` says whether the path is a symbolic link
-  (section 11).
+- **2026-10.6.** `Sys.Info` says whether the path is a regular file,
+  and whether it is a symbolic link (section 11).
 - **2026-10.7.** `Sys.send` writes to a socket without SIGPIPE
   (section 11).
