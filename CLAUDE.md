@@ -24,10 +24,13 @@ and the vim and emacs support headless where they are installed
 exactly as written.
 
 `make check` must pass before every commit. Tests: `test/run/X.raz`
-with `X.expect` (stdout), optional `X.status` and `X.args`; modules they
-import in `test/run/mods`. `test/err/X.raz` must fail to compile with
-the text in `X.err`. `test/pretty/X.raz` must format to `X.expect`.
-Examples in `examples/` work the same way.
+with `X.expect` (stdout), optional `X.status`, `X.stderr` and
+`X.args`; modules they import in `test/run/mods`. `test/err/X.raz`
+must fail to compile with the text in `X.err` (all of standard error),
+given the compiler options in `X.args` if there is one.
+`test/pretty/X.raz` must format to `X.expect`. Examples in `examples/`
+work the same way, compiled with `-Werror`, as are the tools and the
+library's tests: they must have no warnings.
 
 ## How we work
 
@@ -57,8 +60,10 @@ pinning the raz commit it builds with: rmacs (emacs's keys) and
 ravite (vim's). What they needed of the system went into `Sys` (report
 2026-10.2, approved): the terminal, files, directories and the
 environment. `tools/Scan.raz` is theirs to use, as a tool, not part of
-the library. Stage 4, diagnostics (steps 19-27), is under way:
-steps 19-25 are done. New work starts only on the owner's word. Keep
+the library. Stage 4, diagnostics (steps 19-27), is done. Planned and
+not started: stage 6, the language of report 2026-10.3,
+and stage 7, `Sys` for rlX11 and rat (report 2026-10.4, for review).
+New work starts only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes. Left for later at the owner's word: a rewrite of
 var parameters.
@@ -113,6 +118,16 @@ otherwise.
   ones are left as they fall.
 - `Heap` and `Out` lock with `Lock`, a spinlock that yields, since they
   serve C's threads and `Thread`'s alike; `Thread.Mutex` is a futex.
-- Every failed check says "index out of range"; some errors point at
-  the symbol after the offending expression. Error messages are to be
-  improved later, all together.
+- A failed check says what failed and with what values, at the place
+  of the offending expression. A signal is told at the place of the
+  statement it stopped in, or of the procedure for a stack overflow in
+  its prologue. The handlers run on a stack of `Rt`'s, which threads
+  made by `Thread` don't have: a stack overflow in one of them ends it
+  by the signal with no message.
+- The smallest `I64` divided by -1 traps (SIGFPE), as 6.1 says.
+- Warnings come only for a module with no errors. A procedure naming
+  itself doesn't use it; a type named by a pointer in its own
+  declaration does. An enumeration's names are never warned of, nor a
+  generic module's parameters; a generic module is warned of in its
+  first instance only. Assigning a variable whole (`x :=`, `a, b :=`)
+  doesn't read it; anything else does.

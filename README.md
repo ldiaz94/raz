@@ -24,7 +24,7 @@ end Hello.
     $ examples/Hello
     hello, world
 
-The compiler is under 5,000 lines of Free Pascal: one pass, no
+The compiler is under 6,000 lines of Free Pascal: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
 ELF executable itself, with no assembler or linker, and compiles about
 a million lines a second.
@@ -77,8 +77,20 @@ writes the executable `Main`. A module `Name` lives in `Name.raz`, found
 in the main module's directory, then in each `-I` directory, then in
 `lib`. A module whose code depends on the system comes in one file per
 target, `Name.linux-x86_64.raz` before `Name.raz`; the compiler checks
-that all of them export the same things. `-Werror` makes warnings
-errors.
+that all of them export the same things.
+
+An error is shown with its file, line and column, the line of source
+underlined, and notes and help where they help: where a name is
+declared, a name spelled almost alike. The compiler goes on to find
+the others, up to 20. It warns of what is declared and never used,
+and of a variable assigned but never read, unless its name starts with
+`_`; `-Werror` makes warnings errors.
+
+At run time, a failed check says where it is and what failed, as in
+`Main.raz:12:9: index 7 is out of range for a length of 5`, and ends
+the program with status 2. A program stopped by a signal says where it
+was and why first: a `nil` pointer, a `nil` procedure, a stack
+overflow, a bad address or a division fault.
 
 `raz run Main.raz a b` compiles the same way, then runs the program
 with the arguments `a b`, writing no file: its output and exit status
@@ -107,11 +119,11 @@ by number.
 - `extern` procedures and variables from C; code procedures written as
   bytes of machine code; `SYSCALL`.
 
-The report, `doc/raz.md`, says all of it in about 900 lines.
+The report, `doc/raz.md`, says all of it in about 1,000 lines.
 
 ## The library
 
-`Rt` (ending the program, checks), `Sys` (system calls), `Out`
+`Rt` (ending the program, failed checks, signals), `Sys` (system calls), `Out`
 (buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
 `Heap`, `Arena`, `Str`, `Buf`, `Fmt`, `List(T)` and `Map(K, V; hash,
 eq)`. `tools/Doc.raz` prints any of them:

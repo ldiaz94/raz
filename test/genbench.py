@@ -15,7 +15,7 @@ var
     g: [16]I64;
     data: [64]I64;
 """)
-print("""proc p0(a, b: I64; s: []I64): I64;
+print("""proc p0(a, b: I64; _s: []I64): I64;
 begin
     return a + b;
 end;

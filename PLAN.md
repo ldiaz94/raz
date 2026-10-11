@@ -277,7 +277,7 @@ main model reads every diff before it is committed.
       (6.1), and is told as a division fault.
       The compiler and `Rt`,
       *main*; the tests, *agent*.
-- [ ] 27. `doc/compiler.md` (its table and routine names), `README.md`
+- [x] 27. `doc/compiler.md` (its table and routine names), `README.md`
       and `CLAUDE.md` brought up to date; `make loc` within 6,000 and
       10%, `make bench` at 400,000 lines a second. *agent*, checked by
       *main*.
