@@ -166,7 +166,10 @@ end List.
 An import gives the arguments: `import Ints := List(I64);`. Each
 distinct list of arguments makes one *instance*: the module compiled
 with `T` standing for `I64`. Two imports of `List(I64)`, in any modules,
-share one instance. Since every instance is checked on its own, an
+share one instance, its variables and its `ERROR`s with it: two lists
+of arguments are the same when their types are the same (section
+5.10), an alias as what it stands for, and their procedures are the
+same procedures. Since every instance is checked on its own, an
 operation the argument type doesn't support (adding two records, say)
 is reported as an error in that instance.
 
@@ -1098,33 +1101,13 @@ bad address or a division fault. Whether the machine catches these or
 the compiled code checks for them is the implementation's choice
 (appendix A); that they stop the program isn't.
 
-**Object files.** A module can be compiled on its own, into an object
-file: its interface, what it exports as an importer sees it, and its
-code, in an intermediate form that a back end turns into any target's
-machine code. A program is made from the object files of its modules.
-An object file records the fingerprint of every interface it was
-compiled against, and of the whole source of every generic module it
-made an instance of, and stays current while its source and those
-don't change; when it isn't current, the compiler compiles
-the module again from its source. A program comes out the same
-whether its modules were compiled one at a time or all at once.
-
-An instance is made from the generic module's source, and goes into
-the object file of the module that made it, named by the generic
-module, the fingerprint of its whole source, and its arguments. A
-type argument is named as it is built, down to its records, variants
-and enumerations, so that two arguments that are the same type
-(section 5.10) give one name: an alias, or a named pointer, array,
-slice, set or procedure type, is named as what it stands for, and a
-procedure type without its parameters' names. A record, variant or
-enumeration is named by where it is declared, with the fingerprint of
-its declaration: its module, its procedure if it is local to one, or
-the instance's name if an instance declares it, and its name. One
-given as a type argument must therefore be named, since each written
-anonymously is a type of its own. A procedure given as an argument is
-named by its module and its name. Two object files that hold an
-instance of the same name hold the same code, and the program keeps
-one.
+**Separate compilation.** An importer depends only on a module's
+interface: what it exports, as an importer sees it, never its source
+or its code. So a module can be compiled on its own, and a program
+made from modules compiled at different times. Whether an
+implementation does so, and into what, is its own choice (appendix
+A); one that does makes the same program as if every module were
+compiled together, and keeps one copy of each instance.
 
 **Messages.** The compiler reports an error with its file, line and
 column, the line of source with the offending part underlined, and,
@@ -1693,9 +1676,10 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   every signed type divided by -1 stops the program (6.1). Writing a
   string's bytes isn't defined (5.10). The atomic built-ins work on
   `INT`, `UINT` and pointers (6.8). An integer constant past an
-  extern's parameters goes as an `INT` (9). Modules compile on their
-  own, into object files, and instances are named so that one type
-  gives one name (section 10; appendix A). The library takes and gives
+  extern's parameters goes as an `INT` (9). An importer depends only
+  on a module's interface, so a module can be compiled on its own;
+  whether it is, and into what, is the implementation's (sections 3
+  and 10; appendix A). The library takes and gives
   `INT` for lengths, counts, descriptors, process ids and statuses,
   `main`'s and `Rt.exit`'s among them, and `I32` for a character;
   `I64` stays for what may pass an `INT` on a small target: a file's
@@ -1711,8 +1695,11 @@ compiler's choices are in `doc/compiler.md`.
 - **The target.** Which machines and systems it compiles for, and the
   names of their files (`linux-x86_64`, section 3); for each, the size
   of an address, and so of `INT`, and whether it has reals.
-- **Object files.** Their format, and the intermediate form of the
-  code in them (section 10); this compiler's is in `doc/ir.md`.
+- **Separate compilation.** Whether modules are compiled on their own,
+  and if so into what: the object file, its format, the form of the
+  code in it, when one is out of date, and how an instance is named so
+  that the program keeps one (section 10). This compiler's are in
+  `doc/ir.md`.
 - **Atomics.** How `CAS`, `XCHG` and `XADD` are made sequentially
   consistent on a machine without atomic instructions (section 6.8):
   on one with a single processor, by holding off interrupts while

@@ -270,9 +270,11 @@ An object file is a module's, for one target. It holds, in this order:
 1. **A header**: the module's name, the target, the version of this
    form, and the fingerprint of the module's interface.
 2. **Its imports**: each module it read the interface of, with that
-   interface's fingerprint when it was compiled. The object file is
-   current while each of those is still the one there, and its source
-   hasn't changed (report, section 10).
+   interface's fingerprint when it was compiled, and each generic
+   module it made an instance of, with the fingerprint of its whole
+   source. The object file is current while each of those is still the
+   one there, and its own source hasn't changed; when it isn't, the
+   compiler compiles the module again from its source.
 3. **Its interface**: what it exports, as an importer needs it: its
    constants with their values, its types with their layouts, its
    variables, and its procedures' signatures. An importer reads this,
@@ -281,9 +283,8 @@ An object file is a module's, for one target. It holds, in this order:
    as a size and an alignment; each string and `ERROR` as its bytes.
    A chunk is named, so that the linker finds it from other object
    files.
-5. **Its instances**: each instance of a generic module it made, its
-   chunks named by the generic module, its arguments and the
-   fingerprints they were built from (report, section 10). The linker
+5. **Its instances**: each instance of a generic module it made, from
+   the generic module's source, its chunks named as below. The linker
    keeps one of each name.
 6. **Its places**: the lines of its statements and the places of its
    checks, for messages, the trap report and the debugger.
@@ -293,6 +294,28 @@ WebAssembly and DWARF; names as a length and their bytes. A program
 is linked from object files alone: the linker reads them, marks what
 the entry point reaches (tree shaking, as today), hands each live
 procedure to the back end, and writes the executable.
+
+## Naming an instance
+
+The report makes two instances with the same arguments one instance
+(section 3), and leaves to the compiler how it finds them so. An
+instance is named by the generic module, the fingerprint of its whole
+source, and its arguments, so that two arguments that are the same
+type (report, section 5.10) give one name:
+
+- A type is named as it is built, down to its records, variants and
+  enumerations. An alias, or a named pointer, array, slice, set or
+  procedure type, is named as what it stands for; a procedure type
+  without its parameters' names.
+- A record, variant or enumeration is named by where it is declared,
+  with the fingerprint of its declaration: its module, its procedure if
+  it is local to one, or the instance's name if an instance declares
+  it, and its name; an anonymous one by its line and column in place
+  of a name.
+- A procedure is named by its module and its name.
+
+Two object files that hold an instance of the same name hold the same
+code.
 
 ## The interpreter
 

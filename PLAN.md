@@ -76,10 +76,10 @@ without one.
 
 **Done when:** the report alone is enough to rebuild raz, with a
 conformance suite to say when a rebuild is done; the report has a
-system integer, optional reals and object files; the compiler goes
-through an IR, which is what an object file holds, and keeps its
-values in registers as Wirth's compilers do; `make bench` still
-passes; a new code budget is written down; `v0.6.0` is tagged.
+system integer and optional reals, and leaves separate compilation to
+the implementation; the compiler goes through an IR, which is what its
+object files hold, and keeps its values in registers as Wirth's
+compilers do; `make bench` still passes; a new code budget is written down; `v0.6.0` is tagged.
 
 **Kept out:** a second back end (aarch64 is the milestone after, to
 measure a port); an optimiser; the wishes below.
