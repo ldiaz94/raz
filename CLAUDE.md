@@ -121,9 +121,10 @@ otherwise.
 - A failed check says what failed and with what values, at the place
   of the offending expression. A signal is told at the place of the
   statement it stopped in, or of the procedure for a stack overflow in
-  its prologue. The handlers run on a stack of `Rt`'s, which threads
-  made by `Thread` don't have: a stack overflow in one of them ends it
-  by the signal with no message.
+  its prologue. The handlers run on a stack of their own: `Rt`'s for
+  the main thread, and one in each `Thread` thread's mapping. C's
+  threads have none, so a stack overflow in one ends the program by
+  the signal with no message.
 - The smallest `I64` divided by -1 traps (SIGFPE), as 6.1 says.
 - Warnings come only for a module with no errors. A procedure naming
   itself doesn't use it; a type named by a pointer in its own

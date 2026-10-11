@@ -1,9 +1,10 @@
 (* Threads for programs without C, made with the clone system call.
    Each runs on a stack of its own, mmaped, with a page below it that
    can't be touched, so that running off the stack stops the program
-   rather than spoiling what lies below. join waits on the thread's id,
-   which the kernel clears, and wakes it for, when the thread ends;
-   a Mutex sleeps on a futex. A program with C threads uses C's,
+   rather than spoiling what lies below; above it, a little stack for
+   Rt's signal handlers, so that they can say so. join waits on the
+   thread's id, which the kernel clears, and wakes it for, when the
+   thread ends; a Mutex sleeps on a futex. A program with C threads uses C's,
    through pthread_create, and so can't use these. *)
 module Thread;
 import Sys, Rt;
@@ -12,6 +13,7 @@ link static;
 const
     Failed*: ERROR = "can't start a thread";
     Stack = 1 shl 20;
+    Alt = 16384;     (* the signal handlers' stack *)
     Page = 4096;
     (* clone: share memory, files, signal handlers, the thread group;
        write the id to tid, and clear it at the end *)
@@ -25,7 +27,11 @@ type
         tid: I64;        (* the kernel's id, until the thread ends *)
         base: ^U8;       (* its stack's mapping, the guard page first *)
         size: I64;
+        fn: proc(arg: ^U8);   (* what it runs, and with what *)
+        arg: ^U8;
     end;
+    (* What sigaltstack takes *)
+    AltStack = record sp: ^U8; flags, size: I64; end;
     (* 0 free, 1 taken, 2 taken with a thread waiting *)
     Mutex* = record state: I64; end;
 
@@ -57,11 +63,22 @@ begin
     return SYSCALL(202, word, op, val, 0);
 end;
 
+(* Where a new thread starts: the signal handlers' stack is a thread's
+   own, so it is set here, below t; then the thread runs its procedure. *)
+proc run(arg: ^U8);
+var t: ^Thread; alt: AltStack;
+begin
+    t := ^Thread(arg);
+    alt := {sp: ^U8(t) - Alt, size: Alt};
+    SYSCALL(131, ADR(alt), 0);   (* sigaltstack *)
+    t^.fn(t^.arg);
+end;
+
 (* Starts p(arg) in a new thread. *)
 proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);
 var base: ^U8; t: ^Thread; size: I64;
 begin
-    size := Stack + Page;
+    size := Page + Stack + Alt + Page;
     base := Sys.mmap(size);
     if base = nil then return nil, Failed; end;
     (* mprotect: the guard page, no access; it fails when the process
@@ -70,11 +87,14 @@ begin
         Sys.munmap(base, size);
         return nil, Failed;
     end;
-    (* the Thread at the top, the stack below it, aligned to 16 *)
-    t := ^Thread(base + size - 32);
+    (* from the top: the Thread in the last page, the handlers' stack,
+       then the thread's, starting on a page *)
+    t := ^Thread(base + size - Page);
     t^.base := base;
     t^.size := size;
-    if start(Flags, base + size - 32, ADR(t^.tid), ADR(t^.tid), p, arg) < 0 then
+    t^.fn := p;
+    t^.arg := arg;
+    if start(Flags, base + Page + Stack, ADR(t^.tid), ADR(t^.tid), run, ^U8(t)) < 0 then
         Sys.munmap(base, size);
         return nil, Failed;
     end;

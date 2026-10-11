@@ -1,0 +1,25 @@
+module ThreadOverflow;
+(* A stack overflow in a thread is told as one in the main thread is:
+   the thread's mapping holds a stack for the signal handlers *)
+import Thread;
+
+proc down(n: I64): I64;
+var pad: [64]I64;
+begin
+    pad[n mod 64] := n;
+    return down(n + 1) + pad[0];
+end;
+
+proc work(_arg: ^U8);
+begin
+    down(0);
+end;
+
+proc main*;
+var t: ^Thread.Thread; e: ERROR;
+begin
+    t, e := Thread.spawn(work, nil);
+    if e = nil then Thread.join(t); end;
+end;
+
+end ThreadOverflow.
