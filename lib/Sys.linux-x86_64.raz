@@ -7,6 +7,31 @@ const
     stdout* = 1;
     stderr* = 2;
 
+type
+    (* What info says of a file. *)
+    Info* = record
+        size*: I64;     (* in bytes *)
+        dir*: BOOL;     (* a directory *)
+    end;
+
+    (* An open directory: getdents64's records, read a block at a time. *)
+    Dir* = record
+        fd, pos, len: I64;
+        buf: [8192]U8;
+    end;
+
+    (* struct termios as the kernel's TCGETS fills it: 36 bytes *)
+    Termios = record
+        iflag, oflag, cflag, lflag: U32;
+        line: U8;
+        cc: [19]U8;
+    end;
+    Winsize = record rows, cols, xpixel, ypixel: U16; end;
+    Pollfd = record fd: I32; events, revents: I16; end;
+
+var
+    saved: Termios;   (* the terminal as rawMode found it *)
+
 (* Writes s to the file descriptor fd; the number of bytes written, or
    minus an errno. *)
 proc write*(fd: I64; s: []U8): I64;
@@ -79,6 +104,157 @@ begin
     return SYSCALL(16, fd, 5401H, ADR(t)) = 0;
 end;
 
+(* Renames old to new, replacing what new names: 0, or minus an errno. *)
+proc rename*(old, new: []U8): I64;
+var a, b: [4096]U8;
+begin
+    if not cstr(old, a) or not cstr(new, b) then return -36; end;
+    return SYSCALL(82, ADR(a), ADR(b));
+end;
+
+(* Removes the file at path; not a directory. *)
+proc remove*(path: []U8): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    return SYSCALL(87, ADR(a));                     (* unlink *)
+end;
+
+(* Makes a directory at path, readable by all, writable by its owner. *)
+proc makeDir*(path: []U8): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    return SYSCALL(83, ADR(a), 1EDH);               (* mkdir, mode 755 *)
+end;
+
+(* The size of what path names, and whether it is a directory,
+   following a symbolic link; and 0, or minus an errno. *)
+proc info*(path: []U8): (Info, I64);
+var a: [4096]U8; st: [18]I64; i: Info; r: I64;    (* struct stat: 144 bytes *)
+begin
+    if not cstr(path, a) then return i, -36; end;
+    r := SYSCALL(4, ADR(a), ADR(st));               (* stat *)
+    if r # 0 then return i, r; end;
+    i.size := st[6];                                (* st_size *)
+    i.dir := st[3] and 0F000H = 4000H;              (* st_mode is S_IFDIR *)
+    return i, 0;
+end;
+
+(* Opens the directory at path, for nextEntry. *)
+proc openDir*(d: ^Dir; path: []U8): I64;
+var a: [4096]U8;
+begin
+    d^.pos := 0;
+    d^.len := 0;
+    if not cstr(path, a) then return -36; end;
+    d^.fd := SYSCALL(2, ADR(a), 10000H);            (* open, O_RDONLY, O_DIRECTORY *)
+    if d^.fd < 0 then return d^.fd; end;
+    return 0;
+end;
+
+(* The next name in the directory, good until the next call, but . and
+   .., in no order; false at the end. *)
+proc nextEntry*(d: ^Dir): ([]U8, BOOL);
+var n, at: I64;
+begin
+    while true do
+        if d^.pos >= d^.len then
+            d^.len := SYSCALL(217, d^.fd, ADR(d^.buf), LEN(d^.buf));   (* getdents64 *)
+            d^.pos := 0;
+            if d^.len <= 0 then return "", false; end;
+        end;
+        (* a record: d_ino and d_off, 8 bytes each; d_reclen, 2; d_type,
+           1; then d_name, ending in a zero *)
+        at := d^.pos + 19;
+        n := 0;
+        while d^.buf[at + n] # 0 do INC(n); end;
+        INC(d^.pos, I64(d^.buf[d^.pos + 16]) + I64(d^.buf[d^.pos + 17]) * 256);
+        if (d^.buf[at..at + n] # ".") and (d^.buf[at..at + n] # "..") then
+            return d^.buf[at..at + n], true;
+        end;
+    end;
+    return "", false;
+end;
+
+proc closeDir*(d: ^Dir);
+begin
+    SYSCALL(3, d^.fd);
+end;
+
+(* Puts the terminal on fd into raw mode: no echo, no lines, no signals,
+   no flow control, no CR to NL, no NL to CR NL; false if fd isn't a
+   terminal. *)
+proc rawMode*(fd: I64): BOOL;
+var t: Termios;
+begin
+    if SYSCALL(16, fd, 5401H, ADR(saved)) # 0 then return false; end;   (* TCGETS *)
+    t := saved;
+    t.iflag := t.iflag and not U32(5EBH);   (* IGNBRK BRKINT PARMRK ISTRIP INLCR IGNCR ICRNL IXON *)
+    t.oflag := t.oflag and not U32(1);      (* OPOST *)
+    t.cflag := t.cflag and not U32(130H) or 30H;   (* CS8, no PARENB *)
+    t.lflag := t.lflag and not U32(804BH);  (* ISIG ICANON ECHO ECHONL IEXTEN *)
+    t.cc[5] := 0;                           (* VTIME: no time limit *)
+    t.cc[6] := 1;                           (* VMIN: a byte at least *)
+    return SYSCALL(16, fd, 5402H, ADR(t)) = 0;                             (* TCSETS *)
+end;
+
+(* The terminal on fd as rawMode found it. *)
+proc restoreMode*(fd: I64);
+begin
+    SYSCALL(16, fd, 5402H, ADR(saved));
+end;
+
+(* The columns and rows of the terminal on fd; 80 by 24 if it doesn't
+   say. *)
+proc termSize*(fd: I64): (I64, I64);
+var w: Winsize;
+begin
+    if (SYSCALL(16, fd, 5413H, ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then   (* TIOCGWINSZ *)
+        return 80, 24;
+    end;
+    return I64(w.cols), I64(w.rows);
+end;
+
+(* Whether fd has something to read within ms milliseconds; ms < 0
+   waits as long as it takes. *)
+proc ready*(fd, ms: I64): BOOL;
+var p: Pollfd;
+begin
+    p := {fd: I32(fd), events: 1};                  (* POLLIN *)
+    return SYSCALL(7, ADR(p), 1, ms) > 0;           (* poll *)
+end;
+
+(* The value of the environment variable name; "" if it isn't set. The
+   environment follows the arguments and their nil. *)
+proc env*(name: []U8): []U8;
+var e: ^^U8; s: ^U8; i, n, m: I64;
+begin
+    e := ARGV() + (ARGC() + 1);
+    i := 0;
+    while e[i] # nil do
+        s := e[i];
+        n := 0;
+        while (n < LEN(name)) and (s[n] = name[n]) do INC(n); end;
+        if (n = LEN(name)) and (s[n] = '=') then
+            m := n + 1;
+            while s[m] # 0 do INC(m); end;
+            return s[n + 1..m];
+        end;
+        INC(i);
+    end;
+    return "";
+end;
+
+(* The working directory into buf: its length, or minus an errno. *)
+proc workDir*(var buf: [4096]U8): I64;
+var r: I64;
+begin
+    r := SYSCALL(79, ADR(buf), LEN(buf));           (* getcwd: its length with its zero *)
+    if r < 0 then return r; end;
+    return r - 1;
+end;
+
 (* Gives the processor to another thread. *)
 proc yield*;
 begin
@@ -91,9 +267,11 @@ begin
     SYSCALL(231, status);
 end;
 
-(* The module's test: a file written, read back and closed. *)
+(* The module's test: a file written, read back and closed; a
+   directory made, listed and emptied; no terminal. *)
 proc main*;
-var fd, n: I64; buf: [16]U8; p: ^U8;
+var fd, n, err, w, h: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
+    dir: [4096]U8;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
@@ -109,6 +287,36 @@ begin
     p := mmap(100);
     if (p = nil) or (p[99] # 0) then exit(2); end;
     munmap(p, 100);
+    (* files and directories *)
+    remove("/tmp/raz-sys-dir/f");
+    remove("/tmp/raz-sys-dir/g");
+    makeDir("/tmp/raz-sys-dir");
+    fd := create("/tmp/raz-sys-dir/f");
+    if (fd < 0) or (write(fd, "abc") # 3) then exit(2); end;
+    close(fd);
+    if rename("/tmp/raz-sys-dir/f", "/tmp/raz-sys-dir/g") # 0 then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/g");
+    if (err # 0) or (i.size # 3) or i.dir then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir");
+    if (err # 0) or not i.dir then exit(2); end;
+    i, err := info("/no/such/file");
+    if err >= 0 then exit(2); end;
+    if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
+    name, ok := nextEntry(ADR(d));
+    if not ok or (name # "g") then exit(2); end;
+    name, ok := nextEntry(ADR(d));
+    if ok then exit(2); end;
+    closeDir(ADR(d));
+    if (remove("/tmp/raz-sys-dir/g") # 0) or (remove("/tmp/raz-sys-dir/g") >= 0) then exit(2); end;
+    if openDir(ADR(d), "/no/such/dir") >= 0 then exit(2); end;
+    (* the terminal: none here, fd -1 *)
+    if rawMode(-1) or ready(-1, 0) then exit(2); end;
+    w, h := termSize(-1);
+    if (w # 80) or (h # 24) then exit(2); end;
+    (* the environment *)
+    if (LEN(env("PATH")) = 0) or (LEN(env("RAZ_NO_SUCH_VARIABLE")) # 0) then exit(2); end;
+    n := workDir(dir);
+    if (n <= 0) or (dir[0] # '/') then exit(2); end;
 end;
 
 end Sys.

@@ -51,8 +51,13 @@ Examples in `examples/` work the same way.
 
 Steps 1-18 are done: the language, the tools (`tools/Doc.raz`, and
 the formatter, `tools/Pretty.raz`, over the shared `tools/Scan.raz`),
-`README.md` and the guide to the compiler, `doc/compiler.md`. Nothing
-further is planned; new work starts only on the owner's word. Keep
+`README.md` and the guide to the compiler, `doc/compiler.md`. Stage 5
+made two editors, which now live in repositories of their own, each
+pinning the raz commit it builds with: rmacs (emacs's keys) and
+ravite (vim's). What they needed of the system went into `Sys` (report
+2026-10.2, approved): the terminal, files, directories and the
+environment. `tools/Scan.raz` is theirs to use, as a tool, not part of
+the library. New work starts only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes. Left for later at the owner's word: a rewrite of
 var parameters.

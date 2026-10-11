@@ -135,6 +135,10 @@ after `,` and `;`, and keeps every line break and comment where it is.
     $ ./Pretty Module.raz       # prints it, formatted
     $ ./Pretty -w *.raz         # rewrites those that aren't, and names them
 
+Two editors are written in raz, each in a repository of its own that
+pins the raz it is built with: rmacs, with emacs's keys, and ravite,
+with vim's. Both colour raz through `tools/Scan.raz`.
+
 ## Versions
 
 The compiler says its own version and that of the report it follows:

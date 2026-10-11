@@ -873,7 +873,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; what the compiler's checks call when they fail; string comparison |
-| `Sys` | system calls: `openRead`, `create`, `read`, `write`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; one file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `openRead`, `create`, `read`, `write`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `makeDir`, `info`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; and `env` and `workDir`. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -897,6 +897,44 @@ type
 ...
 end Mem.
 ```
+
+**Sys** gives every target the same procedures, so that a program
+that needs only these runs wherever raz does: through system calls on
+Linux, through the C library elsewhere. A result that can fail is a
+number, minus an errno, as on Linux; 0 is success.
+
+```
+type
+    Info* = record
+        size*: I64;      (* in bytes *)
+        dir*: BOOL;      (* a directory *)
+    end;
+    Dir* = record ... end;   (* an open directory; its fields are the target's *)
+
+proc rename*(old, new: []U8): I64;       (* replaces what new names *)
+proc remove*(path: []U8): I64;           (* a file, not a directory *)
+proc makeDir*(path: []U8): I64;          (* readable by all, writable by its owner *)
+proc info*(path: []U8): (Info, I64);     (* following a symbolic link *)
+
+proc openDir*(d: ^Dir; path: []U8): I64;
+proc nextEntry*(d: ^Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
+proc closeDir*(d: ^Dir);
+
+proc rawMode*(fd: I64): BOOL;      (* the terminal on fd: no echo, no lines, no signals *)
+proc restoreMode*(fd: I64);        (* as rawMode found it *)
+proc termSize*(fd: I64): (I64, I64);   (* columns and rows; 80 and 24 if unknown *)
+proc ready*(fd: I64; ms: I64): BOOL;   (* something to read within ms, or ever if ms < 0 *)
+
+proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
+proc workDir*(var buf: [4096]U8): I64;   (* the working directory into buf: its length *)
+```
+
+`nextEntry` gives every name in the directory except `.` and `..`, in
+no particular order. `rawMode` turns off what the terminal does with
+keys before the program reads them: echo, waiting for a whole line,
+Ctrl-C and Ctrl-Z as signals, Ctrl-S and Ctrl-Q as flow control, and
+CR to NL; and with output, NL to CR NL. A program that turns it on
+restores it before it ends: `Rt.atExit` is the place.
 
 **Out and C's stdio.** `Out` keeps a buffer of 4 KB. It writes it out
 when it is full, at each line feed when standard output is a terminal,
@@ -932,3 +970,5 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.1.** Messages: every error in a run, warnings of what is
   never used and `-Werror` (section 10); failed checks say what failed,
   and signals say where (sections 6.5 and 10).
+- **2026-10.2.** `Sys` gains files and directories, the terminal, and
+  the environment (section 11).
