@@ -14,6 +14,10 @@ const
     stdin* = 0;
     stdout* = 1;
     stderr* = 2;
+    (* signals, by their numbers on Linux; another target has its own *)
+    sigHup* = 1; sigInt* = 2; sigQuit* = 3; sigKill* = 9; sigPipe* = 13;
+    sigTerm* = 15; sigChld* = 17; sigCont* = 18; sigStop* = 19;
+    sigTstp* = 20; sigTtin* = 21; sigTtou* = 22; sigWinch* = 28;
     DirentName = 19;          (* the offset of d_name in glibc's struct dirent *)
     TIOCGWINSZ = 5413H;       (* glibc's, as the two below *)
     TIOCSWINSZ = 5414H;
@@ -40,6 +44,30 @@ type
         d: ^U8;
     end;
 
+    (* A program for spawn to start. *)
+    Program* = record
+        path*: []U8;
+        args*: [][]U8;      (* the first is its name *)
+        env*: [][]U8;       (* NAME=value, each added to this program's environment *)
+        onlyEnv*: BOOL;     (* env is its whole environment *)
+        dir*: []U8;         (* its working directory; "" for this program's *)
+        fds*: [3]I64;       (* its standard input, output and error; 0 for this program's own *)
+        group*: I64;        (* the process group it joins: 0 for this program's, -1 a new one it leads *)
+        foreground*: BOOL;  (* its group takes the terminal on standard input *)
+        tty*: I64;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
+    end;
+    (* How a program that wait waited for changed. *)
+    Status* = (running, exited, killed, stopped);
+
+    (* glibc's struct sigaction; a handler of 0 is SIG_DFL, 1 SIG_IGN *)
+    Handler = proc(sig: I32);
+    Sigaction = record
+        handler: Handler;
+        mask: [16]U64;
+        flags: I32;
+        restorer: ^U8;
+    end;
+
     Winsize = record rows, cols, xpixel, ypixel: U16; end;
     Pollfd = record fd: I32; events, revents: I16; end;
 
@@ -53,6 +81,7 @@ var
     cwd: [4096]U8;    (* what workDir gives *)
     linked: [4096]U8; (* what readLink gives *)
     saved: [256]U8;   (* the terminal as rawMode found it: a struct termios, of the C library's size *)
+    sigRead, sigWrite: I32;   (* the pipe the handler of caught signals writes their numbers to, once open *)
 
 (* minus errno, as a system call returns it *)
 proc failed: I64;
@@ -312,10 +341,11 @@ end;
 (* Whether fd has something to read within ms milliseconds; ms < 0
    waits as long as it takes. *)
 proc ready*(fd, ms: I64): BOOL;
-var p: Pollfd;
+var p: Pollfd; r: I32;
 begin
     p := {fd: I32(fd), events: 1};                   (* POLLIN *)
-    return C.poll(^U8(ADR(p)), 1, I32(ms)) > 0;
+    repeat r := C.poll(^U8(ADR(p)), 1, I32(ms)); until (r >= 0) or (failed() # -4);   (* EINTR: a signal caught *)
+    return r > 0;
 end;
 
 (* A stream socket connected to the Unix socket at path: its file
@@ -352,12 +382,13 @@ end;
    or that has reached its end or failed, so that a read won't wait; -1
    if none has. ms < 0 waits as long as it takes. At most 64 fds. *)
 proc readyOf*(fds: []I64; ms: I64): I64;
-var p: [64]Pollfd; n, i: I64;
+var p: [64]Pollfd; n, i: I64; r: I32;
 begin
     n := LEN(fds);
     if n > LEN(p) then n := LEN(p); end;
     for i := 0 to n - 1 do p[i] := {fd: I32(fds[i]), events: 1}; end;   (* POLLIN *)
-    if C.poll(^U8(ADR(p)), U64(n), I32(ms)) <= 0 then return -1; end;
+    repeat r := C.poll(^U8(ADR(p)), U64(n), I32(ms)); until (r >= 0) or (failed() # -4);   (* EINTR *)
+    if r <= 0 then return -1; end;
     for i := 0 to n - 1 do
         if p[i].revents # 0 then return fds[i]; end;
     end;
@@ -471,66 +502,188 @@ begin
     return p, size;
 end;
 
-(* Starts the program at path with args, the first its name, and this
-   program's environment changed by env: its process id, or minus an
-   errno. If tty is a pseudo-terminal's fd, the program runs on that
-   terminal, as its controlling terminal and its standard input, output
-   and error. It gets no other open file. A program that can't be
-   started ends with status 127. *)
-proc spawn*(path: []U8; args, env: [][]U8; tty: I64): I64;
-var a, name: [4096]U8; p: ^^U8; s: ^U8; size, n, err: I64; pid, fd: I32;
+(* A pipe: the fd to read and the fd to write, both closed in a program
+   exec starts; or minus an errno and -1. *)
+proc pipe*: (I64, I64);
+var fds: [2]I32;
 begin
-    if not cstr(path, a) then return -36; end;
-    if tty >= 0 then
-        s := C.ptsname(I32(tty));                     (* here, since it isn't safe after fork *)
+    if C.pipe2(ADR(fds[0]), 80000H) # 0 then return failed(), -1; end;   (* O_CLOEXEC, glibc's *)
+    return I64(fds[0]), I64(fds[1]);
+end;
+
+(* This program's process id. *)
+proc pid*: I64;
+begin
+    return I64(C.getpid());
+end;
+
+(* Moves the program pid, or this one if pid is 0, to the process group
+   group, or to a new one it leads if group is 0. *)
+proc setGroup*(pid, group: I64): I64;
+begin
+    if C.setpgid(I32(pid), I32(group)) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* Gives the keys of the terminal on fd, and its signals, to the process
+   group group. *)
+proc foreground*(fd, group: I64): I64;
+begin
+    if C.tcsetpgrp(I32(fd), I32(group)) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* The process group the terminal on fd gives its keys to, or minus an
+   errno. *)
+proc foregroundOf*(fd: I64): I64;
+var g: I32;
+begin
+    g := C.tcgetpgrp(I32(fd));
+    if g < 0 then return failed(); end;
+    return I64(g);
+end;
+
+(* Starts the program p describes: its process id, or minus an errno.
+   A program that can't be started ends with status 127. Every signal
+   is blocked from the fork until the program has its own: its group,
+   its terminal's foreground, and signals as they are at first. *)
+proc spawn*(p: Program): I64;
+var
+    a, dir, name: [4096]U8; argv: ^^U8; none, s: ^U8; size, n, err, i, g: I64;
+    all, old, empty: [16]U64; dfl: Sigaction; pid, fd: I32;   (* sigset_t: 128 bytes *)
+begin
+    if not cstr(p.path, a) or not cstr(p.dir, dir) then return -36; end;   (* ENAMETOOLONG *)
+    if p.tty # 0 then
+        s := C.ptsname(I32(p.tty));                   (* here, since it isn't safe after fork *)
         if s = nil then return failed(); end;
         n := 0;
         while s[n] # 0 do INC(n); end;
         if not cstr(s[0..n], name) then return -36; end;
     end;
-    p, size := argsAndEnv(args, env, C.environ);
-    if p = nil then return -12; end;                  (* ENOMEM *)
+    none := nil;
+    if p.onlyEnv then
+        argv, size := argsAndEnv(p.args, p.env, ADR(none));
+    else
+        argv, size := argsAndEnv(p.args, p.env, C.environ);
+    end;
+    if argv = nil then return -12; end;               (* ENOMEM *)
+    for i := 0 to LEN(all) - 1 do all[i] := 0FFFFFFFFFFFFFFFFH; end;
+    C.sigprocmask(2, ^U8(ADR(all)), ^U8(ADR(old)));  (* SIG_SETMASK *)
     pid := C.fork();
     if pid = 0 then
-        if tty >= 0 then
+        if p.tty # 0 then
             C.setsid();
             fd := C.open(ADR(name[0]), 2);            (* O_RDWR *)
             if (fd < 0) or (C.ioctl(fd, TIOCSCTTY, 0) # 0) then C._exit(127); end;
-            C.dup2(fd, 0);
-            C.dup2(fd, 1);
-            C.dup2(fd, 2);
+            for i := 0 to 2 do C.dup2(fd, I32(i)); end;
+        else
+            if p.group = -1 then C.setpgid(0, 0);
+            elsif p.group # 0 then C.setpgid(0, I32(p.group));
+            end;
+            if p.foreground then C.tcsetpgrp(0, C.getpgrp()); end;
+            for i := 0 to 2 do
+                if p.fds[i] # 0 then C.dup2(I32(p.fds[i]), I32(i)); end;
+            end;
         end;
+        if (LEN(p.dir) > 0) and (C.chdir(ADR(dir[0])) # 0) then C._exit(127); end;
         C.close_range(3, 0FFFFFFFFH, 0);             (* every fd from 3 *)
-        C.execve(ADR(a[0]), p, p + (LEN(args) + 1));
+        for i := 1 to 64 do C.sigaction(I32(i), ^U8(ADR(dfl)), nil); end;
+        C.sigprocmask(2, ^U8(ADR(empty)), nil);
+        C.execve(ADR(a[0]), argv, argv + (LEN(p.args) + 1));
         C._exit(127);
     end;
     err := failed();
-    munmap(^U8(p), size);
+    if (pid > 0) and (p.tty = 0) then
+        (* as the program does, for whichever of the two runs first *)
+        g := p.group;
+        if g = -1 then g := I64(pid); elsif g = 0 then g := I64(C.getpgrp()); end;
+        if p.group # 0 then C.setpgid(pid, I32(g)); end;
+        if p.foreground then C.tcsetpgrp(0, I32(g)); end;
+    end;
+    C.sigprocmask(2, ^U8(ADR(old)), nil);
+    munmap(^U8(argv), size);
     if pid < 0 then return err; end;
     return I64(pid);
 end;
 
-(* Whether the program pid has ended, waiting for it to if block: its
-   exit status, or 128 and the number of the signal that stopped it,
-   and 1; or 0 and 0 if it goes on; or minus an errno and 1, if there
-   is no such program to wait for. The status is read as glibc's macros
-   read it. *)
-proc wait*(pid: I64; block: BOOL): (I64, I64);
+(* Waits for the program pid, or any of this program's if pid is -1, to
+   change, if block, and says which one changed and how: exited, with
+   its exit status; killed or stopped, with the signal's number. Without
+   block it doesn't wait: 0 and running if none has changed. Minus an
+   errno, and running, if there is none to wait for. The status is read
+   as glibc's macros read it. *)
+proc wait*(pid: I64; block: BOOL): (I64, Status, I64);
 var status, options, r: I32;
 begin
-    options := 1;                                     (* WNOHANG *)
-    if block then options := 0; end;
+    options := 3;                                     (* WNOHANG, WUNTRACED *)
+    if block then options := 2; end;
     r := C.waitpid(I32(pid), ADR(status), options);
-    if r < 0 then return failed(), 1; end;
-    if r = 0 then return 0, 0; end;
-    if status & 7FH = 0 then return I64(status) shr 8 & 0FFH, 1; end;
-    return 128 + I64(status) & 7FH, 1;
+    if r < 0 then return failed(), running, 0; end;
+    if r = 0 then return 0, running, 0; end;
+    if status & 7FH = 0 then return I64(r), exited, I64(status) shr 8 & 0FFH; end;
+    if status & 0FFH = 7FH then return I64(r), stopped, I64(status) shr 8 & 0FFH; end;
+    return I64(r), killed, I64(status) & 7FH;
 end;
 
-(* Sends the program pid the signal: 0, or minus an errno. *)
+(* Sends the program pid, or the group -pid, the signal: 0, or minus an
+   errno. *)
 proc kill*(pid, signal: I64): I64;
 begin
     if C.kill(I32(pid), I32(signal)) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* The handler of caught signals: their numbers go down the pipe, which
+   catch gives the end of to read. *)
+proc onSignal(sig: I32);
+var e: ^I32; saved: I32; b: [1]U8;
+begin
+    e := C.__errno_location();
+    saved := e^;                                      (* as the code it stopped left it *)
+    b[0] := U8(sig);
+    C.write(sigWrite, ADR(b[0]), 1);
+    e^ := saved;
+end;
+
+(* Catches the signals sigs: they don't do what they would, but give
+   their numbers on an fd, which a later catch adds to and gives again;
+   or minus an errno. *)
+proc catch*(sigs: []I64): I64;
+var fds: [2]I32; act: Sigaction; i: I64;
+begin
+    for i := 0 to LEN(sigs) - 1 do
+        if (sigs[i] < 1) or (sigs[i] > 64) or (sigs[i] = sigKill) or (sigs[i] = sigStop)
+                or (sigs[i] = 8) or (sigs[i] = 11) then  (* SIGFPE and SIGSEGV, Rt's *)
+            return -22;                               (* EINVAL *)
+        end;
+    end;
+    if sigWrite = 0 then
+        if C.pipe2(ADR(fds[0]), 80800H) # 0 then return failed(); end;   (* O_NONBLOCK, O_CLOEXEC *)
+        sigRead := fds[0];
+        sigWrite := fds[1];
+    end;
+    act := {handler: onSignal, flags: 10000000H};    (* SA_RESTART *)
+    for i := 0 to LEN(sigs) - 1 do
+        if C.sigaction(I32(sigs[i]), ^U8(ADR(act)), nil) # 0 then return failed(); end;
+    end;
+    return I64(sigRead);
+end;
+
+(* The next signal catch's fd has, or 0 if none is waiting. *)
+proc caught*(fd: I64): I64;
+var b: [1]U8;
+begin
+    if read(fd, b) # 1 then return 0; end;
+    return I64(b[0]);
+end;
+
+(* Makes the signal sig do nothing, or, if not yes, what it does at
+   first: 0, or minus an errno. *)
+proc ignore*(sig: I64; yes: BOOL): I64;
+var act: Sigaction;
+begin
+    if yes then act.handler := Handler(1); end;      (* SIG_IGN *)
+    if C.sigaction(I32(sig), ^U8(ADR(act)), nil) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -564,38 +717,79 @@ begin
     return I64(fd);
 end;
 
-(* The test of programs: one spawned on a pseudo-terminal of 100 by 30
-   prints its size, its arguments and a variable put in place, and ends
-   with status 3; one with no terminal is stopped by kill; one that
-   isn't there ends with 127. *)
+(* The test of programs: one on a pseudo-terminal of 100 by 30 prints
+   its arguments, a variable put in place and its size, and leads the
+   terminal's foreground until it ends with status 3; one in a
+   directory and an environment of its own writes to a pipe; one in a
+   group of its own is stopped and killed through it; one that isn't
+   there ends with 127. Then signals: caught as a program ends and as
+   one is sent; and a program starts with them neither caught nor
+   ignored. *)
 proc testPrograms;
-var pty, pid, n, m, status, ended: I64; buf: [64]U8;
+var pty, child, n, m, r, w, sigs, c: I64; st: Status; buf: [64]U8;
 begin
     pty := openPty();
     if (pty < 0) or (setTermSize(pty, 100, 30) # 0) then exit(2); end;
-    pid := spawn("/bin/sh", ["sh", "-c", "stty size; echo $0 $1 $HOME; exit 3", "a", "b"], ["HOME=/h"], pty);
-    if pid <= 0 then exit(2); end;
+    child := spawn({path: "/bin/sh", args: ["sh", "-c", "echo $0 $1 $HOME; stty size; read x; exit 3", "a", "b"],
+        env: ["HOME=/h"], tty: pty});
+    if child <= 0 then exit(2); end;
     n := 0;
-    repeat
+    while n < 16 do
         if not ready(pty, 5000) then exit(2); end;
         m := read(pty, buf[n..LEN(buf)]);
-        if m > 0 then INC(n, m); end;
-    until m <= 0;                                   (* -5, EIO, once the terminal has no program *)
+        if m <= 0 then exit(2); end;
+        INC(n, m);
+    end;
+    if (buf[0..n] # "a b /h\r\n30 100\r\n") or (foregroundOf(pty) # child) then exit(2); end;
+    if write(pty, "\n") # 1 then exit(2); end;
+    repeat
+        if not ready(pty, 5000) then exit(2); end;
+    until read(pty, buf) <= 0;                      (* -5, EIO, once the terminal has no program *)
     close(pty);
-    if buf[0..n] # "30 100\r\na b /h\r\n" then exit(2); end;
-    status, ended := wait(pid, true);
-    if (status # 3) or (ended # 1) then exit(2); end;
-    pid := spawn("/bin/sleep", ["sleep", "10"], [], -1);
-    status, ended := wait(pid, false);
-    if ended # 0 then exit(2); end;
-    if kill(pid, 15) # 0 then exit(2); end;
-    status, ended := wait(pid, true);
-    if (status # 128 + 15) or (ended # 1) then exit(2); end;
-    status, ended := wait(pid, true);
-    if (status # -10) or (ended # 1) then exit(2); end;   (* ECHILD: waited for already *)
-    pid := spawn("/no/such/program", ["x"], [], -1);
-    status, ended := wait(pid, true);
-    if (status # 127) or (ended # 1) then exit(2); end;
+    r, st, c := wait(child, true);
+    if (r # child) or (st # exited) or (c # 3) then exit(2); end;
+
+    r, w := pipe();
+    if w < 0 then exit(2); end;
+    child := spawn({path: "/bin/sh", args: ["sh", "-c", "echo $X $HOME; pwd"], env: ["X=x"], onlyEnv: true,
+        dir: "/tmp", fds: [0, w, 0]});
+    close(w);
+    n := 0;
+    repeat
+        m := read(r, buf[n..LEN(buf)]);
+        if m > 0 then INC(n, m); end;
+    until m <= 0;
+    close(r);
+    if buf[0..n] # "x\n/tmp\n" then exit(2); end;
+    r, st, c := wait(child, true);
+    if (r # child) or (st # exited) or (c # 0) then exit(2); end;
+
+    child := spawn({path: "/bin/sleep", args: ["sleep", "10"], group: -1});
+    r, st, c := wait(child, false);
+    if (r # 0) or (st # running) or (kill(-child, sigStop) # 0) then exit(2); end;
+    r, st, c := wait(child, true);
+    if (r # child) or (st # stopped) or (c # sigStop) or (kill(-child, sigKill) # 0) then exit(2); end;
+    r, st, c := wait(-1, true);
+    if (r # child) or (st # killed) or (c # sigKill) then exit(2); end;
+    r, st, c := wait(-1, true);
+    if r # -10 then exit(2); end;                   (* ECHILD: none left *)
+    child := spawn({path: "/no/such/program", args: ["x"]});
+    r, st, c := wait(child, true);
+    if (r # child) or (st # exited) or (c # 127) then exit(2); end;
+
+    sigs := catch([sigChld, sigHup]);
+    if (sigs < 0) or (catch([sigWinch]) # sigs) or (catch([11]) # -22) or (catch([sigKill]) # -22) then exit(2); end;
+    if (caught(sigs) # 0) or (ignore(sigInt, true) # 0) then exit(2); end;
+    child := spawn({path: "/bin/sh", args: ["sh", "-c", "kill -INT $$; exit 0"]});
+    if not ready(sigs, 5000) or (caught(sigs) # sigChld) then exit(2); end;
+    r, st, c := wait(child, true);
+    if (st # killed) or (c # sigInt) then exit(2); end;
+    child := spawn({path: "/bin/sh", args: ["sh", "-c", "kill -HUP $$; exit 0"]});
+    r, st, c := wait(child, true);
+    if (st # killed) or (c # sigHup) then exit(2); end;
+    while caught(sigs) # 0 do end;
+    if (kill(pid(), sigHup) # 0) or not ready(sigs, 1000) or (caught(sigs) # sigHup) then exit(2); end;
+    if ignore(sigInt, false) # 0 then exit(2); end;
 end;
 
 (* The module's test, as Linux's Sys has it: a file written, read back

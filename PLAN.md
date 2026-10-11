@@ -33,7 +33,7 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 - [x] 2. `Sys`, files: `open` with a set of `Access`, `seek`, `Info`'s
       `mtime` and `mode`, `chmod`, `readLink`, `symlink`, `removeDir`,
       `setWorkDir`.
-- [ ] 3. `Sys`, programs: `pipe`, `spawn` of a `Program`, `wait` of any
+- [x] 3. `Sys`, programs: `pipe`, `spawn` of a `Program`, `wait` of any
       child with its `Status`, process groups and the terminal's
       foreground, `pid`; signals caught on a file descriptor. Rat
       breaks here: `spawn` changes.
