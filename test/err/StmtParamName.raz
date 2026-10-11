@@ -1,3 +1,6 @@
 module StmtParamName;
 import L := StmtParam(I64);
+
+var l: L.T;
+
 end StmtParamName.

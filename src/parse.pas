@@ -48,6 +48,15 @@ type
     base: longint;    { the deferred statements in force outside it }
   end;
 
+  { A generic module's import whose instance isn't made yet }
+  TDeferred = record
+    o: PObj;           { the name it imports as }
+    m: PModule;        { the module that imports it }
+    mname: longint;    { the generic module }
+    args: TScanState;  { at the "(" of its arguments }
+    at: TPos;          { the import }
+  end;
+
 var
   checkMode: boolean;     { reading a file only for its interface }
   inTypes: boolean;       { in a type section: ^T may name a later type }
@@ -71,6 +80,10 @@ var
   declaring: array[0..63] of longint;   { the names the declaration being read declares }
   numDeclaring: longint;
   skipped: boolean;       { the last statement had an error and was skipped }
+  deferred: array[0..63] of TDeferred;
+  numDeferred: longint;
+  making: boolean;        { reading an instance's arguments, at its first use }
+  useAt: TPos;            { ... which is here }
 
 procedure Expression(var x: TItem; want: PType); forward;
 function ParseType: PType; forward;
@@ -194,7 +207,7 @@ begin
   CutScopes(r.scopes); depth := r.depth; numDefers := r.numDefers;
   curLoop := r.loop; curResult := r.result;
   deferring := r.deferring; directDefer := r.directDefer;
-  inTypes := false; declExported := false; inExtern := false;
+  inTypes := false; declExported := false; inExtern := false; making := false;
 end;
 
 { Gives up the construct r is for, and the one around it }
@@ -291,21 +304,28 @@ begin
   else DidYouMean(Closest(n, -1));
 end;
 
+procedure FirstUse(o: PObj; const at: TPos); forward;
+procedure InstancesFor(wholeRest: boolean); forward;
+procedure AddImport(m, im: PModule); forward;
+
 function QualIdent: PObj;
-var o: PObj; m: PModule;
+var o: PObj; m: PModule; at: TPos;
 begin
   if tok <> sIdent then Expected('a name');
+  at := TokPos;
   o := Lookup(id);
   if o = nil then begin
-    Poison(id);
+    if not making then Poison(id);   { it may yet be declared }
     quiet := false;
-    NotDeclared(TokPos, id);
+    NotDeclared(at, id);
+    if making then Note(useAt, 'the instance is made here, where it is first used');
     Fail;
   end;
   if o^.typ = tPoison then quiet := true;
   Named(o);
   Next;
   if o^.cls = oModule then begin
+    if o^.module = nil then FirstUse(o, at);
     Expect(sPeriod);
     if tok <> sIdent then Expected('a name');
     m := o^.module;
@@ -1643,6 +1663,7 @@ end;
 procedure ProcDecl;
 var n, line: longint; exp: boolean; sig: PType; p: PObj; at: TPos;
 begin
+  InstancesFor(false);
   line := CurLine;
   Next;
   IdentDef(n, exp, at);
@@ -1932,6 +1953,19 @@ begin
   Expect(sRparen);
 end;
 
+{ Past an instance's arguments, to be read when it is made }
+procedure SkipArgs;
+var p: longint;
+begin
+  p := 0;
+  repeat
+    if tok = sLparen then inc(p)
+    else if tok = sRparen then dec(p)
+    else if tok in [sSemicolon, sEof] then Expected('")"');
+    Next;
+  until p = 0;
+end;
+
 { A generic module's parameters, bound to the instance's arguments: a
   type parameter names its type, a procedure parameter its procedure. }
 procedure Params(m: PModule);
@@ -2043,8 +2077,9 @@ end;
 function CompileFile(const path: shortstring; n: longint; const args: TArgs; checkOnly: boolean): PModule;
 var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
-  oldMod: PModule; oldCheck: boolean; m, im: PModule;
-  imp: PImport; lib: PLib; start: TPos; alias, mname, line, oldPath: longint; o: PObj; body: longint; iargs: TArgs;
+  oldMod: PModule; oldCheck: boolean; m: PModule;
+  lib: PLib; start: TPos; alias, mname, line, oldPath: longint; o: PObj; body: longint; iargs: TArgs;
+  generic: boolean; argsAt: TScanState;
 begin
   SaveScan(st);
   SaveScopes(d, saved);
@@ -2083,24 +2118,36 @@ begin
       alias := id;
       mname := id;
       iargs.n := 0;
+      generic := false;
       Next;
       if tok = sBecomes then begin
         Next;
         if tok <> sIdent then Expected('a module name');
         mname := id;
         Next;
-        if tok = sLparen then ParseArgs(iargs, NameOf(mname));
+        if tok = sLparen then begin
+          generic := true;
+          SaveScan(argsAt);
+          SkipArgs;
+        end;
       end;
       iargs.at := SpanFrom(start);
-      im := ImportModule(mname, iargs);
       o := NewObj(oModule, alias, nil);
       o^.pos := start;
-      o^.module := im;
       Declare(o);
-      New(imp);
-      imp^.module := im;
-      imp^.next := m^.imports;
-      m^.imports := imp;
+      if not generic then begin
+        o^.module := ImportModule(mname, iargs);
+        AddImport(m, o^.module);
+      end else begin
+        o^.module := nil;   { until the instance is made, at its first use }
+        if numDeferred > High(deferred) then Mark('more than ' + IntStr(High(deferred) + 1) + ' generic imports');
+        deferred[numDeferred].o := o;
+        deferred[numDeferred].m := m;
+        deferred[numDeferred].mname := mname;
+        deferred[numDeferred].args := argsAt;
+        deferred[numDeferred].at := iargs.at;
+        inc(numDeferred);
+      end;
       if tok <> sComma then break;
       Next;
     until false;
@@ -2123,6 +2170,7 @@ begin
   if tok = sBegin then begin
     if checkMode then SkipBody
     else begin
+      InstancesFor(true);
       line := CurLine;
       Next;
       body := NewChunk(secText, m^.sname, nameBody);
@@ -2283,6 +2331,78 @@ begin
   m := CompileFile(dir + '/' + f, name, args, false);
   CheckSiblings(dir, f, name, m, args);
   ImportModule := m;
+end;
+
+procedure AddImport(m, im: PModule);
+var imp: PImport;
+begin
+  New(imp);
+  imp^.module := im;
+  imp^.next := m^.imports;
+  m^.imports := imp;
+end;
+
+{ Makes the instance that deferred[i] imports: its arguments are read
+  where the import wrote them, and must be declared by now. Compiling
+  the instance comes in the middle of a declaration, so what that
+  declaration has under way is kept aside meanwhile. }
+procedure MakeInstance(i: longint; const at: TPos);
+var
+  d: TDeferred; st: TScanState; args: TArgs; types, exported, ext, wasQuiet: boolean; nf, nd: longint;
+  ft: array[0..255] of PType; fp: array[0..255] of TPos; decl: array[0..63] of longint;
+begin
+  d := deferred[i];
+  dec(numDeferred);
+  deferred[i] := deferred[numDeferred];
+  SaveScan(st);
+  RestoreScan(d.args);
+  args.n := 0;
+  making := true; useAt := at;
+  ParseArgs(args, NameOf(d.mname));
+  making := false;
+  RestoreScan(st);
+  args.at := d.at;
+  types := inTypes; exported := declExported; ext := inExtern; wasQuiet := quiet;
+  nf := numFwd; ft := fwdTypes; fp := fwdPos; nd := numDeclaring; decl := declaring;
+  d.o^.module := ImportModule(d.mname, args);
+  inTypes := types; declExported := exported; inExtern := ext; quiet := wasQuiet;
+  numFwd := nf; fwdTypes := ft; fwdPos := fp; numDeclaring := nd; declaring := decl;
+  AddImport(curModule, d.o^.module);
+end;
+
+procedure FirstUse(o: PObj; const at: TPos);
+var i: longint;
+begin
+  for i := 0 to numDeferred - 1 do
+    if deferred[i].o = o then begin MakeInstance(i, at); exit end;
+  Fail;   { its arguments had an error, already reported }
+end;
+
+{ An instance can't be compiled in the middle of another procedure's
+  code, so before a procedure's code begins, from its "proc" on, or
+  the module body's, from its "begin" to the end of the file, this
+  reads ahead for the names of imports not yet made, and makes those. }
+procedure InstancesFor(wholeRest: boolean);
+var st: TScanState; d, i: longint; begun: boolean;
+begin
+  if checkMode then exit;
+  i := numDeferred - 1;
+  while (i >= 0) and (deferred[i].m <> curModule) do dec(i);
+  if i < 0 then exit;
+  SaveScan(st);
+  d := 0; begun := false;
+  repeat
+    case tok of
+      sIdent: for i := numDeferred - 1 downto 0 do
+        if (deferred[i].m = curModule) and (deferred[i].o^.name = id) then MakeInstance(i, TokPos);
+      sBegin: begin begun := begun or (d = 0); inc(d) end;
+      sIf, sWhile, sFor, sMatch, sRepeat, sRecord, sVariant: inc(d);
+      sEnd, sUntil: dec(d);
+    end;
+    if not wholeRest and (d = 0) and (begun or (tok in [sForward, sCode])) then break;
+    Next;
+  until tok = sEof;
+  RestoreScan(st);
 end;
 
 function CompileMain(const path: shortstring): PModule;

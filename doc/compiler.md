@@ -13,7 +13,7 @@ disassembly.
 | `src/sym.pas` | 593 | 493 | Types, objects, scopes, layout |
 | `src/x64.pas` | 693 | 556 | Code buffer, chunks, fixups, places, instruction encoder |
 | `src/gen.pas` | 1,596 | 1,378 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,323 | 2,098 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/parse.pas` | 2,443 | 2,201 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 138 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 227 | 178 | The command line, the entry points |
@@ -338,9 +338,15 @@ later directory has the module too, unless the file is a link to one
 of its files there; `CheckSiblings` then reads the files for other
 targets beside it, declarations only, and `CompareIface` holds them
 to the same exports by their fingerprints. A generic module is
-compiled once per distinct list of arguments: `ParseArgs` reads
-them at the import, `Params` binds them to the module's parameters, and
-`IsModule` decides whether an instance already exists.
+compiled once per distinct list of arguments, where it is first used.
+The import only notes where its arguments are (`SkipArgs`, `deferred`);
+`FirstUse`, from `QualIdent`, has `MakeInstance` go back there, where
+`ParseArgs` reads them, then compile the instance. `Params` binds them
+to the module's parameters, and `IsModule` decides whether an instance
+already exists. An instance can't be compiled in the middle of another
+procedure's code, since the code buffer is one run of bytes, so
+`InstancesFor` reads ahead through a procedure, or the module's body,
+before its code begins, and makes the instances it names.
 
 **Recovery.** After an error the parser carries on, so that one run
 reports them all. `Guard` notes, at the start of a statement or

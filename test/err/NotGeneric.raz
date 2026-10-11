@@ -1,3 +1,9 @@
 module NotGeneric;
 import S := Str(I64);
+
+proc f(a, b: []U8): I64;
+begin
+    return S.cmp(a, b);
+end;
+
 end NotGeneric.

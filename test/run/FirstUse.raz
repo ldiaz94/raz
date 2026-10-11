@@ -1,0 +1,34 @@
+module FirstUse;
+import Out, Str, Heap, Table := Map([]U8, Colour, Str.hash, Str.eq),
+    Ints := List(I64), More := List(I64), Never := Loud(I64), Ones := Loud(U8);
+
+type Colour = (red, green, blue);
+
+var names: Table.Map;   (* Table is made here, after Colour *)
+
+proc show(k: []U8);
+var c: Colour; found: BOOL;
+begin
+    c, found := Table.get(ADR(names), k);
+    Out.str(k);
+    if not found then Out.str(" -"); elsif c = red then Out.str(" red"); else Out.str(" not red"); end;
+    Out.ln;
+end;
+
+(* Ones is first used in a procedure, and made before its code *)
+proc main*;
+var a: Ints.List; b: More.List;
+begin
+    a := b;   (* two imports, one instance *)
+    if a.head = nil then Out.str("an empty list\n"); end;
+    Out.str("in main, Ones has size "); Out.int(Ones.size); Out.ln;
+    show("sky");
+    show("rose");
+    show("grass");
+end;
+
+begin
+    Table.init(ADR(names), Heap.heap);
+    Table.put(ADR(names), "rose", red);
+    Table.put(ADR(names), "sky", blue);
+end FirstUse.

@@ -1,0 +1,8 @@
+module FirstUseLate;
+import L := List(Later);
+
+var l: L.List;   (* made here, before Later is declared *)
+
+type Later = I64;
+
+end FirstUseLate.

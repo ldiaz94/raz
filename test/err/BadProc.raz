@@ -1,3 +1,6 @@
 module BadProc;
 import Str, M := Map([]U8, I64, Str.cmp, Str.eq);
+
+var m: M.Map;
+
 end BadProc.

@@ -448,7 +448,7 @@ steps come first unless the owner says otherwise.
       report's examples, and `test/genbench.py`; each `and` or `or`
       between relations is checked by hand, since its meaning may
       change without an error. `make bench` must still pass.
-- [ ] 46. Generic instances on first use: the import keeps its
+- [x] 46. Generic instances on first use: the import keeps its
       arguments unresolved, and the instance is made, and its body
       queued to run before the importer's, the first time the import's
       name is used; an argument not declared by then is an error at

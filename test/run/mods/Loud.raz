@@ -1,0 +1,10 @@
+(* A generic module with a body, which runs once for each instance *)
+module Loud(T);
+import Out;
+
+var size*: I64;
+
+begin
+    size := SIZE(T);
+    Out.str("an instance of Loud, of size "); Out.int(size); Out.ln;
+end Loud.

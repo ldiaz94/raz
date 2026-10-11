@@ -1,3 +1,6 @@
 module StmtManyTypeArgs;
 import L := List(I64, I64);
+
+var l: L.List;
+
 end StmtManyTypeArgs.
