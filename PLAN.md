@@ -66,9 +66,8 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 
 ## Proposed, v0.6.0: raz to be rebuilt by anyone
 
-Under way: step 3, `doc/ir.md`, is in review; the report's draft
-2026-10.11 is agreed. The freeze doesn't hold for this
-work, by the owner's word.
+Under way: steps 1 to 3 are agreed; step 4 is next. The freeze
+doesn't hold for this work, by the owner's word.
 
 **For:** a language a person alone can implement again, from the
 report, on any machine, in weeks; programs that run on small machines
@@ -136,6 +135,11 @@ measure a port); an optimiser; the wishes below.
 - [ ] 9e. A profiler in `Rt`: a program run with `RAZ_PROFILE` set
       samples where it is, and at its end says which procedures and
       lines took the time.
+- [ ] 9f. `tools/Obj.raz`: an object file shown for a person to read,
+      its interface as raz, its code in the text form under each line
+      of source, its data as bytes and characters; written from
+      `doc/ir.md` alone, apart from the compiler, as the proof that the
+      form can be read by another program.
 - [ ] 10. `doc/compiler.md`, README, the budget, the report's version
       and the compiler's; tag `v0.6.0`.
 

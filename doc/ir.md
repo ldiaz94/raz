@@ -303,24 +303,72 @@ machine under it. It is not part of v0.6.0. It is here so that the
 form stays small enough to have one: every instruction added must be
 easy to interpret, or it doesn't belong.
 
-## Open questions
+## Reading an object file
 
-1. **Locals in registers.** The form reaches every variable through
-   `frame k`, so a back end can keep the stack in registers, but not a
-   variable. Keeping variables in registers too (the next step in
-   speed) needs to know which variables never have their address
-   taken. The parser could mark them in the procedure's header at its
-   end, since it has seen every `ADR` by then. Proposed: leave it out
-   of v0.6.0, and keep room in the header for it.
-2. **Text or binary.** The object file is binary, for speed. A text
-   form, as written above, is what `raz -S` would print, and what the
-   tests of the back end compare. Proposed: both, the text one only
-   for reading.
-3. **Statements deferred.** The parser compiles a deferred statement
-   once, as a piece of its procedure that ends in `back`, and calls it
-   with `gosub` at each way out of its list, newest first, as today's
-   compiler does with a call inside the procedure. The other way,
-   compiling it again at each way out, needs no `gosub` but makes the
-   code bigger and the parser read the statement more than once.
-   Proposed: keep `gosub`, which costs an interpreter a stack of places
-   to go back to.
+`tools/Obj.raz` shows what an object file holds, for a person to
+read: `Obj List.o` prints it, part by part, as the file has them. It
+reads the binary form by itself, from this document, not through the
+compiler; so it is also the proof that the form is described well
+enough to be read by a program written apart.
+
+It prints the declarations in raz, the code in the text form above,
+each statement under its line of source when the source is there,
+and data as bytes beside their characters. For example:
+
+```
+List.o                                    linux-x86_64, form 1
+interface  4F1A 09C2 77E0 3B15
+
+imports
+    Mem      interface 1D02 88A1 C3F0 0E47    current
+    Rt       interface 6B3E 0412 9D5C A781    changed: compile List again
+
+exports
+    type Node* = record next*: ^Node; val*: I64; end;     size 16, align 8
+    type List* = record head*: ^Node; len*: INT; ... end; size 24, align 8
+    proc push*(l: ^List; v: I64): BOOL;
+
+proc List.push     params: w l   results: w   frame 32 align 16
+                   no address taken: l, v, n
+
+  12 |     NEW(n, l^.a);
+         frame 16
+         ...
+  13 |     if n = nil then return false; end;
+         frame 16
+         load.w
+         const.w 0
+         eq.w
+         jz 1
+         const.w 0
+         ret
+         label 1
+         ...
+
+data List.Full     rodata, 16 bytes, align 1
+    0000  6E 6F 20 72 6F 6F 6D 20  66 6F 72 20 69 74 00 00   no room for it..
+
+instances    none
+
+places       14 lines, 3 checks
+```
+
+Each part can be asked for alone (`Obj -code List.o`, `Obj
+-interface List.o`), and `-S` gives the code alone, as `raz -S` does
+for a whole program. The text form it prints is the one the back
+end's tests compare, so that it is kept exact.
+
+## Settled
+
+These were open questions; the owner chose as proposed.
+
+1. **Locals in registers** are left out of v0.6.0. A procedure's
+   header has room for the variables whose address is never taken,
+   which the parser knows at the procedure's end, so that a later back
+   end can keep them in registers without the form changing; the dump
+   above shows it.
+2. **Binary and text.** The object file is binary. The text form
+   is for people and for tests: `raz -S`, and `tools/Obj.raz`, which
+   prints a whole object file.
+3. **Deferred statements** are compiled once, end in `back`, and are
+   run with `gosub` at each way out of their list.
