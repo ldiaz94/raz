@@ -62,7 +62,9 @@ ravite (vim's). What they needed of the system went into `Sys` (report
 environment. `tools/Scan.raz` is theirs to use, as a tool, not part of
 the library. Stage 4, diagnostics (steps 19-27), is done. Planned and
 not started: stage 6, the language of report 2026-10.3,
-and stage 7, `Sys` for rlX11 and rat (report 2026-10.4, for review).
+and stage 7, `Sys` for rlX11 and rat (report 2026-10.4, approved):
+steps 49a (`connect`, `readyOf`) and 49c (`send`, report 2026-10.7)
+are done, 49b (the pseudo-terminal and programs) waits.
 New work starts only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes. Left for later at the owner's word: a rewrite of
