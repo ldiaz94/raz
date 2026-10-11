@@ -1,0 +1,26 @@
+    for ixy := 1 to 3 do
+        Outz.str("hello, world");
+        Out.ln;
+    end;
+end;
+
+end Hello.
+
+
+
+-UU-:**-  Wrap.txt        Bot L9   (Fund
+
+(* A module to edit. *)
+module Hello;
+import Out;
+
+proc main*;
+var i: I64;
+begin
+    for ixy := 1 to 3 do
+        Outz.str("hello, world");
+        Out.ln;
+    end;
+end;
+
+end Hello.

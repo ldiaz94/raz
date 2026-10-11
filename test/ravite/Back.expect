@@ -1,0 +1,26 @@
+(* A module to edit. *)
+module Hello;w
+import Ouzt;
+
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+        yOut.str("hello, world");
+        xOut.ln;
+-UU-:**-  Back.txt        Top L2   (Fund
+
+(* A module to edit. *)
+module Hello;w
+import Ouzt;
+
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+        yOut.str("hello, world");
+        xOut.ln;
+    end;
+end;
+
+end Hello.

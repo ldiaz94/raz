@@ -1,0 +1,26 @@
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Out.ln;
+    endyz;
+end;
+
+end Hello.
+
+-UU-:**-  Fail.txt        Bot L11   (Fun
+
+(* A module to edit. *)
+module Hello;
+import Out;
+
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Out.ln;
+    endyz;
+end;
+
+end Hello.

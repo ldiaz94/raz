@@ -1,0 +1,26 @@
+(* A module to edit. *)
+module Hello;
+import Done;
+
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Done!.ln;
+-UU-:**-  Replace.txt     Top L2   (Fund
+Replaced 0 occurrences
+(* A module to edit. *)
+module Hello;
+import Done;
+
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Done!.ln;
+    end;.
+end;
+
+end Hello.

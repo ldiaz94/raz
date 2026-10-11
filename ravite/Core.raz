@@ -46,6 +46,7 @@ var
     miniOpen*: BOOL;
     after*: Buf.Buf;       (* shown after the minibuffer: ido's choices *)
     echo*: Buf.Buf;        (* a message in the echo area *)
+    lit*, litEnd*: I64;    (* what a search found, shown, if litEnd > lit *)
     tmp*: Buf.Buf;         (* for anyone, between two calls of nothing else *)
 
     arg*: I64;             (* the count the command was given, 1 if none *)

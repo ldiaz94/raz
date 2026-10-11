@@ -13,7 +13,7 @@
    Depends on: Core, Edit, Mini, Keys.
    Leaves out: keymaps of their own for other kinds of buffer. *)
 module Commands;
-import Sys, Rt, Buf, Fmt, Heap, Str, Text, Keys, Core, Edit, Mini, Dired;
+import Sys, Rt, Buf, Fmt, Heap, Str, Text, Keys, Core, Edit, Mini, Search, Dired;
 
 const
     MaxCommands = 160;
@@ -572,6 +572,9 @@ begin
     def("save-some-buffers", saveSomeBuffers);
     def("save-buffers-kill-terminal", saveBuffersKillTerminal);
     def("goto-line", gotoLine);
+    def("isearch-forward", Search.isearchForward);
+    def("isearch-backward", Search.isearchBackward);
+    def("query-replace", Search.queryReplace);
     def("switch-to-buffer", switchToBuffer);
     def("kill-buffer", killBuffer);
     def("list-buffers", Dired.listBuffers);
@@ -646,6 +649,9 @@ begin
     bindNamed("C-x C-c", "save-buffers-kill-terminal");
     bindNamed("M-g g", "goto-line");
     bindNamed("M-g M-g", "goto-line");
+    bindNamed("C-s", "isearch-forward");
+    bindNamed("C-r", "isearch-backward");
+    bindNamed("M-%", "query-replace");
     bindNamed("C-x b", "switch-to-buffer");
     bindNamed("C-x k", "kill-buffer");
     bindNamed("C-x C-b", "list-buffers");

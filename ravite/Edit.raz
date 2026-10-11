@@ -24,7 +24,7 @@ var
     key*: I64;              (* the key that ran the command, for typing *)
     recentred: I64;         (* where C-l put the line last: middle, top, bottom *)
 
-proc isWord(c: U8): BOOL;
+proc isWord*(c: U8): BOOL;
 begin
     return (c >= 'a') and (c <= 'z') or (c >= 'A') and (c <= 'Z')
         or (c >= '0') and (c <= '9') or (c >= 80H);

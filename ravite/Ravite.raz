@@ -135,7 +135,10 @@ begin
         cursor: x^.point, cursorColumn: Core.column(x^.point), tabWidth: Core.tabWidth,
         colour: Core.colour, modeLine: Buf.bytes(ADR(mode)), echoCursor: -1};
     Core.b := saved;
-    if x^.active and x^.hasMark then
+    if Core.litEnd > Core.lit then
+        f.selLo := Core.lit;
+        f.selHi := Core.litEnd;
+    elsif x^.active and x^.hasMark then
         f.selLo := x^.mark;
         f.selHi := x^.point;
         if x^.point < x^.mark then f.selLo := x^.point; f.selHi := x^.mark; end;
