@@ -1,0 +1,5 @@
+lib/Sys.raz:12:8: error: module C is in test/err/mods/clash/C.raz and lib/C.raz
+   12 | import C;
+      |        ^
+help: a program has one module of each name; a symbolic link to one of these files chooses it
+raz: 1 error

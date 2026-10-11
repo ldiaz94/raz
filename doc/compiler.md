@@ -13,7 +13,7 @@ disassembly.
 | `src/sym.pas` | 583 | 483 | Types, objects, scopes, layout |
 | `src/x64.pas` | 691 | 554 | Code buffer, chunks, fixups, places, instruction encoder |
 | `src/gen.pas` | 1,538 | 1,332 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,240 | 2,027 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/parse.pas` | 2,282 | 2,062 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 138 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 227 | 178 | The command line, the entry points |
@@ -328,9 +328,10 @@ calls `ConstDecl`, `TypeDecl`, `VarDecl`, `ProcDecl` or `ExternDecl`. `ProcDecl`
 
 Last, modules, at the end of the file. `CompileFile` reads one module.
 `ImportModule` finds a module's file, trying the target's names first,
-and compiles it if it isn't yet; `CheckSiblings` then reads the files
-for other targets beside it, declarations only, and `CompareIface`
-holds them to the same exports by their fingerprints. A generic module
+and compiles it if it isn't yet. `CheckOneModule` first makes sure no
+later directory has the module too, unless the file is a link to one
+of its files there; `CheckSiblings` then reads the files for other
+targets beside it, declarations only, and `CompareIface` holds them to the same exports by their fingerprints. A generic module
 is compiled once per distinct list of arguments: `ParseArgs` reads
 them at the import, `Params` binds them to the module's parameters, and
 `IsModule` decides whether an instance already exists.

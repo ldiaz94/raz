@@ -2171,20 +2171,61 @@ begin
     CompareIface(m, CompileFile(dir + '/' + others[i], n, args, true));
 end;
 
-function ModuleFile(n: longint; var dir, f: shortstring): boolean;
 const Suffixes: array[0..3] of string[16] = ('.' + Target, '.' + TargetOS, '.' + TargetArch, '');
+
+{ The directories searched for modules, in order, from -1 to numInc }
+function SearchDir(i: longint): shortstring;
+begin
+  if i = -1 then SearchDir := mainDir
+  else if i = numInc then SearchDir := libDir
+  else SearchDir := incDirs[i];
+end;
+
+function ModuleFile(n: longint; var dir, f: shortstring): boolean;
 var i, j: longint;
 begin
   for i := -1 to numInc do begin
-    if i = -1 then dir := mainDir
-    else if i = numInc then dir := libDir
-    else dir := incDirs[i];
+    dir := SearchDir(i);
     for j := 0 to 3 do begin
       f := NameOf(n) + Suffixes[j] + '.raz';
       if Exists(dir + '/' + f) then exit(true);
     end;
   end;
   ModuleFile := false;
+end;
+
+{ A program has one module of each name: module n, found as dir/f,
+  must have no files in a later directory, unless dir/f is a link to
+  one of them, which chooses it (report, section 3) }
+procedure CheckOneModule(n: longint; const dir, f: shortstring; const at: TPos);
+var i, j: longint; past, chosen: boolean; g, files, others: shortstring;
+  st, mine: Stat;
+begin
+  g := dir + '/' + f + #0;
+  FpStat(@g[1], mine);
+  others := '';
+  past := false;
+  for i := -1 to numInc do begin
+    if past then begin
+      files := '';
+      chosen := false;
+      for j := 0 to 3 do begin
+        g := SearchDir(i) + '/' + NameOf(n) + Suffixes[j] + '.raz';
+        if Exists(g) then begin
+          files := files + ' and ' + ShownPath(g);
+          g := g + #0;
+          FpStat(@g[1], st);
+          chosen := chosen or ((st.st_dev = mine.st_dev) and (st.st_ino = mine.st_ino));
+        end;
+      end;
+      if not chosen then others := others + files;
+    end;
+    past := past or (SearchDir(i) = dir);
+  end;
+  if others = '' then exit;
+  Error(at, 'module ' + NameOf(n) + ' is in ' + ShownPath(dir + '/' + f) + others);
+  Help('a program has one module of each name; a symbolic link to one of these files chooses it');
+  Fail;
 end;
 
 function ImportModule(name: longint; const args: TArgs): PModule;
@@ -2195,6 +2236,7 @@ begin
   for i := 0 to numPending - 1 do
     if IsModule(pending[i], name, args) then MarkAt(args.at, NameOf(name) + ' imports itself');
   if not ModuleFile(name, dir, f) then MarkAt(args.at, 'can''t find module ' + NameOf(name));
+  CheckOneModule(name, dir, f, args.at);
   m := CompileFile(dir + '/' + f, name, args, false);
   CheckSiblings(dir, f, name, m, args);
   ImportModule := m;

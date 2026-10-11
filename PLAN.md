@@ -499,12 +499,12 @@ Stage 8: one module to a name, report 2026-10.5
 A module found in two directories was taken from the first, silently,
 by every module that imports it: a program's `C.raz` stood in for the
 library's `C` inside `Rt`, and the compiler said only "Rt imports
-itself". Not started: each step waits for the owner's word.
+itself". Done.
 
 - [x] 50. The report, version 2026-10.5: one module to a name, the
       link that chooses a file, libraries' prefixes (section 3), for
       review before any code.
-- [ ] 51. `ModuleFile` goes on through the later directories once it
+- [x] 51. `ModuleFile` goes on through the later directories once it
       has found a module's file, and an error names the files of each
       other directory that has the module, unless the file found is a
       symbolic link to one of them (compared by device and inode). A

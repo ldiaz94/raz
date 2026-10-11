@@ -1,0 +1,5 @@
+module Clash;
+import Out;
+begin
+  Out.str("hi\n");
+end
