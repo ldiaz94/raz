@@ -8,15 +8,15 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 274 | 197 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 706 | 568 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 593 | 493 | Types, objects, scopes, layout |
-| `src/x64.pas` | 693 | 556 | Code buffer, chunks, fixups, places, instruction encoder |
-| `src/gen.pas` | 1,596 | 1,378 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,443 | 2,201 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/link.pas` | 180 | 138 | Tree shaking, layout, patching, the places |
-| `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 227 | 178 | The command line, the entry points |
+| `src/diag.pas` | 274 | 198 | Messages: positions, source excerpts, colour, counts |
+| `src/scan.pas` | 851 | 722 | Symbols, literals, comments, positions |
+| `src/sym.pas` | 593 | 494 | Types, objects, scopes, layout |
+| `src/x64.pas` | 693 | 557 | Code buffer, chunks, fixups, places, instruction encoder |
+| `src/gen.pas` | 1,596 | 1,379 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,443 | 2,202 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/link.pas` | 180 | 139 | Tree shaking, layout, patching, the places |
+| `src/elf.pas` | 425 | 352 | Static and dynamic ELF, symbol table, line numbers |
+| `src/raz.pas` | 227 | 179 | The command line, the entry points |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -132,7 +132,9 @@ decoded).
 Read `Next` first: it skips white space and comments (`Comment`, which
 counts nesting), then dispatches on the first character. `Number`
 handles decimal, `0FFH`-style hexadecimal and reals; `LitChar` handles
-one character of a literal, escapes included.
+one character of a literal, escapes included. `ReadReal` turns a real's
+digits into the nearest `F64` exactly, as a fraction of two big
+integers (`TBig`), since Free Pascal's `Val` can be one bit off.
 
 Identifiers are *interned*: `Intern` puts each distinct name once in a
 pool and hands back a small integer, so every later comparison of names

@@ -1,0 +1,7 @@
+module ScanRealBig;
+proc main*;
+var x: F64;
+begin
+    x := 1.8E308;
+end;
+end ScanRealBig.

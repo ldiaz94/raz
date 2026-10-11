@@ -1,0 +1,34 @@
+(* Real literals read to the nearest F64, ties to the even one: their
+   bits, for numbers a reader of decimals easily gets one off. *)
+module RealRead;
+import Fmt;
+
+proc bits(x: F64): U64;
+var p: ^U64;
+begin
+    p := ^U64(ADR(x));
+    return p^;
+end;
+
+proc show(x: F64);
+begin
+    Fmt.print("{}\n", [Fmt.hex(bits(x))]);
+end;
+
+proc main*;
+begin
+    show(5.319372648326541E255);
+    show(0.1);
+    show(2.2250738585072011E-308);    (* just below the least normal *)
+    show(4.9E-324);                   (* the least F64 *)
+    show(2.4703282292062328E-324);    (* just over half of it: up *)
+    show(2.4703282292062327E-324);    (* just under: 0 *)
+    show(1.0E-400);
+    show(1.7976931348623157E308);     (* the largest *)
+    show(9007199254740993.0);         (* 2^53 + 1, a tie: down to even *)
+    show(9007199254740995.0);         (* 2^53 + 3, a tie: up to even *)
+    show(1.00000000000000011102230246251565404236316680908203125);   (* 1 + 2^-53, a tie *)
+    show(1.00000000000000011102230246251565404236316680908203126);
+end;
+
+end RealRead.

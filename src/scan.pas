@@ -529,8 +529,154 @@ begin
   until depth = 0;
 end;
 
+{ Reading a decimal real exactly: the F64 nearest to digits times 10 to
+  an exponent, ties to the even one, which a library's Val doesn't
+  promise. The number is a fraction of two big integers, num / den,
+  scaled by 2^e until its whole part has 53 or 54 bits; that part and
+  the remainder give the bits and the rounding. }
+type
+  TBig = record
+    n: longint;                       { words in use; 0 is zero }
+    w: array[0..95] of longword;      { least significant first }
+  end;
+
+{ a := a * m + add }
+procedure BigMul(var a: TBig; m, add: longword);
+var i: longint; c: qword;
+begin
+  c := add;
+  for i := 0 to a.n - 1 do begin
+    c := qword(a.w[i]) * m + c;
+    a.w[i] := longword(c);
+    c := c shr 32;
+  end;
+  if c <> 0 then begin a.w[a.n] := longword(c); inc(a.n) end;
+end;
+
+procedure BigShl(var a: TBig; k: longint);
+var i, words, bits: longint;
+begin
+  if a.n = 0 then exit;
+  words := k div 32; bits := k mod 32;
+  a.w[a.n + words] := 0;
+  for i := a.n - 1 downto 0 do begin
+    if bits > 0 then a.w[i + words + 1] := a.w[i + words + 1] or (a.w[i] shr (32 - bits));
+    a.w[i + words] := a.w[i] shl bits;
+  end;
+  for i := 0 to words - 1 do a.w[i] := 0;
+  inc(a.n, words + 1);
+  while (a.n > 0) and (a.w[a.n - 1] = 0) do dec(a.n);
+end;
+
+procedure BigShr1(var a: TBig);
+var i: longint;
+begin
+  for i := 0 to a.n - 1 do begin
+    a.w[i] := a.w[i] shr 1;
+    if i + 1 < a.n then a.w[i] := a.w[i] or (a.w[i + 1] shl 31);
+  end;
+  while (a.n > 0) and (a.w[a.n - 1] = 0) do dec(a.n);
+end;
+
+function BigCmp(const a, b: TBig): longint;
+var i: longint;
+begin
+  if a.n <> b.n then exit(ord(a.n > b.n) * 2 - 1);
+  for i := a.n - 1 downto 0 do
+    if a.w[i] <> b.w[i] then exit(ord(a.w[i] > b.w[i]) * 2 - 1);
+  BigCmp := 0;
+end;
+
+{ a := a - b, b not above a }
+procedure BigSub(var a: TBig; const b: TBig);
+var i: longint; d: int64;
+begin
+  d := 0;
+  for i := 0 to a.n - 1 do begin
+    d := d + a.w[i];
+    if i < b.n then d := d - b.w[i];
+    a.w[i] := longword(d);
+    d := -ord(d < 0);   { a borrow }
+  end;
+  while (a.n > 0) and (a.w[a.n - 1] = 0) do dec(a.n);
+end;
+
+function BigBits(const a: TBig): longint;
+var t: longword;
+begin
+  if a.n = 0 then exit(0);
+  BigBits := (a.n - 1) * 32;
+  t := a.w[a.n - 1];
+  while t <> 0 do begin inc(BigBits); t := t shr 1 end;
+end;
+
+{ s is digits, a point, digits, and maybe E, a sign and digits. False if
+  the value is past the largest F64; one below the smallest is 0. }
+function ReadReal(const s: shortstring; out x: double): boolean;
+var
+  num, den, d: TBig; i, digits, e, ex: longint; neg, half, sticky: boolean;
+  q, b: qword;
+begin
+  num.n := 0; den.n := 1; den.w[0] := 1;
+  digits := 0; e := 0; i := 1;
+  while (i <= length(s)) and (s[i] <> 'E') do begin
+    if s[i] = '.' then e := 1
+    else begin
+      BigMul(num, 10, ord(s[i]) - ord('0'));
+      if num.n > 0 then inc(digits);       { counted from the first that isn't 0 }
+      if e > 0 then inc(e);
+    end;
+    inc(i);
+  end;
+  if e > 0 then e := 1 - e;                { minus the digits after the point }
+  ex := 0; neg := false;
+  if i <= length(s) then begin
+    inc(i);
+    neg := s[i] = '-';
+    if s[i] in ['+', '-'] then inc(i);
+    for i := i to length(s) do
+      if ex < 100000 then ex := ex * 10 + ord(s[i]) - ord('0');
+  end;
+  if neg then ex := -ex;
+  inc(e, ex);
+  x := 0.0;
+  if num.n = 0 then exit(true);
+  if digits + e > 310 then exit(false);   { 10^310 is past every F64 }
+  if digits + e < -330 then exit(true);   { and 10^-330 below half the least }
+  for i := 1 to e do BigMul(num, 10, 0);
+  for i := 1 to -e do BigMul(den, 10, 0);
+  { num / den 2^-e from 2^52 to 2^54, but not past the least exponent }
+  e := BigBits(num) - BigBits(den) - 53;
+  if e < -1074 then e := -1074;
+  if e < 0 then BigShl(num, -e) else BigShl(den, e);
+  { q, its whole part, by long division; num is left the remainder }
+  d := den; BigShl(d, 53);
+  q := 0;
+  for i := 53 downto 0 do begin
+    if BigCmp(num, d) >= 0 then begin BigSub(num, d); q := q or (qword(1) shl i) end;
+    BigShr1(d);
+  end;
+  if q >= qword(1) shl 53 then begin      { a bit too many: it rounds }
+    half := odd(q); sticky := num.n > 0;
+    q := q shr 1; inc(e);
+  end else begin                          { the remainder against half of den }
+    BigShl(num, 1);
+    i := BigCmp(num, den);
+    half := i >= 0; sticky := i > 0;
+  end;
+  if half and (sticky or odd(q)) then begin
+    inc(q);
+    if q = qword(1) shl 53 then begin q := q shr 1; inc(e) end;
+  end;
+  if e > 971 then exit(false);
+  if q >= qword(1) shl 52 then b := qword(e + 1075) shl 52 or (q and (qword(1) shl 52 - 1))
+  else b := q;                            { below the least normal, e is -1074 }
+  Move(b, x, 8);
+  ReadReal := true;
+end;
+
 procedure Number;
-var start, i, d: longint; allDec: boolean; v: qword; s: shortstring; code: word;
+var start, i, d: longint; allDec: boolean; v: qword; s: shortstring;
 begin
   start := cur.pos;
   allDec := true;
@@ -560,8 +706,7 @@ begin
     if cur.pos - start > 255 then LexError('a number has at most 255 characters');
     SetLength(s, cur.pos - start);
     Move(cur.buf[start], s[1], cur.pos - start);
-    Val(s, rval, code);
-    if code <> 0 then LexError(Text(start, cur.pos) + ' is out of the range of F64');
+    if not ReadReal(s, rval) then LexError(Text(start, cur.pos) + ' is out of the range of F64');
     tok := sReal;
   end else begin
     if not allDec then LexError('a hex number ends with H');
