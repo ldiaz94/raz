@@ -352,17 +352,18 @@ colours, marks, macros, text objects, and FreeBSD. A crash by a signal
 leaves the terminal raw (`reset` fixes it); a failed check restores
 it, since `Rt.fail` runs the procedures registered with `Rt.atExit`.
 
-The modules, with rough lines of code:
+The modules, with rough lines of code, and in brackets what they
+came to:
 
 | Module | Lines | What |
 |---|---|---|
-| `Tty.linux-x86_64.raz` | 90 | raw mode and back (ioctl `TCGETS` and `TCSETS`), the size (`TIOCGWINSZ`), waiting for input (`poll`), `rename` |
-| `Keys.raz` | 140 | the bytes of a key decoded: UTF-8, control keys, `ESC [` and `ESC O` sequences; and vim's notation for keys, `<esc>`, `<c-r>`, for the tests |
-| `Text.raz` | 280 | the text as a gap buffer of bytes: inserting, deleting, lines; undo and redo as a log of insertions and deletions, in groups |
-| `Colour.raz` | 130 | the colour of each byte on the screen, through `Scan`; the depth of comment where the screen starts |
-| `View.raz` | 200 | the screen drawn into one `Buf` and written at once, or as plain text for the tests |
-| `Ravite.raz` | 1,150 | the command line, the modes, motions, operators, commands, search, the register, repeating, writing and quitting |
-| total | 1,990 | |
+| `Tty.linux-x86_64.raz` | 90 (73) | raw mode and back (ioctl `TCGETS` and `TCSETS`), the size (`TIOCGWINSZ`), waiting for input (`poll`), `rename` |
+| `Keys.raz` | 140 (184) | the bytes of a key decoded: UTF-8, control keys, `ESC [` and `ESC O` sequences; and vim's notation for keys, `<esc>`, `<c-r>`, for the tests |
+| `Text.raz` | 280 (330) | the text as a gap buffer of bytes: inserting, deleting, lines; undo and redo as a log of insertions and deletions, in groups |
+| `Colour.raz` | 130 (109) | the colour of each byte on the screen, through `Scan`; the depth of comment where the screen starts |
+| `View.raz` | 200 (154) | the screen drawn into one `Buf` and written at once, or as plain text for the tests |
+| `Ravite.raz` | 1,150 (1,305) | the command line, the modes, motions, operators, commands, search, the register, repeating, writing and quitting |
+| total | 1,990 (2,155) | |
 
 Colouring scans only the screen. `Scan` alone reads about 600,000
 lines a second (measured on `make bench`'s program), so scanning a
@@ -398,5 +399,5 @@ start from.
 - [x] 31. `Colour`.
 - [x] 32. Visual mode, search, `%`, `f t`, and `file:line`; their
       session tests.
-- [ ] 33. `doc/ravite.md`, how to build and use it and its keys; a
+- [x] 33. `doc/ravite.md`, how to build and use it and its keys; a
       word in `README.md` and `CLAUDE.md`.

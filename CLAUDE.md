@@ -14,7 +14,8 @@ plan disagrees, the report wins and the plan is fixed.
     make tests     # the small Pascal tests of scan, x64, link and elf
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version
-    make fmt       # lib/, examples/ and tools/ are formatted
+    make fmt       # lib/, examples/, tools/ and ravite/ are formatted
+    make ravite    # the editor, build/ravite
     make install   # raz on PATH via ~/.local (PREFIX=...); make uninstall
 
 `make check` also runs `tools/Doc.raz` and `tools/Pretty.raz`, the
@@ -51,8 +52,12 @@ Examples in `examples/` work the same way.
 
 Steps 1-18 are done: the language, the tools (`tools/Doc.raz`, and
 the formatter, `tools/Pretty.raz`, over the shared `tools/Scan.raz`),
-`README.md` and the guide to the compiler, `doc/compiler.md`. Nothing
-further is planned; new work starts only on the owner's word. Keep
+`README.md` and the guide to the compiler, `doc/compiler.md`. Stage 5,
+ravite, the editor in `ravite/` (`doc/ravite.md`), is done on the
+`editor-plan` branch: about 2,000 lines of raz, its own budget, apart
+from the compiler's. Its session tests, `test/ravite/X.keys`, were
+each checked against vim with the same keys; a new one should be too.
+New work starts only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes. Left for later at the owner's word: a rewrite of
 var parameters.
