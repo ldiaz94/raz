@@ -1,0 +1,5 @@
+test/err/AmpBools.raz:5:10: error: "&" needs integers, found BOOL
+    5 |     b := b & true;
+      |          ^
+help: BOOLs take and
+raz: 1 error

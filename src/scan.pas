@@ -23,7 +23,7 @@ type
   TSym = (sNull, sIdent, sInt, sReal, sChar, sString,
     sPlus, sMinus, sTimes, sSlash, sEql, sNeq, sLss, sLeq, sGtr, sGeq,
     sBecomes, sColon, sSemicolon, sComma, sPeriod, sUpto, sEllipsis,
-    sLparen, sRparen, sLbrak, sRbrak, sLbrace, sRbrace, sArrow, sBar,
+    sLparen, sRparen, sLbrak, sRbrak, sLbrace, sRbrace, sArrow, sAmp, sTilde, sBar,
     { the reserved words, in the order of Words below }
     sAnd, sBegin, sBreak, sBy, sCode, sConst, sDefer, sDiv, sDo, sElse,
     sElsif, sEnd, sExtern, sFor, sForward, sIf, sImport, sIn, sLink,
@@ -107,7 +107,7 @@ const
   Ops: array[sPlus..sBar] of string[3] = (
     '+', '-', '*', '/', '=', '#', '<', '<=', '>', '>=',
     ':=', ':', ';', ',', '.', '..', '...',
-    '(', ')', '[', ']', '{', '}', '^', '|');
+    '(', ')', '[', ']', '{', '}', '^', '&', '~', '|');
 
 var
   cur: TScanState;   { buf .. path; tok, ival, rval and id live above }
@@ -638,7 +638,7 @@ begin
       else begin inc(cur.pos); tok := sEql end;
     '&':
       if cur.buf[cur.pos + 1] = '&' then Slip(2, sAnd, '"and" is written and, not &&')
-      else MarkBytes(cur.pos, cur.pos + 1, 'unexpected character "&"');
+      else begin inc(cur.pos); tok := sAmp end;
     '#': begin inc(cur.pos); tok := sNeq end;
     '<': begin
       inc(cur.pos);
@@ -675,6 +675,7 @@ begin
     '|':
       if cur.buf[cur.pos + 1] = '|' then Slip(2, sOr, '"or" is written or, not ||')
       else begin inc(cur.pos); tok := sBar end;
+    '~': begin inc(cur.pos); tok := sTilde end;
     '!':
       if cur.buf[cur.pos + 1] = '=' then Slip(2, sNeq, '"not equal" is written #, not !=')
       else Slip(1, sNot, '"not" is written not, not !');

@@ -1,0 +1,7 @@
+module OrInts;
+proc main*;
+var b: BOOL; x: I64;
+begin
+    x := x or 1;
+end;
+end OrInts.

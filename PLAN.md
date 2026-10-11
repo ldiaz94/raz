@@ -438,7 +438,7 @@ steps come first unless the owner says otherwise.
       name. Tests: equal, of different lengths, empty, a string
       literal against an array, and in `test/err` arrays of `F64`, of
       records, and of two element types.
-- [ ] 45. Operators: `&` and `~` in the scanner, `|` an operator where
+- [x] 45. Operators: `&` and `~` in the scanner, `|` an operator where
       an operand came before it; the parser's levels, `or` over `and`
       over the relations; `and`, `or`, `not` refused on integers and
       `&`, `|`, `xor`, `~` on `BOOL`s, each with a message that names

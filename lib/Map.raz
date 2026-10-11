@@ -26,9 +26,9 @@ end;
 proc slot(m: ^Map; k: K): I64;
 var i: I64;
 begin
-    i := I64(hash(k) and U64(m^.cap - 1));
+    i := I64(hash(k) & U64(m^.cap - 1));
     while m^.slots[i].used and not eq(m^.slots[i].key, k) do
-        i := (i + 1) and (m^.cap - 1);
+        i := (i + 1) & (m^.cap - 1);
     end;
     return i;
 end;

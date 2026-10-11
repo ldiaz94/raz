@@ -86,7 +86,7 @@ begin
     i := 16;
     repeat
         i := i - 1;
-        d := U8(n and 15);
+        d := U8(n & 15);
         if d < 10 then buf[i] := d + '0'; else buf[i] := d - 10 + 'A'; end;
         n := n shr 4;
         digits := digits - 1;

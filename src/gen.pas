@@ -88,6 +88,7 @@ procedure Slice(var x, lo, hi: TItem);
 
 procedure Neg(var x: TItem);
 procedure NotOp(var x: TItem);
+procedure Complement(var x: TItem);
 procedure Op1(op: TSym; var x: TItem; var L: longint);
 procedure Op2(op: TSym; var x, y: TItem; L: longint);
 procedure Convert(var x: TItem; t: PType);
@@ -714,13 +715,18 @@ end;
 
 procedure NotOp(var x: TItem);
 begin
-  if x.typ^.form = fBool then begin
-    if x.mode = mConst then x.val := 1 - x.val
-    else begin Value(x); AluI(aluXor, RAX, 1) end;
-  end else if IsInt(x.typ) then begin
-    if x.mode = mConst then x.val := Cut(not x.val, x.typ)
-    else begin Value(x); Unary(2, RAX); Norm(x.typ) end;
-  end else MarkAt(x.pos, '"not" needs a BOOL or an integer, found ' + What(x));
+  if IsInt(x.typ) then MarkHelp(x.pos, '"not" needs a BOOL, found ' + What(x), 'the bits of an integer flip with ~');
+  if x.typ^.form <> fBool then MarkAt(x.pos, '"not" needs a BOOL, found ' + What(x));
+  if x.mode = mConst then x.val := 1 - x.val
+  else begin Value(x); AluI(aluXor, RAX, 1) end;
+end;
+
+procedure Complement(var x: TItem);
+begin
+  if x.typ^.form = fBool then MarkHelp(x.pos, '"~" needs an integer, found ' + What(x), 'a BOOL is negated with not');
+  if not IsInt(x.typ) then MarkAt(x.pos, '"~" needs an integer, found ' + What(x));
+  if x.mode = mConst then x.val := Cut(not x.val, x.typ)
+  else begin Value(x); Unary(2, RAX); Norm(x.typ) end;
 end;
 
 { Arrays, slices and strings, which = and # compare element by element }
@@ -814,8 +820,8 @@ begin
       else if op = sDiv then FoldInt := a div b
       else FoldInt := a mod b;
     end;
-    sAnd: FoldInt := a and b;
-    sOr: FoldInt := a or b;
+    sAmp: FoldInt := a and b;
+    sBar: FoldInt := a or b;
     sXor: FoldInt := a xor b;
     sShl: FoldInt := a shl (b and 63);
     sShr: if u then FoldInt := int64(qword(a) shr (b and 63))
@@ -853,6 +859,22 @@ begin
   if r.typ^.form = fReal then RealTo(r, t);
 end;
 
+{ and, or and not are for BOOLs; &, |, xor and ~ for the bits of
+  integers: x is the wrong kind for op, and the message names the
+  operator it may have meant }
+procedure WrongLogic(op: TSym; var x: TItem);
+const Bits = 'the bits of integers take ';
+begin
+  case op of
+    sAnd: if IsInt(x.typ) then MarkHelp(x.pos, '"and" needs BOOLs, found ' + What(x), Bits + '&');
+    sOr: if IsInt(x.typ) then MarkHelp(x.pos, '"or" needs BOOLs, found ' + What(x), Bits + '|');
+    sAmp: MarkHelp(x.pos, '"&" needs integers, found ' + What(x), 'BOOLs take and');
+    sBar: MarkHelp(x.pos, '"|" needs integers, found ' + What(x), 'BOOLs take or');
+    sXor: MarkHelp(x.pos, '"xor" needs integers, found ' + What(x), 'BOOLs that differ are #');
+  end;
+  MarkAt(x.pos, SymText(op) + ' needs BOOLs, found ' + What(x));
+end;
+
 procedure Op2(op: TSym; var x, y: TItem; L: longint);
 const
   Rel = [sEql, sNeq, sLss, sLeq, sGtr, sGeq];
@@ -864,8 +886,9 @@ begin
   xt := x.typ; yt := y.typ;
   if y.mode in [mType, mBuiltin, mNone, mCase] then NotValue(y);
 
-  if (op in [sAnd, sOr]) and (xt^.form = fBool) then begin
-    if yt^.form <> fBool then MarkAt(y.pos, SymText(op) + ' needs BOOLs, found ' + What(y));
+  if op in [sAnd, sOr] then begin
+    if xt^.form <> fBool then WrongLogic(op, x);
+    if yt^.form <> fBool then WrongLogic(op, y);
     if (x.mode = mConst) and (y.mode = mConst) then begin
       FixLink(L);
       if op = sAnd then x.val := x.val and y.val else x.val := x.val or y.val;
@@ -876,6 +899,9 @@ begin
     x.mode := mReg; x.typ := tBool;
     exit;
   end;
+
+  if (op in [sAmp, sBar, sXor]) and (xt^.form = fBool) then WrongLogic(op, x);
+  if (op in [sAmp, sBar, sXor]) and (yt^.form = fBool) then WrongLogic(op, y);
 
   { the lengths, then the bytes, LEN * SIZE(T) of them: the elements
     are of types whose bytes say all there is to their values }
@@ -932,7 +958,7 @@ begin
     if (x.mode = mConst) and (x.typ <> t) then RealTo(x, t);
     if (y.mode = mConst) and (y.typ <> t) then RealTo(y, t);
   end else if (xt^.form = fBool) and (yt^.form = fBool) then begin
-    if not (op in [sXor, sEql, sNeq]) then MarkAt(Join(x.pos, y.pos), SymText(op) + ' doesn''t apply to ' + TypeName(xt));
+    if not (op in [sEql, sNeq]) then MarkAt(Join(x.pos, y.pos), SymText(op) + ' doesn''t apply to ' + TypeName(xt));
     t := tBool;
   end else if (xt^.form = fPtr) and IsInt(yt) and (op in [sPlus, sMinus]) then begin
     t := xt; scale := xt^.base^.size; isPtr := true;
@@ -1059,8 +1085,8 @@ begin
         else begin Cqo; Unary(7, RCX) end;
         if op = sMod then MovRR(RAX, RDX);
       end;
-      sAnd: Alu(aluAnd, RAX, RCX);
-      sOr: Alu(aluOr, RAX, RCX);
+      sAmp: Alu(aluAnd, RAX, RCX);
+      sBar: Alu(aluOr, RAX, RCX);
       sXor: Alu(aluXor, RAX, RCX);
       sShl: Shift(shShl, RAX);
       sShr: if unsign then Shift(shShr, RAX) else Shift(shSar, RAX);

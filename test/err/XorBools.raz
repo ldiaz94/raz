@@ -1,0 +1,7 @@
+module XorBools;
+proc main*;
+var b: BOOL; x: I64;
+begin
+    b := b xor true;
+end;
+end XorBools.

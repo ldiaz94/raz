@@ -46,6 +46,8 @@ begin
       until s<0;
   if (s # -1) or (max2(3,4) # 4)
          or (area({dot}) # 0) then Rt.stop("Messy"); end;
+  s:=s&~3|s  xor 1 & max
+      | 4;
   p := {a: -s, b:2};
    Out.int(p.a);    (* the first *)
      Out.ln;

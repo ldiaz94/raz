@@ -46,8 +46,8 @@ begin
     | rect(w, h): t := t + w * h;
     | dot: t := t - 1;
     end;
-    g[a and 15] := r.x + r.y;
-    return p{i - 1}(t and 1023, b, s[0..LEN(s) div 2]) + r.x;
+    g[a & 15] := r.x + r.y;
+    return p{i - 1}(t & 1023, b, s[0..LEN(s) div 2]) + r.x;
 end;
 """)
 print(f"""proc main*;

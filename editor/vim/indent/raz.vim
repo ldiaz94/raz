@@ -46,7 +46,7 @@ function! s:Continues(lnum)
   if len(substitute(code, '[^([{]', '', 'g')) > len(substitute(code, '[^)\]}]', '', 'g'))
     return 1
   endif
-  return code =~# '\%(,\|:=\|[-+*/=#<>]\|\<and\|\<or\)$'
+  return code =~# '\%(,\|:=\|[-+*/&|=#<>]\|\<and\|\<or\)$'
 endfunction
 
 let s:leading = '^\s*\%(or\|and\)\>'

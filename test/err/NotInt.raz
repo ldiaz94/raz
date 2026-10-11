@@ -1,0 +1,7 @@
+module NotInt;
+proc main*;
+var b: BOOL; x: I64;
+begin
+    x := not x;
+end;
+end NotInt.

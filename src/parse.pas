@@ -207,22 +207,25 @@ end;
 
 { Reads to the end of a statement or declaration, from its first
   symbol: up to the ";" that ends it, not read, or to the "end",
-  "else", "elsif", "until" or "|" of the statement around it. False if
-  it stopped at a symbol that starts a line, or the end of the file. }
+  "else", "elsif", "until" or "|" of the statement around it (an arm's
+  "|" comes after a ";", the operator's after an operand). False if it
+  stopped at a symbol that starts a line, or the end of the file. }
 function SkipConstruct: boolean;
-var d, p: longint;
+var d, p: longint; prev: TSym;
 begin
-  d := 0; p := 0;
+  d := 0; p := 0; prev := sSemicolon;
   repeat
     case tok of
       sIf, sWhile, sFor, sMatch, sRepeat, sRecord, sVariant: inc(d);
       sEnd, sUntil: if d = 0 then exit(true) else dec(d);
-      sElse, sElsif, sBar: if (d = 0) and (p = 0) then exit(true);
+      sElse, sElsif: if (d = 0) and (p = 0) then exit(true);
+      sBar: if (d = 0) and (p = 0) and (prev = sSemicolon) then exit(true);
       sLparen, sLbrak, sLbrace: inc(p);
       sRparen, sRbrak, sRbrace: if p > 0 then dec(p);
       sSemicolon: if (d = 0) and (p = 0) then exit(true);
       sEof: exit(false);
     end;
+    prev := tok;
     Next;
   until AtLineStart;
   SkipConstruct := false;
@@ -1040,6 +1043,7 @@ begin
     end;
     sLparen: begin Next; Expression(x, want); Expect(sRparen) end;
     sNot: begin Next; Factor(x, nil); NotOp(x) end;
+    sTilde: begin Next; Factor(x, nil); Complement(x) end;
     sLbrak: ArrayLiteral(x, want);
     sLbrace: if (want <> nil) and (want^.form = fRecord) then RecordLiteral(x, want)
              else SetLiteral(x, want);
@@ -1063,7 +1067,7 @@ var op: TSym; y: TItem; L: longint; start: TPos;
 begin
   start := TokPos;
   Factor(x, want);
-  while tok in [sTimes, sSlash, sDiv, sMod, sAnd, sShl, sShr] do begin
+  while tok in [sTimes, sSlash, sDiv, sMod, sAmp, sShl, sShr] do begin
     op := tok;
     Next;
     Op1(op, x, L);
@@ -1083,7 +1087,7 @@ begin
     x.pos := SpanFrom(start);
     Neg(x);
   end else Term(x, want);
-  while tok in [sPlus, sMinus, sOr, sXor] do begin
+  while tok in [sPlus, sMinus, sBar, sXor] do begin
     op := tok;
     Next;
     Op1(op, x, L);
@@ -1093,7 +1097,7 @@ begin
   end;
 end;
 
-procedure Expression(var x: TItem; want: PType);
+procedure Relation(var x: TItem; want: PType);
 var op: TSym; y: TItem; L: longint;
 begin
   SimpleExpr(x, want);
@@ -1104,6 +1108,35 @@ begin
     if op = sIn then SimpleExpr(y, nil) else SimpleExpr(y, x.typ);
     Op2(op, x, y, L);
     x.pos := Join(x.pos, y.pos);
+  end;
+end;
+
+{ and binds tighter than or, and both below the relations }
+procedure Conjunct(var x: TItem; want: PType);
+var y: TItem; L: longint; start: TPos;
+begin
+  start := TokPos;
+  Relation(x, want);
+  while tok = sAnd do begin
+    Next;
+    Op1(sAnd, x, L);
+    Relation(y, nil);
+    Op2(sAnd, x, y, L);
+    x.pos := SpanFrom(start);
+  end;
+end;
+
+procedure Expression(var x: TItem; want: PType);
+var y: TItem; L: longint; start: TPos;
+begin
+  start := TokPos;
+  Conjunct(x, want);
+  while tok = sOr do begin
+    Next;
+    Op1(sOr, x, L);
+    Conjunct(y, nil);
+    Op2(sOr, x, y, L);
+    x.pos := SpanFrom(start);
   end;
 end;
 

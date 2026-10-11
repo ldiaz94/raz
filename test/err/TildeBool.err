@@ -1,0 +1,5 @@
+test/err/TildeBool.raz:5:11: error: "~" needs an integer, found BOOL
+    5 |     b := ~b;
+      |           ^
+help: a BOOL is negated with not
+raz: 1 error

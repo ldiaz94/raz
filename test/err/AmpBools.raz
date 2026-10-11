@@ -1,0 +1,7 @@
+module AmpBools;
+proc main*;
+var b: BOOL; x: I64;
+begin
+    b := b & true;
+end;
+end AmpBools.

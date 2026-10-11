@@ -44,7 +44,7 @@ proc alloc(_a: ^Mem.Allocator; size, align: I64): ^U8;
 var c, n: I64; b: ^Block; p: ^U8;
 begin
     if (size < 0) or (size > Largest) or (align < 1) or (align > Mem.Page)
-        or (align and (align - 1) # 0) then
+        or (align & (align - 1) # 0) then
         return nil;
     end;
     n := size + Header;

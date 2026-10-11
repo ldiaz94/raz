@@ -47,10 +47,10 @@ begin
     show("shl", 1 shl 10);
     show("shr", -16 shr 2);
     show("ushr", I64(U64(-16) shr 60));
-    show("and", 12 and 10);
-    show("or", 12 or 3);
+    show("and", 12 & 10);
+    show("or", 12 | 3);
     show("xor", 12 xor 10);
-    show("not", not 0);
+    show("not", ~0);
     r := F64(a) / 2.0;
     show("real", I64(r * 10.0));
     r := -2.75;

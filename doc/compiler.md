@@ -9,11 +9,11 @@ disassembly.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/diag.pas` | 274 | 197 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 705 | 567 | Symbols, literals, comments, positions |
+| `src/scan.pas` | 706 | 568 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 593 | 493 | Types, objects, scopes, layout |
 | `src/x64.pas` | 693 | 556 | Code buffer, chunks, fixups, places, instruction encoder |
-| `src/gen.pas` | 1,570 | 1,358 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,290 | 2,069 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/gen.pas` | 1,596 | 1,378 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,323 | 2,098 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 138 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 227 | 178 | The command line, the entry points |
@@ -310,7 +310,7 @@ A recursive descent parser, one routine for each rule of the grammar in
 the report, calling `gen.pas` as it goes.
 
 Start with expressions, bottom up: `Factor`, `Term`, `SimpleExpr`,
-`Expression`. Then `Designator`, which reads a name and what follows
+`Relation`, `Conjunct` (the `and`s), `Expression` (the `or`s). Then `Designator`, which reads a name and what follows
 it: `.field`, `^`, `[i]`, `[lo..hi]`, a call, a conversion. Each step
 calls the matching routine in `gen.pas` on the item it has. The
 `want` parameter carries the type an expression must have, where it is

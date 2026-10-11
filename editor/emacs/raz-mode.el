@@ -44,7 +44,7 @@
     (modify-syntax-entry ?\' "\"" st)
     (modify-syntax-entry ?\\ "\\" st)
     (modify-syntax-entry ?_ "_" st)
-    (dolist (c '(?+ ?- ?/ ?= ?# ?< ?> ?: ?\; ?, ?. ?^ ?|))
+    (dolist (c '(?+ ?- ?/ ?= ?# ?< ?> ?: ?\; ?, ?. ?^ ?| ?& ?~))
       (modify-syntax-entry c "." st))
     st)
   "Syntax table for `raz-mode'.")
@@ -115,7 +115,7 @@
   "Whether the expression on line N goes on to the next line."
   (let ((code (raz--code n)))
     (or (> (raz--count "[([{]" code) (raz--count "[])}]" code))
-        (string-match-p "\\(?:,\\|:=\\|[-+*/=#<>]\\|\\_<and\\|\\_<or\\)\\'" code))))
+        (string-match-p "\\(?:,\\|:=\\|[-+*/&|=#<>]\\|\\_<and\\|\\_<or\\)\\'" code))))
 
 (defun raz--start (n)
   "The first line of the statement that ends on line N."

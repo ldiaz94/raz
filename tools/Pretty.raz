@@ -17,7 +17,7 @@
    first line moved; so does the text of a comment.
 
    Within a line, a binary operator has one space on each side, a unary
-   minus none after it, and , and ; none before them and one after. A
+   minus or ~ none after it, and , and ; none before them and one after. A
    comment after code keeps its column. Other spaces stay as written,
    so that lined-up match arms stay lined up. No line ends in spaces. *)
 module Pretty;
@@ -28,7 +28,7 @@ const
     openers = "if while for match record variant begin repeat";
     declarations = "module import link extern proc const type var begin code";
     binaryWords = "div mod and or xor shl shr in";
-    binarySymbols = "+ - * / = # < <= > >= :=";
+    binarySymbols = "+ - * / & | = # < <= > >= :=";
 
 var
     sc: Scan.Scanner;   (* the source, at the symbol being written *)
@@ -118,7 +118,10 @@ begin
     if (sc.kind # Scan.symbol) or not Scan.among(Scan.text(ADR(sc)), binarySymbols) then
         return false;
     end;
-    if Scan.is(ADR(sc), "-") or Scan.is(ADR(sc), "+") then return endsOperand(ADR(prev)); end;
+    (* a | after an operand is or; one after anything else starts an arm *)
+    if Scan.is(ADR(sc), "-") or Scan.is(ADR(sc), "+") or Scan.is(ADR(sc), "|") then
+        return endsOperand(ADR(prev));
+    end;
     if Scan.is(ADR(sc), "*") and (prev.kind = Scan.word) then
         n := following();
         if Scan.among(Scan.text(ADR(n)), "; , : = )") then return false; end;
@@ -135,6 +138,7 @@ begin
     if (brackets > 0) or prevBinary or Scan.is(ADR(prev), ",") then return true; end;
     t := Scan.text(ADR(sc));
     if sc.kind = Scan.word then return Scan.among(t, binaryWords) or Scan.among(t, "then do of"); end;
+    if Scan.is(ADR(sc), "|") then return endsOperand(ADR(prev)); end;
     return (sc.kind = Scan.symbol) and Scan.among(t, binarySymbols);
 end;
 
@@ -258,7 +262,8 @@ begin
         elsif Scan.among(t, ") ] }") and (brackets > 0) then DEC(brackets);
         end;
     end;
-    prevUnary := (Scan.is(ADR(sc), "-") or Scan.is(ADR(sc), "+")) and not binaryNow;
+    prevUnary := (Scan.is(ADR(sc), "-") or Scan.is(ADR(sc), "+")) and not binaryNow
+        or Scan.is(ADR(sc), "~");
     prevBinary := binaryNow;
     prev2 := prev;
     prev := sc;

@@ -1,0 +1,7 @@
+module TildeBool;
+proc main*;
+var b: BOOL; x: I64;
+begin
+    b := ~b;
+end;
+end TildeBool.
