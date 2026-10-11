@@ -36,7 +36,7 @@ proc restore*;
 begin
     if not isRaw then return; end;
     isRaw := false;
-    Sys.write(Sys.stdout, "\x1b[?25h\x1b[?1049l");
+    Sys.write(Sys.stdout, "\x1b[0 q\x1b[?25h\x1b[?1049l");   (* the cursor as it was *)
     SYSCALL(16, Sys.stdin, TCSETS, ADR(saved));
 end;
 

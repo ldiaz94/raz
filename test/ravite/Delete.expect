@@ -1,0 +1,23 @@
+module to edit. *)
+le Hello;
+import Out;
+
+proc main*;
+var i: I64;
+begin
+        Out.str("hello, world";
+        .ln;
+    end;
+end;
+                    Delete.txt [+]  2,1
+module to edit. *)
+le Hello;
+import Out;
+
+proc main*;
+var i: I64;
+begin
+        Out.str("hello, world";
+        .ln;
+    end;
+end;

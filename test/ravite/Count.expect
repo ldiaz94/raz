@@ -1,0 +1,27 @@
+(* A module to edit. *)
+module Hello;
+import Out;
+
+in
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Out.ln;
+    end;
+end;
+
+                    Count.txt [+]  10,1
+(* A module to edit. *)
+module Hello;
+import Out;
+
+in
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Out.ln;
+    end;
+end;
+
+end Hello.
+end;
+
+end Hello.

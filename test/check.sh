@@ -177,6 +177,21 @@ for f in ravite/*.raz; do
     else pass=$((pass + 1)); fi
 done
 
+# ravite's sessions: test/ravite/X.keys typed on a copy of X.txt, if
+# there is one, must leave the screen and the text as X.expect says
+if $raz -I tools -o $out/ravite ravite/Ravite.raz 2>$out/ravite.cerr; then
+    rm -rf $out/rv; mkdir -p $out/rv
+    for f in test/ravite/*.keys; do
+        name=$(basename $f .keys)
+        [ -f test/ravite/$name.txt ] && cp test/ravite/$name.txt $out/rv/
+        (cd $out/rv && ../ravite -script 40 12 $name.txt) < $f > $out/rv/$name.out 2>&1
+        if cmp -s $out/rv/$name.out test/ravite/$name.expect; then pass=$((pass + 1))
+        else echo "FAIL ravite $f"; diff $out/rv/$name.out test/ravite/$name.expect | head -5; fail=$((fail + 1)); fi
+    done
+else
+    echo "FAIL ravite/Ravite.raz: $(cat $out/ravite.cerr)"; fail=$((fail + 1))
+fi
+
 # Thread's test again, with too little memory for all its threads:
 # spawn must fail, with Thread.Failed
 if (ulimit -v 60000; $out/lib_Thread.linux-x86_64 fail) > /dev/null 2>&1; then pass=$((pass + 1))

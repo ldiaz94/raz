@@ -1,0 +1,26 @@
+A module to edit. *)
+Hello;
+ort Out;
+
+proc main*;
+xvar i: I64;
+xbegin
+    for i := 1 to 3 do
+        Out.str("hello, world");!
+        Out.ln;!
+    end;
+                    Repeat.txt [+]  2,1
+A module to edit. *)
+Hello;
+ort Out;
+
+proc main*;
+xvar i: I64;
+xbegin
+    for i := 1 to 3 do
+        Out.str("hello, world");!
+        Out.ln;!
+    end;
+end;
+
+end Hello.

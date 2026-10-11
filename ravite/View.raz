@@ -1,0 +1,188 @@
+(* View: the screen, drawn from the text into one buffer, to be
+   written at once: a row for each line from the top, ~ past the end
+   of the text, and a last line with the status on the left and the
+   ruler on the right. Or the same as plain text, for the tests.
+
+   A line is shown from column left on; a tab reaches to the next
+   multiple of 8, a control character shows as ^ and a letter, and
+   every other code point takes one column.
+
+   Depends on: Text, Buf, Fmt.
+   Leaves out: wide characters, and drawing only what changed: the
+   whole screen is written each time, which a terminal takes in well
+   under a millisecond. *)
+module View;
+import Buf, Fmt, Text;
+
+type
+    Frame* = record
+        t*: ^Text.Text;
+        cols*, rows*: I64;     (* the screen's size *)
+        top*: I64;             (* where the screen starts: a line's start *)
+        left*: I64;            (* the first column shown *)
+        cursor*: I64;
+        selLo*, selHi*: I64;   (* what is selected, from selLo up to selHi *)
+        colours*: []U8;        (* a colour for each byte from top on, or none *)
+        status*: []U8;         (* the left of the last line *)
+        ruler*: []U8;          (* its right *)
+        prompt*: BOOL;         (* the cursor is on the last line, after status *)
+        bar*: BOOL;            (* the cursor is a bar, for insert mode *)
+    end;
+
+(* The escape sequence of each colour: plain, reserved words, basic
+   types, built-ins, constants, numbers, strings, comments, and the
+   tildes past the end. *)
+proc sgr(c: I64): []U8;
+begin
+    if c = 1 then return "\x1b[0;33m";
+    elsif c = 2 then return "\x1b[0;32m";
+    elsif c = 3 then return "\x1b[0;36m";
+    elsif c = 4 then return "\x1b[0;35m";
+    elsif c = 5 then return "\x1b[0;35m";
+    elsif c = 6 then return "\x1b[0;31m";
+    elsif c = 7 then return "\x1b[0;34m";
+    elsif c = 8 then return "\x1b[0;94m";
+    end;
+    return "\x1b[0m";
+end;
+
+(* How many bytes the character starting with byte c takes. *)
+proc bytes*(c: U8): I64;
+begin
+    if c >= 0F0H then return 4;
+    elsif c >= 0E0H then return 3;
+    elsif c >= 0C0H then return 2;
+    end;
+    return 1;
+end;
+
+(* How many columns the character at pos takes, at column col. *)
+proc width(t: ^Text.Text; pos, col: I64): I64;
+var c: U8;
+begin
+    c := Text.at(t, pos);
+    if c = '\t' then return 8 - col mod 8; end;
+    if (c < 32) or (c = 127) then return 2; end;
+    return 1;
+end;
+
+(* The column pos is at in its line. *)
+proc column*(t: ^Text.Text; pos: I64): I64;
+var p, col: I64;
+begin
+    p := Text.lineStart(t, pos);
+    col := 0;
+    while p < pos do
+        INC(col, width(t, p, col));
+        INC(p, bytes(Text.at(t, p)));
+    end;
+    return col;
+end;
+
+(* The character of the line starting at start that covers column col,
+   or the line's end if it is shorter. *)
+proc atColumn*(t: ^Text.Text; start, col: I64): I64;
+var p, e, c, w: I64;
+begin
+    p := start;
+    e := Text.lineEnd(t, start);
+    c := 0;
+    while p < e do
+        w := width(t, p, c);
+        if c + w > col then return p; end;
+        INC(c, w);
+        INC(p, bytes(Text.at(t, p)));
+    end;
+    return e;
+end;
+
+(* One line, from pos, as a row of the screen. *)
+proc row(f: ^Frame; out: ^Buf.Buf; pos: I64; plain: BOOL);
+var e, col, w, n, i, attr, a: I64; c: U8; caret: [2]U8;
+begin
+    e := Text.lineEnd(f^.t, pos);
+    col := 0;
+    attr := 0;
+    while (pos < e) and (col < f^.left + f^.cols) do
+        c := Text.at(f^.t, pos);
+        w := width(f^.t, pos, col);
+        n := bytes(c);
+        if pos + n > e then n := e - pos; end;
+        if not plain then
+            a := 0;
+            if pos - f^.top < LEN(f^.colours) then a := I64(f^.colours[pos - f^.top]); end;
+            if (pos >= f^.selLo) and (pos < f^.selHi) then a := a + 16; end;
+            if (a # attr) and (col >= f^.left) then
+                Buf.str(out, sgr(a and 15));
+                if a >= 16 then Buf.str(out, "\x1b[7m"); end;
+                attr := a;
+            end;
+        end;
+        if (col >= f^.left) and (col + w <= f^.left + f^.cols) then
+            if c = '\t' then
+                for i := 1 to w do Buf.add(out, ' '); end;
+            elsif w = 2 then
+                caret[0] := '^';
+                caret[1] := c xor 40H;
+                Buf.str(out, caret);
+            else
+                Buf.str(out, Text.slice(f^.t, pos, pos + n));
+            end;
+        end;
+        INC(col, w);
+        INC(pos, n);
+    end;
+    if attr # 0 then Buf.str(out, "\x1b[0m"); end;
+end;
+
+(* The frame drawn into out: with escape sequences, ready for the
+   terminal; or plain, as lines of text with nothing past their ends. *)
+proc draw*(f: ^Frame; out: ^Buf.Buf; plain: BOOL);
+var r, pos, n, gap, cr, cc, i: I64; status: []U8;
+begin
+    if not plain then Buf.str(out, "\x1b[?25l\x1b[H"); end;
+    pos := f^.top;
+    n := Text.len(f^.t);
+    cr := 0;
+    for r := 0 to f^.rows - 2 do
+        if pos > n then
+            if not plain then Buf.str(out, sgr(8)); end;
+            Buf.add(out, '~');
+            if not plain then Buf.str(out, "\x1b[0m"); end;
+        else
+            if (f^.cursor >= pos) and (f^.cursor <= Text.lineEnd(f^.t, pos)) then cr := r; end;
+            row(f, out, pos, plain);
+            pos := Text.lineEnd(f^.t, pos) + 1;
+        end;
+        if plain then Buf.add(out, '\n'); else Buf.str(out, "\x1b[K\r\n"); end;
+    end;
+    status := f^.status;
+    (* too long, the command line keeps its end, where the typing is;
+       a message keeps its start *)
+    if LEN(status) > f^.cols - 1 then
+        if f^.prompt then
+            status := status[LEN(status) - (f^.cols - 1)..LEN(status)];
+        else
+            status := status[0..f^.cols - 1];
+        end;
+    end;
+    Buf.str(out, status);
+    gap := f^.cols - LEN(status) - LEN(f^.ruler) - 1;
+    if gap >= 1 then
+        for i := 1 to gap do Buf.add(out, ' '); end;
+        Buf.str(out, f^.ruler);
+    end;
+    if plain then Buf.add(out, '\n'); return; end;
+    Buf.str(out, "\x1b[K");
+    if f^.prompt then
+        cr := f^.rows - 1;
+        cc := LEN(status);
+    else
+        cc := column(f^.t, f^.cursor) - f^.left;
+    end;
+    Fmt.write(out, "\x1b[{};{}H", [Fmt.int(cr + 1), Fmt.int(cc + 1)]);
+    if f^.bar then Buf.str(out, "\x1b[6 q"); else Buf.str(out, "\x1b[2 q"); end;
+    Buf.str(out, "\x1b[?25h");
+end;
+
+end View.

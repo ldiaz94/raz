@@ -391,7 +391,7 @@ start from.
 - [x] 28. `Tty` and `Keys`, with `Keys`'s test; raw mode, the size
       and the keys tried through a pseudo-terminal.
 - [x] 29. `Text`: the gap buffer and undo, with its test.
-- [ ] 30. `View` and `Ravite`: opening, the modes, motions, operators,
+- [x] 30. `View` and `Ravite`: opening, the modes, motions, operators,
       the register, undo, repeating, the command line, writing and
       quitting; `-script` and `test/ravite` in `make check`; `make
       ravite`, `make loc` and `make fmt` over `ravite/`.

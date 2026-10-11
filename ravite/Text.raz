@@ -290,15 +290,28 @@ end;
 (* The start of line n, counted from 0; of the last line if there are
    fewer. *)
 proc lineAt*(t: ^Text; n: I64): I64;
-var pos, end_: I64;
+var i, g, end_: I64; d: ^U8;
 begin
-    pos := 0;
+    if n <= 0 then return 0; end;
+    d := t^.data;
+    g := t^.gapEnd - t^.gap;
     end_ := len(t);
-    while (n > 0) and (pos < end_) do
-        if at(t, pos) = '\n' then DEC(n); end;
-        INC(pos);
+    i := 0;
+    while (i < t^.gap) and (i < end_) do
+        if d[i] = '\n' then
+            DEC(n);
+            if n = 0 then return i + 1; end;
+        end;
+        INC(i);
     end;
-    return lineStart(t, pos);
+    while i < end_ do
+        if d[i + g] = '\n' then
+            DEC(n);
+            if n = 0 then return i + 1; end;
+        end;
+        INC(i);
+    end;
+    return lineStart(t, end_);
 end;
 
 var seed: U64;

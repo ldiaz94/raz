@@ -1,0 +1,26 @@
+(* A module to edit. *)
+module Hello;
+mport Out;
+
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Out.ln;
+    end;
+                      Undo.txt [+]  3,1
+(* A module to edit. *)
+module Hello;
+mport Out;
+
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Out.ln;
+    end;
+end;
+
+end Hello.

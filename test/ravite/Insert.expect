@@ -1,0 +1,20 @@
+module A;!
+
+proc f;
+begin
+    x := 1;
+    new;
+    z := 2;
+    end;
+~
+~
+~
+                   Insert.txt [+]  1,10
+module A;!
+
+proc f;
+begin
+    x := 1;
+    new;
+    z := 2;
+    end;
