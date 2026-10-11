@@ -3,16 +3,16 @@ module Args;
 import Out;
 
 (* The length of a C string. *)
-proc len(s: ^U8): I64;
-var n: I64;
+proc len(s: ^U8): INT;
+var n: INT;
 begin
     n := 0;
     while s[n] # 0 do n := n + 1; end;
     return n;
 end;
 
-proc main*: I64;
-var i: I64; s: ^U8;
+proc main*: INT;
+var i: INT; s: ^U8;
 begin
     for i := 1 to ARGC() - 1 do
         s := ARGV()[i];

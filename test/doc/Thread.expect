@@ -11,14 +11,14 @@ module Thread;
 const Failed*: ERROR = "can't start a thread";
 
 type Thread* = record
-    tid: I64;        (* the kernel's id, until the thread ends *)
+    tid: INT;        (* the kernel's id, until the thread ends *)
     base: ^U8;       (* its stack's mapping, the guard page first *)
-    size: I64;
+    size: INT;
     fn: proc(arg: ^U8);   (* what it runs, and with what *)
     arg: ^U8;
 end;
 
-type Mutex* = record state: I64; end;
+type Mutex* = record state: INT; end;
     0 free, 1 taken, 2 taken with a thread waiting
 
 proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);

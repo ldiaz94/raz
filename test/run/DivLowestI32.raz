@@ -1,0 +1,14 @@
+module DivLowestI32;
+(* The lowest I32 divided by the constant -1 *)
+import Out;
+
+proc main*;
+var a: I32;
+begin
+    a := I32(ARGC()) - 2147483647 - 2;
+    Out.int(I64(a div 2));
+    Out.flush;
+    Out.int(I64(a div (-1)));
+end;
+
+end DivLowestI32.

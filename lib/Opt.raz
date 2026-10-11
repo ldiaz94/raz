@@ -25,7 +25,7 @@ type
         name: []U8;     (* the program's, as the messages begin *)
         table: []Row;
         scope: []U8;
-        at: I64;        (* the next word *)
+        at: INT;        (* the next word *)
         group: []U8;    (* the letters left of a word of them, as -lw *)
         spelt: []U8;    (* the option just read as written, without its dashes *)
         ended: BOOL;    (* the scope's options have ended *)
@@ -36,8 +36,8 @@ type
 const read1 = 1; readEnd = 0; readSkip = -1;
 
 (* b written whole to fd, then freed. *)
-proc say(fd: I64; b: ^Buf.Buf);
-var s: []U8; n: I64;
+proc say(fd: INT; b: ^Buf.Buf);
+var s: []U8; n: INT;
 begin
     s := Buf.bytes(b);
     while LEN(s) > 0 do
@@ -61,7 +61,7 @@ end;
    "usage: " and the first, the others under it; or, for a scope with
    none, "usage: keep start". *)
 proc usageOf(p: ^Parser; b: ^Buf.Buf);
-var i, lines: I64; c: U8;
+var i, lines: INT; c: U8;
 begin
     for i := 0 to LEN(p^.table) - 1 do
         match p^.table[i] of
@@ -124,8 +124,8 @@ begin
     end;
 end;
 
-proc leftWidth(r: ^Row): I64;
-var b: Buf.Buf; n: I64;
+proc leftWidth(r: ^Row): INT;
+var b: Buf.Buf; n: INT;
 begin
     Buf.init(ADR(b), Heap.heap);
     left(ADR(b), r);
@@ -136,8 +136,8 @@ end;
 
 (* A line of the list: the left column, padded to width and three
    spaces more, and the line of help. *)
-proc item(b: ^Buf.Buf; r: ^Row; width: I64);
-var i: I64;
+proc item(b: ^Buf.Buf; r: ^Row; width: INT);
+var i: INT;
 begin
     Buf.str(b, "  ");
     left(b, r);
@@ -153,7 +153,7 @@ end;
 (* The scope's help: its synopsis lines, then its subcommands, its
    options and the help itself, each with its line; and status 0. *)
 proc printHelp(p: ^Parser);
-var b: Buf.Buf; i, width: I64; r: ^Row;
+var b: Buf.Buf; i, width: INT; r: ^Row;
 begin
     Buf.init(ADR(b), Heap.heap);
     usageOf(p, ADR(b));
@@ -184,8 +184,8 @@ end;
 
 (* The scope's option with the letter c, or with the long name long:
    its row, or -1, and its letter and the name of its value. *)
-proc find(p: ^Parser; c: U8; long: []U8): (I64, U8, []U8);
-var i: I64;
+proc find(p: ^Parser; c: U8; long: []U8): (INT, U8, []U8);
+var i: INT;
 begin
     for i := 0 to LEN(p^.table) - 1 do
         match p^.table[i] of
@@ -202,8 +202,8 @@ end;
 (* The next option, a word or a letter of one, into p: read1, or
    readEnd at the end of the options. A mistake is refused, or, if
    quiet, passed over, as readSkip. *)
-proc read(p: ^Parser; quiet: BOOL): I64;
-var w, val: []U8; r, eq: I64; c: U8;
+proc read(p: ^Parser; quiet: BOOL): INT;
+var w, val: []U8; r, eq: INT; c: U8;
 begin
     p^.help := false;
     p^.value := "";
@@ -272,7 +272,7 @@ end;
    program sees one: a copy of the parser reads them, passing over
    mistakes. *)
 proc answerHelp(p: ^Parser);
-var q: Parser; k: I64;
+var q: Parser; k: INT;
 begin
     q := p^;
     repeat
@@ -282,7 +282,7 @@ begin
 end;
 
 (* A mistake in the table: the program's, with status 1. *)
-proc badTable(p: ^Parser; row: I64; why: []U8);
+proc badTable(p: ^Parser; row: INT; why: []U8);
 var b: Buf.Buf;
 begin
     Buf.init(ADR(b), Heap.heap);
@@ -292,7 +292,7 @@ begin
 end;
 
 proc check(p: ^Parser);
-var i, j: I64;
+var i, j: INT;
 begin
     for i := 0 to LEN(p^.table) - 1 do
         match p^.table[i] of
@@ -455,12 +455,12 @@ type Case = record
     mode: []U8;     (* OPTTEST=... *)
     args: [][]U8;
     out, err: []U8;
-    status: I64;
+    status: INT;
 end;
 
 (* Everything left to read on fd, into buf: how much. *)
-proc readAll(fd: I64; buf: []U8): I64;
-var n, k: I64;
+proc readAll(fd: INT; buf: []U8): INT;
+var n, k: INT;
 begin
     repeat
         k := Sys.read(fd, buf[n..LEN(buf)]);
@@ -470,8 +470,8 @@ begin
     return n;
 end;
 
-proc run(c: Case; n: I64);
-var outR, outW, errR, errW, pid, status, no, ne: I64; st: Sys.Status; out, err: [4096]U8;
+proc run(c: Case; n: INT);
+var outR, outW, errR, errW, pid, status, no, ne: INT; st: Sys.Status; out, err: [4096]U8;
 begin
     outR, outW := Sys.pipe();
     errR, errW := Sys.pipe();
@@ -494,7 +494,7 @@ const
     keepHelp = "usage: keep [-v] [--wait secs] start ...\n\n  start             start a job\n  -v, --verbose     say more\n      --wait secs   give the job secs to start\n  -h, --help        print this and exit\n";
     startHelp = "usage: keep start [-b label] name command [argument ...]\n\n  -b, --bar label   show the job in the bar as label\n  -h, --help        print this and exit\n";
     k = "OPTTEST=keep";
-var cases: []Case; i: I64; mode: []U8;
+var cases: []Case; i: INT; mode: []U8;
 begin
     mode := Sys.env("OPTTEST");
     if mode = "keep" then keep; return;

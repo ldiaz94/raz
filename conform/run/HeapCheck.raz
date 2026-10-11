@@ -19,7 +19,7 @@ begin
     show(Mem.alloc(Heap.heap, 10, 8192));
     p := Mem.alloc(Heap.heap, 10, 64);
     show(p);
-    if I64(p) mod 64 = 0 then Out.str("aligned\n"); end;
+    if INT(p) mod 64 = 0 then Out.str("aligned\n"); end;
     Mem.free(Heap.heap, p);
     q := Mem.alloc(Heap.heap, 100000, 8);
     show(q);

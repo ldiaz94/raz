@@ -1,0 +1,4 @@
+conform/err/IntNarrow.raz:5:10: error: can't use I64 as INT
+    5 |     n := i;
+      |          ^
+raz: 1 error

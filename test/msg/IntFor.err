@@ -1,0 +1,5 @@
+conform/err/IntFor.raz:5:19: error: expected I64, found INT
+    5 |     for i := 0 to LEN(s) - 1 do end;
+      |                   ^^^^^^^^^^
+help: they don't mix here: write I64(LEN(s) - 1)
+raz: 1 error

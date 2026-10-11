@@ -1,7 +1,9 @@
 module Stack;
 import Ints := List(I64), Heap;
 
-var s*: Ints.List;
+var
+    s: Ints.List;
+    p*: ^Ints.List;   (* s, which only this module could change by its name *)
 
 proc top*(): I64;
 begin
@@ -10,4 +12,5 @@ end;
 
 begin
     Ints.init(ADR(s), Heap.heap);
+    p := ADR(s);
 end Stack.

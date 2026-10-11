@@ -1,15 +1,15 @@
 (* Generic modules: counts the words of a text in a Map from []U8 to
-   I64, hashed and compared by Str's procedures, keeps them in order of
+   INT, hashed and compared by Str's procedures, keeps them in order of
    first sight in a List([]U8), and prints them with Fmt. *)
 module Words;
-import Fmt, Str, Heap, Count := Map([]U8, I64, Str.hash, Str.eq), Names := List([]U8);
+import Fmt, Str, Heap, Count := Map([]U8, INT, Str.hash, Str.eq), Names := List([]U8);
 
 const Text = "the cat and the hat and the bat";
 
 proc main*;
 var
     counts: Count.Map; order: Names.List; n: ^Names.Node;
-    i, start, k, total: I64; found, _ok: BOOL; w: []U8;
+    i, start, k, total: INT; found, _ok: BOOL; w: []U8;
 begin
     Count.init(ADR(counts), Heap.heap);
     Names.init(ADR(order), Heap.heap);

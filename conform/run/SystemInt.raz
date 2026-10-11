@@ -1,0 +1,74 @@
+module SystemInt;
+(* INT and UINT: what gives them, where they widen, shifts modulo the
+   width, and another module's variables read but not changed *)
+import Out, Shared;
+
+var cells: [10]I32;
+
+proc wide(x: I64): I64;
+begin
+    return x + 1;
+end;
+
+(* an INT returned as an I64 *)
+proc len(s: []U8): I64;
+begin
+    return LEN(s);
+end;
+
+proc main*;
+var
+    n: INT; i: I64; u: UINT; w: U64; b: U8; h: I32; k: INT;
+    p, q: ^I32; copy: [3]INT;
+begin
+    n := LEN("four");                   (* untyped, so it fits any integer *)
+    b := SIZE(I64);
+    i := n;                             (* INT into I64 *)
+    i := wide(n);
+    u := 7;
+    w := u;                             (* UINT into U64 *)
+    Out.int(i); Out.str(" "); Out.int(I64(b)); Out.str(" "); Out.int(len("abc"));
+    Out.str(" "); Out.int(I64(w)); Out.ln;
+
+    p := ADR(cells[2]);
+    q := ADR(cells[9]);
+    n := q - p;                         (* an INT *)
+    u := UINT(q) - UINT(p);
+    Out.int(n); Out.str(" "); Out.int(I64(u)); Out.str(" ");
+    Out.int(INT(^I32(INT(p) + 4) - p)); Out.ln;
+
+    (* a shift counts modulo the width of its operand's type *)
+    b := 3;
+    k := 9;
+    Out.int(I64(b shl k)); Out.str(" ");
+    h := -64;
+    k := 33;
+    Out.int(I64(h shr k)); Out.str(" ");
+    Out.int(I64(U8(3) shl 9)); Out.str(" ");
+    n := 1;
+    k := 65;
+    Out.int(n shl k); Out.ln;
+
+    (* an index of any integer type, by its value *)
+    cells[U8(3)] := 30;
+    cells[I8(4)] := 40;
+    Out.int(I64(cells[UINT(3)] + cells[U64(4)])); Out.ln;
+
+    Shared.bump;
+    Shared.bump;
+    copy := Shared.words;
+    copy[0] := 9;                       (* the importer's own copy *)
+    Shared.bytes[0] := 'x';             (* what the slice points at *)
+    match Shared.shape of
+    | circle(r): r := r + 1; Out.int(r); Out.str(" ");
+    | dot:
+    end;
+    match Shared.shape of
+    | circle(r): Out.int(r); Out.str(" ");
+    | dot:
+    end;
+    Out.int(Shared.count); Out.str(" "); Out.int(copy[0] + copy[1]); Out.str(" ");
+    Out.int(I64(Shared.bytes[0])); Out.ln;
+end;
+
+end SystemInt.

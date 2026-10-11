@@ -1,0 +1,4 @@
+conform/err/ExportVarParam.raz:6:9: error: Owner.n is Owner's, and can't be changed outside it
+    6 |     put(Owner.n);
+      |         ^^^^^^^
+raz: 1 error

@@ -1,0 +1,7 @@
+module IntFromPointer;
+proc main*;
+var i: I64; p: ^U8;
+begin
+    i := I64(p);
+end;
+end IntFromPointer.

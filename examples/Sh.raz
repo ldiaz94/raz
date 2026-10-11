@@ -21,13 +21,13 @@ const
 type
     Command = record
         args: [maxWords][]U8;
-        n: I64;
+        n: INT;
         input, output, errors: []U8;   (* the files of <, > or >>, and 2>; "" for none *)
         append: BOOL;                  (* output is >> *)
     end;
     Pipeline = record
         cmds: [maxCmds]Command;
-        n: I64;
+        n: INT;
         background: BOOL;
     end;
     (* What the parser reads: a word, |, &, ; or a line's end, <, >, >>, 2>,
@@ -35,17 +35,17 @@ type
     Token = (word, pipe, amp, sep, from, into, onto, errTo, eof);
 
 var
-    status: I64;         (* of the last pipeline: $? *)
+    status: INT;         (* of the last pipeline: $? *)
     interactive: BOOL;   (* commands come from a terminal: job control *)
-    group: I64;          (* the shell's process group *)
+    group: INT;          (* the shell's process group *)
     arena: Arena.Arena;  (* the words of what is being run *)
     s: []U8;             (* the script being read *)
-    at: I64;             (* where in it *)
+    at: INT;             (* where in it *)
     text: []U8;          (* the last word read *)
 
 (* "Sh: " and a message on standard error. *)
 proc say(f: []U8; args: []Fmt.Arg);
-var b: Buf.Buf; _n: I64;
+var b: Buf.Buf; _n: INT;
 begin
     Buf.init(ADR(b), Heap.heap);
     Fmt.write(ADR(b), "Sh: ", []);
@@ -64,7 +64,7 @@ end;
 (* $NAME or $? at s[at], its value added to b; a $ before anything else
    is itself. *)
 proc dollar(b: ^Buf.Buf);
-var start: I64;
+var start: INT;
 begin
     INC(at);
     if (at < LEN(s)) and (s[at] = '?') then
@@ -172,7 +172,7 @@ end;
 (* The program a command names: the name itself if it has a /, else the
    first executable file of that name in a directory of $PATH. *)
 proc find(name: []U8): ([]U8, BOOL);
-var path, dir: []U8; i, start, err: I64; b: Buf.Buf; info: Sys.Info;
+var path, dir: []U8; i, start, err: INT; b: Buf.Buf; info: Sys.Info;
 begin
     if Str.find(name, "/") >= 0 then return name, true; end;
     path := Sys.env("PATH");
@@ -191,8 +191,8 @@ begin
 end;
 
 (* The fd of a redirection's file, or -1 after saying why not. *)
-proc redirect(path: []U8; how: Sys.Accesses): I64;
-var fd: I64;
+proc redirect(path: []U8; how: Sys.Accesses): INT;
+var fd: INT;
 begin
     fd := Sys.open(path, how);
     if fd < 0 then say("{}: can't open it", [Fmt.str(path)]); return -1; end;
@@ -202,7 +202,7 @@ end;
 (* cd, wait and exit, which change the shell itself, so it can't start
    them as programs; true if c is one. *)
 proc builtin(c: ^Command): BOOL;
-var dir: []U8; n, pid, _code: I64; ok: BOOL; _st: Sys.Status;
+var dir: []U8; n: I64; pid, _code: INT; ok: BOOL; _st: Sys.Status;
 begin
     if c^.args[0] = "cd" then
         if c^.n > 1 then dir := c^.args[1]; else dir := Sys.env("HOME"); end;
@@ -217,7 +217,7 @@ begin
             n, ok := Str.toInt(c^.args[1]);
             if not ok then say("exit: {} isn't a number", [Fmt.str(c^.args[1])]); n := 2; end;
         end;
-        Rt.exit(n);
+        Rt.exit(INT(n));
     else
         return false;
     end;
@@ -238,7 +238,7 @@ end;
    has the terminal until they end. *)
 proc start(p: ^Pipeline);
 var
-    pids: [maxCmds]I64; fds: [3]I64; i, j, inNext, r, w, leader, joins, how, _pid: I64;
+    pids: [maxCmds]INT; fds: [3]INT; i, j, inNext, r, w, leader, joins, how, _pid: INT;
     c: ^Command; path: []U8; found, _ok: BOOL; st: Sys.Status;
 begin
     if (p^.n = 1) and not p^.background and builtin(ADR(p^.cmds[0])) then return; end;
@@ -322,7 +322,7 @@ end;
 
 (* Before a prompt: the background programs that have ended. *)
 proc reap;
-var pid, _code: I64; _st: Sys.Status;
+var pid, _code: INT; _st: Sys.Status;
 begin
     repeat
         pid, _st, _code := Sys.wait(-1, false);
@@ -334,7 +334,7 @@ end;
    shell in a process group of its own, which ignores the keys that
    stop or end the pipeline in front of it. *)
 proc interact;
-var line: Buf.Buf; keys: [5]I64; i: I64; _ok: BOOL;
+var line: Buf.Buf; keys: [5]INT; i: INT; _ok: BOOL;
 begin
     interactive := Sys.isTerminal(Sys.stdin);
     if interactive then
@@ -353,7 +353,7 @@ begin
     if interactive then show("\n", []); end;
 end;
 
-proc main*: I64;
+proc main*: INT;
 var p: Opt.Parser; script, file: []U8; given, found: BOOL; b: Buf.Buf;
 begin
     if not Arena.init(ADR(arena), 1 shl 24) then Rt.stop("Sh: no memory"); end;

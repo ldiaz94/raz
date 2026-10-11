@@ -1,8 +1,8 @@
 module DivZero;
 (* Dividing by zero stops the program with SIGFPE, after saying where *)
 
-proc main*: I64;
-var a, b: I64;
+proc main*: INT;
+var a, b: INT;
 begin
     a := 7;
     b := ARGC() - 1;

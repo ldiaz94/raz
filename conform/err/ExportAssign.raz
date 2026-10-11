@@ -1,0 +1,7 @@
+module ExportAssign;
+import Owner;
+proc main*;
+begin
+    Owner.n := 1;
+end;
+end ExportAssign.

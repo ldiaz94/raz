@@ -5,10 +5,10 @@
 module Lock;
 import Sys, Rt;
 
-type Lock* = record held: I64; end;
+type Lock* = record held: INT; end;
 
 proc take*(l: ^Lock);
-var tries: I64;
+var tries: INT;
 begin
     tries := 0;
     while not CAS(ADR(l^.held), 0, 1) do

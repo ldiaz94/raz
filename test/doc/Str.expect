@@ -3,7 +3,7 @@ module Str;
     module orders, searches and hashes them, reads and writes their
     UTF-8, and reads a number from one.
 
-proc cmp*(a, b: []U8): I64;
+proc cmp*(a, b: []U8): INT;
     -1, 0 or 1 as a sorts before, with or after b, byte by byte.
 
 proc eq*(a, b: []U8): BOOL;
@@ -11,17 +11,17 @@ proc eq*(a, b: []U8): BOOL;
 proc hash*(s: []U8): U64;
     FNV-1a, 64 bits.
 
-proc find*(s, sub: []U8): I64;
+proc find*(s, sub: []U8): INT;
     Where sub first starts in s, or -1.
 
 proc hasPrefix*(s, p: []U8): BOOL;
 
-proc encode*(c: I64): ([4]U8, I64);
+proc encode*(c: I32): ([4]U8, INT);
     c in UTF-8: its bytes, and how many. A number that isn't a
     character, a surrogate or one past 10FFFFH, becomes FFFDH, the
     character that stands for a wrong one.
 
-proc decode*(s: []U8): (I64, I64);
+proc decode*(s: []U8): (I32, INT);
     The character s starts with, and its length in bytes: FFFDH and 1
     if its first byte doesn't start one rightly, being a continuation,
     or followed by too few continuations, or spelling a surrogate or a

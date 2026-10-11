@@ -23,7 +23,7 @@ proc nothing;
 begin
 end;
 
-proc main*: I64;
+proc main*: INT;
 var i, full: I64;
 begin
     Rt.atExit(first);

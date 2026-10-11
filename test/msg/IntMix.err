@@ -1,0 +1,5 @@
+conform/err/IntMix.raz:5:8: error: I64 and INT are different types
+    5 |     if i < LEN(s) then end;
+      |        ^^^^^^^^^^
+help: convert one to the other's type, as in I64(LEN(s))
+raz: 1 error

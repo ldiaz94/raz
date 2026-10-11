@@ -1,0 +1,7 @@
+module IntFor;
+proc main*;
+var i: I64; s: []U8;
+begin
+    for i := 0 to LEN(s) - 1 do end;
+end;
+end IntFor.

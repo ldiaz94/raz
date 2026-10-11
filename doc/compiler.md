@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is nine files of Free Pascal, under 6,000 lines of code.
+The compiler is nine files of Free Pascal, under 6,500 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -10,10 +10,10 @@ disassembly.
 |---|---|---|---|
 | `src/diag.pas` | 274 | 198 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 851 | 722 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 593 | 494 | Types, objects, scopes, layout |
+| `src/sym.pas` | 596 | 497 | Types, objects, scopes, layout |
 | `src/x64.pas` | 693 | 557 | Code buffer, chunks, fixups, places, instruction encoder |
-| `src/gen.pas` | 1,631 | 1,408 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,444 | 2,203 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/gen.pas` | 1,733 | 1,481 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,464 | 2,221 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 139 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 425 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 227 | 179 | The command line, the entry points |
@@ -270,14 +270,21 @@ chunk), `Unpush` takes the push back, and the right goes straight to
 on the right of `*`, `div` or `mod` becomes shifts (`DivPow2`), since
 `idiv` is slow. Narrow integers are brought back to their width
 after each operation (`Norm`), which is how `U8` arithmetic wraps.
+Since they are computed in 64 bits, a shift's count is cut to their
+width first, and `DivTrap` makes the smallest value of one divided by
+-1 fault as an `I64`'s does.
 `=` and `#` on arrays, slices and strings make a slice of each side
 (`SeqSlice`), compare the lengths, and then the bytes with `repe
 cmpsb`, right where the comparison stands: no call.
 
 Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a
-variable into an item for part of it, mostly by adding to `off`.
-`Index` and `Slice` emit the bounds checks, and `Convert` the check of
-an enumeration's position; `Check` jumps over a call to `Rt.fail` when
+variable into an item for part of it, mostly by adding to `off`. An
+item for another module's exported variable, or part of it, is `ro`:
+it isn't a variable (`isVar`), and `NotReadOnly` says why where one is
+wanted; what it points at is.
+`Index` and `Slice` emit the bounds checks, unless the module says
+`check off;` (`checks`, which `CompileFile` sets for each module), and
+`Convert` the check of an enumeration's position; `Check` jumps over a call to `Rt.fail` when
 the check holds. The call passes what failed, the values involved and
 its own address, by which `Rt` finds the place; that code has the
 place of the offending expression (`LineCol` in `scan.pas`), and the
@@ -285,7 +292,9 @@ code after it the statement's again.
 
 Assignment and conversion: `Coerce` makes a value fit the type it's
 going to, or reports that it can't; it's where a string literal becomes
-a slice, an array a slice, an untyped constant a typed one. `Assign`
+a slice, an array a slice, an untyped constant a typed one, and an
+`INT` an `I64` (`Widens`). `CoerceExact` is for where the types must
+be the same, as in a `for` loop, `INC` and several results. `Assign`
 stores, copying records and arrays with `rep movsb`. `Convert` is the
 written conversion, `T(x)`.
 

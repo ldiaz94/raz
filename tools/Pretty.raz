@@ -34,25 +34,25 @@ var
     sc: Scan.Scanner;   (* the source, at the symbol being written *)
     src: []U8;
     out: Buf.Buf;
-    lineAt: I64;        (* where the line being written starts in out *)
-    lineDelta: I64;     (* how far this line's indent moved *)
+    lineAt: INT;        (* where the line being written starts in out *)
+    lineDelta: INT;     (* how far this line's indent moved *)
 
     (* the blocks open, each with the indent of the statement that
        opened it *)
-    bases: [100]I64;
-    depth: I64;
-    brackets: I64;      (* brackets open *)
+    bases: [100]INT;
+    depth: INT;
+    brackets: INT;      (* brackets open *)
     inSection: BOOL;    (* among the declarations of const, type or var *)
-    stmtIndent: I64;    (* the indent of the current statement's first line *)
-    stmtDelta: I64;     (* and how far that moved *)
+    stmtIndent: INT;    (* the indent of the current statement's first line *)
+    stmtDelta: INT;     (* and how far that moved *)
 
     (* the last symbol that wasn't a comment, and the one before it *)
     prev, prev2: Scan.Scanner;
     prevBinary, prevUnary: BOOL;
     afterComment: BOOL; (* the last symbol written was a comment *)
-    last: I64;          (* where the last symbol written ends in src *)
+    last: INT;          (* where the last symbol written ends in src *)
 
-proc spaces(n: I64);
+proc spaces(n: INT);
 begin
     while n > 0 do Buf.add(ADR(out), ' '); DEC(n); end;
 end;
@@ -75,15 +75,15 @@ begin
 end;
 
 (* Where the line holding p starts in src. *)
-proc lineStart(p: I64): I64;
+proc lineStart(p: INT): INT;
 begin
     while (p > 0) and (src[p - 1] # '\n') do DEC(p); end;
     return p;
 end;
 
 (* The column src[p] is at, a tab going on to the next multiple of 8. *)
-proc column(p: I64): I64;
-var i, col: I64;
+proc column(p: INT): INT;
+var i, col: INT;
 begin
     col := 0;
     for i := lineStart(p) to p - 1 do
@@ -153,21 +153,21 @@ begin
 end;
 
 (* The indent of the block's own lines, or of its end. *)
-proc inner: I64;
+proc inner: INT;
 begin
     if depth > 0 then return bases[depth - 1] + width; end;
     if inSection then return width; end;
     return 0;
 end;
 
-proc outer: I64;
+proc outer: INT;
 begin
     if depth > 0 then return bases[depth - 1]; end;
     return 0;
 end;
 
 (* The indent of the line the current symbol starts, which was at old. *)
-proc indent(old: I64): I64;
+proc indent(old: INT): INT;
 var n: Scan.Scanner;
 begin
     if continues() then
@@ -192,7 +192,7 @@ end;
 
 (* Starts the line of the current symbol, at its indent. *)
 proc startLine;
-var old, new: I64;
+var old, new: INT;
 begin
     old := column(sc.start);
     new := indent(old);
@@ -207,7 +207,7 @@ end;
 (* The spaces between the last symbol written and the current one, on
    the same line. *)
 proc gap(binaryNow: BOOL);
-var n: I64;
+var n: INT;
 begin
     if sc.kind = Scan.comment then
         n := column(sc.start) + lineDelta - (out.len - lineAt);
@@ -226,7 +226,7 @@ end;
 (* The current symbol as written; each line of a comment after its
    first is moved as far as the line the comment starts on. *)
 proc write;
-var i, k: I64;
+var i, k: INT;
 begin
     i := sc.start;
     while i < sc.stop do
@@ -270,8 +270,8 @@ begin
 end;
 
 (* The line breaks in src[from..upto]. *)
-proc lineBreaks(from, upto: I64);
-var i: I64;
+proc lineBreaks(from, upto: INT);
+var i: INT;
 begin
     for i := from to upto - 1 do
         if src[i] = '\n' then newLine; end;
@@ -317,7 +317,7 @@ begin
 end;
 
 proc main*;
-var b: Buf.Buf; i: I64; path: []U8;
+var b: Buf.Buf; i: INT; path: []U8;
 begin
     Buf.init(ADR(b), Heap.heap);
     Buf.init(ADR(out), Heap.heap);

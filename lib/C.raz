@@ -3,26 +3,26 @@
    linked dynamically and starts through the C library. *)
 module C;
 
-extern proc write*(fd: I32; buf: ^U8; n: U64): I64;
-extern proc read*(fd: I32; buf: ^U8; n: U64): I64;
+extern proc write*(fd: I32; buf: ^U8; n: UINT): INT;
+extern proc read*(fd: I32; buf: ^U8; n: UINT): INT;
 extern proc open*(path: ^U8; flags: I32; ...): I32;
 extern proc creat*(path: ^U8; mode: U32): I32;
 extern proc close*(fd: I32): I32;
-extern proc mmap*(addr: ^U8; n: U64; prot, flags, fd: I32; off: I64): ^U8;
-extern proc munmap*(addr: ^U8; n: U64): I32;
+extern proc mmap*(addr: ^U8; n: UINT; prot, flags, fd: I32; off: I64): ^U8;
+extern proc munmap*(addr: ^U8; n: UINT): I32;
 extern proc isatty*(fd: I32): I32;
 extern proc exit*(status: I32);
 extern proc _exit*(status: I32);
 extern proc __errno_location*: ^I32;   (* errno is this thread's: through here *)
 extern proc sched_yield*: I32;
-extern proc pthread_create*(t: ^U64; attr: ^U8; start: proc(arg: ^U8): ^U8; arg: ^U8): I32;
-extern proc pthread_join*(t: U64; result: ^^U8): I32;
+extern proc pthread_create*(t: ^UINT; attr: ^U8; start: proc(arg: ^U8): ^U8; arg: ^U8): I32;
+extern proc pthread_join*(t: UINT; result: ^^U8): I32;
 extern proc rename*(old, new: ^U8): I32;
 extern proc unlink*(path: ^U8): I32;
 extern proc mkdir*(path: ^U8; mode: U32): I32;
 extern proc rmdir*(path: ^U8): I32;
 extern proc chmod*(path: ^U8; mode: U32): I32;
-extern proc readlink*(path, buf: ^U8; n: U64): I64;
+extern proc readlink*(path, buf: ^U8; n: UINT): INT;
 extern proc lseek*(fd: I32; off: I64; whence: I32): I64;
 extern proc opendir*(path: ^U8): ^U8;        (* DIR * *)
 extern proc readdir*(d: ^U8): ^U8;           (* struct dirent * *)
@@ -30,11 +30,11 @@ extern proc closedir*(d: ^U8): I32;
 extern proc tcgetattr*(fd: I32; t: ^U8): I32;
 extern proc tcsetattr*(fd: I32; when: I32; t: ^U8): I32;
 extern proc cfmakeraw*(t: ^U8);
-extern proc ioctl*(fd: I32; request: U64; ...): I32;
-extern proc poll*(fds: ^U8; n: U64; ms: I32): I32;
+extern proc ioctl*(fd: I32; request: UINT; ...): I32;
+extern proc poll*(fds: ^U8; n: UINT; ms: I32): I32;
 extern proc socket*(domain, kind, protocol: I32): I32;
 extern proc connect*(fd: I32; addr: ^U8; len: U32): I32;
-extern proc send*(fd: I32; buf: ^U8; n: U64; flags: I32): I64;
+extern proc send*(fd: I32; buf: ^U8; n: UINT; flags: I32): INT;
 extern proc bind*(fd: I32; addr: ^U8; len: U32): I32;
 extern proc listen*(fd, backlog: I32): I32;
 extern proc accept*(fd: I32; addr: ^U8; len: ^U32): I32;
@@ -43,9 +43,9 @@ extern proc setsockopt*(fd, level, name: I32; value: ^U8; len: U32): I32;
 extern proc inet_pton*(family: I32; src, dst: ^U8): I32;
 extern proc clock_gettime*(clock: I32; t: ^U8): I32;
 extern proc clock_nanosleep*(clock, flags: I32; t, left: ^U8): I32;
-extern proc getrandom*(buf: ^U8; n: U64; flags: U32): I64;
+extern proc getrandom*(buf: ^U8; n: UINT; flags: U32): INT;
 extern proc getenv*(name: ^U8): ^U8;
-extern proc getcwd*(buf: ^U8; n: U64): ^U8;
+extern proc getcwd*(buf: ^U8; n: UINT): ^U8;
 extern proc chdir*(path: ^U8): I32;
 extern proc stat*(path, st: ^U8): I32;
 extern proc lstat*(path, st: ^U8): I32;

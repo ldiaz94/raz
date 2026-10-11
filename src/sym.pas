@@ -129,6 +129,7 @@ const
 
 var
   tI8, tI16, tI32, tI64, tU8, tU16, tU32, tU64: PType;
+  tInt, tUInt: PType;   { INT and UINT, as big as an address: 8 bytes here }
   tBool, tF32, tReal, tRConst, tError, tConst, tNil, tStr, tNone, tPtrU8, tBytes: PType;
   tPoison: PType;   { of a name reported as not declared }
   curModule: PModule;
@@ -557,6 +558,8 @@ initialization
   tU16 := Basic('U16', fInt, 2, false);
   tU32 := Basic('U32', fInt, 4, false);
   tU64 := Basic('U64', fInt, 8, false);
+  tInt := Basic('INT', fInt, 8, true);
+  tUInt := Basic('UINT', fInt, 8, false);
   tBool := Basic('BOOL', fBool, 1, false);
   tF32 := Basic('F32', fReal, 4, false);
   tReal := Basic('F64', fReal, 8, false);

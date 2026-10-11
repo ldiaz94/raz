@@ -4,7 +4,7 @@ module Printf;
 import Out, C;
 
 proc main*;
-var i: I64;
+var i: INT;
 begin
     for i := 1 to 3 do
         Out.str("raz says "); Out.int(i); Out.ln;

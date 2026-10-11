@@ -8,13 +8,13 @@ const
     Jobs = 100;
 
 var
-    next: I64;           (* the next job, taken with XADD *)
+    next: INT;           (* the next job, taken with XADD *)
     m: Thread.Mutex;
-    total: I64;
+    total: INT;
 
 (* job n: the sum of the squares up to n *)
-proc job(n: I64): I64;
-var i, s: I64;
+proc job(n: INT): INT;
+var i, s: INT;
 begin
     s := 0;
     for i := 1 to n do s := s + i * i; end;
@@ -22,7 +22,7 @@ begin
 end;
 
 proc work(_arg: ^U8);
-var n, r: I64;
+var n, r: INT;
 begin
     n := XADD(ADR(next), 1);
     while n < Jobs do
@@ -35,7 +35,7 @@ begin
 end;
 
 proc main*;
-var t: [Workers]^Thread.Thread; i: I64; err: ERROR;
+var t: [Workers]^Thread.Thread; i: INT; err: ERROR;
 begin
     for i := 0 to Workers - 1 do
         t[i], err := Thread.spawn(work, nil);

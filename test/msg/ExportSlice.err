@@ -1,0 +1,4 @@
+conform/err/ExportSlice.raz:6:11: error: Owner.a is Owner's, and can't be changed outside it
+    6 |     _s := Owner.a[0..2];
+      |           ^^^^^^^
+raz: 1 error

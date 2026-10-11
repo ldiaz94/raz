@@ -1,0 +1,8 @@
+module ExportAsSlice;
+import Owner;
+proc sum(_s: []INT): INT; begin return 0; end;
+proc main*;
+begin
+    sum(Owner.a);
+end;
+end ExportAsSlice.

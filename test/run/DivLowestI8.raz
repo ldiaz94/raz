@@ -1,0 +1,16 @@
+module DivLowestI8;
+(* The lowest of every signed type divided by -1 stops the program, not
+   only the lowest I64's: here an I8's, by a divisor not known *)
+import Out;
+
+proc main*;
+var a, b: I8;
+begin
+    a := -128;
+    b := I8(ARGC() - 2);
+    Out.int(I64(a div (-2)));
+    Out.flush;
+    Out.int(I64(a div b));
+end;
+
+end DivLowestI8.

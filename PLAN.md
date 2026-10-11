@@ -119,7 +119,7 @@ the wishes below.
       the IR written down; `doc/ir.md` is removed, and git keeps it.
 - [x] 4. The tests split: a conformance suite any implementation
       passes, apart from this compiler's own messages.
-- [ ] 5. The system integer.
+- [x] 5. The system integer.
 - [ ] 6. Optional reals: a target says whether it has them.
 - [ ] 6a. `+` joins string constants (report, section 4).
 - [ ] 6b. Array constants: `const P: [5]I64 = [...]`, in read-only

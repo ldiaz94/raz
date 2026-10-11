@@ -8,13 +8,13 @@ const
     N = 1000000;
 
 type
-    Part = record lo, hi, sum: I64; end;
-    Numbers = [N]I64;
+    Part = record lo, hi, sum: INT; end;
+    Numbers = [N]INT;
 
 var numbers: ^Numbers;
 
 proc work(arg: ^U8): ^U8;
-var p: ^Part; i: I64; scratch: ^U8;
+var p: ^Part; i: INT; scratch: ^U8;
 begin
     p := ^Part(arg);
     for i := p^.lo to p^.hi - 1 do
@@ -28,8 +28,8 @@ begin
     return nil;
 end;
 
-proc main*: I64;
-var t: [Workers]U64; parts: [Workers]Part; i, total: I64;
+proc main*: INT;
+var t: [Workers]UINT; parts: [Workers]Part; i, total: INT;
 begin
     NEW(numbers, Heap.heap);
     for i := 0 to N - 1 do numbers^[i] := i + 1; end;

@@ -15,7 +15,7 @@ import Out, Rt, Str, Buf, Heap, Scan, Files;
 var
     sc: Scan.Scanner;         (* the text being read, at the current symbol *)
     src: []U8;
-    docStart, docEnd: I64;    (* the comment just before it, or -1 *)
+    docStart, docEnd: INT;    (* the comment just before it, or -1 *)
 
 (* On to the next symbol that isn't a comment, keeping where the last
    comment that starts a line was: one after code on its line belongs
@@ -53,8 +53,8 @@ end;
 
 (* On to the ; that ends what starts here, past anything bracketed and
    any record or variant; returns where it ends. *)
-proc toSemicolon: I64;
-var depth: I64;
+proc toSemicolon: INT;
+var depth: INT;
 begin
     depth := 0;
     while sc.kind # Scan.eof do
@@ -68,7 +68,7 @@ begin
 end;
 
 (* stop, or the end of a comment that follows it on its line. *)
-proc trailing(stop: I64): I64;
+proc trailing(stop: INT): INT;
 var t: Scan.Scanner;
 begin
     while (stop < LEN(src)) and ((src[stop] = ' ') or (src[stop] = 9)) do INC(stop); end;
@@ -80,7 +80,7 @@ begin
 end;
 
 (* Where the line holding p starts. *)
-proc lineStart(p: I64): I64;
+proc lineStart(p: INT): INT;
 begin
     while (p > 0) and (src[p - 1] # 10) do DEC(p); end;
     return p;
@@ -88,8 +88,8 @@ end;
 
 (* src[start..stop] as written, each line after the first moved left as
    far as the first one's column. *)
-proc block(start, stop: I64);
-var col, i, n: I64;
+proc block(start, stop: INT);
+var col, i, n: INT;
 begin
     col := start - lineStart(start);
     i := start;
@@ -106,8 +106,8 @@ end;
 
 (* The comment from start to stop, without its brackets, each line
    indented by four. *)
-proc comment(start, stop: I64);
-var i, j: I64; atLine: BOOL;
+proc comment(start, stop: INT);
+var i, j: INT; atLine: BOOL;
 begin
     if start < 0 then return; end;
     i := start + 2;
@@ -128,7 +128,7 @@ begin
 end;
 
 (* One declaration, from its first token, the comment before it kept. *)
-proc declaration(prefix: []U8; exported: BOOL; start, ds, de, stop: I64);
+proc declaration(prefix: []U8; exported: BOOL; start, ds, de, stop: INT);
 begin
     if not exported then return; end;
     Out.ln;
@@ -149,7 +149,7 @@ end;
 (* A procedure's body: to the end that closes its begin, the procedure
    name after it and its ;. *)
 proc skipBody;
-var depth: I64; sawBegin: BOOL;
+var depth: INT; sawBegin: BOOL;
 begin
     depth := 0;
     sawBegin := false;
@@ -172,7 +172,7 @@ begin
 end;
 
 proc procedure;
-var start, ds, de, stop: I64; exp: BOOL;
+var start, ds, de, stop: INT; exp: BOOL;
 begin
     start := sc.start; ds := docStart; de := docEnd;
     exp := name();
@@ -186,7 +186,7 @@ begin
 end;
 
 proc section;
-var word: []U8; start, ds, de, stop: I64; exp: BOOL;
+var word: []U8; start, ds, de, stop: INT; exp: BOOL;
 begin
     word := text();
     next;
@@ -206,7 +206,7 @@ begin
 end;
 
 proc external;
-var start, ds, de, stop: I64; exp: BOOL;
+var start, ds, de, stop: INT; exp: BOOL;
 begin
     start := sc.start; ds := docStart; de := docEnd;
     next;
@@ -217,7 +217,7 @@ begin
 end;
 
 proc document(path: []U8);
-var b: Buf.Buf; start, ds, de: I64;
+var b: Buf.Buf; start, ds, de: INT;
 begin
     Buf.init(ADR(b), Heap.heap);
     if not Files.read(path, ADR(b)) then Rt.stop("Doc: can't read the file"); end;
@@ -243,7 +243,7 @@ end;
 
 (* line, without the spaces at its ends *)
 proc trim(line: []U8): []U8;
-var i, j: I64;
+var i, j: INT;
 begin
     i := 0;
     j := LEN(line);
@@ -255,7 +255,7 @@ end;
 (* The report's examples that are whole modules, each to dir. *)
 proc examples(path, dir: []U8);
 var
-    b, out: Buf.Buf; s, line, first, last, name: []U8; i, start, k, n: I64;
+    b, out: Buf.Buf; s, line, first, last, name: []U8; i, start, k, n: INT;
     inBlock, whole: BOOL;
 begin
     Buf.init(ADR(b), Heap.heap);

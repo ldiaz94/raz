@@ -1,0 +1,7 @@
+module ExportElem;
+import Owner;
+proc main*;
+begin
+    Owner.a[2] := 1;
+end;
+end ExportElem.

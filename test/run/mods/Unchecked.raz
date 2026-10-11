@@ -1,0 +1,17 @@
+module Unchecked;
+(* A module without index and slice checks *)
+check off;
+
+type Pair* = record a*: [2]INT; b*: INT; end;
+
+proc get*(p: ^Pair; i: INT): INT;
+begin
+    return p^.a[i];
+end;
+
+proc width*(s: []U8; lo, hi: INT): INT;
+begin
+    return LEN(s[lo..hi]);
+end;
+
+end Unchecked.

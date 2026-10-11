@@ -18,30 +18,30 @@ const
 
 type
     Block = record next: ^Block; end;
-    Head = record size, mark: I64; end;
+    Head = record size, mark: INT; end;
 
 var
     lists: [Classes]^Block;
     cur: ^U8;            (* where the next new small block comes from *)
-    left: I64;
+    left: INT;
     lock: Lock.Lock;
     std: Mem.Allocator;
     heap*: ^Mem.Allocator;
 
 (* The block p, with size for its header, given out. *)
-proc give(p: ^U8; size: I64): ^U8;
+proc give(p: ^U8; size: INT): ^U8;
 var h: ^Head;
 begin
     h := ^Head(p);
     h^.size := size;
-    h^.mark := Out xor I64(h);
+    h^.mark := Out xor INT(h);
     return p + Header;
 end;
 
 (* size bytes aligned to align, or nil: also for a size below zero or
    too big, and an alignment that isn't a power of two up to a page. *)
-proc alloc(_a: ^Mem.Allocator; size, align: I64): ^U8;
-var c, n: I64; b: ^Block; p: ^U8;
+proc alloc(_a: ^Mem.Allocator; size, align: INT): ^U8;
+var c, n: INT; b: ^Block; p: ^U8;
 begin
     if (size < 0) or (size > Largest) or (align < 1) or (align > Mem.Page)
         or (align & (align - 1) # 0) then
@@ -78,18 +78,18 @@ begin
 end;
 
 proc free(_a: ^Mem.Allocator; p: ^U8);
-var h: ^Head; b: ^Block; c: I64;
+var h: ^Head; b: ^Block; c: INT;
 begin
     if p = nil then return; end;
     h := ^Head(p - Header);
     Lock.take(ADR(lock));
-    if h^.mark # Out xor I64(h) then
+    if h^.mark # Out xor INT(h) then
         Rt.stop("Heap: a block freed twice, or never given out");
     end;
     h^.mark := 0;
     if h^.size < 0 then
         Lock.give(ADR(lock));
-        Mem.unmap(^U8(I64(h) - I64(h) mod Mem.Page), -h^.size);
+        Mem.unmap(^U8(INT(h) - INT(h) mod Mem.Page), -h^.size);
     else
         c := h^.size;          (* before next, which takes its place, is set *)
         b := ^Block(h);
@@ -102,12 +102,12 @@ end;
 (* The module's test: blocks of every class and big ones, written,
    freed and taken again. *)
 proc main*;
-var p: [40]^U8; i, j, n: I64; again: ^U8;
+var p: [40]^U8; i, j, n: INT; again: ^U8;
 begin
     for i := 0 to 39 do
         n := (i * i * 37) mod 9000 + 1;
         p[i] := Mem.alloc(heap, n, 8);
-        if (p[i] = nil) or (I64(p[i]) mod 8 # 0) then Rt.stop("Heap: alloc"); end;
+        if (p[i] = nil) or (INT(p[i]) mod 8 # 0) then Rt.stop("Heap: alloc"); end;
         for j := 0 to n - 1 do p[i][j] := U8(i); end;
     end;
     for i := 0 to 39 do

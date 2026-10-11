@@ -44,6 +44,8 @@ type
     vol: boolean;      { mVar: reached through ^VOLATILE }
     isVar: boolean;    { mVar: a variable of the program, not a temporary }
     odd: boolean;      { mVar: in a packed record, so maybe misaligned }
+    ro: boolean;       { mVar: another module's exported variable, or part
+                         of one, which only that module changes }
     obj: PObj;         { mProc, mBuiltin, mCase }
     pos: TPos;         { where it is in the source, for messages }
   end;
@@ -64,6 +66,8 @@ type
 var
   rtFail, argcChunk, argvChunk: longint;
   depth: longint;      { values pushed and not yet popped }
+  checks: boolean;     { the module's index and slice checks are made: it
+                         doesn't say check off }
 
 procedure MakeConst(var x: TItem; t: PType; v: int64);
 function What(const x: TItem): shortstring;
@@ -76,6 +80,8 @@ procedure Value(var x: TItem);
 procedure Address(var x: TItem; r: longint);
 procedure Save(var x: TItem);
 procedure Coerce(var x: TItem; t: PType);
+procedure CoerceExact(var x: TItem; t: PType; const help: shortstring);
+procedure NotReadOnly(const x: TItem);
 procedure Assign(var dst, src: TItem);
 procedure CopyToTemp(var x: TItem);
 function ToSlot(var x: TItem): int64;
@@ -92,6 +98,7 @@ procedure NotOp(var x: TItem);
 procedure Complement(var x: TItem);
 procedure Op1(op: TSym; var x: TItem; var L: longint);
 procedure Op2(op: TSym; var x, y: TItem; L: longint);
+function IsWord(t: PType): boolean;
 procedure Convert(var x: TItem; t: PType);
 
 procedure BeginCall(var c: TCall; var x: TItem);
@@ -251,7 +258,8 @@ begin
       end;
     oVar: begin
       x.mode := mVar;
-      x.isVar := true;
+      x.ro := (o^.lev = 0) and (o^.module <> curModule);
+      x.isVar := not x.ro;
       if o^.ext then begin
         Load(RAX, MemRip(o^.chunk, 0), 8, false);
         x.base := bReg; x.reg := RAX;
@@ -497,6 +505,20 @@ begin
   TempItem(x, t, s);
 end;
 
+{ An INT goes silently into an I64, and a UINT into a U64, losing
+  nothing on any target (report section 5.10). }
+function Widens(s, t: PType): boolean;
+begin
+  Widens := ((s = tInt) and Same(t, tI64)) or ((s = tUInt) and Same(t, tU64));
+end;
+
+{ Another module's exported variable can be read, not changed, nor
+  handed to anything that could change it (report section 3). }
+procedure NotReadOnly(const x: TItem);
+begin
+  if x.ro then MarkAt(x.pos, Source(x.pos) + ' is ' + NameOf(x.obj^.module^.name) + '''s, and can''t be changed outside it');
+end;
+
 procedure Coerce(var x: TItem; t: PType);
 var s: PType; tmp: int64;
 begin
@@ -521,7 +543,8 @@ begin
   end;
   if x.mode in [mType, mBuiltin, mNone, mCase] then NotValue(x);
   if Same(s, t) then exit;
-  if (s = tRConst) and (t^.form = fReal) then RealTo(x, t)
+  if Widens(s, t) then x.typ := t   { the same bits, on a 64-bit target }
+  else if (s = tRConst) and (t^.form = fReal) then RealTo(x, t)
   else if (s^.form = fConst) and (t^.form = fInt) then begin
     if (x.mode = mConst) and not Fits(x.val, t) then MarkAt(x.pos, IntStr(x.val) + ' doesn''t fit ' + TypeName(t));
     x.typ := t;
@@ -531,12 +554,27 @@ begin
     and Same(s^.base, t^.base) then
     x.typ := t
   else if (s^.form = fArray) and (t^.form = fSlice) and Same(s^.base, t^.base) then begin
+    NotReadOnly(x);
     if x.vol then MarkAt(x.pos, 'can''t make a slice through a volatile pointer');
     if x.odd then MarkAt(x.pos, 'can''t make a slice of a field of a packed record');
     Address(x, RAX);
     SliceOf(x, t, s^.len);
   end else
     MarkAt(x.pos, 'can''t use ' + TypeName(s) + ' as ' + TypeName(t));
+end;
+
+{ Coerce where the types must be the same, as in a for loop, INC and
+  several results, which don't widen an INT to an I64 (report sections
+  5.10, 6.1 and 7.2); help, if not empty, says why. }
+procedure CoerceExact(var x: TItem; t: PType; const help: shortstring);
+var h: shortstring;
+begin
+  if Widens(x.typ, t) then begin
+    h := help;
+    if h = '' then h := 'they don''t mix here: write ' + TypeName(t) + '(' + Source(x.pos) + ')';
+    MarkHelp(x.pos, 'expected ' + TypeName(t) + ', found ' + What(x), h);
+  end;
+  Coerce(x, t);
 end;
 
 procedure Assign(var dst, src: TItem);
@@ -613,7 +651,7 @@ begin
   if t^.base = nil then MarkAt(x.pos, TypeName(t) + ' points to a type never declared');
   Value(x);
   x.mode := mVar; x.base := bReg; x.reg := RAX; x.off := 0;
-  x.typ := t^.base; x.vol := t^.vol; x.isVar := true; x.odd := false;
+  x.typ := t^.base; x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
 end;
 
 { A field of a packed record, of more than one byte's alignment, may
@@ -654,7 +692,7 @@ begin
     PopR(RCX);
     Alu(aluAdd, RAX, RCX);
     x.mode := mVar; x.base := bReg; x.reg := RAX; x.off := 0;
-    x.vol := t^.vol; x.isVar := true; x.odd := false;
+    x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
   end else if (t^.form = fArray) and (y.mode = mConst) then begin
     if (y.val < 0) or (y.val >= t^.len) then MarkAt(y.pos, 'index ' + IntStr(y.val) + ' is out of range for a length of ' + IntStr(t^.len));
     x.off := x.off + y.val * s;
@@ -663,8 +701,10 @@ begin
     end;
   end else if t^.form = fArray then begin
     Value(y);
-    CmpI(RAX, t^.len);
-    Check(ccB, 0, y.pos, RAX, NoMem, t^.len, -1);
+    if checks then begin
+      CmpI(RAX, t^.len);
+      Check(ccB, 0, y.pos, RAX, NoMem, t^.len, -1);
+    end;
     if s <> 1 then ImulI(RAX, s);
     if x.base = bStack then PopR(RCX) else Lea(RCX, MemOf(x, RCX));
     Alu(aluAdd, RAX, RCX);
@@ -674,11 +714,13 @@ begin
     Value(y);
     m := MemOf(x, RCX);
     ml := m; ml.disp := ml.disp + 8;
-    AluM(aluCmp, RAX, ml);
-    Check(ccB, 0, y.pos, RAX, ml, 0, -1);
+    if checks then begin
+      AluM(aluCmp, RAX, ml);
+      Check(ccB, 0, y.pos, RAX, ml, 0, -1);
+    end;
     if s <> 1 then ImulI(RAX, s);
     AluM(aluAdd, RAX, m);
-    x.base := bReg; x.reg := RAX; x.off := 0; x.isVar := true; x.vol := false;
+    x.base := bReg; x.reg := RAX; x.off := 0; x.isVar := true; x.vol := false; x.ro := false;
   end;
   x.typ := t^.base;
 end;
@@ -698,22 +740,27 @@ begin
   if not IsInt(hi.typ) then MarkAt(hi.pos, 'an index is an integer, found ' + What(hi));
   if x.vol then MarkAt(x.pos, 'can''t make a slice through a volatile pointer');
   if x.odd then MarkAt(x.pos, 'can''t make a slice of a field of a packed record');
+  if t^.form = fArray then NotReadOnly(x);
   Value(hi);
   MovRR(RDX, RAX);
   PopR(RCX);
   if t^.form = fPtr then begin
     { the bounds can't be known, but a slice can't run backwards }
     PopR(R8);
-    Alu(aluCmp, RCX, RDX);
-    Check(ccLE, 3, lo.pos, RCX, NoMem, 0, -1);
+    if checks then begin
+      Alu(aluCmp, RCX, RDX);
+      Check(ccLE, 3, lo.pos, RCX, NoMem, 0, -1);
+    end;
   end else begin
     m := MemOf(x, R8);
     ml := m; ml.disp := ml.disp + 8;
-    if t^.form = fArray then begin CmpI(RDX, t^.len); ml := NoMem end
-    else AluM(aluCmp, RDX, ml);
-    Check(ccBE, 1, lo.pos, RCX, ml, t^.len, -1);
-    Alu(aluCmp, RCX, RDX);
-    Check(ccBE, 1, lo.pos, RCX, ml, t^.len, -1);
+    if checks then begin
+      if t^.form = fArray then begin CmpI(RDX, t^.len); ml := NoMem end
+      else AluM(aluCmp, RDX, ml);
+      Check(ccBE, 1, lo.pos, RCX, ml, t^.len, -1);
+      Alu(aluCmp, RCX, RDX);
+      Check(ccBE, 1, lo.pos, RCX, ml, t^.len, -1);
+    end;
   end;
   tmp := AllocTemp(16, 8);
   MovRR(RAX, RDX);
@@ -853,6 +900,12 @@ begin
   end;
 end;
 
+{ A type's width in bits; an untyped constant's is an I64's }
+function Bits(t: PType): longint;
+begin
+  Bits := t^.size * 8;
+end;
+
 function FoldInt(op: TSym; a, b: int64; t: PType; const p: TPos): int64;
 var u: boolean;
 begin
@@ -867,16 +920,16 @@ begin
       if u then begin
         if op = sDiv then FoldInt := int64(qword(a) div qword(b))
         else FoldInt := int64(qword(a) mod qword(b));
-      end else if (b = -1) and (a = low(int64)) then MarkAt(p, 'division overflows')
+      end else if (b = -1) and (a = int64(-1) shl (Bits(t) - 1)) then MarkAt(p, 'division overflows')
       else if op = sDiv then FoldInt := a div b
       else FoldInt := a mod b;
     end;
     sAmp: FoldInt := a and b;
     sBar: FoldInt := a or b;
     sXor: FoldInt := a xor b;
-    sShl: FoldInt := a shl (b and 63);
-    sShr: if u then FoldInt := int64(qword(a) shr (b and 63))
-          else FoldInt := SarInt64(a, b and 63);
+    sShl: FoldInt := a shl (b and (Bits(t) - 1));
+    sShr: if u then FoldInt := int64(qword(a) shr (b and (Bits(t) - 1)))
+          else FoldInt := SarInt64(a, b and (Bits(t) - 1));
     sEql: FoldInt := ord(a = b);
     sNeq: FoldInt := ord(a <> b);
     sLss: if u then FoldInt := ord(qword(a) < qword(b)) else FoldInt := ord(a < b);
@@ -913,6 +966,22 @@ end;
 { and, or and not are for BOOLs; &, |, xor and ~ for the bits of
   integers: x is the wrong kind for op, and the message names the
   operator it may have meant }
+{ Before rax div rcx, of a signed type narrower than 64 bits: its
+  smallest value divided by -1 overflows it, which must stop the program
+  as it does for an I64 (report section 6.1). idiv on the 64-bit values
+  wouldn't fault, so then rax is made the smallest I64, and it does. }
+procedure DivTrap(t: PType);
+var L: longint;
+begin
+  L := NoLabel;
+  CmpI(RCX, -1);
+  Jcc(ccNE, L);
+  CmpI(RAX, int64(-1) shl (Bits(t) - 1));
+  Jcc(ccNE, L);
+  ShiftI(shShl, RAX, 64 - Bits(t));
+  FixLink(L);
+end;
+
 procedure WrongLogic(op: TSym; var x: TItem);
 const Bits = 'the bits of integers take ';
 begin
@@ -1013,10 +1082,10 @@ begin
     t := tBool;
   end else if (xt^.form = fPtr) and IsInt(yt) and (op in [sPlus, sMinus]) then begin
     t := xt; scale := xt^.base^.size; isPtr := true;
-    if y.mode = mConst then y.typ := tI64;
+    if y.mode = mConst then y.typ := tInt;
   end else if (xt^.form = fPtr) and (yt^.form = fPtr) and (op = sMinus) then begin
     if not Same(xt, yt) then Mismatch(x, y, xt, yt);
-    t := tI64; scale := xt^.base^.size; isPtr := true;
+    t := tInt; scale := xt^.base^.size; isPtr := true;
   end else if (xt^.form in [fPtr, fProc, fNil, fError]) and (yt^.form in [fPtr, fProc, fNil, fError]) then begin
     if not (op in Rel) then MarkAt(Join(x.pos, y.pos), SymText(op) + ' doesn''t apply to ' + TypeName(xt));
     if (xt^.form in [fProc, fError]) or (yt^.form in [fProc, fError]) then
@@ -1122,9 +1191,9 @@ begin
     case op of
       sPlus: begin if scale <> 1 then ImulI(RCX, scale); Alu(aluAdd, RAX, RCX) end;
       sMinus: begin
-        if (scale <> 1) and (t <> tI64) then ImulI(RCX, scale);
+        if (scale <> 1) and (t <> tInt) then ImulI(RCX, scale);
         Alu(aluSub, RAX, RCX);
-        if (t = tI64) and isPtr and (scale <> 1) then begin
+        if (t = tInt) and isPtr and (scale <> 1) then begin
           sh := Log2(scale);
           if sh >= 0 then ShiftI(shSar, RAX, sh)
           else begin MovRI(RCX, scale); Cqo; Unary(7, RCX) end;
@@ -1133,20 +1202,34 @@ begin
       sTimes: if k >= 1 then ShiftI(shShl, RAX, k) else Imul(RAX, RCX);
       sDiv, sMod: if k >= 1 then DivPow2(op, k, unsign) else begin
         if unsign then begin MovRI(RDX, 0); Unary(6, RCX) end
-        else begin Cqo; Unary(7, RCX) end;
+        else begin
+          if (t^.size < 8) and ((y.mode <> mConst) or (y.val = -1)) then DivTrap(t);
+          Cqo; Unary(7, RCX)
+        end;
         if op = sMod then MovRR(RAX, RDX);
       end;
       sAmp: Alu(aluAnd, RAX, RCX);
       sBar: Alu(aluOr, RAX, RCX);
       sXor: Alu(aluXor, RAX, RCX);
-      sShl: Shift(shShl, RAX);
-      sShr: if unsign then Shift(shShr, RAX) else Shift(shSar, RAX);
+      sShl, sShr: begin
+        { the count modulo the width: the machine takes it modulo 64 }
+        if Bits(t) < 64 then AluI(aluAnd, RCX, Bits(t) - 1);
+        if op = sShl then Shift(shShl, RAX)
+        else if unsign then Shift(shShr, RAX) else Shift(shSar, RAX);
+      end;
     else MarkAt(Join(x.pos, y.pos), SymText(op) + ' doesn''t apply to ' + TypeName(t));
     end;
     Norm(t);
   end;
   x.mode := mReg;
   if op in Rel + [sIn] then x.typ := tBool else x.typ := t;
+end;
+
+{ INT and UINT, the integers as big as an address, through which
+  integers and pointers convert (report section 6.7) }
+function IsWord(t: PType): boolean;
+begin
+  IsWord := Same(t, tInt) or Same(t, tUInt);
 end;
 
 procedure Convert(var x: TItem; t: PType);
@@ -1213,11 +1296,11 @@ begin
     end else begin
       Value(x); MovqXR(0, RAX); Cvtts2si(RAX, 0, IsF32(s)); Norm(t)
     end;
-  end else if (IsInt(s) or (s^.form in [fPtr, fProc, fNil])) and (t^.form in [fPtr, fProc]) then begin
+  end else if (IsWord(s) or (s^.form in [fConst, fPtr, fProc, fNil])) and (t^.form in [fPtr, fProc]) then begin
     if x.mode <> mConst then Value(x);
-  end else if (s^.form in [fPtr, fProc]) and (t^.form = fInt) then begin
-    Value(x); Norm(t)
-  end else
+  end else if (s^.form in [fPtr, fProc]) and IsWord(t) then
+    Value(x)
+  else
     MarkAt(x.pos, 'can''t convert ' + TypeName(s) + ' to ' + TypeName(t));
   x.typ := t;
 end;
@@ -1255,11 +1338,11 @@ begin
   if c.n > High(c.slots) then MarkAt(a.pos, 'too many arguments');
   if p = nil then begin
     { past the parameters of a C procedure that ends in ...: a string
-      goes as a C string, an integer constant as an I64, a real
+      goes as a C string, an integer constant as an INT, a real
       constant as an F64; C takes no F32 there }
     if not c.sig^.variadic then WrongCount(c, a.pos, 'too many arguments');
     if a.mode = mStr then Coerce(a, tPtrU8)
-    else if a.typ^.form = fConst then Coerce(a, tI64)
+    else if a.typ^.form = fConst then Coerce(a, tInt)
     else if a.typ = tRConst then Coerce(a, tReal)
     else if IsF32(a.typ) then MarkAt(a.pos, 'an F32 goes to ... as F64(x)')
     else if not IsScalar(a.typ) then MarkAt(a.pos, 'only a single value goes to ...');
@@ -1270,6 +1353,7 @@ begin
   end;
   c.isF[c.n] := (p^.typ^.form = fReal) and not p^.isVar;
   if p^.isVar then begin
+    NotReadOnly(a);
     if (a.mode <> mVar) or not a.isVar then MarkAt(a.pos, 'a var parameter needs a variable');
     if a.odd then MarkAt(a.pos, 'a field of a packed record can''t be a var parameter');
     if not Same(a.typ, p^.typ) then MarkAt(a.pos, 'a var parameter needs exactly ' + TypeName(p^.typ) + ', found ' + What(a));
@@ -1393,6 +1477,7 @@ var p: int64;
 begin
   if x.typ^.form = fEnum then exit(ToSlot(x));
   if (x.mode <> mVar) or (x.typ^.form <> fVariant) then MarkAt(x.pos, 'match needs a variant or an enumeration, found ' + What(x));
+  if x.ro then CopyToTemp(x);   { its arms' names stand for a copy's fields }
   Address(x, RAX);
   p := AllocTemp(8, 8);
   Store(Mem(RBP, p), RAX, 8);
@@ -1571,7 +1656,7 @@ end;
 procedure IncDec(var v, k: TItem; dec: boolean);
 var n: longint;
 begin
-  Coerce(k, v.typ);
+  CoerceExact(k, v.typ, '');
   Value(k);
   MovRR(RCX, RAX);
   Address(v, RDX);

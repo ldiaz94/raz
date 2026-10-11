@@ -15,7 +15,7 @@ type
 var page: [64]U8;
 
 proc main*;
-var dev: ^VOLATILE Uart; i: I64;
+var dev: ^VOLATILE Uart; i: INT;
 begin
     dev := ^VOLATILE Uart(ADR(page));
     dev^.control := 1;
@@ -26,7 +26,7 @@ begin
     end;
     Out.ln;
     FENCE;
-    Out.int(I64(page[8])); Out.str(" "); Out.int(I64(dev^.status)); Out.ln;
+    Out.int(INT(page[8])); Out.str(" "); Out.int(INT(dev^.status)); Out.ln;
 end;
 
 end Volatile.

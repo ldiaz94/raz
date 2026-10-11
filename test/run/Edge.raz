@@ -31,7 +31,7 @@ begin
 end;
 
 proc sumInner(xs: []Inner): I64;
-var i, j, s: I64;
+var i, j: INT; s: I64;
 begin
     s := 0;
     for i := 0 to LEN(xs) - 1 do

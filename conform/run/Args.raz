@@ -1,8 +1,8 @@
 module Args;
 import Out;
 
-proc main*: I64;
-var i, n: I64; a: ^^U8; s: ^U8;
+proc main*: INT;
+var i, n: INT; a: ^^U8; s: ^U8;
 begin
     a := ARGV();
     for i := 1 to ARGC() - 1 do

@@ -14,17 +14,17 @@ var
     state: U64;   (* the generator: xorshift64 *)
 
 (* A number from the generator, below n. *)
-proc random(n: I64): I64;
+proc random(n: INT): INT;
 begin
     state := state xor (state shl 13);
     state := state xor (state shr 7);
     state := state xor (state shl 17);
-    return I64(state mod U64(n));
+    return INT(state mod U64(n));
 end;
 
 (* The seed, as a nonzero state. *)
 proc seed(s: []U8);
-var i: I64;
+var i: INT;
 begin
     state := 88172645463325252;
     for i := 0 to LEN(s) - 1 do state := state * 31 + U64(s[i]); end;
@@ -33,8 +33,8 @@ begin
 end;
 
 (* The symbols that aren't comments. *)
-proc count(): I64;
-var sc: Scan.Scanner; n: I64;
+proc count(): INT;
+var sc: Scan.Scanner; n: INT;
 begin
     Scan.init(ADR(sc), src);
     Scan.next(ADR(sc));
@@ -47,7 +47,7 @@ begin
 end;
 
 (* Symbol k, counting from 0 and leaving out comments. *)
-proc symbol(k: I64): Scan.Scanner;
+proc symbol(k: INT): Scan.Scanner;
 var sc: Scan.Scanner;
 begin
     Scan.init(ADR(sc), src);
@@ -59,7 +59,7 @@ begin
 end;
 
 proc main*;
-var buf: Buf.Buf; n, op, i: I64; a, b, c: Scan.Scanner;
+var buf: Buf.Buf; n, op, i: INT; a, b, c: Scan.Scanner;
 begin
     if ARGC() # 3 then Rt.stop("usage: Mutate File.raz seed"); end;
     Buf.init(ADR(buf), Heap.heap);

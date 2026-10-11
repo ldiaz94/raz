@@ -9,7 +9,7 @@ type
     end;
     List* = record
         head*: ^Node;
-        len*: I64;
+        len*: INT;
         a: ^Mem.Allocator;
     end;
 

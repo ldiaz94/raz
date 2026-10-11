@@ -9,9 +9,9 @@ type
     Perms = set of Perm;
     Mode = record user, group, other: Perms; end;
 
-proc digit(p: Perms): I64;
+proc digit(p: Perms): INT;
 begin
-    return I64(U8(p));
+    return INT(U8(p));
 end;
 
 proc show(p: Perms);

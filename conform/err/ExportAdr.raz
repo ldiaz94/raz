@@ -1,0 +1,8 @@
+module ExportAdr;
+import Owner;
+proc main*;
+var _p: ^INT;
+begin
+    _p := ADR(Owner.n);
+end;
+end ExportAdr.

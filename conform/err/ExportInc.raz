@@ -1,0 +1,7 @@
+module ExportInc;
+import Owner;
+proc main*;
+begin
+    INC(Owner.n);
+end;
+end ExportInc.

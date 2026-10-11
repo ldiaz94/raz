@@ -1,0 +1,4 @@
+conform/err/IntFromPointer.raz:5:14: error: can't convert ^U8 to I64
+    5 |     i := I64(p);
+      |              ^
+raz: 1 error

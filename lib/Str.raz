@@ -7,8 +7,8 @@ import Rt;
 const least = -9223372036854775807 - 1;   (* the smallest I64 *)
 
 (* -1, 0 or 1 as a sorts before, with or after b, byte by byte. *)
-proc cmp*(a, b: []U8): I64;
-var i, n: I64;
+proc cmp*(a, b: []U8): INT;
+var i, n: INT;
 begin
     n := LEN(a);
     if LEN(b) < n then n := LEN(b); end;
@@ -30,7 +30,7 @@ end;
 
 (* FNV-1a, 64 bits. *)
 proc hash*(s: []U8): U64;
-var h: U64; i: I64;
+var h: U64; i: INT;
 begin
     h := 0CBF29CE484222325H;
     for i := 0 to LEN(s) - 1 do
@@ -40,8 +40,8 @@ begin
 end;
 
 (* Where sub first starts in s, or -1. *)
-proc find*(s, sub: []U8): I64;
-var i: I64;
+proc find*(s, sub: []U8): INT;
+var i: INT;
 begin
     for i := 0 to LEN(s) - LEN(sub) do
         if s[i..i + LEN(sub)] = sub then return i; end;
@@ -57,7 +57,7 @@ end;
 (* c in UTF-8: its bytes, and how many. A number that isn't a
    character, a surrogate or one past 10FFFFH, becomes FFFDH, the
    character that stands for a wrong one. *)
-proc encode*(c: I64): ([4]U8, I64);
+proc encode*(c: I32): ([4]U8, INT);
 var b: [4]U8;
 begin
     if (c < 0) or (c > 10FFFFH) or (c >= 0D800H) and (c <= 0DFFFH) then c := 0FFFDH; end;
@@ -85,11 +85,11 @@ end;
    if its first byte doesn't start one rightly, being a continuation,
    or followed by too few continuations, or spelling a surrogate or a
    character in more bytes than it needs; 0 and 0 if s is empty. *)
-proc decode*(s: []U8): (I64, I64);
-var c, n, least, i: I64;
+proc decode*(s: []U8): (I32, INT);
+var c, least: I32; n, i: INT;
 begin
     if LEN(s) = 0 then return 0, 0; end;
-    c := I64(s[0]);
+    c := I32(s[0]);
     if c < 80H then return c, 1;
     elsif c < 0C0H then return 0FFFDH, 1;
     elsif c < 0E0H then n := 2; c := c & 1FH; least := 80H;
@@ -100,7 +100,7 @@ begin
     if LEN(s) < n then return 0FFFDH, 1; end;
     for i := 1 to n - 1 do
         if s[i] & 0C0H # 80H then return 0FFFDH, 1; end;
-        c := c shl 6 + I64(s[i] & 3FH);
+        c := c shl 6 + I32(s[i] & 3FH);
     end;
     if (c < least) or (c > 10FFFFH) or (c >= 0D800H) and (c <= 0DFFFH) then return 0FFFDH, 1; end;
     return c, n;
@@ -109,7 +109,7 @@ end;
 (* s as a decimal number, with a - or + before it if any, and nothing
    else; false if it isn't one, or an I64 can't hold it. *)
 proc toInt*(s: []U8): (I64, BOOL);
-var n, i, d: I64; neg: BOOL;
+var n, d: I64; i: INT; neg: BOOL;
 begin
     neg := (LEN(s) > 0) and (s[0] = '-');
     if (LEN(s) > 0) and ((s[0] = '-') or (s[0] = '+')) then i := 1; end;
@@ -133,7 +133,7 @@ end;
    the lowest: how a file or a message in little-endian order is read,
    whatever the machine's own order. *)
 proc le*(s: []U8): U64;
-var v: U64; i: I64;
+var v: U64; i: INT;
 begin
     if LEN(s) > 8 then Rt.stop("Str.le: more than 8 bytes"); end;
     for i := LEN(s) - 1 to 0 by -1 do v := v shl 8 | U64(s[i]); end;
@@ -142,7 +142,7 @@ end;
 
 (* As le, the first byte the highest: big-endian, network order. *)
 proc be*(s: []U8): U64;
-var v: U64; i: I64;
+var v: U64; i: INT;
 begin
     if LEN(s) > 8 then Rt.stop("Str.be: more than 8 bytes"); end;
     for i := 0 to LEN(s) - 1 do v := v shl 8 | U64(s[i]); end;
@@ -152,7 +152,7 @@ end;
 (* v into the bytes of s, at most 8, the lowest first; what doesn't
    fit is left out. *)
 proc putLE*(s: []U8; v: U64);
-var i: I64;
+var i: INT;
 begin
     if LEN(s) > 8 then Rt.stop("Str.putLE: more than 8 bytes"); end;
     for i := 0 to LEN(s) - 1 do s[i] := U8(v); v := v shr 8; end;
@@ -160,7 +160,7 @@ end;
 
 (* As putLE, the highest first. *)
 proc putBE*(s: []U8; v: U64);
-var i: I64;
+var i: INT;
 begin
     if LEN(s) > 8 then Rt.stop("Str.putBE: more than 8 bytes"); end;
     for i := LEN(s) - 1 to 0 by -1 do s[i] := U8(v); v := v shr 8; end;
@@ -182,7 +182,7 @@ begin
 end;
 
 proc testUtf8;
-var b: [4]U8; n, c, i: I64;
+var b: [4]U8; n: INT; c, i: I32;
 begin
     b, n := encode('a');
     if (n # 1) or (b[0] # 'a') then Rt.stop("Str.encode: a"); end;

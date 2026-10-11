@@ -1,0 +1,5 @@
+conform/err/IntInc.raz:5:12: error: expected I64, found INT
+    5 |     INC(i, LEN(s));
+      |            ^^^^^^
+help: they don't mix here: write I64(LEN(s))
+raz: 1 error

@@ -1,0 +1,8 @@
+module ExportVarParam;
+import Owner;
+proc put(var x: INT); begin x := 1; end;
+proc main*;
+begin
+    put(Owner.n);
+end;
+end ExportVarParam.

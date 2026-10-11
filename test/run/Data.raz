@@ -66,7 +66,7 @@ begin
     m.a := 1; m.b := -2; m.c := 65535;
     Out.int(m.b); Out.str(" "); Out.int(I64(m.c)); Out.ln;
     bp := ^U8(ADR(m));
-    Out.int(I64(ADR(m.c)) - I64(bp)); Out.ln;
+    Out.int(INT(ADR(m.c)) - INT(bp)); Out.ln;
 end;
 
 end Data.

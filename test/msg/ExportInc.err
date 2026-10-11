@@ -1,0 +1,4 @@
+conform/err/ExportInc.raz:5:9: error: Owner.n is Owner's, and can't be changed outside it
+    5 |     INC(Owner.n);
+      |         ^^^^^^^
+raz: 1 error

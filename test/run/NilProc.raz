@@ -1,9 +1,9 @@
 module NilProc;
 (* Calling a nil procedure: the place is the call's *)
 
-var f: proc(n: I64): I64;
+var f: proc(n: INT): INT;
 
-proc main*: I64;
+proc main*: INT;
 begin
     return f(1)
         + 1;

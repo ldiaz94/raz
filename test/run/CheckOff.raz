@@ -1,0 +1,18 @@
+module CheckOff;
+(* check off leaves out the checks of its own module only: here
+   Unchecked reads past an array, into the field after it, and makes a
+   slice past its string's end; then this module's own index fails *)
+import Out, Unchecked;
+
+proc main*;
+var p: Unchecked.Pair; i: INT;
+begin
+    p.b := 42;
+    Out.int(Unchecked.get(ADR(p), 2)); Out.str(" ");
+    Out.int(Unchecked.width("abc", 1, 5)); Out.ln;
+    Out.flush;
+    i := 2;
+    Out.int(p.a[i]);
+end;
+
+end CheckOff.

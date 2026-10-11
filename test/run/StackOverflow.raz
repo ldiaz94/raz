@@ -4,14 +4,14 @@ module StackOverflow;
    zeroes it from the bottom: with a small one, where the stack starts
    could put the guard page under the body's pushes instead. *)
 
-proc down(n: I64): I64;
-var pad: [65536]I64;
+proc down(n: INT): INT;
+var pad: [65536]INT;
 begin
     pad[n mod 65536] := n;
     return down(n + 1) + pad[0];
 end;
 
-proc main*: I64;
+proc main*: INT;
 begin
     return down(0);
 end;

@@ -5,24 +5,24 @@ import Sys, Rt;
 
 type
     Allocator* = record
-        alloc*: proc(a: ^Allocator; size, align: I64): ^U8;   (* nil if out of room *)
+        alloc*: proc(a: ^Allocator; size, align: INT): ^U8;   (* nil if out of room *)
         free*:  proc(a: ^Allocator; p: ^U8);
     end;
 
 const Page* = 4096;
 
 (* size bytes, rounded up to whole pages, zeroed; or nil. *)
-proc pages*(size: I64): ^U8;
+proc pages*(size: INT): ^U8;
 begin
     return Sys.mmap((size + Page - 1) div Page * Page);
 end;
 
-proc unmap*(p: ^U8; size: I64);
+proc unmap*(p: ^U8; size: INT);
 begin
     Sys.munmap(p, (size + Page - 1) div Page * Page);
 end;
 
-proc alloc*(a: ^Allocator; size, align: I64): ^U8;
+proc alloc*(a: ^Allocator; size, align: INT): ^U8;
 begin
     return a^.alloc(a, size, align);
 end;
@@ -34,7 +34,7 @@ end;
 
 (* The module's test. *)
 proc main*;
-var p: ^U8; i: I64;
+var p: ^U8; i: INT;
 begin
     p := pages(10000);
     if p = nil then Rt.stop("Mem.pages"); end;

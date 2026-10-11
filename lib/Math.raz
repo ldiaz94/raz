@@ -45,14 +45,14 @@ proc floor*(x: F64): F64;
 var t: F64;
 begin
     if not (x > -4503599627370496.0) or not (x < 4503599627370496.0) or (x = 0.0) then return x; end;
-    t := F64(I64(x));
+    t := F64(INT(x));
     if t > x then t := t - 1.0; end;
     return t;
 end;
 
 (* x times 2^k, for k from -1075 to 1024: 2^k is made from its bits,
    in two steps where k is past what an F64's exponent holds. *)
-proc scale(x: F64; k: I64): F64;
+proc scale(x: F64; k: INT): F64;
 begin
     if k > 1023 then x := x * fromBits(U64(2046) shl 52); DEC(k, 1023); end;
     if k < -1022 then x := x * fromBits(U64(1 + 53) shl 52); INC(k, 1022 - 53); end;
@@ -61,13 +61,13 @@ end;
 
 (* e^x = 2^k e^r, with r = x - k ln 2 at most ln 2 / 2 across. *)
 proc exp*(x: F64): F64;
-var k: I64; hi, lo, r, rr, c: F64;
+var k: INT; hi, lo, r, rr, c: F64;
 begin
     if x # x then return x; end;
     if x > 709.782712893383973096 then return x * fromBits(U64(2046) shl 52); end;   (* too big: inf *)
     if x < -745.13321910194110842 then return 0.0; end;
-    if x < 0.0 then k := I64(x * 1.44269504088896338700 - 0.5);
-    else k := I64(x * 1.44269504088896338700 + 0.5);
+    if x < 0.0 then k := INT(x * 1.44269504088896338700 - 0.5);
+    else k := INT(x * 1.44269504088896338700 + 0.5);
     end;
     hi := x - F64(k) * ln2hi;
     lo := F64(k) * ln2lo;
@@ -83,7 +83,7 @@ end;
    found through s = f / (2 + f), f = m - 1, whose series converges
    fast. *)
 proc ln*(x: F64): F64;
-var u: U64; k: I64; f, hfsq, s, z, w, r: F64;
+var u: U64; k: INT; f, hfsq, s, z, w, r: F64;
 begin
     if x # x then return x; end;
     if x < 0.0 then return (x - x) / 0.0; end;     (* NaN *)
@@ -95,7 +95,7 @@ begin
     end;
     (* the exponent, counted from m's lower end, and the bits of m *)
     u := bits(x) + (3FF0000000000000H - 3FE6A09E00000000H);
-    INC(k, I64(u shr 52) - 3FFH);
+    INC(k, INT(u shr 52) - 3FFH);
     f := fromBits((u & 0FFFFFFFFFFFFFH) + 3FE6A09E00000000H) - 1.0;
     hfsq := 0.5 * f * f;
     s := f / (2.0 + f);
@@ -114,8 +114,8 @@ code 48H, 89H, 0F8H,   (* mov rax, rdi *)
      0C3H;             (* ret *)
 
 (* 64 bits of t from bit s on, the first bit of t[0] being 0. *)
-proc window(t: []U64; s: I64): U64;
-var q, r: I64;
+proc window(t: []U64; s: INT): U64;
+var q, r: INT;
 begin
     q := s div 64;
     r := s mod 64;
@@ -129,10 +129,10 @@ end;
    turns, which change no sine, and are left out; the 192 after them
    give the two bits of n mod 4 and the fraction past n, exact far
    beyond an F64. *)
-proc reduceLarge(x: F64): (I64, F64, F64);
+proc reduceLarge(x: F64): (INT, F64, F64);
 var
     t: [21]U64;   (* 2/pi's bits after its point, behind a word of zeros *)
-    m, w0, w1, w2, p0, p1, p2, lo: U64; e, s, n, k: I64; y: F64; neg, up: BOOL;
+    m, w0, w1, w2, p0, p1, p2, lo: U64; e, s, n, k: INT; y: F64; neg, up: BOOL;
 begin
     t := [0, 0A2F9836E4E441529H, 0FC2757D1F534DDC0H, 0DB6295993C439041H, 0FE5163ABDEBBC561H,
         0B7246E3A424DD2E0H, 06492EEA09D1921CH, 0FE1DEB1CB129A73EH, 0E88235F52EBB4484H,
@@ -142,7 +142,7 @@ begin
     neg := x < 0.0;
     if neg then x := -x; end;
     m := bits(x) & 0FFFFFFFFFFFFFH | 10000000000000H;
-    e := I64(bits(x) shr 52) - 1075;
+    e := INT(bits(x) shr 52) - 1075;
     (* W, the 192 bits of 2/pi from the one worth 2^(1 - e), so that
        x 2/pi is m W 2^-190, of which the bits from 2^192 up are left out *)
     s := e + 62;
@@ -157,7 +157,7 @@ begin
     (* n is the two bits from 2^190, the fraction those below; from a
        half up, n is the next and the fraction 1 less, taken as 1 less
        the fraction, negated: its bits complemented, one in 2^190 short *)
-    n := I64(p2 shr 62);
+    n := INT(p2 shr 62);
     p2 := p2 & 3FFFFFFFFFFFFFFFH;
     up := p2 shr 61 = 1;
     if up then
@@ -182,12 +182,12 @@ end;
    than one F64; and n. pi/2 is taken in three parts of 33 bits, each
    with what is left of it after, so that n times each is exact while
    n is below 2^20, about x = 1.6E6. *)
-proc reduce(x: F64): (I64, F64, F64);
-var n: I64; fn, r, t, w, y: F64;
+proc reduce(x: F64): (INT, F64, F64);
+var n: INT; fn, r, t, w, y: F64;
 begin
     if (x > 1.6E6) or (x < -1.6E6) then return reduceLarge(x); end;
-    if x < 0.0 then n := I64(x * 6.36619772367581382433E-01 - 0.5);
-    else n := I64(x * 6.36619772367581382433E-01 + 0.5);
+    if x < 0.0 then n := INT(x * 6.36619772367581382433E-01 - 0.5);
+    else n := INT(x * 6.36619772367581382433E-01 + 0.5);
     end;
     fn := F64(n);
     r := x - fn * 1.57079632673412561417E+00;
@@ -227,7 +227,7 @@ begin
 end;
 
 proc sin*(x: F64): F64;
-var n: I64; y, yy: F64;
+var n: INT; y, yy: F64;
 begin
     if (x = 0.0) or (x # x) then return x; end;
     if (x - x) # 0.0 then return x - x; end;    (* an infinity: NaN *)
@@ -241,7 +241,7 @@ begin
 end;
 
 proc cos*(x: F64): F64;
-var n: I64; y, yy: F64;
+var n: INT; y, yy: F64;
 begin
     if (x - x) # 0.0 then return x - x; end;    (* an infinity or NaN: NaN *)
     n, y, yy := reduce(x);

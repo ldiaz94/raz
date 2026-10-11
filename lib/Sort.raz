@@ -8,8 +8,8 @@ module Sort(T; less: proc(a, b: T): BOOL);
 (* The element at i sinks through s[0..n], a heap with the largest at
    its root, to where it is no smaller than its children, 2i+1 and
    2i+2. *)
-proc sink(s: []T; i, n: I64);
-var c: I64; t: T;
+proc sink(s: []T; i, n: INT);
+var c: INT; t: T;
 begin
     c := 2 * i + 1;
     while c < n do
@@ -23,7 +23,7 @@ end;
 
 (* s made a heap, then its largest taken, in turn, to the end. *)
 proc sort*(s: []T);
-var i: I64; t: T;
+var i: INT; t: T;
 begin
     for i := LEN(s) div 2 - 1 to 0 by -1 do sink(s, i, LEN(s)); end;
     for i := LEN(s) - 1 to 1 by -1 do

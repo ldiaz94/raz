@@ -1,0 +1,4 @@
+test/err/DivLowestConst.raz:5:11: error: division overflows
+    5 |     _x := I8(-128) div (-1);
+      |           ^^^^^^^^^^^^^^^^^
+raz: 1 error

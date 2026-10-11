@@ -1,0 +1,4 @@
+conform/err/ExportAsSlice.raz:6:9: error: Owner.a is Owner's, and can't be changed outside it
+    6 |     sum(Owner.a);
+      |         ^^^^^^^
+raz: 1 error

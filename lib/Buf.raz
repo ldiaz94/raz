@@ -6,7 +6,7 @@ type
     Buf* = record
         a: ^Mem.Allocator;
         data: ^U8;
-        len*, cap: I64;
+        len*, cap: INT;
     end;
 
 proc init*(b: ^Buf; a: ^Mem.Allocator);
@@ -15,8 +15,8 @@ begin
 end;
 
 (* Room for n more bytes; false if the allocator has none. *)
-proc room*(b: ^Buf; n: I64): BOOL;
-var cap, i: I64; p: ^U8;
+proc room*(b: ^Buf; n: INT): BOOL;
+var cap, i: INT; p: ^U8;
 begin
     if b^.len + n <= b^.cap then return true; end;
     cap := b^.cap * 2;
@@ -40,7 +40,7 @@ begin
 end;
 
 proc str*(b: ^Buf; s: []U8);
-var i: I64;
+var i: INT;
 begin
     if room(b, LEN(s)) then
         for i := 0 to LEN(s) - 1 do b^.data[b^.len + i] := s[i]; end;
@@ -70,7 +70,7 @@ end;
 
 (* The module's test, over an arena. *)
 proc main*;
-var ar: Arena.Arena; b: Buf; i: I64; s: []U8;
+var ar: Arena.Arena; b: Buf; i: INT; s: []U8;
 begin
     if not Arena.init(ADR(ar), 1 shl 20) then Rt.stop("Buf: no arena"); end;
     init(ADR(b), ADR(ar.base));

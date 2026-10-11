@@ -8,11 +8,11 @@ type
     Arena* = record
         base*: Mem.Allocator;     (* first, so that ^Arena(a) finds the rest *)
         buf: ^U8;
-        used, cap: I64;
+        used, cap: INT;
     end;
 
-proc alloc(a: ^Mem.Allocator; size, align: I64): ^U8;
-var ar: ^Arena; at: I64;
+proc alloc(a: ^Mem.Allocator; size, align: INT): ^U8;
+var ar: ^Arena; at: INT;
 begin
     ar := ^Arena(a);
     at := (ar^.used + align - 1) div align * align;
@@ -26,7 +26,7 @@ begin
 end;
 
 (* An arena of size bytes; false if the system has none. *)
-proc init*(ar: ^Arena; size: I64): BOOL;
+proc init*(ar: ^Arena; size: INT): BOOL;
 begin
     ar^.base := {alloc: alloc, free: free};
     ar^.buf := Mem.pages(size);

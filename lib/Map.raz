@@ -1,6 +1,6 @@
 (* A hash map from K to V, by open addressing; it hashes and compares
    keys with the procedures it is given:
-       import Count := Map([]U8, I64, Str.hash, Str.eq); *)
+       import Count := Map([]U8, INT, Str.hash, Str.eq); *)
 module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
 import Mem;
 
@@ -13,8 +13,8 @@ type
     Map* = record
         a: ^Mem.Allocator;
         slots: ^Entry;
-        cap: I64;     (* a power of two, or 0 *)
-        len*: I64;
+        cap: INT;     (* a power of two, or 0 *)
+        len*: INT;
     end;
 
 proc init*(m: ^Map; a: ^Mem.Allocator);
@@ -23,10 +23,10 @@ begin
 end;
 
 (* The slot of k, or of the empty slot where it would go. *)
-proc slot(m: ^Map; k: K): I64;
-var i: I64;
+proc slot(m: ^Map; k: K): INT;
+var i: INT;
 begin
-    i := I64(hash(k) & U64(m^.cap - 1));
+    i := INT(hash(k) & U64(m^.cap - 1));
     while m^.slots[i].used and not eq(m^.slots[i].key, k) do
         i := (i + 1) & (m^.cap - 1);
     end;
@@ -34,7 +34,7 @@ begin
 end;
 
 proc grow(m: ^Map): BOOL;
-var old: ^Entry; n, i, j: I64;
+var old: ^Entry; n, i, j: INT;
 begin
     old := m^.slots;
     n := m^.cap;
@@ -54,7 +54,7 @@ end;
 
 (* k now maps to v; false if there was no room. *)
 proc put*(m: ^Map; k: K; v: V): BOOL;
-var i: I64;
+var i: INT;
 begin
     if (m^.len + 1) * 4 > m^.cap * 3 then
         if not grow(m) then return false; end;
@@ -72,7 +72,7 @@ end;
    after it that were pushed on past its slot move back, so that a
    search for each still finds it before an empty slot. *)
 proc remove*(m: ^Map; k: K): BOOL;
-var i, j, home: I64;
+var i, j, home: INT;
 begin
     if m^.cap = 0 then return false; end;
     i := slot(m, k);
@@ -80,7 +80,7 @@ begin
     j := (i + 1) & (m^.cap - 1);
     while m^.slots[j].used do
         (* the entry at j may fill i if i lies between its home and j *)
-        home := I64(hash(m^.slots[j].key) & U64(m^.cap - 1));
+        home := INT(hash(m^.slots[j].key) & U64(m^.cap - 1));
         if (j - home) & (m^.cap - 1) >= (j - i) & (m^.cap - 1) then
             m^.slots[i] := m^.slots[j];
             i := j;
@@ -94,7 +94,7 @@ end;
 
 (* What k maps to, and whether it maps to anything. *)
 proc get*(m: ^Map; k: K): (V, BOOL);
-var i: I64; none: V;
+var i: INT; none: V;
 begin
     if m^.cap = 0 then return none, false; end;
     i := slot(m, k);
@@ -104,7 +104,7 @@ end;
 
 (* The entry after i, walking from 0: the number to pass for the one
    after it, or -1 if there are no more, then its key and value. *)
-proc next*(m: ^Map; i: I64): (I64, K, V);
+proc next*(m: ^Map; i: INT): (INT, K, V);
 var k: K; v: V;
 begin
     while i < m^.cap do

@@ -1,0 +1,8 @@
+module ExportSlice;
+import Owner;
+proc main*;
+var _s: []INT;
+begin
+    _s := Owner.a[0..2];
+end;
+end ExportSlice.

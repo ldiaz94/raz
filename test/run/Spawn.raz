@@ -11,7 +11,7 @@ type Node = record next: ^Node; n: I64; end;
 
 var
     m: Thread.Mutex;
-    count, atomic: I64;
+    count: I64; atomic: INT;
 
 proc work(arg: ^U8);
 var i: I64; p, list: ^Node;

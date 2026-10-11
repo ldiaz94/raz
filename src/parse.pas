@@ -76,7 +76,7 @@ var
   curResult: PType;       { the result type of the procedure being compiled }
   inExtern: boolean;      { reading an extern's signature: ... allowed }
   tArgv, tBodySig: PType;
-  nameRt, nameFail, nameMain, nameBody, nameStatic: longint;
+  nameRt, nameFail, nameMain, nameBody, nameStatic, nameCheck, nameOff: longint;
   declaring: array[0..63] of longint;   { the names the declaration being read declares }
   numDeclaring: longint;
   skipped: boolean;       { the last statement had an error and was skipped }
@@ -667,7 +667,7 @@ begin
     if i > 0 then Expect(sComma);
     Expression(a, nil);
     if not (IsScalar(a.typ) and (a.typ^.form <> fReal)) then MarkAt(a.pos, 'expected an integer or a pointer, found ' + What(a));
-    if a.typ^.form = fConst then Coerce(a, tI64);
+    if a.typ^.form = fConst then Coerce(a, tInt);
     slots[i] := ToSlot(a);
   end;
 end;
@@ -678,8 +678,9 @@ begin
   Expression(p, nil);
   if p.typ^.form <> fPtr then MarkAt(p.pos, 'expected a pointer, found ' + What(p));
   t := p.typ^.base;
-  if not (((t^.form = fInt) or ((t^.form = fPtr) and (which <> bXadd))) and (t^.size = 8)) then
-    MarkAt(p.pos, 'expected an 8-byte integer or a pointer, found ' + TypeName(t));
+  if not (IsWord(t) or ((t^.form = fPtr) and (which <> bXadd))) then
+    if which = bXadd then MarkAt(p.pos, 'expected a pointer to an INT or a UINT, found ' + TypeName(p.typ))
+    else MarkAt(p.pos, 'expected a pointer to an INT, a UINT or a pointer, found ' + TypeName(p.typ));
   s[0] := ToSlot(p);
   if which = bCas then n := 2 else n := 1;
   for i := 1 to n do begin
@@ -710,6 +711,7 @@ procedure New_(var x: TItem);
 var y, z: TItem; t: PType; f: PObj; s: int64; c: TCall; L: longint;
 begin
   Expression(x, nil);
+  NotReadOnly(x);
   if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fPtr) then MarkAt(x.pos, 'NEW needs a pointer variable');
   t := x.typ^.base;
   Save(x);
@@ -728,9 +730,9 @@ begin
   MakeConst(z, y.typ, 0);
   z.mode := mReg;
   PassArg(c, z);
-  MakeConst(z, tI64, t^.size);
+  MakeConst(z, tInt, t^.size);
   PassArg(c, z);
-  MakeConst(z, tI64, t^.align);
+  MakeConst(z, tInt, t^.align);
   PassArg(c, z);
   EndCall(c, z);
   L := NoLabel;
@@ -764,7 +766,7 @@ begin
     MakeConst(x, tNone, 0);
     case which of
       bFence: begin Mfence; x.mode := mNone end;
-      bArgc: begin Load(RAX, MemRip(argcChunk, 0), 8, false); x.typ := tI64; x.mode := mReg end;
+      bArgc: begin Load(RAX, MemRip(argcChunk, 0), 8, false); x.typ := tInt; x.mode := mReg end;
       bArgv: begin Load(RAX, MemRip(argvChunk, 0), 8, false); x.typ := tArgv; x.mode := mReg end;
     end;
     exit;
@@ -777,6 +779,7 @@ begin
     end;
     bAdr: begin
       Expression(y, nil);
+      NotReadOnly(y);
       if (y.mode <> mVar) or not y.isVar then MarkAt(y.pos, 'ADR needs a variable');
       if y.odd then MarkAt(y.pos, 'a field of a packed record has no address');
       t := NewPtr(y.typ, y.vol);
@@ -791,7 +794,7 @@ begin
       else if (y.typ^.form = fSlice) and (y.mode = mVar) then begin
         Address(y, RAX);
         Load(RAX, Mem(RAX, 8), 8, false);
-        MakeConst(x, tI64, 0);
+        MakeConst(x, tInt, 0);
         x.mode := mReg;
       end else MarkAt(y.pos, 'LEN needs an array or a slice, found ' + What(y));
     end;
@@ -802,19 +805,20 @@ begin
         Next;
         Expression(y, nil);
         if not (IsScalar(y.typ) and (y.typ^.form <> fReal)) then MarkAt(y.pos, 'expected an integer or a pointer, found ' + What(y));
-        if y.typ^.form = fConst then Coerce(y, tI64);
+        if y.typ^.form = fConst then Coerce(y, tInt);
         slots[n] := ToSlot(y);
         inc(n);
       end;
       for i := 0 to n - 1 do Load(SysRegs[i], Mem(RBP, slots[i]), 8, false);
       Syscall;
-      MakeConst(x, tI64, 0);
+      MakeConst(x, tInt, 0);
       x.mode := mReg;
     end;
     bCas, bXchg, bXadd: Atomic(x, which);
     bMsg: begin Expression(x, tError); Msg(x) end;
     bInc, bDec: begin
       Expression(x, nil);
+      NotReadOnly(x);
       if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fInt) then
         MarkAt(x.pos, IncOrDec(which) + ' needs an integer variable');
       Save(x);
@@ -1261,10 +1265,11 @@ begin
   MakeItem(v, o);
   Save(v);
   Expression(a, o^.typ);
+  CoerceExact(a, o^.typ, '');
   Assign(v, a);
   Expect(sTo);
   Expression(b, o^.typ);
-  Coerce(b, o^.typ);
+  CoerceExact(b, o^.typ, '');
   bslot := ToSlot(b);
   step := 1;
   if tok = sBy then begin
@@ -1397,6 +1402,7 @@ begin
   d[0] := x;
   dn[0] := first;
   repeat
+    NotReadOnly(d[n]);
     if (d[n].mode <> mVar) or not d[n].isVar then MarkAt(d[n].pos, 'can''t assign to ' + Subject(d[n], dn[n]));
     Pin(d[n]);
     inc(n);
@@ -1414,6 +1420,7 @@ begin
   for i := 0 to n - 1 do begin
     z := y;
     Field(z, f);
+    CoerceExact(z, d[i].typ, 'several results go to variables of just their types');
     Assign(d[i], z);
     f := f^.next;
   end;
@@ -1477,6 +1484,7 @@ begin
     sIdent: begin
       LeftSide(x, called);
       if tok = sBecomes then begin
+        NotReadOnly(x);
         if (x.mode <> mVar) or not x.isVar then MarkAt(x.pos, 'can''t assign to ' + Subject(x, first));
         Save(x);
         Next;
@@ -2078,13 +2086,14 @@ end;
 function CompileFile(const path: shortstring; n: longint; const args: TArgs; checkOnly: boolean): PModule;
 var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
-  oldMod: PModule; oldCheck: boolean; m: PModule;
+  oldMod: PModule; oldCheck, oldChecks: boolean; m: PModule;
   lib: PLib; start: TPos; alias, mname, line, oldPath: longint; o: PObj; body: longint; iargs: TArgs;
   generic: boolean; argsAt: TScanState;
 begin
   SaveScan(st);
   SaveScopes(d, saved);
-  oldMod := curModule; oldCheck := checkMode; oldPath := curFile;
+  oldMod := curModule; oldCheck := checkMode; oldPath := curFile; oldChecks := checks;
+  checks := true;
   curFile := Name(path);
   if not Open(path) then Fatal('can''t read ' + path);
   New(m);
@@ -2167,6 +2176,15 @@ begin
     Next;
     Expect(sSemicolon);
   end;
+  { check off;: the module's index and slice checks left out; neither
+    word is reserved }
+  if (tok = sIdent) and (id = nameCheck) then begin
+    Next;
+    if (tok <> sIdent) or (id <> nameOff) then Expected('"off"');
+    Next;
+    Expect(sSemicolon);
+    checks := false;
+  end;
   Declarations(true);
   if tok = sBegin then begin
     if checkMode then SkipBody
@@ -2203,7 +2221,7 @@ begin
     if lastModule = nil then firstModule := m else lastModule^.next := m;
     lastModule := m;
   end;
-  curModule := oldMod; checkMode := oldCheck; curFile := oldPath;
+  curModule := oldMod; checkMode := oldCheck; curFile := oldPath; checks := oldChecks;
   RestoreScopes(d, saved);
   RestoreScan(st);
   CompileFile := m;
@@ -2430,6 +2448,8 @@ initialization
   nameMain := Name('main');
   nameBody := Name('body');
   nameStatic := Name('static');
+  nameCheck := Name('check');
+  nameOff := Name('off');
   rtFail := NewChunk(secText, nameRt, nameFail);
   argcChunk := NewChunk(secBss, -1, Name('argc'));
   SetBss(argcChunk, 8, 8);

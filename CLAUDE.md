@@ -139,7 +139,7 @@ otherwise.
   program the entry point stores C's `exit` in `Rt.cExit`, found by
   name like `Rt.exit`, before any module body runs.
 - Past an extern's parameters, a string goes as a C string and an
-  integer constant as an `INT` (an `I64` until 2026-10.11 is built).
+  integer constant as an `INT`.
 - A real constant is held as an F64; one typed `F32` holds a value an
   F32 can hold. An `F32` in a register is its low 32 bits; the upper
   ones are left as they fall.
@@ -153,7 +153,16 @@ otherwise.
   threads have none, so a stack overflow in one ends the program by
   the signal with no message.
 - The smallest value of a signed type divided by -1 stops the program
-  (SIGFPE), as 6.1 says; until 2026-10.11 is built, only `I64`'s does.
+  (SIGFPE), as 6.1 says, `mod` as `div`; for a type narrower than 64
+  bits the code makes the division fault, as the machine wouldn't. In
+  a constant it is an error, as dividing by zero is.
+- `INT` widens to `I64` (and `UINT` to `U64`) wherever a value is
+  assigned, passed or returned, `return a, b` included; not in `a, b :=
+  f(x)`, `return f(x)`, a `for` or `INC`/`DEC`. An untyped constant
+  converts to a pointer, as an `INT`.
+- Another module's exported variable, or a field or array element of
+  it, is read-only: an `extern` one too. A slice in it may be sliced,
+  since that can't change the variable; an array in it may not.
 - Warnings come only for a module with no errors. A procedure naming
   itself doesn't use it; a type named by a pointer in its own
   declaration does. An enumeration's names are never warned of, nor a

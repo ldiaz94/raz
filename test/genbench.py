@@ -8,22 +8,22 @@ print("""module Bench;
 import Out;
 
 type
-    Pair = record x, y: I64; end;
-    Shape = variant circle(r: I64); rect(w, h: I64); dot; end;
+    Pair = record x, y: INT; end;
+    Shape = variant circle(r: INT); rect(w, h: INT); dot; end;
 
 var
-    g: [16]I64;
-    data: [64]I64;
+    g: [16]INT;
+    data: [64]INT;
 """)
-print("""proc p0(a, b: I64; _s: []I64): I64;
+print("""proc p0(a, b: INT; _s: []INT): INT;
 begin
     return a + b;
 end;
 """)
 for i in range(1, n + 1):
     print(f"""(* procedure {i} *)
-proc p{i}(a, b: I64; s: []I64): I64;
-var i, t: I64; r: Pair; sh: Shape;
+proc p{i}(a, b: INT; s: []INT): INT;
+var i, t: INT; r: Pair; sh: Shape;
 begin
     t := 0;
     for i := 0 to LEN(s) - 1 do
@@ -51,7 +51,7 @@ begin
 end;
 """)
 print(f"""proc main*;
-var i: I64;
+var i: INT;
 begin
     for i := 0 to 63 do data[i] := i; end;
     Out.int(p{n}(1, 2, data[0..4]));

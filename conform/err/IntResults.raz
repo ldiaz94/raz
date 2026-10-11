@@ -1,0 +1,8 @@
+module IntResults;
+proc two: (INT, INT); begin return 1, 2; end;
+proc main*;
+var a, b: I64;
+begin
+    a, b := two();
+end;
+end IntResults.

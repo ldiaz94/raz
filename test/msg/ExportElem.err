@@ -1,0 +1,4 @@
+conform/err/ExportElem.raz:5:5: error: Owner.a[2] is Owner's, and can't be changed outside it
+    5 |     Owner.a[2] := 1;
+      |     ^^^^^^^^^^
+raz: 1 error

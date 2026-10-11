@@ -13,12 +13,12 @@ type
         str(s: []U8);
         char(c: U8);
         bool(b: BOOL);
-        real(r: F64; places: I64);
+        real(r: F64; places: INT);
     end;
 
 (* The digits of u in base, at the end of the array: it and where they start. *)
-proc digits(u: U64; base: U64): ([24]U8, I64);
-var d: [24]U8; i: I64; v: U8;
+proc digits(u: U64; base: U64): ([24]U8, INT);
+var d: [24]U8; i: INT; v: U8;
 begin
     i := 24;
     repeat
@@ -40,9 +40,9 @@ end;
    nearest; from 1E15 on, with the exponent that makes it less than 10,
    as 1.50e17. The whole part and the fraction are taken apart, so that
    each fits an I64. *)
-proc putReal(b: ^Buf.Buf; x: F64; places: I64);
+proc putReal(b: ^Buf.Buf; x: F64; places: INT);
 const zeros = "00000000";
-var d: [24]U8; at, scale, i, whole, frac, e: I64;
+var d: [24]U8; at, i, e: INT; scale, whole, frac: I64;
 begin
     if x # x then put(b, "nan"); return; end;
     if x < 0.0 then put(b, "-"); x := -x; end;
@@ -73,7 +73,7 @@ begin
 end;
 
 proc arg(b: ^Buf.Buf; a: Arg);
-var d: [24]U8; at: I64; one: [1]U8;
+var d: [24]U8; at: INT; one: [1]U8;
 begin
     match a of
     | int(i):
@@ -94,7 +94,7 @@ begin
 end;
 
 proc format(b: ^Buf.Buf; f: []U8; args: []Arg);
-var i, start, n: I64;
+var i, start, n: INT;
 begin
     i := 0; start := 0; n := 0;
     while i < LEN(f) do

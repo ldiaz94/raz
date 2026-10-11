@@ -23,23 +23,23 @@ type
     Place = record at, line, col, path: U32; end;
     (* What rt_sigaction and sigaltstack take *)
     Action = record
-        handler: proc(sig: I64; info, ctx: ^U8);
+        handler: proc(sig: INT; info, ctx: ^U8);
         flags: U64;
         restorer: proc;
         mask: U64;
     end;
-    Stack = record sp: ^U8; flags, size: I64; end;
+    Stack = record sp: ^U8; flags, size: INT; end;
 
 var
     atExits: [MaxAtExit]proc;
-    numAtExit: I64;
+    numAtExit: INT;
     cExit: proc(status: I32);   (* C's exit, set first thing in a program that uses C *)
     (* Set first thing too: the number of places, where the program's
        code starts and stops, the places, and the paths. The linker
        makes them. *)
-    places: ^I64;
+    places: ^INT;
     line: [256]U8;              (* the message being made *)
-    lineLen: I64;
+    lineLen: INT;
     act: Action;
     alt: Stack;
     altStack: [16384]U8;        (* where the handlers run, even when the stack is full *)
@@ -58,7 +58,7 @@ end;
    uses C, so that C flushes its buffers too. Each procedure is taken
    off the list before it runs, so it runs once even if it fails or
    calls exit itself. *)
-proc exit*(status: I64);
+proc exit*(status: INT);
 var p: proc;
 begin
     while numAtExit > 0 do
@@ -82,7 +82,7 @@ end;
 (* Messages, made in line, one byte kept for the line feed, and
    written by say in one piece *)
 proc put(s: []U8);
-var i: I64;
+var i: INT;
 begin
     for i := 0 to LEN(s) - 1 do
         if lineLen < LEN(line) - 1 then
@@ -93,9 +93,9 @@ begin
 end;
 
 (* The digits are made from the last, those of a negative n from its
-   negative remainders, so that the lowest I64 comes out too. *)
-proc putInt(n: I64);
-var buf: [20]U8; i: I64; neg: BOOL;
+   negative remainders, so that the lowest INT comes out too. *)
+proc putInt(n: INT);
+var buf: [20]U8; i: INT; neg: BOOL;
 begin
     neg := n < 0;
     i := 20;
@@ -109,7 +109,7 @@ begin
 end;
 
 proc putStr(s: ^U8);
-var n: I64;
+var n: INT;
 begin
     n := 0;
     while s[n] # 0 do INC(n); end;
@@ -126,22 +126,22 @@ end;
 (* Puts where the code at address a comes from, as file:line:col: and
    a space, if a is in the program's code: the place with the highest
    address up to a. *)
-proc where(a: U64);
-var p, best: ^Place; i, n: I64;
+proc where(a: UINT);
+var p, best: ^Place; i, n: INT;
 begin
-    if (places = nil) or (a < U64(places[1])) or (a >= U64(places[2])) then return; end;
+    if (places = nil) or (a < UINT(places[1])) or (a >= UINT(places[2])) then return; end;
     n := places[0];
     p := ^Place(places + 3);
     best := nil;
     for i := 0 to n - 1 do
-        if (U64(p[i].at) <= a) and ((best = nil) or (p[i].at > best^.at)) then best := p + i; end;
+        if (UINT(p[i].at) <= a) and ((best = nil) or (p[i].at > best^.at)) then best := p + i; end;
     end;
     if best = nil then return; end;
-    putStr(^U8(p + n) + I64(best^.path));
+    putStr(^U8(p + n) + INT(best^.path));
     put(":");
-    putInt(I64(best^.line));
+    putInt(INT(best^.line));
     put(":");
-    putInt(I64(best^.col));
+    putInt(INT(best^.col));
     put(": ");
 end;
 
@@ -151,7 +151,7 @@ end;
    something whose length is len; 2 for a, which is no position of
    the enumeration called name; 3 for a slice a..b of a pointer, which
    runs backwards. *)
-proc fail*(what, a, b, len: I64; at: U64; name: ^U8);
+proc fail*(what, a, b, len: INT; at: UINT; name: ^U8);
 begin
     where(at);
     if what = 0 then
@@ -186,18 +186,18 @@ code 0B8H, 0FH, 0, 0, 0,   (* mov eax, 15 *)
    reset as it was called, so the instruction faults again and the
    signal ends the program. info and ctx are the kernel's siginfo and
    ucontext. *)
-proc onSignal(sig: I64; info, ctx: ^U8);
-var adr, sp, ip: U64; q: ^U64; why: []U8;
+proc onSignal(sig: INT; info, ctx: ^U8);
+var adr, sp, ip: UINT; q: ^UINT; why: []U8;
 begin
-    q := ^U64(info + 16);   (* si_addr *)
+    q := ^UINT(info + 16);   (* si_addr *)
     adr := q^;
-    q := ^U64(ctx + 160);   (* uc_mcontext's rsp, then rip *)
+    q := ^UINT(ctx + 160);   (* uc_mcontext's rsp, then rip *)
     sp := q[0];
     ip := q[1];
     if sig = SigFpe then why := "a division fault";
     elsif ip < Low then
         why := "a nil procedure";
-        q := ^U64(sp);
+        q := ^UINT(sp);
         ip := q^ - 1;   (* the call, by its return address *)
     elsif adr < Low then why := "a nil pointer";
     elsif adr - sp + 100000H < 200000H then why := "a stack overflow";   (* within a megabyte of rsp *)

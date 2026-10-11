@@ -24,7 +24,7 @@ type
     Info* = record
         size*: I64;     (* in bytes *)
         mtime*: I64;    (* when its contents last changed, in nanoseconds since 1970 *)
-        mode*: I64;     (* its permission bits, rwxrwxrwx *)
+        mode*: INT;     (* its permission bits, rwxrwxrwx *)
         dir*: BOOL;     (* a directory *)
         file*: BOOL;    (* a regular file: not a directory, device, pipe or socket *)
         symlink*: BOOL; (* the path itself is a symbolic link *)
@@ -32,7 +32,7 @@ type
 
     (* An open directory: getdents64's records, read a block at a time. *)
     Dir* = record
-        fd, pos, len: I64;
+        fd, pos, len: INT;
         buf: [8192]U8;
     end;
 
@@ -43,10 +43,10 @@ type
         env*: [][]U8;       (* NAME=value, each added to this program's environment *)
         onlyEnv*: BOOL;     (* env is its whole environment *)
         dir*: []U8;         (* its working directory; "" for this program's *)
-        fds*: [3]I64;       (* its standard input, output and error; 0 for this program's own *)
-        group*: I64;        (* the process group it joins: 0 for this program's, -1 a new one it leads *)
+        fds*: [3]INT;       (* its standard input, output and error; 0 for this program's own *)
+        group*: INT;        (* the process group it joins: 0 for this program's, -1 a new one it leads *)
         foreground*: BOOL;  (* its group takes the terminal on standard input *)
-        tty*: I64;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
+        tty*: INT;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
     end;
     (* How a program that wait waited for changed. *)
     Status* = (running, exited, killed, stopped);
@@ -79,11 +79,11 @@ var
     linked: [4096]U8; (* what readLink gives *)
     saved: Termios;   (* the terminal as rawMode found it *)
     caughtSigs: U64;  (* the signals catch has blocked, bit n - 1 for signal n *)
-    sigFd: I64;       (* the signalfd that gives them, once caughtSigs isn't empty *)
+    sigFd: INT;       (* the signalfd that gives them, once caughtSigs isn't empty *)
 
 (* Writes s to the file descriptor fd; the number of bytes written, or
    minus an errno. *)
-proc write*(fd: I64; s: []U8): I64;
+proc write*(fd: INT; s: []U8): INT;
 begin
     if LEN(s) = 0 then return 0; end;
     return SYSCALL(1, fd, ADR(s[0]), LEN(s));
@@ -91,7 +91,7 @@ end;
 
 (* Reads into buf from fd; the number of bytes read, 0 at the end, or
    minus an errno. *)
-proc read*(fd: I64; buf: []U8): I64;
+proc read*(fd: INT; buf: []U8): INT;
 begin
     if LEN(buf) = 0 then return 0; end;
     return SYSCALL(0, fd, ADR(buf[0]), LEN(buf));
@@ -99,7 +99,7 @@ end;
 
 (* path, a C string in buf, or false if it doesn't fit. *)
 proc cstr(path, buf: []U8): BOOL;
-var i: I64;
+var i: INT;
 begin
     if LEN(path) >= LEN(buf) then return false; end;
     for i := 0 to LEN(path) - 1 do buf[i] := path[i]; end;
@@ -126,7 +126,7 @@ end;
 (* The file at path, opened as how asks: its file descriptor, or minus
    an errno. A file it creates is readable by all, writable by its
    owner. *)
-proc open*(path: []U8; how: Accesses): I64;
+proc open*(path: []U8; how: Accesses): INT;
 var buf: [4096]U8;
 begin
     if not cstr(path, buf) then return -36; end;   (* ENAMETOOLONG *)
@@ -134,55 +134,55 @@ begin
 end;
 
 (* The file at path, opened for reading. *)
-proc openRead*(path: []U8): I64;
+proc openRead*(path: []U8): INT;
 begin
     return open(path, {reading});
 end;
 
 (* The file at path, made empty or new, opened for writing. *)
-proc create*(path: []U8): I64;
+proc create*(path: []U8): INT;
 begin
     return open(path, {writing, creating, truncating});
 end;
 
 (* Moves fd to pos from the start of its file, or from the end if
    fromEnd: the new position, or minus an errno. *)
-proc seek*(fd, pos: I64; fromEnd: BOOL): I64;
+proc seek*(fd: INT; pos: I64; fromEnd: BOOL): I64;
 begin
     if fromEnd then return SYSCALL(8, fd, pos, 2); end;   (* lseek, SEEK_END *)
     return SYSCALL(8, fd, pos, 0);                        (* SEEK_SET *)
 end;
 
-proc close*(fd: I64);
+proc close*(fd: INT);
 begin
     SYSCALL(3, fd);
 end;
 
 (* size bytes of fresh, zeroed memory from the system, a multiple of
    pages, or nil. *)
-proc mmap*(size: I64): ^U8;
-var p: I64;
+proc mmap*(size: INT): ^U8;
+var p: INT;
 begin
     p := SYSCALL(9, 0, size, 3, 22H, -1, 0);   (* read, write; private, anonymous *)
     if p < 0 then return nil; end;
     return ^U8(p);
 end;
 
-proc munmap*(p: ^U8; size: I64);
+proc munmap*(p: ^U8; size: INT);
 begin
     SYSCALL(11, p, size);
 end;
 
 (* Whether the file descriptor fd is a terminal: whether it has a
    terminal's settings to read (ioctl TCGETS). *)
-proc isTerminal*(fd: I64): BOOL;
-var t: [8]I64;   (* struct termios: 60 bytes *)
+proc isTerminal*(fd: INT): BOOL;
+var t: [8]INT;   (* struct termios: 60 bytes *)
 begin
     return SYSCALL(16, fd, 5401H, ADR(t)) = 0;
 end;
 
 (* Renames old to new, replacing what new names: 0, or minus an errno. *)
-proc rename*(old, new: []U8): I64;
+proc rename*(old, new: []U8): INT;
 var a, b: [4096]U8;
 begin
     if not cstr(old, a) or not cstr(new, b) then return -36; end;
@@ -190,7 +190,7 @@ begin
 end;
 
 (* Removes the file at path; not a directory. *)
-proc remove*(path: []U8): I64;
+proc remove*(path: []U8): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
@@ -198,7 +198,7 @@ begin
 end;
 
 (* Makes a directory at path, readable by all, writable by its owner. *)
-proc makeDir*(path: []U8): I64;
+proc makeDir*(path: []U8): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
@@ -206,7 +206,7 @@ begin
 end;
 
 (* Removes the directory at path, which must be empty. *)
-proc removeDir*(path: []U8): I64;
+proc removeDir*(path: []U8): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
@@ -214,7 +214,7 @@ begin
 end;
 
 (* Sets the permission bits of what path names. *)
-proc chmod*(path: []U8; mode: I64): I64;
+proc chmod*(path: []U8; mode: INT): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
@@ -222,7 +222,7 @@ begin
 end;
 
 (* Makes path a symbolic link to target. *)
-proc symlink*(target, path: []U8): I64;
+proc symlink*(target, path: []U8): INT;
 var a, b: [4096]U8;
 begin
     if not cstr(target, a) or not cstr(path, b) then return -36; end;
@@ -231,8 +231,8 @@ end;
 
 (* What the symbolic link at path names, good until the next call; and
    0, or minus an errno. *)
-proc readLink*(path: []U8): ([]U8, I64);
-var a: [4096]U8; n: I64;
+proc readLink*(path: []U8): ([]U8, INT);
+var a: [4096]U8; n: INT;
 begin
     if not cstr(path, a) then return "", -36; end;
     n := SYSCALL(89, ADR(a), ADR(linked), LEN(linked));   (* readlink *)
@@ -244,8 +244,8 @@ end;
 (* The size of what path names, whether it is a directory or a regular
    file, following a symbolic link, and whether path is one; and 0, or
    minus an errno. *)
-proc info*(path: []U8): (Info, I64);
-var a: [4096]U8; st: [18]I64; i: Info; r: I64;    (* struct stat: 144 bytes *)
+proc info*(path: []U8): (Info, INT);
+var a: [4096]U8; st: [18]INT; i: Info; r: INT;    (* struct stat: 144 bytes *)
 begin
     if not cstr(path, a) then return i, -36; end;
     r := SYSCALL(6, ADR(a), ADR(st));               (* lstat *)
@@ -262,7 +262,7 @@ begin
 end;
 
 (* Opens the directory at path, for nextEntry. *)
-proc openDir*(d: ^Dir; path: []U8): I64;
+proc openDir*(d: ^Dir; path: []U8): INT;
 var a: [4096]U8;
 begin
     d^.pos := 0;
@@ -276,7 +276,7 @@ end;
 (* The next name in the directory, good until the next call, but . and
    .., in no order; false at the end. *)
 proc nextEntry*(d: ^Dir): ([]U8, BOOL);
-var n, at: I64;
+var n, at: INT;
 begin
     while true do
         if d^.pos >= d^.len then
@@ -289,7 +289,7 @@ begin
         at := d^.pos + 19;
         n := 0;
         while d^.buf[at + n] # 0 do INC(n); end;
-        INC(d^.pos, I64(d^.buf[d^.pos + 16]) + I64(d^.buf[d^.pos + 17]) * 256);
+        INC(d^.pos, INT(d^.buf[d^.pos + 16]) + INT(d^.buf[d^.pos + 17]) * 256);
         if (d^.buf[at..at + n] # ".") and (d^.buf[at..at + n] # "..") then
             return d^.buf[at..at + n], true;
         end;
@@ -305,7 +305,7 @@ end;
 (* Puts the terminal on fd into raw mode: no echo, no lines, no signals,
    no flow control, no CR to NL, no NL to CR NL; false if fd isn't a
    terminal. *)
-proc rawMode*(fd: I64): BOOL;
+proc rawMode*(fd: INT): BOOL;
 var t: Termios;
 begin
     if SYSCALL(16, fd, 5401H, ADR(saved)) # 0 then return false; end;   (* TCGETS *)
@@ -320,25 +320,25 @@ begin
 end;
 
 (* The terminal on fd as rawMode found it. *)
-proc restoreMode*(fd: I64);
+proc restoreMode*(fd: INT);
 begin
     SYSCALL(16, fd, 5402H, ADR(saved));
 end;
 
 (* The columns and rows of the terminal on fd; 80 by 24 if it doesn't
    say. *)
-proc termSize*(fd: I64): (I64, I64);
+proc termSize*(fd: INT): (INT, INT);
 var w: Winsize;
 begin
     if (SYSCALL(16, fd, 5413H, ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then   (* TIOCGWINSZ *)
         return 80, 24;
     end;
-    return I64(w.cols), I64(w.rows);
+    return INT(w.cols), INT(w.rows);
 end;
 
 (* Whether fd has something to read within ms milliseconds; ms < 0
    waits as long as it takes. *)
-proc ready*(fd, ms: I64): BOOL;
+proc ready*(fd, ms: INT): BOOL;
 var p: Pollfd;
 begin
     p := {fd: I32(fd), events: 1};                  (* POLLIN *)
@@ -363,17 +363,17 @@ begin
 end;
 
 (* Waits ms milliseconds. *)
-proc sleep*(ms: I64);
+proc sleep*(ms: INT);
 var t: Timespec; at: I64;
 begin
-    at := clock() + ms * 1000000;
+    at := clock() + I64(ms) * 1000000;
     t := {sec: at div 1000000000, nsec: at mod 1000000000};
     repeat until SYSCALL(230, 1, 1, ADR(t), 0) # -4;    (* clock_nanosleep until t, again after EINTR *)
 end;
 
 (* Fills b with random bytes, from the kernel. *)
 proc random*(b: []U8);
-var n, r: I64;
+var n, r: INT;
 begin
     n := 0;
     while n < LEN(b) do                                 (* a signal may cut it short *)
@@ -386,8 +386,8 @@ end;
    bytes, or, if serving, bound to it and taking connections: its file
    descriptor, or minus an errno. It is closed in a program exec
    starts. *)
-proc socket(family, kind: I64; a: ^U8; size: I64; serving: BOOL): I64;
-var fd, r, one: I64;
+proc socket(family, kind: INT; a: ^U8; size: INT; serving: BOOL): INT;
+var fd, r, one: INT;
 begin
     fd := SYSCALL(41, family, kind | 80000H, 0);        (* socket, SOCK_CLOEXEC *)
     if fd < 0 then return fd; end;
@@ -405,7 +405,7 @@ end;
 
 (* path as a Unix socket's address in a, or false if it is too long. *)
 proc unixAddr(path: []U8; a: ^SockaddrUn): BOOL;
-var i: I64;
+var i: INT;
 begin
     if LEN(path) >= LEN(a^.path) then return false; end;
     a^.family := 1;                                     (* AF_UNIX *)
@@ -414,7 +414,7 @@ begin
 end;
 
 (* A stream socket connected to the Unix socket at path. *)
-proc connect*(path: []U8): I64;
+proc connect*(path: []U8): INT;
 var a: SockaddrUn;
 begin
     if not unixAddr(path, ADR(a)) then return -36; end;    (* ENAMETOOLONG *)
@@ -423,7 +423,7 @@ end;
 
 (* A stream socket made at path, which must not be there yet, taking
    connections. *)
-proc listen*(path: []U8): I64;
+proc listen*(path: []U8): INT;
 var a: SockaddrUn;
 begin
     if not unixAddr(path, ADR(a)) then return -36; end;
@@ -431,18 +431,18 @@ begin
 end;
 
 (* The value of the hexadecimal digit c, or -1 if it isn't one. *)
-proc hexDigit(c: U8): I64;
+proc hexDigit(c: U8): INT;
 begin
-    if (c >= '0') and (c <= '9') then return I64(c - '0'); end;
-    if (c >= 'a') and (c <= 'f') then return I64(c - 'a') + 10; end;
-    if (c >= 'A') and (c <= 'F') then return I64(c - 'A') + 10; end;
+    if (c >= '0') and (c <= '9') then return INT(c - '0'); end;
+    if (c >= 'a') and (c <= 'f') then return INT(c - 'a') + 10; end;
+    if (c >= 'A') and (c <= 'F') then return INT(c - 'A') + 10; end;
     return -1;
 end;
 
 (* The IPv4 address s, four numbers and dots, in out's 4 bytes, or false
    if it isn't one. *)
 proc ipv4(s, out: []U8): BOOL;
-var b: [4]U8; n, i, v, d: I64;
+var b: [4]U8; n, i, v, d: INT;
 begin
     i := 0;
     for n := 0 to 3 do
@@ -453,7 +453,7 @@ begin
         v := 0;
         d := 0;
         while (i < LEN(s)) and (d < 3) and (s[i] >= '0') and (s[i] <= '9') do
-            v := v * 10 + I64(s[i] - '0');
+            v := v * 10 + INT(s[i] - '0');
             INC(i);
             INC(d);
         end;
@@ -469,7 +469,7 @@ end;
    standing for groups of zeros, in out's 16 bytes, or false if it isn't
    one. *)
 proc ipv6(s, out: []U8): BOOL;
-var g: [8]I64; n, gap, i, v, d, k: I64;
+var g: [8]INT; n, gap, i, v, d, k: INT;
 begin
     n := 0;
     gap := -1;                                          (* the group the :: is before *)
@@ -512,7 +512,7 @@ end;
 (* addr, an IPv4 or IPv6 address as numbers, and port, in a: the size
    of its struct sockaddr_in or sockaddr_in6, or 0 if either is
    wrong. *)
-proc inetAddr(addr: []U8; port: I64; a: ^Sockaddr): I64;
+proc inetAddr(addr: []U8; port: INT; a: ^Sockaddr): INT;
 begin
     if (port < 0) or (port > 65535) then return 0; end;
     a^.port[0] := U8(port shr 8);                        (* in the network's order, the high byte first *)
@@ -524,37 +524,37 @@ end;
 
 (* A socket of kind at addr and port, as socket makes it; -22 (EINVAL)
    if they are wrong. *)
-proc inet(addr: []U8; port, kind: I64; serving: BOOL): I64;
-var a: Sockaddr; size: I64;
+proc inet(addr: []U8; port, kind: INT; serving: BOOL): INT;
+var a: Sockaddr; size: INT;
 begin
     size := inetAddr(addr, port, ADR(a));
     if size = 0 then return -22; end;
-    return socket(I64(a.family), kind, ^U8(ADR(a)), size, serving);
+    return socket(INT(a.family), kind, ^U8(ADR(a)), size, serving);
 end;
 
 (* A stream socket connected to port at addr, an IPv4 or IPv6 address
    as numbers. *)
-proc connectTcp*(addr: []U8; port: I64): I64;
+proc connectTcp*(addr: []U8; port: INT): INT;
 begin
     return inet(addr, port, 1, false);                  (* SOCK_STREAM *)
 end;
 
 (* A socket of datagrams to and from port at addr. *)
-proc connectUdp*(addr: []U8; port: I64): I64;
+proc connectUdp*(addr: []U8; port: INT): INT;
 begin
     return inet(addr, port, 2, false);                  (* SOCK_DGRAM *)
 end;
 
 (* A stream socket taking connections on port at addr; "0.0.0.0" or
    "::" is every address the machine has. *)
-proc listenTcp*(addr: []U8; port: I64): I64;
+proc listenTcp*(addr: []U8; port: INT): INT;
 begin
     return inet(addr, port, 1, true);
 end;
 
 (* The next connection to the socket fd, waiting for one: a socket of
    its own, closed in a program exec starts; or minus an errno. *)
-proc accept*(fd: I64): I64;
+proc accept*(fd: INT): INT;
 begin
     return SYSCALL(288, fd, 0, 0, 80000H);              (* accept4, SOCK_CLOEXEC *)
 end;
@@ -562,7 +562,7 @@ end;
 (* Writes s to the socket fd, as write does, but returns -32 (EPIPE)
    where write would stop the program with SIGPIPE: when the other end
    has closed it. *)
-proc send*(fd: I64; s: []U8): I64;
+proc send*(fd: INT; s: []U8): INT;
 begin
     if LEN(s) = 0 then return 0; end;
     return SYSCALL(44, fd, ADR(s[0]), LEN(s), 4000H, 0, 0);   (* sendto, MSG_NOSIGNAL, no address *)
@@ -571,8 +571,8 @@ end;
 (* The first of fds that has something to read within ms milliseconds,
    or that has reached its end or failed, so that a read won't wait; -1
    if none has. ms < 0 waits as long as it takes. At most 64 fds. *)
-proc readyOf*(fds: []I64; ms: I64): I64;
-var p: [64]Pollfd; n, i: I64;
+proc readyOf*(fds: []INT; ms: INT): INT;
+var p: [64]Pollfd; n, i: INT;
 begin
     n := LEN(fds);
     if n > LEN(p) then n := LEN(p); end;
@@ -587,7 +587,7 @@ end;
 (* The value of the environment variable name; "" if it isn't set. The
    environment follows the arguments and their nil. *)
 proc env*(name: []U8): []U8;
-var e: ^^U8; s: ^U8; i, n, m: I64;
+var e: ^^U8; s: ^U8; i, n, m: INT;
 begin
     e := ARGV() + (ARGC() + 1);
     i := 0;
@@ -607,8 +607,8 @@ end;
 
 (* The working directory, good until the next call; and 0, or minus an
    errno. *)
-proc workDir*: ([]U8, I64);
-var r: I64;
+proc workDir*: ([]U8, INT);
+var r: INT;
 begin
     r := SYSCALL(79, ADR(cwd), LEN(cwd));           (* getcwd: its length with its zero *)
     if r < 0 then return "", r; end;
@@ -616,7 +616,7 @@ begin
 end;
 
 (* Makes path the working directory. *)
-proc setWorkDir*(path: []U8): I64;
+proc setWorkDir*(path: []U8): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
@@ -626,8 +626,8 @@ end;
 (* A pseudo-terminal: the file descriptor of its controlling side, or
    minus an errno. Its other side, the terminal its programs run on, is
    unlocked, for spawn to open. *)
-proc openPty*: I64;
-var a: [4096]U8; fd, unlock: I64;
+proc openPty*: INT;
+var a: [4096]U8; fd, unlock: INT;
 begin
     cstr("/dev/ptmx", a);
     fd := SYSCALL(2, ADR(a), 80102H);                   (* open: O_RDWR, O_NOCTTY, O_CLOEXEC *)
@@ -642,7 +642,7 @@ end;
 
 (* Tells the terminal of the pseudo-terminal fd that it has cols
    columns and rows rows: 0, or minus an errno. *)
-proc setTermSize*(fd, cols, rows: I64): I64;
+proc setTermSize*(fd, cols, rows: INT): INT;
 var w: Winsize;
 begin
     w := {rows: U16(rows), cols: U16(cols)};
@@ -651,7 +651,7 @@ end;
 
 (* Copies s and a zero to at: the byte after them. *)
 proc put(s: []U8; at: ^U8): ^U8;
-var i: I64;
+var i: INT;
 begin
     for i := 0 to LEN(s) - 1 do at[i] := s[i]; end;
     at[LEN(s)] := 0;
@@ -661,7 +661,7 @@ end;
 (* Whether the NAME=value s, a C string, names a variable that one of
    env gives. *)
 proc replaced(s: ^U8; env: [][]U8): BOOL;
-var i, n: I64;
+var i, n: INT;
 begin
     for i := 0 to LEN(env) - 1 do
         n := 0;
@@ -675,8 +675,8 @@ end;
    strings and a nil, then the environment old with each NAME=value of
    env in place of its variable or added, and a nil; or nil. The
    environment follows the arguments. *)
-proc argsAndEnv(args, env: [][]U8; old: ^^U8): (^^U8, I64);
-var p: ^^U8; s: ^U8; size, n, i, k: I64;
+proc argsAndEnv(args, env: [][]U8; old: ^^U8): (^^U8, INT);
+var p: ^^U8; s: ^U8; size, n, i, k: INT;
 begin
     n := 0;
     while old[n] # nil do INC(n); end;
@@ -700,30 +700,30 @@ end;
 
 (* A pipe: the fd to read and the fd to write, both closed in a program
    exec starts; or minus an errno and -1. *)
-proc pipe*: (I64, I64);
-var fds: [2]I32; r: I64;
+proc pipe*: (INT, INT);
+var fds: [2]I32; r: INT;
 begin
     r := SYSCALL(293, ADR(fds), 80000H);                (* pipe2, O_CLOEXEC *)
     if r < 0 then return r, -1; end;
-    return I64(fds[0]), I64(fds[1]);
+    return INT(fds[0]), INT(fds[1]);
 end;
 
 (* This program's process id. *)
-proc pid*: I64;
+proc pid*: INT;
 begin
     return SYSCALL(39);                                 (* getpid *)
 end;
 
 (* Moves the program pid, or this one if pid is 0, to the process group
    group, or to a new one it leads if group is 0. *)
-proc setGroup*(pid, group: I64): I64;
+proc setGroup*(pid, group: INT): INT;
 begin
     return SYSCALL(109, pid, group);                    (* setpgid *)
 end;
 
 (* Gives the keys of the terminal on fd, and its signals, to the process
    group group. *)
-proc foreground*(fd, group: I64): I64;
+proc foreground*(fd, group: INT): INT;
 var g: I32;
 begin
     g := I32(group);
@@ -732,22 +732,22 @@ end;
 
 (* The process group the terminal on fd gives its keys to, or minus an
    errno. *)
-proc foregroundOf*(fd: I64): I64;
-var g: I32; r: I64;
+proc foregroundOf*(fd: INT): INT;
+var g: I32; r: INT;
 begin
     r := SYSCALL(16, fd, 540FH, ADR(g));                (* TIOCGPGRP *)
     if r < 0 then return r; end;
-    return I64(g);
+    return INT(g);
 end;
 
 (* Starts the program p describes: its process id, or minus an errno.
    A program that can't be started ends with status 127. Every signal
    is blocked from the fork until the program has its own: its group,
    its terminal's foreground, and signals as they are at first. *)
-proc spawn*(p: Program): I64;
+proc spawn*(p: Program): INT;
 var
     a, dir: [4096]U8; name: [32]U8; dfl: [4]U64;   (* struct sigaction: SIG_DFL *)
-    argv: ^^U8; none: ^U8; all, old, empty: U64; size, pid, n, i, fd, g: I64;
+    argv: ^^U8; none: ^U8; all, old, empty: U64; size, pid, n, i, fd, g: INT;
 begin
     if not cstr(p.path, a) or not cstr(p.dir, dir) then return -36; end;   (* ENAMETOOLONG *)
     if p.tty # 0 then
@@ -808,21 +808,21 @@ end;
    its exit status; killed or stopped, with the signal's number. Without
    block it doesn't wait: 0 and running if none has changed. Minus an
    errno, and running, if there is none to wait for. *)
-proc wait*(pid: I64; block: BOOL): (I64, Status, I64);
-var status: I32; r, options: I64;
+proc wait*(pid: INT; block: BOOL): (INT, Status, INT);
+var status: I32; r, options: INT;
 begin
     options := 3;                                       (* WNOHANG, WUNTRACED *)
     if block then options := 2; end;
     r := SYSCALL(61, pid, ADR(status), options, 0);     (* wait4 *)
     if r <= 0 then return r, running, 0; end;
-    if status & 7FH = 0 then return r, exited, I64(status) shr 8 & 0FFH; end;
-    if status & 0FFH = 7FH then return r, stopped, I64(status) shr 8 & 0FFH; end;
-    return r, killed, I64(status) & 7FH;
+    if status & 7FH = 0 then return r, exited, INT(status) shr 8 & 0FFH; end;
+    if status & 0FFH = 7FH then return r, stopped, INT(status) shr 8 & 0FFH; end;
+    return r, killed, INT(status) & 7FH;
 end;
 
 (* Sends the program pid, or the group -pid, the signal: 0, or minus an
    errno. *)
-proc kill*(pid, signal: I64): I64;
+proc kill*(pid, signal: INT): INT;
 begin
     return SYSCALL(62, pid, signal);
 end;
@@ -831,8 +831,8 @@ end;
    they would, and gives them on an fd, which a later catch adds to and
    gives again; or minus an errno. Only the thread that catches them
    blocks them, and threads it starts later. *)
-proc catch*(sigs: []I64): I64;
-var m: U64; i, fd: I64;
+proc catch*(sigs: []INT): INT;
+var m: U64; i, fd: INT;
 begin
     m := caughtSigs;
     for i := 0 to LEN(sigs) - 1 do
@@ -853,16 +853,16 @@ begin
 end;
 
 (* The next signal catch's fd has, or 0 if none is waiting. *)
-proc caught*(fd: I64): I64;
+proc caught*(fd: INT): INT;
 var info: [128]U8;   (* struct signalfd_siginfo: the number first, little-endian, below 65 *)
 begin
     if read(fd, info) # 128 then return 0; end;
-    return I64(info[0]);
+    return INT(info[0]);
 end;
 
 (* Makes the signal sig do nothing, or, if not yes, what it does at
    first: 0, or minus an errno. *)
-proc ignore*(sig: I64; yes: BOOL): I64;
+proc ignore*(sig: INT; yes: BOOL): INT;
 var act: [4]U64;   (* struct sigaction: its handler, SIG_IGN or SIG_DFL, first *)
 begin
     if yes then act[0] := 1; end;
@@ -876,7 +876,7 @@ begin
 end;
 
 (* Ends the program, at once, with status. *)
-proc exit*(status: I64);
+proc exit*(status: INT);
 begin
     SYSCALL(231, status);
 end;
@@ -890,7 +890,7 @@ end;
    one is sent; and a program starts with them neither caught nor
    ignored. *)
 proc testPrograms;
-var pty, child, n, m, r, w, sigs, c: I64; st: Status; buf: [64]U8;
+var pty, child, n, m, r, w, sigs, c: INT; st: Status; buf: [64]U8;
 begin
     pty := openPty();
     if (pty < 0) or (setTermSize(pty, 100, 30) # 0) then exit(2); end;
@@ -960,7 +960,7 @@ end;
    sees; addresses read and refused; a TCP connection on the loopback;
    and a datagram to a port where no one listens, refused. *)
 proc testNet;
-var t, l, c, a, u: I64; x, y: [16]U8; s, s6: Sockaddr;
+var t: I64; l, c, a, u: INT; x, y: [16]U8; s, s6: Sockaddr;
 begin
     t := clock();
     sleep(20);
@@ -1001,7 +1001,7 @@ end;
    directory made, listed and emptied; no terminal; a socket, sent to
    after its end; programs; time and the network. *)
 proc main*;
-var fd, n, err, w, h, l, c, a: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
+var fd, n, err, w, h, l, c, a: INT; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;

@@ -1,0 +1,7 @@
+module IntPointer;
+proc main*;
+var i: I64; p: ^U8;
+begin
+    p := ^U8(i);
+end;
+end IntPointer.

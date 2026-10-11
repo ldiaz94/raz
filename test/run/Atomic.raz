@@ -1,7 +1,7 @@
 module Atomic;
 import Out;
 
-var counter: I64; flag: U64; p: ^I64;
+var counter: INT; flag: UINT; p: ^INT;
 
 proc add3*(a, b, c: I64): I64;
 code 48H, 8DH, 04H, 37H,   (* lea rax, [rdi+rsi] *)
@@ -9,7 +9,7 @@ code 48H, 8DH, 04H, 37H,   (* lea rax, [rdi+rsi] *)
      0C3H;                 (* ret *)
 
 proc main*;
-var old: I64; ok: BOOL; v: ^VOLATILE I64; x: I64;
+var old: INT; ok: BOOL; v: ^VOLATILE INT; x: INT;
 begin
     old := XADD(ADR(counter), 5);
     old := XADD(ADR(counter), 2);
@@ -28,7 +28,7 @@ begin
     v^ := 5;
     v^ := v^ + 1;
     Out.int(x); Out.ln;
-    v := ^VOLATILE I64(ADR(counter));
+    v := ^VOLATILE INT(ADR(counter));
     Out.int(v^); Out.ln;
 end;
 

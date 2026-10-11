@@ -18,7 +18,7 @@ end;
 
 proc main*;
 var
-    m: Ints.Map; want: [N]I64; i, k, v, n, sum, seed: I64;
+    m: Ints.Map; want: [N]I64; i: INT; k, v, n, sum, seed: I64;
     found, _ok: BOOL;
 begin
     Ints.init(ADR(m), Heap.heap);

@@ -1,0 +1,7 @@
+module IntNarrow;
+proc main*;
+var i: I64; n: INT;
+begin
+    n := i;
+end;
+end IntNarrow.

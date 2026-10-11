@@ -1,0 +1,22 @@
+module Shared;
+(* Exported variables, which only this module changes *)
+
+type Shape* = variant dot; circle(r: INT); end;
+
+var
+    count*: INT;
+    words*: [3]INT;
+    bytes*: []U8;
+    shape*: Shape;
+    store: [4]U8;
+
+proc bump*;
+begin
+    INC(count);
+    words[1] := count;
+end;
+
+begin
+    bytes := store;
+    shape := circle(5);
+end Shared.

@@ -34,13 +34,13 @@ extern proc XDefaultGC(d: ^U8; screen: I32): ^U8;
 extern proc XCreateSimpleWindow(d: ^U8; parent: U64; x, y: I32;
     width, height, border: U32; borderColor, background: U64): U64;
 extern proc XStoreName(d: ^U8; w: U64; name: ^U8): I32;
-extern proc XSelectInput(d: ^U8; w: U64; mask: I64): I32;
+extern proc XSelectInput(d: ^U8; w: U64; mask: INT): I32;
 extern proc XMapWindow(d: ^U8; w: U64): I32;
 extern proc XNextEvent(d: ^U8; ev: ^U8): I32;
 extern proc XDrawString(d: ^U8; w: U64; gc: ^U8; x, y: I32; s: ^U8; n: I32): I32;
 extern proc XCloseDisplay(d: ^U8): I32;
 
-proc main*: I64;
+proc main*: INT;
 const text = "hello, world: press a key";
 var
     d: ^U8; s: I32; w: U64;
@@ -62,7 +62,7 @@ begin
         end;
     until I32(ev[0]) = KeyPress;
     key := ^KeyEvent(ADR(ev));
-    Out.str("key "); Out.int(I64(key^.keycode)); Out.ln;
+    Out.str("key "); Out.int(INT(key^.keycode)); Out.ln;
     XCloseDisplay(d);
     return 0;
 end;

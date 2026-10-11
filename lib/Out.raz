@@ -9,14 +9,14 @@ import Rt, Sys, Lock;
 
 var
     buf: [Sys.outSize]U8;
-    n: I64;          (* bytes in buf *)
+    n: INT;          (* bytes in buf *)
     tty: BOOL;       (* standard output is a terminal *)
     lock: Lock.Lock;
 
 (* Writes out the buffer, with the lock held. What can't be written is
    dropped. *)
 proc out;
-var i, k: I64;
+var i, k: INT;
 begin
     i := 0;
     while i < n do
@@ -36,7 +36,7 @@ begin
 end;
 
 proc str*(s: []U8);
-var i: I64;
+var i: INT;
 begin
     Lock.take(ADR(lock));
     for i := 0 to LEN(s) - 1 do
@@ -62,7 +62,7 @@ end;
 
 (* n in decimal *)
 proc int*(n: I64);
-var buf: [20]U8; i: I64; u: U64;
+var buf: [20]U8; i: INT; u: U64;
 begin
     u := U64(n);
     if n < 0 then u := 0 - u; end;
@@ -80,8 +80,8 @@ begin
 end;
 
 (* n in hexadecimal, digits digits at least *)
-proc hex*(n: U64; digits: I64);
-var buf: [16]U8; i: I64; d: U8;
+proc hex*(n: U64; digits: INT);
+var buf: [16]U8; i: INT; d: U8;
 begin
     i := 16;
     repeat

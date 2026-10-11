@@ -1,0 +1,7 @@
+module DivLowestConst;
+proc main*;
+var _x: I8;
+begin
+    _x := I8(-128) div (-1);
+end;
+end DivLowestConst.

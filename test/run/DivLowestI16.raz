@@ -1,0 +1,15 @@
+module DivLowestI16;
+(* mod too: the lowest I16 mod -1 overflows the division as div does *)
+import Out;
+
+proc main*;
+var a, b: I16;
+begin
+    a := -32768;
+    b := I16(ARGC() - 2);
+    Out.int(I64(a mod 3));
+    Out.flush;
+    Out.int(I64(a mod b));
+end;
+
+end DivLowestI16.

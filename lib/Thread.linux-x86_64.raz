@@ -24,23 +24,23 @@ const
 
 type
     Thread* = record
-        tid: I64;        (* the kernel's id, until the thread ends *)
+        tid: INT;        (* the kernel's id, until the thread ends *)
         base: ^U8;       (* its stack's mapping, the guard page first *)
-        size: I64;
+        size: INT;
         fn: proc(arg: ^U8);   (* what it runs, and with what *)
         arg: ^U8;
     end;
     (* What sigaltstack takes *)
-    AltStack = record sp: ^U8; flags, size: I64; end;
+    AltStack = record sp: ^U8; flags, size: INT; end;
     (* 0 free, 1 taken, 2 taken with a thread waiting *)
-    Mutex* = record state: I64; end;
+    Mutex* = record state: INT; end;
 
 (* clone(flags, stack, tid, tid), the new thread starting with fn(arg)
    on stack and ending, when fn returns, with the exit system call.
    fn and arg go on the new stack first, since the new thread has no
    registers but rsp of its own to find them by. Returns the new
    thread's id, or minus an errno. *)
-proc start(flags: I64; stack: ^U8; ptid, ctid: ^I64; fn: proc(arg: ^U8); arg: ^U8): I64;
+proc start(flags: INT; stack: ^U8; ptid, ctid: ^INT; fn: proc(arg: ^U8); arg: ^U8): INT;
 code 48H, 83H, 0EEH, 10H,           (* sub rsi, 16 *)
      4CH, 89H, 06H,                 (* mov [rsi], r8 *)
      4CH, 89H, 4EH, 08H,            (* mov [rsi + 8], r9 *)
@@ -58,7 +58,7 @@ code 48H, 83H, 0EEH, 10H,           (* sub rsi, 16 *)
      0FH, 05H,                      (* syscall *)
      0C3H;                          (* parent: ret *)
 
-proc futex(word: ^I64; op, val: I64): I64;
+proc futex(word: ^INT; op, val: INT): INT;
 begin
     return SYSCALL(202, word, op, val, 0);
 end;
@@ -76,7 +76,7 @@ end;
 
 (* Starts p(arg) in a new thread. *)
 proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);
-var base: ^U8; t: ^Thread; size: I64;
+var base: ^U8; t: ^Thread; size: INT;
 begin
     size := Page + Stack + Alt + Page;
     base := Sys.mmap(size);
@@ -103,7 +103,7 @@ end;
 
 (* Waits for t to end, then frees its stack. *)
 proc join*(t: ^Thread);
-var tid: ^VOLATILE I64; v: I64; base: ^U8; size: I64;
+var tid: ^VOLATILE INT; v: INT; base: ^U8; size: INT;
 begin
     tid := ADR(t^.tid);
     v := tid^;
@@ -117,7 +117,7 @@ begin
 end;
 
 proc lock*(m: ^Mutex);
-var c: I64;
+var c: INT;
 begin
     if CAS(ADR(m^.state), 0, 1) then return; end;
     c := XCHG(ADR(m^.state), 2);
@@ -145,7 +145,7 @@ end;
        Thread [n alive], Thread fail *)
 var
     testLock: Mutex;
-    testCount: I64;
+    testCount: INT;
     wave: [1000]^Thread;
 
 proc testWork(_arg: ^U8);
@@ -155,18 +155,18 @@ begin
     unlock(ADR(testLock));
 end;
 
-proc testArg(i: I64): I64;
-var s: ^U8; n, v: I64;
+proc testArg(i: INT): INT;
+var s: ^U8; n, v: INT;
 begin
     s := ARGV()[i];
     v := 0;
     n := 0;
-    while s[n] # 0 do v := v * 10 + I64(s[n]) - '0'; INC(n); end;
+    while s[n] # 0 do v := v * 10 + INT(s[n]) - '0'; INC(n); end;
     return v;
 end;
 
 proc main*;
-var n, alive, started, k, i: I64; t: ^Thread; err: ERROR; fail: BOOL;
+var n, alive, started, k, i: INT; t: ^Thread; err: ERROR; fail: BOOL;
 begin
     n := 2000; alive := 50;
     fail := (ARGC() = 2) and (ARGV()[1][0] = 'f');

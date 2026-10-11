@@ -1,0 +1,4 @@
+conform/err/AtomicI64.raz:5:16: error: expected a pointer to an INT, a UINT or a pointer, found ^I64
+    5 |     _ok := CAS(ADR(n), 0, 1);
+      |                ^^^^^^
+raz: 1 error

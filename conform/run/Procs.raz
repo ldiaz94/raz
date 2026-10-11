@@ -88,7 +88,7 @@ begin
     return a + b;
 end;
 
-proc main*: I64;
+proc main*: INT;
 var a, b: I64; p, q: Pair; f: Op; bg: Big;
 begin
     if even(10) and odd(7) and not even(3) then Out.str("parity ok"); Out.ln; end;

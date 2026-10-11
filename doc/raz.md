@@ -931,7 +931,7 @@ import Sys, Out;
 
 (* Prints the first line of the file at path. *)
 proc head(path: []U8): BOOL;
-var fd, n, i: I64; buf: [256]U8;
+var fd, n, i: INT; buf: [256]U8;
 begin
     fd := Sys.openRead(path);
     if fd < 0 then return false; end;

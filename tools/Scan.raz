@@ -13,9 +13,9 @@ type
        character; symbol an operator or delimiter. *)
     Scanner* = record
         src*: []U8;
-        pos*: I64;            (* where the next symbol is looked for *)
+        pos*: INT;            (* where the next symbol is looked for *)
         kind*: Kind;          (* the current symbol *)
-        start*, stop*: I64;   (* its text: src[start..stop] *)
+        start*, stop*: INT;   (* its text: src[start..stop] *)
         lineBreak*: BOOL;     (* a line break comes before it, or it is the first *)
     end;
 
@@ -41,7 +41,7 @@ end;
 (* Whether w is one of the words of list, which are separated by
    single spaces. *)
 proc among*(w, list: []U8): BOOL;
-var i, j: I64;
+var i, j: INT;
 begin
     i := 0;
     while i < LEN(list) do
@@ -66,8 +66,8 @@ begin
 end;
 
 (* Past the comment that starts at p, its nested comments with it. *)
-proc pastComment(src: []U8; p: I64): I64;
-var depth: I64;
+proc pastComment(src: []U8; p: INT): INT;
+var depth: INT;
 begin
     depth := 0;
     repeat
@@ -84,7 +84,7 @@ end;
 
 (* Past the number that starts at p: digits and letters, then a real's
    point, digits and exponent, as in 0FFH and 2.0E-3. *)
-proc pastNumber(src: []U8; p: I64): I64;
+proc pastNumber(src: []U8; p: INT): INT;
 begin
     while (p < LEN(src)) and isWord(src[p]) do INC(p); end;
     if (p + 1 < LEN(src)) and (src[p] = '.') and isDigit(src[p + 1]) then
@@ -99,7 +99,7 @@ begin
 end;
 
 (* Past the string or character that starts at p, or to its line's end. *)
-proc pastLiteral(src: []U8; p: I64): I64;
+proc pastLiteral(src: []U8; p: INT): INT;
 var q: U8;
 begin
     q := src[p];
@@ -113,14 +113,14 @@ begin
 end;
 
 (* Whether src[p..] starts with the symbol t. *)
-proc at(src: []U8; p: I64; t: []U8): BOOL;
+proc at(src: []U8; p: INT; t: []U8): BOOL;
 begin
     return (p + LEN(t) <= LEN(src)) and (src[p..p + LEN(t)] = t);
 end;
 
 (* On to the next symbol. *)
 proc next*(s: ^Scanner);
-var src: []U8; p: I64; c: U8;
+var src: []U8; p: INT; c: U8;
 begin
     src := s^.src;
     p := s^.pos;

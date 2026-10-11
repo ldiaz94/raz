@@ -4,13 +4,13 @@ import Out;
 
 type
     Shape = variant
-        circle(r: I64);
-        rect(w, h: I64);
+        circle(r: INT);
+        rect(w, h: INT);
         dot;
     end;
 
 (* Twice the area, rounded down, of a circle taken as pi = 22/7. *)
-proc area(s: Shape): I64;
+proc area(s: Shape): INT;
 begin
     match s of
     | circle(r):  return 44 * r * r div 7;
@@ -19,8 +19,8 @@ begin
     end;
 end;
 
-proc total(shapes: []Shape): I64;
-var i, sum: I64;
+proc total(shapes: []Shape): INT;
+var i, sum: INT;
 begin
     sum := 0;
     for i := 0 to LEN(shapes) - 1 do sum := sum + area(shapes[i]); end;
