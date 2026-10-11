@@ -1,0 +1,26 @@
+import Out;
+
+proc main*;
+var i: I64;
+begin
+    for := 1 to 3 do
+        Out.strhello, world);
+        ut.ln;
+    end;
+end;
+
+                     Find.txt [+]  13,1
+(* A module to edit. *
+odule Hello;
+import Out;
+
+proc main*;
+var i: I64;
+begin
+    for := 1 to 3 do
+        Out.strhello, world);
+        ut.ln;
+    end;
+end;
+
+end Hello.

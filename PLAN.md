@@ -396,7 +396,7 @@ start from.
       quitting; `-script` and `test/ravite` in `make check`; `make
       ravite`, `make loc` and `make fmt` over `ravite/`.
 - [x] 31. `Colour`.
-- [ ] 32. Visual mode, search, `%`, `f t`, and `file:line`; their
+- [x] 32. Visual mode, search, `%`, `f t`, and `file:line`; their
       session tests.
 - [ ] 33. `doc/ravite.md`, how to build and use it and its keys; a
       word in `README.md` and `CLAUDE.md`.

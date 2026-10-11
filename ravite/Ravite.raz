@@ -68,6 +68,13 @@ var
 
     colour: BOOL;         (* colour isn't turned off *)
     coloured: BOOL;       (* the file is raz, and in colour *)
+    anchor: I64;          (* visual mode's other end *)
+    pattern: Buf.Buf;     (* the last search *)
+    backward: BOOL;       (* it went back, with ? *)
+    whole: BOOL;          (* it was for a whole word, with * *)
+    findKey: I64;         (* the last f, F, t or T, for ; and , *)
+    found: [4]U8;         (* the character it found *)
+    numFound: I64;
     paint: [65536]U8;     (* the colours of the screen's bytes, as far as they go *)
     known, knownDepth: I64;   (* the depth of comment at position known *)
 
@@ -248,6 +255,16 @@ begin
         status: Buf.bytes(ADR(status)), ruler: Buf.bytes(ADR(ruler)),
         prompt: prompting, bar: mode = Insert, colour: colour};
     if not plain then f.colours := colours(); end;
+    if mode = Visual then
+        f.selLo := anchor;
+        f.selHi := cur;
+        if cur < anchor then f.selLo := cur; f.selHi := anchor; end;
+        f.selHi := next(f.selHi);
+    elsif mode = VisualLine then
+        f.selLo := lineStart(anchor);
+        f.selHi := lineEnd(cur) + 1;
+        if cur < anchor then f.selLo := lineStart(cur); f.selHi := lineEnd(anchor) + 1; end;
+    end;
     Buf.reset(ADR(screen));
     View.draw(ADR(f), ADR(screen), plain);
 end;
@@ -502,6 +519,179 @@ begin
         or (k = Keys.ctrl('n')) or (k = Keys.ctrl('p'));
 end;
 
+(* Searching *)
+
+var hit: I64;   (* where the last search found its text *)
+
+(* Whether the pattern is at p, a whole word if it must be. *)
+proc matches(s: []U8; p: I64): BOOL;
+var pat: []U8; e: I64;
+begin
+    pat := Buf.bytes(ADR(pattern));
+    e := p + LEN(pat);
+    if (e > LEN(s)) or (s[p..e] # pat) then return false; end;
+    if not whole then return true; end;
+    return ((p = 0) or (class(s[p - 1]) # 1)) and ((e = LEN(s)) or (class(s[e]) # 1));
+end;
+
+(* The pattern's next place after p, or before it if back, going round
+   the end of the text; false if it is nowhere. *)
+proc search(p: I64; back: BOOL): BOOL;
+var s: []U8; i: I64;
+begin
+    s := Text.slice(ADR(t), 0, size());
+    if pattern.len = 0 then return false; end;
+    if not back then
+        for i := p + 1 to LEN(s) - 1 do
+            if matches(s, i) then hit := i; return true; end;
+        end;
+        for i := 0 to p do
+            if (i < LEN(s)) and matches(s, i) then
+                Buf.str(ADR(msg), "search hit BOTTOM, continuing at TOP");
+                hit := i;
+                return true;
+            end;
+        end;
+    else
+        for i := p - 1 to 0 by -1 do
+            if matches(s, i) then hit := i; return true; end;
+        end;
+        for i := LEN(s) - 1 to p by -1 do
+            if matches(s, i) then
+                Buf.str(ADR(msg), "search hit TOP, continuing at BOTTOM");
+                hit := i;
+                return true;
+            end;
+        end;
+    end;
+    return false;
+end;
+
+proc prompt(c: U8): BOOL; forward;
+
+(* / ? n N and *: searches count times; the place it found is hit. *)
+proc searchFor(k, count: I64): BOOL;
+var p, e, i: I64; back: BOOL;
+begin
+    if (k = '/') or (k = '?') then
+        if not prompt(U8(k)) then return false; end;
+        if cmd.len > 0 then
+            Buf.reset(ADR(pattern));
+            Buf.str(ADR(pattern), Buf.bytes(ADR(cmd)));
+            whole := false;
+        end;
+        backward := k = '?';
+    elsif k = '*' then
+        p := cur;
+        e := lineEnd(cur);
+        while (p < e) and (class(at(p)) # 1) do INC(p); end;
+        if p = e then Buf.str(ADR(msg), "E348: No string under cursor"); return false; end;
+        while (p > 0) and (class(at(p - 1)) = 1) do DEC(p); end;
+        e := p;
+        while (e < size()) and (class(at(e)) = 1) do INC(e); end;
+        Buf.reset(ADR(pattern));
+        Buf.str(ADR(pattern), Text.slice(ADR(t), p, e));
+        whole := true;
+        backward := false;
+    end;
+    back := backward;
+    if k = 'N' then back := not back; end;
+    if pattern.len = 0 then Buf.str(ADR(msg), "E35: No previous regular expression"); return false; end;
+    hit := cur;
+    for i := 1 to count do
+        if not search(hit, back) then
+            Buf.reset(ADR(msg));
+            Fmt.write(ADR(msg), "E486: Pattern not found: {}", [Fmt.str(Buf.bytes(ADR(pattern)))]);
+            return false;
+        end;
+    end;
+    if msg.len = 0 then
+        if back then Buf.add(ADR(msg), '?'); else Buf.add(ADR(msg), '/'); end;
+        Buf.str(ADR(msg), Buf.bytes(ADR(pattern)));
+    end;
+    return true;
+end;
+
+(* %: the bracket that matches the first of ( ) [ ] { } at or after
+   the cursor on its line. *)
+proc bracket: (I64, BOOL);
+const brackets = "()[]{}";
+var p, e, i, depth: I64; open, close: U8; c: U8;
+begin
+    p := cur;
+    e := lineEnd(cur);
+    i := -1;
+    while (p < e) and (i < 0) do
+        for depth := 0 to 5 do
+            if at(p) = brackets[depth] then i := depth; end;
+        end;
+        if i < 0 then INC(p); end;
+    end;
+    if i < 0 then return cur, false; end;
+    open := brackets[i - i mod 2];
+    close := brackets[i - i mod 2 + 1];
+    depth := 0;
+    if i mod 2 = 0 then
+        while p < size() do
+            c := at(p);
+            if c = open then INC(depth); elsif c = close then DEC(depth); end;
+            if depth = 0 then return p, true; end;
+            INC(p);
+        end;
+    else
+        while p >= 0 do
+            c := at(p);
+            if c = close then INC(depth); elsif c = open then DEC(depth); end;
+            if depth = 0 then return p, true; end;
+            DEC(p);
+        end;
+    end;
+    return cur, false;
+end;
+
+(* f F t T, and ; and , which repeat the last of them, the same way or
+   the other: count times to the character, on the cursor's line. *)
+proc find(k, count: I64): (I64, BOOL);
+var p, i, lo, hi, n: I64; back, till, again: BOOL;
+begin
+    again := (k = ';') or (k = ',');
+    if again then
+        if findKey = 0 then return cur, false; end;
+        back := (findKey = 'F') or (findKey = 'T');
+        if k = ',' then back := not back; end;
+        k := findKey;
+    else
+        n := nextKey();
+        if not typed(n) then return cur, false; end;
+        numFound := utf8(n, found);
+        findKey := k;
+        back := (k = 'F') or (k = 'T');
+    end;
+    till := (k = 't') or (k = 'T');
+    lo := lineStart(cur);
+    hi := lineEnd(cur);
+    p := cur;
+    (* t again would find where it stands, just before the character *)
+    if again and till then
+        if back and (p > lo) then p := prev(p); end;
+        if not back and (p < hi) then p := next(p); end;
+    end;
+    for i := 1 to count do
+        repeat
+            if back then
+                if p <= lo then return cur, false; end;
+                p := prev(p);
+            else
+                if p >= hi then return cur, false; end;
+                p := next(p);
+            end;
+        until (p + numFound <= hi) and (Text.slice(ADR(t), p, p + numFound) = found[0..numFound]);
+    end;
+    if till and back then p := next(p); end;
+    if till and not back then p := prev(p); end;
+    return p, true;
+end;
+
 (* Where motion k goes from the cursor, count times; count 0 is none
    given. *)
 proc motion(k, count: I64): Motion;
@@ -560,6 +750,15 @@ begin
         for i := 1 to n do m.pos := paraNext(m.pos); end;
     elsif k = '{' then
         for i := 1 to n do m.pos := paraPrev(m.pos); end;
+    elsif (k = 'n') or (k = 'N') or (k = '/') or (k = '?') or (k = '*') then
+        m.ok := searchFor(k, n);
+        m.pos := hit;
+    elsif k = '%' then
+        m.pos, m.ok := bracket();
+        m.inclusive := true;
+    elsif (k = 'f') or (k = 'F') or (k = 't') or (k = 'T') or (k = ';') or (k = ',') then
+        m.pos, m.ok := find(k, n);
+        m.inclusive := m.pos > cur;   (* f and t; F and T aren't *)
     else
         m.ok := false;
     end;
@@ -747,7 +946,12 @@ begin
     end;
     if op = 'y' then
         yank(lo, hi, lines);
-        if not lines then cur := lo; end;
+        (* the cursor goes to the start, on the first line *)
+        if not lines then
+            cur := lo;
+        elsif cur > lineEnd(lo) then
+            cur := View.atColumn(ADR(t), lo, View.column(ADR(t), cur));
+        end;
     elsif op = 'd' then
         yank(lo, hi, lines);
         if lines then
@@ -999,6 +1203,50 @@ begin
     cur := firstNonBlank(cur);
 end;
 
+(* v and V: moves the cursor, the other end staying at the anchor,
+   until an operator acts on what is between them. *)
+proc visual(lines: BOOL);
+var k, count, lo, hi: I64; m: Motion;
+begin
+    anchor := cur;
+    while true do
+        if lines then mode := VisualLine; else mode := Visual; end;
+        k := nextKey();
+        Buf.reset(ADR(msg));
+        count := 0;
+        while (k >= '1') and (k <= '9') or (count > 0) and (k = '0') do
+            count := count * 10 + k - '0';
+            k := nextKey();
+        end;
+        if (k = Keys.Esc) or (k = Keys.ctrl('c')) or (k = 'v') and not lines or (k = 'V') and lines then
+            break;
+        elsif (k = 'v') or (k = 'V') then
+            lines := k = 'V';
+        elsif k = 'o' then
+            lo := anchor;
+            anchor := cur;
+            cur := lo;
+        elsif (k = 'd') or (k = 'x') or (k = Keys.Delete) or (k = 'y') or (k = 'c')
+            or (k = '>') or (k = '<') then
+            mode := Normal;
+            lo := anchor;
+            hi := cur;
+            if hi < lo then lo := cur; hi := anchor; end;
+            if not lines then hi := next(hi); end;
+            if (k = 'x') or (k = Keys.Delete) then k := 'd'; end;
+            operate(k, lo, hi, lines);
+            return;
+        else
+            m := motion(k, count);
+            if m.ok then
+                cur := m.pos;
+                keepColumn(k);
+            end;
+        end;
+    end;
+    mode := Normal;
+end;
+
 (* Command k, after count; count 0 is none given. *)
 proc command(k, count: I64);
 var p, i, n: I64; m: Motion; ok: BOOL;
@@ -1053,6 +1301,8 @@ begin
         operator(k, count);
     elsif k = 'r' then
         replace(count);
+    elsif (k = 'v') or (k = 'V') then
+        visual(k = 'V');
     elsif k = 'J' then
         join(count);
     elsif k = 'p' then
@@ -1171,8 +1421,30 @@ begin
     return true;
 end;
 
+(* file:line and file:line:column, the place raz's messages name: the
+   file, the line and the column, or 0 for none. A file whose name
+   ends so, as it is, is that file. *)
+proc place(arg: []U8): ([]U8, I64, I64);
+var i, n, l, c, k: I64; ok: BOOL;
+begin
+    l := 0;
+    c := 0;
+    if Sys.openRead(arg) # -2 then return arg, 0, 0; end;
+    for k := 1 to 2 do
+        i := LEN(arg) - 1;
+        while (i > 0) and (arg[i] # ':') do DEC(i); end;
+        if i <= 0 then break; end;
+        n, ok := number(arg[i + 1..LEN(arg)]);
+        if not ok then break; end;
+        c := l;
+        l := n;
+        arg := arg[0..i];
+    end;
+    return arg, l, c;
+end;
+
 proc main*: I64;
-var b: Buf.Buf; chunk: [4096]U8; n: I64; ok: BOOL;
+var b: Buf.Buf; chunk: [4096]U8; n, l, c, i: I64; ok: BOOL;
 begin
     Text.init(ADR(t), Heap.heap);
     Buf.init(ADR(msg), Heap.heap);
@@ -1182,11 +1454,12 @@ begin
     Buf.init(ADR(screen), Heap.heap);
     Buf.init(ADR(status), Heap.heap);
     Buf.init(ADR(ruler), Heap.heap);
+    Buf.init(ADR(pattern), Heap.heap);
     if (ARGC() = 5) and (Files.arg(1) = "-script") then
         script := true;
         cols, ok := number(Files.arg(2));
         rows, ok := number(Files.arg(3));
-        path := Files.arg(4);
+        path, l, c := place(Files.arg(4));
         Buf.init(ADR(b), Heap.heap);
         repeat
             n := Sys.read(Sys.stdin, chunk);
@@ -1194,7 +1467,7 @@ begin
         until n <= 0;
         Keys.notation(Buf.bytes(ADR(b)), addKey);
     elsif (ARGC() = 2) and (Files.arg(1)[0] # '-') then
-        path := Files.arg(1);
+        path, l, c := place(Files.arg(1));
     else
         Sys.write(Sys.stderr, "usage: ravite file\n");
         return 2;
@@ -1205,6 +1478,17 @@ begin
         Sys.write(Sys.stderr, "\n");
         return 1;
     end;
+    if l > 0 then
+        cur := firstNonBlank(line(l - 1));
+        if c > 0 then
+            cur := lineStart(cur);
+            for i := 2 to c do
+                if cur < lineEnd(cur) then cur := next(cur); end;
+            end;
+        end;
+        cur := onChar(cur);
+    end;
+    want := View.column(ADR(t), cur);
     colour := not env("NO_COLOR");
     coloured := colour and (LEN(path) > 4) and (path[LEN(path) - 4..LEN(path)] = ".raz");
     if not script and not Tty.raw() then

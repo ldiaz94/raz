@@ -1,0 +1,22 @@
+ A module to edit. *)
+module Hello;
+
+begin
+    for i := 1 to 3 do
+        ut.str("hello, world");
+        ut.ln;
+    end;
+end;
+
+~
+/begin              Search.txt [+]  4,1
+ A module to edit. *)
+module Hello;
+
+begin
+    for i := 1 to 3 do
+        ut.str("hello, world");
+        ut.ln;
+    end;
+end;
+
