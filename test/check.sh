@@ -86,7 +86,11 @@ for f in test/err/*.raz; do
     fi
 done
 # the report's version is the one the compiler says it follows
+# the version the compiler follows: the report's, or one it names while
+# the compiler catches up
 want=$(sed -n 's/^This is version \([0-9.-]*\) of the report.*/\1/p' doc/raz.md)
+lag=$(sed -n 's/^The compiler follows version \([0-9.-]*\) until.*/\1/p' doc/raz.md)
+want=${lag:-$want}
 if ./raz --version | grep -qF "report $want"; then pass=$((pass + 1))
 else echo "FAIL raz --version: not report $want"; fail=$((fail + 1)); fi
 
