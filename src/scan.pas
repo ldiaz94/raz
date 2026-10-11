@@ -405,13 +405,12 @@ begin
   end;
 end;
 
-{ The text of the file from byte a up to but not including b, at most
-  the 255 bytes a shortstring holds. }
+{ The text of the file from byte a up to but not including b }
 function Text(a, b: longint): shortstring;
+var p: TPos;
 begin
-  if b - a > 255 then b := a + 255;
-  SetLength(Text, b - a);
-  Move(cur.buf[a], Text[1], b - a);
+  p.f := cur.f; p.a := a; p.b := b;
+  Text := Source(p);
 end;
 
 { One character of a character or string literal, at buf[pos]: its code

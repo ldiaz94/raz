@@ -243,7 +243,7 @@ function ConstExpr: int64;
 var x: TItem;
 begin
   Expression(x, nil);
-  if not IsInt(x.typ) then MarkAt(x.pos, 'expected an integer constant, found ' + TypeName(x.typ));
+  if not IsInt(x.typ) then MarkAt(x.pos, 'expected an integer constant, found ' + What(x));
   ConstExpr := ConstValue(x);
 end;
 
@@ -574,7 +574,7 @@ begin
   for i := 0 to n - 1 do begin
     if i > 0 then Expect(sComma);
     Expression(a, nil);
-    if not (IsScalar(a.typ) and (a.typ^.form <> fReal)) then MarkAt(a.pos, 'expected an integer or a pointer, found ' + TypeName(a.typ));
+    if not (IsScalar(a.typ) and (a.typ^.form <> fReal)) then MarkAt(a.pos, 'expected an integer or a pointer, found ' + What(a));
     if a.typ^.form = fConst then Coerce(a, tI64);
     slots[i] := ToSlot(a);
   end;
@@ -584,7 +584,7 @@ procedure Atomic(var x: TItem; which: longint);
 var p, a: TItem; t: PType; s: array[0..2] of int64; i, n: longint;
 begin
   Expression(p, nil);
-  if p.typ^.form <> fPtr then MarkAt(p.pos, 'expected a pointer, found ' + TypeName(p.typ));
+  if p.typ^.form <> fPtr then MarkAt(p.pos, 'expected a pointer, found ' + What(p));
   t := p.typ^.base;
   if not (((t^.form = fInt) or ((t^.form = fPtr) and (which <> bXadd))) and (t^.size = 8)) then
     MarkAt(p.pos, 'expected an 8-byte integer or a pointer, found ' + TypeName(t));
@@ -625,7 +625,7 @@ begin
   Expression(y, nil);
   if (y.typ^.form <> fPtr) or (y.typ^.base^.obj = nil) or (y.typ^.base^.obj^.module = nil)
     or (NameOf(y.typ^.base^.obj^.name) <> 'Allocator')
-    or (NameOf(y.typ^.base^.obj^.module^.name) <> 'Mem') then MarkAt(y.pos, 'NEW needs a ^Mem.Allocator, found ' + TypeName(y.typ));
+    or (NameOf(y.typ^.base^.obj^.module^.name) <> 'Mem') then MarkAt(y.pos, 'NEW needs a ^Mem.Allocator, found ' + What(y));
   f := Find(y.typ^.base^.scope, Name('alloc'));
   s := ToSlot(y);
   Load(RAX, Mem(RBP, s), 8, false);
@@ -700,7 +700,7 @@ begin
         Load(RAX, Mem(RAX, 8), 8, false);
         MakeConst(x, tI64, 0);
         x.mode := mReg;
-      end else MarkAt(y.pos, 'LEN needs an array or a slice, found ' + TypeName(y.typ));
+      end else MarkAt(y.pos, 'LEN needs an array or a slice, found ' + What(y));
     end;
     bSyscall: begin
       n := 1;
@@ -708,7 +708,7 @@ begin
       while (tok = sComma) and (n < 7) do begin
         Next;
         Expression(y, nil);
-        if not (IsScalar(y.typ) and (y.typ^.form <> fReal)) then MarkAt(y.pos, 'expected an integer or a pointer, found ' + TypeName(y.typ));
+        if not (IsScalar(y.typ) and (y.typ^.form <> fReal)) then MarkAt(y.pos, 'expected an integer or a pointer, found ' + What(y));
         if y.typ^.form = fConst then Coerce(y, tI64);
         slots[n] := ToSlot(y);
         inc(n);
@@ -776,7 +776,7 @@ begin
     case tok of
       sPeriod: begin
         Next;
-        if (x.mode <> mVar) or (x.typ^.form <> fRecord) then MarkAt(x.pos, 'expected a record, found ' + TypeName(x.typ));
+        if (x.mode <> mVar) or (x.typ^.form <> fRecord) then MarkAt(x.pos, 'expected a record, found ' + What(x));
         if tok <> sIdent then Expected('a field');
         f := Find(x.typ^.scope, id);
         if f = nil then Mark(TypeName(x.typ) + ' has no field ' + NameOf(id));
@@ -915,11 +915,11 @@ begin
     repeat
       if t = nil then Expression(e, nil) else Expression(e, t^.base);
       if t = nil then begin
-        if e.typ^.form <> fEnum then MarkAt(e.pos, 'a set holds names of an enumeration, found ' + TypeName(e.typ));
+        if e.typ^.form <> fEnum then MarkAt(e.pos, 'a set holds names of an enumeration, found ' + What(e));
         t := SetOf(e.typ, e.pos);
       end;
       if not Same(e.typ, t^.base) then begin
-        if e.obj <> nil then s := NameOf(e.obj^.name) else s := TypeName(e.typ);
+        if e.obj <> nil then s := NameOf(e.obj^.name) else s := What(e);
         MarkAt(e.pos, s + ' isn''t a name of ' + TypeName(t^.base));
       end;
       if e.mode = mConst then bits := bits or (int64(1) shl e.val)

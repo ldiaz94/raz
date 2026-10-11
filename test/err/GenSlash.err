@@ -1,5 +1,5 @@
-test/err/GenSlash.raz:6:10: error: "/" is for reals, found an integer constant
+test/err/GenSlash.raz:6:10: error: "/" divides reals, not integers
     6 |     x := 6 / 3;
       |          ^^^^^
-help: integers divide with "div"
+help: to divide integers, write 6 div 3
 raz: 1 error

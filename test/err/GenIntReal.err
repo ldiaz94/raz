@@ -1,4 +1,5 @@
-test/err/GenIntReal.raz:6:10: error: can't combine I64 and F64
+test/err/GenIntReal.raz:6:10: error: I64 and F64 are different types
     6 |     y := x + y;
       |          ^^^^^
+help: convert one to the other's type, as in I64(y)
 raz: 1 error

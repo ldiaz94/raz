@@ -8,11 +8,11 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 249 | 178 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 660 | 529 | Symbols, literals, comments, positions |
+| `src/diag.pas` | 260 | 187 | Messages: positions, source excerpts, colour, counts |
+| `src/scan.pas` | 659 | 529 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 526 | 437 | Types, objects, scopes, layout |
 | `src/x64.pas` | 682 | 548 | Code buffer, chunks, fixups, line notes, instruction encoder |
-| `src/gen.pas` | 1,492 | 1,303 | Items: loading, storing, copying, frames, calls |
+| `src/gen.pas` | 1,512 | 1,318 | Items: loading, storing, copying, frames, calls |
 | `src/parse.pas` | 2,094 | 1,908 | Declarations, statements, expressions, built-ins, recovery |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
@@ -233,7 +233,9 @@ says what it is now:
 An item also carries `pos`, the stretch of source it came from, which
 the parser sets as it reads an expression; an error about an item is
 reported there (`MarkAt(x.pos, ...)`), and one about two operands
-across both (`Join(x.pos, y.pos)`).
+across both (`Join(x.pos, y.pos)`). `What` names an item for a
+message: a constant without a type of its own as it is written
+(`found 1.5`), anything else by its type.
 
 Three routines move items towards the machine. `Value` brings a value
 into `rax`, loading it with the one instruction its size needs.

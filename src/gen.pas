@@ -66,6 +66,7 @@ var
   depth: longint;      { values pushed and not yet popped }
 
 procedure MakeConst(var x: TItem; t: PType; v: int64);
+function What(const x: TItem): shortstring;
 procedure MakeReal(var x: TItem; r: double);
 procedure MakeStr(var x: TItem);
 procedure MakeItem(var x: TItem; o: PObj);
@@ -201,6 +202,25 @@ begin
   SetData(x.chunk, @sbuf, slen + 1, 1);
 end;
 
+{ An item for "found ...": a constant without a type of its own as it
+  is written, so that "found 1.5" says what is wrong; else its type. }
+function What(const x: TItem): shortstring;
+begin
+  if (x.mode = mConst) and ((x.typ = tConst) or (x.typ = tRConst)) then What := Source(x.pos)
+  else What := TypeName(x.typ);
+end;
+
+{ Two operands of different types. Numbers convert, so say how. }
+procedure Mismatch(const x, y: TItem; xt, yt: PType);
+var msg: shortstring;
+begin
+  msg := TypeName(xt) + ' and ' + TypeName(yt) + ' are different types';
+  if (IsInt(xt) or (xt^.form = fReal)) and (IsInt(yt) or (yt^.form = fReal))
+    and (xt <> tConst) and (xt <> tRConst) then
+    MarkHelp(Join(x.pos, y.pos), msg, 'convert one to the other''s type, as in ' + TypeName(xt) + '(' + Source(y.pos) + ')')
+  else MarkAt(Join(x.pos, y.pos), msg);
+end;
+
 { An item that is not a value, by what it is. }
 procedure NotValue(const x: TItem);
 begin
@@ -324,7 +344,7 @@ end;
 
 procedure LoadVar(var x: TItem; r: longint);
 begin
-  if not IsScalar(x.typ) then MarkAt(x.pos, 'expected a single value, found ' + TypeName(x.typ));
+  if not IsScalar(x.typ) then MarkAt(x.pos, 'expected a single value, found ' + What(x));
   Load(r, MemOf(x, r), ScalarSize(x.typ), (x.typ^.form = fInt) and x.typ^.signed);
 end;
 
@@ -565,7 +585,7 @@ begin
     Value(x); PushRax; x.mode := mStack
   end else if (x.mode = mVar) and (x.typ^.form in [fArray, fSlice]) then
     Save(x)
-  else MarkAt(x.pos, 'expected an array, a slice or a pointer, found ' + TypeName(x.typ));
+  else MarkAt(x.pos, 'expected an array, a slice or a pointer, found ' + What(x));
 end;
 
 procedure Index(var x, y: TItem);
@@ -573,7 +593,7 @@ var t: PType; s: int64; m, ml: TMem;
 begin
   t := x.typ;
   s := t^.base^.size;
-  if not IsInt(y.typ) then MarkAt(y.pos, 'an index is an integer, found ' + TypeName(y.typ));
+  if not IsInt(y.typ) then MarkAt(y.pos, 'an index is an integer, found ' + What(y));
   if t^.form = fPtr then begin
     Value(y);
     if s <> 1 then ImulI(RAX, s);
@@ -611,7 +631,7 @@ end;
 
 procedure SliceLo(var lo: TItem);
 begin
-  if not IsInt(lo.typ) then MarkAt(lo.pos, 'an index is an integer, found ' + TypeName(lo.typ));
+  if not IsInt(lo.typ) then MarkAt(lo.pos, 'an index is an integer, found ' + What(lo));
   Value(lo);
   PushRax;
 end;
@@ -621,7 +641,7 @@ var t, st: PType; s, tmp: int64; m, ml: TMem;
 begin
   t := x.typ;
   s := t^.base^.size;
-  if not IsInt(hi.typ) then MarkAt(hi.pos, 'an index is an integer, found ' + TypeName(hi.typ));
+  if not IsInt(hi.typ) then MarkAt(hi.pos, 'an index is an integer, found ' + What(hi));
   if x.vol then MarkAt(x.pos, 'can''t make a slice through a volatile pointer');
   Value(hi);
   MovRR(RDX, RAX);
@@ -676,7 +696,7 @@ begin
   end else if IsInt(x.typ) then begin
     if x.mode = mConst then x.val := Cut(not x.val, x.typ)
     else begin Value(x); Unary(2, RAX); Norm(x.typ) end;
-  end else MarkAt(x.pos, '"not" needs a BOOL or an integer, found ' + TypeName(x.typ));
+  end else MarkAt(x.pos, '"not" needs a BOOL or an integer, found ' + What(x));
 end;
 
 function IsStrLike(t: PType): boolean;
@@ -815,7 +835,7 @@ begin
   if y.mode in [mType, mBuiltin, mNone, mCase] then NotValue(y);
 
   if (op in [sAnd, sOr]) and (xt^.form = fBool) then begin
-    if yt^.form <> fBool then MarkAt(y.pos, SymText(op) + ' needs BOOLs, found ' + TypeName(yt));
+    if yt^.form <> fBool then MarkAt(y.pos, SymText(op) + ' needs BOOLs, found ' + What(y));
     if (x.mode = mConst) and (y.mode = mConst) then begin
       FixLink(L);
       if op = sAnd then x.val := x.val and y.val else x.val := x.val or y.val;
@@ -845,7 +865,7 @@ begin
   { the type of the result, and the checks }
   t := nil; scale := 1; isPtr := false;
   if IsInt(xt) and IsInt(yt) then begin
-    if op = sSlash then MarkHelp(Join(x.pos, y.pos), '"/" is for reals, found ' + TypeName(xt), 'integers divide with "div"');
+    if op = sSlash then MarkHelp(Join(x.pos, y.pos), '"/" divides reals, not integers', 'to divide integers, write ' + Source(x.pos) + ' div ' + Source(y.pos));
     if op in [sShl, sShr] then begin
       if xt^.form = fConst then t := tConst else t := xt
     end else if (xt^.form = fConst) and (yt^.form = fConst) then t := tConst
@@ -856,12 +876,12 @@ begin
       if (y.mode = mConst) and not Fits(y.val, xt) then MarkAt(y.pos, IntStr(y.val) + ' doesn''t fit ' + TypeName(xt));
       t := xt
     end else if Same(xt, yt) then t := xt
-    else MarkAt(Join(x.pos, y.pos), 'different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
+    else Mismatch(x, y, xt, yt);
   end else if (xt^.form = fReal) and (yt^.form = fReal) then begin
     if not (op in Rel + [sPlus, sMinus, sTimes, sSlash]) then MarkAt(Join(x.pos, y.pos), SymText(op) + ' doesn''t apply to ' + TypeName(xt));
     if xt = tRConst then t := yt
     else if (yt = tRConst) or Same(xt, yt) then t := xt
-    else MarkAt(Join(x.pos, y.pos), 'different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
+    else Mismatch(x, y, xt, yt);
     if (x.mode = mConst) and (x.typ <> t) then RealTo(x, t);
     if (y.mode = mConst) and (y.typ <> t) then RealTo(y, t);
   end else if (xt^.form = fBool) and (yt^.form = fBool) then begin
@@ -871,7 +891,7 @@ begin
     t := xt; scale := xt^.base^.size; isPtr := true;
     if y.mode = mConst then y.typ := tI64;
   end else if (xt^.form = fPtr) and (yt^.form = fPtr) and (op = sMinus) then begin
-    if not Same(xt, yt) then MarkAt(Join(x.pos, y.pos), 'different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
+    if not Same(xt, yt) then Mismatch(x, y, xt, yt);
     t := tI64; scale := xt^.base^.size; isPtr := true;
   end else if (xt^.form in [fPtr, fProc, fNil, fError]) and (yt^.form in [fPtr, fProc, fNil, fError]) then begin
     if not (op in Rel) then MarkAt(Join(x.pos, y.pos), SymText(op) + ' doesn''t apply to ' + TypeName(xt));
@@ -879,7 +899,7 @@ begin
       if not (op in [sEql, sNeq]) then MarkAt(Join(x.pos, y.pos), SymText(op) + ' doesn''t apply to ' + TypeName(xt));
     if (xt^.form <> fNil) and (yt^.form <> fNil) and not Same(xt, yt) then
       if not ((xt^.form = fPtr) and (yt^.form = fPtr) and Same(xt^.base, yt^.base)) then
-        MarkAt(Join(x.pos, y.pos), 'different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
+        Mismatch(x, y, xt, yt);
     t := tU64;
   end else if (xt^.form = fEnum) and Same(xt, yt) then begin
     if not (op in Rel) then MarkAt(Join(x.pos, y.pos), SymText(op) + ' doesn''t apply to ' + TypeName(xt));
@@ -890,7 +910,7 @@ begin
   end else if (op = sIn) and (yt^.form = fSet) and Same(xt, yt^.base) then
     t := yt
   else
-    MarkAt(Join(x.pos, y.pos), 'can''t combine ' + TypeName(xt) + ' and ' + TypeName(yt));
+    Mismatch(x, y, xt, yt);
   unsign := (t^.form = fInt) and not t^.signed;
 
   { constants }
@@ -1087,7 +1107,7 @@ begin
     c.obj := x.obj; c.code := x.obj^.isCode; c.ext := x.obj^.ext;
   end else begin
     c.obj := nil; c.code := false; c.ext := false;
-    if x.typ^.form <> fProc then MarkAt(x.pos, 'expected a procedure, found ' + TypeName(x.typ));
+    if x.typ^.form <> fProc then MarkAt(x.pos, 'expected a procedure, found ' + What(x));
     c.sig := x.typ; c.chunk := -1;
     c.target := ToSlot(x);
   end;
@@ -1121,7 +1141,7 @@ begin
   c.isF[c.n] := (p^.typ^.form = fReal) and not p^.isVar;
   if p^.isVar then begin
     if (a.mode <> mVar) or not a.isVar then MarkAt(a.pos, 'a var parameter needs a variable');
-    if not Same(a.typ, p^.typ) then MarkAt(a.pos, 'a var parameter needs exactly ' + TypeName(p^.typ) + ', found ' + TypeName(a.typ));
+    if not Same(a.typ, p^.typ) then MarkAt(a.pos, 'a var parameter needs exactly ' + TypeName(p^.typ) + ', found ' + What(a));
     if a.vol then MarkAt(a.pos, 'can''t pass through a volatile pointer to a var parameter');
     Address(a, RAX);
     s := AllocTemp(8, 8);
@@ -1244,7 +1264,7 @@ function MatchBegin(var x: TItem): int64;
 var p: int64;
 begin
   if x.typ^.form = fEnum then exit(ToSlot(x));
-  if (x.mode <> mVar) or (x.typ^.form <> fVariant) then MarkAt(x.pos, 'match needs a variant or an enumeration, found ' + TypeName(x.typ));
+  if (x.mode <> mVar) or (x.typ^.form <> fVariant) then MarkAt(x.pos, 'match needs a variant or an enumeration, found ' + What(x));
   Address(x, RAX);
   p := AllocTemp(8, 8);
   Store(Mem(RBP, p), RAX, 8);
@@ -1289,7 +1309,7 @@ end;
 
 procedure CondJump(var x: TItem; var L: longint);
 begin
-  if x.typ^.form <> fBool then MarkAt(x.pos, 'a condition is a BOOL, found ' + TypeName(x.typ));
+  if x.typ^.form <> fBool then MarkAt(x.pos, 'a condition is a BOOL, found ' + What(x));
   Value(x);
   TestRR(RAX, RAX);
   Jcc(ccE, L);

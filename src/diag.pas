@@ -37,6 +37,7 @@ function AddFile(const path: shortstring; buf: PChar; len: longint): longint;
 function PathOf(f: longint): shortstring;
 function LineOf(const p: TPos): longint;
 function Join(const p, q: TPos): TPos;
+function Source(const p: TPos): shortstring;
 procedure Error(const p: TPos; const msg: shortstring);
 procedure Warning(const p: TPos; const msg: shortstring);
 procedure Note(const p: TPos; const msg: shortstring);
@@ -185,6 +186,16 @@ function Join(const p, q: TPos): TPos;
 begin
   Join := p;
   Join.b := q.b;
+end;
+
+{ The text at p, at most the 255 bytes a shortstring holds }
+function Source(const p: TPos): shortstring;
+var n: longint;
+begin
+  n := p.b - p.a;
+  if n > 255 then n := 255;
+  SetLength(Source, n);
+  Move(files[p.f].buf[p.a], Source[1], n);
 end;
 
 { Messages }

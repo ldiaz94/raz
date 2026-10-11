@@ -1,5 +1,5 @@
-test/err/GenSlashVar.raz:6:10: error: "/" is for reals, found I64
+test/err/GenSlashVar.raz:6:10: error: "/" divides reals, not integers
     6 |     x := x / y;
       |          ^^^^^
-help: integers divide with "div"
+help: to divide integers, write x div y
 raz: 1 error

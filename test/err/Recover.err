@@ -10,13 +10,13 @@ test/err/Recover.raz:15:10: error: can't use I64 as BOOL
 test/err/Recover.raz:16:10: error: y isn't declared
    16 |     x := y + 1;
       |          ^
-test/err/Recover.raz:19:14: error: can't combine I64 and BOOL
+test/err/Recover.raz:19:14: error: I64 and BOOL are different types
    19 |         x := (x + 2) * b;
       |              ^^^^^^^^^^^
 test/err/Recover.raz:20:17: error: z isn't declared
    20 |         Out.int(z);
       |                 ^
-test/err/Recover.raz:22:12: error: can't combine I64 and BOOL
+test/err/Recover.raz:22:12: error: I64 and BOOL are different types
    22 |     return x + true;
       |            ^^^^^^^^
 test/err/Recover.raz:28:7: error: Q has no field c

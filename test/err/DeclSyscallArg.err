@@ -1,4 +1,4 @@
-test/err/DeclSyscallArg.raz:5:21: error: expected an integer or a pointer, found a real constant
+test/err/DeclSyscallArg.raz:5:21: error: expected an integer or a pointer, found 1.5
     5 |     n := SYSCALL(1, 1.5);
       |                     ^^^
 raz: 1 error
