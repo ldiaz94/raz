@@ -4,9 +4,10 @@
 
    It keeps to what POSIX gives: raw mode is cfmakeraw's, and a file's
    size is where lseek finds its end, so that no struct stat is read.
-   Two things are glibc's: where a name lies in struct dirent, and the
-   number of the TIOCGWINSZ request. A C library that differs needs a
-   Sys of its own. *)
+   Three things are glibc's: where a name lies in struct dirent, the
+   number of the TIOCGWINSZ request, and struct sockaddr_un, which on
+   the BSDs starts with a byte of length. A C library that differs
+   needs a Sys of its own. *)
 module Sys;
 import C;
 
@@ -31,6 +32,12 @@ type
 
     Winsize = record rows, cols, xpixel, ypixel: U16; end;
     Pollfd = record fd: I32; events, revents: I16; end;
+
+    (* glibc's struct sockaddr_un: AF_UNIX, then the path and its zero *)
+    SockaddrUn = record
+        family: U16;
+        path: [108]U8;
+    end;
 
 var
     saved: [256]U8;   (* the terminal as rawMode found it: a struct termios, of the C library's size *)
@@ -234,6 +241,40 @@ begin
     return C.poll(^U8(ADR(p)), 1, I32(ms)) > 0;
 end;
 
+(* A stream socket connected to the Unix socket at path: its file
+   descriptor, or minus an errno. *)
+proc connect*(path: []U8): I64;
+var a: SockaddrUn; fd: I32; i, err: I64;
+begin
+    if LEN(path) >= LEN(a.path) then return -36; end;   (* ENAMETOOLONG *)
+    a.family := 1;                                      (* AF_UNIX *)
+    for i := 0 to LEN(path) - 1 do a.path[i] := path[i]; end;
+    fd := C.socket(1, 1, 0);                            (* AF_UNIX, SOCK_STREAM *)
+    if fd < 0 then return failed(); end;
+    if C.connect(fd, ^U8(ADR(a)), U32(SIZE(SockaddrUn))) # 0 then
+        err := failed();                                (* before close can change errno *)
+        C.close(fd);
+        return err;
+    end;
+    return I64(fd);
+end;
+
+(* The first of fds that has something to read within ms milliseconds,
+   or that has reached its end or failed, so that a read won't wait; -1
+   if none has. ms < 0 waits as long as it takes. At most 64 fds. *)
+proc readyOf*(fds: []I64; ms: I64): I64;
+var p: [64]Pollfd; n, i: I64;
+begin
+    n := LEN(fds);
+    if n > LEN(p) then n := LEN(p); end;
+    for i := 0 to n - 1 do p[i] := {fd: I32(fds[i]), events: 1}; end;   (* POLLIN *)
+    if C.poll(^U8(ADR(p)), U64(n), I32(ms)) <= 0 then return -1; end;
+    for i := 0 to n - 1 do
+        if p[i].revents # 0 then return fds[i]; end;
+    end;
+    return -1;
+end;
+
 (* The value of the environment variable name; "" if it isn't set. *)
 proc env*(name: []U8): []U8;
 var a: [4096]U8; s: ^U8; n: I64;
@@ -272,10 +313,25 @@ begin
     C._exit(I32(status));
 end;
 
+(* A socket listening at path, for the test: its fd. *)
+proc listen(path: []U8): I64;
+var a: SockaddrUn; fd: I32; i: I64;
+begin
+    remove(path);
+    a.family := 1;
+    for i := 0 to LEN(path) - 1 do a.path[i] := path[i]; end;
+    fd := C.socket(1, 1, 0);
+    if (fd < 0) or (C.bind(fd, ^U8(ADR(a)), U32(SIZE(SockaddrUn))) # 0) or (C.listen(fd, 1) # 0) then
+        exit(2);
+    end;
+    return I64(fd);
+end;
+
 (* The module's test, as Linux's Sys has it: a file written, read back
-   and closed; a directory made, listed and emptied; no terminal. *)
+   and closed; a directory made, listed and emptied; no terminal; a
+   socket. *)
 proc main*;
-var fd, n, err, w, h: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
+var fd, n, err, w, h, l, c, a: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
     dir: [4096]U8;
 begin
     fd := create("/tmp/raz-sys-test");
@@ -322,6 +378,22 @@ begin
     if (LEN(env("PATH")) = 0) or (LEN(env("RAZ_NO_SUCH_VARIABLE")) # 0) then exit(2); end;
     n := workDir(dir);
     if (n <= 0) or (dir[0] # '/') then exit(2); end;
+    (* a socket: nothing at a path, then a listener that a connection
+       makes ready, and a byte from it to the connection *)
+    if connect("/tmp/raz-no-such-socket") # -2 then exit(2); end;    (* ENOENT *)
+    l := listen("/tmp/raz-sys-socket");
+    c := connect("/tmp/raz-sys-socket");
+    if c < 0 then exit(2); end;
+    if readyOf([c], 0) # -1 then exit(2); end;
+    if readyOf([c, l], 1000) # l then exit(2); end;
+    a := I64(C.accept(I32(l), nil, nil));
+    if (a < 0) or (write(a, "x") # 1) or (readyOf([l, c], 1000) # c) then exit(2); end;
+    if (read(c, buf) # 1) or (buf[0] # 'x') then exit(2); end;
+    close(a);
+    if (readyOf([c], 1000) # c) or (read(c, buf) # 0) then exit(2); end;   (* its end *)
+    close(c);
+    close(l);
+    remove("/tmp/raz-sys-socket");
 end;
 
 end Sys.
