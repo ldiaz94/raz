@@ -10,7 +10,7 @@ plan disagrees, the report wins and the plan is fixed.
     make raz       # the compiler, ./raz; its library is lib/
     make check     # every example and test against its expected output
     make bench     # must report at least 400,000 lines a second
-    make loc       # lines of the compiler; the code column is the budget
+    make loc       # lines of the compiler, by rloc; the last, code, is the budget
     make tests     # the small Pascal tests of scan, x64, link and elf
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version

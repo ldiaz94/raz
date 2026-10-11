@@ -68,9 +68,11 @@ fmt: raz | build
 	    build/Pretty $$f | cmp -s - $$f || { echo "not formatted: $$f"; fail=1; }; \
 	done; test $$fail = 0
 
-# lines of the compiler: all of them, and those that aren't blank or comments
+# lines of the compiler, by rloc: each file's blank, comment and code,
+# then the lines of code in all
 loc:
-	@python3 test/loc.py src/*.pas
+	@rloc -f src/*.pas
+	@rloc -c src/*.pas
 
 # raz and its library go together under $(PREFIX)/lib/raz; the link
 # on PATH works since raz finds lib/ beside its real path.
