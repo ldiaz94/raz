@@ -60,36 +60,29 @@ stress: raz | build
 	build/Stress 40000 200
 	(ulimit -v 60000; build/Stress fail)
 
-# the formatter, tools/Pretty.raz: the library, examples, tools and
-# ravite are formatted already
+# the formatter, tools/Pretty.raz: the library, examples and tools are
+# formatted already
 fmt: raz | build
 	./raz -o build/Pretty tools/Pretty.raz
-	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz ravite/*.raz; do \
+	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz; do \
 	    build/Pretty $$f | cmp -s - $$f || { echo "not formatted: $$f"; fail=1; }; \
 	done; test $$fail = 0
 
-# lines of the compiler, then of ravite: all of them, and those that
-# aren't blank or comments
+# lines of the compiler: all of them, and those that aren't blank or comments
 loc:
 	@python3 test/loc.py src/*.pas
-	@python3 test/loc.py ravite/*.raz
-
-# ravite, the editor, into build/ravite
-ravite: raz | build
-	./raz -I tools -o build/ravite ravite/Ravite.raz
 
 # raz and its library go together under $(PREFIX)/lib/raz; the link
 # on PATH works since raz finds lib/ beside its real path.
 PREFIX = $(HOME)/.local
 
-install: raz ravite
+install: raz
 	rm -rf $(PREFIX)/lib/raz
 	mkdir -p $(PREFIX)/lib/raz $(PREFIX)/bin
 	cp -r raz lib $(PREFIX)/lib/raz
 	ln -sf $(PREFIX)/lib/raz/raz $(PREFIX)/bin/raz
-	cp build/ravite $(PREFIX)/bin/ravite
 
 uninstall:
-	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(PREFIX)/bin/ravite
+	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz
 
-.PHONY: units tests check gdb bench stress fmt loc ravite clean install uninstall
+.PHONY: units tests check gdb bench stress fmt loc clean install uninstall

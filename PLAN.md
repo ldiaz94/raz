@@ -283,6 +283,10 @@ main model reads every diff before it is committed.
 
 Stage 5: ravite, an editor
 
+(The editors have since moved to repositories of their own, rmacs with
+emacs's keys and ravite with vim's, each pinning the raz it builds
+with; what follows is how they were made here.)
+
 ravite (raz visual text editor) is a terminal editor written in raz,
 good enough to write raz in every day, with emacs's keys. It lives in
 `ravite/`. Its first version had vim's keys (steps 28 to 33); the

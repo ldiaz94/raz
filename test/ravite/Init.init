@@ -1,6 +1,0 @@
-# a test of the settings
-bind C-c u upcase-word
-bind C-c C-d kill-line   # a comment after
-unbind C-k
-set indent 2
-frobnicate

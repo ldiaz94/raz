@@ -1,1 +1,0 @@
-M-x global-set-key RET C-c z upcase-word RET C-c z M-x set-variable RET ind RET 8 RET C-n TAB x

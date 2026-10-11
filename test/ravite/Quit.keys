@@ -1,1 +1,0 @@
-x C-x C-f other.txt RET y C-x C-c n n no RET C-x C-c n n yes RET

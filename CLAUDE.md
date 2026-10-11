@@ -14,8 +14,7 @@ plan disagrees, the report wins and the plan is fixed.
     make tests     # the small Pascal tests of scan, x64, link and elf
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version
-    make fmt       # lib/, examples/, tools/ and ravite/ are formatted
-    make ravite    # the editor, build/ravite
+    make fmt       # lib/, examples/ and tools/ are formatted
     make install   # raz on PATH via ~/.local (PREFIX=...); make uninstall
 
 `make check` also runs `tools/Doc.raz` and `tools/Pretty.raz`, the
@@ -52,16 +51,13 @@ Examples in `examples/` work the same way.
 
 Steps 1-18 are done: the language, the tools (`tools/Doc.raz`, and
 the formatter, `tools/Pretty.raz`, over the shared `tools/Scan.raz`),
-`README.md` and the guide to the compiler, `doc/compiler.md`. Stage 5,
-ravite, the editor in `ravite/` (`doc/ravite.md`), with emacs's keys,
-is on the `editor-plan` branch. It has no line budget: for ravite
-the owner puts code that is easy to read and follow, and well
-commented, before its length. Its session tests, `test/ravite/X.keys`,
-leave the text emacs does with the same keys, checked with
-`test/emacs.py` when written; a new one should be too, or
-`doc/ravite.md` says why not. `make check` runs them over both Sys
-files. `Sys` has the terminal, files, directories and the environment
-(report 2026-10.2, approved). New work starts only on the owner's word. Keep
+`README.md` and the guide to the compiler, `doc/compiler.md`. Stage 5
+made two editors, which now live in repositories of their own, each
+pinning the raz commit it builds with: rmacs (emacs's keys) and
+ravite (vim's). What they needed of the system went into `Sys` (report
+2026-10.2, approved): the terminal, files, directories and the
+environment. `tools/Scan.raz` is theirs to use, as a tool, not part of
+the library. New work starts only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes. Left for later at the owner's word: a rewrite of
 var parameters.
