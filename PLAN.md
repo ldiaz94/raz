@@ -283,121 +283,117 @@ main model reads every diff before it is committed.
 
 Stage 5: ravite, an editor
 
-ravite (raz visual text editor) is a small terminal editor written in
-raz, good enough to write raz in every day. It lives in `ravite/`, and
-its keys are vim's: modes, counts, operators and motions. It colours
-raz through `tools/Scan.raz`, so the editor and the formatter read raz
-the same way. This stage makes the least ravite worth using. Several
-buffers, split windows, regular expressions, a build command and a
-file finder are left for later stages.
+ravite (raz visual text editor) is a terminal editor written in raz,
+good enough to write raz in every day, with emacs's keys. It lives in
+`ravite/`. Its first version had vim's keys (steps 28 to 33); the
+owner chose emacs's instead, with more of emacs: buffers, the
+minibuffer, ido, a small dired, M-x, and settings. Steps 28, 29 and 31
+stand as they are; the rest is redone from step 35.
 
 Ground rules, besides the plan's:
 
-- About 2,000 lines of code, within 10%, as `test/loc.py` counts them
-  (`make loc` counts ravite too, apart). The compiler's budget doesn't
-  change.
-- No language change and no change to `lib/`. What ravite needs of
-  the system goes into a per-target module of its own,
-  `ravite/Tty.linux-x86_64.raz`, through `SYSCALL`. A C `Tty.raz` for
-  FreeBSD and the others can follow later, held to the same interface
-  by the compiler.
-- A program without C: a static executable.
-- `make ravite` builds `build/ravite`; `make install` puts it on PATH
-  beside raz. `make check` runs its tests, and `make fmt` covers
-  `ravite/`.
+- About 3,000 lines of code, within 10%, as `make loc` counts them,
+  apart from the compiler's budget.
+- A program without C, a static executable. What it needs of the
+  system is in its own `ravite/Tty.linux-x86_64.raz` until `Sys` has
+  it (step 34, then 42).
+- Every session test, `test/ravite/X.keys`, does what emacs (`emacs -Q
+  -nw`) does with the same keys, checked when it is written, except
+  where ravite says it differs (`doc/ravite.md`).
+- `make ravite` builds `build/ravite`; `make install` puts it on PATH;
+  `make check` runs its tests; `make fmt` covers `ravite/`.
 
-The keys, as in vim:
+What it does, with emacs's keys and names:
 
-- **Normal mode.** A count before a command repeats it or says which
-  line. Motions: `h j k l` and the arrows, `0 ^ $` and Home and End,
-  `w b e`, `gg G`, `{ }`, `%`, `f F t T` with `; ,`, and the search
-  motions `n N *`. Operators `d c y > <` take a motion, or themselves
-  for whole lines (`dd`, `3yy`). Besides them: `x X D C s S Y r J p P`,
-  `i a I A o O` into insert mode, `u` and Ctrl-R for undo and redo,
-  `.` to repeat the last change, Ctrl-D, Ctrl-U, Ctrl-F and Ctrl-B to
-  scroll, `ZZ` to write and quit.
-- **Insert mode.** Typing inserts; Backspace and Delete remove a code
-  point; Enter keeps the indent of the line; Tab inserts spaces to the
-  next multiple of 4; Escape goes back to normal mode.
-- **Visual mode.** `v` by characters and `V` by lines; motions move
-  the cursor; `d x y c > <` act on what is selected.
-- **Command line.** `:w`, `:q`, `:q!`, `:wq`, `:x`, and `:N` for line
-  N. `/` and `?` search forward and back, for text, not patterns, and
-  go round the end of the file.
+- **Editing.** C-f C-b C-n C-p and the arrows, C-a C-e, M-f M-b, M-<
+  M->, C-v M-v, C-l, M-g g, M-{ M-}; typing, RET with the line's
+  indent, TAB to the next multiple of 4, DEL C-d, M-DEL M-d, C-k, C-o,
+  C-t, M-u M-l M-c. The mark and the region, shown: C-SPC, C-x C-x,
+  C-x h, C-w, M-w; the kill ring: C-y, M-y, kills in a row add up.
+  C-/ C-_ C-x u undo; M-x undo-redo. C-u and M-digits for a count.
+  C-g gets out of anything.
+- **Search.** C-s and C-r search incrementally, for text; M-% replaces,
+  asking y n ! q at each.
+- **Buffers.** Any number. C-x C-f finds a file, C-x C-s saves, C-x
+  C-w writes to another name, C-x s saves those that need it, C-x b
+  switches, C-x k kills, C-x C-b lists them in a buffer of their own,
+  C-x C-c quits, asking about unsaved buffers. `*scratch*` is there
+  from the start, a buffer that is no file.
+- **The minibuffer.** One line at the bottom, edited with the same keys
+  as any buffer. ido completes in it, for buffers, files and M-x:
+  the candidates that hold what is typed show after it, C-s and C-r
+  turn them round, TAB completes, RET takes the first, C-j takes what
+  is typed; for files, / goes into a directory and DEL out of one.
+- **Dired.** C-x d, or finding a directory, lists it: RET or f opens
+  what is on the line, ^ goes up, n and p move, g reads it again, +
+  makes a directory, R renames, D deletes a file after a yes, q leaves.
+- **M-x and settings.** Every command has a name and runs by M-x. Keys
+  are bound to names in keymaps, with C-x and M-g as prefixes. At
+  start ravite reads `~/.ravite`, lines of `bind KEYS COMMAND` and
+  `set VARIABLE VALUE`, keys written as emacs writes them (`C-x C-s`,
+  `M-%`). M-x global-set-key and set-variable do the same while it
+  runs; C-h k and C-h b say what keys do. The variables: indent,
+  tab-width, colour, ido.
+- **The screen.** The buffer, a mode line (`-UU-:**-  name  L12  Top`)
+  and the echo area, which the minibuffer shares. Long lines scroll
+  sideways. A `.raz` buffer is coloured as before; `NO_COLOR` or `set
+  colour off` turns it off.
 
-One register, which every delete and yank fills, by lines or by
-characters. Undo is unlimited; a command, with all it types in insert
-mode, is one step. `ravite file:line` opens the file at that line,
-the form raz's messages use.
+What it leaves out: several windows, the mouse, the system clipboard,
+undo in a tree (undo and redo are a line), patterns (search is for
+text), major modes and their indenting, Lisp, the minibuffer's history,
+and dired's marks. FreeBSD comes once `Sys` has what ravite needs.
 
-The screen: the alternate screen, the text, and a last line for the
-mode, messages and the command line, with the file, `[+]` when
-changed, and the line and column on its right. Lines past the end of
-the file show `~`. Long lines scroll sideways rather than wrap. Tabs
-show to the next multiple of 8. A UTF-8 code point takes one cell;
-wide characters are left out. The size is read again whenever ravite
-waits for a key, so resizing works without a signal handler. A `.raz`
-file is coloured: reserved words, basic types, built-ins, `true`,
-`false` and `nil`, numbers, strings and characters, and comments, as
-`editor/vim` colours them, in the 16 standard colours, so that the
-terminal's theme decides how they look. `NO_COLOR` turns colour off.
-
-A file is kept in memory without its last line break, and written
-with one. Writing goes to a new file beside it, renamed over it once
-written, so that a failed write loses nothing.
-
-What it leaves out: the mouse, the system clipboard, several files or
-windows, wrapping, wide characters, settings, other languages'
-colours, marks, macros, text objects, and FreeBSD. A crash by a signal
-leaves the terminal raw (`reset` fixes it); a failed check restores
-it, since `Rt.fail` runs the procedures registered with `Rt.atExit`.
-
-The modules, with rough lines of code, and in brackets what they
-came to:
+The modules:
 
 | Module | Lines | What |
 |---|---|---|
-| `Tty.linux-x86_64.raz` | 90 (73) | raw mode and back (ioctl `TCGETS` and `TCSETS`), the size (`TIOCGWINSZ`), waiting for input (`poll`), `rename` |
-| `Keys.raz` | 140 (184) | the bytes of a key decoded: UTF-8, control keys, `ESC [` and `ESC O` sequences; and vim's notation for keys, `<esc>`, `<c-r>`, for the tests |
-| `Text.raz` | 280 (330) | the text as a gap buffer of bytes: inserting, deleting, lines; undo and redo as a log of insertions and deletions, in groups |
-| `Colour.raz` | 130 (109) | the colour of each byte on the screen, through `Scan`; the depth of comment where the screen starts |
-| `View.raz` | 200 (154) | the screen drawn into one `Buf` and written at once, or as plain text for the tests |
-| `Ravite.raz` | 1,150 (1,305) | the command line, the modes, motions, operators, commands, search, the register, repeating, writing and quitting |
-| total | 1,990 (2,155) | |
+| `Tty.linux-x86_64.raz` | 120 | the terminal, directories and files, until `Sys` has them |
+| `Keys.raz` | 220 | a key from the bytes a terminal sends, Meta too; keys written as emacs writes them |
+| `Text.raz` | 330 | the text, a gap buffer, with undo and redo |
+| `Colour.raz` | 110 | the colour of each byte on the screen |
+| `View.raz` | 170 | the screen: the buffer, the mode line, the echo area |
+| `Core.raz` | 300 | buffers, the current one, the echo area, reading keys and running them, through procedures the main module sets |
+| `Edit.raz` | 450 | moving, typing, deleting, the mark, the kill ring, undo |
+| `Mini.raz` | 350 | the minibuffer, ido, yes or no |
+| `Search.raz` | 200 | incremental search, query-replace |
+| `Dired.raz` | 250 | directories, and the list of buffers |
+| `Commands.raz` | 400 | the commands' names, keymaps, M-x, settings, help, files and buffers |
+| `Ravite.raz` | 250 | the arguments, the screen, the keys from the terminal or a script, the loop |
+| total | 3,150 | |
 
-Colouring scans only the screen. `Scan` alone reads about 600,000
-lines a second (measured on `make bench`'s program), so scanning a
-10,000-line file from its start would cost some 16 ms a keystroke. The
-one thing that carries from line to line is a comment, so ravite
-keeps the depth of comment where the screen starts. Scrolling down
-moves that point on through the lines that scrolled away; jumping
-back, or an edit above it, counts again from the start of the file,
-once, with a loop much simpler than `Scan`. When the screen starts
-inside a comment, `Colour` finds that comment's end itself and hands
-the rest to `Scan`. Words are looked up in a hash table, not with
-`Scan.reserved`, whose walk through a list of words cuts `Scan` to
-about 120,000 lines a second. Before drawing, the gap moves past the
-end of the screen, so that what `Scan` reads is one slice; since edits
-happen on the screen, that moves a screenful of bytes at most.
-
-Testing. Each module's `main` is its test, run by `make check` like
-the library's: `Text` against a plain string under random edits, undos
-and redos; `Keys` on byte sequences and notation; `Colour` on a line
-of each kind. And whole sessions: `ravite -script W H file` reads keys
-in vim's notation from standard input, on a screen W by H; at the end
-it prints the screen as plain text, then the text. Each
+Testing. `ravite -script W H file...` reads keys as emacs writes them
+from standard input, on a screen W by H, and at their end, or at C-x
+C-c, prints the screen as plain text, then the current buffer. Each
 `test/ravite/X.keys` has its `X.expect`, and may have an `X.txt` to
-start from.
+start from, or `X.args` for other arguments. Each module's `main` is
+its test.
+
+Steps 28 to 33 (vim's keys):
 
 - [x] 28. `Tty` and `Keys`, with `Keys`'s test; raw mode, the size
       and the keys tried through a pseudo-terminal.
 - [x] 29. `Text`: the gap buffer and undo, with its test.
-- [x] 30. `View` and `Ravite`: opening, the modes, motions, operators,
-      the register, undo, repeating, the command line, writing and
-      quitting; `-script` and `test/ravite` in `make check`; `make
-      ravite`, `make loc` and `make fmt` over `ravite/`.
+- [x] 30. `View` and `Ravite` with vim's keys; `-script` and
+      `test/ravite`; `make ravite`, `make loc` and `make fmt`.
 - [x] 31. `Colour`.
-- [x] 32. Visual mode, search, `%`, `f t`, and `file:line`; their
-      session tests.
-- [x] 33. `doc/ravite.md`, how to build and use it and its keys; a
-      word in `README.md` and `CLAUDE.md`.
+- [x] 32. Visual mode, search, `%`, `f t`, and `file:line`.
+- [x] 33. `doc/ravite.md`.
+
+Steps 34 on (emacs's keys):
+
+- [x] 34. The report: what `Sys` gains for ravite, for review before
+      any code (report version `2026-10.2`).
+- [ ] 35. `Keys` with Meta and emacs's notation; `Core`, `View` with a
+      mode line and the echo area, `Edit`, `Commands` with keymaps and
+      C-u, and `Ravite`: editing one buffer with emacs's keys, finding
+      and saving files; the session tests, checked against emacs.
+- [ ] 36. `Mini`: the minibuffer with the same keys, ido, M-x; buffers,
+      `*scratch*`, C-x b, C-x k, C-x C-b, C-x s, C-x C-c.
+- [ ] 37. `Search`: C-s, C-r, M-%.
+- [ ] 38. `Dired`.
+- [ ] 39. Settings: `~/.ravite`, M-x global-set-key and set-variable,
+      C-h k, C-h b.
+- [ ] 40. `doc/ravite.md` again, `README.md`, `CLAUDE.md`.
+- [ ] 41. Once the owner approves step 34: `Sys` gains it, on Linux
+      and over C, with tests; ravite's `Tty` goes.
