@@ -136,9 +136,12 @@ are exported the same way. Everything else is private to the module.
 An exported variable can be read by the modules that import it, but
 only its own module changes it. Outside it, the variable, and every
 field and element of it, can't be assigned, given to a `var`
-parameter, `INC`ed or `DEC`ed, or have its address taken with `ADR`.
-What a pointer in it points at is another variable, and isn't held to
-this.
+parameter, `INC`ed or `DEC`ed, have its address taken with `ADR`, be
+sliced, or stand where a slice is expected (section 5.10). It can be
+copied, and the copy is the importer's own. What a pointer or a slice
+in it points at is another variable, and isn't held to this; a module
+that means to share its array writes a procedure that returns a slice
+of it.
 
 **Imports.** `import Out;` makes `Out`'s exports available as `Out.x`.
 `import O := Out;` uses the name `O` instead. A module can't import
@@ -253,11 +256,13 @@ module needs a program without C (section 10): it makes its own system
 calls, or its own threads, which the C library wouldn't know about.
 
 **`check off;`**, after the links, leaves out of the module's own code
-the checks of indexes and slices (section 6.5), for speed where the
+the checks of indexes and slice bounds (sections 6.4 and 6.5), for speed where the
 program is sure of them. An index out of range there reads or writes
 whatever memory it reaches, and what follows isn't defined. Every
-other check stays, and the module's callers keep theirs. `check` and
-`off` aren't reserved words.
+other check stays, and the module's callers keep theirs. An instance
+of a generic module follows the generic module's own `check` line, not
+that of the module that made it. `check` and `off` aren't reserved
+words.
 
 ## 4. Declarations
 
@@ -329,8 +334,10 @@ QualIdent = [ ident "." ] ident .
 
 `INT` is the everyday integer: lengths, indexes and sizes are `INT`s.
 It is as big as an address, so it is the integer a pointer converts
-to (section 6.7), and the one the atomic built-ins work on (section
-6.8).
+to (section 6.7), and a word the atomic built-ins work on (section
+6.8). `INT` and `I64` are two types, even where they are the same
+size: an `INT` goes silently into an `I64` (section 5.10), but the two
+don't mix in an expression (section 6.1).
 
 `F32` and `F64` exist only on a target that has reals (appendix A). On
 one that hasn't, they, real literals and anything made of them are
@@ -507,6 +514,12 @@ the same type, or if:
 - `A` is `INT` and `B` is `I64`, or `A` is `UINT` and `B` is `U64`,
   which loses nothing on any target.
 
+A string's bytes are constant. A `[]U8` or `^U8` made from a string
+literal, or a slice of a string constant, points at them, and writing
+through it isn't defined: on a target with read-only memory, it stops
+the program as a bad address (section 10). A `[n]U8` made from a
+string is a copy, the program's to change.
+
 Nothing else converts silently. In particular, there is no other
 conversion between integer types, between integers and reals, or between `F32`
 and `F64`, without a written conversion (section 6.7).
@@ -553,7 +566,9 @@ Both operands of `+ - * div mod & | xor` have the same integer
 type, or one is an untyped constant that takes the other's type. The
 result has that type and wraps around at its width: in `U8`,
 `200 + 100` is `44`. A unary minus wraps too: for `x` of an unsigned
-type, `-x` is `0 - x`.
+type, `-x` is `0 - x`. Two integer types are never mixed, whatever
+their sizes: with `i: I64`, `i < LEN(s)` is an error, and `i` is
+better an `INT`.
 
 `div` rounds toward zero and `mod` takes the sign of the dividend, as
 in C: `-7 div 2` is `-3`, `-7 mod 2` is `-1`. Dividing by zero, and
@@ -718,9 +733,9 @@ pointer, and not atomic; `XADD` is the atomic one.
 For `CAS`, `XCHG` and `XADD`, `p` is a `^T` or `^VOLATILE T` where `T`
 is an integer or pointer type as big as an address: `INT`, `UINT` or a
 pointer, and on x86-64 `I64` and `U64` too (an integer type for
-`XADD`). A machine with one processor and no atomic instructions makes
-them atomic by holding off interrupts while they run. They
-are sequentially consistent.
+`XADD`). They are sequentially consistent, on every target; how a
+machine without atomic instructions makes them so is the
+implementation's choice (appendix A).
 
 ## 7. Statements
 
@@ -761,7 +776,9 @@ body at least once and stops when the condition is true.
 `i <= b` (or `i >= b` if `s` is negative). `i` is a variable of an
 integer or enumeration type, named by its name alone; `a` and then `b`
 are evaluated once, before the first round; `s` is a constant other
-than zero, and 1 if left out.
+than zero, and 1 if left out. `a` and `b` have `i`'s type, or are
+untyped constants that take it, as with `+` (section 6.1): so in
+`for i := 0 to LEN(s) - 1`, `i` is an `INT`.
 
 The loop never steps past `b`, so `i` can't wrap: afterwards `i`
 holds the last value it took, or `a` if the body never ran. The body
@@ -977,7 +994,7 @@ never by value. `...` accepts any number of further arguments of those
 types, and is allowed only in an `extern`. C takes no `float` there,
 so an `F32` given to `...` is an error: the program writes `F64(x)`.
 Past the parameters, a real constant goes as an `F64`, an integer
-constant as an `I64`, and a string literal as a pointer to its bytes
+constant as an `INT`, and a string literal as a pointer to its bytes
 followed by a zero byte.
 
 An `extern` variable is C's variable itself: reading it reads C's,
@@ -1066,8 +1083,11 @@ whether its modules were compiled one at a time or all at once.
 An instance of a generic module goes into the object file of the
 module that made it, named by the generic module, its arguments, and
 the fingerprints of the generic module's declarations and of each
-argument's. A type argument is named as it is built, a private type
-with the name of its module. Two object files that hold an instance of
+argument's. A type argument is named as it is built, and a named type
+by where it is declared: its module, its procedure if it is local to
+one, and its name. A record, variant or enumeration given as a type
+argument must therefore be named, since each written anonymously is a
+type of its own (section 5.10). Two object files that hold an instance of
 the same name hold the same code, and the program keeps one.
 
 **Messages.** The compiler reports an error with its file, line and
@@ -1621,10 +1641,13 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   silently; pointers, procedures, `ERROR`s, slices and variants' tags
   are sized by the address (section 5). Reals are a target's to have
   or not (section 5.1). An exported variable is read only outside its
-  module (section 3). `check off;` leaves a module's index and slice
-  checks out (sections 3 and 6.5). The atomic built-ins work on words
-  (section 6.8). Modules compile on their own, into object files
-  (section 10).
+  module (section 3), nor sliced there. `check off;` leaves a module's
+  index and slice checks out (sections 3, 6.4 and 6.5). `INT` and
+  `I64` don't mix in an expression (section 6.1). Writing a string's
+  bytes isn't defined (section 5.10). The atomic built-ins work on
+  words (section 6.8). Modules compile on their own, into object files
+  (section 10); a record, variant or enumeration given to a generic
+  module is named.
 
 ## Appendix A. What an implementation chooses
 
@@ -1637,6 +1660,10 @@ compiler's choices are in `doc/compiler.md`.
   of an address, and so of `INT`, and whether it has reals.
 - **Object files.** Their format, and the intermediate form of the
   code in them (section 10); this compiler's is in `doc/ir.md`.
+- **Atomics.** How `CAS`, `XCHG` and `XADD` are made sequentially
+  consistent on a machine without atomic instructions (section 6.8):
+  on one with a single processor, by holding off interrupts while
+  they run, for one.
 - **The calling convention.** On x86-64 Linux it is System V
   (sections 8 and 9); elsewhere it is the C library's own, so that
   `extern` procedures and callbacks work. How a procedure returns
