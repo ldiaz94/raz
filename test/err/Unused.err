@@ -1,0 +1,23 @@
+test/err/Unused.raz:3:13: error: module Sys is imported but never used
+    3 | import Out, Sys;
+      |             ^^^
+test/err/Unused.raz:6:5: error: constant N is never used
+    6 |     N = 3; M* = 4; _K = 5;
+      |     ^
+test/err/Unused.raz:9:5: error: type Color is never used
+    9 |     Color = (red, green);
+      |     ^^^^^
+test/err/Unused.raz:13:5: error: variable g is assigned but never read
+   13 |     g, h, seen: I64;
+      |     ^
+test/err/Unused.raz:15:6: error: procedure fact is never used
+   15 | proc fact(n: I64): I64;   (* calling itself doesn't count *)
+      |      ^^^^
+test/err/Unused.raz:21:14: error: parameter a is never used
+   21 | proc helper*(a, _b: Used; var r: I64);
+      |              ^
+help: if it must be there, call it _a
+test/err/Unused.raz:22:5: error: variable x is assigned but never read
+   22 | var x, y: I64; t: [4]I64;
+      |     ^
+raz: 7 errors

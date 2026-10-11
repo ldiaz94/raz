@@ -7,7 +7,9 @@
 #   X.status  its exit status (optional; 0 if missing)
 # A program without X.expect is compiled, not run. test/libc puts
 # lib/Sys.raz, over the C library, before the system call one.
-# Programs in test/err must not compile, and must print X.err. Then
+# Programs in test/err must not compile, and must print X.err; there
+# X.args holds the compiler's options. The examples, the tools and the
+# library's tests are compiled with -Werror, so warnings fail them. Then
 # the version, tools/Doc.raz, the report's examples, tools/Pretty.raz,
 # and the library's own tests.
 
@@ -19,7 +21,9 @@ fail=0
 
 run() {   # run dir name
     dir=$1; name=$2
-    if ! $raz -I $dir/mods -o $out/$name $dir/$name.raz 2>$out/$name.cerr; then
+    flags=
+    [ $dir = examples ] && flags=-Werror
+    if ! $raz $flags -I $dir/mods -o $out/$name $dir/$name.raz 2>$out/$name.cerr; then
         echo "FAIL $dir/$name: doesn't compile: $(cat $out/$name.cerr)"
         fail=$((fail + 1)); return
     fi
@@ -61,7 +65,9 @@ runs test/run/Args.raz 4 one 'two words' é
 runs test/libc/Through.raz 2
 for f in test/err/*.raz; do
     name=$(basename $f .raz)
-    if $raz -I test/err/mods -I test/run/mods -o $out/$name $f 2>$out/$name.cerr; then
+    flags=
+    [ -f test/err/$name.args ] && flags=$(cat test/err/$name.args)
+    if $raz $flags -I test/err/mods -I test/run/mods -o $out/$name $f 2>$out/$name.cerr; then
         echo "FAIL $f: compiles"
         fail=$((fail + 1))
     elif ! cmp -s test/err/$name.err $out/$name.cerr; then
@@ -77,7 +83,7 @@ if ./raz --version | grep -qF "report $want"; then pass=$((pass + 1))
 else echo "FAIL raz --version: not report $want"; fail=$((fail + 1)); fi
 
 # tools/Doc.raz: on every library module, and as test/doc expects
-if ./raz -o $out/Doc tools/Doc.raz 2>$out/Doc.cerr; then
+if ./raz -Werror -o $out/Doc tools/Doc.raz 2>$out/Doc.cerr; then
     for f in lib/*.raz; do
         if ! $out/Doc $f > $out/doc.out; then echo "FAIL Doc $f"; fail=$((fail + 1)); fi
     done
@@ -105,7 +111,7 @@ fi
 
 # tools/Pretty.raz: each test/pretty/X.raz comes out as X.expect, which
 # comes out as it is; so do the library, the examples and the tools
-if ./raz -o $out/Pretty tools/Pretty.raz 2>$out/Pretty.cerr; then
+if ./raz -Werror -o $out/Pretty tools/Pretty.raz 2>$out/Pretty.cerr; then
     for f in test/pretty/*.raz; do
         want=test/pretty/$(basename $f .raz).expect
         if $out/Pretty $f | cmp -s - $want && $out/Pretty $want | cmp -s - $want; then
@@ -144,7 +150,7 @@ fuzz() {   # fuzz file seed
         fail=$((fail + 1))
     else pass=$((pass + 1)); fi
 }
-if ./raz -o $out/Mutate tools/Mutate.raz 2>$out/Mutate.cerr; then
+if ./raz -Werror -o $out/Mutate tools/Mutate.raz 2>$out/Mutate.cerr; then
     for f in examples/*.raz test/run/*.raz; do
         $raz -I $(dirname $f)/mods -o $out/mutant $f 2>/dev/null || continue
         for seed in ${FUZZ_SEEDS:-1 2 3}; do fuzz $f $seed; done
@@ -158,7 +164,7 @@ for f in lib/*.raz; do
     [ $f = lib/Sys.raz ] && continue
     grep -q '^proc main\*' $f || continue
     name=lib_$(basename $f .raz)
-    if ! $raz -o $out/$name $f 2>$out/$name.cerr; then
+    if ! $raz -Werror -o $out/$name $f 2>$out/$name.cerr; then
         echo "FAIL $f: doesn't compile: $(cat $out/$name.cerr)"; fail=$((fail + 1))
     elif ! $out/$name > $out/$name.out 2>&1; then
         echo "FAIL $f: its test says $(cat $out/$name.out)"; fail=$((fail + 1))

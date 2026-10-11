@@ -58,7 +58,7 @@ ravite (vim's). What they needed of the system went into `Sys` (report
 2026-10.2, approved): the terminal, files, directories and the
 environment. `tools/Scan.raz` is theirs to use, as a tool, not part of
 the library. Stage 4, diagnostics (steps 19-27), is under way:
-steps 19-24 are done. New work starts only on the owner's word. Keep
+steps 19-25 are done. New work starts only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes. Left for later at the owner's word: a rewrite of
 var parameters.

@@ -128,7 +128,7 @@ var
     testCount: I64;
     wave: [1000]^Thread;
 
-proc testWork(arg: ^U8);
+proc testWork(_arg: ^U8);
 begin
     lock(ADR(testLock));
     INC(testCount);

@@ -66,13 +66,17 @@ type
     ind: boolean;      { oVar: the frame slot holds the variable's address }
     off: int64;        { oVar with ind: added to that address }
     isVar: boolean;    { a var parameter }
+    param: boolean;    { oVar: a parameter }
+    used: boolean;     { named somewhere but in its own body }
+    read: boolean;     { oVar: named other than as what := assigns }
     fwd: boolean;      { oProc: declared forward, no body yet }
     isCode: boolean;   { oProc: a code procedure }
     ext: boolean;      { oProc, oVar: C's, reached through its chunk, which
                          holds its address }
     fields: PObj;      { oCase: its fields }
     module: PModule;   { oModule: the module; others: where declared }
-    link: PObj;        { the next top-level declaration of its module }
+    link: PObj;        { the next declaration of its module, top-level or
+                         local }
   end;
 
   { The arguments of a generic module's instance: a type, or a
@@ -103,6 +107,7 @@ type
     scope: longint;
     path: shortstring;
     first, last: PObj;   { its top-level declarations, in order }
+    locals, lastLocal: PObj;   { its procedures' declarations, in order }
     imports: PImport;
     body: longint;       { the chunk of its body, or -1 }
     done: boolean;       { compiled to the end }

@@ -1,1 +1,8 @@
+test/err/ThreadC.raz:2:8: warning: module Thread is imported but never used
+    2 | import Thread, C;
+      |        ^^^^^^
+test/err/ThreadC.raz:2:16: warning: module C is imported but never used
+    2 | import Thread, C;
+      |                ^
+raz: 2 warnings
 raz: Thread says link static, but C uses C

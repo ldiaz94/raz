@@ -142,7 +142,7 @@ begin
   end;
 
   m := CompileMain(path);
-  Finish;
+  if errors > 0 then Finish;
 
   Use(m);
   rt := firstModule;
@@ -155,9 +155,10 @@ begin
     if (main^.cls <> oProc) or not main^.exported then Error(main^.pos, 'main must be an exported procedure')
     else if (main^.typ^.len <> 0) or ((main^.typ^.base <> nil) and (main^.typ^.base <> tI64)) then
       Error(main^.pos, 'main must be proc main* or proc main*: I64');
-    Finish;
+    if errors > 0 then Finish;
     hasResult := main^.typ^.base <> nil;
   end;
+  Finish;
 
   if rt = nil then Fatal('can''t find module Rt');
   dynamic := UsesC;

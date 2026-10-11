@@ -9,7 +9,7 @@ const Text = "the cat and the hat and the bat";
 proc main*;
 var
     counts: Count.Map; order: Names.List; n: ^Names.Node;
-    i, start, k, total: I64; found, ok: BOOL; w: []U8;
+    i, start, k, total: I64; found, _ok: BOOL; w: []U8;
 begin
     Count.init(ADR(counts), Heap.heap);
     Names.init(ADR(order), Heap.heap);
@@ -19,8 +19,8 @@ begin
             w := Text[start..i];
             INC(total);
             k, found := Count.get(ADR(counts), w);
-            if not found then ok := Names.push(ADR(order), w); end;
-            ok := Count.put(ADR(counts), w, k + 1);
+            if not found then _ok := Names.push(ADR(order), w); end;
+            _ok := Count.put(ADR(counts), w, k + 1);
             start := i + 1;
         end;
     end;

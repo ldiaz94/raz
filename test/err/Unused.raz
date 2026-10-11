@@ -1,0 +1,40 @@
+module Unused;
+(* What is never used is warned of, and -Werror makes it an error *)
+import Out, Sys;
+
+const
+    N = 3; M* = 4; _K = 5;
+
+type
+    Color = (red, green);
+    Used = I64;
+
+var
+    g, h, seen: I64;
+
+proc fact(n: I64): I64;   (* calling itself doesn't count *)
+begin
+    if n = 0 then return 1; end;
+    return n * fact(n - 1);
+end;
+
+proc helper*(a, _b: Used; var r: I64);
+var x, y: I64; t: [4]I64;
+begin
+    x := 1;
+    y := 2;
+    y := y + 1;
+    t[0] := 1;
+    r := 0;
+end;
+
+proc main*;
+var i: I64;
+begin
+    g := 1;
+    seen := h;
+    for i := 0 to 2 do end;
+    Out.int(seen);
+end;
+
+end Unused.

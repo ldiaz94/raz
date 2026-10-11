@@ -10,13 +10,13 @@ disassembly.
 |---|---|---|---|
 | `src/diag.pas` | 267 | 191 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 687 | 553 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 578 | 479 | Types, objects, scopes, layout |
+| `src/sym.pas` | 583 | 483 | Types, objects, scopes, layout |
 | `src/x64.pas` | 682 | 548 | Code buffer, chunks, fixups, line notes, instruction encoder |
 | `src/gen.pas` | 1,515 | 1,319 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,151 | 1,955 | Declarations, statements, expressions, built-ins, recovery |
+| `src/parse.pas` | 2,241 | 2,028 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 220 | 173 | The command line, the entry points |
+| `src/raz.pas` | 221 | 174 | The command line, the entry points |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -346,6 +346,17 @@ error; a construct that uses poison sets `quiet`, and its errors
 aren't reported, since they follow from one that was. Nothing breaks
 for the half-made code: once there is an error, no executable is
 written.
+
+**Warnings.** `Declare` keeps each module's declarations in order in
+two lists, through `link`: its own and its procedures', parameters
+and a match's names for fields among them. `Named` marks an object
+`used` and `read` wherever a name finds it, except a procedure naming
+itself; `LeftSide` puts `read` back as it was for a variable named
+whole before `:=`, which is written, not read. At the end of a module
+with no errors, `Warnings` merges the two lists by position and `Warn`
+reports what isn't exported, doesn't start with `_`, and was never
+used, or, for a variable, only assigned. A generic module's instances
+share its text, so only the first is warned of.
 
 The built-in procedures are in `Builtin` (and `New_`, `Atomic`): each
 parses its own arguments, since `SIZE` takes a type and `INC` a

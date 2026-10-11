@@ -258,7 +258,7 @@ main model reads every diff before it is committed.
       for `:=`, `&&`, `||`, `!`, `elif`, a missing `then` or `do`, a
       missing import. The machinery, *main*; the catalogue of slips
       and their tests, *agent*.
-- [ ] 25. Warnings: an unused import; an unused constant, type,
+- [x] 25. Warnings: an unused import; an unused constant, type,
       variable or procedure that isn't exported; an unused parameter
       of a procedure written in raz; a variable assigned but never
       read. A name starting with `_` is never warned about. `-Werror`

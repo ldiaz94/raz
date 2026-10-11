@@ -55,6 +55,7 @@ var
   fwdPos: array[0..255] of TPos;    { where each names its type }
   numFwd: longint;
   lastCalled: PObj;      { the procedure the last call was of, if it had a name }
+  curProc: PObj;          { the procedure being compiled, or nil }
   declExported: boolean;  { the export mark of the declaration being read }
   curLoop: PLoop;         { the innermost loop, or nil }
   defers: array[0..63] of longint;   { the deferred statements in force }
@@ -110,8 +111,9 @@ begin
   end;
 end;
 
-{ Declares o in the innermost scope; a module's own declarations are
-  also kept in order, for the interface check. }
+{ Declares o in the innermost scope. Its module keeps its declarations
+  in order: its own, for the interface check, and its procedures', to
+  warn of those never used. }
 procedure Declare(o: PObj);
 begin
   Insert(o, TopScope);
@@ -119,6 +121,19 @@ begin
     if curModule^.last = nil then curModule^.first := o
     else curModule^.last^.link := o;
     curModule^.last := o;
+  end else begin
+    if curModule^.lastLocal = nil then curModule^.locals := o
+    else curModule^.lastLocal^.link := o;
+    curModule^.lastLocal := o;
+  end;
+end;
+
+{ o is named: a procedure naming itself doesn't count }
+procedure Named(o: PObj);
+begin
+  if o <> curProc then begin
+    o^.used := true;
+    o^.read := true;
   end;
 end;
 
@@ -284,6 +299,7 @@ begin
     Fail;
   end;
   if o^.typ = tPoison then quiet := true;
+  Named(o);
   Next;
   if o^.cls = oModule then begin
     Expect(sPeriod);
@@ -516,6 +532,7 @@ begin
     o := NewObj(oConst, id, t);
     o^.val := t^.len;
     o^.exported := declExported;
+    o^.used := true;   { an enumeration's names are its type's, warned of with it }
     Declare(o);
     if last = nil then t^.fields := o else last^.next := o;
     last := o;
@@ -1177,6 +1194,7 @@ begin
   if tok <> sIdent then Expected('a name');
   o := Lookup(id);
   if o = nil then begin NotDeclared(TokPos, id); Fail end;
+  Named(o);
   if (o^.cls <> oVar) or not (o^.typ^.form in [fInt, fEnum]) then
     if o^.cls = oVar then
       Mark('a for loop needs an integer or enumeration variable, found ' + TypeName(o^.typ))
@@ -1261,7 +1279,7 @@ begin
           o := NewObj(oVar, id, f^.typ);
           o^.lev := 1; o^.ind := true; o^.isVar := true;
           o^.val := p; o^.off := f^.val;
-          Insert(o, TopScope);
+          Declare(o);
           f := f^.next;
           inc(n);
           Next;
@@ -1299,6 +1317,20 @@ begin
   else Subject := 'a value';
 end;
 
+{ The designator a statement starts with. A variable named whole
+  before := is assigned, not read: naming it there leaves it as unread
+  as it was. }
+procedure LeftSide(var x: TItem; var called: boolean);
+var o: PObj; wasRead: boolean; n: longint;
+begin
+  n := id;
+  o := Lookup(n);
+  wasRead := (o <> nil) and o^.read;
+  Designator(x, called);
+  if (tok in [sBecomes, sComma]) and (x.pos.b - x.pos.a = length(NameOf(n))) then
+    o^.read := wasRead;
+end;
+
 { a, b := f(x): the variables first, left to right, then the call;
   then each result to its variable, in order. }
 procedure MultiAssign(var x: TItem; first: longint);
@@ -1315,7 +1347,7 @@ begin
     if n > High(d) then Mark('more than ' + IntStr(High(d) + 1) + ' variables in one assignment');
     Next;
     dn[n] := id;
-    Designator(d[n], called);
+    LeftSide(d[n], called);
   until false;
   Expect(sBecomes);
   Designator(y, called);
@@ -1378,7 +1410,7 @@ begin
   m := TempMark;
   case tok of
     sIdent: begin
-      Designator(x, called);
+      LeftSide(x, called);
       if tok = sBecomes then begin
         if (x.mode <> mVar) or not x.isVar then MarkAt(x.pos, 'can''t assign to ' + Subject(x, first));
         Save(x);
@@ -1501,8 +1533,10 @@ begin
   q := sig^.fields;
   while q <> nil do begin
     o := NewObj(oVar, q^.name, q^.typ);
+    o^.pos := q^.pos;
     o^.lev := 1;
     o^.isVar := q^.isVar;
+    o^.param := true;
     if last = nil then params := o else last^.next := o;
     last := o;
     q := q^.next;
@@ -1512,9 +1546,10 @@ begin
   o := params;
   while o <> nil do begin
     q := o^.next;
-    Insert(o, TopScope);
+    Declare(o);
     o := q;
   end;
+  curProc := p;
   Declarations(false);
   Expect(sBegin);
   old := curResult;
@@ -1525,6 +1560,7 @@ begin
   Expect(sEnd);
   EndProc(p^.chunk);
   curResult := old;
+  curProc := nil;
   CloseScope;
 end;
 
@@ -1796,7 +1832,10 @@ begin
           if (o = nil) or (o^.cls <> oType) then begin
             NotDeclared(fwdPos[i], fwdTypes[i]^.fwd);
             fwdTypes[i]^.base := tPoison;
-          end else fwdTypes[i]^.base := o^.typ;
+          end else begin
+            fwdTypes[i]^.base := o^.typ;
+            Named(o);
+          end;
           fwdTypes[i]^.fwd := -1;
         end;
       end;
@@ -1862,7 +1901,9 @@ begin
     if tok <> sIdent then Expected('a name');
     if i >= m^.args.n then MarkAt(m^.args.at, NameOf(m^.name) + ' needs a type for ' + NameOf(id));
     if m^.args.o[i] <> nil then MarkAt(m^.args.pos[i], NameOf(m^.name) + ' needs a type for ' + NameOf(id));
-    Declare(NewObj(oType, id, m^.args.t[i]));
+    o := NewObj(oType, id, m^.args.t[i]);
+    o^.used := true;   { a parameter of the module, not a declaration }
+    Declare(o);
     s := s + TypeName(m^.args.t[i]) + ',';
     inc(i);
     Next;
@@ -1887,6 +1928,7 @@ begin
       Finish;
     end;
     o^.typ := a^.typ; o^.chunk := a^.chunk; o^.isCode := a^.isCode; o^.ext := a^.ext;
+    o^.used := true;
     Declare(o);
     s := s + NameOf(a^.module^.name) + '.' + NameOf(a^.name) + ',';
     inc(i);
@@ -1895,6 +1937,52 @@ begin
   if i <> m^.args.n then MarkAt(m^.args.at, 'too many type arguments for ' + NameOf(m^.name));
   s[length(s)] := ')';
   m^.sname := Name(s);
+end;
+
+{ Warns of o if it is never used, or a variable only assigned. What
+  is exported may be used elsewhere, and a name that starts with _ says
+  it is meant to go unused. Writing a var parameter, a match's name for
+  a field or C's variable is what it is for. }
+procedure Warn(o: PObj);
+var s: shortstring;
+begin
+  s := NameOf(o^.name);
+  if o^.exported or (s[1] = '_') then exit;
+  if o^.used and (o^.read or (o^.cls <> oVar) or o^.isVar or o^.ext) then exit;
+  case o^.cls of
+    oConst: s := 'constant ' + s;
+    oType: s := 'type ' + s;
+    oVar: if o^.param then s := 'parameter ' + s else s := 'variable ' + s;
+    oProc: s := 'procedure ' + s;
+    oModule: s := 'module ' + s;
+  else exit;
+  end;
+  if o^.used then Warning(o^.pos, s + ' is assigned but never read')
+  else if o^.cls = oModule then Warning(o^.pos, s + ' is imported but never used')
+  else Warning(o^.pos, s + ' is never used');
+  if not o^.used and (o^.param or o^.ind) then
+    Help('if it must be there, call it _' + NameOf(o^.name));
+end;
+
+{ The warnings of module m, by where each declaration is: its own
+  declarations and its procedures' are two lists, each in order. The
+  instances of a generic module share its text, and so its warnings:
+  only the first is warned of. }
+procedure Warnings(m: PModule);
+var a, b: PObj; n: PModule;
+begin
+  n := firstModule;
+  while (n <> nil) and (n^.name <> m^.name) do n := n^.next;
+  if n <> nil then exit;
+  a := m^.first; b := m^.locals;
+  while (a <> nil) or (b <> nil) do
+    if (b = nil) or (a <> nil) and (a^.pos.a < b^.pos.a) then begin
+      Warn(a);
+      a := a^.link;
+    end else begin
+      Warn(b);
+      b := b^.link;
+    end;
 end;
 
 { Modules being compiled, not yet finished: for finding a cycle. }
@@ -1964,6 +2052,7 @@ begin
       iargs.at := SpanFrom(start);
       im := ImportModule(mname, iargs);
       o := NewObj(oModule, alias, nil);
+      o^.pos := start;
       o^.module := im;
       Declare(o);
       New(imp);
@@ -2014,6 +2103,7 @@ begin
     if (o^.cls = oProc) and o^.fwd then Error(TokPos, NameOf(o^.name) + ' is declared forward but never defined');
     o := o^.link;
   end;
+  if (errors = 0) and not checkOnly then Warnings(m);
   if errors > 0 then Finish;   { a module with errors stops the compiler after it }
   CloseScope;
   m^.done := true;

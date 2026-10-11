@@ -21,7 +21,7 @@ begin
     return ar^.buf + at;
 end;
 
-proc free(a: ^Mem.Allocator; p: ^U8);
+proc free(_a: ^Mem.Allocator; _p: ^U8);
 begin
 end;
 

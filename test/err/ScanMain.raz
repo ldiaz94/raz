@@ -1,5 +1,5 @@
 module ScanMain;
-proc main*(n: I64);
+proc main*(_n: I64);
 begin
 end;
 end ScanMain.

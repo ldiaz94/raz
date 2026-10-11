@@ -60,9 +60,9 @@ begin
 end;
 
 proc clear*(l: ^List);
-var ok: BOOL; v: T;
+var _ok: BOOL; _v: T;
 begin
-    while l^.head # nil do v, ok := pop(l); end;
+    while l^.head # nil do _v, _ok := pop(l); end;
 end;
 
 end List.

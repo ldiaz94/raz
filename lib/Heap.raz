@@ -40,7 +40,7 @@ end;
 
 (* size bytes aligned to align, or nil: also for a size below zero or
    too big, and an alignment that isn't a power of two up to a page. *)
-proc alloc(a: ^Mem.Allocator; size, align: I64): ^U8;
+proc alloc(_a: ^Mem.Allocator; size, align: I64): ^U8;
 var c, n: I64; b: ^Block; p: ^U8;
 begin
     if (size < 0) or (size > Largest) or (align < 1) or (align > Mem.Page)
@@ -77,7 +77,7 @@ begin
     return give(p, c);
 end;
 
-proc free(a: ^Mem.Allocator; p: ^U8);
+proc free(_a: ^Mem.Allocator; p: ^U8);
 var h: ^Head; b: ^Block; c: I64;
 begin
     if p = nil then return; end;

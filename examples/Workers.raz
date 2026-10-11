@@ -21,7 +21,7 @@ begin
     return s;
 end;
 
-proc work(arg: ^U8);
+proc work(_arg: ^U8);
 var n, r: I64;
 begin
     n := XADD(ADR(next), 1);
