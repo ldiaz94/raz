@@ -280,3 +280,114 @@ main model reads every diff before it is committed.
       and `CLAUDE.md` brought up to date; `make loc` within 6,000 and
       10%, `make bench` at 400,000 lines a second. *agent*, checked by
       *main*.
+
+Stage 5: an editor (proposed, not started)
+
+A small terminal editor written in raz, good enough to write raz in
+every day. Its working name is `Edit`, in `edit/`. It colours raz
+through `tools/Scan.raz`, so the editor and the formatter read raz the
+same way. This stage scopes the least editor worth using. The rest
+waits for later stages: several buffers, split windows, regular
+expressions, a build command and a file finder.
+
+Ground rules, besides the plan's:
+
+- About 1,500 lines of code, within 10%, as `test/loc.py` counts them
+  (`make loc-edit`). The compiler's budget doesn't change.
+- No language change and no change to `lib/`. What the editor needs of
+  the system goes into a per-target module of its own,
+  `edit/Tty.linux-x86_64.raz`, through `SYSCALL`. Then a C `Tty.raz`
+  for FreeBSD and the others can follow later, held to the same
+  interface by the compiler.
+- A program without C: a static executable.
+- `make check` builds it and runs its tests; `make fmt` covers `edit/`.
+  It is built with `./raz -I tools -o build/Edit edit/Edit.raz`.
+
+What it does:
+
+- **Files.** `Edit file` opens one file, or a new file if there is
+  none. Ctrl-S saves it to `file.tmp`, then renames that over `file`,
+  so a failed save loses nothing. Ctrl-Q quits, and asks first when
+  there are unsaved changes.
+- **Moving.** The arrows, Home and End, Page Up and Page Down, and
+  Ctrl-Home and Ctrl-End for the ends of the file. Up and down keep
+  the column the cursor wants.
+- **Editing.** Typing inserts. Backspace and Delete remove a code
+  point. Enter keeps the indent of the line before. Tab inserts spaces
+  to the next multiple of 4.
+- **Undo and redo.** Ctrl-Z and Ctrl-Y, unlimited. A run of typing, or
+  of deleting, is one step.
+- **Cutting and pasting lines.** Ctrl-K cuts the line, and cuts in a
+  row add up; Ctrl-U pastes them, as in nano. Selections come later.
+- **Search.** Ctrl-F searches for text, incrementally: Enter or Ctrl-F
+  for the next match, Ctrl-R for the one before, Escape to go back to
+  where it started.
+- **Going to a line.** Ctrl-G asks for a line number. `Edit file:line`
+  opens the file at that line, the form the compiler's messages use.
+- **Screen.** The alternate screen, one line of status (the file, `+`
+  when changed, line and column) and one line for messages and
+  prompts. Long lines scroll sideways rather than wrap. Tabs show to
+  the next multiple of 8. A UTF-8 code point takes one cell; wide
+  characters are left out. The size is read again whenever the editor
+  waits for a key, so resizing works without a signal handler.
+- **Colour.** For a `.raz` file: reserved words, basic types,
+  built-ins, `true`, `false` and `nil`, numbers, strings and
+  characters, and comments, as `editor/vim` colours them. Other files
+  are plain. It uses the 16 standard colours, so the terminal's theme
+  decides how they look. `NO_COLOR` turns colour off.
+
+What it leaves out: the mouse, selections, the system clipboard,
+several files, wrapping, wide characters, settings, other languages'
+colours, and FreeBSD. A crash by a signal leaves the terminal raw
+(`reset` fixes it). A failed check does restore it, since `Rt.fail`
+runs the procedures registered with `Rt.atExit`.
+
+The modules, with rough lines of code:
+
+| Module | Lines | What |
+|---|---|---|
+| `Tty.linux-x86_64.raz` | 120 | raw mode and back (ioctl `TCGETS` and `TCSETS`), the size (`TIOCGWINSZ`), reading with a time limit (`poll`), `rename` |
+| `Keys.raz` | 150 | the bytes of a key decoded: control keys, `ESC [` and `ESC O` sequences, a lone Escape told apart by a 30 ms wait; and the notation of the tests, `^S`, `<up>` |
+| `Text.raz` | 350 | the text as a gap buffer of bytes: insert, delete, the start of a line, line and column; undo and redo as a log of insertions and deletions |
+| `Colour.raz` | 120 | the colour of each byte on the screen, through `Scan`; the depth of comment at the top of the screen; the words' table |
+| `View.raz` | 300 | the screen drawn into one `Buf` and written at once: the rows, the scrolling, the status and message lines, the cursor |
+| `Edit.raz` | 450 | the command line, the loop, the keys' commands, prompts, search, cutting and pasting, saving and quitting |
+| total | 1,490 | |
+
+Colouring scans only the screen. `Scan` alone reads about 600,000
+lines a second (measured on `make bench`'s program), so scanning a
+10,000-line file from its start would cost some 16 ms a keystroke. The
+one thing that carries from line to line is a comment, so `Colour`
+keeps the depth of comment at the top line of the screen. Scrolling
+down moves that point on through the lines that scrolled away.
+Jumping back, or an edit above the top, scans again from the start of
+the file, once. When the top is inside a comment, `Colour` finds that
+comment's end itself, then hands the rest to `Scan`. Words are looked
+up in a small hash table, not with `Scan.reserved`: its walk through a
+list of words cuts `Scan` to about 120,000 lines a second. Before
+drawing, the gap moves past the end of the screen, so that what `Scan`
+reads is one slice. Since edits happen on the screen, that moves a
+screenful of bytes at most. The line number in the status line is
+counted from the start of the file, a byte loop that is fast enough
+below some megabytes. A table of where lines start can come later.
+
+Testing. Each module's `main` is its test, run by `make check` like
+the library's: `Text` against a naive string model under random edits
+and undos, `Keys` on byte sequences. And whole sessions: `Edit
+-script W H file` reads keys in the tests' notation from standard
+input, on a screen W by H. At the end it prints the screen as plain
+text, then the file. Each `test/edit/X.keys` has its `X.expect`, and
+optionally an `X.txt` to start from.
+
+- [ ] 28. `Tty` and `Keys`, with `Keys`'s test; a program that prints
+      the keys it reads, tried by hand in xterm, the Linux console and
+      tmux.
+- [ ] 29. `Text`: the gap buffer and undo, with its test.
+- [ ] 30. `View` and `Edit`: opening, moving, typing, saving and
+      quitting; `-script` and `test/edit` in `make check`; `make
+      loc-edit`, and `make fmt` over `edit/`.
+- [ ] 31. `Colour`.
+- [ ] 32. Search, going to a line, cutting and pasting, the indent
+      kept on Enter, and `file:line`; their session tests.
+- [ ] 33. `doc/edit.md`, how to build and use it and its keys, and a
+      word in `README.md`.
