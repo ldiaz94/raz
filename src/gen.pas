@@ -453,10 +453,26 @@ end;
 
 { Copying }
 
+{ size bytes from [rsi] to [rdi], through rcx; rsi and rdi are left
+  as they fall. Up to 64 bytes, as a record or a small array mostly
+  is, they go as moves of 8, 4, 2 and 1 bytes: rep movsb takes some
+  twenty cycles to start, longer than the few moves take. }
 procedure Copy(size: int64);
+var o, n: int64;
 begin
-  MovRI(RCX, size);
-  RepMovsb;
+  if size > 64 then begin
+    MovRI(RCX, size);
+    RepMovsb;
+    exit;
+  end;
+  o := 0;
+  while o < size do begin
+    n := 8;
+    while n > size - o do n := n div 2;
+    Load(RCX, Mem(RSI, o), n, false);
+    Store(Mem(RDI, o), RCX, n);
+    Inc(o, n);
+  end;
 end;
 
 procedure CopyToTemp(var x: TItem);
@@ -495,6 +511,7 @@ begin
       Lea(RDI, Mem(RBP, tmp));
       Lea(RSI, MemRip(x.chunk, 0));
       Copy(x.val);
+      Lea(RDI, Mem(RBP, tmp + x.val));
       MovRI(RCX, t^.len - x.val);
       MovRI(RAX, 0);
       RepStosb;
