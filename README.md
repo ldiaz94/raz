@@ -65,6 +65,7 @@ emacs is installed.
     make fmt        # the library, examples and tools are formatted
     make loc        # the compiler's lines
     make tests      # tests of the scanner, encoder and linker on their own
+    make pdf        # build/raz.pdf, the report, by pandoc and Chromium
 
 ## Using it
 

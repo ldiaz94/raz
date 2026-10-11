@@ -74,6 +74,16 @@ loc:
 	@rloc -f src/*.pas
 	@rloc -c src/*.pas
 
+# the report as a PDF, by pandoc and Chromium; not part of check, as
+# CI has neither
+pdf: build/raz.pdf
+
+build/raz.pdf: doc/raz.md doc/report.css | build
+	pandoc doc/raz.md -s --toc --toc-depth=1 --shift-heading-level-by=-1 \
+	    --syntax-highlighting=none -c ../doc/report.css \
+	    -o build/raz.html
+	chromium --headless --no-pdf-header-footer --print-to-pdf=$@ build/raz.html 2>/dev/null
+
 # raz and its library go together under $(PREFIX)/lib/raz; the link
 # on PATH works since raz finds lib/ beside its real path.
 PREFIX = $(HOME)/.local
@@ -87,4 +97,4 @@ install: raz
 uninstall:
 	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz
 
-.PHONY: units tests check gdb bench stress fmt loc clean install uninstall
+.PHONY: units tests check gdb bench stress fmt loc pdf clean install uninstall

@@ -1,0 +1,16 @@
+/* How `make pdf` prints the report: pandoc makes HTML of doc/raz.md
+   with this sheet, and Chromium prints it to build/raz.pdf. */
+@page { size: A4; margin: 22mm 20mm; @bottom-center { content: counter(page); } }
+body { font: 10.5pt/1.45 Charter, "Bitstream Charter", Georgia, serif; color: #111; max-width: none; }
+/* pandoc makes the report's # its title and moves the rest up one */
+h1.title { font-size: 24pt; margin: 30mm 0 12mm; }
+h1 { font-size: 14pt; margin-top: 1.6em; break-after: avoid; }
+h2 { font-size: 11.5pt; break-after: avoid; }
+pre, code { font-family: "DejaVu Sans Mono", monospace; font-size: 8.8pt; }
+/* a block of code or grammar is never split across pages */
+pre { background: #f6f6f3; padding: 6px 9px; border-left: 2px solid #bbb; break-inside: avoid; white-space: pre-wrap; }
+table { border-collapse: collapse; font-size: 9.5pt; }
+td, th { border-bottom: 1px solid #ddd; padding: 2px 8px; text-align: left; }
+nav#TOC { break-after: page; }
+nav#TOC ul { list-style: none; padding-left: 1em; }
+a { color: inherit; text-decoration: none; }
