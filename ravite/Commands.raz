@@ -584,6 +584,14 @@ begin
     def("Buffer-menu-execute", Dired.bufferMenuExecute);
     def("revert-buffer", Dired.revertBuffer);
     def("quit-window", Dired.quitWindow);
+    def("dired", Dired.dired);
+    def("dired-find-file", Dired.diredFindFile);
+    def("dired-up-directory", Dired.diredUpDirectory);
+    def("dired-next-line", Dired.diredNextLine);
+    def("dired-previous-line", Dired.diredPreviousLine);
+    def("dired-create-directory", Dired.diredCreateDirectory);
+    def("dired-do-rename", Dired.diredDoRename);
+    def("dired-do-delete", Dired.diredDoDelete);
 
     bindNamed("C-f", "forward-char");
     bindNamed("<right>", "forward-char");
@@ -666,6 +674,18 @@ begin
     bindKind(Core.List, "n", "next-line");
     bindKind(Core.List, "p", "previous-line");
     bindKind(Core.List, "SPC", "next-line");
+    bindNamed("C-x d", "dired");
+    bindKind(Core.Directory, "RET", "dired-find-file");
+    bindKind(Core.Directory, "f", "dired-find-file");
+    bindKind(Core.Directory, "^", "dired-up-directory");
+    bindKind(Core.Directory, "n", "dired-next-line");
+    bindKind(Core.Directory, "SPC", "dired-next-line");
+    bindKind(Core.Directory, "p", "dired-previous-line");
+    bindKind(Core.Directory, "g", "revert-buffer");
+    bindKind(Core.Directory, "q", "quit-window");
+    bindKind(Core.Directory, "+", "dired-create-directory");
+    bindKind(Core.Directory, "R", "dired-do-rename");
+    bindKind(Core.Directory, "D", "dired-do-delete");
 end;
 
 begin

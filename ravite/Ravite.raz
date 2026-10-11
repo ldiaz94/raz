@@ -17,7 +17,7 @@
    draw; Tty for the terminal.
    Leaves out: see doc/ravite.md. *)
 module Ravite;
-import Sys, Rt, Buf, Fmt, Heap, Files, Text, Tty, Keys, View, Colour, Core, Commands;
+import Sys, Rt, Buf, Fmt, Heap, Files, Text, Tty, Keys, View, Colour, Core, Commands, Dired;
 
 var
     script: BOOL;
@@ -252,13 +252,6 @@ begin
     Tty.restoreMode(Sys.stdin);
 end;
 
-(* Until Dired: a directory can't be visited. *)
-proc noDir(path: []U8): ^Core.Buffer;
-begin
-    Fmt.write(ADR(Core.echo), "{} is a directory", [Fmt.str(path)]);
-    return nil;
-end;
-
 (* Reads the arguments: -script and its size, then the files. *)
 proc arguments: I64;
 var i, n: I64; s: []U8;
@@ -290,7 +283,7 @@ begin
     Core.colour := LEN(Tty.env("NO_COLOR")) = 0;
     Core.nextKey := nextKey;
     Core.runKey := Commands.runKey;
-    Core.openDir := noDir;
+    Core.openDir := Dired.open;
     Core.mini := Core.newBuffer(" *Minibuf*", Core.Mini);
     Core.show(Core.newBuffer("*scratch*", Core.File));
     i := arguments();

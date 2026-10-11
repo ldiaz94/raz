@@ -9,7 +9,7 @@ begin
         Out.str("hello, world");
         Out.ln;
 -UU-:---  Mx.txt          Top L1   (Fund
-M-x up {scroll-up-command | upcase-word}
+M-x up {dired-up-directory | scroll-up-c
 (* A module to edit. *)
 module Hello;
 import Out;
