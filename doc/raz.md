@@ -9,7 +9,7 @@ the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.0 of the report; section 12 says what each
+This is version 2026-10.3 of the report; section 12 says what each
 version changed.
 
 ## 1. A first look

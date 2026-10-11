@@ -111,6 +111,8 @@ by number.
   enumerations and sets, procedure types.
 - `^VOLATILE T`: every access through it is one instruction of its
   size, in the order written. `CAS`, `XCHG`, `XADD`, `FENCE`.
+- `and`, `or` and `not` for `BOOL`s; `&`, `|`, `xor` and `~` for bits;
+  `=` on arrays and strings.
 - Several results, `ERROR` values compared by identity, `defer`.
 - Modules with bodies; generic modules with type and procedure
   arguments, `Map(K, V; hash, eq)`.

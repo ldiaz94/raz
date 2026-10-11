@@ -60,12 +60,14 @@ pinning the raz commit it builds with: rmacs (emacs's keys) and
 ravite (vim's). What they needed of the system went into `Sys` (report
 2026-10.2, approved): the terminal, files, directories and the
 environment. `tools/Scan.raz` is theirs to use, as a tool, not part of
-the library. Stage 4, diagnostics (steps 19-27), is done. Planned and
-not started: stage 6, the language of report 2026-10.3,
-and stage 7, `Sys` for rlX11 and rat (report 2026-10.4, approved):
-steps 49a (`connect`, `readyOf`) and 49c (`send`, report 2026-10.7)
-are done, 49b (the pseudo-terminal and programs) waits.
-New work starts only on the owner's word. Keep
+the library. Stage 4, diagnostics (steps 19-27), is done; so are
+stage 6, the language of report 2026-10.3 (steps 42-47), and stage 8,
+one module to a name (report 2026-10.5, step 51). Stage 7, `Sys`
+for rlX11 and rat (report 2026-10.4, approved): steps 49a
+(`connect`, `readyOf`) and 49c (`send`, report 2026-10.7) are done,
+49b (the pseudo-terminal and programs) waits. The compiler says it
+follows report 2026-10.3, the last version all done. New work starts
+only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes. Left for later at the owner's word: a rewrite of
 var parameters.
@@ -106,6 +108,10 @@ otherwise.
   and sliced.
 - A deferred statement's frame slots stay reserved for the rest of its
   procedure.
+- A generic instance first used in a procedure, or in the module's
+  body, is made before that code begins: `InstancesFor` reads ahead
+  for the import's name, since code can't be compiled inside other
+  code. Its arguments are read then, in the scope there.
 - A program uses C if a module it uses (not one read only for an
   interface check) has an `extern` or a `link` of a library. `static`
   in `link static;` is not a reserved word.
