@@ -1008,7 +1008,10 @@ the program with the signal SIGPIPE, where `send` returns -32
 (EPIPE), so that a program learns its server has gone and can end as
 it wants. `readyOf` waits on several file
 descriptors at once, as a program does that listens to a server and a
-terminal both.
+terminal both; a descriptor at its end, or failed, counts as ready,
+since a read of it won't wait. It looks at the first 64 of `fds`, and
+`connect` takes a path of at most 107 bytes, as `struct sockaddr_un`
+holds; a longer one is -36 (ENAMETOOLONG).
 
 `openPty` makes a pseudo-terminal, a terminal that a program, a
 terminal emulator, plays the screen and the keyboard of: what it
