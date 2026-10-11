@@ -1,0 +1,680 @@
+(* Edit: the commands that move about a buffer and change it, as emacs
+   names them and does them: characters, lines, words, paragraphs and
+   the whole buffer; typing and deleting; the mark, the region and the
+   kill ring; undo. Each takes the count it was given, Core.arg.
+
+   A kill, the region or a word or what C-k takes, goes into the kill
+   ring, and is added to the last kill if the command before was a kill
+   too: after it, or before it for a kill backwards. C-y puts the
+   newest back, and M-y right after it an older one instead.
+
+   Depends on: Core, Text, Keys.
+   Leaves out: what needs the minibuffer, in Commands; words are
+   letters, digits and anything past ASCII, as in emacs's fundamental
+   mode. *)
+module Edit;
+import Buf, Fmt, Heap, Text, Keys, Core;
+
+const Ring = 16;   (* kills kept *)
+
+var
+    ring: [Ring]Buf.Buf;
+    numRing, newest: I64;   (* ring[newest] is the last kill *)
+    yanked: I64;            (* how far back from newest the last yank went: C-y yanks from there *)
+    key*: I64;              (* the key that ran the command, for typing *)
+    recentred: I64;         (* where C-l put the line last: middle, top, bottom *)
+
+proc isWord(c: U8): BOOL;
+begin
+    return (c >= 'a') and (c <= 'z') or (c >= 'A') and (c <= 'Z')
+        or (c >= '0') and (c <= '9') or (c >= 80H);
+end;
+
+(* Moving *)
+
+proc forwardChar*(n: I64);
+var i: I64;
+begin
+    for i := 1 to n do
+        if Core.b^.point >= Core.size() then Core.message("End of buffer"); return; end;
+        Core.b^.point := Core.next(Core.b^.point);
+    end;
+    for i := -1 to n by -1 do
+        if Core.b^.point = 0 then Core.message("Beginning of buffer"); return; end;
+        Core.b^.point := Core.prev(Core.b^.point);
+    end;
+end;
+
+proc backwardChar*(n: I64);
+begin
+    forwardChar(-n);
+end;
+
+proc previousLine*(n: I64); forward;
+
+proc nextLine*(n: I64);
+var p, moved: I64;
+begin
+    if (Core.last # nextLine) and (Core.last # previousLine) then
+        Core.want := Core.column(Core.b^.point);
+    end;
+    p, moved := Core.lines(Core.b^.point, n);
+    if (moved = 0) and (n > 0) then
+        Core.b^.point := Core.size();
+        Core.message("End of buffer");
+        return;
+    end;
+    if (moved = 0) and (n < 0) then
+        Core.b^.point := 0;
+        Core.message("Beginning of buffer");
+        return;
+    end;
+    Core.b^.point := Core.atColumn(p, Core.want);
+end;
+
+proc previousLine*(n: I64);
+begin
+    nextLine(-n);
+end;
+
+proc moveBeginningOfLine*(n: I64);
+var p, moved: I64;
+begin
+    p, moved := Core.lines(Core.b^.point, n - 1);
+    Core.b^.point := p;
+end;
+
+proc moveEndOfLine*(n: I64);
+var p, moved: I64;
+begin
+    p, moved := Core.lines(Core.b^.point, n - 1);
+    Core.b^.point := Core.lineEnd(p);
+end;
+
+(* p moved n words on, or back if n < 0. *)
+proc words(p, n: I64): I64;
+var i: I64;
+begin
+    for i := 1 to n do
+        while (p < Core.size()) and not isWord(Core.at(p)) do INC(p); end;
+        while (p < Core.size()) and isWord(Core.at(p)) do INC(p); end;
+    end;
+    for i := -1 to n by -1 do
+        while (p > 0) and not isWord(Core.at(p - 1)) do DEC(p); end;
+        while (p > 0) and isWord(Core.at(p - 1)) do DEC(p); end;
+    end;
+    return p;
+end;
+
+proc forwardWord*(n: I64);
+begin
+    Core.b^.point := words(Core.b^.point, n);
+end;
+
+proc backwardWord*(n: I64);
+begin
+    Core.b^.point := words(Core.b^.point, -n);
+end;
+
+proc textRows: I64;
+begin
+    return Core.rows - 2;
+end;
+
+(* Sets the mark at the point, not shown, as M-< and M-> do. *)
+proc pushMark;
+begin
+    Core.b^.mark := Core.b^.point;
+    Core.b^.hasMark := true;
+    Core.message("Mark set");
+end;
+
+proc beginningOfBuffer*(n: I64);
+begin
+    pushMark;
+    Core.b^.point := 0;
+end;
+
+(* M->; the end three lines above the window's bottom if it wasn't
+   on it, as emacs puts it. *)
+proc endOfBuffer*(n: I64);
+var moved: I64;
+begin
+    pushMark;
+    Core.b^.point := Core.size();
+    if Text.count(ADR(Core.b^.t), Core.b^.top, Core.size()) >= textRows() then
+        Core.b^.top, moved := Core.lines(Core.size(), -(textRows() - 3));
+    end;
+end;
+
+(* Whether the line at p holds nothing but blanks. *)
+proc blankLine(p: I64): BOOL;
+var e: I64;
+begin
+    p := Core.lineStart(p);
+    e := Core.lineEnd(p);
+    while (p < e) and Core.isBlank(Core.at(p)) do INC(p); end;
+    return p = e;
+end;
+
+(* M-}: past the next lines with text, to the blank line after them,
+   or the end. *)
+proc forwardParagraph*(n: I64);
+var p, i: I64;
+begin
+    p := Core.b^.point;
+    for i := 1 to n do
+        while (Core.lineEnd(p) < Core.size()) and blankLine(p) do p := Core.lineEnd(p) + 1; end;
+        while (Core.lineEnd(p) < Core.size()) and not blankLine(p) do p := Core.lineEnd(p) + 1; end;
+        if blankLine(p) then p := Core.lineStart(p); else p := Core.size(); end;
+    end;
+    Core.b^.point := p;
+end;
+
+(* M-{: back past the lines with text, to the blank line before them,
+   or the start. *)
+proc backwardParagraph*(n: I64);
+var p, i: I64;
+begin
+    p := Core.b^.point;
+    for i := 1 to n do
+        if p > 0 then p := Core.lineStart(p - 1); end;
+        while (p > 0) and blankLine(p) do p := Core.lineStart(p - 1); end;
+        while (p > 0) and not blankLine(p) do p := Core.lineStart(p - 1); end;
+    end;
+    Core.b^.point := p;
+end;
+
+(* C-v: the window a screen on, but two lines, while it is full; the
+   point to its top if it was above it. *)
+proc scrollUpCommand*(n: I64);
+var moved: I64;
+begin
+    if Text.count(ADR(Core.b^.t), Core.b^.top, Core.size()) + 1 < textRows() then
+        Core.message("End of buffer");
+        return;
+    end;
+    Core.b^.top, moved := Core.lines(Core.b^.top, textRows() - 2);
+    if Core.b^.point < Core.b^.top then Core.b^.point := Core.b^.top; end;
+end;
+
+(* M-v: the window a screen back, but two lines. *)
+proc scrollDownCommand*(n: I64);
+var p, moved: I64;
+begin
+    if Core.b^.top = 0 then
+        Core.b^.point := 0;
+        Core.message("Beginning of buffer");
+        return;
+    end;
+    Core.b^.top, moved := Core.lines(Core.b^.top, -(textRows() - 2));
+    p, moved := Core.lines(Core.b^.top, textRows() - 1);
+    if Core.b^.point > Core.lineEnd(p) then Core.b^.point := p; end;
+end;
+
+(* C-l: the point's line to the middle of the window; again, to the
+   top; again, to the bottom. *)
+proc recenterTopBottom*(n: I64);
+var moved: I64;
+begin
+    if Core.last # recenterTopBottom then recentred := 0; else recentred := (recentred + 1) mod 3; end;
+    if recentred = 0 then
+        Core.b^.top, moved := Core.lines(Core.b^.point, -((textRows() - 1) div 2));
+    elsif recentred = 1 then
+        Core.b^.top := Core.lineStart(Core.b^.point);
+    else
+        Core.b^.top, moved := Core.lines(Core.b^.point, -(textRows() - 1));
+    end;
+end;
+
+proc backToIndentation*(n: I64);
+var p: I64;
+begin
+    p := Core.lineStart(Core.b^.point);
+    while (p < Core.lineEnd(p)) and Core.isBlank(Core.at(p)) do INC(p); end;
+    Core.b^.point := p;
+end;
+
+(* Typing and deleting *)
+
+(* The UTF-8 of code point k, in b: the number of bytes. *)
+proc utf8*(k: I64; var b: [4]U8): I64;
+begin
+    if k < 80H then
+        b[0] := U8(k);
+        return 1;
+    elsif k < 800H then
+        b[0] := U8(0C0H or k shr 6);
+        b[1] := U8(80H or k and 3FH);
+        return 2;
+    elsif k < 10000H then
+        b[0] := U8(0E0H or k shr 12);
+        b[1] := U8(80H or k shr 6 and 3FH);
+        b[2] := U8(80H or k and 3FH);
+        return 3;
+    end;
+    b[0] := U8(0F0H or k shr 18);
+    b[1] := U8(80H or k shr 12 and 3FH);
+    b[2] := U8(80H or k shr 6 and 3FH);
+    b[3] := U8(80H or k and 3FH);
+    return 4;
+end;
+
+(* Typing: the key that ran it, n times. *)
+proc selfInsertCommand*(n: I64);
+var b: [4]U8; m, i: I64;
+begin
+    if not Core.writable() then return; end;
+    m := utf8(key, b);
+    for i := 1 to n do Core.insert(Core.b^.point, b[0..m]); end;
+end;
+
+(* The blanks before the point, and after it too if both, deleted. *)
+proc deleteSpace(both: BOOL);
+var lo, hi: I64;
+begin
+    lo := Core.b^.point;
+    while (lo > Core.lineStart(lo)) and Core.isBlank(Core.at(lo - 1)) do DEC(lo); end;
+    hi := Core.b^.point;
+    if both then
+        while (hi < Core.lineEnd(hi)) and Core.isBlank(Core.at(hi)) do INC(hi); end;
+    end;
+    Core.delete(lo, hi - lo);
+end;
+
+(* The line's indent made col columns of spaces; the point, if it was
+   in the indent, after it. *)
+proc indentLineTo(col: I64);
+var s, e, i: I64;
+begin
+    s := Core.lineStart(Core.b^.point);
+    e := s;
+    while (e < Core.lineEnd(s)) and Core.isBlank(Core.at(e)) do INC(e); end;
+    Core.delete(s, e - s);
+    for i := 1 to col do Core.insert(s, " "); end;
+    if Core.b^.point < s + col then Core.b^.point := s + col; end;
+end;
+
+proc newline*(n: I64);
+var i: I64;
+begin
+    if not Core.writable() then return; end;
+    for i := 1 to n do Core.insert(Core.b^.point, "\n"); end;
+end;
+
+(* RET: a new line indented as the line before, unless that is blank;
+   the blanks before the point go. *)
+proc newlineAndIndent*(n: I64);
+var i, p, col: I64;
+begin
+    if not Core.writable() then return; end;
+    for i := 1 to n do
+        deleteSpace(false);
+        Core.insert(Core.b^.point, "\n");
+        p := Core.lineStart(Core.b^.point - 1);
+        col := 0;
+        if not blankLine(p) then
+            while Core.isBlank(Core.at(p)) do INC(p); end;
+            col := Core.column(p);
+        end;
+        indentLineTo(col);
+    end;
+end;
+
+(* C-o: a line break after the point, which stays. *)
+proc openLine*(n: I64);
+var i, p: I64;
+begin
+    if not Core.writable() then return; end;
+    p := Core.b^.point;
+    for i := 1 to n do Core.insert(Core.b^.point, "\n"); end;
+    Core.b^.point := p;
+end;
+
+(* TAB: the blanks before the point taken out, and spaces to the next
+   multiple of the indent from where the point was. *)
+proc tabToTabStop*(n: I64);
+var col, i: I64;
+begin
+    if not Core.writable() then return; end;
+    col := (Core.column(Core.b^.point) div Core.indent + n) * Core.indent;
+    deleteSpace(false);
+    for i := Core.column(Core.b^.point) + 1 to col do Core.insert(Core.b^.point, " "); end;
+end;
+
+(* The region: from the mark to the point, the lower first. *)
+proc region*: (I64, I64);
+begin
+    if Core.b^.mark < Core.b^.point then return Core.b^.mark, Core.b^.point; end;
+    return Core.b^.point, Core.b^.mark;
+end;
+
+proc deleteChar*(n: I64);
+var p, i: I64;
+begin
+    if not Core.writable() then return; end;
+    p := Core.b^.point;
+    for i := 1 to n do
+        if p >= Core.size() then Core.message("End of buffer"); return; end;
+        p := Core.next(p);
+    end;
+    for i := -1 to n by -1 do
+        if p = 0 then Core.message("Beginning of buffer"); return; end;
+        p := Core.prev(p);
+    end;
+    if p > Core.b^.point then Core.delete(Core.b^.point, p - Core.b^.point);
+    else Core.delete(p, Core.b^.point - p);
+    end;
+end;
+
+(* DEL: the character before the point, or the region if shown. *)
+proc deleteBackwardChar*(n: I64);
+var lo, hi: I64;
+begin
+    if Core.b^.active and (n = 1) and (Core.b^.mark # Core.b^.point) then
+        if not Core.writable() then return; end;
+        lo, hi := region();
+        Core.delete(lo, hi - lo);
+        return;
+    end;
+    deleteChar(-n);
+end;
+
+proc deleteHorizontalSpace*(n: I64);
+begin
+    if Core.writable() then deleteSpace(true); end;
+end;
+
+proc justOneSpace*(n: I64);
+begin
+    if not Core.writable() then return; end;
+    deleteSpace(true);
+    Core.insert(Core.b^.point, " ");
+end;
+
+(* M-^: the line joined to the one before, with one space between,
+   or none before ) or after (. *)
+proc deleteIndentation*(n: I64);
+var s: I64;
+begin
+    if not Core.writable() then return; end;
+    s := Core.lineStart(Core.b^.point);
+    if s = 0 then return; end;
+    Core.b^.point := s;
+    deleteSpace(true);
+    Core.delete(Core.b^.point - 1, 1);
+    deleteSpace(true);
+    s := Core.b^.point;
+    if (s > Core.lineStart(s)) and (s < Core.lineEnd(s)) and (Core.at(s) # ')') and (Core.at(s - 1) # '(') then
+        Core.insert(s, " ");
+        Core.b^.point := s;
+    end;
+end;
+
+(* C-t: the characters on either side of the point swapped, the point
+   past them; at the end of a line, the two before it. *)
+proc transposeChars*(n: I64);
+var p, a, b: I64;
+begin
+    if not Core.writable() then return; end;
+    p := Core.b^.point;
+    if p = Core.lineEnd(p) then p := Core.prev(p); end;
+    if (p = 0) or (p = Core.lineStart(p)) then Core.message("Beginning of buffer"); return; end;
+    a := Core.prev(p);
+    b := Core.next(p);
+    Buf.reset(ADR(Core.tmp));
+    Buf.str(ADR(Core.tmp), Core.slice(p, b));
+    Buf.str(ADR(Core.tmp), Core.slice(a, p));
+    Core.delete(a, b - a);
+    Core.insert(a, Buf.bytes(ADR(Core.tmp)));
+    Core.b^.point := b;
+end;
+
+(* The words from the point on, n of them, with their letters changed:
+   up, down, or the first up and the rest down. *)
+proc caseWords(n, how: I64);
+var p, e: I64; c: U8; first: BOOL;
+begin
+    if not Core.writable() then return; end;
+    p := Core.b^.point;
+    e := words(p, n);
+    first := true;
+    Buf.reset(ADR(Core.tmp));
+    while p < e do
+        c := Core.at(p);
+        if isWord(c) then
+            if (how = 0) or (how = 2) and first then
+                if (c >= 'a') and (c <= 'z') then c := c - 32; end;
+            elsif (c >= 'A') and (c <= 'Z') then
+                c := c + 32;
+            end;
+            first := false;
+        else
+            first := true;
+        end;
+        Buf.add(ADR(Core.tmp), c);
+        INC(p);
+    end;
+    p := Core.b^.point;
+    if Buf.bytes(ADR(Core.tmp)) # Core.slice(p, e) then
+        Core.delete(p, e - p);
+        Core.insert(p, Buf.bytes(ADR(Core.tmp)));
+    end;
+    Core.b^.point := e;
+end;
+
+proc upcaseWord*(n: I64);
+begin
+    caseWords(n, 0);
+end;
+
+proc downcaseWord*(n: I64);
+begin
+    caseWords(n, 1);
+end;
+
+proc capitalizeWord*(n: I64);
+begin
+    caseWords(n, 2);
+end;
+
+(* The mark and killing *)
+
+proc setMarkCommand*(n: I64);
+begin
+    if Core.argGiven then
+        if Core.b^.hasMark then Core.b^.point := Core.b^.mark; end;
+        return;
+    end;
+    Core.b^.mark := Core.b^.point;
+    Core.b^.hasMark := true;
+    Core.b^.active := true;
+    Core.message("Mark set");
+end;
+
+proc exchangePointAndMark*(n: I64);
+var p: I64;
+begin
+    if not Core.b^.hasMark then Core.message("No mark set in this buffer"); return; end;
+    p := Core.b^.point;
+    Core.b^.point := Core.b^.mark;
+    Core.b^.mark := p;
+    Core.b^.active := true;
+end;
+
+proc markWholeBuffer*(n: I64);
+begin
+    Core.b^.point := 0;
+    Core.b^.mark := Core.size();
+    Core.b^.hasMark := true;
+    Core.b^.active := true;
+    Core.message("Mark set");
+end;
+
+proc keyboardQuit*(n: I64);
+begin
+    Core.b^.active := false;
+    Core.message("Quit");
+end;
+
+proc killRegion*(n: I64); forward;
+proc killRingSave*(n: I64); forward;
+proc killLine*(n: I64); forward;
+proc killWord*(n: I64); forward;
+proc backwardKillWord*(n: I64); forward;
+
+(* Whether the command before this one killed. *)
+proc afterKill: BOOL;
+begin
+    return (Core.last = killRegion) or (Core.last = killRingSave) or (Core.last = killLine)
+        or (Core.last = killWord) or (Core.last = backwardKillWord);
+end;
+
+(* The text from lo up to hi into the kill ring, and out of the buffer
+   unless keep. *)
+proc kill(lo, hi: I64; back, keep: BOOL);
+var e: ^Buf.Buf;
+begin
+    if not keep and not Core.writable() then return; end;
+    if afterKill() and (numRing > 0) then
+        e := ADR(ring[newest]);
+        if back then
+            Buf.reset(ADR(Core.tmp));
+            Buf.str(ADR(Core.tmp), Core.slice(lo, hi));
+            Buf.str(ADR(Core.tmp), Buf.bytes(e));
+            Buf.reset(e);
+            Buf.str(e, Buf.bytes(ADR(Core.tmp)));
+        else
+            Buf.str(e, Core.slice(lo, hi));
+        end;
+    else
+        newest := (newest + 1) mod Ring;
+        Buf.reset(ADR(ring[newest]));
+        Buf.str(ADR(ring[newest]), Core.slice(lo, hi));
+        if numRing < Ring then INC(numRing); end;
+    end;
+    yanked := 0;
+    if not keep then Core.delete(lo, hi - lo); end;
+end;
+
+proc killRegion*(n: I64);
+var lo, hi: I64;
+begin
+    if not Core.b^.hasMark then Core.message("The mark is not set now, so there is no region"); return; end;
+    lo, hi := region();
+    kill(lo, hi, Core.b^.point < Core.b^.mark, false);
+    Core.b^.active := false;
+end;
+
+proc killRingSave*(n: I64);
+var lo, hi: I64;
+begin
+    if not Core.b^.hasMark then Core.message("The mark is not set now, so there is no region"); return; end;
+    lo, hi := region();
+    kill(lo, hi, false, true);
+    Core.b^.active := false;
+end;
+
+(* C-k: the rest of the line, or the line break if only blanks are
+   left; with a count, that many lines and their breaks. *)
+proc killLine*(n: I64);
+var p, e, moved: I64;
+begin
+    p := Core.b^.point;
+    if Core.argGiven then
+        if n > 0 then
+            e, moved := Core.lines(p, n);
+            if moved < n then e := Core.size(); end;
+            kill(p, e, false, false);
+        else
+            e, moved := Core.lines(p, n);
+            kill(e, p, true, false);
+        end;
+        return;
+    end;
+    if p >= Core.size() then Core.message("End of buffer"); return; end;
+    e := p;
+    while (e < Core.lineEnd(p)) and Core.isBlank(Core.at(e)) do INC(e); end;
+    if e = Core.lineEnd(p) then e := e + 1; else e := Core.lineEnd(p); end;
+    if e > Core.size() then e := Core.size(); end;
+    kill(p, e, false, false);
+end;
+
+proc killWord*(n: I64);
+var e: I64;
+begin
+    e := words(Core.b^.point, n);
+    if e >= Core.b^.point then kill(Core.b^.point, e, false, false);
+    else kill(e, Core.b^.point, true, false);
+    end;
+end;
+
+proc backwardKillWord*(n: I64);
+var e: I64;
+begin
+    e := words(Core.b^.point, -n);
+    if e <= Core.b^.point then kill(e, Core.b^.point, true, false);
+    else kill(Core.b^.point, e, false, false);
+    end;
+end;
+
+proc yankPop*(n: I64); forward;
+
+(* The kill yanked back from newest, at the point; the mark before it. *)
+proc put(back: I64);
+var i: I64;
+begin
+    yanked := (back mod numRing + numRing) mod numRing;
+    i := ((newest - yanked) mod Ring + Ring) mod Ring;
+    Core.b^.mark := Core.b^.point;
+    Core.b^.hasMark := true;
+    Core.insert(Core.b^.point, Buf.bytes(ADR(ring[i])));
+end;
+
+proc yank*(n: I64);
+begin
+    if not Core.writable() then return; end;
+    if numRing = 0 then Core.message("Kill ring is empty"); return; end;
+    put(yanked + n - 1);
+end;
+
+proc yankPop*(n: I64);
+var lo, hi: I64;
+begin
+    if (Core.last # yank) and (Core.last # yankPop) then
+        Core.message("Previous command was not a yank");
+        return;
+    end;
+    lo, hi := region();
+    Core.delete(lo, hi - lo);
+    put(yanked + n);
+end;
+
+(* Undo *)
+
+proc undo*(n: I64);
+var i, p: I64; ok: BOOL;
+begin
+    for i := 1 to n do
+        p, ok := Text.undo(ADR(Core.b^.t));
+        if not ok then Core.message("No further undo information"); return; end;
+        Core.b^.point := p;
+    end;
+    Core.message("Undo");
+end;
+
+proc undoRedo*(n: I64);
+var i, p: I64; ok: BOOL;
+begin
+    for i := 1 to n do
+        p, ok := Text.redo(ADR(Core.b^.t));
+        if not ok then Core.message("No further redo information"); return; end;
+        Core.b^.point := p;
+    end;
+    Core.message("Redo");
+end;
+
+begin
+    for newest := 0 to Ring - 1 do Buf.init(ADR(ring[newest]), Heap.heap); end;
+    newest := 0;
+end Edit.

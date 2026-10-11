@@ -1,22 +1,24 @@
-xxxA module to edit. *)
-module Hello;
-import Out; proc main*; var i: I64; begi
-    for i := 1 to 3 do
-        Out.str("hello, world");
-        Out.ln;
-    end;
-!nd;
+(* A module to edit. *)
+module Hello; import Out;
 
-end Hello.
-~
-                      Join.txt [+]  1,3
-xxxA module to edit. *)
-module Hello;
-import Out; proc main*; var i: I64; begin
-    for i := 1 to 3 do
-        Out.str("hello, world");
+proc main*; var i: I64;
+begin
+for i := 1 to 3 do
+ Out.str("hello, world");
         Out.ln;
     end;
-!nd;
+end;
+-UU-:**-  Join.txt        Top L7   (Fund
+
+(* A module to edit. *)
+module Hello; import Out;
+
+proc main*; var i: I64;
+begin
+for i := 1 to 3 do
+ Out.str("hello, world");
+        Out.ln;
+    end;
+end;
 
 end Hello.

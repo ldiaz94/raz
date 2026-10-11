@@ -1,14 +1,16 @@
 (* Keys: the keys ravite reads. A key is a code point, a control
-   character among them (Ctrl-R is 18), or one of the special keys
-   below, which lie past the last code point. decode takes the bytes a
-   terminal sends for a key; notation takes keys written as vim writes
-   them, <esc> and <c-r>, which the tests use.
+   character among them (C-a is 1), or one of the special keys below,
+   which lie past the last code point; Meta adds 1000000H to any of
+   them. decode takes the bytes a terminal sends for a key, ESC and a
+   key being that key with Meta. notation reads keys written as emacs
+   writes them, C-x C-s and M-%, for the tests and the settings; name
+   writes one so.
 
-   Depends on: nothing but Rt, for its test.
-   Leaves out: modifiers on special keys (Ctrl-Up is Up), function
+   Depends on: Buf, to write names; Rt, for its test.
+   Leaves out: modifiers on special keys (C-<up> is <up>), function
    keys, and the mouse. *)
 module Keys;
-import Rt;
+import Buf, Heap, Rt;
 
 const
     Tab* = 9;
@@ -26,16 +28,27 @@ const
     Delete* = 110009H;
     Insert* = 11000AH;
     Unknown* = 11000BH;   (* a sequence decode doesn't know *)
+    Meta* = 1000000H;
 
-(* Control and the letter c: ctrl('r') is 18. *)
+(* Control and c: ctrl('x') is C-x, 24; ctrl(' ') is C-SPC, 0. *)
 proc ctrl*(c: I64): I64;
 begin
+    if (c >= 'a') and (c <= 'z') then c := c - 32; end;
+    if c = '/' then return 31; end;
+    if c = '?' then return 127; end;
     return c and 1FH;
 end;
 
+proc meta*(k: I64): I64;
+begin
+    return k or Meta;
+end;
+
 (* An escape sequence at the start of b, ESC [ ... or ESC O x. *)
+proc decode*(b: []U8): (I64, I64); forward;
+
 proc escape(b: []U8): (I64, I64);
-var i, n: I64; c: U8;
+var i, n, k: I64; c: U8;
 begin
     if LEN(b) = 1 then return 0, 0; end;
     if b[1] = 'O' then
@@ -48,9 +61,15 @@ begin
         elsif c = 'H' then return Home, 3;
         elsif c = 'F' then return End, 3;
         end;
-        return Esc, 1;
+        return Meta + 'O', 2;
     end;
-    if b[1] # '[' then return Esc, 1; end;
+    if b[1] = Esc then return Esc, 1; end;
+    if b[1] # '[' then
+        (* ESC and a key: the key with Meta *)
+        k, n := decode(b[1..LEN(b)]);
+        if n = 0 then return 0, 0; end;
+        return Meta + k, n + 1;
+    end;
     (* parameters, digits and ;, then a final byte; only the first
        number matters *)
     i := 2;
@@ -108,62 +127,127 @@ begin
     return k, n;
 end;
 
-(* The key named by s, as in <s>, in any case, or Unknown. *)
+(* The names of keys that aren't characters, as emacs writes them, and
+   what they stand for. *)
 proc named(s: []U8): I64;
-var buf: [12]U8; name: []U8; i: I64;
 begin
-    if LEN(s) > LEN(buf) then return Unknown; end;
-    for i := 0 to LEN(s) - 1 do
-        buf[i] := s[i];
-        if (s[i] >= 'A') and (s[i] <= 'Z') then buf[i] := s[i] + 32; end;
-    end;
-    name := buf[0..LEN(s)];
-    if (LEN(name) = 3) and (name[0..2] = "c-") then return ctrl(I64(name[2])); end;
-    if name = "esc" then return Esc;
-    elsif (name = "cr") or (name = "enter") then return Enter;
-    elsif name = "tab" then return Tab;
-    elsif name = "bs" then return Backspace;
-    elsif name = "del" then return Delete;
-    elsif name = "up" then return Up;
-    elsif name = "down" then return Down;
-    elsif name = "left" then return Left;
-    elsif name = "right" then return Right;
-    elsif name = "home" then return Home;
-    elsif name = "end" then return End;
-    elsif name = "pageup" then return PageUp;
-    elsif name = "pagedown" then return PageDown;
-    elsif name = "lt" then return '<';
-    elsif name = "space" then return ' ';
+    if s = "RET" then return Enter;
+    elsif s = "SPC" then return ' ';
+    elsif s = "TAB" then return Tab;
+    elsif s = "DEL" then return Backspace;
+    elsif s = "ESC" then return Esc;
+    elsif s = "LFD" then return 10;
+    elsif s = "<up>" then return Up;
+    elsif s = "<down>" then return Down;
+    elsif s = "<left>" then return Left;
+    elsif s = "<right>" then return Right;
+    elsif s = "<home>" then return Home;
+    elsif s = "<end>" then return End;
+    elsif s = "<prior>" then return PageUp;
+    elsif s = "<next>" then return PageDown;
+    elsif s = "<delete>" then return Delete;
+    elsif s = "<insert>" then return Insert;
     end;
     return Unknown;
 end;
 
-(* Gives add each key of s, written as vim writes keys: a character
-   is itself, <name> a key by its name. Line breaks in s are left out,
-   so that a long run of keys can take several lines. A < that starts
-   no name is itself. *)
+(* The key one word of emacs's notation stands for: C-, M- and C-M-
+   then a key, a key's name, or a single character; Unknown if the
+   word is none of these. *)
+proc word*(w: []U8): I64;
+var mods, k, n: I64;
+begin
+    mods := 0;
+    while (LEN(w) > 2) and (w[1] = '-') and ((w[0] = 'C') or (w[0] = 'M')) do
+        if w[0] = 'C' then mods := mods or 1; else mods := mods or 2; end;
+        w := w[2..LEN(w)];
+    end;
+    k := named(w);
+    if k = Unknown then
+        k, n := decode(w);
+        if (n # LEN(w)) or (k >= Meta) then return Unknown; end;
+    end;
+    if mods and 1 # 0 then k := ctrl(k); end;
+    if mods and 2 # 0 then k := k + Meta; end;
+    return k;
+end;
+
+(* Gives add each key of s, written as emacs writes keys: words
+   separated by blanks or line breaks, each a key as word reads it, or
+   else a run of characters, each a key. *)
 proc notation*(s: []U8; add: proc(k: I64));
-var i, j, k, n: I64;
+var i, j, k, n: I64; w: []U8;
 begin
     i := 0;
     while i < LEN(s) do
-        if s[i] = '\n' then
+        if (s[i] = ' ') or (s[i] = '\n') or (s[i] = '\t') then
             INC(i);
-        elsif s[i] = '<' then
-            j := i + 1;
-            while (j < LEN(s)) and (j - i < 12) and (s[j] # '>') and (s[j] # '<') do INC(j); end;
-            k := Unknown;
-            if (j < LEN(s)) and (s[j] = '>') then k := named(s[i + 1..j]); end;
-            if k = Unknown then
-                add('<'); INC(i);
-            else
-                add(k); i := j + 1;
-            end;
         else
-            k, n := decode(s[i..LEN(s)]);
-            if n = 0 then k := I64(s[i]); n := 1; end;
-            add(k);
-            INC(i, n);
+            j := i;
+            while (j < LEN(s)) and (s[j] # ' ') and (s[j] # '\n') and (s[j] # '\t') do INC(j); end;
+            w := s[i..j];
+            k := word(w);
+            if k # Unknown then
+                add(k);
+            else
+                while LEN(w) > 0 do
+                    k, n := decode(w);
+                    if n = 0 then k := I64(w[0]); n := 1; end;
+                    add(k);
+                    w := w[n..LEN(w)];
+                end;
+            end;
+            i := j;
+        end;
+    end;
+end;
+
+(* Adds k to b as emacs writes it. *)
+proc name*(b: ^Buf.Buf; k: I64);
+var c: [4]U8; m: BOOL;
+begin
+    m := k >= Meta;
+    if m then k := k - Meta; end;
+    if m and (k > 0) and (k < 32) and (k # Enter) and (k # Tab) and (k # Esc) then
+        Buf.str(b, "C-M-");
+        if k <= 26 then Buf.add(b, U8(k + 96)); else Buf.add(b, U8(k + 64)); end;
+        return;
+    end;
+    if m then Buf.str(b, "M-"); end;
+    if k = Enter then Buf.str(b, "RET");
+    elsif k = ' ' then Buf.str(b, "SPC");
+    elsif k = Tab then Buf.str(b, "TAB");
+    elsif k = Backspace then Buf.str(b, "DEL");
+    elsif k = Esc then Buf.str(b, "ESC");
+    elsif k = 0 then Buf.str(b, "C-SPC");
+    elsif k < 32 then
+        Buf.str(b, "C-");
+        if k <= 26 then Buf.add(b, U8(k + 96)); else Buf.add(b, U8(k + 64)); end;
+    elsif k = Up then Buf.str(b, "<up>");
+    elsif k = Down then Buf.str(b, "<down>");
+    elsif k = Left then Buf.str(b, "<left>");
+    elsif k = Right then Buf.str(b, "<right>");
+    elsif k = Home then Buf.str(b, "<home>");
+    elsif k = End then Buf.str(b, "<end>");
+    elsif k = PageUp then Buf.str(b, "<prior>");
+    elsif k = PageDown then Buf.str(b, "<next>");
+    elsif k = Delete then Buf.str(b, "<delete>");
+    elsif k = Insert then Buf.str(b, "<insert>");
+    elsif k < 80H then
+        Buf.add(b, U8(k));
+    else
+        (* a code point, as UTF-8 *)
+        if k < 800H then
+            c[0] := U8(0C0H or k shr 6); c[1] := U8(80H or k and 3FH);
+            Buf.str(b, c[0..2]);
+        elsif k < 10000H then
+            c[0] := U8(0E0H or k shr 12); c[1] := U8(80H or k shr 6 and 3FH);
+            c[2] := U8(80H or k and 3FH);
+            Buf.str(b, c[0..3]);
+        else
+            c[0] := U8(0F0H or k shr 18); c[1] := U8(80H or k shr 12 and 3FH);
+            c[2] := U8(80H or k shr 6 and 3FH); c[3] := U8(80H or k and 3FH);
+            Buf.str(b, c);
         end;
     end;
 end;
@@ -188,6 +272,7 @@ end;
 
 (* The module's test. *)
 proc main*;
+var b: Buf.Buf; i: I64;
 begin
     expect("a", 'a', 1);
     expect("\x12", 18, 1);
@@ -205,14 +290,28 @@ begin
     expect("\x1b[1;5C", Right, 6);
     expect("\x1b[3~", Delete, 4);
     expect("\x1b[99~", Unknown, 5);
-    expect("\x1bOx", Esc, 1);
-    expect("\x1bj", Esc, 1);
-    notation("ia<esc>\n<c-R><lt><bad><CR>é", keep);
-    if (numGot # 12) or (got[0] # 'i') or (got[1] # 'a') or (got[2] # Esc)
-        or (got[3] # 18) or (got[4] # '<') or (got[5] # '<') or (got[6] # 'b')
-        or (got[9] # '>') or (got[10] # Enter) or (got[11] # 'é') then
+    expect("\x1bx", Meta + 'x', 2);
+    expect("\x1b\x7f", Meta + Backspace, 2);
+    expect("\x1bé", Meta + 'é', 3);
+    expect("\x1b\x1b", Esc, 1);
+    expect("\x1bO", 0, 0);
+    if (word("C-x") # 24) or (word("M-%") # Meta + '%') or (word("C-M-a") # Meta + 1)
+        or (word("C-SPC") # 0) or (word("M-DEL") # Meta + 127) or (word("C-/") # 31)
+        or (word("<up>") # Up) or (word("xy") # Unknown) or (word("é") # 'é') then
+        Rt.stop("Keys.word");
+    end;
+    notation("C-x C-f a.txt RET\nM-x SPC", keep);
+    if (numGot # 10) or (got[0] # 24) or (got[1] # 6) or (got[2] # 'a') or (got[6] # 't')
+        or (got[7] # Enter) or (got[8] # Meta + 'x') or (got[9] # ' ') then
         Rt.stop("Keys.notation");
     end;
+    Buf.init(ADR(b), Heap.heap);
+    for i := 0 to numGot - 1 do
+        name(ADR(b), got[i]);
+        Buf.add(ADR(b), ' ');
+    end;
+    name(ADR(b), Meta + 31);
+    if Buf.bytes(ADR(b)) # "C-x C-f a . t x t RET M-x SPC C-M-_" then Rt.stop("Keys.name"); end;
 end;
 
 end Keys.

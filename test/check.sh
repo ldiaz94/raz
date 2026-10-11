@@ -178,16 +178,17 @@ for f in ravite/*.raz; do
 done
 
 # ravite's sessions: test/ravite/X.keys typed on a copy of X.txt, if
-# there is one, must leave the screen and the text as X.expect says;
-# X.args, if there is one, names the file instead, as file:line
+# there is one, and X.args, if there is one, must leave the screen and
+# the buffer as X.expect says. Home is where they run, so that paths
+# show as ~.
 if $raz -I tools -o $out/ravite ravite/Ravite.raz 2>$out/ravite.cerr; then
     rm -rf $out/rv; mkdir -p $out/rv
     for f in test/ravite/*.keys; do
         name=$(basename $f .keys)
-        [ -f test/ravite/$name.txt ] && cp test/ravite/$name.txt $out/rv/
-        arg=$name.txt
-        [ -f test/ravite/$name.args ] && arg=$(cat test/ravite/$name.args)
-        (cd $out/rv && ../ravite -script 40 12 $arg) < $f > $out/rv/$name.out 2>&1
+        set --
+        if [ -f test/ravite/$name.txt ]; then cp test/ravite/$name.txt $out/rv/; set -- $name.txt; fi
+        [ -f test/ravite/$name.args ] && set -- $(cat test/ravite/$name.args)
+        (cd $out/rv && HOME=$(pwd) ../ravite -script 40 12 "$@") < $f > $out/rv/$name.out 2>&1
         if cmp -s $out/rv/$name.out test/ravite/$name.expect; then pass=$((pass + 1))
         else echo "FAIL ravite $f"; diff $out/rv/$name.out test/ravite/$name.expect | head -5; fail=$((fail + 1)); fi
     done

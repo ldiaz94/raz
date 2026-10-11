@@ -1,21 +1,21 @@
-(* A module to edit. *)
+t(* A module to edit. *)
 module Hello;
-import Out;
+vzimxport Osuty;w
 
-proc main*;
-ar i: I64;
+pprroc main*;q
+var i: I64;
 begin
     for i := 1 to 3 do
         Out.str("hello, world");
         Out.ln;
-    end;
-                      Line.txt [+]  6,1
-(* A module to edit. *)
-module Hello;
-import Out;
+-UU-:**-  Motion.txt      Top L5   (Fund
 
-proc main*;
-ar i: I64;
+t(* A module to edit. *)
+module Hello;
+vzimxport Osuty;w
+
+pprroc main*;q
+var i: I64;
 begin
     for i := 1 to 3 do
         Out.str("hello, world");
@@ -24,3 +24,4 @@ begin
 end;
 
 end Hello.
+u

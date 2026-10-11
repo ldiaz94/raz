@@ -1,0 +1,26 @@
+(* A module to edit. *)(* A
+
+proc main*
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Out.ln;
+    end;
+end;
+-UU-:**-  Region.txt      Top L3   (Fund
+
+(* A module to edit. *)(* A
+
+proc main*
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Out.ln;
+    end;
+end;
+
+end Hello.
+module Hello;
+import Out;

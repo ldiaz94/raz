@@ -384,11 +384,12 @@ Steps 34 on (emacs's keys):
 
 - [x] 34. The report: what `Sys` gains for ravite, for review before
       any code (report version `2026-10.2`).
-- [ ] 35. `Keys` with Meta and emacs's notation; `Core`, `View` with a
+- [x] 35. `Keys` with Meta and emacs's notation; `Core`, `View` with a
       mode line and the echo area, `Edit`, `Commands` with keymaps and
-      C-u, and `Ravite`: editing one buffer with emacs's keys, finding
-      and saving files; the session tests, checked against emacs.
-- [ ] 36. `Mini`: the minibuffer with the same keys, ido, M-x; buffers,
+      C-u, `Mini` without ido, and `Ravite`: editing with emacs's keys,
+      finding, saving and writing files, M-x by full name, quitting; the
+      session tests, checked against emacs.
+- [ ] 36. ido in the minibuffer, for M-x, files and buffers; buffers,
       `*scratch*`, C-x b, C-x k, C-x C-b, C-x s, C-x C-c.
 - [ ] 37. `Search`: C-s, C-r, M-%.
 - [ ] 38. `Dired`.

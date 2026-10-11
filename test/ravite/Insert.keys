@@ -1,3 +1,0 @@
-imodule A;<cr><cr>proc f;<cr>begin<cr><tab>x := 1;<cr>y<bs>z := 2;<esc>
-oend;<esc>kOw<c-w>new;<esc>
-ggAx<bs>!<esc>

@@ -1,25 +1,19 @@
-xxx(* A module to edit. *)bb
-y
-y
-y
-y
-y
-y
+vw(* A module to edit. *)
 module Hello;
 import Out;
-
+x
 proc main*;
-                     Again.txt [+]  7,1
-xxx(* A module to edit. *)bb
-y
-y
-y
-y
-y
-y
+var i: I64;
+begin
+    for i := 1 to 3 do
+        Out.str("hello, world");
+        Out.ln;
+-UU-:**-  Paragraph.txt   Top L1   (Fund
+
+vw(* A module to edit. *)
 module Hello;
 import Out;
-
+x
 proc main*;
 var i: I64;
 begin
@@ -28,5 +22,6 @@ begin
         Out.ln;
     end;
 end;
-
+y
 end Hello.
+z

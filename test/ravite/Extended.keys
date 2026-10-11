@@ -1,0 +1,1 @@
+M-x upcase-word RET C-n M-x kill-line RET M-x foo RET C-g

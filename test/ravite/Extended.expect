@@ -1,4 +1,5 @@
-module Hello;
+(* A module to edit. *)
+modu
 import Out;
 
 proc main*;
@@ -7,10 +8,10 @@ begin
     for i := 1 to 3 do
         Out.str("hello, world");
         Out.ln;
-    end;
-end;
-"Write.txt" 13L, 155B written
-module Hello;
+-UU-:**-  Extended.txt    Top L2   (Fund
+Quit
+(* A module to edit. *)
+modu
 import Out;
 
 proc main*;

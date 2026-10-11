@@ -42,6 +42,15 @@ begin
     Buf.init(ADR(t^.log), a);
 end;
 
+(* Frees what the text holds; it is empty again. *)
+proc done*(t: ^Text);
+begin
+    if t^.data # nil then Mem.free(t^.a, t^.data); end;
+    if t^.changes # nil then Mem.free(t^.a, ^U8(t^.changes)); end;
+    Buf.done(ADR(t^.log));
+    init(t, t^.a);
+end;
+
 proc len*(t: ^Text): I64;
 begin
     return t^.cap - (t^.gapEnd - t^.gap);

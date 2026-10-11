@@ -1,0 +1,100 @@
+(* Mini: the minibuffer, a buffer of one line at the bottom, read with
+   a prompt before it. Its keys are those of any buffer: each key it is
+   given runs through the keymaps, on it, but RET, which takes what it
+   holds, and C-g, which gives up. Only one is open at a time.
+
+   Depends on: Core, Text, Keys.
+   Leaves out: history. *)
+module Mini;
+import Buf, Heap, Text, Keys, Core;
+
+(* Opens the minibuffer after prompt, holding initial, the point at its
+   end. *)
+proc open(prompt, initial: []U8): BOOL;
+begin
+    if Core.miniOpen then
+        Core.message("Command attempted to use minibuffer while in minibuffer");
+        return false;
+    end;
+    Text.done(ADR(Core.mini^.t));
+    Text.load(ADR(Core.mini^.t), initial);
+    Core.mini^.point := LEN(initial);
+    Core.mini^.hasMark := false;
+    Core.mini^.active := false;
+    Buf.reset(ADR(Core.prompt));
+    Buf.str(ADR(Core.prompt), prompt);
+    Core.miniOpen := true;
+    return true;
+end;
+
+(* What the minibuffer holds, into out, and closes it. *)
+proc close(out: ^Buf.Buf);
+begin
+    if out # nil then
+        Buf.reset(out);
+        Buf.str(out, Text.slice(ADR(Core.mini^.t), 0, Text.len(ADR(Core.mini^.t))));
+    end;
+    Core.miniOpen := false;
+    Buf.reset(ADR(Core.prompt));
+    Buf.reset(ADR(Core.after));
+end;
+
+(* Reads a line after prompt, starting with initial, into out; false
+   if C-g gave up. *)
+proc read*(prompt, initial: []U8; out: ^Buf.Buf): BOOL;
+var k: I64; saved: ^Core.Buffer;
+begin
+    if not open(prompt, initial) then return false; end;
+    saved := Core.b;
+    while true do
+        Core.b := Core.mini;
+        k := Core.nextKey();
+        Buf.reset(ADR(Core.echo));
+        if k = Keys.ctrl('g') then
+            close(nil);
+            Core.b := saved;
+            Core.message("Quit");
+            return false;
+        elsif (k = Keys.Enter) or (k = 10) then
+            close(out);
+            Core.b := saved;
+            return true;
+        end;
+        Core.runKey(k);
+    end;
+    return false;
+end;
+
+(* Asks prompt until the answer is yes or no. *)
+proc yesOrNo*(prompt: []U8): BOOL;
+var b: Buf.Buf;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    defer Buf.done(ADR(b));
+    while true do
+        if not read(prompt, "", ADR(b)) then return false; end;
+        if Buf.bytes(ADR(b)) = "yes" then return true; end;
+        if Buf.bytes(ADR(b)) = "no" then return false; end;
+        Core.message("Please answer yes or no.");
+    end;
+    return false;
+end;
+
+(* Asks prompt for one key, until it is one of keys, or C-g: that key. *)
+proc choose*(prompt: []U8; keys: []U8): I64;
+var k, i: I64;
+begin
+    if not open(prompt, "") then return Keys.ctrl('g'); end;
+    while true do
+        k := Core.nextKey();
+        if k = Keys.ctrl('g') then break; end;
+        for i := 0 to LEN(keys) - 1 do
+            if k = I64(keys[i]) then close(nil); return k; end;
+        end;
+    end;
+    close(nil);
+    Core.message("Quit");
+    return k;
+end;
+
+end Mini.

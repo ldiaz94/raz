@@ -1,26 +1,26 @@
-(* A module to edit. *)
-module Hello;
-import Out;
-
-proc main*;
-var i: I64;
-begin
     for i := 1 to 3 do
-        Out.tr("hello, world");
-        Out.ln;
-    end;
-                    Place.txt [+]  9,13
-(* A module to edit. *)
-module Hello;
-import Out;
-
-proc main*;
-var i: I64;
-begin
-    for i := 1 to 3 do
-        Out.tr("hello, world");
+x        Out.str("hello, world");
         Out.ln;
     end;
 end;
+z
+end Hello.
 
+
+
+-UU-:**-  Goto.txt        Bot L13   (Fun
+
+(* A module to edit. *)
+module Hello;
+import Out;
+y
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+x        Out.str("hello, world");
+        Out.ln;
+    end;
+end;
+z
 end Hello.

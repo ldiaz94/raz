@@ -1,0 +1,2 @@
+C-n C-n C-n C-n C-n C-n C-n C-e RET x := 1; RET
+C-n C-n C-a C-o y C-n C-n TAB z TAB TAB w

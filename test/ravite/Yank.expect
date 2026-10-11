@@ -1,30 +1,26 @@
-(* (* A module to edit. *)
 module Hello;
-module Hello;
-import Out;
 
-import Out;
+(* A module to edit. *)
 
-proc main*;
-var i: I64;var i: I64;
+(* A module to edit. *)
+proc main*;var i: I64;
 begin
     for i := 1 to 3 do
-                     Yank.txt [+]  9,22
-(* (* A module to edit. *)
-module Hello;
-module Hello;
-import Out;
+        Out.str("hello, world");
+        Out.ln;
+-UU-:**-  Yank.txt        Top L6   (Fund
 
-import Out;
+module Hello;
 
-proc main*;
-var i: I64;var i: I64;
+(* A module to edit. *)
+
+(* A module to edit. *)
+proc main*;var i: I64;
 begin
     for i := 1 to 3 do
         Out.str("hello, world");
         Out.ln;
     end;
 end;
-
 
 end Hello.

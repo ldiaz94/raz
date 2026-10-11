@@ -1,0 +1,551 @@
+(* Commands: every command by its name, the keymap that binds keys to
+   them, and running a key: reading the rest of its sequence, the count
+   C-u or M-digits give, and the boundaries of undo. Here too are the
+   commands that read the minibuffer: M-x, files, goto-line, quitting.
+
+   A binding is a sequence of up to four keys and a command; C-x, M-g
+   and the other first keys of longer sequences are prefixes because
+   some binding goes on from them. A typed key bound to nothing types
+   itself. Typing is one step of undo for up to 20 keys, as in emacs;
+   every other command is a step of its own.
+
+   Depends on: Core, Edit, Mini, Keys.
+   Leaves out: keymaps for each kind of buffer: Dired and the list of
+   buffers handle their own keys first. *)
+module Commands;
+import Sys, Rt, Buf, Fmt, Heap, Str, Text, Keys, Core, Edit, Mini;
+
+const
+    MaxCommands = 160;
+    MaxBindings = 320;
+
+type
+    Named = record
+        name: []U8;
+        run: Core.Command;
+    end;
+    Binding = record
+        keys: [4]I64;
+        n: I64;
+        command: I64;   (* in commands *)
+    end;
+
+var
+    commands: [MaxCommands]Named;
+    numCommands: I64;
+    bindings: [MaxBindings]Binding;
+    numBindings: I64;
+    typing: I64;        (* keys typed in a row, for undo *)
+    ran*: Core.Command; (* the command that ran, which M-x sets *)
+    answer: Buf.Buf;    (* what the minibuffer gave *)
+    seen: Buf.Buf;      (* keys, written out for messages *)
+
+(* Names run, a command, name. *)
+proc def*(name: []U8; run: Core.Command);
+begin
+    if numCommands = MaxCommands then Rt.stop("ravite: too many commands"); end;
+    commands[numCommands] := {name: name, run: run};
+    INC(numCommands);
+end;
+
+(* The command named name: its place, or -1. *)
+proc command*(name: []U8): I64;
+var i: I64;
+begin
+    for i := 0 to numCommands - 1 do
+        if commands[i].name = name then return i; end;
+    end;
+    return -1;
+end;
+
+proc commandName*(i: I64): []U8;
+begin
+    return commands[i].name;
+end;
+
+proc commandCount*: I64;
+begin
+    return numCommands;
+end;
+
+(* Whether binding i starts with the keys of seq. *)
+proc starts(i: I64; seq: []I64): BOOL;
+var j: I64;
+begin
+    if bindings[i].n < LEN(seq) then return false; end;
+    for j := 0 to LEN(seq) - 1 do
+        if bindings[i].keys[j] # seq[j] then return false; end;
+    end;
+    return true;
+end;
+
+(* Binds keys to the command at c, or unbinds them if c < 0; false if
+   there is no room. *)
+proc bind*(keys: []I64; c: I64): BOOL;
+var i, j: I64;
+begin
+    if (LEN(keys) = 0) or (LEN(keys) > 4) then return false; end;
+    for i := 0 to numBindings - 1 do
+        if (bindings[i].n = LEN(keys)) and starts(i, keys) then
+            bindings[i].command := c;
+            return true;
+        end;
+    end;
+    if c < 0 then return true; end;
+    if numBindings = MaxBindings then return false; end;
+    for j := 0 to LEN(keys) - 1 do bindings[numBindings].keys[j] := keys[j]; end;
+    bindings[numBindings].n := LEN(keys);
+    bindings[numBindings].command := c;
+    INC(numBindings);
+    return true;
+end;
+
+var parsed: [4]I64; numParsed: I64;
+
+proc addParsed(k: I64);
+begin
+    if numParsed < 4 then parsed[numParsed] := k; end;
+    INC(numParsed);
+end;
+
+(* keys, written as emacs writes them, as a sequence: false if there
+   are none or more than four. *)
+proc parse*(keys: []U8): ([]I64, BOOL);
+begin
+    numParsed := 0;
+    Keys.notation(keys, addParsed);
+    if (numParsed = 0) or (numParsed > 4) then return parsed[0..0], false; end;
+    return parsed[0..numParsed], true;
+end;
+
+(* Binds keys, as emacs writes them, to the command named name; false
+   if either is wrong. *)
+proc bindNamed*(keys, name: []U8): BOOL;
+var c: I64; seq: []I64; ok: BOOL;
+begin
+    c := command(name);
+    if (c < 0) and (name # "nil") then return false; end;
+    seq, ok := parse(keys);
+    return ok and bind(seq, c);
+end;
+
+(* The command bound to seq, or -1; and whether a longer binding goes
+   on from it. *)
+proc lookup*(seq: []I64): (I64, BOOL);
+var i, c: I64; longer: BOOL;
+begin
+    c := -1;
+    longer := false;
+    for i := 0 to numBindings - 1 do
+        if bindings[i].command >= 0 then
+            if starts(i, seq) then
+                if bindings[i].n = LEN(seq) then c := bindings[i].command; else longer := true; end;
+            end;
+        end;
+    end;
+    return c, longer;
+end;
+
+(* The keys bound to the command at c, written out into out: the
+   first binding, or none. *)
+proc keysOf*(c: I64; out: ^Buf.Buf): BOOL;
+var i, j: I64;
+begin
+    for i := 0 to numBindings - 1 do
+        if bindings[i].command = c then
+            for j := 0 to bindings[i].n - 1 do
+                if j > 0 then Buf.add(out, ' '); end;
+                Keys.name(out, bindings[i].keys[j]);
+            end;
+            return true;
+        end;
+    end;
+    return false;
+end;
+
+proc bindingCount*: I64;
+begin
+    return numBindings;
+end;
+
+(* Binding i: its keys and its command, or -1. *)
+proc binding*(i: I64): ([]I64, I64);
+begin
+    return bindings[i].keys[0..bindings[i].n], bindings[i].command;
+end;
+
+(* Whether k types a character. *)
+proc typed*(k: I64): BOOL;
+begin
+    return (k >= 32) and (k # 127) and (k < Keys.Up);
+end;
+
+var
+    pending: I64;       (* the count C-u or M-digits gave the next command *)
+    hasPending: BOOL;
+
+proc universalArgument*(n: I64); forward;
+proc digitArgument*(n: I64); forward;
+
+(* Runs the command bound to the keys that start with k, reading the
+   rest of them. *)
+proc runKey*(k: I64);
+var seq: [4]I64; n, c, i: I64; longer: BOOL; run: Core.Command;
+begin
+    n := 0;
+    while true do
+        seq[n] := k;
+        INC(n);
+        c, longer := lookup(seq[0..n]);
+        if c >= 0 then break; end;
+        if not longer or (n = 4) then
+            if (n = 1) and typed(k) then
+                c := command("self-insert-command");
+                break;
+            end;
+            Buf.reset(ADR(seen));
+            for i := 0 to n - 1 do
+                if i > 0 then Buf.add(ADR(seen), ' '); end;
+                Keys.name(ADR(seen), seq[i]);
+            end;
+            Fmt.write(ADR(Core.echo), "{} is undefined", [Fmt.str(Buf.bytes(ADR(seen)))]);
+            hasPending := false;
+            return;
+        end;
+        k := Core.nextKey();
+    end;
+    run := commands[c].run;
+    Edit.key := k;
+    Core.arg := 1;
+    Core.argGiven := hasPending;
+    if hasPending then Core.arg := pending; end;
+    hasPending := false;
+    if (run = Edit.selfInsertCommand) and (Core.last = Edit.selfInsertCommand) and (typing < 20) then
+        INC(typing);
+    else
+        Text.step(ADR(Core.b^.t));
+        typing := 1;
+    end;
+    Core.changed := false;
+    ran := run;
+    run(Core.arg);
+    if (run = universalArgument) or (run = digitArgument) then return; end;
+    if Core.changed then Core.b^.active := false; end;
+    Core.last := ran;
+end;
+
+(* C-u, and M-0 to M-9: the count of the command that follows. C-u
+   alone is 4, and each C-u more times 4; digits after it, or after
+   M-digit, are the count; - makes it negative. *)
+proc readCount(v: I64; digits: BOOL);
+var k, sign: I64;
+begin
+    sign := 1;
+    while true do
+        k := Core.nextKey();
+        if (k >= Keys.Meta + '0') and (k <= Keys.Meta + '9') then k := k - Keys.Meta; end;
+        if (k = Keys.ctrl('u')) and not digits then
+            v := v * 4;
+        elsif (k >= '0') and (k <= '9') then
+            if not digits then v := 0; end;
+            digits := true;
+            v := v * 10 + k - '0';
+        elsif (k = '-') and not digits then
+            sign := -sign;
+        else
+            break;
+        end;
+    end;
+    pending := v * sign;
+    if (sign < 0) and not digits then pending := -1; end;
+    hasPending := true;
+    runKey(k);
+end;
+
+proc universalArgument*(n: I64);
+begin
+    readCount(4, false);
+end;
+
+proc digitArgument*(n: I64);
+begin
+    readCount(I64(Edit.key - Keys.Meta - '0'), true);
+end;
+
+(* M-x: a command by its name. *)
+proc executeExtendedCommand*(n: I64);
+var c: I64;
+begin
+    if not Mini.read("M-x ", "", ADR(answer)) then return; end;
+    c := command(Buf.bytes(ADR(answer)));
+    if c < 0 then
+        Fmt.write(ADR(Core.echo), "[No match] {}", [Fmt.str(Buf.bytes(ADR(answer)))]);
+        return;
+    end;
+    ran := commands[c].run;
+    Core.changed := false;
+    Text.step(ADR(Core.b^.t));
+    ran(n);
+end;
+
+(* The buffer of path, given as the minibuffer gave it, shown. *)
+proc findPath(path: []U8);
+var x: ^Core.Buffer; abs: Buf.Buf;
+begin
+    Buf.init(ADR(abs), Heap.heap);
+    defer Buf.done(ADR(abs));
+    Core.absolute(path, ADR(abs));
+    x := Core.visit(Buf.bytes(ADR(abs)));
+    if x # nil then Core.show(x); end;
+end;
+
+(* The directory of the buffer shown, as the minibuffer starts with it. *)
+proc startDir(out: ^Buf.Buf);
+begin
+    Buf.reset(out);
+    Core.directory(Core.shown, out);
+end;
+
+proc findFile*(n: I64);
+var dir: Buf.Buf;
+begin
+    Buf.init(ADR(dir), Heap.heap);
+    defer Buf.done(ADR(dir));
+    startDir(ADR(dir));
+    if Mini.read("Find file: ", Buf.bytes(ADR(dir)), ADR(answer)) then findPath(Buf.bytes(ADR(answer))); end;
+end;
+
+(* C-x C-w: the buffer written to a file named in the minibuffer; it
+   visits that file from then on. *)
+proc writeFile*(n: I64);
+var dir, abs: Buf.Buf; i: I64; p: []U8;
+begin
+    Buf.init(ADR(dir), Heap.heap);
+    Buf.init(ADR(abs), Heap.heap);
+    defer Buf.done(ADR(dir));
+    defer Buf.done(ADR(abs));
+    startDir(ADR(dir));
+    if not Mini.read("Write file: ", Buf.bytes(ADR(dir)), ADR(answer)) then return; end;
+    Core.absolute(Buf.bytes(ADR(answer)), ADR(abs));
+    p := Buf.bytes(ADR(answer));
+    if (LEN(p) > 0) and (p[LEN(p) - 1] = '/') then
+        Buf.add(ADR(abs), '/');
+        Buf.str(ADR(abs), Buf.bytes(ADR(Core.shown^.name)));
+    end;
+    p := Buf.bytes(ADR(abs));
+    Buf.reset(ADR(Core.shown^.path));
+    Buf.str(ADR(Core.shown^.path), p);
+    i := LEN(p);
+    while (i > 0) and (p[i - 1] # '/') do DEC(i); end;
+    Buf.reset(ADR(Core.shown^.name));
+    Buf.str(ADR(Core.shown^.name), p[i..LEN(p)]);
+    Core.shown^.kind := Core.File;
+    Core.shown^.coloured := Core.colour and (LEN(p) > 4) and (p[LEN(p) - 4..LEN(p)] = ".raz");
+    Core.save(Core.shown);
+end;
+
+proc saveBuffer*(n: I64);
+begin
+    if Core.shown^.kind # Core.File then return; end;
+    if Core.shown^.path.len = 0 then writeFile(n); return; end;
+    if not Text.changed(ADR(Core.shown^.t)) then
+        Core.message("(No changes need to be saved)");
+        return;
+    end;
+    Core.save(Core.shown);
+end;
+
+(* Asks about each buffer with unsaved changes to its file, and saves
+   those the answer is y for, or all from ! on; false at C-g or q. *)
+proc saveSome(): BOOL;
+var x: ^Core.Buffer; k: I64; all: BOOL;
+begin
+    x := Core.buffers;
+    all := false;
+    while x # nil do
+        if (x^.kind = Core.File) and (x^.path.len > 0) and Text.changed(ADR(x^.t)) then
+            k := 'y';
+            if not all then
+                Buf.reset(ADR(seen));
+                Buf.str(ADR(seen), "Save file ");
+                Core.abbreviate(Buf.bytes(ADR(x^.path)), ADR(seen));
+                Buf.str(ADR(seen), "? (y, n, !, q) ");
+                k := Mini.choose(Buf.bytes(ADR(seen)), "yn!q");
+            end;
+            if k = '!' then all := true; k := 'y'; end;
+            if (k = Keys.ctrl('g')) or (k = 'q') then return false; end;
+            if (k = 'y') and not Core.save(x) then return false; end;
+        end;
+        x := x^.next;
+    end;
+    return true;
+end;
+
+proc saveSomeBuffers*(n: I64);
+begin
+    if saveSome() then Core.message("(No files need saving)"); end;
+end;
+
+(* C-x C-c: asks to save what isn't, then whether to quit if some is
+   still unsaved, then quits. *)
+proc saveBuffersKillTerminal*(n: I64);
+var x: ^Core.Buffer;
+begin
+    if not saveSome() then return; end;
+    x := Core.buffers;
+    while (x # nil) and not ((x^.kind = Core.File) and (x^.path.len > 0) and Text.changed(ADR(x^.t))) do
+        x := x^.next;
+    end;
+    if (x # nil) and not Mini.yesOrNo("Modified buffers exist; exit anyway? (yes or no) ") then return; end;
+    Core.quitting := true;
+end;
+
+(* M-g g: the start of line n, given as a count or in the minibuffer. *)
+proc gotoLine*(n: I64);
+var i, line, moved: I64;
+begin
+    if not Core.argGiven then
+        if not Mini.read("Goto line: ", "", ADR(answer)) then return; end;
+        line := 0;
+        for i := 0 to answer.len - 1 do
+            if (Buf.bytes(ADR(answer))[i] < '0') or (Buf.bytes(ADR(answer))[i] > '9') then
+                Core.message("Invalid line number");
+                return;
+            end;
+            line := line * 10 + I64(Buf.bytes(ADR(answer))[i] - '0');
+        end;
+        n := line;
+    end;
+    Core.b^.mark := Core.b^.point;
+    Core.b^.hasMark := true;
+    Core.b^.point, moved := Core.lines(0, n - 1);
+end;
+
+(* The commands, and emacs's keys for them. *)
+proc defaults;
+var i: I64; k: [1]I64;
+begin
+    def("forward-char", Edit.forwardChar);
+    def("backward-char", Edit.backwardChar);
+    def("next-line", Edit.nextLine);
+    def("previous-line", Edit.previousLine);
+    def("move-beginning-of-line", Edit.moveBeginningOfLine);
+    def("move-end-of-line", Edit.moveEndOfLine);
+    def("forward-word", Edit.forwardWord);
+    def("backward-word", Edit.backwardWord);
+    def("beginning-of-buffer", Edit.beginningOfBuffer);
+    def("end-of-buffer", Edit.endOfBuffer);
+    def("forward-paragraph", Edit.forwardParagraph);
+    def("backward-paragraph", Edit.backwardParagraph);
+    def("scroll-up-command", Edit.scrollUpCommand);
+    def("scroll-down-command", Edit.scrollDownCommand);
+    def("recenter-top-bottom", Edit.recenterTopBottom);
+    def("back-to-indentation", Edit.backToIndentation);
+    def("self-insert-command", Edit.selfInsertCommand);
+    def("newline", Edit.newline);
+    def("newline-and-indent", Edit.newlineAndIndent);
+    def("open-line", Edit.openLine);
+    def("tab-to-tab-stop", Edit.tabToTabStop);
+    def("delete-char", Edit.deleteChar);
+    def("delete-backward-char", Edit.deleteBackwardChar);
+    def("delete-horizontal-space", Edit.deleteHorizontalSpace);
+    def("just-one-space", Edit.justOneSpace);
+    def("delete-indentation", Edit.deleteIndentation);
+    def("transpose-chars", Edit.transposeChars);
+    def("upcase-word", Edit.upcaseWord);
+    def("downcase-word", Edit.downcaseWord);
+    def("capitalize-word", Edit.capitalizeWord);
+    def("set-mark-command", Edit.setMarkCommand);
+    def("exchange-point-and-mark", Edit.exchangePointAndMark);
+    def("mark-whole-buffer", Edit.markWholeBuffer);
+    def("keyboard-quit", Edit.keyboardQuit);
+    def("kill-region", Edit.killRegion);
+    def("kill-ring-save", Edit.killRingSave);
+    def("kill-line", Edit.killLine);
+    def("kill-word", Edit.killWord);
+    def("backward-kill-word", Edit.backwardKillWord);
+    def("yank", Edit.yank);
+    def("yank-pop", Edit.yankPop);
+    def("undo", Edit.undo);
+    def("undo-redo", Edit.undoRedo);
+    def("universal-argument", universalArgument);
+    def("digit-argument", digitArgument);
+    def("execute-extended-command", executeExtendedCommand);
+    def("find-file", findFile);
+    def("save-buffer", saveBuffer);
+    def("write-file", writeFile);
+    def("save-some-buffers", saveSomeBuffers);
+    def("save-buffers-kill-terminal", saveBuffersKillTerminal);
+    def("goto-line", gotoLine);
+
+    bindNamed("C-f", "forward-char");
+    bindNamed("<right>", "forward-char");
+    bindNamed("C-b", "backward-char");
+    bindNamed("<left>", "backward-char");
+    bindNamed("C-n", "next-line");
+    bindNamed("<down>", "next-line");
+    bindNamed("C-p", "previous-line");
+    bindNamed("<up>", "previous-line");
+    bindNamed("C-a", "move-beginning-of-line");
+    bindNamed("<home>", "move-beginning-of-line");
+    bindNamed("C-e", "move-end-of-line");
+    bindNamed("<end>", "move-end-of-line");
+    bindNamed("M-f", "forward-word");
+    bindNamed("M-b", "backward-word");
+    bindNamed("M-<", "beginning-of-buffer");
+    bindNamed("M->", "end-of-buffer");
+    bindNamed("M-}", "forward-paragraph");
+    bindNamed("M-{", "backward-paragraph");
+    bindNamed("C-v", "scroll-up-command");
+    bindNamed("<next>", "scroll-up-command");
+    bindNamed("M-v", "scroll-down-command");
+    bindNamed("<prior>", "scroll-down-command");
+    bindNamed("C-l", "recenter-top-bottom");
+    bindNamed("M-m", "back-to-indentation");
+    bindNamed("RET", "newline-and-indent");
+    bindNamed("C-j", "newline-and-indent");
+    bindNamed("C-o", "open-line");
+    bindNamed("TAB", "tab-to-tab-stop");
+    bindNamed("C-d", "delete-char");
+    bindNamed("<delete>", "delete-char");
+    bindNamed("DEL", "delete-backward-char");
+    bindNamed("M-\\", "delete-horizontal-space");
+    bindNamed("M-SPC", "just-one-space");
+    bindNamed("M-^", "delete-indentation");
+    bindNamed("C-t", "transpose-chars");
+    bindNamed("M-u", "upcase-word");
+    bindNamed("M-l", "downcase-word");
+    bindNamed("M-c", "capitalize-word");
+    bindNamed("C-SPC", "set-mark-command");
+    bindNamed("C-x C-x", "exchange-point-and-mark");
+    bindNamed("C-x h", "mark-whole-buffer");
+    bindNamed("C-g", "keyboard-quit");
+    bindNamed("C-w", "kill-region");
+    bindNamed("M-w", "kill-ring-save");
+    bindNamed("C-k", "kill-line");
+    bindNamed("M-d", "kill-word");
+    bindNamed("M-DEL", "backward-kill-word");
+    bindNamed("C-y", "yank");
+    bindNamed("M-y", "yank-pop");
+    bindNamed("C-/", "undo");
+    bindNamed("C-x u", "undo");
+    bindNamed("C-u", "universal-argument");
+    for i := 0 to 9 do
+        k[0] := Keys.Meta + '0' + i;
+        bind(k, command("digit-argument"));
+    end;
+    bindNamed("M-x", "execute-extended-command");
+    bindNamed("C-x C-f", "find-file");
+    bindNamed("C-x C-s", "save-buffer");
+    bindNamed("C-x C-w", "write-file");
+    bindNamed("C-x s", "save-some-buffers");
+    bindNamed("C-x C-c", "save-buffers-kill-terminal");
+    bindNamed("M-g g", "goto-line");
+    bindNamed("M-g M-g", "goto-line");
+end;
+
+begin
+    Buf.init(ADR(answer), Heap.heap);
+    Buf.init(ADR(seen), Heap.heap);
+    defaults;
+end Commands.

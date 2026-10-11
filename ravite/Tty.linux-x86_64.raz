@@ -1,16 +1,29 @@
-(* Tty: what ravite needs of the terminal and the system on Linux for
-   x86-64, through system calls: raw mode and back, the size of the
-   screen, waiting for a key, and renaming a file. Other targets supply
-   their own Tty, with the same exports.
+(* Tty: what ravite needs of the system that Sys doesn't give yet, by
+   system calls on Linux for x86-64: the terminal, files and
+   directories, the environment. Its procedures are those the report
+   gives Sys (section 11, version 2026-10.2, under review), so that
+   ravite moves to Sys by changing a name. Other targets supply their
+   own Tty, with the same exports.
 
-   Depends on: Sys, to write; Rt, to restore the terminal at exit.
+   Depends on: Sys.
    Leaves out: signals. The size is asked for again each time ravite
    waits, so it needs no SIGWINCH. *)
 module Tty;
-import Sys, Rt;
+import Sys;
 link static;
 
 type
+    Info* = record
+        size*: I64;
+        dir*: BOOL;
+    end;
+
+    Dir* = record
+        fd, pos, len: I64;
+        buf: [8192]U8;   (* linux_dirent64 records, from getdents64 *)
+        name: [256]U8;
+    end;
+
     (* struct termios as the kernel's TCGETS fills it: 36 bytes *)
     Termios = record
         iflag, oflag, cflag, lflag: U32;
@@ -28,59 +41,7 @@ const
     VMIN = 6;
 
 var
-    saved: Termios;
-    isRaw: BOOL;
-
-(* The terminal as raw found it, back on its main screen. *)
-proc restore*;
-begin
-    if not isRaw then return; end;
-    isRaw := false;
-    Sys.write(Sys.stdout, "\x1b[0 q\x1b[?25h\x1b[?1049l");   (* the cursor as it was *)
-    SYSCALL(16, Sys.stdin, TCSETS, ADR(saved));
-end;
-
-(* Puts the terminal on standard input into raw mode and onto the
-   alternate screen, until restore or the end of the program; false if
-   standard input isn't a terminal. *)
-proc raw*: BOOL;
-var t: Termios;
-begin
-    if SYSCALL(16, Sys.stdin, TCGETS, ADR(saved)) # 0 then return false; end;
-    t := saved;
-    (* no break, parity marks, stripping, CR to NL or flow control *)
-    t.iflag := t.iflag and not U32(5EBH);
-    t.oflag := t.oflag and not U32(1);           (* OPOST *)
-    t.cflag := t.cflag and not U32(130H) or 30H;   (* 8 bits, no parity *)
-    (* no signals, lines, echo or extended input *)
-    t.lflag := t.lflag and not U32(804BH);
-    t.cc[VTIME] := 0;
-    t.cc[VMIN] := 1;
-    if SYSCALL(16, Sys.stdin, TCSETS, ADR(t)) # 0 then return false; end;
-    isRaw := true;
-    Rt.atExit(restore);
-    Sys.write(Sys.stdout, "\x1b[?1049h");
-    return true;
-end;
-
-(* The screen's columns and rows; 80 by 24 if the terminal doesn't say. *)
-proc size*: (I64, I64);
-var w: Winsize;
-begin
-    if (SYSCALL(16, Sys.stdout, TIOCGWINSZ, ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then
-        return 80, 24;
-    end;
-    return I64(w.cols), I64(w.rows);
-end;
-
-(* Whether standard input has something to read within ms
-   milliseconds; ms < 0 waits as long as it takes. *)
-proc wait*(ms: I64): BOOL;
-var p: Pollfd;
-begin
-    p := {fd: I32(Sys.stdin), events: 1};   (* POLLIN *)
-    return SYSCALL(7, ADR(p), 1, ms) > 0;
-end;
+    saved: Termios;   (* as rawMode found the terminal *)
 
 (* path, a C string in buf, or false if it doesn't fit. *)
 proc cstr(path: []U8; var buf: [4096]U8): BOOL;
@@ -92,13 +53,154 @@ begin
     return true;
 end;
 
-(* Renames the file at old to new, replacing what is there: 0, or
-   minus an errno. *)
+(* Renames old to new, replacing what new names: 0, or minus an errno. *)
 proc rename*(old, new: []U8): I64;
 var a, b: [4096]U8;
 begin
     if not cstr(old, a) or not cstr(new, b) then return -36; end;   (* ENAMETOOLONG *)
     return SYSCALL(82, ADR(a), ADR(b));
+end;
+
+(* Removes the file at path. *)
+proc remove*(path: []U8): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    return SYSCALL(87, ADR(a));
+end;
+
+(* Makes a directory at path, readable by all, writable by its owner. *)
+proc makeDir*(path: []U8): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    return SYSCALL(83, ADR(a), 1EDH);
+end;
+
+(* The size of what path names and whether it is a directory, following
+   a symbolic link; and 0, or minus an errno. *)
+proc info*(path: []U8): (Info, I64);
+var a: [4096]U8; st: [18]I64; i: Info; r: I64;   (* struct stat: 144 bytes *)
+begin
+    if not cstr(path, a) then return i, -36; end;
+    r := SYSCALL(4, ADR(a), ADR(st));
+    if r # 0 then return i, r; end;
+    i.size := st[6];
+    i.dir := st[3] and 0F000H = 4000H;   (* st_mode: S_IFDIR *)
+    return i, 0;
+end;
+
+(* Opens the directory at path, for nextEntry. *)
+proc openDir*(d: ^Dir; path: []U8): I64;
+var a: [4096]U8;
+begin
+    d^.pos := 0;
+    d^.len := 0;
+    if not cstr(path, a) then return -36; end;
+    d^.fd := SYSCALL(2, ADR(a), 10000H);   (* O_RDONLY, O_DIRECTORY *)
+    if d^.fd < 0 then return d^.fd; end;
+    return 0;
+end;
+
+(* The next name in the directory, good until the next call, but . and
+   ..; false at the end. *)
+proc nextEntry*(d: ^Dir): ([]U8, BOOL);
+var n, reclen: I64;
+begin
+    while true do
+        if d^.pos >= d^.len then
+            d^.len := SYSCALL(217, d^.fd, ADR(d^.buf), LEN(d^.buf));   (* getdents64 *)
+            d^.pos := 0;
+            if d^.len <= 0 then return "", false; end;
+        end;
+        (* d_ino, d_off: 8 bytes each; d_reclen: 2; d_type: 1; d_name *)
+        reclen := I64(d^.buf[d^.pos + 16]) + I64(d^.buf[d^.pos + 17]) * 256;
+        n := 0;
+        while (n < 255) and (d^.buf[d^.pos + 19 + n] # 0) do
+            d^.name[n] := d^.buf[d^.pos + 19 + n];
+            INC(n);
+        end;
+        INC(d^.pos, reclen);
+        if (d^.name[0..n] # ".") and (d^.name[0..n] # "..") then return d^.name[0..n], true; end;
+    end;
+    return "", false;
+end;
+
+proc closeDir*(d: ^Dir);
+begin
+    SYSCALL(3, d^.fd);
+end;
+
+(* The working directory in buf: its length, or minus an errno. *)
+proc workDir*(var buf: [4096]U8): I64;
+var r: I64;
+begin
+    r := SYSCALL(79, ADR(buf), LEN(buf));
+    if r < 0 then return r; end;
+    return r - 1;   (* without its zero *)
+end;
+
+(* Puts the terminal on fd into raw mode: no echo, no lines, no signals,
+   no flow control, no CR to NL, no NL to CR NL; false if fd isn't a
+   terminal. *)
+proc rawMode*(fd: I64): BOOL;
+var t: Termios;
+begin
+    if SYSCALL(16, fd, TCGETS, ADR(saved)) # 0 then return false; end;
+    t := saved;
+    t.iflag := t.iflag and not U32(5EBH);
+    t.oflag := t.oflag and not U32(1);             (* OPOST *)
+    t.cflag := t.cflag and not U32(130H) or 30H;   (* 8 bits, no parity *)
+    t.lflag := t.lflag and not U32(804BH);         (* ISIG ICANON ECHO ECHONL IEXTEN *)
+    t.cc[VTIME] := 0;
+    t.cc[VMIN] := 1;
+    return SYSCALL(16, fd, TCSETS, ADR(t)) = 0;
+end;
+
+(* The terminal on fd as rawMode found it. *)
+proc restoreMode*(fd: I64);
+begin
+    SYSCALL(16, fd, TCSETS, ADR(saved));
+end;
+
+(* The columns and rows of the terminal on fd; 80 by 24 if it doesn't
+   say. *)
+proc termSize*(fd: I64): (I64, I64);
+var w: Winsize;
+begin
+    if (SYSCALL(16, fd, TIOCGWINSZ, ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then
+        return 80, 24;
+    end;
+    return I64(w.cols), I64(w.rows);
+end;
+
+(* Whether fd has something to read within ms milliseconds; ms < 0
+   waits as long as it takes. *)
+proc ready*(fd, ms: I64): BOOL;
+var p: Pollfd;
+begin
+    p := {fd: I32(fd), events: 1};   (* POLLIN *)
+    return SYSCALL(7, ADR(p), 1, ms) > 0;
+end;
+
+(* The value of the environment variable name; "" if it isn't set. *)
+proc env*(name: []U8): []U8;
+var e: ^^U8; s: ^U8; i, n, m: I64;
+begin
+    e := ARGV() + (ARGC() + 1);   (* the environment follows the arguments *)
+    i := 0;
+    while e[i] # nil do
+        s := e[i];
+        n := 0;
+        while (n < LEN(name)) and (s[n] = name[n]) do INC(n); end;
+        if (n = LEN(name)) and (s[n] = '=') then
+            m := n + 1;
+            while s[m] # 0 do INC(m); end;
+            return s[n + 1..m];
+        end;
+        INC(i);
+    end;
+    return "";
 end;
 
 end Tty.
