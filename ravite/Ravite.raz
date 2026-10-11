@@ -295,6 +295,7 @@ begin
         INC(i);
     end;
     if first # nil then Core.show(first); end;
+    Commands.loadInit;
     if script then
         Buf.reset(ADR(b));
         repeat

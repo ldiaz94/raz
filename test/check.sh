@@ -180,12 +180,14 @@ done
 # ravite's sessions: test/ravite/X.keys typed on a copy of X.txt, if
 # there is one, and X.args, if there is one, must leave the screen and
 # the buffer as X.expect says. Home is where they run, so that paths
-# show as ~, with a fresh copy of test/ravite/tree in it.
+# show as ~, with a fresh copy of test/ravite/tree in it, and X.init
+# as its .ravite.
 if $raz -I tools -o $out/ravite ravite/Ravite.raz 2>$out/ravite.cerr; then
     rm -rf $out/rv; mkdir -p $out/rv
     for f in test/ravite/*.keys; do
         name=$(basename $f .keys)
-        rm -rf $out/rv/tree; cp -r test/ravite/tree $out/rv/
+        rm -rf $out/rv/tree $out/rv/.ravite; cp -r test/ravite/tree $out/rv/
+        [ -f test/ravite/$name.init ] && cp test/ravite/$name.init $out/rv/.ravite
         set --
         if [ -f test/ravite/$name.txt ]; then cp test/ravite/$name.txt $out/rv/; set -- $name.txt; fi
         [ -f test/ravite/$name.args ] && set -- $(cat test/ravite/$name.args)

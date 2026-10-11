@@ -1,7 +1,17 @@
 (* Commands: every command by its name, the keymap that binds keys to
    them, and running a key: reading the rest of its sequence, the count
    C-u or M-digits give, and the boundaries of undo. Here too are the
-   commands that read the minibuffer: M-x, files, goto-line, quitting.
+   commands that read the minibuffer: M-x, files, goto-line, quitting;
+   and the settings: ~/.ravite, read at the start, holds lines of
+
+       bind KEYS COMMAND      bind C-c f find-file
+       unbind KEYS            unbind C-z
+       set VARIABLE VALUE     set indent 2
+
+   and # starts a comment. The variables are indent and tab-width, in
+   columns, and colour and ido, on or off. M-x global-set-key,
+   set-variable and load-init-file do the same while ravite runs; C-h
+   k says what a key does, and C-h b lists them all.
 
    A binding is a sequence of up to four keys and a command, for every
    buffer, or for one kind: Dired's and the list of buffers' bindings
@@ -13,7 +23,7 @@
    Depends on: Core, Edit, Mini, Keys.
    Leaves out: keymaps of their own for other kinds of buffer. *)
 module Commands;
-import Sys, Rt, Buf, Fmt, Heap, Str, Text, Keys, Core, Edit, Mini, Search, Dired;
+import Sys, Rt, Buf, Fmt, Heap, Str, Files, Text, Keys, Core, Edit, Mini, Search, Dired;
 
 const
     MaxCommands = 160;
@@ -196,6 +206,16 @@ begin
     return bindings[i].keys[0..bindings[i].n], bindings[i].command;
 end;
 
+(* Whether seq is one of the keys that start sequences whatever is
+   bound: C-c, which is left to the user, C-x, C-h and M-g. *)
+proc prefix(seq: []I64): BOOL;
+var k: I64;
+begin
+    if LEN(seq) # 1 then return false; end;
+    k := seq[0];
+    return (k = Keys.ctrl('c')) or (k = Keys.ctrl('x')) or (k = Keys.ctrl('h')) or (k = Keys.Meta + 'g');
+end;
+
 (* Whether k types a character. *)
 proc typed*(k: I64): BOOL;
 begin
@@ -220,6 +240,7 @@ begin
         INC(n);
         c, longer := lookup(seq[0..n]);
         if c >= 0 then break; end;
+        longer := longer or prefix(seq[0..n]);
         if not longer or (n = 4) then
             if (n = 1) and typed(k) then
                 c := command("self-insert-command");
@@ -516,6 +537,214 @@ begin
     Core.b^.point, moved := Core.lines(0, n - 1);
 end;
 
+(* Settings *)
+
+(* Reads the keys of a sequence, the first k, as far as the keymaps
+   go: a prefix, then the rest; into parsed. *)
+proc readKeys(k: I64): []I64;
+var c: I64; longer: BOOL;
+begin
+    numParsed := 0;
+    while true do
+        addParsed(k);
+        c, longer := lookup(parsed[0..numParsed]);
+        if (c >= 0) or not (longer or prefix(parsed[0..numParsed])) or (numParsed = 4) then break; end;
+        k := Core.nextKey();
+    end;
+    return parsed[0..numParsed];
+end;
+
+(* The keys of seq, written out into seen. *)
+proc describe(seq: []I64);
+var i: I64;
+begin
+    Buf.reset(ADR(seen));
+    for i := 0 to LEN(seq) - 1 do
+        if i > 0 then Buf.add(ADR(seen), ' '); end;
+        Keys.name(ADR(seen), seq[i]);
+    end;
+end;
+
+(* C-h k: what a key runs. *)
+proc describeKey*(n: I64);
+var seq: []I64; c: I64; longer: BOOL;
+begin
+    Core.message("Describe the following key: ");
+    seq := readKeys(Core.nextKey());
+    c, longer := lookup(seq);
+    describe(seq);
+    Buf.reset(ADR(Core.echo));
+    if c >= 0 then
+        Fmt.write(ADR(Core.echo), "{} runs the command {}", [Fmt.str(Buf.bytes(ADR(seen))), Fmt.str(commands[c].name)]);
+    elsif (LEN(seq) = 1) and typed(seq[0]) then
+        Fmt.write(ADR(Core.echo), "{} runs the command self-insert-command", [Fmt.str(Buf.bytes(ADR(seen)))]);
+    else
+        Fmt.write(ADR(Core.echo), "{} is undefined", [Fmt.str(Buf.bytes(ADR(seen)))]);
+    end;
+end;
+
+(* C-h b: every binding, in a buffer *Help*. *)
+proc describeBindings*(n: I64);
+var x: ^Core.Buffer; i, k, start: I64; line: Buf.Buf;
+begin
+    x := Core.find("*Help*");
+    if x = nil then x := Core.newBuffer("*Help*", Core.Help); end;
+    Core.show(x);
+    x^.readOnly := true;
+    Core.delete(0, Core.size());
+    Buf.init(ADR(line), Heap.heap);
+    defer Buf.done(ADR(line));
+    Buf.str(ADR(line), "Key             Binding\n");
+    for k := -1 to Core.Help do
+        for i := 0 to numBindings - 1 do
+            if (bindings[i].kind = k) and (bindings[i].command >= 0) then
+                describe(bindings[i].keys[0..bindings[i].n]);
+                start := line.len;
+                Buf.str(ADR(line), Buf.bytes(ADR(seen)));
+                repeat Buf.add(ADR(line), ' '); until line.len - start >= 16;
+                Buf.str(ADR(line), commands[bindings[i].command].name);
+                if k = Core.Directory then Buf.str(ADR(line), "   (in dired)"); end;
+                if k = Core.List then Buf.str(ADR(line), "   (in the list of buffers)"); end;
+                Buf.add(ADR(line), '\n');
+            end;
+        end;
+    end;
+    Core.insert(0, Buf.bytes(ADR(line)));
+    Text.written(ADR(x^.t));
+    x^.point := 0;
+end;
+
+proc variableNames(i: I64): ([]U8, BOOL);
+begin
+    if i = 0 then return "indent", true;
+    elsif i = 1 then return "tab-width", true;
+    elsif i = 2 then return "colour", true;
+    elsif i = 3 then return "ido", true;
+    end;
+    return "", false;
+end;
+
+(* Sets the variable name to value; false if either is wrong. *)
+proc setVariable(name, value: []U8): BOOL;
+var i, v: I64; on: BOOL;
+begin
+    v := 0;
+    for i := 0 to LEN(value) - 1 do
+        if (value[i] < '0') or (value[i] > '9') then v := -1; break; end;
+        v := v * 10 + I64(value[i] - '0');
+    end;
+    if LEN(value) = 0 then v := -1; end;
+    on := (value = "on") or (value = "t") or (value = "yes");
+    if not on and (value # "off") and (value # "nil") and (value # "no") then
+        if (name = "colour") or (name = "ido") then return false; end;
+    end;
+    if (name = "indent") and (v > 0) and (v <= 16) then Core.indent := v;
+    elsif (name = "tab-width") and (v > 0) and (v <= 16) then Core.tabWidth := v;
+    elsif name = "colour" then Core.colour := on;
+    elsif name = "ido" then Core.ido := on;
+    else return false;
+    end;
+    return true;
+end;
+
+(* Takes one line of settings: an error, or nil. *)
+proc setting(line: []U8): []U8;
+var i, j, k: I64; w, rest: []U8;
+begin
+    i := 0;
+    while (i < LEN(line)) and ((line[i] = ' ') or (line[i] = '\t')) do INC(i); end;
+    line := line[i..LEN(line)];
+    i := 0;
+    while (i < LEN(line)) and (line[i] # '#') do INC(i); end;
+    line := line[0..i];
+    while (LEN(line) > 0) and ((line[LEN(line) - 1] = ' ') or (line[LEN(line) - 1] = '\t') or (line[LEN(line) - 1] = '\r')) do
+        line := line[0..LEN(line) - 1];
+    end;
+    if LEN(line) = 0 then return ""; end;
+    j := 0;
+    while (j < LEN(line)) and (line[j] # ' ') do INC(j); end;
+    w := line[0..j];
+    rest := "";
+    if j < LEN(line) then rest := line[j + 1..LEN(line)]; end;
+    k := LEN(rest);
+    while (k > 0) and (rest[k - 1] # ' ') do DEC(k); end;
+    if w = "bind" then
+        if (k = 0) or not bindNamed(rest[0..k - 1], rest[k..LEN(rest)]) then return "bad bind"; end;
+    elsif w = "unbind" then
+        if not bindNamed(rest, "nil") then return "bad unbind"; end;
+    elsif w = "set" then
+        if (k = 0) or not setVariable(rest[0..k - 1], rest[k..LEN(rest)]) then return "bad set"; end;
+    else
+        return "unknown setting";
+    end;
+    return "";
+end;
+
+(* Reads ~/.ravite, if it is there; says what in it is wrong. *)
+proc loadInit*;
+var b: Buf.Buf; s, why: []U8; i, j, line: I64;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    defer Buf.done(ADR(b));
+    Buf.reset(ADR(seen));
+    Buf.str(ADR(seen), Buf.bytes(ADR(Core.home)));
+    Buf.str(ADR(seen), "/.ravite");
+    if not Files.read(Buf.bytes(ADR(seen)), ADR(b)) then return; end;
+    s := Buf.bytes(ADR(b));
+    i := 0;
+    line := 1;
+    while i < LEN(s) do
+        j := i;
+        while (j < LEN(s)) and (s[j] # '\n') do INC(j); end;
+        why := setting(s[i..j]);
+        if (LEN(why) > 0) and (Core.echo.len = 0) then
+            Fmt.write(ADR(Core.echo), "~/.ravite:{}: {}", [Fmt.int(line), Fmt.str(why)]);
+        end;
+        i := j + 1;
+        INC(line);
+    end;
+end;
+
+proc loadInitFile*(n: I64);
+begin
+    loadInit;
+    if Core.echo.len = 0 then Core.message("Loaded ~/.ravite"); end;
+end;
+
+(* M-x global-set-key: a key, then the command to bind it to. *)
+proc globalSetKey*(n: I64);
+var seq: []I64; keys: [4]I64; i, m, c: I64;
+begin
+    Core.message("Set key globally: ");
+    seq := readKeys(Core.nextKey());
+    m := LEN(seq);
+    for i := 0 to m - 1 do keys[i] := seq[i]; end;
+    describe(keys[0..m]);
+    Buf.reset(ADR(Core.echo));
+    Buf.reset(ADR(Core.tmp));
+    Fmt.write(ADR(Core.tmp), "Set key {} to command: ", [Fmt.str(Buf.bytes(ADR(seen)))]);
+    Buf.reset(ADR(seen));
+    Buf.str(ADR(seen), Buf.bytes(ADR(Core.tmp)));
+    if not ask(Buf.bytes(ADR(seen)), "", commandNames, false) then return; end;
+    c := command(Buf.bytes(ADR(answer)));
+    if c < 0 then Core.message("[No match]"); return; end;
+    bind(keys[0..m], c);
+end;
+
+(* M-x set-variable: a variable, then its value. *)
+proc setVariableCommand*(n: I64);
+var name: Buf.Buf;
+begin
+    if not ask("Set variable: ", "", variableNames, false) then return; end;
+    Buf.init(ADR(name), Heap.heap);
+    defer Buf.done(ADR(name));
+    Buf.str(ADR(name), Buf.bytes(ADR(answer)));
+    Buf.reset(ADR(seen));
+    Fmt.write(ADR(seen), "Set {} to value: ", [Fmt.str(Buf.bytes(ADR(name)))]);
+    if not Mini.read(Buf.bytes(ADR(seen)), "", ADR(answer)) then return; end;
+    if not setVariable(Buf.bytes(ADR(name)), Buf.bytes(ADR(answer))) then Core.message("Invalid value"); end;
+end;
+
 (* The commands, and emacs's keys for them. *)
 proc defaults;
 var i: I64; k: [1]I64;
@@ -584,6 +813,11 @@ begin
     def("Buffer-menu-execute", Dired.bufferMenuExecute);
     def("revert-buffer", Dired.revertBuffer);
     def("quit-window", Dired.quitWindow);
+    def("describe-key", describeKey);
+    def("describe-bindings", describeBindings);
+    def("global-set-key", globalSetKey);
+    def("set-variable", setVariableCommand);
+    def("load-init-file", loadInitFile);
     def("dired", Dired.dired);
     def("dired-find-file", Dired.diredFindFile);
     def("dired-up-directory", Dired.diredUpDirectory);
@@ -675,6 +909,9 @@ begin
     bindKind(Core.List, "p", "previous-line");
     bindKind(Core.List, "SPC", "next-line");
     bindNamed("C-x d", "dired");
+    bindNamed("C-h k", "describe-key");
+    bindNamed("C-h b", "describe-bindings");
+    bindKind(Core.Help, "q", "quit-window");
     bindKind(Core.Directory, "RET", "dired-find-file");
     bindKind(Core.Directory, "f", "dired-find-file");
     bindKind(Core.Directory, "^", "dired-up-directory");

@@ -19,6 +19,7 @@ const
     Directory* = 1;   (* a directory, by Dired *)
     List* = 2;        (* the list of buffers *)
     Mini* = 3;        (* the minibuffer *)
+    Help* = 4;        (* what C-h b lists *)
 
 type
     Buffer* = record

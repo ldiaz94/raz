@@ -393,7 +393,7 @@ Steps 34 on (emacs's keys):
       `*scratch*`, C-x b, C-x k, C-x C-b, C-x s, C-x C-c.
 - [x] 37. `Search`: C-s, C-r, M-%.
 - [x] 38. `Dired`.
-- [ ] 39. Settings: `~/.ravite`, M-x global-set-key and set-variable,
+- [x] 39. Settings: `~/.ravite`, M-x global-set-key and set-variable,
       C-h k, C-h b.
 - [ ] 40. `doc/ravite.md` again, `README.md`, `CLAUDE.md`.
 - [ ] 41. Once the owner approves step 34: `Sys` gains it, on Linux
