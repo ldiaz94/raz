@@ -921,7 +921,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; what the compiler's checks call when they fail |
-| `Sys` | system calls: `openRead`, `create`, `read`, `write`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `makeDir`, `info`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; and `env` and `workDir`. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openRead`, `create`, `read`, `write`, `seek`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; and sockets. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -929,11 +929,13 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
 | `Heap` | a general allocator, `Heap.heap`, safe to call from several threads; freeing a block twice, or one it never gave out, stops the program |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
-| `Str` | operations on `[]U8` strings |
+| `Str` | operations on `[]U8` strings: comparing, hashing, finding, UTF-8, reading a number |
 | `Buf` | a growable byte buffer |
-| `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.int(m)])`, or into a `Buf` with `Fmt.write` |
+| `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)])`, or into a `Buf` with `Fmt.write` |
 | `List` | a generic singly linked list, `List(T)` |
 | `Map` | a generic hash map, `Map(K, V; hash, eq)` |
+| `Sort` | sorting a slice in place, `Sort(T; less)` |
+| `Math` | `sqrt`, `floor`, `sin`, `cos`, `atan2`, `exp`, `ln` and `pi`, for `F64` |
 
 ```
 module Mem;
@@ -952,18 +954,50 @@ Linux, through the C library elsewhere. A result that can fail is a
 number, minus an errno, as on Linux; 0 is success.
 
 ```
+const
+    stdin* = 0; stdout* = 1; stderr* = 2;
+    (* signals, by their numbers on Linux; each target has its own *)
+    sigHup* = 1; sigInt* = 2; sigQuit* = 3; sigKill* = 9; sigPipe* = 13;
+    sigTerm* = 15; sigChld* = 17; sigCont* = 18; sigStop* = 19;
+    sigTstp* = 20; sigTtin* = 21; sigTtou* = 22; sigWinch* = 28;
+
 type
+    Access* = (reading, writing, creating, exclusive, truncating, appending);
+    Accesses* = set of Access;
     Info* = record
         size*: I64;      (* in bytes *)
+        mtime*: I64;     (* when its contents last changed, in nanoseconds since 1970 *)
+        mode*: I64;      (* its permission bits, as chmod takes them: 1EDH is rwxr-xr-x *)
         dir*: BOOL;      (* a directory *)
         file*: BOOL;     (* a regular file: not a directory, device, pipe or socket *)
         symlink*: BOOL;  (* the path itself is a symbolic link *)
     end;
     Dir* = record ... end;   (* an open directory; its fields are the target's *)
+    Program* = record
+        path*: []U8;
+        args*: [][]U8;      (* the first is its name *)
+        env*: [][]U8;       (* NAME=value, each added to this program's environment *)
+        onlyEnv*: BOOL;     (* env is its whole environment *)
+        dir*: []U8;         (* its working directory; "" for this program's *)
+        fds*: [3]I64;       (* its standard input, output and error; 0 for this program's own *)
+        group*: I64;        (* the process group it joins: 0 for this program's, -1 a new one it leads *)
+        foreground*: BOOL;  (* its group takes the terminal on standard input *)
+        tty*: I64;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
+    end;
+    Status* = (running, exited, killed, stopped);
+
+proc open*(path: []U8; how: Accesses): I64;   (* its fd *)
+proc openRead*(path: []U8): I64;         (* open(path, {reading}) *)
+proc create*(path: []U8): I64;           (* open(path, {writing, creating, truncating}) *)
+proc seek*(fd, pos: I64; fromEnd: BOOL): I64;  (* the new position *)
 
 proc rename*(old, new: []U8): I64;       (* replaces what new names *)
 proc remove*(path: []U8): I64;           (* a file, not a directory *)
+proc removeDir*(path: []U8): I64;        (* an empty directory *)
 proc makeDir*(path: []U8): I64;          (* readable by all, writable by its owner *)
+proc chmod*(path: []U8; mode: I64): I64;
+proc symlink*(target, path: []U8): I64;  (* path made a link to target *)
+proc readLink*(path: []U8): ([]U8, I64); (* what the link names, good until the next call *)
 proc info*(path: []U8): (Info, I64);     (* following a symbolic link *)
 
 proc openDir*(d: ^Dir; path: []U8): I64;
@@ -974,19 +1008,39 @@ proc rawMode*(fd: I64): BOOL;      (* the terminal on fd: no echo, no lines, no 
 proc restoreMode*(fd: I64);        (* as rawMode found it *)
 proc termSize*(fd: I64): (I64, I64);   (* columns and rows; 80 and 24 if unknown *)
 proc ready*(fd: I64; ms: I64): BOOL;   (* something to read within ms, or ever if ms < 0 *)
+proc readyOf*(fds: []I64; ms: I64): I64;   (* the first of fds with something to read within ms, or -1 *)
 
 proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
 proc workDir*: ([]U8, I64);        (* the working directory, good until the next call *)
+proc setWorkDir*(path: []U8): I64;
 
-proc connect*(path: []U8): I64;    (* a stream socket, connected to the Unix socket at path: its fd *)
-proc send*(fd: I64; s: []U8): I64; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
-proc readyOf*(fds: []I64; ms: I64): I64;   (* the first of fds with something to read within ms, or -1 *)
-
+proc pipe*: (I64, I64);            (* the fd to read and the fd to write; or minus an errno and -1 *)
 proc openPty*: I64;                (* a pseudo-terminal: the fd of its controlling side *)
 proc setTermSize*(fd, cols, rows: I64): I64;   (* the size its programs are told of *)
-proc spawn*(path: []U8; args, env: [][]U8; tty: I64): I64;   (* a program started: its process id *)
-proc wait*(pid: I64; block: BOOL): (I64, I64);   (* its status, and 1 if it has ended, 0 if not *)
+proc spawn*(p: Program): I64;      (* a program started: its process id *)
+proc wait*(pid: I64; block: BOOL): (I64, Status, I64);   (* which program, how, and its code *)
 proc kill*(pid, signal: I64): I64;
+proc pid*: I64;                    (* this program's process id *)
+proc setGroup*(pid, group: I64): I64;    (* pid 0 is this program; group 0 a new one pid leads *)
+proc foreground*(fd, group: I64): I64;   (* the terminal on fd gives its keys to group *)
+proc foregroundOf*(fd: I64): I64;  (* the group the terminal on fd gives its keys to *)
+
+proc catch*(sigs: []I64): I64;     (* sigs caught: an fd to wait on *)
+proc caught*(fd: I64): I64;        (* the next signal caught, or 0 if none is waiting *)
+proc ignore*(sig: I64; yes: BOOL): I64;  (* sig ignored; or, if not yes, back to what it does at first *)
+
+proc clock*: I64;                  (* nanoseconds, on a clock that only goes forward *)
+proc now*: I64;                    (* nanoseconds since 1970-01-01, UTC *)
+proc sleep*(ms: I64);
+proc random*(b: []U8);             (* b filled with random bytes *)
+
+proc connect*(path: []U8): I64;    (* a stream socket, connected to the Unix socket at path: its fd *)
+proc connectTcp*(addr: []U8; port: I64): I64;   (* addr an IPv4 or IPv6 address, as numbers *)
+proc connectUdp*(addr: []U8; port: I64): I64;
+proc listen*(path: []U8): I64;     (* a Unix socket made at path, taking connections *)
+proc listenTcp*(addr: []U8; port: I64): I64;
+proc accept*(fd: I64): I64;        (* the next connection, waiting for one *)
+proc send*(fd: I64; s: []U8): I64; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
 ```
 
 `info` follows a symbolic link: `size`, `dir` and `file` are those of
@@ -1015,18 +1069,150 @@ since a read of it won't wait. It looks at the first 64 of `fds`, and
 `connect` takes a path of at most 107 bytes, as `struct sockaddr_un`
 holds; a longer one is -36 (ENAMETOOLONG).
 
-`openPty` makes a pseudo-terminal, a terminal that a program, a
-terminal emulator, plays the screen and the keyboard of: what it
-writes to the fd is typed, and what the programs on the terminal
-write it reads. `spawn` starts the program at `path`, with `args` as
-its arguments, the first being its name, and the environment of this
-one with each `NAME=value` of `env` added or put in place of the old
-value. If `tty` is a pseudo-terminal's fd, the program runs on that
-terminal: it is its controlling terminal, and the program's standard
-input, output and error. The program gets no other open file. `wait`
-says whether the program has ended, waiting for it if `block`, and how:
-its exit status, or 128 and the number of the signal that stopped it.
-`kill` sends it a signal, 15 to end it.
+**Files.** `open` gives a file for what `how` asks: `reading`,
+`writing` or both; `creating` it if it is missing, readable by all and
+writable by its owner; with `exclusive`, failing with -17 (EEXIST) if
+it is there, as a program does that makes a lock or a file of its
+own; `truncating` it to nothing; `appending`, each write going to its
+end, however other programs write it too. `seek` moves to `pos` from
+the start of the file, or from its end if `fromEnd`, where a negative
+`pos` reads back from the end. `Info.mtime` is what a program checks
+to see whether a file changed under it; `Info.mode` holds the nine
+bits of `rwxrwxrwx`, and `chmod` sets them, 1EDH (755) for a program,
+1A4H (644) for data.
+
+**Programs.** `openPty` makes a pseudo-terminal, a terminal that a
+program, a terminal emulator, plays the screen and the keyboard of:
+what it writes to the fd is typed, and what the programs on the
+terminal write it reads.
+
+`spawn` starts the program at `p.path`, with `p.args` as its
+arguments, the first being its name. Its environment is this
+program's with each `NAME=value` of `p.env` added or put in place of
+the old value, or, if `p.onlyEnv`, `p.env` alone. It starts in
+`p.dir`. Its standard input, output and error are `p.fds`; a 0 gives
+it this program's own, so `{path: "/bin/ls", args: ["ls"]}` runs
+`ls` as a shell runs it, with every other field zero. It gets no
+other open file, every signal does what it does at first, and none
+is blocked. If `p.tty` is a pseudo-terminal's fd, the program starts a
+session on that terminal: it is its controlling terminal, and its
+standard input, output and error, and `p.fds` and `p.group` are not
+used.
+
+`p.group` puts the program in a process group, the programs that a
+shell's job is made of: -1 makes it the first of a new group, whose
+number is its process id, and the other programs of the job join that
+number. The terminal gives its keys, and the signals of Ctrl-C and
+Ctrl-Z, to one group, the one in its foreground: `p.foreground` puts
+the program's group there before it starts, and `foreground` puts any
+group there, as a shell does to take the terminal back. `setGroup`
+moves a program to a group, as the shell does for each program it
+starts, for whichever of the two runs first; a shell runs in a group
+of its own, `setGroup(0, 0)`.
+
+`wait` waits for the program `pid` to change, or for any of this
+program's if `pid` is -1, and says which one, and how: `exited`, with
+its exit status; `killed`, with the number of the signal that ended
+it; or `stopped`, by Ctrl-Z or a signal, with the signal's number.
+Without `block` it doesn't wait, and is 0 and `running` if no program
+changed. A program that has nothing to wait for is -10 (ECHILD).
+`kill` sends a program a signal, `sigTerm` to end it; to a group, if
+`pid` is minus its number.
+
+**Signals.** `catch` takes the signals `sigs` away from what they
+would do, ending the program most of them, and gives an fd that is
+ready to read when one comes, so that a program waits for signals with
+`ready` and `readyOf` as it waits for keys or a server. `caught` gives
+each signal that came, in turn. A later `catch` adds to the signals
+caught and gives the same fd. Catching `sigKill` or `sigStop`, or the
+signals `Rt` reports, SIGSEGV and SIGFPE, is -22 (EINVAL). `ignore`
+makes a signal do nothing, as a shell ignores `sigTtou` so that it can
+take its terminal back, and `ignore(sig, false)` gives it back what it
+does at first. A program that `spawn` starts begins with neither.
+
+**Time.** `clock` is for measuring how long something takes: it never
+goes back, and says nothing of the date. `now` is the date and time,
+which a person or the network may set back. `sleep` waits `ms`
+milliseconds.
+
+**Sockets.** `connect` is for talking to a server on the same machine,
+an X server at `/tmp/.X11-unix/X0` say; `connectTcp` for one across
+the network, given its address as numbers, `"127.0.0.1"` or `"::1"`:
+turning a name into an address is a library's work over these.
+`connectUdp` gives a socket of datagrams, each `send` one message to
+that address and each `read` one message from it, as a program asks a
+name server. What a socket receives comes by `read`, what it sends goes
+by `send`, and `close` ends it. `send` is `write` for a socket, except
+when the other end has closed it: `write` would stop the program with
+the signal SIGPIPE, where `send` returns -32 (EPIPE), so that a
+program learns its server has gone and can end as it wants.
+`listen` and `listenTcp` are the other side: a server's socket, on
+`path`, which must not be there yet, or on `port` at `addr`,
+`"0.0.0.0"` or `"::"` for every address the machine has; `accept`
+gives each connection that comes, as a socket of its own.
+
+`readyOf` waits on several file descriptors at once, as a program does
+that listens to a server and a terminal both; a descriptor at its end,
+or failed, counts as ready, since a read of it won't wait. It looks at
+the first 64 of `fds`, and `connect` and `listen` take a path of at
+most 107 bytes, as `struct sockaddr_un` holds; a longer one is -36
+(ENAMETOOLONG).
+
+**Str, Map, Sort, Math and Fmt** gain these:
+
+```
+module Str;
+proc encode*(c: I64): ([4]U8, I64);   (* c in UTF-8: its bytes, and how many *)
+proc decode*(s: []U8): (I64, I64);    (* the character s starts with, and its length in bytes *)
+proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
+
+module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
+proc remove*(m: ^Map; k: K): BOOL;            (* false if k wasn't there *)
+proc next*(m: ^Map; i: I64): (I64, K, V);     (* the entry after i *)
+
+module Sort(T; less: proc(a, b: T): BOOL);
+proc sort*(s: []T);
+
+module Math;
+const pi* = 3.141592653589793;
+proc sqrt*(x: F64): F64;
+proc floor*(x: F64): F64;
+proc sin*(x: F64): F64;
+proc cos*(x: F64): F64;
+proc atan2*(y, x: F64): F64;
+proc exp*(x: F64): F64;
+proc ln*(x: F64): F64;
+
+module Fmt;
+type Arg* = variant ... real(r: F64; places: I64); end;
+```
+
+`Str` reads and writes UTF-8. `encode` writes a character, of at most
+10FFFFH, in one to four bytes; a number that isn't one becomes FFFDH,
+the character that stands for a wrong one. `decode` reads the first
+character of `s`, and gives FFFDH and 1 for a byte that doesn't start
+one rightly, and 0 and 0 for an empty `s`. `toInt` reads a decimal
+number, with a `-` or `+` before it if any, and nothing else.
+
+`Map.next` walks a map: from 0, it gives the next entry and the number
+to pass for the one after it, and -1 when there are no more. A walk
+sees each entry once if the map doesn't change during it:
+
+```
+i, k, v := Names.next(ADR(names), 0);
+while i >= 0 do
+    Fmt.print("{} is {}\n", [Fmt.str(k), Fmt.int(v)]);
+    i, k, v := Names.next(ADR(names), i);
+end;
+```
+
+`Sort.sort` puts `s` in the order `less` gives, in place, without
+memory of its own, in time `n log n` at most; two elements equal by
+`less` may change places. `Math`'s procedures are as C's `math.h`
+has them, to within the last bit or so. `Fmt.real(x, places)` writes
+`x` with `places` digits after the point, at most 9, rounded to the
+nearest; from 1e15 on, with an exponent, as `1.50e17`; and `nan`,
+`inf` and `-inf` as themselves.
 
 **Out and C's stdio.** `Out` keeps a buffer of 4 KB. It writes it out
 when it is full, at each line feed when standard output is a terminal,
@@ -1085,3 +1271,11 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   (section 11).
 - **2026-10.8.** `Sys.workDir` returns the directory, with no `var`
   parameter (section 11).
+- **2026-10.9**, under way: what follows is in the report, but not
+  yet all in the library. `Sys` gains opening a file for any use, seeking,
+  links, permissions and times; pipes, process groups and the
+  terminal's foreground; signals caught on a file descriptor; clocks,
+  sleeping and random bytes; and network sockets. `Sys.spawn` takes a
+  `Program`, and `Sys.wait` says which program changed and how. `Str`
+  gains UTF-8 and reading a number, `Map` removing and walking, `Fmt`
+  reals; `Sort` and `Math` are new (section 11).
