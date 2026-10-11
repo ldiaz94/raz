@@ -1,0 +1,186 @@
+(* Dired: buffers that list things, each line one of them, with keys of
+   their own. The list of buffers, as emacs's C-x C-b makes it:
+
+        CRM Buffer                Size  Mode         File
+        .   notes.raz              120  Raz          ~/notes.raz
+
+   C is . for the buffer shown before, R % for one that can't be
+   changed, M * for one with unsaved changes. RET or f shows the
+   buffer on the line, d marks it to be killed and u unmarks it, x
+   kills those marked, g lists them again, q leaves.
+
+   Depends on: Core, Mini, Text.
+   Leaves out: sorting, and the other marks of emacs's buffer menu. *)
+module Dired;
+import Buf, Fmt, Heap, Text, Tty, Core, Mini;
+
+const Max = 256;
+
+var
+    listed: [Max]^Core.Buffer;   (* the buffer on each line, from the second *)
+    numListed: I64;
+    line: Buf.Buf;
+
+(* Pads line with spaces to n bytes. *)
+proc pad(n: I64);
+begin
+    while line.len < n do Buf.add(ADR(line), ' '); end;
+end;
+
+(* The list of buffers, made again in the buffer x; before is the one
+   shown before it. *)
+proc fill(x, before: ^Core.Buffer);
+var y, saved: ^Core.Buffer; m: []U8;
+begin
+    saved := Core.b;
+    Core.b := x;
+    Core.delete(0, Core.size());
+    Core.insert(0, " CRM Buffer                Size  Mode         File\n");
+    numListed := 0;
+    y := Core.buffers;
+    while (y # nil) and (numListed < Max) do
+        listed[numListed] := y;
+        INC(numListed);
+        Buf.reset(ADR(line));
+        Buf.add(ADR(line), ' ');
+        if y = before then Buf.add(ADR(line), '.'); else Buf.add(ADR(line), ' '); end;
+        if y^.readOnly then Buf.add(ADR(line), '%'); else Buf.add(ADR(line), ' '); end;
+        if (y^.kind = Core.File) and (y^.path.len > 0) and Text.changed(ADR(y^.t)) then
+            Buf.add(ADR(line), '*');
+        else
+            Buf.add(ADR(line), ' ');
+        end;
+        Buf.add(ADR(line), ' ');
+        Buf.str(ADR(line), Buf.bytes(ADR(y^.name)));
+        Buf.reset(ADR(Core.tmp));
+        Fmt.write(ADR(Core.tmp), "{}", [Fmt.int(Text.len(ADR(y^.t)))]);
+        pad(27 - Core.tmp.len);
+        Buf.add(ADR(line), ' ');
+        Buf.str(ADR(line), Buf.bytes(ADR(Core.tmp)));
+        pad(31);
+        m := "Fundamental";
+        if y^.kind = Core.Directory then m := "Dired";
+        elsif y^.kind = Core.List then m := "Buffer Menu";
+        elsif y^.coloured then m := "Raz";
+        end;
+        Buf.str(ADR(line), m);
+        pad(44);
+        Core.abbreviate(Buf.bytes(ADR(y^.path)), ADR(line));
+        while (line.len > 0) and (Buf.bytes(ADR(line))[line.len - 1] = ' ') do DEC(line.len); end;
+        Buf.add(ADR(line), '\n');
+        Core.insert(Core.size(), Buf.bytes(ADR(line)));
+        y := y^.next;
+    end;
+    Core.delete(Core.size() - 1, 1);
+    Text.written(ADR(x^.t));
+    Core.b := saved;
+end;
+
+(* The point on line l of the list, on the name. *)
+proc toLine(l: I64);
+var moved: I64;
+begin
+    Core.b^.point, moved := Core.lines(0, l);
+    if Core.lineEnd(Core.b^.point) - Core.b^.point >= 5 then INC(Core.b^.point, 5); end;
+end;
+
+(* C-x C-b: the list of buffers, shown, the point on its first. *)
+proc listBuffers*(n: I64);
+var x, before: ^Core.Buffer;
+begin
+    before := Core.shown;
+    x := Core.find("*Buffer List*");
+    if x = nil then x := Core.newBuffer("*Buffer List*", Core.List); end;
+    x^.readOnly := true;
+    Core.show(x);
+    fill(x, before);
+    toLine(1);
+end;
+
+(* The buffer on the point's line, or nil. *)
+proc here: ^Core.Buffer;
+var i: I64;
+begin
+    i := Text.lineOf(ADR(Core.b^.t), Core.b^.point) - 1;
+    if (i < 0) or (i >= numListed) then return nil; end;
+    return listed[i];
+end;
+
+(* The mark of the point's line set to c, and the point to the next. *)
+proc mark(c: []U8);
+var s: I64;
+begin
+    if here() = nil then return; end;
+    s := Core.lineStart(Core.b^.point);
+    Core.delete(s, 1);
+    Core.insert(s, c);
+    if Core.lineEnd(s) < Core.size() then Core.b^.point := Core.lineEnd(s) + 6; end;
+    Text.written(ADR(Core.b^.t));
+end;
+
+proc bufferMenuThisWindow*(n: I64);
+var x: ^Core.Buffer;
+begin
+    x := here();
+    if x # nil then Core.show(x); end;
+end;
+
+proc bufferMenuDelete*(n: I64);
+begin
+    mark("D");
+end;
+
+proc bufferMenuUnmark*(n: I64);
+begin
+    mark(" ");
+end;
+
+(* Kills x, asking first if it has unsaved changes; false if not. *)
+proc killBuffer*(x: ^Core.Buffer): BOOL;
+var saved: ^Core.Buffer;
+begin
+    if (x^.kind = Core.File) and (x^.path.len > 0) and Text.changed(ADR(x^.t)) then
+        Buf.reset(ADR(line));
+        Fmt.write(ADR(line), "Buffer {} modified; kill anyway? (yes or no) ", [Fmt.str(Buf.bytes(ADR(x^.name)))]);
+        if not Mini.yesOrNo(Buf.bytes(ADR(line))) then return false; end;
+    end;
+    saved := Core.b;
+    Core.kill(x);
+    if saved # x then Core.b := saved; end;
+    return true;
+end;
+
+(* x: kills the buffers marked D, and lists them again. *)
+proc bufferMenuExecute*(n: I64);
+var i: I64; me: ^Core.Buffer; l: I64;
+begin
+    me := Core.b;
+    l := Text.lineOf(ADR(me^.t), me^.point);
+    for i := 0 to numListed - 1 do
+        if (listed[i] # me) and (Text.at(ADR(me^.t), Text.lineAt(ADR(me^.t), i + 1)) = 'D') then
+            killBuffer(listed[i]);
+        end;
+    end;
+    Core.show(me);
+    fill(me, nil);
+    toLine(l);
+end;
+
+(* g: lists again what the buffer lists. *)
+proc revertBuffer*(n: I64);
+var l: I64;
+begin
+    l := Text.lineOf(ADR(Core.b^.t), Core.b^.point);
+    if Core.b^.kind = Core.List then fill(Core.b, nil); end;
+    toLine(l);
+end;
+
+(* q: the buffer shown before this one. *)
+proc quitWindow*(n: I64);
+begin
+    Core.show(Core.other(Core.b));
+end;
+
+begin
+    Buf.init(ADR(line), Heap.heap);
+end Dired.

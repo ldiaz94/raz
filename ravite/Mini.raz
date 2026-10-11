@@ -3,10 +3,32 @@
    given runs through the keymaps, on it, but RET, which takes what it
    holds, and C-g, which gives up. Only one is open at a time.
 
-   Depends on: Core, Text, Keys.
-   Leaves out: history. *)
+   choose reads with ido, as emacs's ido-mode does: the choices that
+   hold what is typed show after it, {first | second | ...}; C-s and
+   C-r turn them round; TAB completes as far as they agree; RET takes
+   the first, or what is typed if none; C-j takes what is typed. For
+   files, what is typed is a directory and part of a name in it: / goes
+   into the directory, DEL after a / out of it, ~/ and // start again
+   at home and at the root, and C-d opens the directory itself.
+
+   Depends on: Core, Text, Keys; Tty to read directories.
+   Leaves out: history, and ido's flex matching and its other keys. *)
 module Mini;
-import Buf, Heap, Text, Keys, Core;
+import Buf, Heap, Str, Text, Keys, Tty, Core;
+
+const
+    Max = 512;     (* choices shown *)
+
+type
+    Names* = proc(i: I64): ([]U8, BOOL);   (* the i-th name to choose from; false past the last *)
+
+var
+    pool: Buf.Buf;                 (* the choices' names *)
+    starts, ends: [Max]I64;        (* each in pool *)
+    order: [Max]I64;               (* the choices, in the order shown *)
+    numChoices: I64;
+    entry: Tty.Dir;
+    typed, dir: Buf.Buf;
 
 (* Opens the minibuffer after prompt, holding initial, the point at its
    end. *)
@@ -81,7 +103,7 @@ begin
 end;
 
 (* Asks prompt for one key, until it is one of keys, or C-g: that key. *)
-proc choose*(prompt: []U8; keys: []U8): I64;
+proc key*(prompt: []U8; keys: []U8): I64;
 var k, i: I64;
 begin
     if not open(prompt, "") then return Keys.ctrl('g'); end;
@@ -97,4 +119,208 @@ begin
     return k;
 end;
 
+(* What the minibuffer holds. *)
+proc text: []U8;
+begin
+    return Text.slice(ADR(Core.mini^.t), 0, Text.len(ADR(Core.mini^.t)));
+end;
+
+(* The minibuffer made to hold s, the point at its end. *)
+proc put(s: []U8);
+begin
+    Buf.reset(ADR(typed));
+    Buf.str(ADR(typed), s);
+    Text.done(ADR(Core.mini^.t));
+    Text.load(ADR(Core.mini^.t), Buf.bytes(ADR(typed)));
+    Core.mini^.point := typed.len;
+end;
+
+proc choice(i: I64): []U8;
+begin
+    return Buf.bytes(ADR(pool))[starts[order[i]]..ends[order[i]]];
+end;
+
+(* Adds name to the choices if it holds part, in order of name if
+   sorted, else as it comes. *)
+proc offer(name, part: []U8; sorted: BOOL);
+var i, j: I64;
+begin
+    if (numChoices = Max) or (Str.find(name, part) < 0) then return; end;
+    starts[numChoices] := pool.len;
+    Buf.str(ADR(pool), name);
+    ends[numChoices] := pool.len;
+    i := numChoices;
+    if sorted then
+        while (i > 0) and (Str.cmp(choice(i - 1), name) > 0) do DEC(i); end;
+        for j := numChoices to i + 1 by -1 do order[j] := order[j - 1]; end;
+    end;
+    order[i] := numChoices;
+    INC(numChoices);
+end;
+
+(* Where the part of the name starts in what is typed for a file: after
+   its last /. *)
+proc nameStart(s: []U8): I64;
+var i: I64;
+begin
+    i := LEN(s);
+    while (i > 0) and (s[i - 1] # '/') do DEC(i); end;
+    return i;
+end;
+
+(* The choices for what is typed: the names that hold it, or for files,
+   the entries of its directory that hold the part after the /,
+   directories ending in /. *)
+proc gather(names: Names; files: BOOL);
+var i, k: I64; s, name: []U8; ok: BOOL; info: Tty.Info; err: I64;
+begin
+    numChoices := 0;
+    Buf.reset(ADR(pool));
+    s := text();
+    if not files then
+        i := 0;
+        name, ok := names(0);
+        while ok do
+            offer(name, s, false);
+            INC(i);
+            name, ok := names(i);
+        end;
+        return;
+    end;
+    k := nameStart(s);
+    Core.absolute(s[0..k], ADR(dir));
+    if Tty.openDir(ADR(entry), Buf.bytes(ADR(dir))) # 0 then return; end;
+    name, ok := Tty.nextEntry(ADR(entry));
+    while ok do
+        Buf.reset(ADR(Core.tmp));
+        Buf.str(ADR(Core.tmp), Buf.bytes(ADR(dir)));
+        if dir.len > 1 then Buf.add(ADR(Core.tmp), '/'); end;
+        Buf.str(ADR(Core.tmp), name);
+        info, err := Tty.info(Buf.bytes(ADR(Core.tmp)));
+        Buf.reset(ADR(Core.tmp));
+        Buf.str(ADR(Core.tmp), name);
+        if (err = 0) and info.dir then Buf.add(ADR(Core.tmp), '/'); end;
+        offer(Buf.bytes(ADR(Core.tmp)), s[k..LEN(s)], true);
+        name, ok := Tty.nextEntry(ADR(entry));
+    end;
+    Tty.closeDir(ADR(entry));
+end;
+
+(* The choices, after what is typed, as ido shows them. *)
+proc show(part: []U8);
+var i: I64;
+begin
+    Buf.reset(ADR(Core.after));
+    if numChoices = 0 then
+        Buf.str(ADR(Core.after), " [No match]");
+    elsif (numChoices = 1) and (choice(0) = part) then
+        Buf.str(ADR(Core.after), " [Matched]");
+    elsif numChoices = 1 then
+        Buf.str(ADR(Core.after), " [");
+        Buf.str(ADR(Core.after), choice(0));
+        Buf.str(ADR(Core.after), "]");
+    else
+        Buf.str(ADR(Core.after), " {");
+        for i := 0 to numChoices - 1 do
+            if i > 0 then Buf.str(ADR(Core.after), " | "); end;
+            if Core.after.len > Core.cols then Buf.str(ADR(Core.after), "..."); break; end;
+            Buf.str(ADR(Core.after), choice(i));
+        end;
+        Buf.str(ADR(Core.after), "}");
+    end;
+end;
+
+(* The choices turned round by one: the first last, or back. *)
+proc turn(back: BOOL);
+var i, k: I64;
+begin
+    if numChoices < 2 then return; end;
+    if back then
+        k := order[numChoices - 1];
+        for i := numChoices - 1 to 1 by -1 do order[i] := order[i - 1]; end;
+        order[0] := k;
+    else
+        k := order[0];
+        for i := 0 to numChoices - 2 do order[i] := order[i + 1]; end;
+        order[numChoices - 1] := k;
+    end;
+end;
+
+(* How far the choices agree from their start. *)
+proc common: I64;
+var n, i: I64;
+begin
+    n := LEN(choice(0));
+    for i := 1 to numChoices - 1 do
+        while (n > 0) and ((LEN(choice(i)) < n) or (choice(i)[0..n] # choice(0)[0..n])) do DEC(n); end;
+    end;
+    return n;
+end;
+
+(* Reads a choice with ido, after prompt, starting with initial: one of
+   names, or a file if files; into out. RET on a directory goes into
+   it; C-d takes the directory typed. False if C-g gave up. *)
+proc choose*(prompt, initial: []U8; names: Names; files: BOOL; out: ^Buf.Buf): BOOL;
+var k, n: I64; saved: ^Core.Buffer; s: []U8;
+begin
+    if not open(prompt, initial) then return false; end;
+    saved := Core.b;
+    Core.b := Core.mini;
+    gather(names, files);
+    while true do
+        s := text();
+        n := 0;
+        if files then n := nameStart(s); end;
+        show(s[n..LEN(s)]);
+        Core.b := Core.mini;
+        k := Core.nextKey();
+        Buf.reset(ADR(Core.echo));
+        if k = Keys.ctrl('g') then
+            close(nil);
+            Core.b := saved;
+            Core.message("Quit");
+            return false;
+        elsif (k = Keys.ctrl('s')) or (k = Keys.ctrl('r')) then
+            turn(k = Keys.ctrl('r'));
+        elsif (k = Keys.Tab) and (numChoices > 0) then
+            put(s[0..n]);
+            Buf.str(ADR(typed), choice(0)[0..common()]);
+            put(Buf.bytes(ADR(typed)));
+            gather(names, files);
+        elsif (k = Keys.Enter) and (numChoices > 0) and files and (choice(0)[LEN(choice(0)) - 1] = '/') then
+            Buf.reset(ADR(typed));
+            Buf.str(ADR(typed), s[0..n]);
+            Buf.str(ADR(typed), choice(0));
+            put(Buf.bytes(ADR(typed)));
+            gather(names, files);
+        elsif (k = Keys.Enter) or (k = 10) or (k = Keys.ctrl('d')) and files then
+            if (k = Keys.Enter) and (numChoices > 0) then
+                Buf.reset(ADR(typed));
+                Buf.str(ADR(typed), s[0..n]);
+                Buf.str(ADR(typed), choice(0));
+                put(Buf.bytes(ADR(typed)));
+            elsif k = Keys.ctrl('d') then
+                put(s[0..n]);
+            end;
+            close(out);
+            Core.b := saved;
+            return true;
+        elsif (k = Keys.Backspace) and files and (n = LEN(s)) and (n > 1) then
+            (* out of the directory *)
+            n := nameStart(s[0..n - 1]);
+            put(s[0..n]);
+            gather(names, files);
+        else
+            Core.runKey(k);
+            Core.b := Core.mini;
+            gather(names, files);
+        end;
+    end;
+    return false;
+end;
+
+begin
+    Buf.init(ADR(pool), Heap.heap);
+    Buf.init(ADR(typed), Heap.heap);
+    Buf.init(ADR(dir), Heap.heap);
 end Mini.

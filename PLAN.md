@@ -389,7 +389,7 @@ Steps 34 on (emacs's keys):
       C-u, `Mini` without ido, and `Ravite`: editing with emacs's keys,
       finding, saving and writing files, M-x by full name, quitting; the
       session tests, checked against emacs.
-- [ ] 36. ido in the minibuffer, for M-x, files and buffers; buffers,
+- [x] 36. ido in the minibuffer, for M-x, files and buffers; buffers,
       `*scratch*`, C-x b, C-x k, C-x C-b, C-x s, C-x C-c.
 - [ ] 37. `Search`: C-s, C-r, M-%.
 - [ ] 38. `Dired`.

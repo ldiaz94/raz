@@ -1,0 +1,1 @@
+C-x b *scratch* RET hello C-x b RET world C-x b scr RET again C-x b RET more C-x b scr RET C-x k RET last
