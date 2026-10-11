@@ -1,4 +1,0 @@
-test/err/AtDeref.raz:5:10: error: expected a pointer, found I64
-    5 |     y := x^;
-      |          ^
-raz: 1 error

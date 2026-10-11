@@ -1,4 +1,0 @@
-test/err/GenErrorString.raz:2:18: error: an error is made from a string
-    2 | const E: ERROR = 1;
-      |                  ^
-raz: 1 error

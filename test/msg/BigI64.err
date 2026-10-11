@@ -1,0 +1,4 @@
+conform/err/BigI64.raz:5:10: error: can't use U64 as I64
+    5 |     i := 0FFFFFFFFFFFFFFFFH;
+      |          ^^^^^^^^^^^^^^^^^^
+raz: 1 error

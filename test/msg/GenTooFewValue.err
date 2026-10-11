@@ -1,0 +1,4 @@
+conform/err/GenTooFewValue.raz:6:8: error: too few arguments
+    6 |     f();
+      |        ^
+raz: 1 error

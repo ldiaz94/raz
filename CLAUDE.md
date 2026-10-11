@@ -24,11 +24,18 @@ and the vim and emacs support headless where they are installed
 (`apt-get install -y vim emacs-nox`): each example must indent back
 exactly as written.
 
-`make check` must pass before every commit. Tests: `test/run/X.raz`
-with `X.expect` (stdout), optional `X.status`, `X.stderr` and
-`X.args`; modules they import in `test/run/mods`. `test/err/X.raz`
-must fail to compile with the text in `X.err` (all of standard error),
-given the compiler options in `X.args` if there is one.
+`make check` must pass before every commit. The conformance suite,
+`conform/`, holds what any implementation must do (`conform/check.sh`
+says how it is laid out); `test/` holds what is this compiler's alone:
+its messages, its limits, its target. A test goes in `conform/` when
+the report alone fixes its output and status, and keeps to the
+language and the library a target can't leave out. Tests:
+`test/run/X.raz` with `X.expect` (stdout), optional `X.status`,
+`X.stderr` and `X.args`; modules they import in `test/run/mods`.
+`test/err/X.raz` must fail to compile with the text in `X.err` (all of
+standard error), given the compiler options in `X.args` if there is
+one. `test/msg` holds this compiler's `X.stderr` and `X.err` for the
+programs in `conform/`.
 `test/pretty/X.raz` must format to `X.expect`. Examples in `examples/`
 work the same way, compiled with `-Werror`, as are the tools and the
 library's tests: they must have no warnings.

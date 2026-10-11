@@ -1,0 +1,4 @@
+conform/err/AtDivZero.raz:5:10: error: division by zero
+    5 |     x := 7 div (3 - 3);
+      |          ^^^^^^^^^^^^^
+raz: 1 error

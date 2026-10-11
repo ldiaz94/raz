@@ -1,0 +1,4 @@
+conform/err/DeferReturn.raz:4:11: error: return can't leave a deferred statement
+    4 |     defer return 1;
+      |           ^^^^^^
+raz: 1 error

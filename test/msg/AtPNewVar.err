@@ -1,0 +1,4 @@
+conform/err/AtPNewVar.raz:5:9: error: NEW needs a pointer variable
+    5 |     NEW(a, a);
+      |         ^
+raz: 1 error

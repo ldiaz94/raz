@@ -1,0 +1,10 @@
+conform/err/mods/DeclHidden.raz:3:7: warning: constant hidden is never used
+    3 | const hidden = 2;
+      |       ^^^^^^
+conform/err/DeclNotExported.raz:6:21: error: hidden isn't exported by DeclHidden
+    6 |     n := DeclHidden.hidden;
+      |                     ^^^^^^
+conform/err/mods/DeclHidden.raz:3:7: note: hidden is declared here, without a *
+    3 | const hidden = 2;
+      |       ^^^^^^
+raz: 1 error, 1 warning

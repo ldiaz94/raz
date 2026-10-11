@@ -1,0 +1,4 @@
+conform/err/mods/StmtParam.raz:1:18: error: expected a name, found a number
+    1 | module StmtParam(5);
+      |                  ^
+raz: 1 error

@@ -1,4 +1,0 @@
-test/err/GenNotVariable.raz:5:7: error: a var parameter needs a variable
-    5 |     P(1);
-      |       ^
-raz: 1 error

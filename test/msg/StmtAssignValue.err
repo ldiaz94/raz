@@ -1,0 +1,4 @@
+conform/err/StmtAssignValue.raz:7:8: error: can't assign to a value
+    7 |     r, f().a := f(), f().a;
+      |        ^^^^^
+raz: 1 error

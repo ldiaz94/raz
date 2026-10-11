@@ -1,0 +1,4 @@
+conform/err/ScanStringOpen.raz:5:10: error: string not closed
+    5 |     s := "abc;
+      |          ^^^^^
+raz: 1 error

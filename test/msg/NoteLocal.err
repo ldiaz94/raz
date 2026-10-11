@@ -1,0 +1,5 @@
+conform/err/NoteLocal.raz:6:5: error: cuont isn't declared
+    6 |     cuont := 1;
+      |     ^^^^^
+help: did you mean count?
+raz: 1 error

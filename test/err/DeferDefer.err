@@ -1,4 +1,0 @@
-test/err/DeferDefer.raz:4:11: error: defer can't be deferred
-    4 |     defer defer f;
-      |           ^^^^^
-raz: 1 error

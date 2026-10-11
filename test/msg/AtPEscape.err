@@ -1,0 +1,4 @@
+conform/err/AtPEscape.raz:5:12: error: unknown escape \q
+    5 |     s := "a\q";
+      |            ^^
+raz: 1 error

@@ -1,0 +1,5 @@
+conform/err/SlipAssign.raz:5:5: error: x isn't a statement
+    5 |     x = 1;
+      |     ^
+help: assignment is written :=
+raz: 1 error

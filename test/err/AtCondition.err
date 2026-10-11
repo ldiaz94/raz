@@ -1,4 +1,0 @@
-test/err/AtCondition.raz:5:8: error: a condition is a BOOL, found I64
-    5 |     if x + 1 then end;
-      |        ^^^^^
-raz: 1 error

@@ -1,0 +1,4 @@
+conform/err/StmtDot.raz:2:12: error: expected ".", found ";"
+    2 | end StmtDot;
+      |            ^
+raz: 1 error

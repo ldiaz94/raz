@@ -1,4 +1,0 @@
-test/err/GenRealOp.raz:6:10: error: "mod" doesn't apply to F64
-    6 |     x := x mod 2.0;
-      |          ^^^^^^^^^
-raz: 1 error

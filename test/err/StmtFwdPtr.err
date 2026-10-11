@@ -1,4 +1,0 @@
-test/err/StmtFwdPtr.raz:2:11: error: Missing isn't declared
-    2 | type P = ^Missing;
-      |           ^^^^^^^
-raz: 1 error

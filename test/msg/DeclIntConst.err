@@ -1,0 +1,4 @@
+conform/err/DeclIntConst.raz:3:9: error: expected an integer constant, found 1.5
+    3 | var a: [1.5]I64;
+      |         ^^^
+raz: 1 error

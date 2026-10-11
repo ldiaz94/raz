@@ -1,0 +1,5 @@
+conform/err/NoteBuiltin.raz:5:10: error: len isn't declared
+    5 |     x := len(y);
+      |          ^^^
+help: did you mean LEN?
+raz: 1 error

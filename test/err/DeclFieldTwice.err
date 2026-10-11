@@ -1,4 +1,0 @@
-test/err/DeclFieldTwice.raz:6:17: error: field a is given twice
-    6 |     r := {a: 1, a: 2};
-      |                 ^
-raz: 1 error

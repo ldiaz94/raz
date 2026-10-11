@@ -1,7 +1,0 @@
-test/err/ScanTwice.raz:4:5: error: x is declared twice
-    4 |     x: I64;
-      |     ^
-test/err/ScanTwice.raz:3:5: note: the first one is here
-    3 | var x: I64;
-      |     ^
-raz: 1 error

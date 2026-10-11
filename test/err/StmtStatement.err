@@ -1,4 +1,0 @@
-test/err/StmtStatement.raz:5:13: error: expected a statement, found ")"
-    5 |     a := 1; )
-      |             ^
-raz: 1 error

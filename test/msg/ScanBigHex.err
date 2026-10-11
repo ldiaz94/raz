@@ -1,0 +1,4 @@
+conform/err/ScanBigHex.raz:5:10: error: 10000000000000000 is too big for U64
+    5 |     x := 10000000000000000H;
+      |          ^^^^^^^^^^^^^^^^^
+raz: 1 error

@@ -1,0 +1,4 @@
+conform/err/ScanUBad.raz:5:11: error: expected hex digits and "}" after \u{
+    5 |     s := "\u{41";
+      |           ^^^^^
+raz: 1 error

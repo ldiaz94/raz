@@ -1,0 +1,4 @@
+conform/err/AtMatch.raz:5:11: error: match needs a variant or an enumeration, found I64
+    5 |     match x + 1 do end;
+      |           ^^^^^
+raz: 1 error

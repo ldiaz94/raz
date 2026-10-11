@@ -1,5 +1,0 @@
-test/err/NotInt.raz:5:14: error: "not" needs a BOOL, found I64
-    5 |     x := not x;
-      |              ^
-help: the bits of an integer flip with ~
-raz: 1 error

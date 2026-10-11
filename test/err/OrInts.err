@@ -1,5 +1,0 @@
-test/err/OrInts.raz:5:10: error: "or" needs BOOLs, found I64
-    5 |     x := x or 1;
-      |          ^
-help: the bits of integers take |
-raz: 1 error

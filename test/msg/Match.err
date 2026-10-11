@@ -1,0 +1,4 @@
+conform/err/Match.raz:9:5: error: no arm for c
+    9 |     end;
+      |     ^^^
+raz: 1 error

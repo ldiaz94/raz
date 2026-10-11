@@ -1,0 +1,4 @@
+conform/err/AtVarArg.raz:7:9: error: a var parameter needs a variable
+    7 |     Inc(1 + 2);
+      |         ^^^^^
+raz: 1 error

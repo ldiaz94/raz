@@ -1,0 +1,7 @@
+conform/err/GenTooFew.raz:6:14: error: too few arguments: Id takes 1
+    6 |     x := Id();
+      |              ^
+conform/err/GenTooFew.raz:2:6: note: the signature is here
+    2 | proc Id(a: I64): I64; begin return a; end;
+      |      ^^
+raz: 1 error

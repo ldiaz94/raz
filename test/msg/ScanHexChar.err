@@ -1,0 +1,4 @@
+conform/err/ScanHexChar.raz:5:11: error: \x is only for strings
+    5 |     c := '\x41';
+      |           ^^
+raz: 1 error

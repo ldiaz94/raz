@@ -1,5 +1,0 @@
-test/err/XorBools.raz:5:10: error: "xor" needs integers, found BOOL
-    5 |     b := b xor true;
-      |          ^
-help: BOOLs that differ are #
-raz: 1 error

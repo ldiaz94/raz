@@ -1,4 +1,0 @@
-test/err/AtCall.raz:5:10: error: expected a procedure, found I64
-    5 |     x := x(1);
-      |          ^
-raz: 1 error

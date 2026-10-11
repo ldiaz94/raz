@@ -1,0 +1,4 @@
+conform/err/AtPInc.raz:5:9: error: INC needs an integer variable
+    5 |     INC(a);
+      |         ^
+raz: 1 error

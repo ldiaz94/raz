@@ -1,4 +1,0 @@
-test/err/PassOnTypes.raz:10:12: error: expected the results (BOOL, I64), found (I64, BOOL)
-   10 |     return two(n);
-      |            ^^^^^^
-raz: 1 error

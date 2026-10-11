@@ -1,4 +1,0 @@
-test/err/ScanCharOpen.raz:5:10: error: character not closed
-    5 |     c := 'ab';
-      |          ^^
-raz: 1 error

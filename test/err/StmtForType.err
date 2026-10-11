@@ -1,4 +1,0 @@
-test/err/StmtForType.raz:5:9: error: a for loop needs an integer or enumeration variable, found BOOL
-    5 |     for b := 1 to 2 do end;
-      |         ^
-raz: 1 error

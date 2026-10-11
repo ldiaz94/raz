@@ -1,0 +1,5 @@
+conform/err/ArrayEqRecord.raz:6:8: error: can't compare arrays of record with "="
+    6 |     if a = b then end;
+      |        ^^^^^
+help: write a loop
+raz: 1 error

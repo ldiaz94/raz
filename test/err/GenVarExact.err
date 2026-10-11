@@ -1,4 +1,0 @@
-test/err/GenVarExact.raz:6:7: error: a var parameter needs exactly I64, found I32
-    6 |     P(x);
-      |       ^
-raz: 1 error

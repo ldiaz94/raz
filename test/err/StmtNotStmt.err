@@ -1,4 +1,0 @@
-test/err/StmtNotStmt.raz:6:5: error: a value isn't a statement
-    6 |     r.a;
-      |     ^^^
-raz: 1 error

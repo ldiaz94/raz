@@ -1,4 +1,0 @@
-test/err/AtConstFit.raz:5:10: error: 3000000005 doesn't fit I32
-    5 |     x := 5 + 3000000000;
-      |          ^^^^^^^^^^^^^^
-raz: 1 error

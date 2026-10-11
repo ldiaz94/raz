@@ -1,0 +1,4 @@
+conform/err/DeclSetUnknown.raz:4:8: error: {} needs a known set type
+    4 |     if {} = {} then end;
+      |        ^^
+raz: 1 error

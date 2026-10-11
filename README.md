@@ -41,7 +41,8 @@ a million lines a second.
 | `tools/Doc.raz` | Prints what a module exports, with its comments |
 | `tools/Pretty.raz` | The formatter: fixes indentation and spacing |
 | `editor/` | Support for vim and emacs |
-| `test/` | Tests, and the scripts that run them |
+| `conform/` | The conformance suite: what every implementation must do |
+| `test/` | This compiler's own tests, and the scripts that run them |
 | `PLAN.md` | The plan: the milestone under way and its steps |
 
 ## Building
@@ -135,7 +136,7 @@ line read through one table), `List(T)`, `Map(K, V; hash, eq)` and
     $ ./raz -o Doc tools/Doc.raz && ./Doc lib/Str.raz
 
 Each library module's `main` is its test, which `make check` runs; the
-generic ones, which can't run alone, are tested in `test/run`.
+generic ones, which can't run alone, are tested in `conform/run`.
 
 ## Editors
 

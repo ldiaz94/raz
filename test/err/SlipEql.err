@@ -1,4 +1,0 @@
-test/err/SlipEql.raz:5:10: error: comparing is written =, not ==
-    5 |     if x == 1 then x := 2; end;
-      |          ^^
-raz: 1 error

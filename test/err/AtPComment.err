@@ -1,4 +1,0 @@
-test/err/AtPComment.raz:5:1: error: comment not closed
-    5 | (* never closed
-      | ^^
-raz: 1 error

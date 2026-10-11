@@ -1,4 +1,0 @@
-test/err/ScanMain.raz:2:6: error: main must be proc main* or proc main*: I64
-    2 | proc main*(_n: I64);
-      |      ^^^^
-raz: 1 error

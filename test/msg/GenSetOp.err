@@ -1,0 +1,4 @@
+conform/err/GenSetOp.raz:6:10: error: "<" doesn't apply to CS
+    6 |     b := a < a;
+      |          ^^^^^
+raz: 1 error

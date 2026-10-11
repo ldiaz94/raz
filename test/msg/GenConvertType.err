@@ -1,0 +1,4 @@
+conform/err/GenConvertType.raz:6:14: error: I64 is a type, not a value
+    6 |     x := I64(I64);
+      |              ^^^
+raz: 1 error

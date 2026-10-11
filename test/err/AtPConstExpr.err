@@ -1,4 +1,0 @@
-test/err/AtPConstExpr.raz:4:9: error: expected a constant
-    4 | var a: [n]I64;
-      |         ^
-raz: 1 error

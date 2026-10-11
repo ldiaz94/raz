@@ -1,0 +1,4 @@
+conform/err/NotGeneric.raz:2:8: error: Str isn't generic
+    2 | import S := Str(I64);
+      |        ^^^^^^^^^^^^^
+raz: 1 error

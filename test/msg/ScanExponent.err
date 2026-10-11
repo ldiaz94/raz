@@ -1,0 +1,4 @@
+conform/err/ScanExponent.raz:5:10: error: expected a digit in the exponent
+    5 |     x := 1.5E+;
+      |          ^^^^^
+raz: 1 error

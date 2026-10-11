@@ -1,0 +1,4 @@
+conform/err/GenTooManyValue.raz:6:10: error: too many arguments
+    6 |     f(1, 2);
+      |          ^
+raz: 1 error

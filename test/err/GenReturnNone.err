@@ -1,4 +1,0 @@
-test/err/GenReturnNone.raz:2:28: error: return needs a result of I64
-    2 | proc P(): I64; begin return; end;
-      |                            ^
-raz: 1 error

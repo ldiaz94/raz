@@ -1,4 +1,0 @@
-test/err/GenStringAs.raz:6:10: error: can't use a string as I64
-    6 |     x := "a";
-      |          ^^^
-raz: 1 error

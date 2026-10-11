@@ -1,0 +1,4 @@
+conform/err/AtNotValue.raz:5:10: error: I64 is a type, not a value
+    5 |     x := I64 + 1;
+      |          ^^^
+raz: 1 error

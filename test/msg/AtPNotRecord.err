@@ -1,0 +1,4 @@
+conform/err/AtPNotRecord.raz:5:10: error: expected a record, found I64
+    5 |     a := a.f;
+      |          ^
+raz: 1 error

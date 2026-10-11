@@ -1,0 +1,22 @@
+conform/err/Resync.raz:10:5: error: expected ";", found a
+   10 | end a;
+      |     ^
+conform/err/Resync.raz:14:31: error: expected ";", found "end"
+   14 |     while x > 0 do x := x - 1 end;
+      |                               ^^^
+conform/err/Resync.raz:15:10: error: expected an expression, found ")"
+   15 |     x := ) + 2;
+      |          ^
+conform/err/Resync.raz:16:11: error: match needs a variant or an enumeration, found I64
+   16 |     match x
+      |           ^
+conform/err/Resync.raz:23:13: error: expected an expression, found ";"
+   23 |     x := 1 +;
+      |             ^
+conform/err/Resync.raz:23:14: error: expected "end", found "proc"
+   23 |     x := 1 +;
+      |              ^
+conform/err/Resync.raz:27:10: error: can't use BOOL as I64
+   27 |     x := false;
+      |          ^^^^^
+raz: 7 errors

@@ -1,4 +1,0 @@
-test/err/StmtManyTypeArgs.raz:2:8: error: too many type arguments for List
-    2 | import L := List(I64, I64);
-      |        ^^^^^^^^^^^^^^^^^^^
-raz: 1 error

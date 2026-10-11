@@ -1,0 +1,4 @@
+conform/err/Assign.raz:5:10: error: can't use I32 as I64
+    5 |     a := b;
+      |          ^
+raz: 1 error

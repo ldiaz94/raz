@@ -1,4 +1,0 @@
-test/err/AtBinary.raz:5:10: error: I64 and BOOL are different types
-    5 |     x := (x + 2) * b;
-      |          ^^^^^^^^^^^
-raz: 1 error

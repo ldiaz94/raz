@@ -1,4 +1,0 @@
-test/err/StmtNeedProc.raz:2:33: error: Map needs a procedure for hash
-    2 | import Str, M := Map([]U8, I64, I64, Str.eq);
-      |                                 ^^^
-raz: 1 error

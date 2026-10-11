@@ -1,0 +1,4 @@
+conform/err/ScanHexDigits.raz:5:11: error: \x needs two hex digits
+    5 |     s := "\xZ1";
+      |           ^^^^
+raz: 1 error

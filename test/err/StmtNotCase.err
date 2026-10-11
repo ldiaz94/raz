@@ -1,4 +1,0 @@
-test/err/StmtNotCase.raz:11:7: error: square isn't a case of S
-   11 |     | square: s := dot;
-      |       ^^^^^^
-raz: 1 error

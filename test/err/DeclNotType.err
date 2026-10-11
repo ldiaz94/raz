@@ -1,4 +1,0 @@
-test/err/DeclNotType.raz:4:8: error: n isn't a type
-    4 | var a: n;
-      |        ^
-raz: 1 error

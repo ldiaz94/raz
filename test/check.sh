@@ -1,6 +1,8 @@
 #!/bin/sh
-# Compiles and runs every example and test, and compares what each
-# prints, and its exit status, with what is expected:
+# Runs the conformance suite, conform/check.sh, with this compiler's
+# messages for it in test/msg; then compiles and runs every example
+# and this compiler's own tests, and compares what each prints, and its
+# exit status, with what is expected:
 #   X.raz     the program
 #   X.expect  its standard output
 #   X.args    its arguments, one per line (optional)
@@ -21,6 +23,11 @@ mkdir -p $out
 ulimit -c 0   # the tests stopped by a signal leave no core
 pass=0
 fail=0
+
+conform/check.sh $raz test/msg > $out/conform.out
+grep -v '^[0-9]* passed' $out/conform.out
+set -- $(tail -1 $out/conform.out)
+pass=$1; fail=$3
 
 run() {   # run dir name
     dir=$1; name=$2
@@ -69,7 +76,7 @@ runs() {   # runs file status [arg]...
     if cmp -s $out/run.out ${f%.raz}.expect && [ $status = $want ]; then pass=$((pass + 1))
     else echo "FAIL raz run $f: status $status, not $want, or output differs"; fail=$((fail + 1)); fi
 }
-runs test/run/Args.raz 4 one 'two words' é
+runs conform/run/Args.raz 4 one 'two words' é
 runs test/libc/Through.raz 2
 for f in test/err/*.raz; do
     name=$(basename $f .raz)
@@ -163,7 +170,7 @@ fuzz() {   # fuzz file seed
     else pass=$((pass + 1)); fi
 }
 if ./raz -Werror -o $out/Mutate tools/Mutate.raz 2>$out/Mutate.cerr; then
-    for f in examples/*.raz test/run/*.raz lib/Opt.raz; do
+    for f in examples/*.raz conform/run/*.raz test/run/*.raz lib/Opt.raz; do
         $raz -I $(dirname $f)/mods -o $out/mutant $f 2>/dev/null || continue
         for seed in ${FUZZ_SEEDS:-1 2 3}; do fuzz $f $seed; done
     done

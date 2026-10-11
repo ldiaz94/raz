@@ -1,4 +1,0 @@
-test/err/mods/CycleB.raz:2:8: error: Cycle imports itself
-    2 | import Cycle;
-      |        ^^^^^
-raz: 1 error

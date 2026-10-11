@@ -66,7 +66,7 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 
 ## Proposed, v0.6.0: raz to be rebuilt by anyone
 
-Under way: steps 1 to 3 are agreed; step 4 is next. The freeze
+Under way: steps 1 to 3 are agreed; step 4 is for review. The freeze
 doesn't hold for this work, by the owner's word.
 
 **For:** a language a person alone can implement again, from the
@@ -108,7 +108,7 @@ measure a port); an optimiser; the wishes below.
       code close to what the parser asks of `gen` today, with types
       and places, so that a back end turns its stack into registers and
       an interpreter of it stays small.
-- [ ] 4. The tests split: a conformance suite any implementation
+- [x] 4. The tests split: a conformance suite any implementation
       passes, apart from this compiler's own messages.
 - [ ] 5. The system integer.
 - [ ] 6. Optional reals: a target says whether it has them.

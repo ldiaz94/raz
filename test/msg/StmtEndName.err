@@ -1,0 +1,4 @@
+conform/err/StmtEndName.raz:2:5: error: expected StmtEndName, found Other
+    2 | end Other.
+      |     ^^^^^
+raz: 1 error

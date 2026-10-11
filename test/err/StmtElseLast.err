@@ -1,4 +1,0 @@
-test/err/StmtElseLast.raz:12:7: error: else must be the last arm
-   12 |     | dot:
-      |       ^^^
-raz: 1 error

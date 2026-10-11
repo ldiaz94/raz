@@ -1,4 +1,0 @@
-test/err/ScanUBig.raz:5:11: error: a code point has at most 6 hex digits
-    5 |     s := "\u{1234567}";
-      |           ^^^^^^^^^^
-raz: 1 error

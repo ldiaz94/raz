@@ -1,7 +1,0 @@
-test/err/FirstUseLate.raz:2:18: error: Later isn't declared
-    2 | import L := List(Later);
-      |                  ^^^^^
-test/err/FirstUseLate.raz:4:8: note: the instance is made here, where it is first used
-    4 | var l: L.List;   (* made here, before Later is declared *)
-      |        ^
-raz: 1 error

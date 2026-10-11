@@ -1,0 +1,4 @@
+conform/err/GenConvertString.raz:6:14: error: can't convert a string
+    6 |     x := I64("a");
+      |              ^^^
+raz: 1 error

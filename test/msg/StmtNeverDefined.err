@@ -1,0 +1,4 @@
+conform/err/StmtNeverDefined.raz:3:21: error: f is declared forward but never defined
+    3 | end StmtNeverDefined.
+      |                     ^
+raz: 1 error

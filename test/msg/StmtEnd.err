@@ -1,0 +1,4 @@
+conform/err/StmtEnd.raz:5:12: error: expected "end", found ")"
+    5 |     a := 1;
+      |            ^
+raz: 1 error

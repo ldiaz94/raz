@@ -1,4 +1,0 @@
-test/err/GenReturnNothing.raz:2:22: error: this procedure returns nothing
-    2 | proc P; begin return 1; end;
-      |                      ^
-raz: 1 error

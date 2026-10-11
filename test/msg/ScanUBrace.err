@@ -1,0 +1,4 @@
+conform/err/ScanUBrace.raz:5:11: error: expected "{" after \u
+    5 |     s := "\u0041";
+      |           ^^
+raz: 1 error

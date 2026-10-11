@@ -1,0 +1,5 @@
+conform/err/ArrayEqReal.raz:6:8: error: can't compare arrays of reals with "="
+    6 |     if a = b then end;
+      |        ^^^^^
+help: -0.0 = 0.0 and a NaN equals nothing, though their bytes say otherwise: write a loop
+raz: 1 error

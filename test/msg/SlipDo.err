@@ -1,0 +1,5 @@
+conform/err/SlipDo.raz:5:17: error: expected "do", found "{"
+    5 |     while x < 3 { x := x + 1 }
+      |                 ^
+help: a block is written "do" ... end
+raz: 1 error

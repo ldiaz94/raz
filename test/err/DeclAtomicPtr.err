@@ -1,4 +1,0 @@
-test/err/DeclAtomicPtr.raz:5:15: error: expected a pointer, found I64
-    5 |     n := XADD(n, 1);
-      |               ^
-raz: 1 error

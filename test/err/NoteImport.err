@@ -1,5 +1,0 @@
-test/err/NoteImport.raz:5:5: error: Fmt isn't declared
-    5 |     Fmt.print(x);
-      |     ^^^
-help: Fmt is a module: import Fmt
-raz: 1 error

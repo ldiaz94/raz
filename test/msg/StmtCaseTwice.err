@@ -1,0 +1,4 @@
+conform/err/StmtCaseTwice.raz:12:7: error: dot has two arms
+   12 |     | dot:
+      |       ^^^
+raz: 1 error

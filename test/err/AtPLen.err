@@ -1,4 +1,0 @@
-test/err/AtPLen.raz:5:14: error: LEN needs an array or a slice, found I64
-    5 |     a := LEN(a);
-      |              ^
-raz: 1 error

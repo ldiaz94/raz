@@ -1,4 +1,0 @@
-test/err/StmtArgKind.raz:2:23: error: Page isn't a type or a procedure
-    2 | import Mem, L := List(Mem.Page);
-      |                       ^^^^^^^^
-raz: 1 error

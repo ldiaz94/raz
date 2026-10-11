@@ -1,4 +1,0 @@
-test/err/ScanRealHex.raz:5:10: error: a decimal number has only the digits 0 to 9
-    5 |     x := 1A.5;
-      |          ^^
-raz: 1 error

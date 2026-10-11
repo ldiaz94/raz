@@ -1,5 +1,0 @@
-test/err/Tuple.raz:6:10: error: two returns several results
-    6 |     a := two() + 1;
-      |          ^^^^^
-help: they go to variables: a, b := two(...)
-raz: 1 error

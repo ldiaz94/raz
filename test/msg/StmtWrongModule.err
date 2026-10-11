@@ -1,0 +1,4 @@
+conform/err/mods/StmtOther.raz:1:8: error: expected module StmtOther, found StmtWrong
+    1 | module StmtWrong;
+      |        ^^^^^^^^^
+raz: 1 error

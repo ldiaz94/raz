@@ -1,0 +1,4 @@
+conform/err/ScanRealBig.raz:5:10: error: 1.8E308 is out of the range of F64
+    5 |     x := 1.8E308;
+      |          ^^^^^^^
+raz: 1 error

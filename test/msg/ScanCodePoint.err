@@ -1,0 +1,4 @@
+conform/err/ScanCodePoint.raz:5:11: error: 110000 isn't a code point
+    5 |     s := "\u{110000}";
+      |           ^^^^^^^^^^
+raz: 1 error

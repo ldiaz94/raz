@@ -1,0 +1,4 @@
+conform/err/TwoTypes.raz:6:10: error: can't use List(I32).List as List(I64).List
+    6 |     a := b;
+      |          ^
+raz: 1 error

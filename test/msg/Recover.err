@@ -1,0 +1,31 @@
+conform/err/Recover.raz:6:27: error: Foo isn't declared
+    6 |     P = record a: I64; b: Foo; end;
+      |                           ^^^
+conform/err/Recover.raz:9:8: error: Bar isn't declared
+    9 | var g: Bar;
+      |        ^^^
+conform/err/Recover.raz:15:10: error: can't use I64 as BOOL
+   15 |     b := x;
+      |          ^
+conform/err/Recover.raz:16:10: error: y isn't declared
+   16 |     x := y + 1;
+      |          ^
+conform/err/Recover.raz:19:14: error: I64 and BOOL are different types
+   19 |         x := (x + 2) * b;
+      |              ^^^^^^^^^^^
+conform/err/Recover.raz:20:17: error: z isn't declared
+   20 |         Out.int(z);
+      |                 ^
+conform/err/Recover.raz:22:12: error: I64 and BOOL are different types
+   22 |     return x + true;
+      |            ^^^^^^^^
+conform/err/Recover.raz:28:7: error: Q has no field c
+   28 |     q.c := 1;
+      |       ^
+conform/err/Recover.raz:30:18: error: expected ";", found "return"
+   30 |     Out.str("hi")
+      |                  ^
+conform/err/Recover.raz:37:13: error: nope isn't declared
+   37 |     Out.int(nope(2));
+      |             ^^^^
+raz: 10 errors

@@ -1,4 +1,0 @@
-test/err/GenBoolOp.raz:6:10: error: "+" doesn't apply to BOOL
-    6 |     b := b + b;
-      |          ^^^^^
-raz: 1 error

@@ -1,0 +1,5 @@
+conform/err/Mixed.raz:6:10: error: F32 and F64 are different types
+    6 |     y := x + y;
+      |          ^^^^^
+help: convert one to the other's type, as in F32(y)
+raz: 1 error

@@ -1,4 +1,0 @@
-test/err/StmtImportName.raz:2:8: error: expected a module name, found a number
-    2 | import 5;
-      |        ^
-raz: 1 error

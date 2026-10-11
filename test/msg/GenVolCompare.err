@@ -1,0 +1,4 @@
+conform/err/GenVolCompare.raz:6:10: error: can't compare through a volatile pointer
+    6 |     b := p^ = "a";
+      |          ^^
+raz: 1 error

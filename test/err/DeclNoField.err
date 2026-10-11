@@ -1,4 +1,0 @@
-test/err/DeclNoField.raz:6:7: error: R has no field b
-    6 |     r.b := 1;
-      |       ^
-raz: 1 error

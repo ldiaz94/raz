@@ -1,0 +1,7 @@
+conform/err/StmtForwardTwice.raz:3:9: error: f is declared forward twice
+    3 | proc f; forward;
+      |         ^^^^^^^
+conform/err/StmtForwardTwice.raz:4:21: error: f is declared forward but never defined
+    4 | end StmtForwardTwice.
+      |                     ^
+raz: 2 errors

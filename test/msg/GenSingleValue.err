@@ -1,0 +1,4 @@
+conform/err/GenSingleValue.raz:6:10: error: expected a single value, found R
+    6 |     x := r + 1;
+      |          ^
+raz: 1 error

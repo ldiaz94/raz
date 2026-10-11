@@ -1,0 +1,10 @@
+conform/err/SlipMany.raz:5:10: error: "not equal" is written #, not !=
+    5 |     if x != 1 && z then x := y; end;
+      |          ^^
+conform/err/SlipMany.raz:5:15: error: "and" is written and, not &&
+    5 |     if x != 1 && z then x := y; end;
+      |               ^^
+conform/err/SlipMany.raz:5:18: error: z isn't declared
+    5 |     if x != 1 && z then x := y; end;
+      |                  ^
+raz: 3 errors

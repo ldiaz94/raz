@@ -1,0 +1,4 @@
+conform/err/AtPtrMinus.raz:5:10: error: ^I64 and ^I32 are different types
+    5 |     x := p - q;
+      |          ^^^^^
+raz: 1 error

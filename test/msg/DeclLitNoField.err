@@ -1,0 +1,4 @@
+conform/err/DeclLitNoField.raz:6:11: error: R has no field b
+    6 |     r := {b: 1};
+      |           ^
+raz: 1 error
