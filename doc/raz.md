@@ -9,11 +9,10 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.10 of the report; section 12 says what each
-version changed. Version 2026-10.11, written into it, is a draft for
-review: the compiler doesn't follow it yet. It is a thaw the owner
-chose, for a language anyone can build again, and it breaks programs
-written for 2026-10.10.
+This is version 2026-10.11 of the report; section 12 says what each
+version changed. It is a thaw the owner chose, for a language anyone
+can build again, and it breaks programs written for 2026-10.10. The
+compiler doesn't follow it yet: it still follows 2026-10.10.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -1676,7 +1675,7 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   2); a slice of a pointer can't run backwards (section 6.4). Ordinary
   accesses are no longer promised to be made exactly as written, only
   volatile and atomic ones (section 7.6).
-- **2026-10.11, a draft for review.** `INT` and `UINT`, as big as an
+- **2026-10.11.** `INT` and `UINT`, as big as an
   address, are the integers of lengths, slices, pointer differences,
   pointer conversions, `SYSCALL` and `ARGC`; `SIZE` and a constant
   `LEN` are untyped; `INT` widens silently to `I64` and `UINT` to

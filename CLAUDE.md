@@ -76,7 +76,9 @@ compiler says it follows.
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes on the list in
-`PLAN.md`, for a later thaw; it isn't built. Keep
+`PLAN.md`, for a later thaw; it isn't built. v0.6.0 is such a thaw,
+by the owner's word: report 2026-10.11, approved, which the compiler
+is being brought to follow (`PLAN.md`). Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.
 
@@ -128,7 +130,7 @@ otherwise.
   program the entry point stores C's `exit` in `Rt.cExit`, found by
   name like `Rt.exit`, before any module body runs.
 - Past an extern's parameters, a string goes as a C string and an
-  integer constant as an `I64`.
+  integer constant as an `INT` (an `I64` until 2026-10.11 is built).
 - A real constant is held as an F64; one typed `F32` holds a value an
   F32 can hold. An `F32` in a register is its low 32 bits; the upper
   ones are left as they fall.
@@ -141,7 +143,8 @@ otherwise.
   the main thread, and one in each `Thread` thread's mapping. C's
   threads have none, so a stack overflow in one ends the program by
   the signal with no message.
-- The smallest `I64` divided by -1 traps (SIGFPE), as 6.1 says.
+- The smallest value of a signed type divided by -1 stops the program
+  (SIGFPE), as 6.1 says; until 2026-10.11 is built, only `I64`'s does.
 - Warnings come only for a module with no errors. A procedure naming
   itself doesn't use it; a type named by a pointer in its own
   declaration does. An enumeration's names are never warned of, nor a
