@@ -1,0 +1,16 @@
+module DivLowest;
+(* The lowest I64 divided by -1 stops the program with SIGFPE, as
+   dividing by zero does *)
+import Out;
+
+proc main*;
+var a, b: I64;
+begin
+    a := -9223372036854775807 - 1;
+    b := ARGC() - 2;
+    Out.int(a div (-2));
+    Out.flush;
+    Out.int(a div b);
+end;
+
+end DivLowest.

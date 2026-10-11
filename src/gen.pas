@@ -62,7 +62,6 @@ type
 
 var
   rtFail, rtEq, argcChunk, argvChunk: longint;
-  fileChunk: longint;  { the current file's name, for failed checks; -1 until needed }
   depth: longint;      { values pushed and not yet popped }
 
 procedure MakeConst(var x: TItem; t: PType; v: int64);
@@ -537,24 +536,50 @@ end;
 
 { Checks }
 
+const
+  NoBase = -2;   { a TMem that is no memory }
+
 { The program goes on if the condition cc holds, and otherwise stops
-  in Rt.fail with the file and line. }
-procedure Check(cc: longint);
-var L: longint; s: shortstring;
+  in Rt.fail(what, a, b, len, at, name), which says what failed at p,
+  found by at, the address of the call: an index a (what = 0), a slice
+  a..b (1), each for a length len, or a position a of the enumeration
+  called name (2). a is in register ra, b in RDX; len is in memory at
+  m, or n if m.base is NoBase. The failing code has p for its place,
+  and the code after it the place before it again. }
+procedure Check(cc, what: longint; const p: TPos; ra: longint; const m: TMem; n: int64; name: longint);
+var L, line, col: longint; before: TLine;
 begin
-  if fileChunk < 0 then begin
-    s := CurPath + #0;
-    fileChunk := NewChunk(secRodata, -1, -1);
-    SetData(fileChunk, @s[1], length(s), 1);
-  end;
   L := NoLabel;
   Jcc(cc, L);
+  before := lines^[numLines - 1];
+  LineCol(p.a, line, col);
+  NoteLine(line, col);
+  MovRR(RSI, ra);
+  if m.base = NoBase then MovRI(RCX, n) else Load(RCX, m, 8, false);
+  Lea(R8, Here);
+  MovRI(RDI, what);
+  if name >= 0 then Lea(R9, MemRip(name, 0));
   AluI(aluAnd, RSP, -16);
-  Lea(RDI, MemRip(fileChunk, 0));
-  MovRI(RSI, CurLine);
   CallChunk(rtFail);
   Ud2;
   FixLink(L);
+  NoteLine(before.line, before.col);
+end;
+
+{ For Check: a length known here, not in memory }
+function NoMem: TMem;
+begin
+  NoMem := Mem(NoBase, 0);
+end;
+
+{ t's name, ending in a zero byte, for Rt.fail }
+function NameChunk(t: PType): longint;
+var s: shortstring; c: longint;
+begin
+  s := TypeName(t) + #0;
+  c := NewChunk(secRodata, -1, -1);
+  SetData(c, @s[1], length(s), 1);
+  NameChunk := c;
 end;
 
 { Selectors }
@@ -610,7 +635,7 @@ begin
   end else if t^.form = fArray then begin
     Value(y);
     CmpI(RAX, t^.len);
-    Check(ccB);
+    Check(ccB, 0, y.pos, RAX, NoMem, t^.len, -1);
     if s <> 1 then ImulI(RAX, s);
     if x.base = bStack then PopR(RCX) else Lea(RCX, MemOf(x, RCX));
     Alu(aluAdd, RAX, RCX);
@@ -621,7 +646,7 @@ begin
     m := MemOf(x, RCX);
     ml := m; ml.disp := ml.disp + 8;
     AluM(aluCmp, RAX, ml);
-    Check(ccB);
+    Check(ccB, 0, y.pos, RAX, ml, 0, -1);
     if s <> 1 then ImulI(RAX, s);
     AluM(aluAdd, RAX, m);
     x.base := bReg; x.reg := RAX; x.off := 0; x.isVar := true; x.vol := false;
@@ -649,14 +674,12 @@ begin
   if t^.form = fPtr then PopR(R8)
   else begin
     m := MemOf(x, R8);
-    if t^.form = fArray then CmpI(RDX, t^.len)
-    else begin
-      ml := m; ml.disp := ml.disp + 8;
-      AluM(aluCmp, RDX, ml);
-    end;
-    Check(ccBE);
+    ml := m; ml.disp := ml.disp + 8;
+    if t^.form = fArray then begin CmpI(RDX, t^.len); ml := NoMem end
+    else AluM(aluCmp, RDX, ml);
+    Check(ccBE, 1, lo.pos, RCX, ml, t^.len, -1);
     Alu(aluCmp, RCX, RDX);
-    Check(ccBE);
+    Check(ccBE, 1, lo.pos, RCX, ml, t^.len, -1);
   end;
   tmp := AllocTemp(16, 8);
   MovRR(RAX, RDX);
@@ -1040,7 +1063,7 @@ begin
   end else if IsInt(s) and (t^.form = fEnum) then begin
     if x.mode = mConst then begin
       if (x.val < 0) or (x.val >= t^.len) then MarkAt(x.pos, IntStr(x.val) + ' isn''t a position of ' + TypeName(t))
-    end else begin Value(x); CmpI(RAX, t^.len); Check(ccB) end;
+    end else begin Value(x); CmpI(RAX, t^.len); Check(ccB, 2, x.pos, RAX, NoMem, t^.len, NameChunk(t)) end;
   end else if IsInt(s) and (t^.form = fSet) then begin
     if x.mode = mConst then begin
       if t^.len < 64 then x.val := x.val and ((int64(1) shl t^.len) - 1)
@@ -1361,7 +1384,7 @@ procedure EnterBody(c, line: longint);
 var i, top: longint; n: int64;
 begin
   BeginChunk(c);
-  NoteLine(line);
+  NoteLine(line, 1);   { a declaration starts a line }
   Push(RBP);
   MovRR(RBP, RSP);
   Put1($48); Put1($81); Put1($EC);           { sub rsp, imm32 }

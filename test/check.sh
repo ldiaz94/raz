@@ -4,7 +4,9 @@
 #   X.raz     the program
 #   X.expect  its standard output
 #   X.args    its arguments, one per line (optional)
-#   X.status  its exit status (optional; 0 if missing)
+#   X.status  its exit status (optional; 0 if missing), 128 and the
+#             signal's number for one stopped by a signal
+#   X.stderr  its standard error (optional; not compared if missing)
 # A program without X.expect is compiled, not run. test/libc puts
 # lib/Sys.raz, over the C library, before the system call one.
 # Programs in test/err must not compile, and must print X.err; there
@@ -16,6 +18,7 @@
 raz=./raz
 out=build/check
 mkdir -p $out
+ulimit -c 0   # the tests stopped by a signal leave no core
 pass=0
 fail=0
 
@@ -32,8 +35,8 @@ run() {   # run dir name
     if [ -f $dir/$name.args ]; then
         while IFS= read -r a; do set -- "$@" "$a"; done < $dir/$name.args
     fi
-    $out/$name "$@" > $out/$name.out 2>/dev/null
-    status=$?
+    # in $(...), so that what the shell says of a signal goes nowhere
+    status=$( { $out/$name "$@" > $out/$name.out 2>$out/$name.err; echo $?; } 2>/dev/null )
     want=0
     [ -f $dir/$name.status ] && want=$(cat $dir/$name.status)
     if ! cmp -s $out/$name.out $dir/$name.expect; then
@@ -42,6 +45,10 @@ run() {   # run dir name
         fail=$((fail + 1))
     elif [ $status != $want ]; then
         echo "FAIL $dir/$name: status $status, not $want"
+        fail=$((fail + 1))
+    elif [ -f $dir/$name.stderr ] && ! cmp -s $out/$name.err $dir/$name.stderr; then
+        echo "FAIL $dir/$name: standard error differs"
+        diff $out/$name.err $dir/$name.stderr | head -5
         fail=$((fail + 1))
     else
         pass=$((pass + 1))

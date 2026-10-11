@@ -1,0 +1,15 @@
+module SliceBounds;
+(* A slice must have 0 <= lo <= hi <= the length *)
+import Out;
+
+proc main*;
+var a: [8]I64; s: []I64; lo: I64;
+begin
+    s := a[0..8];
+    for lo := 0 to 9 by 3 do
+        Out.int(LEN(s[lo..6]));
+        Out.str(" ");
+    end;
+end;
+
+end SliceBounds.

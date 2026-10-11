@@ -37,6 +37,7 @@ var
   quiet: boolean;
 
 function AddFile(const path: shortstring; buf: PChar; len: longint): longint;
+function ShownPath(const path: shortstring): shortstring;
 function PathOf(f: longint): shortstring;
 function LineOf(const p: TPos): longint;
 function Join(const p, q: TPos): TPos;
@@ -63,25 +64,31 @@ type
 var
   files: ^TFile;      { numFiles of them, in room for cap }
   numFiles, cap: longint;
-  colour, colourKnown: boolean;
+  colour, colourKnown, cwdKnown: boolean;
   cwd: shortstring;    { the working directory and a /, or '' if unknown }
   lastError: TPos;     { where the last error was }
   shown: boolean;      { whether it was shown: its notes and help are only then }
 
 { Paths are shown from the working directory where they are under it,
   so messages read the same wherever the compiler or its library is. }
-function AddFile(const path: shortstring; buf: PChar; len: longint): longint;
+function ShownPath(const path: shortstring): shortstring;
 var d: array[0..255] of char;
 begin
-  if numFiles = 0 then
+  if not cwdKnown then begin
     if FpGetcwd(@d[0], SizeOf(d)) <> nil then cwd := StrPas(@d[0]) + '/';
+    cwdKnown := true;
+  end;
+  if (cwd <> '') and (copy(path, 1, length(cwd)) = cwd) then ShownPath := copy(path, length(cwd) + 1, 255)
+  else ShownPath := path;
+end;
+
+function AddFile(const path: shortstring; buf: PChar; len: longint): longint;
+begin
   if numFiles = cap then begin
     cap := 2 * cap + 8;
     ReallocMem(files, cap * SizeOf(TFile));
   end;
-  if (cwd <> '') and (copy(path, 1, length(cwd)) = cwd) then
-    files[numFiles].path := copy(path, length(cwd) + 1, 255)
-  else files[numFiles].path := path;
+  files[numFiles].path := ShownPath(path);
   files[numFiles].buf := buf;
   files[numFiles].len := len;
   AddFile := numFiles;

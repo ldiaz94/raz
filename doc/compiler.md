@@ -8,15 +8,15 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 267 | 191 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 687 | 553 | Symbols, literals, comments, positions |
+| `src/diag.pas` | 274 | 197 | Messages: positions, source excerpts, colour, counts |
+| `src/scan.pas` | 705 | 567 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 583 | 483 | Types, objects, scopes, layout |
-| `src/x64.pas` | 682 | 548 | Code buffer, chunks, fixups, line notes, instruction encoder |
-| `src/gen.pas` | 1,515 | 1,319 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,241 | 2,028 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
+| `src/x64.pas` | 691 | 554 | Code buffer, chunks, fixups, places, instruction encoder |
+| `src/gen.pas` | 1,538 | 1,332 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,240 | 2,027 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/link.pas` | 180 | 138 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 221 | 174 | The command line, the entry points |
+| `src/raz.pas` | 227 | 178 | The command line, the entry points |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -65,7 +65,8 @@ files, no symbol files, and nothing to keep up to date.
    becomes a string chunk, a call, and a fixup to `Out.str`'s chunk.
 5. Back in `raz.pas`, `Use` marks the modules the program uses; the
    entry point, `_start`, is written as one more chunk: save `argc` and
-   `argv`, call every used module's body, call `main`, call `Rt.exit`.
+   `argv` and the address of the places (below), call every used
+   module's body, call `main`, call `Rt.exit`.
 6. `WriteElf` (`elf.pas`) has `link.pas` mark what `_start` reaches,
    place it and patch it, then writes headers, code, data, symbols and
    line numbers.
@@ -220,8 +221,9 @@ right opcode. Only the instructions the code generator uses are here.
 `test/enctest.pas` emits one of each for `objdump` to check.
 
 Two more things live here because they are tied to code positions:
-`NoteLine` records which source line the code from `pc` on belongs to,
-for gdb; `ExternChunk` makes, once per C symbol, the quadword the
+`NoteLine` records which line and column of the source the code from
+`pc` on belongs to, for gdb and for the places; `Here` is the address
+of the code being written, as an operand. `ExternChunk` makes, once per C symbol, the quadword the
 dynamic loader will fill with that symbol's address.
 
 ## gen.pas: the code generator
@@ -269,8 +271,12 @@ after each operation (`Norm`), which is how `U8` arithmetic wraps.
 
 Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a
 variable into an item for part of it, mostly by adding to `off`.
-`Index` and `Slice` emit the bounds checks; `Check` jumps over a call
-to `Rt.fail` with the file and line when the check holds.
+`Index` and `Slice` emit the bounds checks, and `Convert` the check of
+an enumeration's position; `Check` jumps over a call to `Rt.fail` when
+the check holds. The call passes what failed, the values involved and
+its own address, by which `Rt` finds the place; that code has the
+place of the offending expression (`LineCol` in `scan.pas`), and the
+code after it the statement's again.
 
 Assignment and conversion: `Coerce` makes a value fit the type it's
 going to, or reports that it can't; it's where a string literal becomes
@@ -371,6 +377,16 @@ alignment, then copies their bytes into the images of text and rodata,
 patching every fixup with the distance from the end of its field to its
 target.
 
+Between placing text and placing rodata, `MakePlaces` writes the
+places, a rodata chunk: for each line note in live code, its address,
+line, column and file. `Rt` reads them, through `Rt.places`, which the
+entry point sets, to say where a failed check or a signal was: the
+place with the highest address up to the one it has. Its signal
+handlers, set in its body, run on a stack of their own, so that they
+can tell a stack overflow, and leave by returning to the faulting
+instruction with the handler reset, so that the signal ends the
+program.
+
 The layout is chosen so the file can be mapped as it lies: text just
 after the headers, rodata on the next page, then a writable page that
 begins with the dynamic loader's table (in a program that uses C) and
@@ -423,6 +439,6 @@ status is the command's.
   in the same order), a case in `Statement`, and a routine beside the
   others.
 - **A check that fails:** `Check` in `gen.pas`, and the message in
-  `lib/Rt.raz`'s `fail`.
+  `lib/Rt.raz`'s `fail`; a reason a signal gives, `onSignal` there.
 
 After any change: `make check`, `make bench`, `make loc`.

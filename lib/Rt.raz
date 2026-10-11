@@ -1,18 +1,48 @@
 (* The run time: ending the program, and what the compiler's code
    calls: fail when a check fails, eq when = or # compares two strings;
-   and stop, for the library's own failures.
-   The compiler finds fail, eq, exit and cExit by these names. *)
+   stop, for the library's own failures; and the handlers that say
+   where the program was when a signal stops it.
+   The compiler finds fail, eq, exit, cExit and places by these names.
+   The handlers are Linux's on x86-64, set by system calls: what the
+   kernel hands them is laid out as it is there. *)
 module Rt;
 import Sys;
 
 const
     Full*: ERROR = "too many procedures to run at exit";
     MaxAtExit = 32;
+    SigFpe = 8;
+    SigSegv = 11;
+    Low = 10000H;   (* no address below this is ever mapped *)
+    (* SA_SIGINFO, SA_ONSTACK, SA_RESTORER and SA_RESETHAND *)
+    Flags = 4H + 8000000H + 4000000H + 80000000H;
+
+type
+    (* The code from address at on comes from line and col of the
+       file whose path is at path in the paths *)
+    Place = record at, line, col, path: U32; end;
+    (* What rt_sigaction and sigaltstack take *)
+    Action = record
+        handler: proc(sig: I64; info, ctx: ^U8);
+        flags: U64;
+        restorer: proc;
+        mask: U64;
+    end;
+    Stack = record sp: ^U8; flags, size: I64; end;
 
 var
     atExits: [MaxAtExit]proc;
     numAtExit: I64;
     cExit: proc(status: I32);   (* C's exit, set first thing in a program that uses C *)
+    (* Set first thing too: the number of places, where the program's
+       code starts and stops, the places, and the paths. The linker
+       makes them. *)
+    places: ^I64;
+    line: [256]U8;              (* the message being made *)
+    lineLen: I64;
+    act: Action;
+    alt: Stack;
+    altStack: [16384]U8;        (* where the handlers run, even when the stack is full *)
 
 (* Registers p to run when the program ends by exit. *)
 proc atExit*(p: proc): ERROR;
@@ -49,25 +79,132 @@ begin
     exit(2);
 end;
 
-(* A check failed at line of file: says so on standard error and ends
-   the program with status 2. *)
-proc fail*(file: ^U8; line: I64);
-var buf: [20]U8; i, n: I64;
+(* Messages, made in line, one byte kept for the line feed, and
+   written by say in one piece *)
+proc put(s: []U8);
+var i: I64;
 begin
-    n := 0;
-    while file[n] # 0 do n := n + 1; end;
-    Sys.write(Sys.stderr, file[0..n]);
+    for i := 0 to LEN(s) - 1 do
+        if lineLen < LEN(line) - 1 then
+            line[lineLen] := s[i];
+            INC(lineLen);
+        end;
+    end;
+end;
+
+(* The digits are made from the last, those of a negative n from its
+   negative remainders, so that the lowest I64 comes out too. *)
+proc putInt(n: I64);
+var buf: [20]U8; i: I64; neg: BOOL;
+begin
+    neg := n < 0;
     i := 20;
     repeat
-        i := i - 1;
-        buf[i] := U8(line mod 10) + '0';
-        line := line div 10;
-    until line = 0;
-    i := i - 1;
-    buf[i] := ':';
-    Sys.write(Sys.stderr, buf[i..20]);
-    Sys.write(Sys.stderr, ": index out of range\n");
+        DEC(i);
+        if neg then buf[i] := U8(-(n mod 10)) + '0'; else buf[i] := U8(n mod 10) + '0'; end;
+        n := n div 10;
+    until n = 0;
+    if neg then put("-"); end;
+    put(buf[i..20]);
+end;
+
+proc putStr(s: ^U8);
+var n: I64;
+begin
+    n := 0;
+    while s[n] # 0 do INC(n); end;
+    put(s[0..n]);
+end;
+
+proc say;
+begin
+    line[lineLen] := '\n';
+    Sys.write(Sys.stderr, line[0..lineLen + 1]);
+    lineLen := 0;
+end;
+
+(* Puts where the code at address a comes from, as file:line:col: and
+   a space, if a is in the program's code: the place with the highest
+   address up to a. *)
+proc where(a: U64);
+var p, best: ^Place; i, n: I64;
+begin
+    if (places = nil) or (a < U64(places[1])) or (a >= U64(places[2])) then return; end;
+    n := places[0];
+    p := ^Place(places + 3);
+    best := nil;
+    for i := 0 to n - 1 do
+        if (U64(p[i].at) <= a) and ((best = nil) or (p[i].at > best^.at)) then best := p + i; end;
+    end;
+    if best = nil then return; end;
+    putStr(^U8(p + n) + I64(best^.path));
+    put(":");
+    putInt(I64(best^.line));
+    put(":");
+    putInt(I64(best^.col));
+    put(": ");
+end;
+
+(* A check failed in the code at address at: says where, and what
+   failed, on standard error, then ends the program by exit with
+   status 2. what is 0 for an index a and 1 for a slice a..b, of
+   something whose length is len; 2 for a, which is no position of
+   the enumeration called name. *)
+proc fail*(what, a, b, len: I64; at: U64; name: ^U8);
+begin
+    where(at);
+    if what = 0 then
+        put("index ");
+        putInt(a);
+    elsif what = 1 then
+        put("slice ");
+        putInt(a);
+        put("..");
+        putInt(b);
+    else
+        putInt(a);
+        put(" isn't a position of ");
+        putStr(name);
+    end;
+    if what < 2 then
+        put(" is out of range for a length of ");
+        putInt(len);
+    end;
+    say;
     exit(2);
+end;
+
+(* Returns from a signal handler: rt_sigreturn *)
+proc sigReturn;
+code 0B8H, 0FH, 0, 0, 0,   (* mov eax, 15 *)
+     0FH, 05H;             (* syscall *)
+
+(* A signal stops the program: says where it was and why on standard
+   error, and returns to the instruction that faulted. The handler was
+   reset as it was called, so the instruction faults again and the
+   signal ends the program. info and ctx are the kernel's siginfo and
+   ucontext. *)
+proc onSignal(sig: I64; info, ctx: ^U8);
+var adr, sp, ip: U64; q: ^U64; why: []U8;
+begin
+    q := ^U64(info + 16);   (* si_addr *)
+    adr := q^;
+    q := ^U64(ctx + 160);   (* uc_mcontext's rsp, then rip *)
+    sp := q[0];
+    ip := q[1];
+    if sig = SigFpe then why := "a division fault";
+    elsif ip < Low then
+        why := "a nil procedure";
+        q := ^U64(sp);
+        ip := q^ - 1;   (* the call, by its return address *)
+    elsif adr < Low then why := "a nil pointer";
+    elsif adr - sp + 100000H < 200000H then why := "a stack overflow";   (* within a megabyte of rsp *)
+    else why := "a bad address";
+    end;
+    where(ip);
+    put("stopped by ");
+    put(why);
+    say;
 end;
 
 proc eq*(a, b: []U8): BOOL;
@@ -80,4 +217,10 @@ begin
     return true;
 end;
 
+begin
+    alt := {sp: ADR(altStack[0]), size: LEN(altStack)};
+    SYSCALL(131, ADR(alt), 0);   (* sigaltstack *)
+    act := {handler: onSignal, flags: Flags, restorer: sigReturn};
+    SYSCALL(13, SigSegv, ADR(act), 0, 8);   (* rt_sigaction *)
+    SYSCALL(13, SigFpe, ADR(act), 0, 8);
 end Rt.

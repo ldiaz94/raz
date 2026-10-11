@@ -1,0 +1,12 @@
+module NilProc;
+(* Calling a nil procedure: the place is the call's *)
+
+var f: proc(n: I64): I64;
+
+proc main*: I64;
+begin
+    return f(1)
+        + 1;
+end;
+
+end NilProc.

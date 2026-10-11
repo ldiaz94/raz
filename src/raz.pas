@@ -195,6 +195,12 @@ begin
     Lea(RAX, Mem(RSP, 8));
     Store(MemRip(argvChunk, 0), RAX, 8);
   end;
+  { the places, which the linker makes, for Rt to say where a failed
+    check or a signal was }
+  placesChunk := NewChunk(secRodata, -1, -1);
+  SetData(placesChunk, nil, 0, 8);
+  Lea(RAX, MemRip(placesChunk, 0));
+  Store(MemRip(RtObj(rt, 'places')^.chunk, 0), RAX, 8);
   m := firstModule;
   while m <> nil do begin
     if m^.used and (m^.body >= 0) then CallChunk(m^.body);

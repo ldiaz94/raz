@@ -61,10 +61,11 @@ type
     ext: boolean;                  { bss: the address of a C symbol, its name }
   end;
 
-  { A source line whose code starts at a place in text, for gdb }
+  { A place in the source whose code starts at a place in text: for
+    gdb, and for Rt to say where a failed check or a signal was }
   TLine = record
     at, chunk: longint;   { the place in text, and its chunk }
-    path, line: longint;  { the file's path, interned, and the line }
+    path, line, col: longint;  { the file's path, interned, the line and column }
   end;
 
   TFixup = record
@@ -100,7 +101,8 @@ procedure EndChunk(c: longint);
 procedure SetData(c: longint; p: PBytes; n, align: longint);
 procedure SetBss(c: longint; size, align: longint);
 function ExternChunk(name: longint): longint;
-procedure NoteLine(line: longint);
+procedure NoteLine(line, col: longint);
+function Here: TMem;
 
 procedure Put1(b: longint);
 procedure Put4(v: longint);
@@ -259,13 +261,13 @@ begin
   chunks^[c].align := align;
 end;
 
-{ The code from here on is for line of the current file. A line with
-  no code of its own gives way to the next. }
-procedure NoteLine(line: longint);
+{ The code from here on is for line and column of the current file. A
+  place with no code of its own gives way to the next. }
+procedure NoteLine(line, col: longint);
 begin
   if (numLines > 0) and (lines^[numLines - 1].at = pc) then dec(numLines);
-  if (numLines > 0) and (lines^[numLines - 1].chunk = curChunk)
-    and (lines^[numLines - 1].line = line) and (lines^[numLines - 1].path = curFile) then exit;
+  if (numLines > 0) and (lines^[numLines - 1].chunk = curChunk) and (lines^[numLines - 1].line = line)
+    and (lines^[numLines - 1].col = col) and (lines^[numLines - 1].path = curFile) then exit;
   if numLines = lineCap then begin
     lineCap := lineCap * 2;
     lines := ReAllocMem(lines, lineCap * SizeOf(TLine));
@@ -274,7 +276,14 @@ begin
   lines^[numLines].chunk := curChunk;
   lines^[numLines].path := curFile;
   lines^[numLines].line := line;
+  lines^[numLines].col := col;
   inc(numLines);
+end;
+
+{ The address of the code about to be written, as an operand }
+function Here: TMem;
+begin
+  Here := MemRip(curChunk, pc - chunks^[curChunk].start);
 end;
 
 { The quadword that holds the address of C's symbol name, filled in

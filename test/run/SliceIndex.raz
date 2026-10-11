@@ -1,0 +1,15 @@
+module SliceIndex;
+(* An index checked against a slice's length, which is in memory *)
+import Out;
+
+proc main*;
+var a: [8]I64; s: []I64; i: I64;
+begin
+    s := a[2..5];
+    for i := 0 to 3 do
+        Out.int(i);
+        s[i] := i;
+    end;
+end;
+
+end SliceIndex.

@@ -49,7 +49,6 @@ type
     rval: double;
     id: longint;
     f: longint;        { the file, as diag knows it }
-    path: shortstring;
   end;
 
 const
@@ -89,8 +88,9 @@ function TokPos: TPos;
 function AfterPrev: TPos;
 function MissingPos: TPos;
 function SpanFrom(const p: TPos): TPos;
-function CurPath: shortstring;
 function CurLine: longint;
+function CurCol: longint;
+procedure LineCol(a: longint; out line, col: longint);
 
 implementation
 
@@ -223,14 +223,33 @@ begin
   SpanFrom.b := cur.prevEnd;
 end;
 
-function CurPath: shortstring;
-begin
-  CurPath := cur.path;
-end;
-
 function CurLine: longint;
 begin
   CurLine := cur.tokLine;
+end;
+
+{ The line and column of byte a of the file, at or before the current
+  symbol: counted back from the symbol's line, so that it costs only
+  the distance. A column counts characters, as diag's do. }
+procedure LineCol(a: longint; out line, col: longint);
+var i, start: longint;
+begin
+  line := cur.tokLine;
+  start := cur.tokLineStart;
+  while a < start do begin
+    dec(line);
+    dec(start);
+    while (start > 0) and (cur.buf[start - 1] <> #10) do dec(start);
+  end;
+  col := 1;
+  for i := start to a - 1 do
+    if (byte(cur.buf[i]) and $C0) <> $80 then inc(col);
+end;
+
+function CurCol: longint;
+var line: longint;
+begin
+  LineCol(cur.tokPos, line, CurCol);
 end;
 
 procedure Mark(const msg: shortstring);
@@ -342,7 +361,6 @@ begin
   cur.tokPos := 0;
   cur.tokLine := 1;
   cur.tokLineStart := 0;
-  cur.path := path;
   cur.f := AddFile(path, cur.buf, n);
   Open := true;
 end;

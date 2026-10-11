@@ -1,0 +1,14 @@
+(* A program over C stopped by a signal says where, as a static one
+   does: C's own start-up runs before Rt's handlers are set *)
+module NilC;
+import Out;
+
+proc main*;
+var p: ^I64;
+begin
+    Out.str("before\n");
+    Out.flush;
+    p^ := 1;
+end;
+
+end NilC.

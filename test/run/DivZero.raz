@@ -1,0 +1,12 @@
+module DivZero;
+(* Dividing by zero stops the program with SIGFPE, after saying where *)
+
+proc main*: I64;
+var a, b: I64;
+begin
+    a := 7;
+    b := ARGC() - 1;
+    return a mod b;
+end;
+
+end DivZero.

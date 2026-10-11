@@ -1,0 +1,16 @@
+module StackOverflow;
+(* A recursion with no end runs out of stack: SIGSEGV, said as such *)
+
+proc down(n: I64): I64;
+var pad: [64]I64;
+begin
+    pad[n mod 64] := n;
+    return down(n + 1) + pad[0];
+end;
+
+proc main*: I64;
+begin
+    return down(0);
+end;
+
+end StackOverflow.

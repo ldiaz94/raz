@@ -1406,7 +1406,7 @@ var x, y: TItem; called: boolean; m: int64; c: TCall; start: TPos; first: longin
 begin
   start := TokPos;
   first := id;
-  NoteLine(CurLine);
+  NoteLine(CurLine, CurCol);
   m := TempMark;
   case tok of
     sIdent: begin
@@ -1556,7 +1556,7 @@ begin
   curResult := sig^.base;
   EnterBody(p^.chunk, line);
   Statements;
-  NoteLine(CurLine);
+  NoteLine(CurLine, CurCol);
   Expect(sEnd);
   EndProc(p^.chunk);
   curResult := old;
@@ -2000,12 +2000,12 @@ end;
 function CompileFile(const path: shortstring; n: longint; const args: TArgs; checkOnly: boolean): PModule;
 var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
-  oldMod: PModule; oldFile: longint; oldCheck: boolean; m, im: PModule;
+  oldMod: PModule; oldCheck: boolean; m, im: PModule;
   imp: PImport; lib: PLib; start: TPos; alias, mname, line, oldPath: longint; o: PObj; body: longint; iargs: TArgs;
 begin
   SaveScan(st);
   SaveScopes(d, saved);
-  oldMod := curModule; oldFile := fileChunk; oldCheck := checkMode; oldPath := curFile;
+  oldMod := curModule; oldCheck := checkMode; oldPath := curFile;
   curFile := Name(path);
   if not Open(path) then Fatal('can''t read ' + path);
   New(m);
@@ -2018,7 +2018,6 @@ begin
   m^.body := -1;
   m^.checkOnly := checkOnly;
   curModule := m;
-  fileChunk := -1;
   checkMode := checkOnly;
   if not checkOnly then begin
     if numPending > High(pending) then Mark('imports nested more than ' + IntStr(High(pending) + 1) + ' deep');
@@ -2090,7 +2089,7 @@ begin
       curResult := nil;
       EnterBody(body, line);
       Statements;
-      NoteLine(CurLine);
+      NoteLine(CurLine, CurCol);
       Expect(sEnd);
       EndProc(body);
     end;
@@ -2112,7 +2111,7 @@ begin
     if lastModule = nil then firstModule := m else lastModule^.next := m;
     lastModule := m;
   end;
-  curModule := oldMod; fileChunk := oldFile; checkMode := oldCheck; curFile := oldPath;
+  curModule := oldMod; checkMode := oldCheck; curFile := oldPath;
   RestoreScopes(d, saved);
   RestoreScan(st);
   CompileFile := m;

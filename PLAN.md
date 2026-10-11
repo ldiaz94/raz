@@ -265,7 +265,7 @@ main model reads every diff before it is committed.
       makes them errors, and `make check` builds `lib/`, `examples/`
       and `tools/` with it. The machinery, *main*; clearing the
       warnings it finds in `lib/`, `examples/` and `tools/`, *agent*.
-- [ ] 26. Run-time messages. A failed check says which and with what
+- [x] 26. Run-time messages. A failed check says which and with what
       values: `index 7 is out of range for a length of 5`, the slice,
       the enumeration position, at file, line and column. A table from
       code addresses to lines goes into the executable, and `Rt` sets
@@ -273,7 +273,8 @@ main model reads every diff before it is committed.
       and why (a `nil` pointer, a `nil` procedure, stack overflow, a
       bad address, a division fault) before it dies by that signal.
       Run tests gain an optional `X.stderr`. And the lowest `I64`
-      divided by -1 wraps, as the report says, instead of trapping.
+      divided by -1 stops the program with SIGFPE, as the report says
+      (6.1), and is told as a division fault.
       The compiler and `Rt`,
       *main*; the tests, *agent*.
 - [ ] 27. `doc/compiler.md` (its table and routine names), `README.md`

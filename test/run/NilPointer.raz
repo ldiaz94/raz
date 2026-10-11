@@ -1,0 +1,16 @@
+module NilPointer;
+(* Following nil stops the program with SIGSEGV, after saying where *)
+import Out;
+
+type Cell = record next: ^Cell; v: I64; end;
+
+proc main*;
+var c: Cell;
+begin
+    c.v := 1;
+    Out.int(c.v);
+    Out.flush;
+    Out.int(c.next^.v);
+end;
+
+end NilPointer.
