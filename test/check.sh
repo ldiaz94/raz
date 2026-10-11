@@ -35,8 +35,9 @@ run() {   # run dir name
     if [ -f $dir/$name.args ]; then
         while IFS= read -r a; do set -- "$@" "$a"; done < $dir/$name.args
     fi
-    # in $(...), so that what the shell says of a signal goes nowhere
-    status=$( { $out/$name "$@" > $out/$name.out 2>$out/$name.err; echo $?; } 2>/dev/null )
+    # in $(...), so that what the shell says of a signal goes nowhere;
+    # in ( ), since dash says it with the command's 2> still in place
+    status=$( { ( exec $out/$name "$@" ) > $out/$name.out 2>$out/$name.err; echo $?; } 2>/dev/null )
     want=0
     [ -f $dir/$name.status ] && want=$(cat $dir/$name.status)
     if ! cmp -s $out/$name.out $dir/$name.expect; then
