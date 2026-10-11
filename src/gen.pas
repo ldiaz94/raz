@@ -673,8 +673,12 @@ begin
   Value(hi);
   MovRR(RDX, RAX);
   PopR(RCX);
-  if t^.form = fPtr then PopR(R8)
-  else begin
+  if t^.form = fPtr then begin
+    { the bounds can't be known, but a slice can't run backwards }
+    PopR(R8);
+    Alu(aluCmp, RCX, RDX);
+    Check(ccLE, 3, lo.pos, RCX, NoMem, 0, -1);
+  end else begin
     m := MemOf(x, R8);
     ml := m; ml.disp := ml.disp + 8;
     if t^.form = fArray then begin CmpI(RDX, t^.len); ml := NoMem end
@@ -708,7 +712,9 @@ begin
     if x.mode = mConst then x.val := x.val xor low(int64)
     else begin Value(x); if IsF32(x.typ) then Btc(RAX, 31) else Btc(RAX, 63) end;
   end else if IsInt(x.typ) then begin
-    if x.mode = mConst then x.val := Cut(-x.val, x.typ)
+    if (x.mode = mConst) and (x.typ^.form = fConst) and (x.val = low(int64)) then
+      MarkAt(x.pos, 'the constant is too big for I64')
+    else if x.mode = mConst then x.val := Cut(-x.val, x.typ)
     else begin Value(x); Unary(3, RAX); Norm(x.typ) end;
   end else MarkAt(x.pos, 'can''t negate ' + TypeName(x.typ));
 end;
@@ -803,10 +809,27 @@ begin
   else begin ShiftI(shShl, RCX, k); Alu(aluSub, RAX, RCX) end;
 end;
 
+{ Whether a op b, for + - *, overflows an I64: an untyped constant
+  doesn't wrap, it is an error (report section 4). }
+function Overflows(op: TSym; a, b: int64): boolean;
+begin
+  case op of
+    sPlus: Overflows := ((b > 0) and (a > high(int64) - b)) or ((b < 0) and (a < low(int64) - b));
+    sMinus: Overflows := ((b < 0) and (a > high(int64) + b)) or ((b > 0) and (a < low(int64) + b));
+    sTimes:
+      if (a = 0) or (b = 0) then Overflows := false
+      else if a = -1 then Overflows := b = low(int64)
+      else if b = -1 then Overflows := a = low(int64)
+      else Overflows := (a * b) div b <> a;
+  else Overflows := false;
+  end;
+end;
+
 function FoldInt(op: TSym; a, b: int64; t: PType; const p: TPos): int64;
 var u: boolean;
 begin
   u := (t^.form = fInt) and not t^.signed;
+  if (t^.form = fConst) and Overflows(op, a, b) then MarkAt(p, 'the constant is too big for I64');
   case op of
     sPlus: FoldInt := a + b;
     sMinus: FoldInt := a - b;

@@ -149,18 +149,20 @@ end;
    failed, on standard error, then ends the program by exit with
    status 2. what is 0 for an index a and 1 for a slice a..b, of
    something whose length is len; 2 for a, which is no position of
-   the enumeration called name. *)
+   the enumeration called name; 3 for a slice a..b of a pointer, which
+   runs backwards. *)
 proc fail*(what, a, b, len: I64; at: U64; name: ^U8);
 begin
     where(at);
     if what = 0 then
         put("index ");
         putInt(a);
-    elsif what = 1 then
+    elsif (what = 1) or (what = 3) then
         put("slice ");
         putInt(a);
         put("..");
         putInt(b);
+        if what = 3 then put(" runs backwards"); end;
     else
         putInt(a);
         put(" isn't a position of ");

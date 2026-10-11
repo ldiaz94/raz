@@ -1,15 +1,15 @@
 # The programming language raz
 
 raz is a small systems language for x86-64 Linux. A raz program can lay
-a record over a device's registers, read and write memory exactly as
-written, take part in lock-free algorithms, make system calls and call
+a record over a device's registers, read and write a device's memory
+exactly as written, take part in lock-free algorithms, make system calls and call
 C libraries. It has no garbage collector and no hidden run time: what
 the program does is what its text says.
 
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.9 of the report; section 12 says what each
+This is version 2026-10.10 of the report; section 12 says what each
 version changed.
 
 The language is frozen, softly, from this version on: it changes only
@@ -75,7 +75,9 @@ digit on both sides of its point, and its exponent, if it has one, is
 An integer is an untyped constant, which takes the type it is used as,
 up to the largest `I64`. A hexadecimal number above that, such as
 `0FFFFFFFFFFFFFFFFH`, has type `U64`: so `-1` never fits a `U64`, and
-the big number goes nowhere else without a conversion.
+the big number goes nowhere else without a conversion. Arithmetic on
+untyped constants doesn't wrap: a result beyond the `I64`s, such as
+`9223372036854775807 + 1`, is an error.
 
 A real is an untyped constant too, which takes `F32` or `F64`,
 whichever it is used as, rounded to the nearest value of that type;
@@ -205,10 +207,15 @@ one of the module's files in a later directory chooses that file, so
 that a directory holding a link to `lib/Sys.raz` builds a program over
 the C library's `Sys` on Linux too.
 
-Since the names of a program's modules are one space, the modules of
-a library share a prefix of their own, as an X11 library's `Xauth` and
-`Xkeys` do, and programs leave the library's short names (`Buf`,
-`Map`, `Out`, `C` and the rest of section 11) to it.
+**Names are flat.** The names of a program's modules are one space,
+with no packages or paths. So the names of the library's modules
+(section 11) are kept for it: a program or another library doesn't
+name a module of its own `Arena`, `Buf`, `C`, `Files`, `Fmt`, `Heap`,
+`List`, `Lock`, `Map`, `Math`, `Mem`, `Opt`, `Out`, `Rt`, `Sort`,
+`Str`, `Sys` or `Thread`, nor any name the library takes later. The
+modules of any other library share a prefix of their own, as an X11
+library's `Xauth` and `Xkeys` do, and a program that wants a shorter
+name imports one: `import Auth := Xauth;`.
 
 The compiler holds every file of such a module to the same interface.
 When it takes one of `Name.*.raz`, it also reads the declarations of
@@ -545,7 +552,9 @@ never stops the program.
 - `p - q`, with both of the same pointer type, is the number of
   elements between them, an `I64`.
 - `p[i]` is `(p + i)^`. `p[lo..hi]` is the slice of the `hi - lo`
-  elements from `p + lo`. Neither is checked. A pointer to an array
+  elements from `p + lo`. Neither is checked against a length, which a
+  pointer doesn't have, but a slice of a pointer that runs backwards,
+  `hi < lo`, is a failed check (section 6.5). A pointer to an array
   isn't indexed this way, since a step would be a whole array: its
   elements are `p^[i]`.
 - Pointers compare with `= # < <= > >=` as unsigned addresses.
@@ -762,6 +771,17 @@ A `^VOLATILE T` doesn't convert to `^T` without a written conversion.
 
 `FENCE` also orders the program's ordinary accesses against those of
 other processors and devices.
+
+**Ordinary variables.** Only volatile accesses, `CAS`, `XCHG`, `XADD`
+and `FENCE` are exact. Any other access is ordinary: an implementation
+may keep a variable in a register, leave out a write that nothing
+reads, and change the order of ordinary accesses, as long as each
+thread, on its own, does what this report says. A variable that one
+thread writes while another reads or writes it, unless both use
+volatile accesses or the atomic built-ins, or a `FENCE` orders them,
+holds no particular value then: a read of it gives a value it had or
+was given, or a mixture of their bytes. Nothing else of the program
+becomes undefined by it.
 
 ### 7.7 Defer
 
@@ -1495,6 +1515,14 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   `Program`, and `Sys.wait` says which program changed and how. `Str`
   gains UTF-8 and reading a number, `Map` removing and walking, `Fmt`
   reals; `Sort`, `Math`, `Files` and `Opt` are new (section 11).
+- **2026-10.10.** Said at last: what the compiler did and the report
+  didn't say, all through; what an implementation chooses, and the
+  core every target has (appendix A); the whole grammar (appendix B);
+  the library's module names are kept for it (section 3). Mended:
+  arithmetic on untyped constants that overflows is an error (section
+  2); a slice of a pointer can't run backwards (section 6.4). Ordinary
+  accesses are no longer promised to be made exactly as written, only
+  volatile and atomic ones (section 7.6).
 
 ## Appendix A. What an implementation chooses
 
@@ -1521,6 +1549,13 @@ compiler's choices are in `doc/compiler.md`.
   every implementation; the words that say so are free.
 - **The command line.** How the compiler is run, its options, and
   where its library lives (sections 1 and 3).
+
+**The core.** A target may leave out what the system under it can't
+give: `Sys` past writing, ending the program and getting memory,
+`Thread`, `link` and `extern`. What it must have, besides the whole
+language, is the core of the library: `Rt`, `Out`, `Mem`, `Arena`,
+`Lock`, `Str`, `Buf` and `Fmt`, and of `Sys` what they need. A
+program that keeps to the core runs on every target.
 
 ## Appendix B. The grammar
 

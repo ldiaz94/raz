@@ -1,0 +1,14 @@
+module GenConstOverflow;
+(* An untyped constant doesn't wrap *)
+const
+    Big = 9223372036854775807;
+    Over = Big + 1;
+    Twice = 4611686018427387904 * 2;
+    Under = -Big - 2;
+    Fine = U8(250) + 10;
+
+proc main*;
+begin
+end;
+
+end GenConstOverflow.

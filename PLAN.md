@@ -93,9 +93,11 @@ measure a port); an optimiser; the wishes below.
       getting memory) and what it may leave out. No language change.
       For review before anything else.
 - [ ] 2. The report, the new language, for review before any code: the
-      system integer, the size of an address, which `LEN`, indexes and
-      sizes give (the owner's choice), and how it converts to and from
-      `I64`; reals a
+      system integers `INT` and `UINT`, the size of an address, which
+      `LEN`, indexes, sizes and `p - q` give, and through which
+      integers and pointers convert (the owner's choices), and how
+      they convert to and from `I64`; a module's own choice to leave
+      out its checks of indexes and slices; reals a
       target may leave out; object files, a module's interface and its
       IR, and a generic's instances in them, named by their arguments
       and the fingerprints they were built from.
