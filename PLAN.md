@@ -518,3 +518,15 @@ itself". Done.
       ravite's `ravite-c`, still build through their link to
       `lib/Sys.raz`. `Report` in `src/raz.pas` goes to 2026-10.5
       with it, or with step 49, whichever comes last.
+
+Stage 9: several results in place of var parameters, report 2026-10.8
+
+At the owner's word: a procedure gives back what it makes as its
+results, not through a `var` parameter. Done.
+
+- [x] 52. The report, version 2026-10.8: `Sys.workDir` returns the
+      directory, good until the next call, and an errno.
+- [x] 53. Both Sys files: `workDir` from a buffer of the module's;
+      `cstr`, which fills its caller's storage rather than making a
+      result, takes a slice, as `read` does. What is left of `var` is
+      the tests of the feature itself.

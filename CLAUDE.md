@@ -64,13 +64,14 @@ the library. Stage 4, diagnostics (steps 19-27), is done; so are
 stage 6, the language of report 2026-10.3 (steps 42-47), and stage 8,
 one module to a name (report 2026-10.5, step 51), and stage 7, `Sys`
 for rlX11 and rat (reports 2026-10.4 and 10.7, steps 49a-c), with
-`Info`'s `file` and `symlink` for rloc (2026-10.6, step 49d). The
-compiler says it follows report 2026-10.7, the last version all done.
+`Info`'s `file` and `symlink` for rloc (2026-10.6, step 49d), and
+stage 9, several results in place of var parameters (2026-10.8,
+steps 52-53). The compiler says it follows report 2026-10.8, the last
+version all done.
 New work starts
 only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
-compiler changes. Left for later at the owner's word: a rewrite of
-var parameters.
+compiler changes.
 
 A release is an annotated tag `vX.Y.Z` on `main`, its message what
 `raz --version` will print (`raz 0.3.0, report 2026-10.0`); `make

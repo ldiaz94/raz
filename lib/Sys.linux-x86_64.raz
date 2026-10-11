@@ -38,6 +38,7 @@ type
     end;
 
 var
+    cwd: [4096]U8;    (* what workDir gives *)
     saved: Termios;   (* the terminal as rawMode found it *)
 
 (* Writes s to the file descriptor fd; the number of bytes written, or
@@ -57,7 +58,7 @@ begin
 end;
 
 (* path, a C string in buf, or false if it doesn't fit. *)
-proc cstr(path: []U8; var buf: [4096]U8): BOOL;
+proc cstr(path, buf: []U8): BOOL;
 var i: I64;
 begin
     if LEN(path) >= LEN(buf) then return false; end;
@@ -300,13 +301,14 @@ begin
     return "";
 end;
 
-(* The working directory into buf: its length, or minus an errno. *)
-proc workDir*(var buf: [4096]U8): I64;
+(* The working directory, good until the next call; and 0, or minus an
+   errno. *)
+proc workDir*: ([]U8, I64);
 var r: I64;
 begin
-    r := SYSCALL(79, ADR(buf), LEN(buf));           (* getcwd: its length with its zero *)
-    if r < 0 then return r; end;
-    return r - 1;
+    r := SYSCALL(79, ADR(cwd), LEN(cwd));           (* getcwd: its length with its zero *)
+    if r < 0 then return "", r; end;
+    return cwd[0..r - 1], 0;
 end;
 
 (* A pseudo-terminal: the file descriptor of its controlling side, or
@@ -563,8 +565,8 @@ begin
     if (w # 80) or (h # 24) then exit(2); end;
     (* the environment *)
     if (LEN(env("PATH")) = 0) or (LEN(env("RAZ_NO_SUCH_VARIABLE")) # 0) then exit(2); end;
-    n := workDir(dir);
-    if (n <= 0) or (dir[0] # '/') then exit(2); end;
+    name, err := workDir();
+    if (err # 0) or (LEN(name) = 0) or (name[0] # '/') then exit(2); end;
     (* a socket: nothing at a path, then a listener that a connection
        makes ready, and a byte from it to the connection *)
     if connect("/tmp/raz-no-such-socket") # -2 then exit(2); end;    (* ENOENT *)
