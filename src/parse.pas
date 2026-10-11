@@ -27,6 +27,10 @@ const
   Target = 'linux-x86_64';
   TargetOS = 'linux';
   TargetArch = 'x86_64';
+  { Whether the target has reals (report, appendix A): x86-64 always has
+    SSE2. Without them, used code that computes with one is an error,
+    which raz.pas reports once it knows what the program uses. }
+  HasReals: boolean = true;
 
 var
   libDir, mainDir: shortstring;
@@ -1053,7 +1057,7 @@ begin
       if ival < 0 then MakeConst(x, tU64, ival) else MakeConst(x, tConst, ival);
       Next;
     end;
-    sReal: begin MakeReal(x, rval); Next end;
+    sReal: begin MakeReal(x, rval); UsesReals(TokPos); Next end;
     sString: begin MakeStr(x); Next end;
     sIdent: begin
       Designator(x, called);

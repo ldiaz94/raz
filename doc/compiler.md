@@ -11,12 +11,12 @@ disassembly.
 | `src/diag.pas` | 274 | 198 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 851 | 722 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 596 | 497 | Types, objects, scopes, layout |
-| `src/x64.pas` | 693 | 557 | Code buffer, chunks, fixups, places, instruction encoder |
-| `src/gen.pas` | 1,733 | 1,481 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,464 | 2,221 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/x64.pas` | 695 | 559 | Code buffer, chunks, fixups, places, instruction encoder |
+| `src/gen.pas` | 1,750 | 1,493 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,468 | 2,222 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 139 | Tree shaking, layout, patching, the places |
-| `src/elf.pas` | 425 | 352 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 227 | 179 | The command line, the entry points |
+| `src/elf.pas` | 424 | 351 | Static and dynamic ELF, symbol table, line numbers |
+| `src/raz.pas` | 234 | 185 | The command line, the entry points |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -67,9 +67,9 @@ files, no symbol files, and nothing to keep up to date.
    entry point, `_start`, is written as one more chunk: save `argc` and
    `argv` and the address of the places (below), call every used
    module's body, call `main`, call `Rt.exit`.
-6. `WriteElf` (`elf.pas`) has `link.pas` mark what `_start` reaches,
-   place it and patch it, then writes headers, code, data, symbols and
-   line numbers.
+6. `MarkLive` (`link.pas`) marks what `_start` reaches; then
+   `WriteElf` (`elf.pas`) has `link.pas` place it and patch it, and
+   writes headers, code, data, symbols and line numbers.
 
 ## A procedure, compiled
 
@@ -443,7 +443,12 @@ it; gdb can stop at a line and show where it is, not print a variable.
 the program uses: `Use` marks the modules imported from the main module
 and `Rt`; `UsesC` decides whether the program is dynamic, refusing one
 that both uses C and has a module saying `link static`. Then it writes
-the entry point. A static program starts at `_start` itself. A dynamic
+the entry point, and has `MarkLive` mark what it reaches. On a target
+without reals (`HasReals`, beside `Target` in `parse.pas`; x86-64 has
+them), a live chunk that computes with one is an error at the first
+place it does: `UsesReals` in `gen.pas` notes it, from `Value` and a
+real literal, on the chunk of the procedure being compiled. A real
+moved whole, as a record's bytes are, isn't noted. A static program starts at `_start` itself. A dynamic
 one starts at a `_start` that calls `__libc_start_main` the way C's own
 start-up does, which sets C up and calls back a `main` that runs the
 module bodies and the program's `main`.

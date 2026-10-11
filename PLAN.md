@@ -120,7 +120,7 @@ the wishes below.
 - [x] 4. The tests split: a conformance suite any implementation
       passes, apart from this compiler's own messages.
 - [x] 5. The system integer.
-- [ ] 6. Optional reals: a target says whether it has them.
+- [x] 6. Optional reals: a target says whether it has them.
 - [ ] 6a. `+` joins string constants (report, section 4).
 - [ ] 6b. Array constants: `const P: [5]I64 = [...]`, in read-only
       data, used as a variable that can't be changed (section 4).

@@ -20,7 +20,7 @@ unit x64;
 
 interface
 
-uses scan;
+uses scan, diag;
 
 const
   RAX = 0; RCX = 1; RDX = 2; RBX = 3; RSP = 4; RBP = 5; RSI = 6; RDI = 7;
@@ -59,6 +59,8 @@ type
     adr: int64;                    { its address, set by the linker }
     live: boolean;                 { reached from the entry point }
     ext: boolean;                  { bss: the address of a C symbol, its name }
+    reals: boolean;                { code: computes with reals, first at realsAt }
+    realsAt: TPos;
   end;
 
   { A place in the source whose code starts at a place in text: for

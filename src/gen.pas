@@ -76,6 +76,7 @@ procedure MakeStr(var x: TItem);
 procedure MakeItem(var x: TItem; o: PObj);
 function RealOf(const x: TItem): double;
 
+procedure UsesReals(const p: TPos);
 procedure Value(var x: TItem);
 procedure Address(var x: TItem; r: longint);
 procedure Save(var x: TItem);
@@ -149,6 +150,7 @@ var
   pushEnd: longint;             { the code just after the last push of rax }
   result: PType;                { the procedure's result, or nil }
   exitL: longint;
+  codeChunk: longint = -1;      { the procedure or body being compiled, or -1 }
   { parameters arriving in registers: where each is stored on entry }
   inReg: array[0..13] of longint;
   inSlot: array[0..13] of int64;
@@ -367,8 +369,21 @@ begin
   if Unpush then begin dec(pc); dec(depth); pushEnd := -1 end;
 end;
 
+{ Code computing with a real is noted on its chunk, at the first place,
+  for a target without reals (report 5.1) to refuse if the chunk turns
+  out to be used. A real moved whole, as a record's bytes are copied,
+  needs nothing the target lacks, and isn't noted. }
+procedure UsesReals(const p: TPos);
+begin
+  if (codeChunk >= 0) and not chunks^[codeChunk].reals then begin
+    chunks^[codeChunk].reals := true;
+    chunks^[codeChunk].realsAt := p;
+  end;
+end;
+
 procedure Value(var x: TItem);
 begin
+  if x.typ^.form = fReal then UsesReals(x.pos);
   case x.mode of
     mConst: ConstTo(RAX, x);
     mVar: LoadVar(x, RAX);
@@ -1571,6 +1586,7 @@ procedure EnterBody(c, line: longint);
 var i, top: longint; n: int64;
 begin
   BeginChunk(c);
+  codeChunk := c;
   NoteLine(line, 1);   { a declaration starts a line }
   Push(RBP);
   MovRR(RBP, RSP);
@@ -1707,6 +1723,7 @@ end;
 procedure EndProc(c: longint);
 var n: int64;
 begin
+  codeChunk := -1;
   if depth <> 0 then Fatal('internal error: stack depth');
   { running off the end returns zeros }
   if result <> nil then

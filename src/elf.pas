@@ -316,7 +316,6 @@ begin
   cap := 1 shl 16;
   buf := GetMem(cap);
   len := 0;
-  MarkLive(entry);
   dynamic := numNeeded > 0;
   roExtra := 0; dynSize := 0;
   if dynamic then SizeTables(roExtra, dynSize);

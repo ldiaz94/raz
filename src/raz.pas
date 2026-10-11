@@ -212,6 +212,13 @@ begin
   Ud2;
   EndChunk(start);
 
+  MarkLive(entry);
+  if not HasReals then
+    for i := 0 to numChunks - 1 do
+      if chunks^[i].live and chunks^[i].reals then
+        Error(chunks^[i].realsAt, 'this target has no reals');
+  if errors > 0 then Finish;
+
   mainPath := path;
   if run then begin
     { argv from Main.raz on is the program's, ending in nil as it must }

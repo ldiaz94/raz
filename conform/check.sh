@@ -2,7 +2,7 @@
 # The conformance suite: programs whose behaviour the report defines,
 # which every implementation of raz must give, whatever its target.
 #
-#   conform/check.sh COMPILER [MESSAGES]
+#   conform/check.sh [-noreals] COMPILER [MESSAGES]
 #
 # run from the directory above conform/. COMPILER is run as
 #   COMPILER -I DIR -o EXE FILE
@@ -14,6 +14,8 @@
 #   run/X.expect  its standard output
 #   run/X.args    its arguments, one per line (optional)
 #   run/X.status  its exit status (optional; 0 if missing)
+#   run/X.reals   there if the program uses reals, which a target may
+#                 leave out (report, appendix A); -noreals skips it
 #   err/X.raz     a program the report says is an error, which must not
 #                 compile; err/mods holds the modules it imports
 #
@@ -21,10 +23,9 @@
 # included, is the implementation's own (appendix A). One that keeps
 # its text may give MESSAGES, a directory of X.stderr and X.err, the
 # standard error of run/X and of compiling err/X, compared when there.
-#
-# Programs that use reals are among the rest, until a target may leave
-# them out.
 
+noreals=
+if [ "$1" = -noreals ]; then noreals=1; shift; fi
 raz=$1
 msg=${2:-/nonexistent}
 out=build/conform
@@ -34,6 +35,7 @@ fail=0
 
 for f in conform/run/*.raz; do
     name=$(basename $f .raz)
+    [ -n "$noreals" ] && [ -f conform/run/$name.reals ] && continue
     if ! $raz -I conform/run/mods -o $out/$name $f 2>$out/$name.cerr; then
         echo "FAIL $f: doesn't compile: $(cat $out/$name.cerr)"
         fail=$((fail + 1)); continue
