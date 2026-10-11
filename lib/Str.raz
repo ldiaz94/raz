@@ -129,6 +129,58 @@ begin
     return n, true;
 end;
 
+(* The bytes of s, at most 8, as an unsigned number, the first byte
+   the lowest: how a file or a message in little-endian order is read,
+   whatever the machine's own order. *)
+proc le*(s: []U8): U64;
+var v: U64; i: I64;
+begin
+    if LEN(s) > 8 then Rt.stop("Str.le: more than 8 bytes"); end;
+    for i := LEN(s) - 1 to 0 by -1 do v := v shl 8 | U64(s[i]); end;
+    return v;
+end;
+
+(* As le, the first byte the highest: big-endian, network order. *)
+proc be*(s: []U8): U64;
+var v: U64; i: I64;
+begin
+    if LEN(s) > 8 then Rt.stop("Str.be: more than 8 bytes"); end;
+    for i := 0 to LEN(s) - 1 do v := v shl 8 | U64(s[i]); end;
+    return v;
+end;
+
+(* v into the bytes of s, at most 8, the lowest first; what doesn't
+   fit is left out. *)
+proc putLE*(s: []U8; v: U64);
+var i: I64;
+begin
+    if LEN(s) > 8 then Rt.stop("Str.putLE: more than 8 bytes"); end;
+    for i := 0 to LEN(s) - 1 do s[i] := U8(v); v := v shr 8; end;
+end;
+
+(* As putLE, the highest first. *)
+proc putBE*(s: []U8; v: U64);
+var i: I64;
+begin
+    if LEN(s) > 8 then Rt.stop("Str.putBE: more than 8 bytes"); end;
+    for i := LEN(s) - 1 to 0 by -1 do s[i] := U8(v); v := v shr 8; end;
+end;
+
+proc testOrder;
+var b: [8]U8;
+begin
+    putLE(b[0..4], 12345678H);
+    if (b[0] # 78H) or (b[3] # 12H) or (le(b[0..4]) # 12345678H) or (be(b[0..2]) # 7856H) then
+        Rt.stop("Str.putLE");
+    end;
+    putBE(b, 0102030405060708H);
+    if (b[0] # 1) or (b[7] # 8) or (be(b) # 0102030405060708H) or (le(b[6..8]) # 0807H) then
+        Rt.stop("Str.putBE");
+    end;
+    putBE(b[0..2], 0ABCDH);
+    if (be(b[0..2]) # 0ABCDH) or (le(b[0..0]) # 0) then Rt.stop("Str.be"); end;
+end;
+
 proc testUtf8;
 var b: [4]U8; n, c, i: I64;
 begin
@@ -214,6 +266,7 @@ begin
     if not hasPrefix("hello", "he") or hasPrefix("he", "hello") then Rt.stop("Str.hasPrefix"); end;
     testUtf8;
     testToInt;
+    testOrder;
 end;
 
 end Str.

@@ -31,5 +31,20 @@ proc toInt*(s: []U8): (I64, BOOL);
     s as a decimal number, with a - or + before it if any, and nothing
     else; false if it isn't one, or an I64 can't hold it.
 
+proc le*(s: []U8): U64;
+    The bytes of s, at most 8, as an unsigned number, the first byte
+    the lowest: how a file or a message in little-endian order is read,
+    whatever the machine's own order.
+
+proc be*(s: []U8): U64;
+    As le, the first byte the highest: big-endian, network order.
+
+proc putLE*(s: []U8; v: U64);
+    v into the bytes of s, at most 8, the lowest first; what doesn't
+    fit is left out.
+
+proc putBE*(s: []U8; v: U64);
+    As putLE, the highest first.
+
 proc main*;
     The module's test: stops the program if something is wrong.

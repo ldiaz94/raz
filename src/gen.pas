@@ -43,6 +43,7 @@ type
     chunk: longint;    { mVar with bGlobal, mStr: the chunk }
     vol: boolean;      { mVar: reached through ^VOLATILE }
     isVar: boolean;    { mVar: a variable of the program, not a temporary }
+    odd: boolean;      { mVar: in a packed record, so maybe misaligned }
     obj: PObj;         { mProc, mBuiltin, mCase }
     pos: TPos;         { where it is in the source, for messages }
   end;
@@ -514,6 +515,7 @@ begin
     x.typ := t
   else if (s^.form = fArray) and (t^.form = fSlice) and Same(s^.base, t^.base) then begin
     if x.vol then MarkAt(x.pos, 'can''t make a slice through a volatile pointer');
+    if x.odd then MarkAt(x.pos, 'can''t make a slice of a field of a packed record');
     Address(x, RAX);
     SliceOf(x, t, s^.len);
   end else
@@ -594,11 +596,19 @@ begin
   if t^.base = nil then MarkAt(x.pos, TypeName(t) + ' points to a type never declared');
   Value(x);
   x.mode := mVar; x.base := bReg; x.reg := RAX; x.off := 0;
-  x.typ := t^.base; x.vol := t^.vol; x.isVar := true;
+  x.typ := t^.base; x.vol := t^.vol; x.isVar := true; x.odd := false;
 end;
 
+{ A field of a packed record, of more than one byte's alignment, may
+  sit anywhere; it is read and written, but has no address and no
+  volatile access, which a machine that can't reach a misaligned word
+  couldn't make one access (report section 5.5). }
 procedure Field(var x: TItem; f: PObj);
 begin
+  if x.typ^.packd and (f^.typ^.align > 1) then begin
+    if x.vol then MarkAt(x.pos, 'a field of a packed record can''t be volatile');
+    x.odd := true;
+  end;
   x.off := x.off + f^.val;
   x.typ := f^.typ;
 end;
@@ -627,7 +637,7 @@ begin
     PopR(RCX);
     Alu(aluAdd, RAX, RCX);
     x.mode := mVar; x.base := bReg; x.reg := RAX; x.off := 0;
-    x.vol := t^.vol; x.isVar := true;
+    x.vol := t^.vol; x.isVar := true; x.odd := false;
   end else if (t^.form = fArray) and (y.mode = mConst) then begin
     if (y.val < 0) or (y.val >= t^.len) then MarkAt(y.pos, 'index ' + IntStr(y.val) + ' is out of range for a length of ' + IntStr(t^.len));
     x.off := x.off + y.val * s;
@@ -670,6 +680,7 @@ begin
   s := t^.base^.size;
   if not IsInt(hi.typ) then MarkAt(hi.pos, 'an index is an integer, found ' + What(hi));
   if x.vol then MarkAt(x.pos, 'can''t make a slice through a volatile pointer');
+  if x.odd then MarkAt(x.pos, 'can''t make a slice of a field of a packed record');
   Value(hi);
   MovRR(RDX, RAX);
   PopR(RCX);
@@ -1243,6 +1254,7 @@ begin
   c.isF[c.n] := (p^.typ^.form = fReal) and not p^.isVar;
   if p^.isVar then begin
     if (a.mode <> mVar) or not a.isVar then MarkAt(a.pos, 'a var parameter needs a variable');
+    if a.odd then MarkAt(a.pos, 'a field of a packed record can''t be a var parameter');
     if not Same(a.typ, p^.typ) then MarkAt(a.pos, 'a var parameter needs exactly ' + TypeName(p^.typ) + ', found ' + What(a));
     if a.vol then MarkAt(a.pos, 'can''t pass through a volatile pointer to a var parameter');
     Address(a, RAX);

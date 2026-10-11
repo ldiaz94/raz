@@ -354,10 +354,21 @@ has the same layout as that struct. A record may have no fields; its
 size is then 0.
 
 A `packed record` has no padding: each field starts at the byte after
-the field before it, and the record's alignment is 1. A field of a
-packed record may be misaligned. x86-64 reads and writes it anyway, but
-an atomic operation on it is slow, and a volatile access to it is one
-instruction that needn't be atomic.
+the field before it, and the record's alignment is 1. So a field of a
+packed record may sit at any address. It is read and written like any
+other, on every target, even one whose machine can't reach a
+misaligned word in one access: the compiled code reaches it in parts
+there. But a field of a packed record whose type is aligned to more
+than 1 byte, and anything inside it, has no address: `ADR` of it, a
+`var` parameter of it and a slice of it are errors. Nor can it be
+reached through a `^VOLATILE` pointer, since a misaligned access can't
+be promised as one access (section 7.6). Its value can be copied out
+and back in.
+
+The bytes of a value of more than one byte are in the target's order
+(appendix A). A file or a message in an order of its own is read and
+written a byte at a time, as `Str.le`, `Str.be`, `Str.putLE` and
+`Str.putBE` do (section 11).
 
 ### 5.6 Variants
 
@@ -1068,6 +1079,7 @@ number, minus an errno, as on Linux; 0 is success.
 ```
 const
     stdin* = 0; stdout* = 1; stderr* = 2;
+    outSize* = 4096;    (* the bytes Out keeps; each target has its own *)
     (* signals, by their numbers on Linux; each target has its own *)
     sigHup* = 1; sigInt* = 2; sigQuit* = 3; sigKill* = 9; sigPipe* = 13;
     sigTerm* = 15; sigChld* = 17; sigCont* = 18; sigStop* = 19;
@@ -1277,6 +1289,10 @@ module Str;
 proc encode*(c: I64): ([4]U8, I64);   (* c in UTF-8: its bytes, and how many *)
 proc decode*(s: []U8): (I64, I64);    (* the character s starts with, and its length in bytes *)
 proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
+proc le*(s: []U8): U64;               (* s, at most 8 bytes, the first the lowest *)
+proc be*(s: []U8): U64;               (* s, at most 8 bytes, the first the highest *)
+proc putLE*(s: []U8; v: U64);         (* v into s, the lowest byte first *)
+proc putBE*(s: []U8; v: U64);         (* v into s, the highest byte first *)
 
 module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
 proc remove*(m: ^Map; k: K): BOOL;            (* false if k wasn't there *)
@@ -1305,6 +1321,16 @@ the character that stands for a wrong one. `decode` reads the first
 character of `s`, and gives FFFDH and 1 for a byte that doesn't start
 one rightly, and 0 and 0 for an empty `s`. `toInt` reads a decimal
 number, with a `-` or `+` before it if any, and nothing else.
+
+`le` and `be` read an unsigned number of up to 8 bytes in a fixed
+order, little-endian or big-endian, whatever the machine's own, and
+`putLE` and `putBE` write one; more than 8 bytes stops the program.
+They are how a file format or a network protocol is read and written:
+
+```
+len := U32(Str.le(header[4..8]));
+Str.putBE(packet[0..2], U64(port));
+```
 
 `Map.next` walks a map: from 0, it gives the next entry and the number
 to pass for the one after it, and -1 when there are no more. A walk
@@ -1455,7 +1481,8 @@ others are an option with neither a letter nor a long name, a long
 name with `=` in it, a letter `-`, and `-h` or `--help` in the table,
 since they are `Opt`'s.
 
-**Out and C's stdio.** `Out` keeps a buffer of 4 KB. It writes it out
+**Out and C's stdio.** `Out` keeps a buffer of `Sys.outSize` bytes,
+4 KB on Linux. It writes it out
 when it is full, at each line feed when standard output is a terminal,
 at `Out.flush`, and when the program ends by `Rt.exit`. C's `stdio`
 keeps a buffer of its own for the same standard output. A program that
@@ -1526,7 +1553,11 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   the library's module names are kept for it (section 3); a record,
   variant or enumeration is a type of its own wherever it is written
   (section 5.10); a `nil` pointer, a division by zero and a stack
-  overflow stop the program on every target (section 10). Mended:
+  overflow stop the program on every target (section 10); byte order
+  is the target's, and `Str` reads and writes a fixed one (sections
+  5.5 and 11); `Out`'s buffer is `Sys.outSize` bytes (section 11).
+  Changed: a field of a packed record that may be misaligned has no
+  address and no volatile access (section 5.5). Mended:
   arithmetic on untyped constants that overflows is an error (section
   2); a slice of a pointer can't run backwards (section 6.4). Ordinary
   accesses are no longer promised to be made exactly as written, only
@@ -1548,7 +1579,11 @@ compiler's choices are in `doc/compiler.md`.
 - **What is the target's.** Code procedures (section 8) hold the
   target's machine code, and exist only where the implementation says
   so; `SYSCALL` exists only on Linux targets (section 6.8). A record's
-  layout is the target's C layout (section 5.5).
+  layout is the target's C layout (section 5.5), and the order of a
+  value's bytes is the target's (little-endian on x86-64).
+- **Sizes in the library.** How many bytes `Out` keeps before it
+  writes them, `Sys.outSize` (section 11): 4 KB on Linux, fewer on a
+  small machine.
 - **The executable.** Its format, and the names and line numbers it
   carries for a debugger (section 10).
 - **How a failure is caught.** A `nil` pointer, a division by zero or

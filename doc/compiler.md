@@ -12,8 +12,8 @@ disassembly.
 | `src/scan.pas` | 851 | 722 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 593 | 494 | Types, objects, scopes, layout |
 | `src/x64.pas` | 693 | 557 | Code buffer, chunks, fixups, places, instruction encoder |
-| `src/gen.pas` | 1,619 | 1,398 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,443 | 2,202 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/gen.pas` | 1,631 | 1,408 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,444 | 2,203 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 139 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 425 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 227 | 179 | The command line, the entry points |

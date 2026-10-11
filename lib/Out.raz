@@ -8,7 +8,7 @@ module Out;
 import Rt, Sys, Lock;
 
 var
-    buf: [4096]U8;
+    buf: [Sys.outSize]U8;
     n: I64;          (* bytes in buf *)
     tty: BOOL;       (* standard output is a terminal *)
     lock: Lock.Lock;

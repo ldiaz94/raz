@@ -15,6 +15,9 @@ const
     stdin* = 0;
     stdout* = 1;
     stderr* = 2;
+    (* the bytes Out keeps before it writes them; a target with little
+       memory keeps fewer *)
+    outSize* = 4096;
     (* signals, by their numbers on Linux; another target has its own *)
     sigHup* = 1; sigInt* = 2; sigQuit* = 3; sigKill* = 9; sigPipe* = 13;
     sigTerm* = 15; sigChld* = 17; sigCont* = 18; sigStop* = 19;

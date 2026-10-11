@@ -778,6 +778,7 @@ begin
     bAdr: begin
       Expression(y, nil);
       if (y.mode <> mVar) or not y.isVar then MarkAt(y.pos, 'ADR needs a variable');
+      if y.odd then MarkAt(y.pos, 'a field of a packed record has no address');
       t := NewPtr(y.typ, y.vol);
       Address(y, RAX);
       MakeConst(x, t, 0);
