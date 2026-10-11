@@ -66,8 +66,8 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 
 ## Proposed, v0.6.0: raz to be rebuilt by anyone
 
-Under way: steps 1 to 4 are done, step 3 set aside since; the change
-to steps 7 and 8, and dropping 9 and 9f, is for review. The freeze
+Under way: steps 1 to 4 are done, step 3 set aside since. The owner
+has agreed the rest, to step 10, to be done without stopping. The freeze
 doesn't hold for this work, by the owner's word.
 
 **For:** a language a person alone can implement again, from the
@@ -78,9 +78,12 @@ without one.
 **Done when:** the report alone is enough to rebuild raz, with a
 conformance suite to say when a rebuild is done; the report has a
 system integer and optional reals, and leaves separate compilation to
-the implementation; the parser reaches the machine only through
+the implementation; it has array constants, joined string constants
+and `match` on integers; the parser reaches the machine only through
 `gen`, the boundary a port writes again, and the back end keeps its
-values in registers as Wirth's compilers do; `make bench` still passes; a new code budget is written down; `v0.6.0` is tagged.
+values in registers as Wirth's compilers do; `make bench` still
+passes; the compiler is within the new budget below; `v0.6.0` is
+tagged.
 
 **Kept out:** a second back end (aarch64 is the milestone after, to
 measure a port); an optimiser; separate compilation: object files, an
@@ -118,6 +121,14 @@ the wishes below.
       passes, apart from this compiler's own messages.
 - [ ] 5. The system integer.
 - [ ] 6. Optional reals: a target says whether it has them.
+- [ ] 6a. `+` joins string constants (report, section 4).
+- [ ] 6b. Array constants: `const P: [5]I64 = [...]`, in read-only
+      data, used as a variable that can't be changed (section 4).
+      Done so that a string constant is the same mechanism.
+- [ ] 6c. `match` on integers: constants and inclusive ranges as
+      labels, no value in two, `else` required (7.4); compares and
+      branches, no jump table. `examples/Sh.raz`'s chains of `elsif`
+      become `match`.
 - [ ] 7. The parser reaches the machine only through `gen`: calls of
       a stack machine, with the kind of each value (a word, a 64-bit
       integer, an `F32`, an `F64`) and the place in the source, and no
@@ -148,20 +159,21 @@ the wishes below.
 - [ ] 9e. A profiler in `Rt`: a program run with `RAZ_PROFILE` set
       samples where it is, and at its end says which procedures and
       lines took the time.
-- [ ] 10. `doc/compiler.md`, README, the budget, the report's version
-      and the compiler's; tag `v0.6.0`.
+- [ ] 10. `doc/compiler.md`, README, the report's version and the
+      compiler's; tag `v0.6.0`.
+
+The budget, by the owner's word: a soft limit of 8,000 lines of code,
+with the compiler documented and commented throughout, most of all
+where it is obscure, not obvious, or needs a compiler writer's
+knowledge.
 
 ## Wishes, for a later thaw
 
 What the language or the library might have, met while writing raz;
 none is built while the freeze holds.
 
-- `case` on integers and characters: `match` takes variants only, so
-  a choice among numbers is a chain of `elsif` (`examples/Sh.raz`).
-- Constant arrays: a table of numbers is assigned in a procedure, as
-  `Math`'s bits of 2/pi are, or kept in a variable.
-- Joining string constants, `"a" + B`: a test's expected text is
-  written out whole each time (`Opt`'s test).
+Taken into v0.6.0: `match` on integers, array constants, joining
+string constants.
 
 ## After v0.5.0
 

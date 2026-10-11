@@ -277,7 +277,7 @@ of the module that made it. `check` and `off` aren't reserved words, as
 ## 4. Declarations
 
 ```
-Declaration = "const" { IdentDef [ ":" "ERROR" ] "=" Expr ";" }
+Declaration = "const" { IdentDef [ ":" Type ] "=" Expr ";" }
             | "type" { IdentDef "=" Type ";" }
             | "var" { IdentList ":" Type ";" }
             | ProcDeclaration ";"
@@ -294,16 +294,35 @@ procedure may be declared `forward` and defined later (section 8).
 **Constants** are evaluated by the compiler. Their expressions use only
 literals, other constants, operators, conversions, `SIZE` and the `LEN`
 of arrays and strings. A constant is an integer, a real, a `BOOL`, a
-name of an enumeration, a set, a string or an `ERROR`. A constant of an integer type wraps as the
+name of an enumeration, a set, a string, an array or an `ERROR`. A constant of an integer type wraps as the
 program would: `U8(250) + 10` is 4. Dividing by zero in a constant is
 an error. A string constant can be indexed and sliced as an array of
-`U8` is, and its `LEN` is its length in bytes:
+`U8` is, and its `LEN` is its length in bytes. `+` joins two string
+constants into one:
 
 ```
 const Text = "the cat";
+    Line = Text + "\n";
 ...
 w := Text[4..7];    (* "cat" *)
 ```
+
+A constant with a type is an `ERROR` (section 5.8) or an array. An
+array constant has a type `[n]T`, where `T` is an integer type, a
+real, `BOOL`, an enumeration or a set, and its value is an array
+literal (section 6.5) of constants:
+
+```
+const Primes: [5]I64 = [2, 3, 5, 7, 11];
+...
+p := Primes[i];
+```
+
+It is used as a variable of that type is, but can't be changed: it can
+be indexed and sliced, its `LEN` is `n`, it can be assigned and
+compared, and it can be passed as a `[n]T` or a `[]T`. Its elements
+are constant as a string's bytes are (section 5.10). An element of it
+isn't a constant, even at a constant index.
 
 **Variables** of a module live as long as the program; variables of a
 procedure live as long as its call. Both start at zero: every byte of
@@ -781,7 +800,9 @@ Statement  = Designator [ ":=" Expr ]
            | "return" [ Expr { "," Expr } ]
            | "break"
            | "defer" Statement .
-Arm        = ( ident [ "(" ident { "," ident } ")" ] | "else" ) ":" Statements .
+Arm        = ( ident [ "(" ident { "," ident } ")" ]
+             | Label { "," Label } | "else" ) ":" Statements .
+Label      = Expr [ ".." Expr ] .
 ```
 
 Every statement ends in `;`, including the ones that end in `end` or
@@ -847,6 +868,23 @@ unnamed. Every case must have an arm, and only one, unless there is an
 
 `match` on an enumeration works the same way: each arm names one of the
 enumeration's names.
+
+`match` on an integer runs the arm whose labels hold its value:
+
+```
+match ch of
+| ' ', '\t':      skip := true;
+| '0' .. '9':     digit := true;
+| else:
+end;
+```
+
+A label is a constant, or `lo .. hi`, the constants from `lo` to `hi`,
+both included (unlike a slice, which leaves `hi` out). Each must fit
+the integer's type, and no value may be in two labels. An integer
+`match` must have an `| else:` arm, which may be empty. Whether an arm
+names a case or gives labels is set by the type matched: `| Max:` is a
+case of a variant or an enumeration, and a constant for an integer.
 
 ### 7.5 Order of evaluation
 
@@ -927,7 +965,7 @@ program without running the deferred statements still pending.
 ProcDeclaration   = "proc" IdentDef Signature ";"
                     ( "forward" | { LocalDeclaration } "begin" Statements "end" [ ident ]
                     | "code" Expr { "," Expr } ) .
-LocalDeclaration  = "const" { ident [ ":" "ERROR" ] "=" Expr ";" }
+LocalDeclaration  = "const" { ident [ ":" Type ] "=" Expr ";" }
                   | "type" { ident "=" Type ";" }
                   | "var" { ident { "," ident } ":" Type ";" } .
 Signature         = "(" [ Params { ";" Params } [ ";" "..." ] ] ")" [ ":" Results ]
@@ -1684,7 +1722,9 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   `main`'s and `Rt.exit`'s among them, and `I32` for a character;
   `I64` stays for what may pass an `INT` on a small target: a file's
   size and position, times, and numbers read from text (section
-  11).
+  11). An array constant has a type and is used as a variable that
+  can't be changed; `+` joins string constants (section 4). `match`
+  takes an integer, with constants and ranges as labels (7.4).
 
 ## Appendix A. What an implementation chooses
 
@@ -1769,7 +1809,7 @@ ImportItem = ident [ ":=" ident [ "(" Type { "," Type } ")" ] ] .
 Link       = "link" ( string | "static" ) ";" .
 Check      = "check" "off" ";" .
 
-Declaration = "const" { IdentDef [ ":" "ERROR" ] "=" Expr ";" }
+Declaration = "const" { IdentDef [ ":" Type ] "=" Expr ";" }
             | "type" { IdentDef "=" Type ";" }
             | "var" { IdentList ":" Type ";" }
             | ProcDeclaration ";"
@@ -1820,12 +1860,14 @@ Statement  = Designator [ ":=" Expr ]
            | "return" [ Expr { "," Expr } ]
            | "break"
            | "defer" Statement .
-Arm        = ( ident [ "(" ident { "," ident } ")" ] | "else" ) ":" Statements .
+Arm        = ( ident [ "(" ident { "," ident } ")" ]
+             | Label { "," Label } | "else" ) ":" Statements .
+Label      = Expr [ ".." Expr ] .
 
 ProcDeclaration   = "proc" IdentDef Signature ";"
                     ( "forward" | { LocalDeclaration } "begin" Statements "end" [ ident ]
                     | "code" Expr { "," Expr } ) .
-LocalDeclaration  = "const" { ident [ ":" "ERROR" ] "=" Expr ";" }
+LocalDeclaration  = "const" { ident [ ":" Type ] "=" Expr ";" }
                   | "type" { ident "=" Type ";" }
                   | "var" { ident { "," ident } ":" Type ";" } .
 Signature         = "(" [ Params { ";" Params } [ ";" "..." ] ] ")" [ ":" Results ]
