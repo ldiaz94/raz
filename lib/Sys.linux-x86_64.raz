@@ -62,6 +62,14 @@ type
         family: U16;
         path: [108]U8;
     end;
+    (* struct sockaddr_in or sockaddr_in6: AF_INET and the IPv4 address
+       in data[0..4], or AF_INET6 and the IPv6 one in data[4..20] *)
+    Sockaddr = record
+        family: U16;
+        port: [2]U8;
+        data: [24]U8;
+    end;
+    Timespec = record sec, nsec: I64; end;
 
 var
     cwd: [4096]U8;    (* what workDir gives *)
@@ -334,20 +342,218 @@ begin
     return SYSCALL(7, ADR(p), 1, ms) > 0;           (* poll *)
 end;
 
-(* A stream socket connected to the Unix socket at path: its file
+(* The clock that only goes forward, in nanoseconds: for how long
+   something takes. *)
+proc clock*: I64;
+var t: Timespec;
+begin
+    SYSCALL(228, 1, ADR(t));                            (* clock_gettime: CLOCK_MONOTONIC *)
+    return t.sec * 1000000000 + t.nsec;
+end;
+
+(* The time in nanoseconds since 1970-01-01, UTC. *)
+proc now*: I64;
+var t: Timespec;
+begin
+    SYSCALL(228, 0, ADR(t));                            (* clock_gettime: CLOCK_REALTIME *)
+    return t.sec * 1000000000 + t.nsec;
+end;
+
+(* Waits ms milliseconds. *)
+proc sleep*(ms: I64);
+var t: Timespec; at: I64;
+begin
+    at := clock() + ms * 1000000;
+    t := {sec: at div 1000000000, nsec: at mod 1000000000};
+    repeat until SYSCALL(230, 1, 1, ADR(t), 0) # -4;    (* clock_nanosleep until t, again after EINTR *)
+end;
+
+(* Fills b with random bytes, from the kernel. *)
+proc random*(b: []U8);
+var n, r: I64;
+begin
+    n := 0;
+    while n < LEN(b) do                                 (* a signal may cut it short *)
+        r := SYSCALL(318, ADR(b[n]), LEN(b) - n, 0);    (* getrandom *)
+        if r > 0 then INC(n, r); end;
+    end;
+end;
+
+(* A socket of family and kind, connected to the address at a, of size
+   bytes, or, if serving, bound to it and taking connections: its file
    descriptor, or minus an errno. It is closed in a program exec
    starts. *)
-proc connect*(path: []U8): I64;
-var a: SockaddrUn; fd, r, i: I64;
+proc socket(family, kind: I64; a: ^U8; size: I64; serving: BOOL): I64;
+var fd, r, one: I64;
 begin
-    if LEN(path) >= LEN(a.path) then return -36; end;   (* ENAMETOOLONG *)
-    a.family := 1;                                      (* AF_UNIX *)
-    for i := 0 to LEN(path) - 1 do a.path[i] := path[i]; end;
-    fd := SYSCALL(41, 1, 80001H, 0);                    (* socket: AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC *)
+    fd := SYSCALL(41, family, kind | 80000H, 0);        (* socket, SOCK_CLOEXEC *)
     if fd < 0 then return fd; end;
-    r := SYSCALL(42, fd, ADR(a), SIZE(SockaddrUn));     (* connect *)
+    if serving then
+        one := 1;                                       (* so that a server can start again at once *)
+        SYSCALL(54, fd, 1, 2, ADR(one), 4);             (* setsockopt: SOL_SOCKET, SO_REUSEADDR *)
+        r := SYSCALL(49, fd, a, size);                  (* bind *)
+        if r = 0 then r := SYSCALL(50, fd, 4096); end;  (* listen *)
+    else
+        r := SYSCALL(42, fd, a, size);                  (* connect *)
+    end;
     if r < 0 then close(fd); return r; end;
     return fd;
+end;
+
+(* path as a Unix socket's address in a, or false if it is too long. *)
+proc unixAddr(path: []U8; a: ^SockaddrUn): BOOL;
+var i: I64;
+begin
+    if LEN(path) >= LEN(a^.path) then return false; end;
+    a^.family := 1;                                     (* AF_UNIX *)
+    for i := 0 to LEN(path) - 1 do a^.path[i] := path[i]; end;
+    return true;
+end;
+
+(* A stream socket connected to the Unix socket at path. *)
+proc connect*(path: []U8): I64;
+var a: SockaddrUn;
+begin
+    if not unixAddr(path, ADR(a)) then return -36; end;    (* ENAMETOOLONG *)
+    return socket(1, 1, ^U8(ADR(a)), SIZE(SockaddrUn), false);  (* SOCK_STREAM *)
+end;
+
+(* A stream socket made at path, which must not be there yet, taking
+   connections. *)
+proc listen*(path: []U8): I64;
+var a: SockaddrUn;
+begin
+    if not unixAddr(path, ADR(a)) then return -36; end;
+    return socket(1, 1, ^U8(ADR(a)), SIZE(SockaddrUn), true);
+end;
+
+(* The value of the hexadecimal digit c, or -1 if it isn't one. *)
+proc hexDigit(c: U8): I64;
+begin
+    if (c >= '0') and (c <= '9') then return I64(c - '0'); end;
+    if (c >= 'a') and (c <= 'f') then return I64(c - 'a') + 10; end;
+    if (c >= 'A') and (c <= 'F') then return I64(c - 'A') + 10; end;
+    return -1;
+end;
+
+(* The IPv4 address s, four numbers and dots, in out's 4 bytes, or false
+   if it isn't one. *)
+proc ipv4(s, out: []U8): BOOL;
+var b: [4]U8; n, i, v, d: I64;
+begin
+    i := 0;
+    for n := 0 to 3 do
+        if n > 0 then
+            if (i = LEN(s)) or (s[i] # '.') then return false; end;
+            INC(i);
+        end;
+        v := 0;
+        d := 0;
+        while (i < LEN(s)) and (d < 3) and (s[i] >= '0') and (s[i] <= '9') do
+            v := v * 10 + I64(s[i] - '0');
+            INC(i);
+            INC(d);
+        end;
+        if (d = 0) or (v > 255) then return false; end;
+        b[n] := U8(v);
+    end;
+    if i # LEN(s) then return false; end;
+    for i := 0 to 3 do out[i] := b[i]; end;
+    return true;
+end;
+
+(* The IPv6 address s, groups of hexadecimal digits and colons, one ::
+   standing for groups of zeros, in out's 16 bytes, or false if it isn't
+   one. *)
+proc ipv6(s, out: []U8): BOOL;
+var g: [8]I64; n, gap, i, v, d, k: I64;
+begin
+    n := 0;
+    gap := -1;                                          (* the group the :: is before *)
+    i := 0;
+    if (LEN(s) >= 2) and (s[0..2] = "::") then gap := 0; i := 2; end;
+    while i < LEN(s) do
+        if n = 8 then return false; end;
+        v := 0;
+        d := 0;
+        while (i < LEN(s)) and (d < 5) and (hexDigit(s[i]) >= 0) do
+            v := v * 16 + hexDigit(s[i]);
+            INC(i);
+            INC(d);
+        end;
+        if (d = 0) or (d > 4) then return false; end;
+        g[n] := v;
+        INC(n);
+        if i < LEN(s) then
+            if s[i] # ':' then return false; end;
+            INC(i);
+            if i = LEN(s) then return false; end;
+            if s[i] = ':' then
+                if gap >= 0 then return false; end;
+                gap := n;
+                INC(i);
+            end;
+        end;
+    end;
+    if ((gap < 0) and (n < 8)) or ((gap >= 0) and (n = 8)) then return false; end;
+    for i := 0 to 15 do out[i] := 0; end;
+    for i := 0 to n - 1 do
+        k := i;
+        if (gap >= 0) and (i >= gap) then k := i + 8 - n; end;   (* after the zeros *)
+        out[2 * k] := U8(g[i] shr 8);
+        out[2 * k + 1] := U8(g[i] & 255);
+    end;
+    return true;
+end;
+
+(* addr, an IPv4 or IPv6 address as numbers, and port, in a: the size
+   of its struct sockaddr_in or sockaddr_in6, or 0 if either is
+   wrong. *)
+proc inetAddr(addr: []U8; port: I64; a: ^Sockaddr): I64;
+begin
+    if (port < 0) or (port > 65535) then return 0; end;
+    a^.port[0] := U8(port shr 8);                        (* in the network's order, the high byte first *)
+    a^.port[1] := U8(port & 255);
+    if ipv4(addr, a^.data[0..4]) then a^.family := 2; return 16; end;    (* AF_INET *)
+    if ipv6(addr, a^.data[4..20]) then a^.family := 10; return 28; end;  (* AF_INET6 *)
+    return 0;
+end;
+
+(* A socket of kind at addr and port, as socket makes it; -22 (EINVAL)
+   if they are wrong. *)
+proc inet(addr: []U8; port, kind: I64; serving: BOOL): I64;
+var a: Sockaddr; size: I64;
+begin
+    size := inetAddr(addr, port, ADR(a));
+    if size = 0 then return -22; end;
+    return socket(I64(a.family), kind, ^U8(ADR(a)), size, serving);
+end;
+
+(* A stream socket connected to port at addr, an IPv4 or IPv6 address
+   as numbers. *)
+proc connectTcp*(addr: []U8; port: I64): I64;
+begin
+    return inet(addr, port, 1, false);                  (* SOCK_STREAM *)
+end;
+
+(* A socket of datagrams to and from port at addr. *)
+proc connectUdp*(addr: []U8; port: I64): I64;
+begin
+    return inet(addr, port, 2, false);                  (* SOCK_DGRAM *)
+end;
+
+(* A stream socket taking connections on port at addr; "0.0.0.0" or
+   "::" is every address the machine has. *)
+proc listenTcp*(addr: []U8; port: I64): I64;
+begin
+    return inet(addr, port, 1, true);
+end;
+
+(* The next connection to the socket fd, waiting for one: a socket of
+   its own, closed in a program exec starts; or minus an errno. *)
+proc accept*(fd: I64): I64;
+begin
+    return SYSCALL(288, fd, 0, 0, 80000H);              (* accept4, SOCK_CLOEXEC *)
 end;
 
 (* Writes s to the socket fd, as write does, but returns -32 (EPIPE)
@@ -672,21 +878,6 @@ begin
     SYSCALL(231, status);
 end;
 
-(* A socket listening at path, for the test: its fd. *)
-proc listen(path: []U8): I64;
-var a: SockaddrUn; fd, i: I64;
-begin
-    remove(path);
-    a.family := 1;
-    for i := 0 to LEN(path) - 1 do a.path[i] := path[i]; end;
-    fd := SYSCALL(41, 1, 1, 0);                         (* socket *)
-    if (fd < 0) or (SYSCALL(49, fd, ADR(a), SIZE(SockaddrUn)) # 0)    (* bind *)
-            or (SYSCALL(50, fd, 1) # 0) then                          (* listen *)
-        exit(2);
-    end;
-    return fd;
-end;
-
 (* The test of programs: one on a pseudo-terminal of 100 by 30 prints
    its arguments, a variable put in place and its size, and leads the
    terminal's foreground until it ends with status 3; one in a
@@ -762,9 +953,50 @@ begin
     if ignore(sigInt, false) # 0 then exit(2); end;
 end;
 
+(* The test of time, random bytes and the network: a sleep the clock
+   sees; addresses read and refused; a TCP connection on the loopback;
+   and a datagram to a port where no one listens, refused. *)
+proc testNet;
+var t, l, c, a, u: I64; x, y: [16]U8; s, s6: Sockaddr;
+begin
+    t := clock();
+    sleep(20);
+    t := clock() - t;
+    if (t < 20000000) or (t > 2000000000) or (now() < 1700000000 * 1000000000) then exit(2); end;
+    random(x);
+    random(y);
+    if x[0..16] = y[0..16] then exit(2); end;
+    if (inetAddr("10.0.0.255", 80, ADR(s)) # 16) or (s.port[0] # 0) or (s.port[1] # 80)
+            or (s.data[0] # 10) or (s.data[2] # 0) or (s.data[3] # 255) then
+        exit(2);
+    end;
+    if (inetAddr("1:aBcd::ff", 258, ADR(s6)) # 28) or (s6.port[0] # 1) or (s6.port[1] # 2)
+            or (s6.data[0] # 0) or (s6.data[5] # 1) or (s6.data[6] # 0ABH) or (s6.data[7] # 0CDH)
+            or (s6.data[18] # 0) or (s6.data[19] # 0FFH) then
+        exit(2);
+    end;
+    if (inetAddr("::", 0, ADR(s6)) # 28) or (inetAddr("1:2:3:4:5:6:7:8", 0, ADR(s6)) # 28) then exit(2); end;
+    if (connectTcp("1.2.3", 80) # -22) or (connectTcp("1.2.3.256", 80) # -22) or (connectTcp("1::2::3", 80) # -22)
+            or (connectTcp("1:2:3:4:5:6:7:8:9", 80) # -22) or (connectTcp("1:", 80) # -22)
+            or (connectTcp("12345::", 80) # -22) or (connectTcp("::1", 65536) # -22) then
+        exit(2);
+    end;
+    l := listenTcp("127.0.0.1", 47391);
+    c := connectTcp("127.0.0.1", 47391);
+    if (l < 0) or (c < 0) then exit(2); end;
+    a := accept(l);
+    if (a < 0) or (send(c, "hi") # 2) or (read(a, x) # 2) or (x[0..2] # "hi") then exit(2); end;
+    close(a);
+    close(c);
+    close(l);
+    u := connectUdp("127.0.0.1", 47391);
+    if (u < 0) or (send(u, "x") # 1) or not ready(u, 1000) or (read(u, x) # -111) then exit(2); end;   (* ECONNREFUSED *)
+    close(u);
+end;
+
 (* The module's test: a file written, read back and closed; a
    directory made, listed and emptied; no terminal; a socket, sent to
-   after its end. *)
+   after its end; programs; time and the network. *)
 proc main*;
 var fd, n, err, w, h, l, c, a: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
 begin
@@ -848,12 +1080,14 @@ begin
     (* a socket: nothing at a path, then a listener that a connection
        makes ready, and a byte from it to the connection *)
     if connect("/tmp/raz-no-such-socket") # -2 then exit(2); end;    (* ENOENT *)
+    remove("/tmp/raz-sys-socket");
     l := listen("/tmp/raz-sys-socket");
+    if (l < 0) or (listen("/tmp/raz-sys-socket") # -98) then exit(2); end;    (* EADDRINUSE: there already *)
     c := connect("/tmp/raz-sys-socket");
     if c < 0 then exit(2); end;
     if readyOf([c], 0) # -1 then exit(2); end;
     if readyOf([c, l], 1000) # l then exit(2); end;
-    a := SYSCALL(43, l, 0, 0);                         (* accept *)
+    a := accept(l);
     if (a < 0) or (send(a, "x") # 1) or (readyOf([l, c], 1000) # c) then exit(2); end;
     if (read(c, buf) # 1) or (buf[0] # 'x') then exit(2); end;
     close(a);
@@ -863,6 +1097,7 @@ begin
     close(l);
     remove("/tmp/raz-sys-socket");
     testPrograms;
+    testNet;
 end;
 
 end Sys.

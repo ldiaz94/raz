@@ -37,7 +37,7 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
       child with its `Status`, process groups and the terminal's
       foreground, `pid`; signals caught on a file descriptor. Rat
       breaks here: `spawn` changes.
-- [ ] 4. `Sys`, the rest: `clock`, `now`, `sleep`, `random`;
+- [x] 4. `Sys`, the rest: `clock`, `now`, `sleep`, `random`;
       `connectTcp`, `connectUdp`, `listen`, `listenTcp`, `accept`.
 - [ ] 5. `Str.encode`, `Str.decode`, `Str.toInt`; `Map.remove` and
       `Map.next`; `Sort`; `Math`; `Fmt.real`. Each module's `main`

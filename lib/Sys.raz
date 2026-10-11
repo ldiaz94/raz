@@ -5,7 +5,8 @@
    It keeps to POSIX's names, and raw mode is cfmakeraw's. What is
    glibc's, on x86-64: where a name lies in struct dirent; struct stat;
    open's flags; the numbers of the requests TIOCGWINSZ, TIOCSWINSZ and
-   TIOCSCTTY; close_range; and struct sockaddr_un, which on the BSDs starts with a
+   TIOCSCTTY; close_range; SOCK_CLOEXEC, AF_INET6 and SO_REUSEADDR; and
+   struct sockaddr_un and sockaddr_in, which on the BSDs start with a
    byte of length. A C library that differs needs a Sys of its own. *)
 module Sys;
 import C;
@@ -76,6 +77,14 @@ type
         family: U16;
         path: [108]U8;
     end;
+    (* struct sockaddr_in or sockaddr_in6: AF_INET and the IPv4 address
+       in data[0..4], or AF_INET6 and the IPv6 one in data[4..20] *)
+    Sockaddr = record
+        family: U16;
+        port: [2]U8;
+        data: [24]U8;
+    end;
+    Timespec = record sec, nsec: I64; end;
 
 var
     cwd: [4096]U8;    (* what workDir gives *)
@@ -348,22 +357,151 @@ begin
     return r > 0;
 end;
 
-(* A stream socket connected to the Unix socket at path: its file
-   descriptor, or minus an errno. *)
-proc connect*(path: []U8): I64;
-var a: SockaddrUn; fd: I32; i, err: I64;
+(* The time on clock, in nanoseconds. *)
+proc time(clock: I32): I64;
+var t: Timespec;
 begin
-    if LEN(path) >= LEN(a.path) then return -36; end;   (* ENAMETOOLONG *)
-    a.family := 1;                                      (* AF_UNIX *)
-    for i := 0 to LEN(path) - 1 do a.path[i] := path[i]; end;
-    fd := C.socket(1, 1, 0);                            (* AF_UNIX, SOCK_STREAM *)
+    C.clock_gettime(clock, ^U8(ADR(t)));
+    return t.sec * 1000000000 + t.nsec;
+end;
+
+(* The clock that only goes forward, in nanoseconds: for how long
+   something takes. *)
+proc clock*: I64;
+begin
+    return time(1);                                     (* CLOCK_MONOTONIC *)
+end;
+
+(* The time in nanoseconds since 1970-01-01, UTC. *)
+proc now*: I64;
+begin
+    return time(0);                                     (* CLOCK_REALTIME *)
+end;
+
+(* Waits ms milliseconds. *)
+proc sleep*(ms: I64);
+var t: Timespec; at: I64;
+begin
+    at := clock() + ms * 1000000;
+    t := {sec: at div 1000000000, nsec: at mod 1000000000};
+    repeat until C.clock_nanosleep(1, 1, ^U8(ADR(t)), nil) # 4;   (* until t, again after EINTR *)
+end;
+
+(* Fills b with random bytes, from the kernel. *)
+proc random*(b: []U8);
+var n, r: I64;
+begin
+    n := 0;
+    while n < LEN(b) do                                 (* a signal may cut it short *)
+        r := C.getrandom(ADR(b[n]), U64(LEN(b) - n), 0);
+        if r > 0 then INC(n, r); end;
+    end;
+end;
+
+(* A socket of family and kind, connected to the address at a, of size
+   bytes, or, if serving, bound to it and taking connections: its file
+   descriptor, or minus an errno. It is closed in a program exec
+   starts. *)
+proc socket(family, kind: I64; a: ^U8; size: I64; serving: BOOL): I64;
+var fd, r, one: I32; err: I64;
+begin
+    fd := C.socket(I32(family), I32(kind) | 80000H, 0);    (* SOCK_CLOEXEC *)
     if fd < 0 then return failed(); end;
-    if C.connect(fd, ^U8(ADR(a)), U32(SIZE(SockaddrUn))) # 0 then
+    if serving then
+        one := 1;                                       (* so that a server can start again at once *)
+        C.setsockopt(fd, 1, 2, ^U8(ADR(one)), 4);       (* SOL_SOCKET, SO_REUSEADDR *)
+        r := C.bind(fd, a, U32(size));
+        if r = 0 then r := C.listen(fd, 4096); end;
+    else
+        r := C.connect(fd, a, U32(size));
+    end;
+    if r # 0 then
         err := failed();                                (* before close can change errno *)
         C.close(fd);
         return err;
     end;
     return I64(fd);
+end;
+
+(* path as a Unix socket's address in a, or false if it is too long. *)
+proc unixAddr(path: []U8; a: ^SockaddrUn): BOOL;
+var i: I64;
+begin
+    if LEN(path) >= LEN(a^.path) then return false; end;
+    a^.family := 1;                                     (* AF_UNIX *)
+    for i := 0 to LEN(path) - 1 do a^.path[i] := path[i]; end;
+    return true;
+end;
+
+(* A stream socket connected to the Unix socket at path. *)
+proc connect*(path: []U8): I64;
+var a: SockaddrUn;
+begin
+    if not unixAddr(path, ADR(a)) then return -36; end;    (* ENAMETOOLONG *)
+    return socket(1, 1, ^U8(ADR(a)), SIZE(SockaddrUn), false);   (* SOCK_STREAM *)
+end;
+
+(* A stream socket made at path, which must not be there yet, taking
+   connections. *)
+proc listen*(path: []U8): I64;
+var a: SockaddrUn;
+begin
+    if not unixAddr(path, ADR(a)) then return -36; end;
+    return socket(1, 1, ^U8(ADR(a)), SIZE(SockaddrUn), true);
+end;
+
+(* addr, an IPv4 or IPv6 address as numbers, and port, in a: the size
+   of its struct sockaddr_in or sockaddr_in6, or 0 if either is
+   wrong. *)
+proc inetAddr(addr: []U8; port: I64; a: ^Sockaddr): I64;
+var s: [64]U8;
+begin
+    if (port < 0) or (port > 65535) or not cstr(addr, s) then return 0; end;
+    a^.port[0] := U8(port shr 8);                       (* in the network's order, the high byte first *)
+    a^.port[1] := U8(port & 255);
+    if C.inet_pton(2, ADR(s[0]), ADR(a^.data[0])) = 1 then a^.family := 2; return 16; end;     (* AF_INET *)
+    if C.inet_pton(10, ADR(s[0]), ADR(a^.data[4])) = 1 then a^.family := 10; return 28; end;   (* AF_INET6 *)
+    return 0;
+end;
+
+(* A socket of kind at addr and port, as socket makes it; -22 (EINVAL)
+   if they are wrong. *)
+proc inet(addr: []U8; port, kind: I64; serving: BOOL): I64;
+var a: Sockaddr; size: I64;
+begin
+    size := inetAddr(addr, port, ADR(a));
+    if size = 0 then return -22; end;
+    return socket(I64(a.family), kind, ^U8(ADR(a)), size, serving);
+end;
+
+(* A stream socket connected to port at addr, an IPv4 or IPv6 address
+   as numbers. *)
+proc connectTcp*(addr: []U8; port: I64): I64;
+begin
+    return inet(addr, port, 1, false);                  (* SOCK_STREAM *)
+end;
+
+(* A socket of datagrams to and from port at addr. *)
+proc connectUdp*(addr: []U8; port: I64): I64;
+begin
+    return inet(addr, port, 2, false);                  (* SOCK_DGRAM *)
+end;
+
+(* A stream socket taking connections on port at addr; "0.0.0.0" or
+   "::" is every address the machine has. *)
+proc listenTcp*(addr: []U8; port: I64): I64;
+begin
+    return inet(addr, port, 1, true);
+end;
+
+(* The next connection to the socket fd, waiting for one: a socket of
+   its own, closed in a program exec starts; or minus an errno. *)
+proc accept*(fd: I64): I64;
+var r: I32;
+begin
+    r := C.accept4(I32(fd), nil, nil, 80000H);          (* SOCK_CLOEXEC *)
+    if r < 0 then return failed(); end;
+    return I64(r);
 end;
 
 (* Writes s to the socket fd, as write does, but returns -32 (EPIPE)
@@ -703,20 +841,6 @@ begin
     C._exit(I32(status));
 end;
 
-(* A socket listening at path, for the test: its fd. *)
-proc listen(path: []U8): I64;
-var a: SockaddrUn; fd: I32; i: I64;
-begin
-    remove(path);
-    a.family := 1;
-    for i := 0 to LEN(path) - 1 do a.path[i] := path[i]; end;
-    fd := C.socket(1, 1, 0);
-    if (fd < 0) or (C.bind(fd, ^U8(ADR(a)), U32(SIZE(SockaddrUn))) # 0) or (C.listen(fd, 1) # 0) then
-        exit(2);
-    end;
-    return I64(fd);
-end;
-
 (* The test of programs: one on a pseudo-terminal of 100 by 30 prints
    its arguments, a variable put in place and its size, and leads the
    terminal's foreground until it ends with status 3; one in a
@@ -792,9 +916,50 @@ begin
     if ignore(sigInt, false) # 0 then exit(2); end;
 end;
 
+(* The test of time, random bytes and the network: a sleep the clock
+   sees; addresses read and refused; a TCP connection on the loopback;
+   and a datagram to a port where no one listens, refused. *)
+proc testNet;
+var t, l, c, a, u: I64; x, y: [16]U8; s, s6: Sockaddr;
+begin
+    t := clock();
+    sleep(20);
+    t := clock() - t;
+    if (t < 20000000) or (t > 2000000000) or (now() < 1700000000 * 1000000000) then exit(2); end;
+    random(x);
+    random(y);
+    if x[0..16] = y[0..16] then exit(2); end;
+    if (inetAddr("10.0.0.255", 80, ADR(s)) # 16) or (s.port[0] # 0) or (s.port[1] # 80)
+            or (s.data[0] # 10) or (s.data[2] # 0) or (s.data[3] # 255) then
+        exit(2);
+    end;
+    if (inetAddr("1:aBcd::ff", 258, ADR(s6)) # 28) or (s6.port[0] # 1) or (s6.port[1] # 2)
+            or (s6.data[0] # 0) or (s6.data[5] # 1) or (s6.data[6] # 0ABH) or (s6.data[7] # 0CDH)
+            or (s6.data[18] # 0) or (s6.data[19] # 0FFH) then
+        exit(2);
+    end;
+    if (inetAddr("::", 0, ADR(s6)) # 28) or (inetAddr("1:2:3:4:5:6:7:8", 0, ADR(s6)) # 28) then exit(2); end;
+    if (connectTcp("1.2.3", 80) # -22) or (connectTcp("1.2.3.256", 80) # -22) or (connectTcp("1::2::3", 80) # -22)
+            or (connectTcp("1:2:3:4:5:6:7:8:9", 80) # -22) or (connectTcp("1:", 80) # -22)
+            or (connectTcp("12345::", 80) # -22) or (connectTcp("::1", 65536) # -22) then
+        exit(2);
+    end;
+    l := listenTcp("127.0.0.1", 47391);
+    c := connectTcp("127.0.0.1", 47391);
+    if (l < 0) or (c < 0) then exit(2); end;
+    a := accept(l);
+    if (a < 0) or (send(c, "hi") # 2) or (read(a, x) # 2) or (x[0..2] # "hi") then exit(2); end;
+    close(a);
+    close(c);
+    close(l);
+    u := connectUdp("127.0.0.1", 47391);
+    if (u < 0) or (send(u, "x") # 1) or not ready(u, 1000) or (read(u, x) # -111) then exit(2); end;   (* ECONNREFUSED *)
+    close(u);
+end;
+
 (* The module's test, as Linux's Sys has it: a file written, read back
    and closed; a directory made, listed and emptied; no terminal; a
-   socket, sent to after its end. *)
+   socket, sent to after its end; programs; time and the network. *)
 proc main*;
 var fd, n, err, w, h, l, c, a: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
 begin
@@ -878,12 +1043,14 @@ begin
     (* a socket: nothing at a path, then a listener that a connection
        makes ready, and a byte from it to the connection *)
     if connect("/tmp/raz-no-such-socket") # -2 then exit(2); end;    (* ENOENT *)
+    remove("/tmp/raz-sys-socket");
     l := listen("/tmp/raz-sys-socket");
+    if (l < 0) or (listen("/tmp/raz-sys-socket") # -98) then exit(2); end;    (* EADDRINUSE: there already *)
     c := connect("/tmp/raz-sys-socket");
     if c < 0 then exit(2); end;
     if readyOf([c], 0) # -1 then exit(2); end;
     if readyOf([c, l], 1000) # l then exit(2); end;
-    a := I64(C.accept(I32(l), nil, nil));
+    a := accept(l);
     if (a < 0) or (send(a, "x") # 1) or (readyOf([l, c], 1000) # c) then exit(2); end;
     if (read(c, buf) # 1) or (buf[0] # 'x') then exit(2); end;
     close(a);
@@ -893,6 +1060,7 @@ begin
     close(l);
     remove("/tmp/raz-sys-socket");
     testPrograms;
+    testNet;
 end;
 
 end Sys.
