@@ -1,0 +1,7 @@
+module AtPNewVar;
+proc main*;
+var a: I64;
+begin
+    NEW(a, a);
+end;
+end AtPNewVar.

@@ -1,0 +1,9 @@
+module AtArgType;
+proc Id(a: I64): I64;
+begin return a; end;
+proc main*;
+var b: BOOL;
+begin
+    Id(b);
+end;
+end AtArgType.

@@ -1,0 +1,4 @@
+test/err/AtPtrMinus.raz:5:10: error: different pointer types
+    5 |     x := p - q;
+      |          ^^^^^
+raz: 1 error

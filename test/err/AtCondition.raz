@@ -1,0 +1,7 @@
+module AtCondition;
+proc main*;
+var x: I64;
+begin
+    if x + 1 then end;
+end;
+end AtCondition.

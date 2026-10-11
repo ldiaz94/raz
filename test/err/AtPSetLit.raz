@@ -1,0 +1,8 @@
+module AtPSetLit;
+type C = (r, g, b);
+proc main*;
+var s: set of C;
+begin
+    s := {r, 1};
+end;
+end AtPSetLit.

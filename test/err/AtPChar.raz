@@ -1,0 +1,7 @@
+module AtPChar;
+proc main*;
+var a: I64;
+begin
+    a := 1 ? 2;
+end;
+end AtPChar.

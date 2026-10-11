@@ -1,0 +1,4 @@
+test/err/AtReturn.raz:4:12: error: this procedure returns nothing
+    4 |     return 1 + 2;
+      |            ^^^^^
+raz: 1 error

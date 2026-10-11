@@ -1,0 +1,6 @@
+module AtReturn;
+proc main*;
+begin
+    return 1 + 2;
+end;
+end AtReturn.

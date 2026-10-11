@@ -1,4 +1,4 @@
-test/err/Break.raz:4:10: error: break outside a loop
+test/err/Break.raz:4:5: error: break outside a loop
     4 |     break;
-      |          ^
+      |     ^^^^^
 raz: 1 error

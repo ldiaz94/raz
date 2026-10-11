@@ -1,0 +1,4 @@
+test/err/AtPSetLit.raz:6:14: error: not a name of C
+    6 |     s := {r, 1};
+      |              ^
+raz: 1 error

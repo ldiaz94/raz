@@ -1,0 +1,7 @@
+module AtSliceLo;
+proc main*;
+var a: [4]I64; b: BOOL; s: []I64;
+begin
+    s := a[b..2];
+end;
+end AtSliceLo.

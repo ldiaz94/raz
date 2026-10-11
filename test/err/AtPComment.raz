@@ -1,0 +1,6 @@
+module AtPComment;
+proc main*;
+begin
+end;
+(* never closed
+end AtPComment.

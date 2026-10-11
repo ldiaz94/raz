@@ -1,0 +1,7 @@
+module AtPConstExpr;
+proc main*;
+var n: I64;
+var a: [n]I64;
+begin
+end;
+end AtPConstExpr.

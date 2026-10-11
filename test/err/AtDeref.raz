@@ -1,0 +1,7 @@
+module AtDeref;
+proc main*;
+var x, y: I64;
+begin
+    y := x^;
+end;
+end AtDeref.

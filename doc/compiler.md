@@ -8,12 +8,12 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 227 | 162 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 535 | 459 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 508 | 422 | Types, objects, scopes, layout |
+| `src/diag.pas` | 243 | 174 | Messages: positions, source excerpts, colour, counts |
+| `src/scan.pas` | 584 | 495 | Symbols, literals, comments, positions |
+| `src/sym.pas` | 510 | 424 | Types, objects, scopes, layout |
 | `src/x64.pas` | 680 | 546 | Code buffer, chunks, fixups, line notes, instruction encoder |
-| `src/gen.pas` | 1,414 | 1,240 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 1,816 | 1,685 | Declarations, statements, expressions, built-ins |
+| `src/gen.pas` | 1,421 | 1,247 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 1,851 | 1,720 | Declarations, statements, expressions, built-ins |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 219 | 172 | The command line, the entry points |
@@ -145,8 +145,12 @@ reserved word.
 Source is UTF-8, checked by `Utf8` wherever a byte above 127 appears:
 in strings, characters and comments. Anywhere else it is an error.
 
-`TokPos` is the position of the current symbol. Errors go through
-`Mark`, which reports one there (`diag.Error`) and stops. There is no
+`TokPos` is the position of the current symbol, `SpanFrom` the stretch
+from a saved position to the end of the symbol before the current one,
+and `MissingPos` the place to say a symbol is missing: just after the
+symbol before, when the current one starts a new line. Errors go
+through `Mark`, at the current symbol, or `MarkAt`, at a position; each
+reports the error (`diag.Error`) and stops. There is no
 recovery: the first error ends the compilation. `SaveScan` and `RestoreScan` keep
 the scanner's state while an imported module is compiled.
 
@@ -224,6 +228,11 @@ says what it is now:
   (`bSlot`); plus `off`;
 - `mReg`: a value in `rax`; `mStack`: a value pushed on the stack;
 - `mProc`, `mType`, `mStr`, and a few more the parser needs.
+
+An item also carries `pos`, the stretch of source it came from, which
+the parser sets as it reads an expression; an error about an item is
+reported there (`MarkAt(x.pos, ...)`), and one about two operands
+across both (`Join(x.pos, y.pos)`).
 
 Three routines move items towards the machine. `Value` brings a value
 into `rax`, loading it with the one instruction its size needs.

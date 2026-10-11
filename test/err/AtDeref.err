@@ -1,0 +1,4 @@
+test/err/AtDeref.raz:5:10: error: not a pointer
+    5 |     y := x^;
+      |          ^
+raz: 1 error

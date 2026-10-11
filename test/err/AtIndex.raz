@@ -1,0 +1,7 @@
+module AtIndex;
+proc main*;
+var a: [4]I64; b: BOOL; x: I64;
+begin
+    x := a[b];
+end;
+end AtIndex.

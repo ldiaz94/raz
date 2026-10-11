@@ -17,7 +17,7 @@ unit sym;
 
 interface
 
-uses scan;
+uses scan, diag;
 
 type
   TForm = (fNone, fBool, fInt, fReal, fConst, fNil, fStr, fPtr, fArray,
@@ -80,6 +80,8 @@ type
     n: longint;
     t: array[0..7] of PType;
     o: array[0..7] of PObj;
+    pos: array[0..7] of TPos;   { where each argument is, for messages }
+    at: TPos;                   { where the import is }
   end;
 
   TImport = record

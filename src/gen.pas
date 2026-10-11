@@ -44,6 +44,7 @@ type
     vol: boolean;      { mVar: reached through ^VOLATILE }
     isVar: boolean;    { mVar: a variable of the program, not a temporary }
     obj: PObj;         { mProc, mBuiltin, mCase }
+    pos: TPos;         { where it is in the source, for messages }
   end;
 
   TCall = record
@@ -147,8 +148,11 @@ const
 { Items }
 
 procedure MakeConst(var x: TItem; t: PType; v: int64);
+var p: TPos;
 begin
+  p := x.pos;
   FillChar(x, SizeOf(x), 0);
+  x.pos := p;
   x.mode := mConst;
   x.typ := t;
   x.val := v;
@@ -306,7 +310,7 @@ begin
   case x.mode of
     mConst: ConstTo(RAX, x);
     mVar: begin
-      if not IsScalar(x.typ) then Mark('not a single value');
+      if not IsScalar(x.typ) then MarkAt(x.pos, 'not a single value');
       m := MemOf(x, RAX);
       Load(RAX, m, ScalarSize(x.typ), (x.typ^.form = fInt) and x.typ^.signed);
     end;
@@ -314,11 +318,11 @@ begin
     mStack: PopR(RAX);
     mProc: begin
       if x.obj^.isCode and (x.obj^.typ^.base <> nil) and x.obj^.typ^.base^.tuple then
-        Mark('a code procedure with two results can only be called');
+        MarkAt(x.pos, 'a code procedure with two results can only be called');
       if x.obj^.ext then Load(RAX, MemRip(x.obj^.chunk, 0), 8, false)
       else Lea(RAX, MemRip(x.obj^.chunk, 0));
     end;
-  else Mark('not a value');
+  else MarkAt(x.pos, 'not a value');
   end;
   x.mode := mReg;
 end;
@@ -331,7 +335,7 @@ begin
     m := MemOf(x, r);
     if (x.base <> bReg) or (x.reg <> r) or (x.off <> 0) then Lea(r, m);
     x.base := bReg; x.reg := r; x.off := 0;
-  end else Mark('not a variable');
+  end else MarkAt(x.pos, 'not a variable');
 end;
 
 procedure Save(var x: TItem);
@@ -380,8 +384,11 @@ begin
 end;
 
 procedure TempItem(var x: TItem; t: PType; off: int64);
+var p: TPos;
 begin
+  p := x.pos;
   FillChar(x, SizeOf(x), 0);
+  x.pos := p;
   x.mode := mVar; x.typ := t; x.base := bFrame; x.off := off;
 end;
 
@@ -405,7 +412,7 @@ end;
 procedure CopyToTemp(var x: TItem);
 var t: int64;
 begin
-  if x.vol then Mark('can''t copy through a volatile pointer');
+  if x.vol then MarkAt(x.pos, 'can''t copy through a volatile pointer');
   t := AllocTemp(x.typ^.size, x.typ^.align);
   Address(x, RSI);
   Lea(RDI, Mem(RBP, t));
@@ -442,14 +449,14 @@ begin
       MovRI(RAX, 0);
       RepStosb;
       TempItem(x, t, tmp);
-    end else Mark('can''t use a string as ' + TypeName(t));
+    end else MarkAt(x.pos, 'can''t use a string as ' + TypeName(t));
     exit;
   end;
-  if x.mode in [mType, mBuiltin, mNone, mCase] then Mark('not a value');
+  if x.mode in [mType, mBuiltin, mNone, mCase] then MarkAt(x.pos, 'not a value');
   if Same(s, t) then exit;
   if (s = tRConst) and (t^.form = fReal) then RealTo(x, t)
   else if (s^.form = fConst) and (t^.form = fInt) then begin
-    if (x.mode = mConst) and not Fits(x.val, t) then Mark('constant doesn''t fit ' + TypeName(t));
+    if (x.mode = mConst) and not Fits(x.val, t) then MarkAt(x.pos, 'constant doesn''t fit ' + TypeName(t));
     x.typ := t;
   end else if (s^.form = fNil) and (t^.form in [fPtr, fProc, fError]) then
     x.typ := t
@@ -457,11 +464,11 @@ begin
     and Same(s^.base, t^.base) then
     x.typ := t
   else if (s^.form = fArray) and (t^.form = fSlice) and Same(s^.base, t^.base) then begin
-    if x.vol then Mark('can''t make a slice through a volatile pointer');
+    if x.vol then MarkAt(x.pos, 'can''t make a slice through a volatile pointer');
     Address(x, RAX);
     SliceOf(x, t, s^.len);
   end else
-    Mark('can''t use ' + TypeName(s) + ' as ' + TypeName(t));
+    MarkAt(x.pos, 'can''t use ' + TypeName(s) + ' as ' + TypeName(t));
 end;
 
 procedure Assign(var dst, src: TItem);
@@ -473,7 +480,7 @@ begin
     m := MemOf(dst, RCX);
     Store(m, RAX, ScalarSize(dst.typ));
   end else begin
-    if dst.vol or src.vol then Mark('can''t copy through a volatile pointer');
+    if dst.vol or src.vol then MarkAt(src.pos, 'can''t copy through a volatile pointer');
     Address(src, RSI);
     Address(dst, RDI);
     Copy(dst.typ^.size);
@@ -508,8 +515,8 @@ procedure Deref(var x: TItem);
 var t: PType;
 begin
   t := x.typ;
-  if t^.form <> fPtr then Mark('not a pointer');
-  if t^.base = nil then Mark('pointer to an undeclared type');
+  if t^.form <> fPtr then MarkAt(x.pos, 'not a pointer');
+  if t^.base = nil then MarkAt(x.pos, 'pointer to an undeclared type');
   Value(x);
   x.mode := mVar; x.base := bReg; x.reg := RAX; x.off := 0;
   x.typ := t^.base; x.vol := t^.vol; x.isVar := true;
@@ -525,12 +532,12 @@ procedure IndexPrep(var x: TItem);
 begin
   if x.mode = mStr then Coerce(x, tBytes);
   if (x.typ^.form = fPtr) and (x.typ^.base^.form = fArray) then
-    Mark('a pointer to an array is indexed as p^[i]');
+    MarkAt(x.pos, 'a pointer to an array is indexed as p^[i]');
   if x.typ^.form = fPtr then begin
     Value(x); PushRax; x.mode := mStack
   end else if (x.mode = mVar) and (x.typ^.form in [fArray, fSlice]) then
     Save(x)
-  else Mark('not an array, slice or pointer');
+  else MarkAt(x.pos, 'not an array, slice or pointer');
 end;
 
 procedure Index(var x, y: TItem);
@@ -538,7 +545,7 @@ var t: PType; s: int64; m, ml: TMem;
 begin
   t := x.typ;
   s := t^.base^.size;
-  if not IsInt(y.typ) then Mark('an index is an integer');
+  if not IsInt(y.typ) then MarkAt(y.pos, 'an index is an integer');
   if t^.form = fPtr then begin
     Value(y);
     if s <> 1 then ImulI(RAX, s);
@@ -547,7 +554,7 @@ begin
     x.mode := mVar; x.base := bReg; x.reg := RAX; x.off := 0;
     x.vol := t^.vol; x.isVar := true;
   end else if (t^.form = fArray) and (y.mode = mConst) then begin
-    if (y.val < 0) or (y.val >= t^.len) then Mark('index out of range');
+    if (y.val < 0) or (y.val >= t^.len) then MarkAt(y.pos, 'index out of range');
     x.off := x.off + y.val * s;
     if x.base = bStack then begin
       PopR(RAX); x.base := bReg; x.reg := RAX
@@ -576,7 +583,7 @@ end;
 
 procedure SliceLo(var lo: TItem);
 begin
-  if not IsInt(lo.typ) then Mark('an index is an integer');
+  if not IsInt(lo.typ) then MarkAt(lo.pos, 'an index is an integer');
   Value(lo);
   PushRax;
 end;
@@ -586,8 +593,8 @@ var t, st: PType; s, tmp: int64; m, ml: TMem;
 begin
   t := x.typ;
   s := t^.base^.size;
-  if not IsInt(hi.typ) then Mark('an index is an integer');
-  if x.vol then Mark('can''t make a slice through a volatile pointer');
+  if not IsInt(hi.typ) then MarkAt(hi.pos, 'an index is an integer');
+  if x.vol then MarkAt(x.pos, 'can''t make a slice through a volatile pointer');
   Value(hi);
   MovRR(RDX, RAX);
   PopR(RCX);
@@ -630,7 +637,7 @@ begin
   end else if IsInt(x.typ) then begin
     if x.mode = mConst then x.val := Cut(-x.val, x.typ)
     else begin Value(x); Unary(3, RAX); Norm(x.typ) end;
-  end else Mark('can''t negate ' + TypeName(x.typ));
+  end else MarkAt(x.pos, 'can''t negate ' + TypeName(x.typ));
 end;
 
 procedure NotOp(var x: TItem);
@@ -641,7 +648,7 @@ begin
   end else if IsInt(x.typ) then begin
     if x.mode = mConst then x.val := Cut(not x.val, x.typ)
     else begin Value(x); Unary(2, RAX); Norm(x.typ) end;
-  end else Mark('not needs BOOL or an integer');
+  end else MarkAt(x.pos, 'not needs BOOL or an integer');
 end;
 
 function IsStrLike(t: PType): boolean;
@@ -660,7 +667,7 @@ begin
   end else begin
     if x.mode = mStr then begin Address(x, RAX); SliceOf(x, t, x.val) end
     else begin
-      if x.vol then Mark('can''t compare through a volatile pointer');
+      if x.vol then MarkAt(x.pos, 'can''t compare through a volatile pointer');
       Address(x, RAX); SliceOf(x, t, x.typ^.len)
     end;
   end;
@@ -679,7 +686,7 @@ begin
   end else if (op in [sEql, sNeq]) and IsStrLike(x.typ) then
     StrSlice(x)
   else if x.mode in [mType, mBuiltin, mNone, mCase, mStr] then
-    Mark('not a value')
+    MarkAt(x.pos, 'not a value')
   else if x.mode <> mConst then begin
     Value(x); PushRax; x.mode := mStack
   end;
@@ -694,7 +701,7 @@ begin
   Log2 := n;
 end;
 
-function FoldInt(op: TSym; a, b: int64; t: PType): int64;
+function FoldInt(op: TSym; a, b: int64; t: PType; const p: TPos): int64;
 var u: boolean;
 begin
   u := (t^.form = fInt) and not t^.signed;
@@ -703,11 +710,11 @@ begin
     sMinus: FoldInt := a - b;
     sTimes: FoldInt := a * b;
     sDiv, sMod: begin
-      if b = 0 then Mark('division by zero');
+      if b = 0 then MarkAt(p, 'division by zero');
       if u then begin
         if op = sDiv then FoldInt := int64(qword(a) div qword(b))
         else FoldInt := int64(qword(a) mod qword(b));
-      end else if (b = -1) and (a = low(int64)) then Mark('division overflows')
+      end else if (b = -1) and (a = low(int64)) then MarkAt(p, 'division overflows')
       else if op = sDiv then FoldInt := a div b
       else FoldInt := a mod b;
     end;
@@ -723,7 +730,7 @@ begin
     sLeq: if u then FoldInt := ord(qword(a) <= qword(b)) else FoldInt := ord(a <= b);
     sGtr: if u then FoldInt := ord(qword(a) > qword(b)) else FoldInt := ord(a > b);
     sGeq: if u then FoldInt := ord(qword(a) >= qword(b)) else FoldInt := ord(a >= b);
-  else Mark('bad operator'); FoldInt := 0;
+  else MarkAt(p, 'bad operator'); FoldInt := 0;
   end;
 end;
 
@@ -759,10 +766,10 @@ var
   xt, yt, t: PType; r: TItem; scale, sh: longint; isPtr, unsign, f: boolean; a, b: int64;
 begin
   xt := x.typ; yt := y.typ;
-  if y.mode in [mType, mBuiltin, mNone, mCase] then Mark('not a value');
+  if y.mode in [mType, mBuiltin, mNone, mCase] then MarkAt(y.pos, 'not a value');
 
   if (op in [sAnd, sOr]) and (xt^.form = fBool) then begin
-    if yt^.form <> fBool then Mark('and, or need two BOOLs');
+    if yt^.form <> fBool then MarkAt(y.pos, 'and, or need two BOOLs');
     if (x.mode = mConst) and (y.mode = mConst) then begin
       FixLink(L);
       if op = sAnd then x.val := x.val and y.val else x.val := x.val or y.val;
@@ -775,7 +782,7 @@ begin
   end;
 
   if (op in [sEql, sNeq]) and IsStrLike(xt) then begin
-    if not IsStrLike(yt) then Mark('can''t compare a string with ' + TypeName(yt));
+    if not IsStrLike(yt) then MarkAt(y.pos, 'can''t compare a string with ' + TypeName(yt));
     StrSlice(y);
     Address(y, RSI);
     Address(x, RDI);
@@ -792,58 +799,58 @@ begin
   { the type of the result, and the checks }
   t := nil; scale := 1; isPtr := false;
   if IsInt(xt) and IsInt(yt) then begin
-    if op = sSlash then Mark('/ is for reals; integers use div');
+    if op = sSlash then MarkAt(Join(x.pos, y.pos), '/ is for reals; integers use div');
     if op in [sShl, sShr] then begin
       if xt^.form = fConst then t := tConst else t := xt
     end else if (xt^.form = fConst) and (yt^.form = fConst) then t := tConst
     else if xt^.form = fConst then begin
-      if (x.mode = mConst) and not Fits(x.val, yt) then Mark('constant doesn''t fit ' + TypeName(yt));
+      if (x.mode = mConst) and not Fits(x.val, yt) then MarkAt(x.pos, 'constant doesn''t fit ' + TypeName(yt));
       t := yt
     end else if yt^.form = fConst then begin
-      if (y.mode = mConst) and not Fits(y.val, xt) then Mark('constant doesn''t fit ' + TypeName(xt));
+      if (y.mode = mConst) and not Fits(y.val, xt) then MarkAt(y.pos, 'constant doesn''t fit ' + TypeName(xt));
       t := xt
     end else if Same(xt, yt) then t := xt
-    else Mark('different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
+    else MarkAt(Join(x.pos, y.pos), 'different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
   end else if (xt^.form = fReal) and (yt^.form = fReal) then begin
-    if not (op in Rel + [sPlus, sMinus, sTimes, sSlash]) then Mark('not a real operator');
+    if not (op in Rel + [sPlus, sMinus, sTimes, sSlash]) then MarkAt(Join(x.pos, y.pos), 'not a real operator');
     if xt = tRConst then t := yt
     else if (yt = tRConst) or Same(xt, yt) then t := xt
-    else Mark('different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
+    else MarkAt(Join(x.pos, y.pos), 'different types: ' + TypeName(xt) + ' and ' + TypeName(yt));
     if (x.mode = mConst) and (x.typ <> t) then RealTo(x, t);
     if (y.mode = mConst) and (y.typ <> t) then RealTo(y, t);
   end else if (xt^.form = fBool) and (yt^.form = fBool) then begin
-    if not (op in [sXor, sEql, sNeq]) then Mark('not a BOOL operator');
+    if not (op in [sXor, sEql, sNeq]) then MarkAt(Join(x.pos, y.pos), 'not a BOOL operator');
     t := tBool;
   end else if (xt^.form = fPtr) and IsInt(yt) and (op in [sPlus, sMinus]) then begin
     t := xt; scale := xt^.base^.size; isPtr := true;
     if y.mode = mConst then y.typ := tI64;
   end else if (xt^.form = fPtr) and (yt^.form = fPtr) and (op = sMinus) then begin
-    if not Same(xt, yt) then Mark('different pointer types');
+    if not Same(xt, yt) then MarkAt(Join(x.pos, y.pos), 'different pointer types');
     t := tI64; scale := xt^.base^.size; isPtr := true;
   end else if (xt^.form in [fPtr, fProc, fNil, fError]) and (yt^.form in [fPtr, fProc, fNil, fError]) then begin
-    if not (op in Rel) then Mark('not a pointer operator');
+    if not (op in Rel) then MarkAt(Join(x.pos, y.pos), 'not a pointer operator');
     if (xt^.form in [fProc, fError]) or (yt^.form in [fProc, fError]) then
-      if not (op in [sEql, sNeq]) then Mark('procedures and errors compare only with = and #');
+      if not (op in [sEql, sNeq]) then MarkAt(Join(x.pos, y.pos), 'procedures and errors compare only with = and #');
     if (xt^.form <> fNil) and (yt^.form <> fNil) and not Same(xt, yt) then
       if not ((xt^.form = fPtr) and (yt^.form = fPtr) and Same(xt^.base, yt^.base)) then
-        Mark('different pointer types');
+        MarkAt(Join(x.pos, y.pos), 'different pointer types');
     t := tU64;
   end else if (xt^.form = fEnum) and Same(xt, yt) then begin
-    if not (op in Rel) then Mark('enumerations only compare');
+    if not (op in Rel) then MarkAt(Join(x.pos, y.pos), 'enumerations only compare');
     t := xt;
   end else if (xt^.form = fSet) and Same(xt, yt) then begin
-    if not (op in [sPlus, sTimes, sMinus, sEql, sNeq, sLeq, sGeq]) then Mark('not a set operator');
+    if not (op in [sPlus, sTimes, sMinus, sEql, sNeq, sLeq, sGeq]) then MarkAt(Join(x.pos, y.pos), 'not a set operator');
     t := xt;
   end else if (op = sIn) and (yt^.form = fSet) and Same(xt, yt^.base) then
     t := yt
   else
-    Mark('can''t combine ' + TypeName(xt) + ' and ' + TypeName(yt));
+    MarkAt(Join(x.pos, y.pos), 'can''t combine ' + TypeName(xt) + ' and ' + TypeName(yt));
   unsign := (t^.form = fInt) and not t^.signed;
 
   { constants }
   if (x.mode = mConst) and (y.mode = mConst) and not isPtr then begin
     if t^.form = fReal then begin
-      if not FoldReal(op, x, y, t, r) then Mark('not a real operator');
+      if not FoldReal(op, x, y, t, r) then MarkAt(Join(x.pos, y.pos), 'not a real operator');
       x := r;
     end else if t^.form = fSet then begin
       a := x.val; b := y.val;
@@ -857,9 +864,9 @@ begin
       else MakeConst(x, tBool, ord((a = b) = (op = sEql)));
       end;
     end else if op in Rel then
-      MakeConst(x, tBool, FoldInt(op, x.val, y.val, t))
+      MakeConst(x, tBool, FoldInt(op, x.val, y.val, t, Join(x.pos, y.pos)))
     else
-      MakeConst(x, t, Cut(FoldInt(op, x.val, y.val, t), t));
+      MakeConst(x, t, Cut(FoldInt(op, x.val, y.val, t, Join(x.pos, y.pos)), t));
     exit;
   end;
 
@@ -935,7 +942,7 @@ begin
       sXor: Alu(aluXor, RAX, RCX);
       sShl: Shift(shShl, RAX);
       sShr: if unsign then Shift(shShr, RAX) else Shift(shSar, RAX);
-    else Mark('not an operator for ' + TypeName(t));
+    else MarkAt(Join(x.pos, y.pos), 'not an operator for ' + TypeName(t));
     end;
     Norm(t);
   end;
@@ -947,14 +954,14 @@ procedure Convert(var x: TItem; t: PType);
 var s: PType; r: double; L1, L2: longint; f: boolean;
 begin
   s := x.typ;
-  if x.mode in [mType, mBuiltin, mNone, mCase, mStr] then Mark('can''t convert this');
+  if x.mode in [mType, mBuiltin, mNone, mCase, mStr] then MarkAt(x.pos, 'can''t convert this');
   if Same(s, t) then exit;
   if (IsInt(s) or (s^.form in [fEnum, fSet])) and (t^.form = fInt) then begin
     if x.mode = mConst then x.val := Cut(x.val, t)
     else begin Value(x); Norm(t) end;
   end else if IsInt(s) and (t^.form = fEnum) then begin
     if x.mode = mConst then begin
-      if (x.val < 0) or (x.val >= t^.len) then Mark('not a position of ' + TypeName(t))
+      if (x.val < 0) or (x.val >= t^.len) then MarkAt(x.pos, 'not a position of ' + TypeName(t))
     end else begin Value(x); CmpI(RAX, t^.len); Check(ccB) end;
   end else if IsInt(s) and (t^.form = fSet) then begin
     if x.mode = mConst then begin
@@ -1009,7 +1016,7 @@ begin
   end else if (s^.form in [fPtr, fProc]) and (t^.form = fInt) then begin
     Value(x); Norm(t)
   end else
-    Mark('can''t convert ' + TypeName(s) + ' to ' + TypeName(t));
+    MarkAt(x.pos, 'can''t convert ' + TypeName(s) + ' to ' + TypeName(t));
   x.typ := t;
 end;
 
@@ -1022,7 +1029,7 @@ begin
     c.code := x.obj^.isCode; c.ext := x.obj^.ext;
   end else begin
     c.code := false; c.ext := false;
-    if x.typ^.form <> fProc then Mark('not a procedure');
+    if x.typ^.form <> fProc then MarkAt(x.pos, 'not a procedure');
     c.sig := x.typ; c.chunk := -1;
     c.target := ToSlot(x);
   end;
@@ -1034,17 +1041,17 @@ procedure PassArg(var c: TCall; var a: TItem);
 var p: PObj; s: int64;
 begin
   p := c.param;
-  if c.n > High(c.slots) then Mark('too many arguments');
+  if c.n > High(c.slots) then MarkAt(a.pos, 'too many arguments');
   if p = nil then begin
     { past the parameters of a C procedure that ends in ...: a string
       goes as a C string, an integer constant as an I64, a real
       constant as an F64; C takes no F32 there }
-    if not c.sig^.variadic then Mark('too many arguments');
+    if not c.sig^.variadic then MarkAt(a.pos, 'too many arguments');
     if a.mode = mStr then Coerce(a, tPtrU8)
     else if a.typ^.form = fConst then Coerce(a, tI64)
     else if a.typ = tRConst then Coerce(a, tReal)
-    else if IsF32(a.typ) then Mark('an F32 goes to ... as F64(x)')
-    else if not IsScalar(a.typ) then Mark('only a single value goes to ...');
+    else if IsF32(a.typ) then MarkAt(a.pos, 'an F32 goes to ... as F64(x)')
+    else if not IsScalar(a.typ) then MarkAt(a.pos, 'only a single value goes to ...');
     c.isF[c.n] := a.typ^.form = fReal;
     c.slots[c.n] := ToSlot(a);
     inc(c.n);
@@ -1052,9 +1059,9 @@ begin
   end;
   c.isF[c.n] := (p^.typ^.form = fReal) and not p^.isVar;
   if p^.isVar then begin
-    if (a.mode <> mVar) or not a.isVar then Mark('a var parameter needs a variable');
-    if not Same(a.typ, p^.typ) then Mark('a var parameter needs exactly ' + TypeName(p^.typ));
-    if a.vol then Mark('can''t pass through a volatile pointer to a var parameter');
+    if (a.mode <> mVar) or not a.isVar then MarkAt(a.pos, 'a var parameter needs a variable');
+    if not Same(a.typ, p^.typ) then MarkAt(a.pos, 'a var parameter needs exactly ' + TypeName(p^.typ));
+    if a.vol then MarkAt(a.pos, 'can''t pass through a volatile pointer to a var parameter');
     Address(a, RAX);
     s := AllocTemp(8, 8);
     Store(Mem(RBP, s), RAX, 8);
@@ -1161,7 +1168,7 @@ begin
     Value(a);
     Store(Mem(RBP, x.off + f^.val), RAX, ScalarSize(f^.typ));
   end else begin
-    if a.vol then Mark('can''t copy through a volatile pointer');
+    if a.vol then MarkAt(a.pos, 'can''t copy through a volatile pointer');
     Address(a, RSI);
     Lea(RDI, Mem(RBP, x.off + f^.val));
     Copy(f^.typ^.size);
@@ -1173,7 +1180,7 @@ function MatchBegin(var x: TItem): int64;
 var p: int64;
 begin
   if x.typ^.form = fEnum then exit(ToSlot(x));
-  if (x.mode <> mVar) or (x.typ^.form <> fVariant) then Mark('match needs a variant or an enumeration');
+  if (x.mode <> mVar) or (x.typ^.form <> fVariant) then MarkAt(x.pos, 'match needs a variant or an enumeration');
   Address(x, RAX);
   p := AllocTemp(8, 8);
   Store(Mem(RBP, p), RAX, 8);
@@ -1218,7 +1225,7 @@ end;
 
 procedure CondJump(var x: TItem; var L: longint);
 begin
-  if x.typ^.form <> fBool then Mark('a condition is a BOOL');
+  if x.typ^.form <> fBool then MarkAt(x.pos, 'a condition is a BOOL');
   Value(x);
   TestRR(RAX, RAX);
   Jcc(ccE, L);
@@ -1283,10 +1290,10 @@ end;
 
 procedure ReturnValue(var x: TItem);
 begin
-  if result = nil then Mark('this procedure returns nothing');
+  if result = nil then MarkAt(x.pos, 'this procedure returns nothing');
   Coerce(x, result);
   if IsAggregate(result) then begin
-    if x.vol then Mark('can''t copy through a volatile pointer');
+    if x.vol then MarkAt(x.pos, 'can''t copy through a volatile pointer');
     Address(x, RSI);
     Load(RDI, Mem(RBP, retSlot), 8, false);
     Copy(result^.size);
@@ -1303,7 +1310,7 @@ begin
     Load(RCX, Mem(RBP, retSlot), 8, false);
     Store(Mem(RCX, f^.val), RAX, ScalarSize(f^.typ));
   end else begin
-    if x.vol then Mark('can''t copy through a volatile pointer');
+    if x.vol then MarkAt(x.pos, 'can''t copy through a volatile pointer');
     Address(x, RSI);
     Load(RDI, Mem(RBP, retSlot), 8, false);
     Lea(RDI, Mem(RDI, f^.val));
@@ -1350,7 +1357,7 @@ end;
 function ErrorChunk(var x: TItem; module, name: longint): longint;
 var c: longint; p: PBytes;
 begin
-  if x.mode <> mStr then Mark('an error is made from a string');
+  if x.mode <> mStr then MarkAt(x.pos, 'an error is made from a string');
   p := GetMem(x.val + 8);
   PInt64(p)^ := x.val;
   Move(rodata^[chunks^[x.chunk].start], p^[8], x.val);

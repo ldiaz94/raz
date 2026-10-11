@@ -1,0 +1,4 @@
+test/err/AtPArrayLen.raz:2:9: error: bad array length
+    2 | var a: [0]I64;
+      |         ^
+raz: 1 error

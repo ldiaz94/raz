@@ -1,0 +1,4 @@
+test/err/AtPEscape.raz:5:12: error: unknown escape
+    5 |     s := "a\q";
+      |            ^^
+raz: 1 error

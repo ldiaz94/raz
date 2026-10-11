@@ -36,6 +36,7 @@ var
 function AddFile(const path: shortstring; buf: PChar; len: longint): longint;
 function PathOf(f: longint): shortstring;
 function LineOf(const p: TPos): longint;
+function Join(const p, q: TPos): TPos;
 procedure Error(const p: TPos; const msg: shortstring);
 procedure Warning(const p: TPos; const msg: shortstring);
 procedure Note(const p: TPos; const msg: shortstring);
@@ -58,14 +59,22 @@ var
   files: ^TFile;      { numFiles of them, in room for cap }
   numFiles, cap: longint;
   colour, colourKnown: boolean;
+  cwd: shortstring;    { the working directory and a /, or '' if unknown }
 
+{ Paths are shown from the working directory where they are under it,
+  so messages read the same wherever the compiler or its library is. }
 function AddFile(const path: shortstring; buf: PChar; len: longint): longint;
+var d: array[0..255] of char;
 begin
+  if numFiles = 0 then
+    if FpGetcwd(@d[0], SizeOf(d)) <> nil then cwd := StrPas(@d[0]) + '/';
   if numFiles = cap then begin
     cap := 2 * cap + 8;
     ReallocMem(files, cap * SizeOf(TFile));
   end;
-  files[numFiles].path := path;
+  if (cwd <> '') and (copy(path, 1, length(cwd)) = cwd) then
+    files[numFiles].path := copy(path, length(cwd) + 1, 255)
+  else files[numFiles].path := path;
   files[numFiles].buf := buf;
   files[numFiles].len := len;
   AddFile := numFiles;
@@ -167,6 +176,13 @@ begin
   if p.b < stop then n := Chars(buf, p.a, p.b) else n := Chars(buf, p.a, stop);
   if n < 1 then n := 1;
   writeln(StdErr, Paint(kindColour, StringOfChar('^', n)));
+end;
+
+{ From the start of p to the end of q }
+function Join(const p, q: TPos): TPos;
+begin
+  Join := p;
+  Join.b := q.b;
 end;
 
 { Messages }

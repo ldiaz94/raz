@@ -1,0 +1,7 @@
+module AtPAdr;
+proc main*;
+var p: ^I64;
+begin
+    p := ADR(1);
+end;
+end AtPAdr.

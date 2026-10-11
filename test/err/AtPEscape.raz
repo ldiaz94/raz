@@ -1,0 +1,7 @@
+module AtPEscape;
+proc main*;
+var s: [8]U8;
+begin
+    s := "a\q";
+end;
+end AtPEscape.

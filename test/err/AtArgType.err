@@ -1,0 +1,4 @@
+test/err/AtArgType.raz:7:8: error: can't use BOOL as I64
+    7 |     Id(b);
+      |        ^
+raz: 1 error

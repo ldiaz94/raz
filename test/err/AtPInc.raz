@@ -1,0 +1,7 @@
+module AtPInc;
+proc main*;
+var a: BOOL;
+begin
+    INC(a);
+end;
+end AtPInc.

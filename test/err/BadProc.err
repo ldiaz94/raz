@@ -1,4 +1,7 @@
-/home/luis/raz/lib/Map.raz:4:39: error: needs a procedure with the signature of hash
+test/err/BadProc.raz:2:33: error: needs a procedure with the signature of hash
+    2 | import Str, M := Map([]U8, I64, Str.cmp, Str.eq);
+      |                                 ^^^^^^^
+lib/Map.raz:4:18: note: hash is declared here
     4 | module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
-      |                                       ^
+      |                  ^^^^
 raz: 1 error

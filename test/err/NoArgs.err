@@ -1,4 +1,4 @@
-/home/luis/raz/lib/List.raz:2:13: error: needs a type for each type parameter
-    2 | module List(T);
-      |             ^
+test/err/NoArgs.raz:2:8: error: needs a type for each type parameter
+    2 | import List;
+      |        ^^^^
 raz: 1 error

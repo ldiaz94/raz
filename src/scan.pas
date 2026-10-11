@@ -41,6 +41,7 @@ type
     buf: PChar;
     len, pos, line, lineStart: longint;
     tokPos, tokLine, tokLineStart: longint;
+    prevEnd: longint;   { where the symbol before this one ends }
     tok: TSym;
     ival: int64;
     rval: double;
@@ -66,9 +67,13 @@ function NameOf(n: longint): shortstring;
 function Open(const path: shortstring): boolean;
 procedure Next;
 procedure Mark(const msg: shortstring);
+procedure MarkAt(const p: TPos; const msg: shortstring);
 procedure SaveScan(var st: TScanState);
 procedure RestoreScan(const st: TScanState);
 function TokPos: TPos;
+function AfterPrev: TPos;
+function MissingPos: TPos;
+function SpanFrom(const p: TPos): TPos;
 function CurPath: shortstring;
 function CurLine: longint;
 
@@ -171,6 +176,34 @@ begin
   TokPos.b := cur.pos;
 end;
 
+{ The place just after the symbol before the current one, where a
+  missing symbol belongs }
+function AfterPrev: TPos;
+begin
+  AfterPrev.f := cur.f;
+  AfterPrev.a := cur.prevEnd;
+  AfterPrev.b := cur.prevEnd;
+end;
+
+{ Where to say a symbol is missing: at the current symbol, unless it
+  starts a later line than the symbol before it, which is more likely
+  where the missing one belongs }
+function MissingPos: TPos;
+var i: longint;
+begin
+  MissingPos := TokPos;
+  for i := cur.prevEnd to cur.tokPos - 1 do
+    if cur.buf[i] = #10 then MissingPos := AfterPrev;
+end;
+
+{ From the start of p to the end of the symbol before the current one:
+  the whole of a construct that has just been read }
+function SpanFrom(const p: TPos): TPos;
+begin
+  SpanFrom := p;
+  SpanFrom.b := cur.prevEnd;
+end;
+
 function CurPath: shortstring;
 begin
   CurPath := cur.path;
@@ -183,7 +216,20 @@ end;
 
 procedure Mark(const msg: shortstring);
 begin
-  Error(TokPos, msg);
+  MarkAt(TokPos, msg);
+end;
+
+{ Report at the bytes a to b of the file being read }
+procedure MarkBytes(a, b: longint; const msg: shortstring);
+var p: TPos;
+begin
+  p.f := cur.f; p.a := a; p.b := b;
+  MarkAt(p, msg);
+end;
+
+procedure MarkAt(const p: TPos; const msg: shortstring);
+begin
+  Error(p, msg);
   Finish;
 end;
 
@@ -298,9 +344,10 @@ end;
 { One character of a character or string literal, at buf[pos]: its code
   point, or for \xHH, minus one minus the byte. }
 function LitChar(inString: boolean): longint;
-var c: char; v, d, n: longint;
+var c: char; v, d, n, esc: longint;
 begin
   c := cur.buf[cur.pos];
+  esc := cur.pos;
   if c = '\' then begin
     inc(cur.pos);
     c := cur.buf[cur.pos];
@@ -312,28 +359,28 @@ begin
       '0': v := 0;
       '\', '''', '"': v := ord(c);
       'x': begin
-        if not inString then Mark('\x only in strings');
+        if not inString then MarkBytes(esc, cur.pos, '\x only in strings');
         d := HexVal(cur.buf[cur.pos]);
         n := HexVal(cur.buf[cur.pos + 1]);
-        if (d < 0) or (n < 0) then Mark('\x needs two hex digits');
+        if (d < 0) or (n < 0) then MarkBytes(esc, cur.pos + 2, '\x needs two hex digits');
         inc(cur.pos, 2);
         v := -1 - (d * 16 + n);
       end;
       'u': begin
-        if cur.buf[cur.pos] <> '{' then Mark('\u needs {');
+        if cur.buf[cur.pos] <> '{' then MarkBytes(esc, cur.pos, '\u needs {');
         inc(cur.pos);
         v := 0; n := 0;
         while HexVal(cur.buf[cur.pos]) >= 0 do begin
           v := v * 16 + HexVal(cur.buf[cur.pos]);
           inc(n); inc(cur.pos);
-          if n > 6 then Mark('code point too big');
+          if n > 6 then MarkBytes(esc, cur.pos, 'code point too big');
         end;
-        if (n = 0) or (cur.buf[cur.pos] <> '}') then Mark('bad \u{...}');
+        if (n = 0) or (cur.buf[cur.pos] <> '}') then MarkBytes(esc, cur.pos, 'bad \u{...}');
         inc(cur.pos);
         if (v > $10FFFF) or ((v >= $D800) and (v <= $DFFF)) then
-          Mark('not a code point');
+          MarkBytes(esc, cur.pos, 'not a code point');
       end;
-    else Mark('unknown escape');
+    else MarkBytes(esc, cur.pos, 'unknown escape');
     end;
   end else if byte(c) >= $80 then
     v := Utf8(cur.pos)
@@ -349,14 +396,15 @@ end;
 { Symbols }
 
 procedure Comment;
-var depth: longint; c: char;
+var depth, open: longint; c: char;
 begin
   depth := 1;
+  open := cur.pos;
   inc(cur.pos, 2);
   repeat
     c := cur.buf[cur.pos];
     if c = #0 then begin
-      if cur.pos >= cur.len then Mark('comment not closed');
+      if cur.pos >= cur.len then MarkBytes(open, open + 2, 'comment not closed');
       inc(cur.pos);
     end else if (c = '(') and (cur.buf[cur.pos + 1] = '*') then begin
       inc(depth); inc(cur.pos, 2)
@@ -422,6 +470,7 @@ end;
 procedure Next;
 var c: char; start, h, v: longint;
 begin
+  cur.prevEnd := cur.pos;
   repeat
     c := cur.buf[cur.pos];
     while c in [' ', #9, #13, #10] do begin
@@ -509,13 +558,13 @@ begin
     '^': begin inc(cur.pos); tok := sArrow end;
     '|': begin inc(cur.pos); tok := sBar end;
     #0: begin
-      if cur.pos < cur.len then Mark('NUL character');
+      if cur.pos < cur.len then MarkBytes(cur.pos, cur.pos + 1, 'NUL character');
       tok := sEof;
     end;
   else
     if byte(c) >= $80 then
       Mark('text outside strings, characters and comments must be ASCII');
-    Mark('unexpected character');
+    MarkBytes(cur.pos, cur.pos + 1, 'unexpected character');
   end;
 end;
 

@@ -1,0 +1,7 @@
+module AtIndexConst;
+proc main*;
+var a: [4]I64; x: I64;
+begin
+    x := a[2 + 3];
+end;
+end AtIndexConst.

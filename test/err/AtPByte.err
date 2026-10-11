@@ -1,0 +1,4 @@
+test/err/AtPByte.raz:3:6: error: a byte expected
+    3 | code 300;
+      |      ^^^
+raz: 1 error

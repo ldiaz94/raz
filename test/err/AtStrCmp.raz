@@ -1,0 +1,7 @@
+module AtStrCmp;
+proc main*;
+var s: []U8; x: I64;
+begin
+    if s = x + 1 then end;
+end;
+end AtStrCmp.

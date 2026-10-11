@@ -1,0 +1,4 @@
+test/err/AtNotValue.raz:5:10: error: not a value
+    5 |     x := I64 + 1;
+      |          ^^^
+raz: 1 error

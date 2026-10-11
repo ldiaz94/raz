@@ -1,0 +1,4 @@
+test/err/AtPNoResult.raz:8:10: error: this procedure returns nothing
+    8 |     a := p() + 1;
+      |          ^^^
+raz: 1 error

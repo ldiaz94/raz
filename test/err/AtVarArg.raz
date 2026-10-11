@@ -1,0 +1,9 @@
+module AtVarArg;
+proc Inc(var a: I64);
+begin a := a + 1; end;
+proc main*;
+var x: I64;
+begin
+    Inc(1 + 2);
+end;
+end AtVarArg.

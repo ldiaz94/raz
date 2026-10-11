@@ -1,0 +1,7 @@
+module AtPNotStmt;
+proc main*;
+var a: I64;
+begin
+    a;
+end;
+end AtPNotStmt.

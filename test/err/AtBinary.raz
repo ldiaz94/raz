@@ -1,0 +1,7 @@
+module AtBinary;
+proc main*;
+var x: I64; b: BOOL;
+begin
+    x := (x + 2) * b;
+end;
+end AtBinary.

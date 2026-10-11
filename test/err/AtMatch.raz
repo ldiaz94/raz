@@ -1,0 +1,7 @@
+module AtMatch;
+proc main*;
+var x: I64;
+begin
+    match x + 1 do end;
+end;
+end AtMatch.

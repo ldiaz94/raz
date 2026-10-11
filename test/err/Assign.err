@@ -1,4 +1,4 @@
-test/err/Assign.raz:5:11: error: can't use I32 as I64
+test/err/Assign.raz:5:10: error: can't use I32 as I64
     5 |     a := b;
-      |           ^
+      |          ^
 raz: 1 error

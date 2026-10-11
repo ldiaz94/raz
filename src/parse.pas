@@ -74,7 +74,7 @@ procedure Statement; forward;
 
 procedure Expect(s: TSym; const what: shortstring);
 begin
-  if tok <> s then Mark(what + ' expected');
+  if tok <> s then MarkAt(MissingPos, what + ' expected');
   Next;
 end;
 
@@ -85,7 +85,7 @@ end;
 
 procedure IdentDef(var n: longint; var exp: boolean);
 begin
-  if tok <> sIdent then Mark('name expected');
+  if tok <> sIdent then MarkAt(MissingPos, 'name expected');
   n := id;
   Next;
   exp := false;
@@ -109,7 +109,7 @@ end;
 
 function ConstValue(var x: TItem): int64;
 begin
-  if x.mode <> mConst then Mark('constant expected');
+  if x.mode <> mConst then MarkAt(x.pos, 'constant expected');
   ConstValue := x.val;
 end;
 
@@ -117,20 +117,20 @@ function ConstExpr: int64;
 var x: TItem;
 begin
   Expression(x, nil);
-  if not IsInt(x.typ) then Mark('integer constant expected');
+  if not IsInt(x.typ) then MarkAt(x.pos, 'integer constant expected');
   ConstExpr := ConstValue(x);
 end;
 
 function QualIdent: PObj;
 var o: PObj;
 begin
-  if tok <> sIdent then Mark('name expected');
+  if tok <> sIdent then MarkAt(MissingPos, 'name expected');
   o := Lookup(id);
   if o = nil then Mark(NameOf(id) + ' isn''t declared');
   Next;
   if o^.cls = oModule then begin
     Expect(sPeriod, '.');
-    if tok <> sIdent then Mark('name expected');
+    if tok <> sIdent then MarkAt(MissingPos, 'name expected');
     o := Find(o^.module^.scope, id);
     if (o = nil) or not o^.exported then Mark(NameOf(id) + ' isn''t exported');
     Next;
@@ -211,7 +211,7 @@ begin
       repeat
         n := 0;
         repeat
-          if tok <> sIdent then Mark('name expected');
+          if tok <> sIdent then MarkAt(MissingPos, 'name expected');
           f := NewObj(oField, id, nil);
           f^.exported := true;
           if lastF = nil then c^.fields := f else lastF^.next := f;
@@ -293,7 +293,7 @@ begin
         if isVar then Next;
         first := nil;
         repeat
-          if tok <> sIdent then Mark('name expected');
+          if tok <> sIdent then MarkAt(MissingPos, 'name expected');
           p := NewObj(oVar, id, nil);
           p^.isVar := isVar;
           p^.lev := 1;
@@ -322,13 +322,14 @@ begin
 end;
 
 function EnumType: PType;
-var t: PType; o, last: PObj;
+var t: PType; o, last: PObj; start: TPos;
 begin
+  start := TokPos;
   t := NewType(fEnum, 1, 1);
   last := nil;
   repeat
     Next;
-    if tok <> sIdent then Mark('name expected');
+    if tok <> sIdent then MarkAt(MissingPos, 'name expected');
     o := NewObj(oConst, id, t);
     o^.val := t^.len;
     o^.exported := declExported;
@@ -339,14 +340,14 @@ begin
     Next;
   until tok <> sComma;
   Expect(sRparen, ')');
-  if t^.len > 256 then Mark('more than 256 names');
+  if t^.len > 256 then MarkAt(SpanFrom(start), 'more than 256 names');
   EnumType := t;
 end;
 
-function SetOf(e: PType): PType;
+function SetOf(e: PType; const at: TPos): PType;
 var t: PType;
 begin
-  if (e^.form <> fEnum) or (e^.len > 64) then Mark('a set is of an enumeration of at most 64 names');
+  if (e^.form <> fEnum) or (e^.len > 64) then MarkAt(at, 'a set is of an enumeration of at most 64 names');
   t := NewType(fSet, 8, 8);
   if e^.len <= 8 then t^.size := 1
   else if e^.len <= 16 then t^.size := 2
@@ -358,12 +359,13 @@ begin
 end;
 
 function ParseType: PType;
-var t: PType; o: PObj; n: int64; vol: boolean;
+var t: PType; o: PObj; n: int64; vol: boolean; start: TPos;
 begin
+  start := TokPos;
   case tok of
     sIdent: begin
       o := QualIdent;
-      if o^.cls <> oType then Mark('type expected');
+      if o^.cls <> oType then MarkAt(SpanFrom(start), 'type expected');
       t := o^.typ;
     end;
     sLbrak: begin
@@ -373,8 +375,9 @@ begin
         t := NewType(fSlice, 16, 8);
         t^.base := ParseType();
       end else begin
+        start := TokPos;
         n := ConstExpr;
-        if (n <= 0) or (n > (int64(1) shl 40)) then Mark('bad array length');
+        if (n <= 0) or (n > (int64(1) shl 40)) then MarkAt(SpanFrom(start), 'bad array length');
         Expect(sRbrak, ']');
         t := NewType(fArray, 0, 1);
         t^.len := n;
@@ -405,9 +408,10 @@ begin
     sSet: begin
       Next;
       Expect(sOf, 'of');
-      t := SetOf(ParseType());
+      start := TokPos;
+      t := SetOf(ParseType(), start);
     end;
-  else Mark('type expected');
+  else MarkAt(MissingPos, 'type expected');
   end;
   ParseType := t;
 end;
@@ -437,7 +441,7 @@ begin
   for i := 0 to n - 1 do begin
     if i > 0 then Expect(sComma, ',');
     Expression(a, nil);
-    if not (IsScalar(a.typ) and (a.typ^.form <> fReal)) then Mark('integer or pointer expected');
+    if not (IsScalar(a.typ) and (a.typ^.form <> fReal)) then MarkAt(a.pos, 'integer or pointer expected');
     if a.typ^.form = fConst then Coerce(a, tI64);
     slots[i] := ToSlot(a);
   end;
@@ -447,10 +451,10 @@ procedure Atomic(var x: TItem; which: longint);
 var p, a: TItem; t: PType; s: array[0..2] of int64; i, n: longint;
 begin
   Expression(p, nil);
-  if p.typ^.form <> fPtr then Mark('a pointer expected');
+  if p.typ^.form <> fPtr then MarkAt(p.pos, 'a pointer expected');
   t := p.typ^.base;
   if not (((t^.form = fInt) or ((t^.form = fPtr) and (which <> bXadd))) and (t^.size = 8)) then
-    Mark('an 8-byte integer or pointer expected');
+    MarkAt(p.pos, 'an 8-byte integer or pointer expected');
   s[0] := ToSlot(p);
   if which = bCas then n := 2 else n := 1;
   for i := 1 to n do begin
@@ -481,14 +485,14 @@ procedure New_(var x: TItem);
 var y, z: TItem; t: PType; f: PObj; s: int64; c: TCall; L: longint;
 begin
   Expression(x, nil);
-  if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fPtr) then Mark('NEW needs a pointer variable');
+  if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fPtr) then MarkAt(x.pos, 'NEW needs a pointer variable');
   t := x.typ^.base;
   Save(x);
   Expect(sComma, ',');
   Expression(y, nil);
   if (y.typ^.form <> fPtr) or (y.typ^.base^.obj = nil) or (y.typ^.base^.obj^.module = nil)
     or (NameOf(y.typ^.base^.obj^.name) <> 'Allocator')
-    or (NameOf(y.typ^.base^.obj^.module^.name) <> 'Mem') then Mark('NEW needs a ^Mem.Allocator');
+    or (NameOf(y.typ^.base^.obj^.module^.name) <> 'Mem') then MarkAt(y.pos, 'NEW needs a ^Mem.Allocator');
   f := Find(y.typ^.base^.scope, Name('alloc'));
   s := ToSlot(y);
   Load(RAX, Mem(RBP, s), 8, false);
@@ -543,7 +547,7 @@ begin
     end;
     bAdr: begin
       Expression(y, nil);
-      if (y.mode <> mVar) or not y.isVar then Mark('ADR needs a variable');
+      if (y.mode <> mVar) or not y.isVar then MarkAt(y.pos, 'ADR needs a variable');
       t := NewPtr(y.typ, y.vol);
       Address(y, RAX);
       MakeConst(x, t, 0);
@@ -558,7 +562,7 @@ begin
         Load(RAX, Mem(RAX, 8), 8, false);
         MakeConst(x, tI64, 0);
         x.mode := mReg;
-      end else Mark('LEN needs an array or slice');
+      end else MarkAt(y.pos, 'LEN needs an array or slice');
     end;
     bSyscall: begin
       n := 1;
@@ -566,7 +570,7 @@ begin
       while (tok = sComma) and (n < 7) do begin
         Next;
         Expression(y, nil);
-        if not (IsScalar(y.typ) and (y.typ^.form <> fReal)) then Mark('integer or pointer expected');
+        if not (IsScalar(y.typ) and (y.typ^.form <> fReal)) then MarkAt(y.pos, 'integer or pointer expected');
         if y.typ^.form = fConst then Coerce(y, tI64);
         slots[n] := ToSlot(y);
         inc(n);
@@ -581,7 +585,7 @@ begin
     bInc, bDec: begin
       Expression(x, nil);
       if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fInt) then
-        Mark('INC and DEC need an integer variable');
+        MarkAt(x.pos, 'INC and DEC need an integer variable');
       Save(x);
       if tok = sComma then begin
         Next;
@@ -596,7 +600,7 @@ begin
   Expect(sRparen, ')');
 end;
 
-procedure ConstructCase(var x: TItem; c: PObj);
+procedure ConstructCase(var x: TItem; c: PObj; const at: TPos);
 var f: PObj; a: TItem;
 begin
   Construct(x, c);
@@ -610,30 +614,32 @@ begin
       if f <> nil then Expect(sComma, ',');
     end;
     Expect(sRparen, ')');
-  end else if f <> nil then Mark(NameOf(c^.name) + ' needs its fields');
+  end else if f <> nil then MarkAt(at, NameOf(c^.name) + ' needs its fields');
 end;
 
 { A designator, with any selectors and calls after it. called tells
   whether the last thing done was a call. }
 procedure Designator(var x: TItem; var called: boolean);
-var o, f: PObj; y, z: TItem; t: PType;
+var o, f: PObj; y, z: TItem; t: PType; start: TPos;
 begin
+  start := TokPos;
   o := QualIdent;
   called := false;
-  if o^.cls = oModule then Mark('a module is not a value');
+  if o^.cls = oModule then MarkAt(SpanFrom(start), 'a module is not a value');
   MakeItem(x, o);
   if x.mode = mBuiltin then begin
     Builtin(x);
     called := true;
   end else if x.mode = mCase then begin
-    ConstructCase(x, o);
+    ConstructCase(x, o, SpanFrom(start));
   end;
   repeat
+    x.pos := SpanFrom(start);
     case tok of
       sPeriod: begin
         Next;
-        if (x.mode <> mVar) or (x.typ^.form <> fRecord) then Mark('not a record');
-        if tok <> sIdent then Mark('field expected');
+        if (x.mode <> mVar) or (x.typ^.form <> fRecord) then MarkAt(x.pos, 'not a record');
+        if tok <> sIdent then MarkAt(MissingPos, 'field expected');
         f := Find(x.typ^.scope, id);
         if f = nil then Mark('no field ' + NameOf(id));
         if not f^.exported and (x.typ^.module <> curModule) then
@@ -671,13 +677,15 @@ begin
     else break;
     end;
   until false;
+  x.pos := SpanFrom(start);
 end;
 
 procedure ArrayLiteral(var x: TItem; want: PType);
 var
   et, at: PType; e: TItem; slots: array[0..1023] of int64; n, i: longint;
-  off, es: int64;
+  off, es: int64; start: TPos;
 begin
+  start := TokPos;
   if (want = nil) or not (want^.form in [fArray, fSlice]) then
     Mark('an array literal needs a known array or slice type');
   et := want^.base;
@@ -699,7 +707,7 @@ begin
       Next;
     until false;
   Expect(sRbrak, ']');
-  if (want^.form = fArray) and (n <> want^.len) then Mark('wrong number of elements');
+  if (want^.form = fArray) and (n <> want^.len) then MarkAt(SpanFrom(start), 'wrong number of elements');
   if n = 0 then begin
     MovRI(RAX, 0);
     SliceOf(x, want, 0);
@@ -737,7 +745,7 @@ begin
   n := 0;
   if tok <> sRbrace then
     repeat
-      if tok <> sIdent then Mark('field expected');
+      if tok <> sIdent then MarkAt(MissingPos, 'field expected');
       f := Find(t^.scope, id);
       if f = nil then Mark('no field ' + NameOf(id));
       if not f^.exported and (t^.module <> curModule) then Mark('field ' + NameOf(id) + ' isn''t exported');
@@ -756,20 +764,21 @@ end;
 { A set literal: the bits of the constant names, or'd at run time with
   those of the others. }
 procedure SetLiteral(var x: TItem; t: PType);
-var e: TItem; bits, slot: int64;
+var e: TItem; bits, slot: int64; start: TPos;
 begin
+  start := TokPos;
   Next;
-  if (t <> nil) and (t^.form <> fSet) then Mark('a set literal needs a set type');
+  if (t <> nil) and (t^.form <> fSet) then MarkAt(SpanFrom(start), 'a set literal needs a set type');
   bits := 0;
   slot := 0;
   if tok <> sRbrace then
     repeat
       if t = nil then Expression(e, nil) else Expression(e, t^.base);
       if t = nil then begin
-        if e.typ^.form <> fEnum then Mark('a set holds names of an enumeration');
-        t := SetOf(e.typ);
+        if e.typ^.form <> fEnum then MarkAt(e.pos, 'a set holds names of an enumeration');
+        t := SetOf(e.typ, e.pos);
       end;
-      if not Same(e.typ, t^.base) then Mark('not a name of ' + TypeName(t^.base));
+      if not Same(e.typ, t^.base) then MarkAt(e.pos, 'not a name of ' + TypeName(t^.base));
       if e.mode = mConst then bits := bits or (int64(1) shl e.val)
       else begin
         if slot = 0 then begin
@@ -788,7 +797,7 @@ begin
       Next;
     until false;
   Expect(sRbrace, '}');
-  if t = nil then Mark('{} needs a known set type');
+  if t = nil then MarkAt(SpanFrom(start), '{} needs a known set type');
   MakeConst(x, t, bits);
   if slot <> 0 then begin
     Load(RAX, Mem(RBP, slot), 8, false);
@@ -799,8 +808,9 @@ begin
 end;
 
 procedure Factor(var x: TItem; want: PType);
-var called, vol: boolean; t: PType;
+var called, vol: boolean; t: PType; start: TPos;
 begin
+  start := TokPos;
   case tok of
     sInt, sChar: begin
       { only a hex number can be above high(I64), and it is a U64 }
@@ -811,8 +821,8 @@ begin
     sString: begin MakeStr(x); Next end;
     sIdent: begin
       Designator(x, called);
-      if x.mode = mNone then Mark('this procedure returns nothing');
-      if x.typ^.tuple then Mark('several results go only to a, b := ...');
+      if x.mode = mNone then MarkAt(x.pos, 'this procedure returns nothing');
+      if x.typ^.tuple then MarkAt(x.pos, 'several results go only to a, b := ...');
     end;
     sLparen: begin Next; Expression(x, want); Expect(sRparen, ')') end;
     sNot: begin Next; Factor(x, nil); NotOp(x) end;
@@ -829,13 +839,15 @@ begin
       Expect(sRparen, ')');
       Convert(x, t);
     end;
-  else Mark('expression expected');
+  else MarkAt(MissingPos, 'expression expected');
   end;
+  x.pos := SpanFrom(start);
 end;
 
 procedure Term(var x: TItem; want: PType);
-var op: TSym; y: TItem; L: longint;
+var op: TSym; y: TItem; L: longint; start: TPos;
 begin
+  start := TokPos;
   Factor(x, want);
   while tok in [sTimes, sSlash, sDiv, sMod, sAnd, sShl, sShr] do begin
     op := tok;
@@ -843,15 +855,18 @@ begin
     Op1(op, x, L);
     Factor(y, nil);
     Op2(op, x, y, L);
+    x.pos := SpanFrom(start);
   end;
 end;
 
 procedure SimpleExpr(var x: TItem; want: PType);
-var op: TSym; y: TItem; L: longint;
+var op: TSym; y: TItem; L: longint; start: TPos;
 begin
+  start := TokPos;
   if tok = sMinus then begin
     Next;
     Term(x, nil);
+    x.pos := SpanFrom(start);
     Neg(x);
   end else Term(x, want);
   while tok in [sPlus, sMinus, sOr, sXor] do begin
@@ -860,6 +875,7 @@ begin
     Op1(op, x, L);
     Term(y, nil);
     Op2(op, x, y, L);
+    x.pos := SpanFrom(start);
   end;
 end;
 
@@ -873,6 +889,7 @@ begin
     Op1(op, x, L);
     if op = sIn then SimpleExpr(y, nil) else SimpleExpr(y, x.typ);
     Op2(op, x, y, L);
+    x.pos := Join(x.pos, y.pos);
   end;
 end;
 
@@ -963,7 +980,7 @@ var
   lp: TLoop; old: PLoop;
 begin
   Next;
-  if tok <> sIdent then Mark('name expected');
+  if tok <> sIdent then MarkAt(MissingPos, 'name expected');
   o := Lookup(id);
   if (o = nil) or (o^.cls <> oVar) or not (o^.typ^.form in [fInt, fEnum]) then
     Mark('a for loop needs an integer or enumeration variable');
@@ -982,7 +999,7 @@ begin
     Next;
     Expression(s, nil);
     step := ConstValue(s);
-    if step = 0 then Mark('the step can''t be zero');
+    if step = 0 then MarkAt(s.pos, 'the step can''t be zero');
   end;
   Expect(sDo, 'do');
   exitL := NoLabel;
@@ -1008,7 +1025,7 @@ end;
 procedure MatchStatement;
 var
   x: TItem; t: PType; c, f, o: PObj; p: int64; L, endL, n: longint;
-  seen: array[0..255] of boolean; hasElse: boolean;
+  seen: array[0..255] of boolean; hasElse: boolean; endAt: TPos;
 begin
   Next;
   Expression(x, nil);
@@ -1027,7 +1044,7 @@ begin
       Statements;
       hasElse := true;
     end else begin
-      if tok <> sIdent then Mark('case expected');
+      if tok <> sIdent then MarkAt(MissingPos, 'case expected');
       c := t^.fields;
       while (c <> nil) and (c^.name <> id) do c := c^.next;
       if c = nil then Mark(NameOf(id) + ' isn''t a case of ' + TypeName(t));
@@ -1042,7 +1059,7 @@ begin
         f := c^.fields;
         n := 0;
         repeat
-          if tok <> sIdent then Mark('name expected');
+          if tok <> sIdent then MarkAt(MissingPos, 'name expected');
           if f = nil then Mark('too many fields');
           o := NewObj(oVar, id, f^.typ);
           o^.lev := 1; o^.ind := true; o^.isVar := true;
@@ -1064,11 +1081,12 @@ begin
       FixLink(L);
     end;
   end;
+  endAt := TokPos;
   Expect(sEnd, 'end');
   if not hasElse then begin
     c := t^.fields;
     while c <> nil do begin
-      if (c^.val > High(seen)) or not seen[c^.val] then Mark('no arm for ' + NameOf(c^.name));
+      if (c^.val > High(seen)) or not seen[c^.val] then MarkAt(endAt, 'no arm for ' + NameOf(c^.name));
       c := c^.next;
     end;
   end;
@@ -1083,7 +1101,7 @@ begin
   n := 0;
   d[0] := x;
   repeat
-    if (d[n].mode <> mVar) or not d[n].isVar then Mark('can''t assign to this');
+    if (d[n].mode <> mVar) or not d[n].isVar then MarkAt(d[n].pos, 'can''t assign to this');
     Pin(d[n]);
     inc(n);
     if tok <> sComma then break;
@@ -1094,7 +1112,7 @@ begin
   Expect(sBecomes, ':=');
   Designator(y, called);
   if not called or not y.typ^.tuple or (y.typ^.len <> n) then
-    Mark('needs a call with as many results as variables');
+    MarkAt(y.pos, 'needs a call with as many results as variables');
   f := y.typ^.fields;
   for i := 0 to n - 1 do begin
     z := y;
@@ -1119,11 +1137,12 @@ end;
 { defer s: s is compiled where it stands, as a little subroutine of the
   procedure, jumped over; each way out of the statement list calls it. }
 procedure Defer;
-var L, pos, oldDepth: longint; oldLoop: PLoop; oldDeferring: boolean;
+var L, pos, oldDepth: longint; oldLoop: PLoop; oldDeferring: boolean; start: TPos;
 begin
+  start := TokPos;
   Next;
-  if directDefer then Mark('defer can''t be deferred');
-  if numDefers > High(defers) then Mark('too many deferred statements');
+  if directDefer then MarkAt(SpanFrom(start), 'defer can''t be deferred');
+  if numDefers > High(defers) then MarkAt(SpanFrom(start), 'too many deferred statements');
   L := NoLabel;
   Jmp(L);
   pos := pc;
@@ -1143,15 +1162,16 @@ begin
 end;
 
 procedure Statement;
-var x, y: TItem; called: boolean; m: int64; c: TCall;
+var x, y: TItem; called: boolean; m: int64; c: TCall; start: TPos;
 begin
+  start := TokPos;
   NoteLine(CurLine);
   m := TempMark;
   case tok of
     sIdent: begin
       Designator(x, called);
       if tok = sBecomes then begin
-        if (x.mode <> mVar) or not x.isVar then Mark('can''t assign to this');
+        if (x.mode <> mVar) or not x.isVar then MarkAt(x.pos, 'can''t assign to this');
         Save(x);
         Next;
         Expression(y, x.typ);
@@ -1162,7 +1182,7 @@ begin
         if (x.mode = mProc) or ((x.mode in [mVar, mReg]) and (x.typ^.form = fProc)) then begin
           BeginCall(c, x);
           EndCall(c, x);
-        end else Mark('not a statement');
+        end else MarkAt(x.pos, 'not a statement');
       end;
     end;
     sIf: IfStatement;
@@ -1172,7 +1192,7 @@ begin
     sMatch: MatchStatement;
     sReturn: begin
       Next;
-      if deferring then Mark('return can''t leave a deferred statement');
+      if deferring then MarkAt(SpanFrom(start), 'return can''t leave a deferred statement');
       if tok = sSemicolon then begin
         RunDefers(0);
         ReturnNone;
@@ -1193,12 +1213,12 @@ begin
     end;
     sBreak: begin
       Next;
-      if curLoop = nil then Mark('break outside a loop');
+      if curLoop = nil then MarkAt(SpanFrom(start), 'break outside a loop');
       RunDefers(curLoop^.base);
       Jmp(curLoop^.brk);
     end;
     sDefer: Defer;
-  else Mark('statement expected');
+  else MarkAt(MissingPos, 'statement expected');
   end;
   ReleaseTemps(m);
 end;
@@ -1278,30 +1298,31 @@ begin
   CloseScope;
 end;
 
-procedure CodeBody(p: PObj; sig: PType);
-var q: PObj; ni, nf: longint; v: int64;
+procedure CodeBody(p: PObj; sig: PType; const at: TPos);
+var q: PObj; ni, nf: longint; v: int64; start: TPos;
 begin
   ni := 0; nf := 0;
   q := sig^.fields;
   while q <> nil do begin
     if not q^.isVar and not IsScalar(q^.typ) then
-      Mark('a code procedure takes integers, BOOL, reals, pointers and procedures');
+      MarkAt(at, 'a code procedure takes integers, BOOL, reals, pointers and procedures');
     if (q^.typ^.form = fReal) and not q^.isVar then inc(nf) else inc(ni);
     q := q^.next;
   end;
-  if (ni > 6) or (nf > 8) or sig^.variadic then Mark('too many parameters for a code procedure');
+  if (ni > 6) or (nf > 8) or sig^.variadic then MarkAt(at, 'too many parameters for a code procedure');
   if sig^.base <> nil then
     if sig^.base^.tuple then begin
       q := sig^.base^.fields;
       if (sig^.base^.len <> 2) or (q^.typ^.size <> 8) or (q^.next^.typ^.size <> 8)
         or not IsScalar(q^.typ) or not IsScalar(q^.next^.typ)
         or (q^.typ^.form = fReal) or (q^.next^.typ^.form = fReal) then
-        Mark('a code procedure returns two results only in rax and rdx');
-    end else if not IsScalar(sig^.base) then Mark('a code procedure returns a single value');
+        MarkAt(at, 'a code procedure returns two results only in rax and rdx');
+    end else if not IsScalar(sig^.base) then MarkAt(at, 'a code procedure returns a single value');
   BeginChunk(p^.chunk);
   repeat
+    start := TokPos;
     v := ConstExpr;
-    if (v < 0) or (v > 255) then Mark('a byte expected');
+    if (v < 0) or (v > 255) then MarkAt(SpanFrom(start), 'a byte expected');
     Put1(v);
     if tok <> sComma then break;
     Next;
@@ -1310,16 +1331,18 @@ begin
 end;
 
 procedure ProcDecl;
-var n, line: longint; exp: boolean; sig: PType; p: PObj;
+var n, line: longint; exp: boolean; sig: PType; p: PObj; at: TPos;
 begin
   line := CurLine;
   Next;
+  at := TokPos;
   IdentDef(n, exp);
+  at := SpanFrom(at);
   sig := Signature;
   Expect(sSemicolon, ';');
   p := Find(TopScope, n);
   if (p <> nil) and (p^.cls = oProc) and p^.fwd then begin
-    if not Same(p^.typ, sig) then Mark('not the signature it was declared with');
+    if not Same(p^.typ, sig) then MarkAt(at, 'not the signature it was declared with');
     if tok = sForward then Mark('declared forward twice');
     p^.exported := p^.exported or exp;
   end else begin
@@ -1339,7 +1362,7 @@ begin
   if tok = sCode then begin
     Next;
     p^.isCode := true;
-    CodeBody(p, sig);
+    CodeBody(p, sig, at);
     exit;
   end;
   if checkMode then SkipBody else Body(p, sig, line);
@@ -1352,26 +1375,28 @@ end;
 { An extern procedure or variable: C's, reached through the quadword
   that holds its address. }
 procedure ExternDecl;
-var n: longint; exp: boolean; o, q: PObj; t: PType;
+var n: longint; exp: boolean; o, q: PObj; t: PType; at: TPos;
 begin
   Next;
   curModule^.usesC := true;
   if tok = sProc then begin
     Next;
+    at := TokPos;
     IdentDef(n, exp);
+    at := SpanFrom(at);
     inExtern := true;
     t := Signature;
     inExtern := false;
     q := t^.fields;
     while q <> nil do begin
       if q^.isVar or not IsScalar(q^.typ) then
-        Mark('C takes integers, BOOL, reals, pointers and procedures');
+        MarkAt(at, 'C takes integers, BOOL, reals, pointers and procedures');
       q := q^.next;
     end;
-    if (t^.base <> nil) and not IsScalar(t^.base) then Mark('C returns a single value');
+    if (t^.base <> nil) and not IsScalar(t^.base) then MarkAt(at, 'C returns a single value');
     o := NewObj(oProc, n, t);
   end else begin
-    if tok <> sVar then Mark('proc or var expected');
+    if tok <> sVar then MarkAt(MissingPos, 'proc or var expected');
     Next;
     IdentDef(n, exp);
     Expect(sColon, ':');
@@ -1389,7 +1414,7 @@ end;
 procedure Declarations(top: boolean);
 var
   n, i, k: longint; exp: boolean; x: TItem; o: PObj; t: PType;
-  names: array[0..63] of longint; exps: array[0..63] of boolean;
+  names: array[0..63] of longint; exps: array[0..63] of boolean; start: TPos;
 begin
   repeat
     case tok of
@@ -1400,8 +1425,9 @@ begin
           t := nil;
           if tok = sColon then begin
             Next;
+            start := TokPos;
             t := ParseType;
-            if t <> tError then Mark('only an ERROR constant has a type');
+            if t <> tError then MarkAt(SpanFrom(start), 'only an ERROR constant has a type');
           end;
           Expect(sEql, '=');
           Expression(x, nil);
@@ -1510,18 +1536,20 @@ end;
 
 { The arguments of an instance: types, or procedures named. }
 procedure ParseArgs(var args: TArgs);
-var o: PObj;
+var o: PObj; start: TPos;
 begin
   Next;
   repeat
     if args.n > High(args.t) then Mark('too many arguments');
     args.o[args.n] := nil;
+    start := TokPos;
     if tok = sIdent then begin
       o := QualIdent;
       if o^.cls = oProc then args.o[args.n] := o
-      else if o^.cls <> oType then Mark('a type or a procedure expected');
+      else if o^.cls <> oType then MarkAt(SpanFrom(start), 'a type or a procedure expected');
       args.t[args.n] := o^.typ;
     end else args.t[args.n] := ParseType;
+    args.pos[args.n] := SpanFrom(start);
     inc(args.n);
     if tok <> sComma then break;
     Next;
@@ -1532,14 +1560,14 @@ end;
 { A generic module's parameters, bound to the instance's arguments: a
   type parameter names its type, a procedure parameter its procedure. }
 procedure Params(m: PModule);
-var i: longint; o, a: PObj; sig: PType; s: shortstring;
+var i: longint; o, a: PObj; sig: PType; s: shortstring; at: TPos;
 begin
   i := 0;
   s := NameOf(m^.name) + '(';
   Next;
   repeat
-    if (tok <> sIdent) or (i >= m^.args.n) or (m^.args.o[i] <> nil) then
-      Mark('needs a type for each type parameter');
+    if (tok <> sIdent) or (i >= m^.args.n) then MarkAt(m^.args.at, 'needs a type for each type parameter');
+    if m^.args.o[i] <> nil then MarkAt(m^.args.pos[i], 'needs a type for each type parameter');
     Declare(NewObj(oType, id, m^.args.t[i]));
     s := s + TypeName(m^.args.t[i]) + ',';
     inc(i);
@@ -1549,23 +1577,27 @@ begin
   until false;
   while tok = sSemicolon do begin
     Next;
-    if tok <> sIdent then Mark('name expected');
+    if tok <> sIdent then MarkAt(MissingPos, 'name expected');
+    at := TokPos;
     o := NewObj(oProc, id, nil);
     Next;
     Expect(sColon, ':');
     Expect(sProc, 'proc');
     sig := Signature;
-    if i >= m^.args.n then Mark('needs a procedure for ' + NameOf(o^.name));
+    if i >= m^.args.n then MarkAt(m^.args.at, 'needs a procedure for ' + NameOf(o^.name));
     a := m^.args.o[i];
-    if (a = nil) or not Same(a^.typ, sig) then
-      Mark('needs a procedure with the signature of ' + NameOf(o^.name));
+    if (a = nil) or not Same(a^.typ, sig) then begin
+      Error(m^.args.pos[i], 'needs a procedure with the signature of ' + NameOf(o^.name));
+      Note(at, NameOf(o^.name) + ' is declared here');
+      Finish;
+    end;
     o^.typ := a^.typ; o^.chunk := a^.chunk; o^.isCode := a^.isCode; o^.ext := a^.ext;
     Declare(o);
     s := s + NameOf(a^.module^.name) + '.' + NameOf(a^.name) + ',';
     inc(i);
   end;
   Expect(sRparen, ')');
-  if i <> m^.args.n then Mark('too many arguments');
+  if i <> m^.args.n then MarkAt(m^.args.at, 'too many arguments');
   s[length(s)] := ')';
   m^.sname := Name(s);
 end;
@@ -1586,7 +1618,7 @@ function CompileFile(const path: shortstring; n: longint; const args: TArgs; che
 var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
   oldMod: PModule; oldFile: longint; oldCheck: boolean; m, im: PModule;
-  imp: PImport; lib: PLib; alias, mname, line, oldPath: longint; o: PObj; body: longint; iargs: TArgs;
+  imp: PImport; lib: PLib; start: TPos; alias, mname, line, oldPath: longint; o: PObj; body: longint; iargs: TArgs;
 begin
   SaveScan(st);
   SaveScopes(d, saved);
@@ -1616,23 +1648,25 @@ begin
   if (tok <> sIdent) or (id <> n) then Mark('this file must hold module ' + NameOf(n));
   Next;
   if tok = sLparen then Params(m)
-  else if args.n > 0 then Mark(NameOf(n) + ' isn''t generic');
+  else if args.n > 0 then MarkAt(args.at, NameOf(n) + ' isn''t generic');
   Expect(sSemicolon, ';');
   while tok = sImport do begin
     Next;
     repeat
-      if tok <> sIdent then Mark('module name expected');
+      if tok <> sIdent then MarkAt(MissingPos, 'module name expected');
+      start := TokPos;
       alias := id;
       mname := id;
       iargs.n := 0;
       Next;
       if tok = sBecomes then begin
         Next;
-        if tok <> sIdent then Mark('module name expected');
+        if tok <> sIdent then MarkAt(MissingPos, 'module name expected');
         mname := id;
         Next;
         if tok = sLparen then ParseArgs(iargs);
       end;
+      iargs.at := SpanFrom(start);
       im := ImportModule(mname, iargs);
       o := NewObj(oModule, alias, nil);
       o^.module := im;
@@ -1679,7 +1713,7 @@ begin
   end else Expect(sEnd, 'end');
   if (tok <> sIdent) or (id <> n) then Mark('end ' + NameOf(n) + ' expected');
   Next;
-  if tok <> sPeriod then Mark('. expected');
+  if tok <> sPeriod then MarkAt(MissingPos, '. expected');
   o := m^.first;
   while o <> nil do begin
     if (o^.cls = oProc) and o^.fwd then Mark(NameOf(o^.name) + ' is declared forward but never defined');
@@ -1759,7 +1793,7 @@ begin
   m := FindModule(name, args);
   if m <> nil then exit(m);
   for i := 0 to numPending - 1 do
-    if IsModule(pending[i], name, args) then Mark(NameOf(name) + ' imports itself');
+    if IsModule(pending[i], name, args) then MarkAt(args.at, NameOf(name) + ' imports itself');
   for i := -1 to numInc do begin
     if i = -1 then dir := mainDir
     else if i = numInc then dir := libDir
@@ -1773,7 +1807,7 @@ begin
       end;
     end;
   end;
-  Mark('can''t find module ' + NameOf(name));
+  MarkAt(args.at, 'can''t find module ' + NameOf(name));
   ImportModule := nil;
 end;
 
@@ -1789,6 +1823,7 @@ begin
   if i > 0 then base := copy(base, 1, i - 1);
   if base = '' then Fatal('no module in ' + path);
   n := Name(base);
+  none.at := TokPos;
   if n <> nameRt then ImportModule(nameRt, none);
   if FindModule(n, none) <> nil then CompileMain := FindModule(n, none)
   else CompileMain := CompileFile(path, n, none, false);

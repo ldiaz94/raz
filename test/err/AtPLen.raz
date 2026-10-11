@@ -1,0 +1,7 @@
+module AtPLen;
+proc main*;
+var a: I64;
+begin
+    a := LEN(a);
+end;
+end AtPLen.

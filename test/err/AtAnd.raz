@@ -1,0 +1,7 @@
+module AtAnd;
+proc main*;
+var b: BOOL; x: I64;
+begin
+    b := b and (x + 1);
+end;
+end AtAnd.

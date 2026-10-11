@@ -1,0 +1,7 @@
+module AtCall;
+proc main*;
+var x: I64;
+begin
+    x := x(1);
+end;
+end AtCall.

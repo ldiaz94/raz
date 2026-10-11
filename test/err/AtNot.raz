@@ -1,0 +1,7 @@
+module AtNot;
+proc main*;
+var s: []U8; b: BOOL;
+begin
+    b := not s;
+end;
+end AtNot.

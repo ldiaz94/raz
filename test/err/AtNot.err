@@ -1,0 +1,4 @@
+test/err/AtNot.raz:5:14: error: not needs BOOL or an integer
+    5 |     b := not s;
+      |              ^
+raz: 1 error

@@ -1,0 +1,4 @@
+test/err/AtBinary.raz:5:10: error: can't combine I64 and BOOL
+    5 |     x := (x + 2) * b;
+      |          ^^^^^^^^^^^
+raz: 1 error

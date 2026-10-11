@@ -220,7 +220,7 @@ main model reads every diff before it is committed.
       `X.err` becomes the whole message, without colour, and the
       Makefile compares all of it. *main*; regenerating and checking
       the 57 `.err` files, *agent*.
-- [ ] 21. Exact positions. An item and a statement remember where
+- [x] 21. Exact positions. An item and a statement remember where
       they start, so an error points at the whole offending
       expression, not the symbol after it; a missing `;`, `then` or
       `end` points just after the symbol before it. The scanner keeps

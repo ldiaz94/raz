@@ -1,4 +1,4 @@
-test/err/Tuple.raz:6:16: error: several results go only to a, b := ...
+test/err/Tuple.raz:6:10: error: several results go only to a, b := ...
     6 |     a := two() + 1;
-      |                ^
+      |          ^^^^^
 raz: 1 error

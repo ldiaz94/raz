@@ -1,0 +1,4 @@
+test/err/AtAnd.raz:5:16: error: and, or need two BOOLs
+    5 |     b := b and (x + 1);
+      |                ^^^^^^^
+raz: 1 error

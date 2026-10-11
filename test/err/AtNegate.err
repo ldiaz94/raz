@@ -1,0 +1,4 @@
+test/err/AtNegate.raz:5:10: error: can't negate BOOL
+    5 |     x := -b;
+      |          ^^
+raz: 1 error

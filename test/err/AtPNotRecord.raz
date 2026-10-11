@@ -1,0 +1,7 @@
+module AtPNotRecord;
+proc main*;
+var a: I64;
+begin
+    a := a.f;
+end;
+end AtPNotRecord.

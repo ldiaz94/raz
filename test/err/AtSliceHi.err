@@ -1,0 +1,4 @@
+test/err/AtSliceHi.raz:5:15: error: an index is an integer
+    5 |     s := a[0..b];
+      |               ^
+raz: 1 error

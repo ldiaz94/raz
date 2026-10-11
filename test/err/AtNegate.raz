@@ -1,0 +1,7 @@
+module AtNegate;
+proc main*;
+var b: BOOL; x: I64;
+begin
+    x := -b;
+end;
+end AtNegate.

@@ -1,0 +1,7 @@
+module AtDivZero;
+proc main*;
+var x: I64;
+begin
+    x := 7 div (3 - 3);
+end;
+end AtDivZero.

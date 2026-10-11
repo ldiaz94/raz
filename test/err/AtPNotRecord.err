@@ -1,0 +1,4 @@
+test/err/AtPNotRecord.raz:5:10: error: not a record
+    5 |     a := a.f;
+      |          ^
+raz: 1 error

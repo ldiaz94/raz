@@ -1,0 +1,7 @@
+module AtPElems;
+proc main*;
+var a: [3]I64;
+begin
+    a := [1, 2];
+end;
+end AtPElems.

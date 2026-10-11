@@ -1,0 +1,7 @@
+module AtConvert;
+proc main*;
+var b: BOOL; x: I64;
+begin
+    x := I64(b);
+end;
+end AtConvert.

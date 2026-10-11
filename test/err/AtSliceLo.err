@@ -1,0 +1,4 @@
+test/err/AtSliceLo.raz:5:12: error: an index is an integer
+    5 |     s := a[b..2];
+      |            ^
+raz: 1 error

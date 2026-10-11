@@ -1,0 +1,10 @@
+module AtPNoResult;
+proc p;
+begin
+end;
+proc main*;
+var a: I64;
+begin
+    a := p() + 1;
+end;
+end AtPNoResult.

@@ -1,0 +1,7 @@
+module AtNotValue;
+proc main*;
+var x: I64;
+begin
+    x := I64 + 1;
+end;
+end AtNotValue.

@@ -1,0 +1,4 @@
+module AtPByte;
+proc f(a: I64);
+code 300;
+end AtPByte.
