@@ -978,6 +978,7 @@ proc env*(name: []U8): []U8;       (* the environment variable's value; "" if un
 proc workDir*(var buf: [4096]U8): I64;   (* the working directory into buf: its length *)
 
 proc connect*(path: []U8): I64;    (* a stream socket, connected to the Unix socket at path: its fd *)
+proc send*(fd: I64; s: []U8): I64; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
 proc readyOf*(fds: []I64; ms: I64): I64;   (* the first of fds with something to read within ms, or -1 *)
 
 proc openPty*: I64;                (* a pseudo-terminal: the fd of its controlling side *)
@@ -1000,8 +1001,12 @@ CR to NL; and with output, NL to CR NL. A program that turns it on
 restores it before it ends: `Rt.atExit` is the place.
 
 `connect` is for talking to a server on the same machine, an X server
-at `/tmp/.X11-unix/X0` say; what is sent and received goes by `read`
-and `write`, and `close` ends it. `readyOf` waits on several file
+at `/tmp/.X11-unix/X0` say; what it receives comes by `read`, what it
+sends goes by `send`, and `close` ends it. `send` is `write` for a
+socket, except when the other end has closed it: `write` would stop
+the program with the signal SIGPIPE, where `send` returns -32
+(EPIPE), so that a program learns its server has gone and can end as
+it wants. `readyOf` waits on several file
 descriptors at once, as a program does that listens to a server and a
 terminal both.
 
@@ -1070,4 +1075,6 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   directories searched is an error, unless the first is a link to one
   of the others (section 3).
 - **2026-10.6.** `Sys.Info` says whether the path is a symbolic link
+  (section 11).
+- **2026-10.7.** `Sys.send` writes to a socket without SIGPIPE
   (section 11).
