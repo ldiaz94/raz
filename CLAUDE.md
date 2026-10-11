@@ -53,11 +53,14 @@ Examples in `examples/` work the same way.
 Steps 1-18 are done: the language, the tools (`tools/Doc.raz`, and
 the formatter, `tools/Pretty.raz`, over the shared `tools/Scan.raz`),
 `README.md` and the guide to the compiler, `doc/compiler.md`. Stage 5,
-ravite, the editor in `ravite/` (`doc/ravite.md`), is done on the
-`editor-plan` branch: about 2,000 lines of raz, its own budget, apart
-from the compiler's. Its session tests, `test/ravite/X.keys`, were
-each checked against vim with the same keys; a new one should be too.
-New work starts only on the owner's word. Keep
+ravite, the editor in `ravite/` (`doc/ravite.md`), with emacs's keys,
+is on the `editor-plan` branch, its budget apart from the compiler's.
+Its session tests, `test/ravite/X.keys`, leave the text emacs does
+with the same keys, checked with `test/emacs.py` when written; a new
+one should be too, or `doc/ravite.md` says why not. Its system calls
+wait in `ravite/Tty.linux-x86_64.raz` for the owner to approve what
+the report's draft gives `Sys` (version 2026-10.2). New work starts
+only on the owner's word. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes. Left for later at the owner's word: a rewrite of
 var parameters.

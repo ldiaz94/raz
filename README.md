@@ -41,7 +41,7 @@ a million lines a second.
 | `tools/Doc.raz` | Prints what a module exports, with its comments |
 | `tools/Pretty.raz` | The formatter: fixes indentation and spacing |
 | `editor/` | Support for vim and emacs |
-| `ravite/` | ravite, a terminal editor in raz, with vim's keys; `doc/ravite.md` |
+| `ravite/` | ravite, a terminal editor in raz, with emacs's keys; `doc/ravite.md` |
 | `test/` | Tests, and the scripts that run them |
 | `PLAN.md` | How the compiler was built, step by step |
 
@@ -136,9 +136,9 @@ after `,` and `;`, and keeps every line break and comment where it is.
     $ ./Pretty Module.raz       # prints it, formatted
     $ ./Pretty -w *.raz         # rewrites those that aren't, and names them
 
-ravite is an editor written in raz, with vim's keys, that colours raz
-the same way: `make ravite` builds it, `make install` puts it on PATH,
-and `doc/ravite.md` says how to use it.
+ravite is an editor written in raz, with emacs's keys, buffers, ido and
+a small dired, that colours raz the same way: `make ravite` builds it,
+`make install` puts it on PATH, and `doc/ravite.md` says how to use it.
 
 ## Versions
 

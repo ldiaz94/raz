@@ -348,19 +348,23 @@ The modules:
 
 | Module | Lines | What |
 |---|---|---|
-| `Tty.linux-x86_64.raz` | 120 | the terminal, directories and files, until `Sys` has them |
-| `Keys.raz` | 220 | a key from the bytes a terminal sends, Meta too; keys written as emacs writes them |
-| `Text.raz` | 330 | the text, a gap buffer, with undo and redo |
-| `Colour.raz` | 110 | the colour of each byte on the screen |
-| `View.raz` | 170 | the screen: the buffer, the mode line, the echo area |
-| `Core.raz` | 300 | buffers, the current one, the echo area, reading keys and running them, through procedures the main module sets |
-| `Edit.raz` | 450 | moving, typing, deleting, the mark, the kill ring, undo |
-| `Mini.raz` | 350 | the minibuffer, ido, yes or no |
-| `Search.raz` | 200 | incremental search, query-replace |
-| `Dired.raz` | 250 | directories, and the list of buffers |
-| `Commands.raz` | 400 | the commands' names, keymaps, M-x, settings, help, files and buffers |
-| `Ravite.raz` | 250 | the arguments, the screen, the keys from the terminal or a script, the loop |
-| total | 3,150 | |
+| `Tty.linux-x86_64.raz` | 120 (155) | the terminal, directories and files, until `Sys` has them |
+| `Keys.raz` | 220 (271) | a key from the bytes a terminal sends, Meta too; keys written as emacs writes them |
+| `Text.raz` | 330 (337) | the text, a gap buffer, with undo and redo |
+| `Colour.raz` | 110 (109) | the colour of each byte on the screen |
+| `View.raz` | 170 (121) | the screen: the buffer, the mode line, the echo area |
+| `Core.raz` | 300 (375) | buffers, the current one, the echo area, reading keys and running them, through procedures the main module sets |
+| `Edit.raz` | 450 (558) | moving, typing, deleting, the mark, the kill ring, undo |
+| `Mini.raz` | 350 (269) | the minibuffer, ido, yes or no |
+| `Search.raz` | 200 (241) | incremental search, query-replace |
+| `Dired.raz` | 250 (336) | directories, and the list of buffers |
+| `Commands.raz` | 400 (799) | the commands' names, keymaps, M-x, settings, help, files and buffers |
+| `Ravite.raz` | 250 (271) | the arguments, the screen, the keys from the terminal or a script, the loop |
+| total | 3,150 (3,842) | |
+
+In brackets, what each came to: 3,842 lines, past the budget's 3,300.
+The owner decides between a larger budget and cutting; step 41 takes
+`Tty`'s 155 lines out to `Sys`.
 
 Testing. `ravite -script W H file...` reads keys as emacs writes them
 from standard input, on a screen W by H, and at their end, or at C-x
@@ -395,6 +399,7 @@ Steps 34 on (emacs's keys):
 - [x] 38. `Dired`.
 - [x] 39. Settings: `~/.ravite`, M-x global-set-key and set-variable,
       C-h k, C-h b.
-- [ ] 40. `doc/ravite.md` again, `README.md`, `CLAUDE.md`.
+- [x] 40. `doc/ravite.md` again, `README.md`, `CLAUDE.md`; `test/emacs.py`,
+      which checks a session against emacs.
 - [ ] 41. Once the owner approves step 34: `Sys` gains it, on Linux
       and over C, with tests; ravite's `Tty` goes.

@@ -1,138 +1,185 @@
 # ravite
 
-ravite (raz visual text editor) is a small terminal editor written in
-raz, with vim's keys. It colours raz as `editor/vim` does, through the
-same scanner as the formatter, `tools/Scan.raz`. It is a static
-program of about 2,000 lines, with no C.
+ravite (raz visual text editor) is a terminal editor written in raz,
+with emacs's keys: buffers, the minibuffer, ido, a small dired, M-x and
+settings. It colours raz through the scanner the formatter uses,
+`tools/Scan.raz`. It is a static program, with no C.
 
-    $ make ravite               # build/ravite
-    $ build/ravite Module.raz
-    $ build/ravite T.raz:5:10   # at line 5, column 10, as raz's messages say
-    $ make install              # raz and ravite on PATH, through ~/.local
+    $ make ravite                   # build/ravite
+    $ build/ravite Module.raz       # or several files, or none for *scratch*
+    $ make install                  # raz and ravite on PATH, through ~/.local
+
+C- is Control, M- is Meta: Alt, or ESC and then the key.
 
 ## Keys
 
-A count before a command repeats it, or names a line. An operator
-takes a motion, or itself for whole lines: `dw`, `d3w`, `3dd`, `y$`,
-`>}`, `c/end<Enter>`.
+**Moving.** C-f C-b C-n C-p and the arrows; C-a C-e, Home and End;
+M-f M-b by words; M-< M-> to the ends, setting the mark; M-{ M-} by
+paragraphs; C-v M-v by screens, PageDown and PageUp; C-l puts the line
+in the middle, then the top, then the bottom; M-g g goes to a line;
+M-m to the first character of the line that isn't blank.
 
-**Motions.**
+**Typing and deleting.** Typing inserts. RET starts a new line with the
+indent of the one before; C-o opens a line after the point; TAB inserts
+spaces to the next multiple of 4. DEL and C-d delete a character, or
+DEL the region if it is shown; M-\ deletes the blanks around the point,
+M-SPC leaves one; M-^ joins the line to the one before; C-t swaps two
+characters; M-u M-l M-c change the case of a word.
 
-| Keys | To |
-|---|---|
-| `h j k l`, the arrows | a character left or right on the line, a line down or up |
-| `0` `^` `$`, Home and End | the line's start, its first character that isn't blank, its end |
-| `w` `b` `e` | the next word's start, this word's or the last one's, this word's end or the next one's |
-| `gg` `G`, `5G` | the first line, the last, line 5 |
-| `{` `}` | the empty line before, or after |
-| `+` `-`, Enter | the first character of the next line, or of the last |
-| `%` | the bracket that matches the next of `( ) [ ] { }` on the line |
-| `f` `F` `t` `T` and a character | that character on the line, forward or back; `t` and `T` stop just before it |
-| `;` `,` | the last `f F t T` again, the same way or the other |
-| `/text` `?text` | the next place of text, or the last one, round the end of the file |
-| `n` `N`, `*` | the last search again, the same way or the other; the word under the cursor |
+**The mark and killing.** C-SPC sets the mark and shows the region; C-x
+C-x swaps the point and the mark; C-x h marks the whole buffer. C-w
+kills the region, M-w copies it, C-k kills to the end of the line or the
+line break, M-d and M-DEL kill words. Kills in a row add up to one. C-y
+yanks the last kill back; M-y right after it yanks an older one instead.
 
-**Commands.**
+**Undo.** C-/, C-_ or C-x u undoes a command; typing is undone 20 keys
+at a time. M-x undo-redo makes it again.
 
-| Keys | What |
-|---|---|
-| `d` `c` `y` `>` `<` | delete, change, yank, shift right or left by 4 spaces |
-| `x` `X`, `D` `C`, `s` `S`, `Y` | `dl` `dh`, `d$` `c$`, `cl` `cc`, `yy` |
-| `i` `a` `I` `A` `o` `O` | insert mode: before, after, at the line's start, at its end, on a new line below or above |
-| `p` `P` | put what the register holds after the cursor, or before; lines go below or above |
-| `r` and a character | replace the character under the cursor |
-| `J` | join the line and the next, with one space |
-| `u`, Ctrl-R | undo, redo |
-| `.` | repeat the last change |
-| `v` `V` | visual mode, by characters or by lines |
-| Ctrl-D Ctrl-U, Ctrl-F Ctrl-B | scroll half a screen, a screen |
-| `ZZ` | write if changed, and quit |
+**Counts.** C-u 3 before a command does it 3 times; C-u alone is 4,
+C-u C-u 16, M-3 is 3. C-u C-k kills whole lines.
 
-**Insert mode.** Typing inserts. Backspace and Delete remove a
-character; Ctrl-W removes a word. Enter keeps the indent of the line;
-Tab inserts spaces to the next multiple of 4. Escape, or Ctrl-C, goes
-back to normal mode.
+**Search.** C-s and C-r search as you type, forward or back. Again for
+the next match; at the end it fails, and once more it goes round. DEL
+takes back a step, C-w adds the next word, RET stops there, C-g goes
+back to where it started, and any other key stops and does its own
+work. A search with no capital letters matches either case. M-%
+replaces, asking at each match: y or SPC, n or DEL, ! for all the
+rest, . for this one and stop, q or RET to stop. The replacement takes
+the case of what it replaces, if that is all capitals or capitalized.
 
-**Visual mode.** Motions move the cursor, while the other end stays;
-`o` swaps them. `d` `x` `y` `c` `>` `<` act on what is selected;
-Escape leaves it.
+**Files and buffers.** C-x C-f finds a file, C-x C-s saves, C-x C-w
+writes to another name, C-x s offers to save each changed file, C-x b
+switches buffer, C-x k kills one, C-x C-b lists them, C-x C-c quits,
+offering to save first. `*scratch*` is a buffer for notes that is no
+file.
 
-**The command line.** `:w` writes, `:q` quits, `:q!` quits without
-writing, `:wq` writes and quits, `:x` writes if changed and quits,
-`:12` goes to line 12, `:$` to the last.
+**The minibuffer** is edited with the same keys as any buffer; RET takes
+it, C-g gives up. With ido, which is on, the choices that hold what you
+typed follow it: `{first | second | ...}`. C-s and C-r turn them round,
+TAB completes as far as they agree, RET takes the first, C-j takes just
+what you typed. In C-x C-f, / goes into a directory and DEL out of it,
+~/ goes home and // to the root, and C-d opens the directory.
 
-There is one register, which every delete and yank fills. Undo has no
-limit; a command, with all it types in insert mode, is one step.
+**The list of buffers.** RET or f shows the buffer on the line, d or k
+marks it to be killed and u unmarks it, x kills those marked, g lists
+again, n and p move, q leaves.
+
+**Dired.** C-x d, or finding a directory, lists it: each entry's kind,
+size and name. RET or f opens an entry, ^ goes up, n and p move, g
+lists again, + makes a directory, R renames, D deletes a file after a
+yes, q leaves.
+
+**M-x** runs any command by its name; C-h k says what a key runs, and
+C-h b lists every binding.
+
+## Settings
+
+ravite reads `~/.ravite` when it starts:
+
+    # my settings
+    bind C-c f find-file     # keys as emacs writes them, then a command
+    unbind C-z
+    set indent 2             # columns TAB goes on by; 4 unless set
+    set tab-width 4          # columns of a tab character; 8 unless set
+    set colour off           # on unless set, or NO_COLOR is
+    set ido off              # on unless set
+
+A line that is wrong is named in the echo area, and the rest still
+counts. M-x global-set-key, set-variable and load-init-file do the same
+while ravite runs. C-c, C-x, C-h and M-g always start a sequence, so
+`bind C-c x ...` works with nothing else under C-c.
 
 ## What it shows
 
-The text, `~` past its end, and a last line: the mode, a message or
-the command line on the left, the file, `[+]` when it has changed, and
-the cursor's line and column on the right. Long lines scroll sideways;
-they don't wrap. A tab reaches to the next multiple of 8 columns, a
-control character shows as `^` and a letter, and every other character
-takes one column.
+The buffer, its mode line, and the echo area, which the minibuffer
+shares. The mode line is emacs's: `-UU-:**-  name   Top L12   (Raz)`,
+`**` when changed, `%%` when it can't be changed. Long lines scroll
+sideways; they don't wrap. A tab reaches to the next multiple of the
+tab width, a control character shows as `^` and a letter, and every
+other character takes one column. When the point leaves the window,
+its line comes halfway down, as in emacs.
 
-A `.raz` file is coloured: reserved words, basic types, built-ins,
+A `.raz` buffer is coloured: reserved words, basic types, built-ins,
 `true` `false` `nil`, numbers, strings and characters, and comments, in
 the 16 standard colours, so the terminal's theme decides how they look.
-`NO_COLOR` turns colour off.
 
 ## Files
 
-A file is read whole into memory, without its last line break, and
-written with one. Writing goes to `file.ravite~` first, then renames it
-over the file, so that a failed write leaves the file as it was. The
-new file is readable by all and writable by its owner, whatever the
-old one's mode was.
+A file is read whole, exactly as it is. Saving writes `file.ravite~`
+first and then renames it over the file, so that a failed write leaves
+the file as it was. The new file is readable by all and writable by its
+owner, whatever the old one's mode was.
+
+## How it differs from emacs
+
+Each session test, `test/ravite/X.keys`, leaves the text that `emacs -Q
+-nw` leaves with the same keys, set up as `test/emacs.py` says, except
+for what is below.
+
+- RET indents as the line before, as newline-and-indent does; TAB is
+  tab-to-tab-stop every 4 columns. There are no major modes.
+- One window: C-x C-b shows the list in it, not beside it.
+- No `*Messages*`, no Lisp, no recursive minibuffers, no minibuffer
+  history, no undo in a tree.
+- Search is for text, not patterns; ido matches by substring only.
+- Dired shows kinds and sizes, not modes, owners or dates; it has no
+  marks, and deletes files only.
+- M-x reads with ido too.
 
 ## Not here
 
-The mouse, the system clipboard, several files or windows, wrapping,
-wide characters (each character takes one column), settings, patterns
-(`/` looks for text), marks, macros, text objects, other registers,
-counts on `.`, and colours for other languages. A crash by a signal
+Several windows, the mouse, the system clipboard, wrapping, wide
+characters (each takes one column), file:line on the command line,
+keyboard macros, and colours for other languages. A crash by a signal
 leaves the terminal raw: `reset` puts it right. It runs on Linux for
-x86-64; FreeBSD needs a `Tty` of its own, over the C library.
+x86-64; FreeBSD needs `Sys` to gain what `ravite/Tty.linux-x86_64.raz`
+does now (the report's draft, section 11).
 
 ## Inside
 
 | Module | Lines | What |
 |---|---|---|
-| `ravite/Tty.linux-x86_64.raz` | 73 | raw mode and back, the screen's size, waiting for a key, renaming, by system calls |
-| `ravite/Keys.raz` | 184 | a key from the bytes a terminal sends; vim's notation for keys, for the tests |
-| `ravite/Text.raz` | 330 | the text, a gap buffer of bytes, with undo and redo |
-| `ravite/Colour.raz` | 109 | the colour of each byte on the screen |
-| `ravite/View.raz` | 154 | the screen, drawn into one buffer and written at once |
-| `ravite/Ravite.raz` | 1,305 | the modes, motions, operators, commands, search and the command line |
+| `Tty.linux-x86_64.raz` | 155 | the terminal, files and directories, the environment, until `Sys` has them |
+| `Keys.raz` | 271 | a key from a terminal's bytes, Meta too; keys as emacs writes them |
+| `Text.raz` | 337 | the text, a gap buffer of bytes, with undo and redo |
+| `Colour.raz` | 109 | the colour of each byte on the screen |
+| `View.raz` | 121 | the screen: the buffer, the mode line, the echo area |
+| `Core.raz` | 375 | buffers, the echo area, settings, files; the hooks parts read and run keys through |
+| `Edit.raz` | 558 | moving, typing, deleting, the mark, the kill ring, undo |
+| `Mini.raz` | 269 | the minibuffer, ido, yes or no |
+| `Search.raz` | 241 | incremental search, query-replace |
+| `Dired.raz` | 336 | directories, and the list of buffers |
+| `Commands.raz` | 799 | the commands' names, keymaps, counts, M-x, files, buffers, settings, help |
+| `Ravite.raz` | 271 | the arguments, the screen, keys from the terminal or a script, the loop |
 
 Lines are those of code, as `make loc` counts them.
 
-**Text.** The bytes lie in one block with a gap where the last change
-was; a change moves the gap there first. Each change is logged with
-its bytes, so undo takes it back and redo makes it again. A command
-starts a new step, and undo takes back a step at a time. Lines aren't
-kept in a table: moving up or down walks from the cursor's line, and
-going to line N counts from the start, which is fast enough below some
-megabytes.
+**Keys and commands.** Every key comes through `Commands.runKey`, which
+reads the rest of its sequence while the keymaps say it is a prefix,
+and runs the command bound to it, for the kind of buffer first, then
+for all. A command is a procedure that takes its count. The minibuffer
+is a buffer too: while it is open, the keys go through the same
+keymaps, on it, but RET and C-g.
 
-**Keys and `.`.** Every key comes through one procedure, which keeps
-the keys of the command under way. A command that changed the text
-keeps them as the last change, and `.` plays them again as if typed.
-A count on `i` or `o` types the same keys again the same way.
+**Core** holds what the parts share, and procedures the main module
+sets, through which a part reads a key or runs one without importing
+the part that does: raz modules can't import each other in a circle.
+
+**Text.** The bytes lie in one block with a gap where the last change
+was. Each change is logged with its bytes, so undo takes it back and
+redo makes it again; a command starts a new step. Lines aren't kept in
+a table: moving up and down walks from the point's line.
 
 **Colour.** Only the screen is coloured. The one thing that carries
-from line to line is a comment, so ravite keeps the depth of comment
-where the screen starts, and counts on from there as the screen
+from line to line is a comment, so each buffer keeps the depth of
+comment where its window starts, and counts on from there as it
 scrolls down; after a jump back, or a change above it, it counts again
-from the start of the file. `Scan` then reads the symbols on the
-screen, and a table gives each word its colour.
+from the start of the buffer.
 
-**Tests.** `ravite -script W H file` reads keys in vim's notation
-(`<esc>`, `<cr>`, `<c-r>`) from standard input, as if typed on a screen
-W columns by H rows, and at their end, or at `:q`, prints the screen
-as plain text and then the text. Each `test/ravite/X.keys` is typed on
-a copy of `X.txt`, or on `X.args` as the file named, and must print
-`X.expect`. Each session was checked against what vim does with the
-same keys when it was written. `make check` runs them, and the tests
-in `Keys`, `Text` and `Colour`.
+**Tests.** `ravite -script W H file... < keys` types keys written as
+emacs writes them on a screen W by H, and at their end, or at C-x C-c,
+prints the screen as plain text and then the buffer. `make check` runs
+each `test/ravite/X.keys` on a copy of `X.txt`, or with `X.args`, in a
+home of its own with a fresh copy of `test/ravite/tree` and `X.init` as
+its `.ravite`, against `X.expect`; and the tests in `Keys`, `Text` and
+`Colour`.
