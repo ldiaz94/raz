@@ -9,7 +9,7 @@ the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.7 of the report; section 12 says what each
+This is version 2026-10.8 of the report; section 12 says what each
 version changed.
 
 ## 1. A first look
@@ -976,7 +976,7 @@ proc termSize*(fd: I64): (I64, I64);   (* columns and rows; 80 and 24 if unknown
 proc ready*(fd: I64; ms: I64): BOOL;   (* something to read within ms, or ever if ms < 0 *)
 
 proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
-proc workDir*(var buf: [4096]U8): I64;   (* the working directory into buf: its length *)
+proc workDir*: ([]U8, I64);        (* the working directory, good until the next call *)
 
 proc connect*(path: []U8): I64;    (* a stream socket, connected to the Unix socket at path: its fd *)
 proc send*(fd: I64; s: []U8): I64; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
@@ -1083,3 +1083,5 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   and whether it is a symbolic link (section 11).
 - **2026-10.7.** `Sys.send` writes to a socket without SIGPIPE
   (section 11).
+- **2026-10.8.** `Sys.workDir` returns the directory, with no `var`
+  parameter (section 11).
