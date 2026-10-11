@@ -1050,7 +1050,7 @@ to C as a callback.
 ## 10. Programs
 
 Any module may export a procedure `main`, declared `proc main*;` or
-`proc main*: I64;`. The program runs the bodies of all its modules
+`proc main*: INT;`. The program runs the bodies of all its modules
 (section 3), then the main module's `main`, if it has one, and ends
 with status 0, or with the status `main` returns, by calling
 `Rt.exit`. The `main` of an imported module is an ordinary procedure,
@@ -1074,7 +1074,7 @@ program at once, and a program stopped by a signal runs none of them.
 
 ```
 proc atExit*(p: proc): ERROR;   (* Rt.Full if 32 are registered *)
-proc exit*(status: I64);
+proc exit*(status: INT);
 ```
 
 Only what can be reached from `main` and the module bodies goes into
@@ -1169,6 +1169,11 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Files` | an argument as a string, and a whole file read or written |
 | `Opt` | a command line read through one table, by `getopt`'s rules with long options; its help and its mistakes |
 
+Lengths, counts, file descriptors, process ids and statuses are
+`INT`s, and a character is an `I32`. What may pass an `INT` on a small
+target is an `I64`: a file's size and position, a time in nanoseconds,
+and a number read from text.
+
 ```
 module Mem;
 type
@@ -1200,7 +1205,7 @@ type
     Info* = record
         size*: I64;      (* in bytes *)
         mtime*: I64;     (* when its contents last changed, in nanoseconds since 1970 *)
-        mode*: I64;      (* its permission bits, as chmod takes them: 1EDH is rwxr-xr-x *)
+        mode*: INT;      (* its permission bits, as chmod takes them: 1EDH is rwxr-xr-x *)
         dir*: BOOL;      (* a directory *)
         file*: BOOL;     (* a regular file: not a directory, device, pipe or socket *)
         symlink*: BOOL;  (* the path itself is a symbolic link *)
@@ -1212,68 +1217,68 @@ type
         env*: [][]U8;       (* NAME=value, each added to this program's environment *)
         onlyEnv*: BOOL;     (* env is its whole environment *)
         dir*: []U8;         (* its working directory; "" for this program's *)
-        fds*: [3]I64;       (* its standard input, output and error; 0 for this program's own *)
-        group*: I64;        (* the process group it joins: 0 for this program's, -1 a new one it leads *)
+        fds*: [3]INT;       (* its standard input, output and error; 0 for this program's own *)
+        group*: INT;        (* the process group it joins: 0 for this program's, -1 a new one it leads *)
         foreground*: BOOL;  (* its group takes the terminal on standard input *)
-        tty*: I64;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
+        tty*: INT;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
     end;
     Status* = (running, exited, killed, stopped);
 
-proc open*(path: []U8; how: Accesses): I64;   (* its fd *)
-proc openRead*(path: []U8): I64;         (* open(path, {reading}) *)
-proc create*(path: []U8): I64;           (* open(path, {writing, creating, truncating}) *)
-proc seek*(fd, pos: I64; fromEnd: BOOL): I64;  (* the new position *)
+proc open*(path: []U8; how: Accesses): INT;   (* its fd *)
+proc openRead*(path: []U8): INT;         (* open(path, {reading}) *)
+proc create*(path: []U8): INT;           (* open(path, {writing, creating, truncating}) *)
+proc seek*(fd: INT; pos: I64; fromEnd: BOOL): I64;  (* the new position *)
 
-proc rename*(old, new: []U8): I64;       (* replaces what new names *)
-proc remove*(path: []U8): I64;           (* a file, not a directory *)
-proc removeDir*(path: []U8): I64;        (* an empty directory *)
-proc makeDir*(path: []U8): I64;          (* readable by all, writable by its owner *)
-proc chmod*(path: []U8; mode: I64): I64;
-proc symlink*(target, path: []U8): I64;  (* path made a link to target *)
-proc readLink*(path: []U8): ([]U8, I64); (* what the link names, good until the next call *)
-proc info*(path: []U8): (Info, I64);     (* following a symbolic link *)
+proc rename*(old, new: []U8): INT;       (* replaces what new names *)
+proc remove*(path: []U8): INT;           (* a file, not a directory *)
+proc removeDir*(path: []U8): INT;        (* an empty directory *)
+proc makeDir*(path: []U8): INT;          (* readable by all, writable by its owner *)
+proc chmod*(path: []U8; mode: INT): INT;
+proc symlink*(target, path: []U8): INT;  (* path made a link to target *)
+proc readLink*(path: []U8): ([]U8, INT); (* what the link names, good until the next call *)
+proc info*(path: []U8): (Info, INT);     (* following a symbolic link *)
 
-proc openDir*(d: ^Dir; path: []U8): I64;
+proc openDir*(d: ^Dir; path: []U8): INT;
 proc nextEntry*(d: ^Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
 proc closeDir*(d: ^Dir);
 
-proc rawMode*(fd: I64): BOOL;      (* the terminal on fd: no echo, no lines, no signals *)
-proc restoreMode*(fd: I64);        (* as rawMode found it *)
-proc termSize*(fd: I64): (I64, I64);   (* columns and rows; 80 and 24 if unknown *)
-proc ready*(fd: I64; ms: I64): BOOL;   (* something to read within ms, or ever if ms < 0 *)
-proc readyOf*(fds: []I64; ms: I64): I64;   (* the first of fds with something to read within ms, or -1 *)
+proc rawMode*(fd: INT): BOOL;      (* the terminal on fd: no echo, no lines, no signals *)
+proc restoreMode*(fd: INT);        (* as rawMode found it *)
+proc termSize*(fd: INT): (INT, INT);   (* columns and rows; 80 and 24 if unknown *)
+proc ready*(fd: INT; ms: INT): BOOL;   (* something to read within ms, or ever if ms < 0 *)
+proc readyOf*(fds: []INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
 
 proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
-proc workDir*: ([]U8, I64);        (* the working directory, good until the next call *)
-proc setWorkDir*(path: []U8): I64;
+proc workDir*: ([]U8, INT);        (* the working directory, good until the next call *)
+proc setWorkDir*(path: []U8): INT;
 
-proc pipe*: (I64, I64);            (* the fd to read and the fd to write; or minus an errno and -1 *)
-proc openPty*: I64;                (* a pseudo-terminal: the fd of its controlling side *)
-proc setTermSize*(fd, cols, rows: I64): I64;   (* the size its programs are told of *)
-proc spawn*(p: Program): I64;      (* a program started: its process id *)
-proc wait*(pid: I64; block: BOOL): (I64, Status, I64);   (* which program, how, and its code *)
-proc kill*(pid, signal: I64): I64;
-proc pid*: I64;                    (* this program's process id *)
-proc setGroup*(pid, group: I64): I64;    (* pid 0 is this program; group 0 a new one pid leads *)
-proc foreground*(fd, group: I64): I64;   (* the terminal on fd gives its keys to group *)
-proc foregroundOf*(fd: I64): I64;  (* the group the terminal on fd gives its keys to *)
+proc pipe*: (INT, INT);            (* the fd to read and the fd to write; or minus an errno and -1 *)
+proc openPty*: INT;                (* a pseudo-terminal: the fd of its controlling side *)
+proc setTermSize*(fd, cols, rows: INT): INT;   (* the size its programs are told of *)
+proc spawn*(p: Program): INT;      (* a program started: its process id *)
+proc wait*(pid: INT; block: BOOL): (INT, Status, INT);   (* which program, how, and its code *)
+proc kill*(pid, signal: INT): INT;
+proc pid*: INT;                    (* this program's process id *)
+proc setGroup*(pid, group: INT): INT;    (* pid 0 is this program; group 0 a new one pid leads *)
+proc foreground*(fd, group: INT): INT;   (* the terminal on fd gives its keys to group *)
+proc foregroundOf*(fd: INT): INT;  (* the group the terminal on fd gives its keys to *)
 
-proc catch*(sigs: []I64): I64;     (* sigs caught: an fd to wait on *)
-proc caught*(fd: I64): I64;        (* the next signal caught, or 0 if none is waiting *)
-proc ignore*(sig: I64; yes: BOOL): I64;  (* sig ignored; or, if not yes, back to what it does at first *)
+proc catch*(sigs: []INT): INT;     (* sigs caught: an fd to wait on *)
+proc caught*(fd: INT): INT;        (* the next signal caught, or 0 if none is waiting *)
+proc ignore*(sig: INT; yes: BOOL): INT;  (* sig ignored; or, if not yes, back to what it does at first *)
 
 proc clock*: I64;                  (* nanoseconds, on a clock that only goes forward *)
 proc now*: I64;                    (* nanoseconds since 1970-01-01, UTC *)
-proc sleep*(ms: I64);
+proc sleep*(ms: INT);
 proc random*(b: []U8);             (* b filled with random bytes *)
 
-proc connect*(path: []U8): I64;    (* a stream socket, connected to the Unix socket at path: its fd *)
-proc connectTcp*(addr: []U8; port: I64): I64;   (* addr an IPv4 or IPv6 address, as numbers *)
-proc connectUdp*(addr: []U8; port: I64): I64;
-proc listen*(path: []U8): I64;     (* a Unix socket made at path, taking connections *)
-proc listenTcp*(addr: []U8; port: I64): I64;
-proc accept*(fd: I64): I64;        (* the next connection, waiting for one *)
-proc send*(fd: I64; s: []U8): I64; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
+proc connect*(path: []U8): INT;    (* a stream socket, connected to the Unix socket at path: its fd *)
+proc connectTcp*(addr: []U8; port: INT): INT;   (* addr an IPv4 or IPv6 address, as numbers *)
+proc connectUdp*(addr: []U8; port: INT): INT;
+proc listen*(path: []U8): INT;     (* a Unix socket made at path, taking connections *)
+proc listenTcp*(addr: []U8; port: INT): INT;
+proc accept*(fd: INT): INT;        (* the next connection, waiting for one *)
+proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
 ```
 
 `info` follows a symbolic link: `size`, `dir` and `file` are those of
@@ -1395,8 +1400,8 @@ most 107 bytes, as `struct sockaddr_un` holds; a longer one is -36
 
 ```
 module Str;
-proc encode*(c: I64): ([4]U8, I64);   (* c in UTF-8: its bytes, and how many *)
-proc decode*(s: []U8): (I64, I64);    (* the character s starts with, and its length in bytes *)
+proc encode*(c: I32): ([4]U8, INT);   (* c in UTF-8: its bytes, and how many *)
+proc decode*(s: []U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
 proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
 proc le*(s: []U8): U64;               (* s, at most 8 bytes, the first the lowest *)
 proc be*(s: []U8): U64;               (* s, at most 8 bytes, the first the highest *)
@@ -1405,7 +1410,7 @@ proc putBE*(s: []U8; v: U64);         (* v into s, the highest byte first *)
 
 module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
 proc remove*(m: ^Map; k: K): BOOL;            (* false if k wasn't there *)
-proc next*(m: ^Map; i: I64): (I64, K, V);     (* the entry after i *)
+proc next*(m: ^Map; i: INT): (INT, K, V);     (* the entry after i *)
 
 module Sort(T; less: proc(a, b: T): BOOL);
 proc sort*(s: []T);
@@ -1421,7 +1426,7 @@ proc exp*(x: F64): F64;
 proc ln*(x: F64): F64;
 
 module Fmt;
-type Arg* = variant ... real(r: F64; places: I64); end;
+type Arg* = variant ... real(r: F64; places: INT); end;
 ```
 
 `Str` reads and writes UTF-8. `encode` writes a character, of at most
@@ -1465,7 +1470,7 @@ nearest; from 1e15 on, with an exponent, as `1.50e17`; and `nan`,
 
 ```
 module Files;
-proc arg*(i: I64): []U8;                     (* argument i; 0 is the program's name *)
+proc arg*(i: INT): []U8;                     (* argument i; 0 is the program's name *)
 proc read*(path: []U8; b: ^Buf.Buf): BOOL;   (* the whole file added to b *)
 proc write*(path, data: []U8): BOOL;         (* the file made to hold data *)
 
@@ -1690,9 +1695,12 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   `INT`, `UINT` and pointers (6.8). An integer constant past an
   extern's parameters goes as an `INT` (9). Modules compile on their
   own, into object files, and instances are named so that one type
-  gives one name (section 10; appendix A). The library of section 11
-  still says `I64` for its lengths, sizes, counts and descriptors;
-  they become `INT` when it is revised for this version.
+  gives one name (section 10; appendix A). The library takes and gives
+  `INT` for lengths, counts, descriptors, process ids and statuses,
+  `main`'s and `Rt.exit`'s among them, and `I32` for a character;
+  `I64` stays for what may pass an `INT` on a small target: a file's
+  size and position, times, and numbers read from text (section
+  11).
 
 ## Appendix A. What an implementation chooses
 
