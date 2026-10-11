@@ -441,8 +441,11 @@ their results are the same types; the parameters' names don't matter.
 ### 5.10 Same and assignable
 
 Two named types are the same only if they are the same declaration.
-Two anonymous types are the same if they are built alike: `^I64` is
-`^I64` wherever it is written. A named and an anonymous type are the
+Two anonymous pointer, array, slice, set or procedure types are the
+same if they are built alike: `^I64` is `^I64` wherever it is written.
+A record, variant or enumeration, though, is a type of its own wherever
+it is written, named or not: two `record x: I64; end` are two types.
+A named and an anonymous type are the
 same if the named one is built like the anonymous one, so that
 `p := ADR(n)` works for `p: NodePtr` with `type NodePtr = ^Node`.
 Sameness doesn't pass through the anonymous type: with `type P1 =
@@ -996,10 +999,12 @@ pointer. Dereferencing a stale or made-up pointer, indexing through a
 pointer, a code procedure that breaks its rules, and C code can read or
 write any memory, and what follows isn't defined. Dereferencing `nil`, dividing
 by zero, calling a `nil` procedure and running out of stack stop the
-program with a signal. Before it stops, the program prints to standard
-error where it was, as file, line and column, and why, as far as it can
-tell: a `nil` pointer, a `nil` procedure, a stack overflow, a bad
-address or a division fault.
+program, on every target. Before it stops, the program prints to
+standard error where it was, as file, line and column, and why, as far
+as it can tell: a `nil` pointer, a `nil` procedure, a stack overflow, a
+bad address or a division fault. Whether the machine catches these or
+the compiled code checks for them is the implementation's choice
+(appendix A); that they stop the program isn't.
 
 **Messages.** The compiler reports an error with its file, line and
 column, the line of source with the offending part underlined, and,
@@ -1518,7 +1523,10 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.10.** Said at last: what the compiler did and the report
   didn't say, all through; what an implementation chooses, and the
   core every target has (appendix A); the whole grammar (appendix B);
-  the library's module names are kept for it (section 3). Mended:
+  the library's module names are kept for it (section 3); a record,
+  variant or enumeration is a type of its own wherever it is written
+  (section 5.10); a `nil` pointer, a division by zero and a stack
+  overflow stop the program on every target (section 10). Mended:
   arithmetic on untyped constants that overflows is an error (section
   2); a slice of a pointer can't run backwards (section 6.4). Ordinary
   accesses are no longer promised to be made exactly as written, only
@@ -1543,6 +1551,10 @@ compiler's choices are in `doc/compiler.md`.
   layout is the target's C layout (section 5.5).
 - **The executable.** Its format, and the names and line numbers it
   carries for a debugger (section 10).
+- **How a failure is caught.** A `nil` pointer, a division by zero or
+  a stack overflow may be caught by the machine or by checks in the
+  compiled code; either way the program stops with its message
+  (section 10).
 - **Messages and warnings.** The text of the compiler's messages, how
   many errors it reports before it stops, and which warnings it gives
   (section 10). A program that is an error in this report is one in
@@ -1554,7 +1566,7 @@ compiler's choices are in `doc/compiler.md`.
 give: `Sys` past writing, ending the program and getting memory,
 `Thread`, `link` and `extern`. What it must have, besides the whole
 language, is the core of the library: `Rt`, `Out`, `Mem`, `Arena`,
-`Lock`, `Str`, `Buf` and `Fmt`, and of `Sys` what they need. A
+`Lock`, `Str` and `Buf`, and of `Sys` what they need. A
 program that keeps to the core runs on every target.
 
 ## Appendix B. The grammar

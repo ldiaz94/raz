@@ -66,8 +66,8 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 
 ## Proposed, v0.6.0: raz to be rebuilt by anyone
 
-Not started; it waits for the owner's go-ahead, and it lifts the
-freeze for what it names, and nothing else.
+Under way: step 1 is in review. The freeze doesn't hold for this
+work, by the owner's word.
 
 **For:** a language a person alone can implement again, from the
 report, on any machine, in weeks; programs that run on small machines
@@ -97,7 +97,10 @@ measure a port); an optimiser; the wishes below.
       `LEN`, indexes, sizes and `p - q` give, and through which
       integers and pointers convert (the owner's choices), and how
       they convert to and from `I64`; a module's own choice to leave
-      out its checks of indexes and slices; reals a
+      out its checks of indexes and slices; exported variables read only
+      outside their module; `CAS`, `XCHG` and `XADD` on words, not
+      only on 8 bytes; byte order, and what a packed record promises
+      on a machine that can't read a misaligned word; reals a
       target may leave out; object files, a module's interface and its
       IR, and a generic's instances in them, named by their arguments
       and the fingerprints they were built from.
@@ -116,6 +119,22 @@ measure a port); an optimiser; the wishes below.
 - [ ] 9. Object files: written for each module, read in place of its
       source when they are current; instances kept once each by the
       linker.
+- [ ] 9a. Failures caught by the code where the machine can't: a
+      `nil` test before a dereference or a call through a procedure
+      value, a stack limit at each procedure's start, a zero test
+      before a division; chosen per target.
+- [ ] 9b. Assembly procedures in place of byte procedures: the
+      target's own syntax (appendix A), for the instructions the
+      encoder knows and a few of the system's, bytes for the rest.
+- [ ] 9c. `raz -S`: each line of source with its instructions, named
+      by the encoder as it makes them, not by a disassembler.
+- [ ] 9d. The trap report: on a failed check or a trap, the calls
+      under way, each with its variables by name and value, from
+      tables the compiler writes; `Rt.trace` gives the same on
+      demand.
+- [ ] 9e. A profiler in `Rt`: a program run with `RAZ_PROFILE` set
+      samples where it is, and at its end says which procedures and
+      lines took the time.
 - [ ] 10. `doc/compiler.md`, README, the budget, the report's version
       and the compiler's; tag `v0.6.0`.
 
