@@ -430,7 +430,7 @@ steps come first unless the owner says otherwise.
       results must be the procedure's, type for type; `test/err` for
       a mismatch, `test/run` for one, two and three results, through
       two levels of calls.
-- [ ] 44. `=` and `#` inline: the lengths compared, then, if equal,
+- [x] 44. `=` and `#` inline: the lengths compared, then, if equal,
       the bytes, `LEN * SIZE(T)` of them, with `repe cmpsb`; for
       strings and for arrays and slices of integers, `BOOL`s,
       enumerations, sets and pointers, any mix of `[n]T` and `[]T`.

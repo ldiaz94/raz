@@ -1,0 +1,9 @@
+module ArrayEqRecord;
+
+proc main*;
+var a, b: [2]record x: I64; end;
+begin
+    if a = b then end;
+end;
+
+end ArrayEqRecord.

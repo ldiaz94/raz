@@ -61,7 +61,7 @@ type
   end;
 
 var
-  rtFail, rtEq, argcChunk, argvChunk: longint;
+  rtFail, argcChunk, argvChunk: longint;
   depth: longint;      { values pushed and not yet popped }
 
 procedure MakeConst(var x: TItem; t: PType; v: int64);
@@ -723,17 +723,23 @@ begin
   end else MarkAt(x.pos, '"not" needs a BOOL or an integer, found ' + What(x));
 end;
 
-function IsStrLike(t: PType): boolean;
+{ Arrays, slices and strings, which = and # compare element by element }
+function IsSeq(t: PType): boolean;
 begin
-  IsStrLike := (t^.form = fStr) or ((t^.form in [fArray, fSlice]) and (t^.base = tU8));
+  IsSeq := t^.form in [fStr, fArray, fSlice];
 end;
 
-{ A []U8, [n]U8 or string as a slice in a temporary, for comparing. }
-procedure StrSlice(var x: TItem);
+function ElemOf(t: PType): PType;
+begin
+  if t^.form = fStr then ElemOf := tU8 else ElemOf := t^.base;
+end;
+
+{ An array, slice or string as a slice in a temporary, for comparing. }
+procedure SeqSlice(var x: TItem);
 var t: PType;
 begin
   t := NewType(fSlice, 16, 8);
-  t^.base := tU8;
+  t^.base := ElemOf(x.typ);
   if x.typ^.form = fSlice then begin
     x.typ := t; CopyToTemp(x)
   end else begin
@@ -755,8 +761,8 @@ begin
     if x.mode <> mConst then x := tmp;
     TestRR(RAX, RAX);
     if op = sAnd then Jcc(ccE, L) else Jcc(ccNE, L);
-  end else if (op in [sEql, sNeq]) and IsStrLike(x.typ) then
-    StrSlice(x)
+  end else if (op in [sEql, sNeq]) and IsSeq(x.typ) then
+    SeqSlice(x)
   else if x.mode in [mType, mBuiltin, mNone, mCase, mStr] then
     NotValue(x)
   else if x.mode <> mConst then begin
@@ -853,7 +859,7 @@ const
   CcSigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccL, ccLE, ccG, ccGE);
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
 var
-  xt, yt, t: PType; r: TItem; scale, sh, k: longint; isPtr, unsign, f: boolean; a, b: int64;
+  xt, yt, t, e: PType; r: TItem; scale, sh, k, differ: longint; isPtr, unsign, f: boolean; a, b: int64;
 begin
   xt := x.typ; yt := y.typ;
   if y.mode in [mType, mBuiltin, mNone, mCase] then NotValue(y);
@@ -871,16 +877,33 @@ begin
     exit;
   end;
 
-  if (op in [sEql, sNeq]) and IsStrLike(xt) then begin
-    if not IsStrLike(yt) then MarkAt(y.pos, 'can''t compare a string with ' + TypeName(yt));
-    StrSlice(y);
+  { the lengths, then the bytes, LEN * SIZE(T) of them: the elements
+    are of types whose bytes say all there is to their values }
+  if (op in [sEql, sNeq]) and IsSeq(xt) then begin
+    e := ElemOf(xt);
+    if not IsSeq(yt) then
+      MarkAt(Join(x.pos, y.pos), 'can''t compare an array with ' + TypeName(yt))
+    else if not Same(e, ElemOf(yt)) then
+      MarkAt(Join(x.pos, y.pos), 'can''t compare an array of ' + TypeName(e) + ' with one of ' + TypeName(ElemOf(yt)));
+    if e^.form = fReal then
+      MarkHelp(Join(x.pos, y.pos), 'can''t compare arrays of reals with ' + SymText(op),
+        '-0.0 = 0.0 and a NaN equals nothing, though their bytes say otherwise: write a loop')
+    else if not (e^.form in [fInt, fBool, fEnum, fSet, fPtr]) then
+      MarkHelp(Join(x.pos, y.pos), 'can''t compare arrays of ' + TypeName(e) + ' with ' + SymText(op), 'write a loop');
+    SeqSlice(y);
     Address(y, RSI);
     Address(x, RDI);
-    if odd(depth) then AluI(aluSub, RSP, 8);
-    CallChunk(rtEq);
-    if odd(depth) then AluI(aluAdd, RSP, 8);
-    Extend(RAX, 1, false);
-    if op = sNeq then AluI(aluXor, RAX, 1);
+    Load(RCX, Mem(RSI, 8), 8, false);
+    AluM(aluCmp, RCX, Mem(RDI, 8));
+    differ := NoLabel;
+    Jcc(ccNE, differ);
+    Load(RSI, Mem(RSI, 0), 8, false);
+    Load(RDI, Mem(RDI, 0), 8, false);
+    if e^.size > 1 then ShiftI(shShl, RCX, Log2(e^.size));
+    Alu(aluCmp, RCX, RCX);   { equal, if there are no bytes }
+    RepeCmpsb;
+    FixLink(differ);
+    if op = sEql then SetCC(ccE, RAX) else SetCC(ccNE, RAX);
     MakeConst(x, tBool, 0);
     x.mode := mReg;
     exit;

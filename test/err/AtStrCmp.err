@@ -1,4 +1,4 @@
-test/err/AtStrCmp.raz:5:12: error: can't compare a string with I64
+test/err/AtStrCmp.raz:5:8: error: can't compare an array with I64
     5 |     if s = x + 1 then end;
-      |            ^^^^^
+      |        ^^^^^^^^^
 raz: 1 error

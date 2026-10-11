@@ -99,8 +99,8 @@ otherwise.
 - Several results come back through a hidden pointer; a code procedure
   returns two in rax and rdx.
 - `NEW(p, a)` requires `a: ^Mem.Allocator` and calls its `alloc` field:
-  the one library type the compiler knows by name. `Rt.fail` and
-  `Rt.eq` are found by name too.
+  the one library type the compiler knows by name. `Rt.fail` is
+  found by name too.
 - A set literal takes its type from its first name when nothing else
   gives it; `{}` needs a known type. String constants can be indexed
   and sliced.

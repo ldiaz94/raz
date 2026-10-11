@@ -1,0 +1,9 @@
+module ArrayEqTypes;
+
+proc main*;
+var a: [2]I64; b: [2]I32;
+begin
+    if a # b then end;
+end;
+
+end ArrayEqTypes.

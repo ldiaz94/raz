@@ -1,8 +1,8 @@
 (* The run time: ending the program, and what the compiler's code
-   calls: fail when a check fails, eq when = or # compares two strings;
-   stop, for the library's own failures; and the handlers that say
-   where the program was when a signal stops it.
-   The compiler finds fail, eq, exit, cExit and places by these names.
+   calls, fail when a check fails; stop, for the library's own
+   failures; and the handlers that say where the program was when a
+   signal stops it.
+   The compiler finds fail, exit, cExit and places by these names.
    The handlers are Linux's on x86-64, set by system calls: what the
    kernel hands them is laid out as it is there. *)
 module Rt;
@@ -205,16 +205,6 @@ begin
     put("stopped by ");
     put(why);
     say;
-end;
-
-proc eq*(a, b: []U8): BOOL;
-var i: I64;
-begin
-    if LEN(a) # LEN(b) then return false; end;
-    for i := 0 to LEN(a) - 1 do
-        if a[i] # b[i] then return false; end;
-    end;
-    return true;
 end;
 
 begin

@@ -143,6 +143,7 @@ procedure Mfence;
 procedure Ud2;
 procedure RepMovsb;
 procedure RepStosb;
+procedure RepeCmpsb;
 procedure LockCmpxchg(const m: TMem; r: longint);
 procedure Xchg(const m: TMem; r: longint);
 procedure LockXadd(const m: TMem; r: longint);
@@ -559,6 +560,7 @@ procedure Mfence; begin Put1($0F); Put1($AE); Put1($F0) end;
 procedure Ud2; begin Put1($0F); Put1($0B) end;
 procedure RepMovsb; begin Put1($F3); Put1($A4) end;
 procedure RepStosb; begin Put1($F3); Put1($AA) end;
+procedure RepeCmpsb; begin Put1($F3); Put1($A6) end;
 
 procedure LockCmpxchg(const m: TMem; r: longint);
 begin

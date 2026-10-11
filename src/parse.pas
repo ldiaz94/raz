@@ -67,7 +67,7 @@ var
   curResult: PType;       { the result type of the procedure being compiled }
   inExtern: boolean;      { reading an extern's signature: ... allowed }
   tArgv, tBodySig: PType;
-  nameRt, nameFail, nameEq, nameMain, nameBody, nameStatic: longint;
+  nameRt, nameFail, nameMain, nameBody, nameStatic: longint;
   declaring: array[0..63] of longint;   { the names the declaration being read declares }
   numDeclaring: longint;
   skipped: boolean;       { the last statement had an error and was skipped }
@@ -1629,7 +1629,6 @@ begin
     p^.pos := at;
     p^.exported := exp;
     if (curModule^.name = nameRt) and not checkMode and (n = nameFail) then p^.chunk := rtFail
-    else if (curModule^.name = nameRt) and not checkMode and (n = nameEq) then p^.chunk := rtEq
     else p^.chunk := NewChunk(secText, curModule^.sname, n);
     Declare(p);
   end;
@@ -2274,12 +2273,10 @@ end;
 initialization
   nameRt := Name('Rt');
   nameFail := Name('fail');
-  nameEq := Name('eq');
   nameMain := Name('main');
   nameBody := Name('body');
   nameStatic := Name('static');
   rtFail := NewChunk(secText, nameRt, nameFail);
-  rtEq := NewChunk(secText, nameRt, nameEq);
   argcChunk := NewChunk(secBss, -1, Name('argc'));
   SetBss(argcChunk, 8, 8);
   argvChunk := NewChunk(secBss, -1, Name('argv'));

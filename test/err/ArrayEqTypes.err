@@ -1,0 +1,4 @@
+test/err/ArrayEqTypes.raz:6:8: error: can't compare an array of I64 with one of I32
+    6 |     if a # b then end;
+      |        ^^^^^
+raz: 1 error

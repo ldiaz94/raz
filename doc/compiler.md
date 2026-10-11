@@ -11,9 +11,9 @@ disassembly.
 | `src/diag.pas` | 274 | 197 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 705 | 567 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 593 | 493 | Types, objects, scopes, layout |
-| `src/x64.pas` | 691 | 554 | Code buffer, chunks, fixups, places, instruction encoder |
-| `src/gen.pas` | 1,547 | 1,339 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,293 | 2,072 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/x64.pas` | 693 | 556 | Code buffer, chunks, fixups, places, instruction encoder |
+| `src/gen.pas` | 1,570 | 1,358 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,290 | 2,069 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 138 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 227 | 178 | The command line, the entry points |
@@ -268,6 +268,9 @@ chunk), `Unpush` takes the push back, and the right goes straight to
 on the right of `*`, `div` or `mod` becomes shifts (`DivPow2`), since
 `idiv` is slow. Narrow integers are brought back to their width
 after each operation (`Norm`), which is how `U8` arithmetic wraps.
+`=` and `#` on arrays, slices and strings make a slice of each side
+(`SeqSlice`), compare the lengths, and then the bytes with `repe
+cmpsb`, right where the comparison stands: no call.
 
 Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a
 variable into an item for part of it, mostly by adding to `off`.
@@ -333,8 +336,9 @@ Last, modules, at the end of the file. `CompileFile` reads one module.
 and compiles it if it isn't yet. `CheckOneModule` first makes sure no
 later directory has the module too, unless the file is a link to one
 of its files there; `CheckSiblings` then reads the files for other
-targets beside it, declarations only, and `CompareIface` holds them to the same exports by their fingerprints. A generic module
-is compiled once per distinct list of arguments: `ParseArgs` reads
+targets beside it, declarations only, and `CompareIface` holds them
+to the same exports by their fingerprints. A generic module is
+compiled once per distinct list of arguments: `ParseArgs` reads
 them at the import, `Params` binds them to the module's parameters, and
 `IsModule` decides whether an instance already exists.
 

@@ -1,0 +1,9 @@
+module ArrayEqReal;
+
+proc main*;
+var a, b: [2]F64;
+begin
+    if a = b then end;
+end;
+
+end ArrayEqReal.

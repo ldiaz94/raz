@@ -1,0 +1,41 @@
+module ArrayEq;
+import Out;
+
+type Colour = (red, green, blue);
+
+proc say(b: BOOL);
+begin
+    if b then Out.str("T"); else Out.str("F"); end;
+end;
+
+proc main*;
+var
+    a, b: [4]I64; s: []I64; e: []I64;
+    w: [3]U16; c, d: [2]Colour; f: [3]BOOL;
+    m, n: [2]set of Colour; p, q: [2]^I64; x: I64;
+    t: [5]U8;
+begin
+    a := [1, 2, 3, 4]; b := [1, 2, 3, 4];
+    say(a = b); say(a # b);
+    b[3] := 5;
+    say(a = b); say(a # b);
+    s := a[0..3];
+    say(s = a[0..3]); say(s = a);          (* of different lengths *)
+    say(a[1..1] = e); say(e = s[0..0]);    (* empty *)
+    w := [1, 256, 65535];
+    say(w = [U16(1), 256, 65535]); say(w[2..3] = [U16(65535)]);
+    c := [red, blue]; d := [red, green];
+    say(c = d); d[1] := blue; say(c = d);
+    f := [true, false, true];
+    say(f[0..1] = f[2..3]); say(f[0..1] = [true, false]);
+    m := [{red}, {green, blue}]; n := m;
+    say(m = n); n[1] := {blue}; say(m = n);
+    p := [ADR(x), nil]; q := p;
+    say(p = q); q[1] := ADR(x); say(p = q);
+    t := [104, 101, 108, 108, 111];
+    say(t = "hello"); say("hello" = t[0..5]); say("hell" = t[0..4]);
+    say("help" # t[0..4]); say("" = t[0..0]);
+    Out.ln;
+end;
+
+end ArrayEq.
