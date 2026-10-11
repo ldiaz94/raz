@@ -66,7 +66,8 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 
 ## Proposed, v0.6.0: raz to be rebuilt by anyone
 
-Under way: steps 1 to 3 are agreed; step 4 is for review. The freeze
+Under way: steps 1 to 4 are done, step 3 set aside since; the change
+to steps 7 and 8, and dropping 9 and 9f, is for review. The freeze
 doesn't hold for this work, by the owner's word.
 
 **For:** a language a person alone can implement again, from the
@@ -77,12 +78,15 @@ without one.
 **Done when:** the report alone is enough to rebuild raz, with a
 conformance suite to say when a rebuild is done; the report has a
 system integer and optional reals, and leaves separate compilation to
-the implementation; the compiler goes through an IR, which is what its
-object files hold, and keeps its values in registers as Wirth's
-compilers do; `make bench` still passes; a new code budget is written down; `v0.6.0` is tagged.
+the implementation; the parser reaches the machine only through
+`gen`, the boundary a port writes again, and the back end keeps its
+values in registers as Wirth's compilers do; `make bench` still passes; a new code budget is written down; `v0.6.0` is tagged.
 
 **Kept out:** a second back end (aarch64 is the milestone after, to
-measure a port); an optimiser; the wishes below.
+measure a port); an optimiser; separate compilation: object files, an
+IR written down, and a tool to show them (the report leaves it to the
+implementation, and a whole program compiles in well under a second);
+the wishes below.
 
 - [x] 1. The report as it stands, made complete: the whole grammar;
       the readings in CLAUDE.md moved into the report; what every
@@ -107,22 +111,31 @@ measure a port); an optimiser; the wishes below.
 - [x] 3. The IR, in its own document, `doc/ir.md`, for review: proposed, a stack
       code close to what the parser asks of `gen` today, with types
       and places, so that a back end turns its stack into registers and
-      an interpreter of it stays small.
+      an interpreter of it stays small. Set aside by the owner: the
+      compiler compiles the whole program at once, so nothing needs
+      the IR written down; `doc/ir.md` is removed, and git keeps it.
 - [x] 4. The tests split: a conformance suite any implementation
       passes, apart from this compiler's own messages.
 - [ ] 5. The system integer.
 - [ ] 6. Optional reals: a target says whether it has them.
-- [ ] 7. The parser emits the IR and the x86-64 back end reads it;
-      every test gives the same output as before.
-- [ ] 8. Wirth's register stack in the back end: a value is held in
-      one of a stack of registers, not pushed.
-- [ ] 9. Object files: written for each module, read in place of its
-      source when they are current; instances kept once each by the
-      linker.
+- [ ] 7. The parser reaches the machine only through `gen`: calls of
+      a stack machine, with the kind of each value (a word, a 64-bit
+      integer, an `F32`, an `F64`) and the place in the source, and no
+      x86-64 in the parser; a port is a new `gen`. Every test gives
+      the same output as before.
+- [ ] 8. Wirth's register stack in the x86-64 `gen`: the value at
+      depth `d` is held in register `d`, not pushed. The registers in
+      use are saved around a call, and spilled to the frame when an
+      expression is deeper than the registers; the stack is empty when
+      deferred statements run, a `return`'s results kept in the frame
+      meanwhile; `rax`, `rdx` and `rcx`, which division and shifts
+      need, aren't in the stack. `make bench` still passes.
 - [ ] 9a. Failures caught by the code where the machine can't: a
       `nil` test before a dereference or a call through a procedure
       value, a stack limit at each procedure's start, a zero test
-      before a division; chosen per target.
+      before a division; chosen per target. A `nil` test is left out
+      only where the offset falls in the unmapped page at address 0.
+      On x86-64 that means a field past 4,095 bytes still gets one.
 - [ ] 9b. Assembly procedures in place of byte procedures: the
       target's own syntax (appendix A), for the instructions the
       encoder knows and a few of the system's, bytes for the rest.
@@ -135,11 +148,6 @@ measure a port); an optimiser; the wishes below.
 - [ ] 9e. A profiler in `Rt`: a program run with `RAZ_PROFILE` set
       samples where it is, and at its end says which procedures and
       lines took the time.
-- [ ] 9f. `tools/Obj.raz`: an object file shown for a person to read,
-      its interface as raz, its code in the text form under each line
-      of source, its data as bytes and characters; written from
-      `doc/ir.md` alone, apart from the compiler, as the proof that the
-      form can be read by another program.
 - [ ] 10. `doc/compiler.md`, README, the budget, the report's version
       and the compiler's; tag `v0.6.0`.
 

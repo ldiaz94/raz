@@ -1701,8 +1701,8 @@ report: it passes them all, its reals aside where its target has none;
 - **Separate compilation.** Whether modules are compiled on their own,
   and if so into what: the object file, its format, the form of the
   code in it, when one is out of date, and how an instance is named so
-  that the program keeps one (section 10). This compiler's are in
-  `doc/ir.md`.
+  that the program keeps one (section 10). This compiler compiles
+  every module of a program together, and writes no object files.
 - **Atomics.** How `CAS`, `XCHG` and `XADD` are made sequentially
   consistent on a machine without atomic instructions (section 6.8):
   on one with a single processor, by holding off interrupts while
