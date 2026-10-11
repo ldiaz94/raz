@@ -66,7 +66,8 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 
 ## Proposed, v0.6.0: raz to be rebuilt by anyone
 
-Under way: step 2, the report's draft 2026-10.11, is in review. The freeze doesn't hold for this
+Under way: step 3, `doc/ir.md`, is in review; the report's draft
+2026-10.11 is agreed. The freeze doesn't hold for this
 work, by the owner's word.
 
 **For:** a language a person alone can implement again, from the
@@ -104,7 +105,7 @@ measure a port); an optimiser; the wishes below.
       target may leave out; object files, a module's interface and its
       IR, and a generic's instances in them, named by their arguments
       and the fingerprints they were built from.
-- [ ] 3. The IR, in its own document, for review: proposed, a stack
+- [x] 3. The IR, in its own document, `doc/ir.md`, for review: proposed, a stack
       code close to what the parser asks of `gen` today, with types
       and places, so that a back end turns its stack into registers and
       an interpreter of it stays small.
