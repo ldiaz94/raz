@@ -460,3 +460,29 @@ steps come first unless the owner says otherwise.
       `make bench` at 400,000 lines a second. Then the editors, rmacs
       and ravite, move their pin to this raz, in their own
       repositories, with their sources moved to the new operators.
+
+Stage 7: Sys for rlX11 and rat, report 2026-10.4
+
+rlX11, an X11 client library written in raz, and rat, a terminal
+emulator over it, are to need no C: they talk to the X server over a
+socket, and rat runs its programs on a pseudo-terminal. Sys gains what
+that takes. Not started: each step waits for the owner's word.
+
+- [x] 48. The report, version 2026-10.4: `connect`, `readyOf`,
+      `openPty`, `setTermSize`, `spawn`, `wait`, `kill` (section 11),
+      for review before any code.
+- [ ] 49. On Linux by system calls: `socket` and `connect` for a Unix
+      socket; `poll` over several fds; `/dev/ptmx` with `TIOCSPTLCK`
+      and `TIOCGPTN` for the pseudo-terminal, `TIOCSWINSZ` for its
+      size; `fork`, then in the child `setsid`, the terminal opened as
+      its controlling one with `TIOCSCTTY`, `dup2` to 0, 1 and 2,
+      `close_range` for the rest, and `execve` with the environment
+      made from this one's; `wait4`, `kill`. Over C by POSIX's names
+      (`socket`, `poll`, `posix_openpt`, `grantpt`, `unlockpt`,
+      `ptsname`, `fork`, `execve`, `waitpid`, `kill`), what is glibc's
+      named in the file, as before. Both files' tests: a program
+      spawned on a pseudo-terminal that prints its size and its
+      arguments and ends with a status read back by `wait`; a program
+      stopped by `kill`; `readyOf` on two pipes; `connect` refused on
+      a path with nothing at it, and taken by a listener the test
+      makes with Python, in `test/libc` and beside the library's own.

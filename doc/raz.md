@@ -960,6 +960,15 @@ proc ready*(fd: I64; ms: I64): BOOL;   (* something to read within ms, or ever i
 
 proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
 proc workDir*(var buf: [4096]U8): I64;   (* the working directory into buf: its length *)
+
+proc connect*(path: []U8): I64;    (* a stream socket, connected to the Unix socket at path: its fd *)
+proc readyOf*(fds: []I64; ms: I64): I64;   (* the first of fds with something to read within ms, or -1 *)
+
+proc openPty*: I64;                (* a pseudo-terminal: the fd of its controlling side *)
+proc setTermSize*(fd, cols, rows: I64): I64;   (* the size its programs are told of *)
+proc spawn*(path: []U8; args, env: [][]U8; tty: I64): I64;   (* a program started: its process id *)
+proc wait*(pid: I64; block: BOOL): (I64, I64);   (* its status, and 1 if it has ended, 0 if not *)
+proc kill*(pid, signal: I64): I64;
 ```
 
 `nextEntry` gives every name in the directory except `.` and `..`, in
@@ -968,6 +977,25 @@ keys before the program reads them: echo, waiting for a whole line,
 Ctrl-C and Ctrl-Z as signals, Ctrl-S and Ctrl-Q as flow control, and
 CR to NL; and with output, NL to CR NL. A program that turns it on
 restores it before it ends: `Rt.atExit` is the place.
+
+`connect` is for talking to a server on the same machine, an X server
+at `/tmp/.X11-unix/X0` say; what is sent and received goes by `read`
+and `write`, and `close` ends it. `readyOf` waits on several file
+descriptors at once, as a program does that listens to a server and a
+terminal both.
+
+`openPty` makes a pseudo-terminal, a terminal that a program, a
+terminal emulator, plays the screen and the keyboard of: what it
+writes to the fd is typed, and what the programs on the terminal
+write it reads. `spawn` starts the program at `path`, with `args` as
+its arguments, the first being its name, and the environment of this
+one with each `NAME=value` of `env` added or put in place of the old
+value. If `tty` is a pseudo-terminal's fd, the program runs on that
+terminal: it is its controlling terminal, and the program's standard
+input, output and error. The program gets no other open file. `wait`
+says whether the program has ended, waiting for it if `block`, and how:
+its exit status, or 128 and the number of the signal that stopped it.
+`kill` sends it a signal, 15 to end it.
 
 **Out and C's stdio.** `Out` keeps a buffer of 4 KB. It writes it out
 when it is full, at each line feed when standard output is a terminal,
@@ -1014,3 +1042,6 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   (section 6.5). A generic module's instance is made where it is first
   used, so its arguments may name types declared after the imports
   (section 3).
+- **2026-10.4.** `Sys` gains a connection to a Unix socket, waiting on
+  several files at once, pseudo-terminals, and starting, waiting for
+  and stopping programs (section 11).
