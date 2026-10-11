@@ -409,3 +409,54 @@ Steps 34 on (emacs's keys):
 - [x] 41. Once the owner approves step 34: `Sys` gains it, on Linux
       and over C, with tests; ravite's `Tty` goes. `make check` runs
       ravite's sessions over both.
+
+Stage 6: the language of report 2026-10.3
+
+The owner's choices after stage 5, written into the report first:
+results passed on by `return`; `and`, `or` and `not` for `BOOL`s only,
+binding below the relations, and `&`, `|`, `~` for bits, as in Go; `=`
+on arrays and slices of plain elements, compiled where it stands
+rather than called in `Rt`, so that no syntax runs hidden library
+code; and generic instances made where they are first used, so that
+their arguments may name types declared after the imports. Not
+started: each step waits for the owner's word, and stage 4's open
+steps come first unless the owner says otherwise.
+
+- [x] 42. The report, version 2026-10.3: sections 2, 3, 6, 6.5, 7.3, 8
+      and 11, and the list of versions. Approved before any code.
+- [ ] 43. `return f(x);`: the call writes its results through the
+      procedure's own hidden pointer, the one its caller gave it. The
+      results must be the procedure's, type for type; `test/err` for
+      a mismatch, `test/run` for one, two and three results, through
+      two levels of calls.
+- [ ] 44. `=` and `#` inline: the lengths compared, then, if equal,
+      the bytes, `LEN * SIZE(T)` of them, with `repe cmpsb`; for
+      strings and for arrays and slices of integers, `BOOL`s,
+      enumerations, sets and pointers, any mix of `[n]T` and `[]T`.
+      `Rt.eq` goes, and CLAUDE.md's note that the compiler finds it by
+      name. Tests: equal, of different lengths, empty, a string
+      literal against an array, and in `test/err` arrays of `F64`, of
+      records, and of two element types.
+- [ ] 45. Operators: `&` and `~` in the scanner, `|` an operator where
+      an operand came before it; the parser's levels, `or` over `and`
+      over the relations; `and`, `or`, `not` refused on integers and
+      `&`, `|`, `xor`, `~` on `BOOL`s, each with a message that names
+      the other. Every raz source moves to the new operators: `lib/`,
+      `tools/` (Pretty spaces `&` and `|` as it spaces `+`, and
+      leaves a match arm's `|` where it is), `examples/`, `test/`, the
+      report's examples, and `test/genbench.py`; each `and` or `or`
+      between relations is checked by hand, since its meaning may
+      change without an error. `make bench` must still pass.
+- [ ] 46. Generic instances on first use: the import keeps its
+      arguments unresolved, and the instance is made, and its body
+      queued to run before the importer's, the first time the import's
+      name is used; an argument not declared by then is an error at
+      the import. Tests: a type declared after the import, two imports
+      sharing one instance, an import never used (no instance), and
+      the error.
+- [ ] 47. `doc/compiler.md` (its table and routine names),
+      `README.md`, CLAUDE.md's readings, the report's first line and
+      the compiler's to 2026-10.3; `make loc` within 6,000 and 10%,
+      `make bench` at 400,000 lines a second. Then the editors, rmacs
+      and ravite, move their pin to this raz, in their own
+      repositories, with their sources moved to the new operators.

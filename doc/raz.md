@@ -88,8 +88,11 @@ before `module` is the module's.
 **Operators and delimiters:**
 
 ```
-+  -  *  /  =  #  <  <=  >  >=  :=  :  ;  ,  .  ..  ...  (  )  [  ]  {  }  ^  |
++  -  *  /  &  |  ~  =  #  <  <=  >  >=  :=  :  ;  ,  .  ..  ...  (  )  [  ]  {  }  ^
 ```
+
+`|` is also what starts an arm of `match` (section 7.4); an arm comes
+where a statement could, never after an operand, so the two don't mix.
 
 ## 3. Modules
 
@@ -130,6 +133,19 @@ with `T` standing for `I64`. Two imports of `List(I64)`, in any modules,
 share one instance. Since every instance is checked on its own, an
 operation the argument type doesn't support (adding two records, say)
 is reported as an error in that instance.
+
+An instance is made where its module is first used, not at the
+import: so the arguments may name types the importing module declares
+after its imports, as long as they are declared before that first
+use.
+
+```
+import Table := Map([]U8, Colour, Str.hash, Str.eq);
+
+type Colour = (red, green, blue);
+
+var names: Table.Map;   (* the instance is made here *)
+```
 
 What a generic module needs to do with its types, beyond moving them
 about, it is given as procedures, after the types:
@@ -389,14 +405,16 @@ and `F64`, without a written conversion (section 6.7).
 ## 6. Expressions
 
 ```
-Expr       = SimpleExpr [ Relation SimpleExpr ] .
-Relation   = "=" | "#" | "<" | "<=" | ">" | ">=" | "in" .
+Expr       = Conjunct { "or" Conjunct } .
+Conjunct   = Relation { "and" Relation } .
+Relation   = SimpleExpr [ RelOp SimpleExpr ] .
+RelOp      = "=" | "#" | "<" | "<=" | ">" | ">=" | "in" .
 SimpleExpr = [ "-" ] Term { AddOp Term } .
-AddOp      = "+" | "-" | "or" | "xor" .
+AddOp      = "+" | "-" | "|" | "xor" .
 Term       = Factor { MulOp Factor } .
-MulOp      = "*" | "/" | "div" | "mod" | "and" | "shl" | "shr" .
+MulOp      = "*" | "/" | "div" | "mod" | "&" | "shl" | "shr" .
 Factor     = number | char | string | Designator | "(" Expr ")"
-           | "not" Factor
+           | "not" Factor | "~" Factor
            | "[" [ Expr { "," Expr } ] "]"
            | "{" [ Element { "," Element } ] "}"
            | "^" [ "VOLATILE" ] Type "(" Expr ")" .
@@ -406,14 +424,19 @@ Selector   = "." ident | "^" | "[" Expr [ ".." Expr ] "]"
            | "(" [ Expr { "," Expr } ] ")" .
 ```
 
-The operators bind in the order of the grammar: `not` most tightly,
-then the multiplying operators, then the adding ones, then the
-relations. So `a + b * c = d` is `(a + (b * c)) = d`. A unary minus
-applies to the first term: `-a * b` is `-(a * b)`.
+The operators bind in the order of the grammar: `not` and `~` most
+tightly, then the multiplying operators, then the adding ones, then
+the relations, then `and`, then `or`. So `a + b * c = d` is
+`(a + (b * c)) = d`, `x & 0FH = 0` is `(x & 0FH) = 0`, and
+`i < n and a[i] # 0 or done` is `((i < n) and (a[i] # 0)) or done`. A
+unary minus applies to the first term: `-a * b` is `-(a * b)`.
+
+`and`, `or` and `not` are for `BOOL`s only; `&`, `|`, `xor` and `~`
+are for integers only.
 
 ### 6.1 Integers
 
-Both operands of `+ - * div mod and or xor` have the same integer
+Both operands of `+ - * div mod & | xor` have the same integer
 type, or one is an untyped constant that takes the other's type. The
 result has that type and wraps around at its width: in `U8`,
 `200 + 100` is `44`.
@@ -422,17 +445,16 @@ result has that type and wraps around at its width: in `U8`,
 in C: `-7 div 2` is `-3`, `-7 mod 2` is `-1`. Dividing by zero, and
 dividing the smallest `I64` by `-1`, stop the program (`SIGFPE`).
 
-`and`, `or`, `xor` and `not` work on every bit. `x shl n` and
-`x shr n` shift by `n and 63`; `shr` brings in copies of the sign bit
+`&` (and), `|` (or), `xor` and `~` (not) work on every bit. `x shl n`
+and `x shr n` shift by `n & 63`; `shr` brings in copies of the sign bit
 for signed types and zeros for unsigned ones.
 
 Relations compare as signed or unsigned according to the type.
 
 ### 6.2 Booleans
 
-`and` and `or` on `BOOL` evaluate their right operand only when it
-decides the result. `not` negates, `xor` is "different", and `=` and
-`#` compare.
+`and` and `or` evaluate their right operand only when it decides the
+result. `not` negates, and `=` and `#` compare; `#` is "different".
 
 ### 6.3 Reals
 
@@ -480,10 +502,17 @@ c := {ch: 'A', attr: 7};
 Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.int(m)]);
 ```
 
-**Strings compare.** Two operands that are each a `[]U8`, a `[n]U8` or
-a string literal are `=` when they have the same length and the same
-bytes, and `#` otherwise. Other arrays and slices, records and variants
-can't be compared; write a loop. Ordering strings is the library's
+**Arrays and strings compare.** Two operands that are each a `[]T` or
+a `[n]T`, of the same element type `T`, are `=` when they have the
+same length and the same elements, and `#` otherwise, where `T` is an
+integer type, `BOOL`, an enumeration, a set or a pointer type. A string
+literal compares as a `[]U8`. The comparison is code of its own where
+it stands, a check of the lengths and then of the bytes, not a call.
+
+Arrays of reals don't compare this way, since `-0.0 = 0.0` and a NaN
+is equal to nothing, though their bytes say otherwise; nor do arrays
+of records, variants or procedures, nor records and variants
+themselves. Write a loop. Ordering strings is the library's
 `Str.cmp`.
 
 ### 6.6 Enumerations and sets
@@ -876,7 +905,7 @@ Modules written in raz, in the compiler's `lib` directory:
 
 | Module | What |
 |---|---|
-| `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; what the compiler's checks call when they fail; string comparison |
+| `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; what the compiler's checks call when they fail |
 | `Sys` | system calls: `openRead`, `create`, `read`, `write`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `makeDir`, `info`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; and `env` and `workDir`. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
@@ -977,4 +1006,11 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.2.** `Sys` gains files and directories, the terminal, and
   the environment (section 11).
 - **2026-10.3.** `return f(x);` passes on the several results of `f`
-  (sections 7.3 and 8).
+  (sections 7.3 and 8). `and`, `or` and `not` are for `BOOL`s, and
+  bind below the relations; `&`, `|` and `~` are the operators on bits,
+  and `xor` is for integers only (sections 2 and 6). Arrays and slices
+  of integers, `BOOL`s, enumerations, sets and pointers compare with
+  `=`, by code where the comparison stands, not by a call into `Rt`
+  (section 6.5). A generic module's instance is made where it is first
+  used, so its arguments may name types declared after the imports
+  (section 3).
