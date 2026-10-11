@@ -55,6 +55,7 @@ var
   fwdPos: array[0..255] of TPos;    { where each names its type }
   numFwd: longint;
   lastCalled: PObj;      { the procedure the last call was of, if it had a name }
+  passOn: boolean;       { the next factor may be a call with several results, for return }
   curProc: PObj;          { the procedure being compiled, or nil }
   declExported: boolean;  { the export mark of the declaration being read }
   curLoop: PLoop;         { the innermost loop, or nil }
@@ -1013,8 +1014,10 @@ begin
 end;
 
 procedure Factor(var x: TItem; want: PType);
-var called, vol: boolean; t: PType; start: TPos; s: shortstring;
+var called, vol, several: boolean; t: PType; start: TPos; s: shortstring;
 begin
+  several := passOn;
+  passOn := false;
   start := TokPos;
   case tok of
     sInt, sChar: begin
@@ -1030,7 +1033,7 @@ begin
         if lastCalled <> nil then s := NameOf(lastCalled^.name) else s := 'this procedure';
         MarkAt(x.pos, s + ' returns nothing');
       end;
-      if x.typ^.tuple then begin
+      if x.typ^.tuple and not several then begin
         if lastCalled <> nil then s := NameOf(lastCalled^.name) else s := 'this procedure';
         MarkHelp(x.pos, s + ' returns several results', 'they go to variables: a, b := ' + s + '(...)');
       end;
@@ -1362,12 +1365,20 @@ begin
   end;
 end;
 
+{ return a, b; or return f(x); with f's several results passed on }
 procedure ReturnResults;
 var f: PObj; x: TItem;
 begin
   f := curResult^.fields;
+  passOn := true;
   while f <> nil do begin
     Expression(x, f^.typ);
+    if x.typ^.tuple then begin
+      if not Same(x.typ, curResult) then
+        MarkAt(x.pos, 'expected the results ' + TypeName(curResult) + ', found ' + TypeName(x.typ));
+      ReturnAll(x);
+      exit;
+    end;
     ReturnField(f, x);
     f := f^.next;
     if f <> nil then Expect(sComma);

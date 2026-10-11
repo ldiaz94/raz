@@ -425,7 +425,7 @@ steps come first unless the owner says otherwise.
 
 - [x] 42. The report, version 2026-10.3: sections 2, 3, 6, 6.5, 7.3, 8
       and 11, and the list of versions. Approved before any code.
-- [ ] 43. `return f(x);`: the call writes its results through the
+- [x] 43. `return f(x);`: the call's results are copied behind the
       procedure's own hidden pointer, the one its caller gave it. The
       results must be the procedure's, type for type; `test/err` for
       a mismatch, `test/run` for one, two and three results, through

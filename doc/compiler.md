@@ -10,10 +10,10 @@ disassembly.
 |---|---|---|---|
 | `src/diag.pas` | 274 | 197 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 705 | 567 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 583 | 483 | Types, objects, scopes, layout |
+| `src/sym.pas` | 593 | 493 | Types, objects, scopes, layout |
 | `src/x64.pas` | 691 | 554 | Code buffer, chunks, fixups, places, instruction encoder |
-| `src/gen.pas` | 1,538 | 1,332 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,282 | 2,062 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/gen.pas` | 1,547 | 1,339 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,293 | 2,072 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 138 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 227 | 178 | The command line, the entry points |
@@ -289,7 +289,9 @@ Each argument is computed into a frame slot of its own, left to right;
 only in `EndCall` are they loaded into the registers System V wants,
 and the stack aligned for the call. A record passed by value goes as
 the address of a copy; one returned comes back through a hidden pointer
-in `rdi`, as C's structs do, and so do several results.
+in `rdi`, as C's structs do, and so do several results. `return
+f(x);` passing on f's several results copies them, with `ReturnAll`,
+from the call's temporary to the place its own hidden pointer names.
 
 Frames: `BeginProc` gives the parameters their slots; `EnterBody`
 writes the prologue, which zeroes the locals (with a few stores, or a

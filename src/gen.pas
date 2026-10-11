@@ -118,6 +118,7 @@ procedure BeginProc(sig: PType; params: PObj);
 procedure EnterBody(c, line: longint);
 procedure ReturnValue(var x: TItem);
 procedure ReturnField(f: PObj; var x: TItem);
+procedure ReturnAll(var x: TItem);
 procedure ReturnJump;
 procedure ReturnNone;
 procedure Pin(var x: TItem);
@@ -1434,6 +1435,14 @@ begin
     Lea(RDI, Mem(RDI, f^.val));
     Copy(f^.typ^.size);
   end;
+end;
+
+{ Several results at once, the call's that return f(x) passes on. }
+procedure ReturnAll(var x: TItem);
+begin
+  Address(x, RSI);
+  Load(RDI, Mem(RBP, retSlot), 8, false);
+  Copy(result^.size);
 end;
 
 { With the result in rax, as ReturnValue left it. }

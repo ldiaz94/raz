@@ -1,0 +1,19 @@
+module PassOnTypes;
+
+proc two(n: I64): (I64, BOOL);
+begin
+    return n, n = 0;
+end;
+
+proc swapped(n: I64): (BOOL, I64);
+begin
+    return two(n);
+end;
+
+proc main*;
+var b: BOOL; i: I64;
+begin
+    b, i := swapped(1);
+end;
+
+end PassOnTypes.

@@ -1,0 +1,42 @@
+module PassOn;
+import Out;
+
+type Pair = record a, b: I64; end;
+
+proc one(n: I64): I64;
+begin
+    return n * 2;
+end;
+
+proc two(n: I64): (I64, BOOL);
+begin
+    return n div 7, n mod 7 = 0;
+end;
+
+proc three(n: I64): (U8, Pair, I64);
+begin
+    return U8(n), {a: n + 1, b: n + 2}, -n;
+end;
+
+(* each passes on what the one below returns *)
+proc one1(n: I64): I64; begin return one(n); end;
+proc one2(n: I64): I64; begin return one1(n); end;
+proc two1(n: I64): (I64, BOOL); begin return two(n + 1); end;
+proc two2(n: I64): (I64, BOOL); begin return two1(n + 1); end;
+proc three1(n: I64): (U8, Pair, I64); begin return three(n); end;
+proc three2(n: I64): (U8, Pair, I64); begin return three1(n); end;
+
+proc main*;
+var i, q: I64; z: BOOL; c: U8; p: Pair;
+begin
+    Out.int(one2(21)); Out.ln;
+    for i := 0 to 2 do
+        q, z := two2(i * 5 + 12);
+        Out.int(q); Out.str(" "); if z then Out.str("whole"); else Out.str("part"); end; Out.ln;
+    end;
+    c, p, i := three2(65);
+    Out.int(I64(c)); Out.str(" "); Out.int(p.a); Out.str(" "); Out.int(p.b);
+    Out.str(" "); Out.int(i); Out.ln;
+end;
+
+end PassOn.

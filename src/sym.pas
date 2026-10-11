@@ -436,7 +436,7 @@ begin
 end;
 
 function TypeName(t: PType): shortstring;
-var s: shortstring;
+var s: shortstring; f: PObj;
 begin
   if t = nil then exit('nothing');
   if t^.obj <> nil then begin
@@ -453,7 +453,17 @@ begin
           else TypeName := '^' + TypeName(t^.base);
     fArray: begin Str(t^.len, s); TypeName := '[' + s + ']' + TypeName(t^.base) end;
     fSlice: TypeName := '[]' + TypeName(t^.base);
-    fRecord: TypeName := 'record';
+    fRecord: if not t^.tuple then TypeName := 'record'
+      else begin
+        s := '(';
+        f := t^.fields;
+        while f <> nil do begin
+          s := s + TypeName(f^.typ);
+          f := f^.next;
+          if f <> nil then s := s + ', ';
+        end;
+        TypeName := s + ')';
+      end;
     fVariant: TypeName := 'variant';
     fProc: TypeName := 'proc';
   else TypeName := '?';
