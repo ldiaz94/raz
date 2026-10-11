@@ -482,7 +482,7 @@ that takes. Approved; under way, each step on the owner's word.
 - [x] 49c. `send` (report 2026-10.7), at the owner's word: `write` to
       a socket with `MSG_NOSIGNAL`, -32 (EPIPE) where `write` would
       bring SIGPIPE. Both tests send to a connection closed.
-- [ ] 49b. The rest, for rat: `/dev/ptmx` with `TIOCSPTLCK` and
+- [x] 49b. The rest, for rat: `/dev/ptmx` with `TIOCSPTLCK` and
       `TIOCGPTN` for the pseudo-terminal, `TIOCSWINSZ` for its size;
       `fork`, then in the child `setsid`, the terminal opened as its
       controlling one with `TIOCSCTTY`, `dup2` to 0, 1 and 2,
@@ -493,6 +493,12 @@ that takes. Approved; under way, each step on the owner's word.
       file, as before. Both files' tests: a program spawned on a
       pseudo-terminal that prints its size and its arguments and ends
       with a status read back by `wait`; a program stopped by `kill`.
+- [x] 49d. `Info`'s `file` and `symlink` (report 2026-10.6, for rloc,
+      which walks a tree and must not open a pipe): on Linux `lstat`,
+      then `stat`; over C the same by POSIX's names, `struct stat`
+      glibc's. The report's `link` becomes `symlink`, since `link` is a
+      reserved word. Both tests: a file, a directory, `/dev/null`, and
+      a link to a directory.
 
 Stage 8: one module to a name, report 2026-10.5
 

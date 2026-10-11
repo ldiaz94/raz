@@ -37,8 +37,23 @@ extern proc listen*(fd, backlog: I32): I32;
 extern proc accept*(fd: I32; addr: ^U8; len: ^U32): I32;
 extern proc getenv*(name: ^U8): ^U8;
 extern proc getcwd*(buf: ^U8; n: U64): ^U8;
+extern proc stat*(path, st: ^U8): I32;
+extern proc lstat*(path, st: ^U8): I32;
+extern proc symlink*(target, path: ^U8): I32;
+extern proc posix_openpt*(flags: I32): I32;
+extern proc grantpt*(fd: I32): I32;
+extern proc unlockpt*(fd: I32): I32;
+extern proc ptsname*(fd: I32): ^U8;
+extern proc fork*: I32;
+extern proc setsid*: I32;
+extern proc dup2*(fd, fd2: I32): I32;
+extern proc close_range*(first, last: U32; flags: I32): I32;
+extern proc execve*(path: ^U8; argv, envp: ^^U8): I32;
+extern proc waitpid*(pid: I32; status: ^I32; options: I32): I32;
+extern proc kill*(pid, signal: I32): I32;
 extern proc printf*(format: ^U8; ...): I32;
 extern proc fflush*(f: ^U8): I32;
+extern var environ*: ^^U8;
 extern var stdout*: ^U8;               (* FILE * *)
 extern var stderr*: ^U8;
 

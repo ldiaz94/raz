@@ -12,6 +12,8 @@ type
     Info* = record
         size*: I64;     (* in bytes *)
         dir*: BOOL;     (* a directory *)
+        file*: BOOL;    (* a regular file: not a directory, device, pipe or socket *)
+        symlink*: BOOL; (* the path itself is a symbolic link *)
     end;
 
     (* An open directory: getdents64's records, read a block at a time. *)
@@ -134,16 +136,21 @@ begin
     return SYSCALL(83, ADR(a), 1EDH);               (* mkdir, mode 755 *)
 end;
 
-(* The size of what path names, and whether it is a directory,
-   following a symbolic link; and 0, or minus an errno. *)
+(* The size of what path names, whether it is a directory or a regular
+   file, following a symbolic link, and whether path is one; and 0, or
+   minus an errno. *)
 proc info*(path: []U8): (Info, I64);
 var a: [4096]U8; st: [18]I64; i: Info; r: I64;    (* struct stat: 144 bytes *)
 begin
     if not cstr(path, a) then return i, -36; end;
+    r := SYSCALL(6, ADR(a), ADR(st));               (* lstat *)
+    if r # 0 then return i, r; end;
+    i.symlink := st[3] & 0F000H = 0A000H;            (* st_mode is S_IFLNK *)
     r := SYSCALL(4, ADR(a), ADR(st));               (* stat *)
     if r # 0 then return i, r; end;
     i.size := st[6];                                (* st_size *)
-    i.dir := st[3] & 0F000H = 4000H;              (* st_mode is S_IFDIR *)
+    i.dir := st[3] & 0F000H = 4000H;              (* S_IFDIR *)
+    i.file := st[3] & 0F000H = 8000H;             (* S_IFREG *)
     return i, 0;
 end;
 
@@ -302,6 +309,141 @@ begin
     return r - 1;
 end;
 
+(* A pseudo-terminal: the file descriptor of its controlling side, or
+   minus an errno. Its other side, the terminal its programs run on, is
+   unlocked, for spawn to open. *)
+proc openPty*: I64;
+var a: [4096]U8; fd, unlock: I64;
+begin
+    cstr("/dev/ptmx", a);
+    fd := SYSCALL(2, ADR(a), 80102H);                   (* open: O_RDWR, O_NOCTTY, O_CLOEXEC *)
+    if fd < 0 then return fd; end;
+    unlock := 0;
+    if SYSCALL(16, fd, 40045431H, ADR(unlock)) # 0 then  (* TIOCSPTLCK *)
+        close(fd);
+        return -5;                                      (* EIO *)
+    end;
+    return fd;
+end;
+
+(* Tells the terminal of the pseudo-terminal fd that it has cols
+   columns and rows rows: 0, or minus an errno. *)
+proc setTermSize*(fd, cols, rows: I64): I64;
+var w: Winsize;
+begin
+    w := {rows: U16(rows), cols: U16(cols)};
+    return SYSCALL(16, fd, 5414H, ADR(w));              (* TIOCSWINSZ *)
+end;
+
+(* Copies s and a zero to at: the byte after them. *)
+proc put(s: []U8; at: ^U8): ^U8;
+var i: I64;
+begin
+    for i := 0 to LEN(s) - 1 do at[i] := s[i]; end;
+    at[LEN(s)] := 0;
+    return at + (LEN(s) + 1);
+end;
+
+(* Whether the NAME=value s, a C string, names a variable that one of
+   env gives. *)
+proc replaced(s: ^U8; env: [][]U8): BOOL;
+var i, n: I64;
+begin
+    for i := 0 to LEN(env) - 1 do
+        n := 0;
+        while (n < LEN(env[i])) and (s[n] = env[i][n]) and (s[n] # '=') do INC(n); end;
+        if (n < LEN(env[i])) and (env[i][n] = '=') and (s[n] = '=') then return true; end;
+    end;
+    return false;
+end;
+
+(* What execve takes, in fresh memory of the size returned: args as C
+   strings and a nil, then the environment old with each NAME=value of
+   env in place of its variable or added, and a nil; or nil. The
+   environment follows the arguments. *)
+proc argsAndEnv(args, env: [][]U8; old: ^^U8): (^^U8, I64);
+var p: ^^U8; s: ^U8; size, n, i, k: I64;
+begin
+    n := 0;
+    while old[n] # nil do INC(n); end;
+    size := (LEN(args) + n + LEN(env) + 2) * SIZE(^U8);
+    for i := 0 to LEN(args) - 1 do INC(size, LEN(args[i]) + 1); end;
+    for i := 0 to LEN(env) - 1 do INC(size, LEN(env[i]) + 1); end;
+    p := ^^U8(mmap(size));
+    if p = nil then return nil, 0; end;
+    s := ^U8(p + (LEN(args) + n + LEN(env) + 2));
+    k := 0;
+    for i := 0 to LEN(args) - 1 do p[k] := s; s := put(args[i], s); INC(k); end;
+    p[k] := nil;
+    INC(k);
+    for i := 0 to n - 1 do
+        if not replaced(old[i], env) then p[k] := old[i]; INC(k); end;
+    end;
+    for i := 0 to LEN(env) - 1 do p[k] := s; s := put(env[i], s); INC(k); end;
+    p[k] := nil;
+    return p, size;
+end;
+
+(* Starts the program at path with args, the first its name, and this
+   program's environment changed by env: its process id, or minus an
+   errno. If tty is a pseudo-terminal's fd, the program runs on that
+   terminal, as its controlling terminal and its standard input, output
+   and error. It gets no other open file. A program that can't be
+   started ends with status 127. *)
+proc spawn*(path: []U8; args, env: [][]U8; tty: I64): I64;
+var a: [4096]U8; name: [32]U8; p: ^^U8; size, pid, n, i, fd: I64;
+begin
+    if not cstr(path, a) then return -36; end;
+    if tty >= 0 then
+        (* its terminal: /dev/pts/ and the number TIOCGPTN gives *)
+        n := 0;
+        if SYSCALL(16, tty, 80045430H, ADR(n)) # 0 then return -25; end;   (* ENOTTY *)
+        i := put("/dev/pts/", ADR(name[0])) - ADR(name[0]) - 1;   (* at its zero *)
+        size := n;
+        repeat INC(i); size := size div 10; until size = 0;
+        name[i] := 0;
+        repeat DEC(i); name[i] := U8(48 + n mod 10); n := n div 10; until n = 0;
+    end;
+    p, size := argsAndEnv(args, env, ARGV() + (ARGC() + 1));
+    if p = nil then return -12; end;                    (* ENOMEM *)
+    pid := SYSCALL(57);                                 (* fork *)
+    if pid = 0 then
+        if tty >= 0 then
+            SYSCALL(112);                               (* setsid *)
+            fd := SYSCALL(2, ADR(name), 2);             (* open, O_RDWR *)
+            if (fd < 0) or (SYSCALL(16, fd, 540EH, 0) # 0) then SYSCALL(231, 127); end;   (* TIOCSCTTY; exit *)
+            for i := 0 to 2 do SYSCALL(33, fd, i); end; (* dup2 *)
+        end;
+        SYSCALL(436, 3, 0FFFFFFFFH, 0);                 (* close_range: every fd from 3 *)
+        SYSCALL(59, ADR(a), p, p + (LEN(args) + 1));    (* execve *)
+        SYSCALL(231, 127);                              (* exit *)
+    end;
+    munmap(^U8(p), size);
+    return pid;
+end;
+
+(* Whether the program pid has ended, waiting for it to if block: its
+   exit status, or 128 and the number of the signal that stopped it,
+   and 1; or 0 and 0 if it goes on; or minus an errno and 1, if there
+   is no such program to wait for. *)
+proc wait*(pid: I64; block: BOOL): (I64, I64);
+var status: I32; r, options: I64;
+begin
+    options := 1;                                       (* WNOHANG *)
+    if block then options := 0; end;
+    r := SYSCALL(61, pid, ADR(status), options, 0);     (* wait4 *)
+    if r < 0 then return r, 1; end;
+    if r = 0 then return 0, 0; end;
+    if status & 7FH = 0 then return I64(status) shr 8 & 0FFH, 1; end;
+    return 128 + I64(status) & 7FH, 1;
+end;
+
+(* Sends the program pid the signal: 0, or minus an errno. *)
+proc kill*(pid, signal: I64): I64;
+begin
+    return SYSCALL(62, pid, signal);
+end;
+
 (* Gives the processor to another thread. *)
 proc yield*;
 begin
@@ -329,12 +471,46 @@ begin
     return fd;
 end;
 
+(* The test of programs: one spawned on a pseudo-terminal of 100 by 30
+   prints its size, its arguments and a variable put in place, and ends
+   with status 3; one with no terminal is stopped by kill; one that
+   isn't there ends with 127. *)
+proc testPrograms;
+var pty, pid, n, m, status, ended: I64; buf: [64]U8;
+begin
+    pty := openPty();
+    if (pty < 0) or (setTermSize(pty, 100, 30) # 0) then exit(2); end;
+    pid := spawn("/bin/sh", ["sh", "-c", "stty size; echo $0 $1 $HOME; exit 3", "a", "b"], ["HOME=/h"], pty);
+    if pid <= 0 then exit(2); end;
+    n := 0;
+    repeat
+        if not ready(pty, 5000) then exit(2); end;
+        m := read(pty, buf[n..LEN(buf)]);
+        if m > 0 then INC(n, m); end;
+    until m <= 0;                                   (* -5, EIO, once the terminal has no program *)
+    close(pty);
+    if buf[0..n] # "30 100\r\na b /h\r\n" then exit(2); end;
+    status, ended := wait(pid, true);
+    if (status # 3) or (ended # 1) then exit(2); end;
+    pid := spawn("/bin/sleep", ["sleep", "10"], [], -1);
+    status, ended := wait(pid, false);
+    if ended # 0 then exit(2); end;
+    if kill(pid, 15) # 0 then exit(2); end;
+    status, ended := wait(pid, true);
+    if (status # 128 + 15) or (ended # 1) then exit(2); end;
+    status, ended := wait(pid, true);
+    if (status # -10) or (ended # 1) then exit(2); end;   (* ECHILD: waited for already *)
+    pid := spawn("/no/such/program", ["x"], [], -1);
+    status, ended := wait(pid, true);
+    if (status # 127) or (ended # 1) then exit(2); end;
+end;
+
 (* The module's test: a file written, read back and closed; a
    directory made, listed and emptied; no terminal; a socket, sent to
    after its end. *)
 proc main*;
 var fd, n, err, w, h, l, c, a: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
-    dir: [4096]U8;
+    dir, name2: [4096]U8;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
@@ -359,9 +535,18 @@ begin
     close(fd);
     if rename("/tmp/raz-sys-dir/f", "/tmp/raz-sys-dir/g") # 0 then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/g");
-    if (err # 0) or (i.size # 3) or i.dir then exit(2); end;
+    if (err # 0) or (i.size # 3) or i.dir or not i.file or i.symlink then exit(2); end;
     i, err := info("/tmp/raz-sys-dir");
-    if (err # 0) or not i.dir then exit(2); end;
+    if (err # 0) or not i.dir or i.file then exit(2); end;
+    i, err := info("/dev/null");
+    if (err # 0) or i.dir or i.file then exit(2); end;
+    remove("/tmp/raz-sys-link");
+    cstr("/tmp/raz-sys-dir", dir);
+    cstr("/tmp/raz-sys-link", name2);
+    if SYSCALL(88, ADR(dir), ADR(name2)) # 0 then exit(2); end;   (* symlink *)
+    i, err := info("/tmp/raz-sys-link");
+    if (err # 0) or not i.dir or not i.symlink then exit(2); end;
+    remove("/tmp/raz-sys-link");
     i, err := info("/no/such/file");
     if err >= 0 then exit(2); end;
     if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
@@ -397,6 +582,7 @@ begin
     close(c);
     close(l);
     remove("/tmp/raz-sys-socket");
+    testPrograms;
 end;
 
 end Sys.

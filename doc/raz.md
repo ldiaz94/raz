@@ -9,7 +9,7 @@ the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.3 of the report; section 12 says what each
+This is version 2026-10.7 of the report; section 12 says what each
 version changed.
 
 ## 1. A first look
@@ -957,7 +957,7 @@ type
         size*: I64;      (* in bytes *)
         dir*: BOOL;      (* a directory *)
         file*: BOOL;     (* a regular file: not a directory, device, pipe or socket *)
-        link*: BOOL;     (* the path itself is a symbolic link *)
+        symlink*: BOOL;  (* the path itself is a symbolic link *)
     end;
     Dir* = record ... end;   (* an open directory; its fields are the target's *)
 
@@ -990,7 +990,7 @@ proc kill*(pid, signal: I64): I64;
 ```
 
 `info` follows a symbolic link: `size`, `dir` and `file` are those of
-what it names, and `link` says the path was a link, so that a program walking
+what it names, and `symlink` says the path was a link, so that a program walking
 a tree can choose not to follow one back up it. A link to nothing is
 `-ENOENT`, as a missing file is. `file` lets a walk open only what
 holds data: opening a pipe would wait for a program to write to it.

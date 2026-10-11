@@ -2,12 +2,11 @@
    file of their own, with the same exports. A program that imports it
    uses C.
 
-   It keeps to what POSIX gives: raw mode is cfmakeraw's, and a file's
-   size is where lseek finds its end, so that no struct stat is read.
-   Three things are glibc's: where a name lies in struct dirent, the
-   number of the TIOCGWINSZ request, and struct sockaddr_un, which on
-   the BSDs starts with a byte of length. A C library that differs
-   needs a Sys of its own. *)
+   It keeps to POSIX's names, and raw mode is cfmakeraw's. What is
+   glibc's, on x86-64: where a name lies in struct dirent; struct stat;
+   the numbers of the requests TIOCGWINSZ, TIOCSWINSZ and TIOCSCTTY;
+   close_range; and struct sockaddr_un, which on the BSDs starts with a
+   byte of length. A C library that differs needs a Sys of its own. *)
 module Sys;
 import C;
 
@@ -16,13 +15,17 @@ const
     stdout* = 1;
     stderr* = 2;
     DirentName = 19;          (* the offset of d_name in glibc's struct dirent *)
-    TIOCGWINSZ = 5413H;       (* glibc's *)
+    TIOCGWINSZ = 5413H;       (* glibc's, as the two below *)
+    TIOCSWINSZ = 5414H;
+    TIOCSCTTY = 540EH;
 
 type
     (* What info says of a file. *)
     Info* = record
         size*: I64;     (* in bytes *)
         dir*: BOOL;     (* a directory *)
+        file*: BOOL;    (* a regular file: not a directory, device, pipe or socket *)
+        symlink*: BOOL; (* the path itself is a symbolic link *)
     end;
 
     (* An open directory: C's DIR. *)
@@ -151,24 +154,19 @@ begin
     return 0;
 end;
 
-(* The size of what path names, and whether it is a directory,
-   following a symbolic link; and 0, or minus an errno. A directory is
-   what opendir opens; a file's size is where lseek finds its end, so a
-   file that can't be read has none. *)
+(* The size of what path names, whether it is a directory or a regular
+   file, following a symbolic link, and whether path is one; and 0, or
+   minus an errno. *)
 proc info*(path: []U8): (Info, I64);
-var a: [4096]U8; i: Info; d: ^U8; fd: I32;
+var a: [4096]U8; st: [18]I64; i: Info;   (* glibc's struct stat: 144 bytes *)
 begin
     if not cstr(path, a) then return i, -36; end;
-    d := C.opendir(ADR(a[0]));
-    if d # nil then
-        C.closedir(d);
-        i.dir := true;
-        return i, 0;
-    end;
-    fd := C.open(ADR(a[0]), 0);                      (* O_RDONLY *)
-    if fd < 0 then return i, failed(); end;
-    i.size := C.lseek(fd, 0, 2);                     (* SEEK_END *)
-    C.close(fd);
+    if C.lstat(ADR(a[0]), ^U8(ADR(st))) # 0 then return i, failed(); end;
+    i.symlink := st[3] & 0F000H = 0A000H;          (* st_mode is S_IFLNK *)
+    if C.stat(ADR(a[0]), ^U8(ADR(st))) # 0 then return i, failed(); end;
+    i.size := st[6];                                 (* st_size *)
+    i.dir := st[3] & 0F000H = 4000H;               (* S_IFDIR *)
+    i.file := st[3] & 0F000H = 8000H;              (* S_IFREG *)
     return i, 0;
 end;
 
@@ -309,6 +307,144 @@ begin
     return n;
 end;
 
+(* A pseudo-terminal: the file descriptor of its controlling side, or
+   minus an errno. Its other side, the terminal its programs run on, is
+   unlocked, for spawn to open. *)
+proc openPty*: I64;
+var fd: I32; err: I64;
+begin
+    fd := C.posix_openpt(102H);                       (* O_RDWR, O_NOCTTY: glibc's *)
+    if fd < 0 then return failed(); end;
+    if (C.grantpt(fd) # 0) or (C.unlockpt(fd) # 0) then
+        err := failed();
+        C.close(fd);
+        return err;
+    end;
+    return I64(fd);
+end;
+
+(* Tells the terminal of the pseudo-terminal fd that it has cols
+   columns and rows rows: 0, or minus an errno. *)
+proc setTermSize*(fd, cols, rows: I64): I64;
+var w: Winsize;
+begin
+    w := {rows: U16(rows), cols: U16(cols)};
+    if C.ioctl(I32(fd), TIOCSWINSZ, ADR(w)) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* Copies s and a zero to at: the byte after them. *)
+proc put(s: []U8; at: ^U8): ^U8;
+var i: I64;
+begin
+    for i := 0 to LEN(s) - 1 do at[i] := s[i]; end;
+    at[LEN(s)] := 0;
+    return at + (LEN(s) + 1);
+end;
+
+(* Whether the NAME=value s, a C string, names a variable that one of
+   env gives. *)
+proc replaced(s: ^U8; env: [][]U8): BOOL;
+var i, n: I64;
+begin
+    for i := 0 to LEN(env) - 1 do
+        n := 0;
+        while (n < LEN(env[i])) and (s[n] = env[i][n]) and (s[n] # '=') do INC(n); end;
+        if (n < LEN(env[i])) and (env[i][n] = '=') and (s[n] = '=') then return true; end;
+    end;
+    return false;
+end;
+
+(* What execve takes, in fresh memory of the size returned: args as C
+   strings and a nil, then the environment old with each NAME=value of
+   env in place of its variable or added, and a nil; or nil. The
+   environment follows the arguments. *)
+proc argsAndEnv(args, env: [][]U8; old: ^^U8): (^^U8, I64);
+var p: ^^U8; s: ^U8; size, n, i, k: I64;
+begin
+    n := 0;
+    while old[n] # nil do INC(n); end;
+    size := (LEN(args) + n + LEN(env) + 2) * SIZE(^U8);
+    for i := 0 to LEN(args) - 1 do INC(size, LEN(args[i]) + 1); end;
+    for i := 0 to LEN(env) - 1 do INC(size, LEN(env[i]) + 1); end;
+    p := ^^U8(mmap(size));
+    if p = nil then return nil, 0; end;
+    s := ^U8(p + (LEN(args) + n + LEN(env) + 2));
+    k := 0;
+    for i := 0 to LEN(args) - 1 do p[k] := s; s := put(args[i], s); INC(k); end;
+    p[k] := nil;
+    INC(k);
+    for i := 0 to n - 1 do
+        if not replaced(old[i], env) then p[k] := old[i]; INC(k); end;
+    end;
+    for i := 0 to LEN(env) - 1 do p[k] := s; s := put(env[i], s); INC(k); end;
+    p[k] := nil;
+    return p, size;
+end;
+
+(* Starts the program at path with args, the first its name, and this
+   program's environment changed by env: its process id, or minus an
+   errno. If tty is a pseudo-terminal's fd, the program runs on that
+   terminal, as its controlling terminal and its standard input, output
+   and error. It gets no other open file. A program that can't be
+   started ends with status 127. *)
+proc spawn*(path: []U8; args, env: [][]U8; tty: I64): I64;
+var a, name: [4096]U8; p: ^^U8; s: ^U8; size, n, err: I64; pid, fd: I32;
+begin
+    if not cstr(path, a) then return -36; end;
+    if tty >= 0 then
+        s := C.ptsname(I32(tty));                     (* here, since it isn't safe after fork *)
+        if s = nil then return failed(); end;
+        n := 0;
+        while s[n] # 0 do INC(n); end;
+        if not cstr(s[0..n], name) then return -36; end;
+    end;
+    p, size := argsAndEnv(args, env, C.environ);
+    if p = nil then return -12; end;                  (* ENOMEM *)
+    pid := C.fork();
+    if pid = 0 then
+        if tty >= 0 then
+            C.setsid();
+            fd := C.open(ADR(name[0]), 2);            (* O_RDWR *)
+            if (fd < 0) or (C.ioctl(fd, TIOCSCTTY, 0) # 0) then C._exit(127); end;
+            C.dup2(fd, 0);
+            C.dup2(fd, 1);
+            C.dup2(fd, 2);
+        end;
+        C.close_range(3, 0FFFFFFFFH, 0);             (* every fd from 3 *)
+        C.execve(ADR(a[0]), p, p + (LEN(args) + 1));
+        C._exit(127);
+    end;
+    err := failed();
+    munmap(^U8(p), size);
+    if pid < 0 then return err; end;
+    return I64(pid);
+end;
+
+(* Whether the program pid has ended, waiting for it to if block: its
+   exit status, or 128 and the number of the signal that stopped it,
+   and 1; or 0 and 0 if it goes on; or minus an errno and 1, if there
+   is no such program to wait for. The status is read as glibc's macros
+   read it. *)
+proc wait*(pid: I64; block: BOOL): (I64, I64);
+var status, options, r: I32;
+begin
+    options := 1;                                     (* WNOHANG *)
+    if block then options := 0; end;
+    r := C.waitpid(I32(pid), ADR(status), options);
+    if r < 0 then return failed(), 1; end;
+    if r = 0 then return 0, 0; end;
+    if status & 7FH = 0 then return I64(status) shr 8 & 0FFH, 1; end;
+    return 128 + I64(status) & 7FH, 1;
+end;
+
+(* Sends the program pid the signal: 0, or minus an errno. *)
+proc kill*(pid, signal: I64): I64;
+begin
+    if C.kill(I32(pid), I32(signal)) # 0 then return failed(); end;
+    return 0;
+end;
+
 proc isTerminal*(fd: I64): BOOL;
 begin
     return C.isatty(I32(fd)) = 1;
@@ -339,12 +475,46 @@ begin
     return I64(fd);
 end;
 
+(* The test of programs: one spawned on a pseudo-terminal of 100 by 30
+   prints its size, its arguments and a variable put in place, and ends
+   with status 3; one with no terminal is stopped by kill; one that
+   isn't there ends with 127. *)
+proc testPrograms;
+var pty, pid, n, m, status, ended: I64; buf: [64]U8;
+begin
+    pty := openPty();
+    if (pty < 0) or (setTermSize(pty, 100, 30) # 0) then exit(2); end;
+    pid := spawn("/bin/sh", ["sh", "-c", "stty size; echo $0 $1 $HOME; exit 3", "a", "b"], ["HOME=/h"], pty);
+    if pid <= 0 then exit(2); end;
+    n := 0;
+    repeat
+        if not ready(pty, 5000) then exit(2); end;
+        m := read(pty, buf[n..LEN(buf)]);
+        if m > 0 then INC(n, m); end;
+    until m <= 0;                                   (* -5, EIO, once the terminal has no program *)
+    close(pty);
+    if buf[0..n] # "30 100\r\na b /h\r\n" then exit(2); end;
+    status, ended := wait(pid, true);
+    if (status # 3) or (ended # 1) then exit(2); end;
+    pid := spawn("/bin/sleep", ["sleep", "10"], [], -1);
+    status, ended := wait(pid, false);
+    if ended # 0 then exit(2); end;
+    if kill(pid, 15) # 0 then exit(2); end;
+    status, ended := wait(pid, true);
+    if (status # 128 + 15) or (ended # 1) then exit(2); end;
+    status, ended := wait(pid, true);
+    if (status # -10) or (ended # 1) then exit(2); end;   (* ECHILD: waited for already *)
+    pid := spawn("/no/such/program", ["x"], [], -1);
+    status, ended := wait(pid, true);
+    if (status # 127) or (ended # 1) then exit(2); end;
+end;
+
 (* The module's test, as Linux's Sys has it: a file written, read back
    and closed; a directory made, listed and emptied; no terminal; a
    socket, sent to after its end. *)
 proc main*;
 var fd, n, err, w, h, l, c, a: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
-    dir: [4096]U8;
+    dir, name2: [4096]U8;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
@@ -369,9 +539,18 @@ begin
     close(fd);
     if rename("/tmp/raz-sys-dir/f", "/tmp/raz-sys-dir/g") # 0 then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/g");
-    if (err # 0) or (i.size # 3) or i.dir then exit(2); end;
+    if (err # 0) or (i.size # 3) or i.dir or not i.file or i.symlink then exit(2); end;
     i, err := info("/tmp/raz-sys-dir");
-    if (err # 0) or not i.dir then exit(2); end;
+    if (err # 0) or not i.dir or i.file then exit(2); end;
+    i, err := info("/dev/null");
+    if (err # 0) or i.dir or i.file then exit(2); end;
+    remove("/tmp/raz-sys-link");
+    cstr("/tmp/raz-sys-dir", dir);
+    cstr("/tmp/raz-sys-link", name2);
+    if C.symlink(ADR(dir[0]), ADR(name2[0])) # 0 then exit(2); end;
+    i, err := info("/tmp/raz-sys-link");
+    if (err # 0) or not i.dir or not i.symlink then exit(2); end;
+    remove("/tmp/raz-sys-link");
     i, err := info("/no/such/file");
     if err >= 0 then exit(2); end;
     if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
@@ -407,6 +586,7 @@ begin
     close(c);
     close(l);
     remove("/tmp/raz-sys-socket");
+    testPrograms;
 end;
 
 end Sys.
