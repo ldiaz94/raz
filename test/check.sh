@@ -122,6 +122,37 @@ else
     echo "FAIL tools/Pretty.raz: $(cat $out/Pretty.cerr)"; fail=$((fail + 1))
 fi
 
+# error recovery: tools/Mutate.raz changes one symbol of each program,
+# and the compiler must not crash, must exit with status 0 or 1, must
+# say "error:" when it exits with 1, and must not report one place twice.
+# Reproduce a failure with: build/Mutate FILE SEED > M.raz
+fuzz() {   # fuzz file seed
+    f=$1; seed=$2; dir=$(dirname $f)
+    mkdir -p $out/fuzz; m=$out/fuzz/$(basename $f)
+    $out/Mutate $f $seed > $m
+    $raz -I $dir/mods -o $out/mutant $m 2>$out/mutant.err
+    status=$?
+    why=
+    if [ $status -gt 1 ]; then why="exit status $status"
+    elif grep -q 'internal error' $out/mutant.err; then why="internal error"
+    elif [ $status = 1 ] && ! grep -q ': error:' $out/mutant.err; then why="status 1 without an error"
+    elif [ -n "$(grep ': error:' $out/mutant.err | sed 's/: error:.*//' | sort | uniq -d)" ]; then
+        why="two errors at one place"
+    fi
+    if [ -n "$why" ]; then
+        echo "FAIL fuzz $f seed $seed: $why"; cat $out/mutant.err
+        fail=$((fail + 1))
+    else pass=$((pass + 1)); fi
+}
+if ./raz -o $out/Mutate tools/Mutate.raz 2>$out/Mutate.cerr; then
+    for f in examples/*.raz test/run/*.raz; do
+        $raz -I $(dirname $f)/mods -o $out/mutant $f 2>/dev/null || continue
+        for seed in ${FUZZ_SEEDS:-1 2 3}; do fuzz $f $seed; done
+    done
+else
+    echo "FAIL tools/Mutate.raz: $(cat $out/Mutate.cerr)"; fail=$((fail + 1))
+fi
+
 # each library module's main is its test; Sys over C is tested in test/libc
 for f in lib/*.raz; do
     [ $f = lib/Sys.raz ] && continue

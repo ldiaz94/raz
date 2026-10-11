@@ -1,0 +1,96 @@
+(* Mutate: a raz source with one random change, to try the compiler's
+   recovery from errors.
+
+       Mutate File.raz seed
+   prints the file with one symbol deleted, duplicated, swapped with the
+   next, or replaced by another symbol of the file. The seed picks the
+   change: the same seed gives the same text. Comments and spacing stay
+   as they are around the change. *)
+module Mutate;
+import Out, Rt, Buf, Heap, Scan, Files;
+
+var
+    src: []U8;
+    state: U64;   (* the generator: xorshift64 *)
+
+(* A number from the generator, below n. *)
+proc random(n: I64): I64;
+begin
+    state := state xor (state shl 13);
+    state := state xor (state shr 7);
+    state := state xor (state shl 17);
+    return I64(state mod U64(n));
+end;
+
+(* The seed, as a nonzero state. *)
+proc seed(s: []U8);
+var i: I64;
+begin
+    state := 88172645463325252;
+    for i := 0 to LEN(s) - 1 do state := state * 31 + U64(s[i]); end;
+    if state = 0 then state := 1; end;
+    for i := 1 to 10 do random(2); end;
+end;
+
+(* The symbols that aren't comments. *)
+proc count(): I64;
+var sc: Scan.Scanner; n: I64;
+begin
+    Scan.init(ADR(sc), src);
+    Scan.next(ADR(sc));
+    n := 0;
+    while sc.kind # Scan.eof do
+        if sc.kind # Scan.comment then INC(n); end;
+        Scan.next(ADR(sc));
+    end;
+    return n;
+end;
+
+(* Symbol k, counting from 0 and leaving out comments. *)
+proc symbol(k: I64): Scan.Scanner;
+var sc: Scan.Scanner;
+begin
+    Scan.init(ADR(sc), src);
+    repeat
+        Scan.next(ADR(sc));
+        if sc.kind # Scan.comment then DEC(k); end;
+    until k < 0;
+    return sc;
+end;
+
+proc main*;
+var buf: Buf.Buf; n, op, i: I64; a, b, c: Scan.Scanner;
+begin
+    if ARGC() # 3 then Rt.stop("usage: Mutate File.raz seed"); end;
+    Buf.init(ADR(buf), Heap.heap);
+    if not Files.read(Files.arg(1), ADR(buf)) then Rt.stop("Mutate: can't read the file"); end;
+    src := Buf.bytes(ADR(buf));
+    seed(Files.arg(2));
+    n := count();
+    if n < 2 then Out.str(src); return; end;
+    op := random(4);
+    i := random(n - 1);
+    a := symbol(i);
+    b := symbol(i + 1);
+    c := symbol(random(n));
+    Out.str(src[0..a.start]);
+    if op = 0 then
+        Out.str(src[a.stop..b.start]);
+    elsif op = 1 then
+        Out.str(Scan.text(ADR(a)));
+        Out.str(" ");
+        Out.str(Scan.text(ADR(a)));
+        Out.str(src[a.stop..b.start]);
+    elsif op = 2 then
+        Out.str(Scan.text(ADR(b)));
+        Out.str(src[a.stop..b.start]);
+        Out.str(Scan.text(ADR(a)));
+        b.start := b.stop;   (* b has been written, as the first *)
+    else
+        Out.str(Scan.text(ADR(c)));
+        Out.str(src[a.stop..b.start]);
+    end;
+    Out.str(src[b.start..LEN(src)]);
+end;
+
+end Mutate.

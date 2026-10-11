@@ -60,6 +60,7 @@ var
   numFiles, cap: longint;
   colour, colourKnown: boolean;
   cwd: shortstring;    { the working directory and a /, or '' if unknown }
+  lastError: TPos;     { where the last error was }
 
 { Paths are shown from the working directory where they are under it,
   so messages read the same wherever the compiler or its library is. }
@@ -189,6 +190,10 @@ end;
 
 procedure Error(const p: TPos; const msg: shortstring);
 begin
+  { a second error at one place follows from the first: when a symbol
+    ends a construct with an error, the one around it may stop there too }
+  if (errors > 0) and (p.f = lastError.f) and (p.a = lastError.a) then exit;
+  lastError := p;
   Show(p, 'error', Red, msg);
   inc(errors);
   if errors >= MaxErrors then begin

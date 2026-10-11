@@ -853,9 +853,11 @@ column, the line of source with the offending part underlined, and,
 where they help, notes pointing at other places, such as where a name
 is declared, and a suggestion, such as a name in reach spelled almost
 alike. It goes on after an error to find the others, up to 20, and
-writes no executable. After an error of syntax it skips to the next
-procedure, so that one misplaced symbol brings no false reports after
-it. A module with errors stops the compile after it.
+writes no executable. After an error it skips the statement or
+declaration the error is in and carries on with the next; a name that
+isn't declared is reported once, and nothing that follows from it is
+reported. An error in the text itself, such as a string left open,
+stops the compile, and so does a module with errors, after it.
 
 The compiler also warns of what is declared and never used: an import;
 a constant, type, variable or procedure that isn't exported; a

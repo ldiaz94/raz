@@ -1,0 +1,35 @@
+module Resync;
+
+import Out;
+
+proc a(x: I64);
+begin
+    if x = 1 then
+        x := 2;
+    Out.int(x);
+end a;
+
+proc b(x: I64);
+begin
+    while x > 0 do x := x - 1 end;
+    x := ) + 2;
+    match x
+    | 1: x := true;
+    end;
+end b;
+
+proc c(x: I64);
+begin
+    x := 1 +;
+
+proc d(x: I64);
+begin
+    x := false;
+end d;
+
+proc main*();
+begin
+    a(1); b(2); c(3); d(4);
+end main;
+
+end Resync.

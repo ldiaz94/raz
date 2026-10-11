@@ -227,12 +227,18 @@ main model reads every diff before it is committed.
       the previous symbol's end. The machinery, *main*; moving each
       of the 200 `Mark` calls onto the right position, *agent*, one
       per file.
-- [ ] 22. Going on after an error. A poison type that every check
-      accepts without a word, so one mistake makes one message; a name
-      not declared is declared as poison where it is first used; after
-      a syntax error the parser skips to the next `proc` or the end of
-      the module; code is still generated, then thrown away; at most
-      20 errors. A module with errors stops the run after it. *main*.
+- [x] 22. Going on after an error. Each statement and declaration is
+      a recovery point (`setjmp`): an error jumps back to it, the
+      scanner rereads it from its start and skips to its end, and the
+      parser carries on with the next; no error site goes on past its
+      error, so none needs reviewing. A name not declared is declared
+      with a poison type where it is first used, as are the names of a
+      declaration with an error, and errors in a construct that uses
+      poison aren't reported. A symbol at the start of a line ends a
+      skip: it starts the next declaration, and its procedure is given
+      up. Code is still generated, then thrown away; at most 20 errors;
+      an error in the text, or a module with errors, stops the run.
+      *main*.
       `tools/Mutate.raz`, which deletes, doubles and swaps symbols in
       the tests that compile; `make check` runs it with fixed seeds
       and fails on a crash or two messages at one place. Writing it
@@ -245,7 +251,8 @@ main model reads every diff before it is committed.
       first; *main* reviews the wording as a whole.
 - [ ] 24. Notes and help. Objects remember where they are declared:
       "declared here", "the first one is here", "the signature is
-      here". Did you mean: the closest name by edit distance in the
+      here". The checks on `main` in `raz.pas` point at
+      it, so that every error has a place (the fuzzer finds them). Did you mean: the closest name by edit distance in the
       scopes in reach, in a module's exports, among the built-ins
       (`len` for `LEN`). Slips from other languages: `!=`, `==`, `=`
       for `:=`, `&&`, `||`, `!`, `elif`, a missing `then` or `do`, a

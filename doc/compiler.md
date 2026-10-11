@@ -8,12 +8,12 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 243 | 174 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 584 | 495 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 510 | 424 | Types, objects, scopes, layout |
+| `src/diag.pas` | 248 | 177 | Messages: positions, source excerpts, colour, counts |
+| `src/scan.pas` | 612 | 509 | Symbols, literals, comments, positions |
+| `src/sym.pas` | 526 | 437 | Types, objects, scopes, layout |
 | `src/x64.pas` | 682 | 548 | Code buffer, chunks, fixups, line notes, instruction encoder |
 | `src/gen.pas` | 1,468 | 1,281 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 1,851 | 1,720 | Declarations, statements, expressions, built-ins |
+| `src/parse.pas` | 2,053 | 1,873 | Declarations, statements, expressions, built-ins, recovery |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 219 | 172 | The command line, the entry points |
@@ -144,7 +144,10 @@ from a saved position to the end of the symbol before the current one,
 and `MissingPos` the place to say a symbol is missing: just after the
 symbol before, when the current one starts a new line. Errors go
 through `Mark`, at the current symbol, or `MarkAt`, at a position; each
-reports the error (`diag.Error`) and stops. There is no
+reports the error (`diag.Error`) and jumps to `recovery`, the parser's
+place to go on from (see parse.pas). Errors in the text itself stop the
+compiler (`MarkBytes`, `LexError`): past a string left open, the
+symbols can't be trusted. There is no
 recovery: the first error ends the compilation. `SaveScan` and `RestoreScan` keep
 the scanner's state while an imported module is compiled.
 
@@ -287,7 +290,8 @@ calls the matching routine in `gen.pas` on the item it has. The
 `want` parameter carries the type an expression must have, where it is
 known, so that `[1, 2, 3]`, `{x: 1}` and `{red}` know what to build.
 
-Then statements: `Statement` dispatches; `IfStatement`,
+Then statements: `Statement` makes each one a recovery point (below)
+and `OneStatement` dispatches; `IfStatement`,
 `WhileStatement`, `ForStatement` and `MatchStatement` emit their jumps
 with `x64.pas`'s labels. `Defer` is worth reading: a deferred statement
 is compiled where it stands, as a little subroutine of the procedure
@@ -295,7 +299,8 @@ that the code jumps over, and `RunDefers` emits a call to it at every
 way out of its statement list: the end, `return` and `break`.
 
 Then declarations: `Declarations` reads `const`, `type`, `var`, `proc`
-and `extern`. `ProcDecl` handles forward declarations, code procedures
+and `extern`, each one through `Declaration`, a recovery point, which
+calls `ConstDecl`, `TypeDecl`, `VarDecl`, `ProcDecl` or `ExternDecl`. `ProcDecl` handles forward declarations, code procedures
 (`CodeBody`, which just copies the bytes) and bodies (`Body`).
 `ParseType` and its helpers (`RecordType`, `VariantType`, `Signature`,
 `EnumType`) build `TType`s.
@@ -308,6 +313,22 @@ holds them to the same exports by their fingerprints. A generic module
 is compiled once per distinct list of arguments: `ParseArgs` reads
 them at the import, `Params` binds them to the module's parameters, and
 `IsModule` decides whether an instance already exists.
+
+**Recovery.** After an error the parser carries on, so that one run
+reports them all. `Guard` notes, at the start of a statement or
+declaration, the scanner's state and the parser's; `setjmp` marks the
+place, and `MarkAt` jumps back to it after reporting. `Restore` puts
+the state back, the construct's first symbol current again, and
+`SkipConstruct` reads past it, counting the words that open and close
+blocks. A symbol at the start of a line ends the skip: by the usual
+layout it starts the next declaration, so the statement gives up its
+procedure (`GiveUp`), and `SkipProc` reads to the procedure's
+`end Name;`. A name not declared is declared where it is used, with
+the type `tPoison` (`Poison`), as are the names of a declaration that
+had an error; a construct that uses poison sets `quiet`, and its errors
+aren't reported, since they follow from one that was. Nothing breaks
+for the half-made code: once there is an error, no executable is
+written.
 
 The built-in procedures are in `Builtin` (and `New_`, `Atomic`): each
 parses its own arguments, since `SIZE` takes a type and `INC` a

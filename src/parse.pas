@@ -52,6 +52,7 @@ var
   checkMode: boolean;     { reading a file only for its interface }
   inTypes: boolean;       { in a type section: ^T may name a later type }
   fwdTypes: array[0..255] of PType;
+  fwdPos: array[0..255] of TPos;    { where each names its type }
   numFwd: longint;
   declExported: boolean;  { the export mark of the declaration being read }
   curLoop: PLoop;         { the innermost loop, or nil }
@@ -64,6 +65,9 @@ var
   inExtern: boolean;      { reading an extern's signature: ... allowed }
   tArgv, tBodySig: PType;
   nameRt, nameFail, nameEq, nameMain, nameBody, nameStatic: longint;
+  declaring: array[0..63] of longint;   { the names the declaration being read declares }
+  numDeclaring: longint;
+  skipped: boolean;       { the last statement had an error and was skipped }
 
 procedure Expression(var x: TItem; want: PType); forward;
 function ParseType: PType; forward;
@@ -107,6 +111,121 @@ begin
   end;
 end;
 
+{ Recovery
+
+  After an error the parser goes on with the next statement or
+  declaration, so that one run reports every error. Each statement and
+  declaration is a recovery point: it notes the state of the scanner
+  and the parser where it starts, and an error (MarkAt) jumps back to
+  it. The state is put back, the scanner reads the construct again
+  from its start, skipping to its end, and the parser carries on after
+  it. Nothing is generated after an error, so the code half made for
+  the construct does no harm. A name that isn't declared is declared
+  where it is used, with type tPoison, and what follows from it is not
+  reported again; so are the names of a declaration that had an error.
+
+  Skipping counts the words that open and close blocks. A symbol at
+  the start of a line is taken to start a declaration of the module,
+  as layout has it: a statement skipped up to one gives up its
+  procedure, and the procedure is skipped up to its end. }
+
+type
+  TRecover = record
+    jb: jmp_buf;
+    outer: ^jmp_buf;
+    scan: TScanState;
+    scopes, depth, numDefers: longint;
+    loop: PLoop;
+    result: PType;
+    deferring, directDefer, quiet: boolean;
+  end;
+
+procedure Guard(var r: TRecover);
+begin
+  r.outer := recovery;
+  SaveScan(r.scan);
+  r.scopes := ScopeDepth; r.depth := depth; r.numDefers := numDefers;
+  r.loop := curLoop; r.result := curResult;
+  r.deferring := deferring; r.directDefer := directDefer; r.quiet := quiet;
+  recovery := @r.jb;
+  quiet := false;
+end;
+
+procedure Unguard(var r: TRecover);
+begin
+  recovery := r.outer;
+  quiet := r.quiet;
+end;
+
+{ After an error: the state as it was at the start of r's construct,
+  whose first symbol is again the current one }
+procedure Restore(var r: TRecover);
+begin
+  RestoreScan(r.scan);
+  CutScopes(r.scopes); depth := r.depth; numDefers := r.numDefers;
+  curLoop := r.loop; curResult := r.result;
+  deferring := r.deferring; directDefer := r.directDefer;
+  inTypes := false; declExported := false; inExtern := false;
+end;
+
+{ Gives up the construct r is for, and the one around it }
+procedure GiveUp(var r: TRecover);
+begin
+  Unguard(r);
+  if recovery = nil then Finish;
+  longjmp(recovery^, 1);
+end;
+
+{ Reads to the end of a statement or declaration, from its first
+  symbol: up to the ";" that ends it, not read, or to the "end",
+  "else", "elsif", "until" or "|" of the statement around it. False if
+  it stopped at a symbol that starts a line, or the end of the file. }
+function SkipConstruct: boolean;
+var d, p: longint;
+begin
+  d := 0; p := 0;
+  repeat
+    case tok of
+      sIf, sWhile, sFor, sMatch, sRepeat, sRecord, sVariant: inc(d);
+      sEnd, sUntil: if d = 0 then exit(true) else dec(d);
+      sElse, sElsif, sBar: if (d = 0) and (p = 0) then exit(true);
+      sLparen, sLbrak, sLbrace: inc(p);
+      sRparen, sRbrak, sRbrace: if p > 0 then dec(p);
+      sSemicolon: if (d = 0) and (p = 0) then exit(true);
+      sEof: exit(false);
+    end;
+    Next;
+  until AtLineStart;
+  SkipConstruct := false;
+end;
+
+{ Declares n where it is used, after it was reported as not declared,
+  or after the declaration of it had an error }
+function Poison(n: longint): PObj;
+var o: PObj;
+begin
+  o := NewObj(oConst, n, tPoison);
+  Insert(o, TopScope);
+  Poison := o;
+end;
+
+procedure WillDeclare(n: longint);
+begin
+  if numDeclaring <= High(declaring) then declaring[numDeclaring] := n;
+  inc(numDeclaring);
+end;
+
+{ After a declaration had an error: its names are poison, and reading
+  goes on after it }
+procedure SkipDeclaration;
+var i: longint;
+begin
+  for i := 0 to numDeclaring - 1 do
+    if (i <= High(declaring)) and (Find(TopScope, declaring[i]) = nil) then
+      Poison(declaring[i]);
+  if SkipConstruct and (tok = sSemicolon) then Next;
+end;
+
 function ConstValue(var x: TItem): int64;
 begin
   if x.mode <> mConst then MarkAt(x.pos, 'constant expected');
@@ -126,7 +245,12 @@ var o: PObj;
 begin
   if tok <> sIdent then MarkAt(MissingPos, 'name expected');
   o := Lookup(id);
-  if o = nil then Mark(NameOf(id) + ' isn''t declared');
+  if o = nil then begin
+    Poison(id);
+    quiet := false;
+    Mark(NameOf(id) + ' isn''t declared');
+  end;
+  if o^.typ = tPoison then quiet := true;
   Next;
   if o^.cls = oModule then begin
     Expect(sPeriod, '.');
@@ -396,6 +520,7 @@ begin
         t^.fwd := id;
         if numFwd > High(fwdTypes) then Mark('too many forward pointers');
         fwdTypes[numFwd] := t;
+        fwdPos[numFwd] := TokPos;
         inc(numFwd);
         Next;
       end else
@@ -1161,7 +1286,7 @@ begin
   inc(numDefers);
 end;
 
-procedure Statement;
+procedure OneStatement;
 var x, y: TItem; called: boolean; m: int64; c: TCall; start: TPos;
 begin
   start := TokPos;
@@ -1218,9 +1343,28 @@ begin
       Jmp(curLoop^.brk);
     end;
     sDefer: Defer;
+  else if AtLineStart then MarkAt(MissingPos, 'end expected')
   else MarkAt(MissingPos, 'statement expected');
   end;
   ReleaseTemps(m);
+end;
+
+procedure Statement;
+var r: TRecover; m: int64;
+begin
+  m := TempMark;
+  Guard(r);
+  if setjmp(r.jb) = 0 then begin
+    OneStatement;
+    skipped := false;
+  end else begin
+    Restore(r);
+    { a statement never starts a line: this is the next declaration }
+    if AtLineStart or not SkipConstruct then GiveUp(r);
+    ReleaseTemps(m);
+    skipped := true;
+  end;
+  Unguard(r);
 end;
 
 procedure Statements;
@@ -1231,7 +1375,7 @@ begin
   directDefer := false;
   while not (tok in [sEnd, sElse, sElsif, sUntil, sBar, sEof]) do begin
     Statement;
-    Expect(sSemicolon, ';');
+    if not skipped or (tok = sSemicolon) then Expect(sSemicolon, ';');
   end;
   RunDefers(base);
   numDefers := base;
@@ -1383,6 +1527,7 @@ begin
     Next;
     at := TokPos;
     IdentDef(n, exp);
+    WillDeclare(n);
     at := SpanFrom(at);
     inExtern := true;
     t := Signature;
@@ -1399,6 +1544,7 @@ begin
     if tok <> sVar then MarkAt(MissingPos, 'proc or var expected');
     Next;
     IdentDef(n, exp);
+    WillDeclare(n);
     Expect(sColon, ':');
     declExported := exp;
     t := ParseType;
@@ -1411,93 +1557,115 @@ begin
   Declare(o);
 end;
 
-procedure Declarations(top: boolean);
-var
-  n, i, k: longint; exp: boolean; x: TItem; o: PObj; t: PType;
-  names: array[0..63] of longint; exps: array[0..63] of boolean; start: TPos;
+procedure ConstDecl(top: boolean);
+var n: longint; exp: boolean; x: TItem; o: PObj; t: PType; start: TPos;
 begin
+  IdentDef(n, exp);
+  WillDeclare(n);
+  t := nil;
+  if tok = sColon then begin
+    Next;
+    start := TokPos;
+    t := ParseType;
+    if t <> tError then MarkAt(SpanFrom(start), 'only an ERROR constant has a type');
+  end;
+  Expect(sEql, '=');
+  Expression(x, nil);
+  o := NewObj(oConst, n, x.typ);
+  o^.exported := exp and top;
+  if t = tError then begin
+    o^.typ := tError;
+    o^.val := ErrorChunk(x, curModule^.sname, n) + 1;
+  end else if x.mode = mStr then begin o^.val := x.val; o^.chunk := x.chunk end
+  else o^.val := ConstValue(x);
+  Declare(o);
+  Expect(sSemicolon, ';');
+end;
+
+procedure TypeDecl(top: boolean);
+var n: longint; exp: boolean; o: PObj; t: PType;
+begin
+  IdentDef(n, exp);
+  WillDeclare(n);
+  Expect(sEql, '=');
+  declExported := exp and top;
+  inTypes := true;
+  t := ParseType;
+  o := NewObj(oType, n, t);
+  o^.exported := exp and top;
+  if t^.obj = nil then t^.obj := o;
+  Declare(o);
+  Expect(sSemicolon, ';');
+end;
+
+procedure VarDecl(top: boolean);
+var
+  i, k: longint; o: PObj; t: PType;
+  names: array[0..63] of longint; exps: array[0..63] of boolean;
+begin
+  k := 0;
   repeat
-    case tok of
-      sConst: begin
-        Next;
-        while tok = sIdent do begin
-          IdentDef(n, exp);
-          t := nil;
-          if tok = sColon then begin
-            Next;
-            start := TokPos;
-            t := ParseType;
-            if t <> tError then MarkAt(SpanFrom(start), 'only an ERROR constant has a type');
-          end;
-          Expect(sEql, '=');
-          Expression(x, nil);
-          o := NewObj(oConst, n, x.typ);
-          o^.exported := exp and top;
-          if t = tError then begin
-            o^.typ := tError;
-            o^.val := ErrorChunk(x, curModule^.sname, n) + 1;
-          end else if x.mode = mStr then begin o^.val := x.val; o^.chunk := x.chunk end
-          else o^.val := ConstValue(x);
-          Declare(o);
-          Expect(sSemicolon, ';');
-        end;
-      end;
-      sType: begin
-        Next;
-        inTypes := true;
-        numFwd := 0;
-        while tok = sIdent do begin
-          IdentDef(n, exp);
-          Expect(sEql, '=');
-          declExported := exp and top;
-          t := ParseType;
-          o := NewObj(oType, n, t);
-          o^.exported := exp and top;
-          if t^.obj = nil then t^.obj := o;
-          Declare(o);
-          Expect(sSemicolon, ';');
-        end;
-        for i := 0 to numFwd - 1 do begin
-          o := Lookup(fwdTypes[i]^.fwd);
-          if (o = nil) or (o^.cls <> oType) then Mark(NameOf(fwdTypes[i]^.fwd) + ' isn''t declared');
-          fwdTypes[i]^.base := o^.typ;
-          fwdTypes[i]^.fwd := -1;
-        end;
-        inTypes := false;
-        declExported := false;
-      end;
-      sVar: begin
-        Next;
-        while tok = sIdent do begin
-          k := 0;
-          repeat
-            if k > High(names) then Mark('too many names');
-            IdentDef(names[k], exps[k]);
-            inc(k);
-            if tok <> sComma then break;
-            Next;
-          until false;
-          Expect(sColon, ':');
-          declExported := top and exps[0];
-          t := ParseType;
-          declExported := false;
-          for i := 0 to k - 1 do begin
-            o := NewObj(oVar, names[i], t);
-            o^.exported := exps[i] and top;
-            o^.isVar := false;
-            if top then begin
-              o^.lev := 0;
-              o^.chunk := NewChunk(secBss, curModule^.sname, names[i]);
-              SetBss(o^.chunk, t^.size, t^.align);
-            end else begin
-              o^.lev := 1;
-              o^.val := AllocPerm(t^.size, t^.align);
-            end;
-            Declare(o);
-          end;
-          Expect(sSemicolon, ';');
-        end;
-      end;
+    if k > High(names) then Mark('too many names');
+    IdentDef(names[k], exps[k]);
+    WillDeclare(names[k]);
+    inc(k);
+    if tok <> sComma then break;
+    Next;
+  until false;
+  Expect(sColon, ':');
+  declExported := top and exps[0];
+  t := ParseType;
+  declExported := false;
+  for i := 0 to k - 1 do begin
+    o := NewObj(oVar, names[i], t);
+    o^.exported := exps[i] and top;
+    o^.isVar := false;
+    if top then begin
+      o^.lev := 0;
+      o^.chunk := NewChunk(secBss, curModule^.sname, names[i]);
+      SetBss(o^.chunk, t^.size, t^.align);
+    end else begin
+      o^.lev := 1;
+      o^.val := AllocPerm(t^.size, t^.align);
+    end;
+    Declare(o);
+  end;
+  Expect(sSemicolon, ';');
+end;
+
+{ After a procedure had an error: its name is poison if it wasn't
+  declared, and reading goes on after the "end Name;" that closes it,
+  or at the next procedure if that is missing }
+procedure SkipProc;
+var st: TScanState;
+begin
+  Next;
+  if (tok = sIdent) and (Find(TopScope, id) = nil) then Poison(id);
+  repeat
+    repeat Next until AtLineStart or (tok = sEof);
+    if tok in [sProc, sExtern, sEof] then exit;
+    if tok = sEnd then begin
+      SaveScan(st);
+      Next;
+      if tok = sIdent then Next;
+      if tok = sSemicolon then begin Next; exit end;
+      RestoreScan(st);
+      exit;
+    end;
+  until false;
+end;
+
+{ One declaration, of the kind k, as a recovery point }
+procedure Declaration(k: TSym; top: boolean);
+var r: TRecover;
+begin
+  Guard(r);
+  numDeclaring := 0;
+  if setjmp(r.jb) = 0 then
+    case k of
+      sConst: ConstDecl(top);
+      sType: TypeDecl(top);
+      sVar: VarDecl(top);
       sProc: begin
         if not top then Mark('procedures don''t nest');
         ProcDecl;
@@ -1508,6 +1676,39 @@ begin
         ExternDecl;
         Expect(sSemicolon, ';');
       end;
+    end
+  else begin
+    Restore(r);
+    if k = sProc then SkipProc else SkipDeclaration;
+  end;
+  Unguard(r);
+end;
+
+procedure Declarations(top: boolean);
+var i: longint; o: PObj; k: TSym;
+begin
+  repeat
+    k := tok;
+    case k of
+      sConst, sVar: begin
+        Next;
+        while tok = sIdent do Declaration(k, top);
+      end;
+      sType: begin
+        Next;
+        numFwd := 0;
+        while tok = sIdent do Declaration(sType, top);
+        inTypes := false;
+        for i := 0 to numFwd - 1 do begin
+          o := Lookup(fwdTypes[i]^.fwd);
+          if (o = nil) or (o^.cls <> oType) then begin
+            Error(fwdPos[i], NameOf(fwdTypes[i]^.fwd) + ' isn''t declared');
+            fwdTypes[i]^.base := tPoison;
+          end else fwdTypes[i]^.base := o^.typ;
+          fwdTypes[i]^.fwd := -1;
+        end;
+      end;
+      sProc, sExtern: Declaration(k, top);
     else exit;
     end;
   until false;
@@ -1716,9 +1917,10 @@ begin
   if tok <> sPeriod then MarkAt(MissingPos, '. expected');
   o := m^.first;
   while o <> nil do begin
-    if (o^.cls = oProc) and o^.fwd then Mark(NameOf(o^.name) + ' is declared forward but never defined');
+    if (o^.cls = oProc) and o^.fwd then Error(TokPos, NameOf(o^.name) + ' is declared forward but never defined');
     o := o^.link;
   end;
+  if errors > 0 then Finish;   { a module with errors stops the compiler after it }
   CloseScope;
   m^.done := true;
   if not checkOnly then begin

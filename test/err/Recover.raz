@@ -1,0 +1,40 @@
+module Recover;
+
+import Out;
+
+type
+    P = record a: I64; b: Foo; end;
+    Q = record a: I64; end;
+
+var g: Bar;
+    h: I64;
+
+proc f(x: I64): I64;
+var b: BOOL;
+begin
+    b := x;
+    x := y + 1;
+    x := y * 2;
+    if x = 1 then
+        x := (x + 2) * b;
+        Out.int(z);
+    end;
+    return x + true;
+end f;
+
+proc g2(): Q;
+var q: Q;
+begin
+    q.c := 1;
+    h := g;
+    Out.str("hi")
+    return q;
+end g2;
+
+proc main*();
+begin
+    Out.int(f(1));
+    Out.int(nope(2));
+end main;
+
+end Recover.

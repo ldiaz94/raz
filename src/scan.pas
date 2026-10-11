@@ -7,7 +7,9 @@
   current symbol is, for messages.
 
   Depends on: BaseUnix, to read files; diag, to report errors.
-  Leaves out: recovery from errors. The first error stops the compiler. }
+  Leaves out: recovery from errors in the text itself, such as a string
+  not closed: the first such error stops the compiler. The parser goes
+  on after its own errors, through recovery below. }
 
 unit scan;
 
@@ -68,6 +70,15 @@ function Open(const path: shortstring): boolean;
 procedure Next;
 procedure Mark(const msg: shortstring);
 procedure MarkAt(const p: TPos; const msg: shortstring);
+function AtLineStart: boolean;
+
+var
+  { Where the parser goes on after an error: the innermost statement or
+    declaration being read. nil stops the compiler at the first error. }
+  recovery: ^jmp_buf;
+  { The construct being read uses a name already reported as not
+    declared: its errors follow from that one, and aren't reported. }
+  quiet: boolean;
 procedure SaveScan(var st: TScanState);
 procedure RestoreScan(const st: TScanState);
 function TokPos: TPos;
@@ -219,18 +230,35 @@ begin
   MarkAt(TokPos, msg);
 end;
 
-{ Report at the bytes a to b of the file being read }
+{ An error in the parser's construct at p: reported, then the parser
+  goes on from the recovery point. }
+procedure MarkAt(const p: TPos; const msg: shortstring);
+begin
+  if not quiet then Error(p, msg);
+  if recovery = nil then Finish;
+  longjmp(recovery^, 1);
+end;
+
+{ An error in the text at bytes a to b of the file being read, which
+  stops the compiler: past it, the symbols can't be trusted. }
 procedure MarkBytes(a, b: longint; const msg: shortstring);
 var p: TPos;
 begin
   p.f := cur.f; p.a := a; p.b := b;
-  MarkAt(p, msg);
-end;
-
-procedure MarkAt(const p: TPos; const msg: shortstring);
-begin
   Error(p, msg);
   Finish;
+end;
+
+procedure LexError(const msg: shortstring);
+begin
+  MarkBytes(cur.tokPos, cur.pos, msg);
+end;
+
+{ The current symbol is the first on its line: at the top level of a
+  module, by the usual layout, so where reading can start again. }
+function AtLineStart: boolean;
+begin
+  AtLineStart := cur.tokPos = cur.tokLineStart;
 end;
 
 { Files }
@@ -296,13 +324,13 @@ begin
     $F4: begin n := 3; cp := 4; hi := $8F end;     { up to 10FFFFH }
   else
     cur.tokPos := pos;
-    Mark('bad UTF-8');
+    LexError('bad UTF-8');
   end;
   for i := 1 to n do begin
     b1 := byte(cur.buf[pos + i]);
     if (b1 < lo) or (b1 > hi) or (pos + i >= cur.len) then begin
       cur.tokPos := pos;
-      Mark('bad UTF-8');
+      LexError('bad UTF-8');
     end;
     cp := cp shl 6 or (b1 and $3F);
     lo := $80; hi := $BF;
@@ -313,7 +341,7 @@ end;
 
 procedure Put(b: longint);
 begin
-  if slen >= MaxStr then Mark('string too long');
+  if slen >= MaxStr then LexError('string too long');
   sbuf[slen] := b;
   inc(slen);
 end;
@@ -385,7 +413,7 @@ begin
   end else if byte(c) >= $80 then
     v := Utf8(cur.pos)
   else if (c < ' ') or (c = #127) then
-    Mark('unterminated literal')
+    LexError('unterminated literal')
   else begin
     v := ord(c);
     inc(cur.pos);
@@ -431,40 +459,40 @@ begin
   if cur.buf[cur.pos] = 'H' then begin
     v := 0;
     for i := start to cur.pos - 1 do begin
-      if v shr 60 <> 0 then Mark('number too big');
+      if v shr 60 <> 0 then LexError('number too big');
       v := v * 16 + qword(HexVal(cur.buf[i]));
     end;
     inc(cur.pos);
     tok := sInt;
     ival := int64(v);   { 16 digits are the bits of a 64-bit word }
   end else if (cur.buf[cur.pos] = '.') and (cur.buf[cur.pos + 1] in ['0'..'9']) then begin
-    if not allDec then Mark('bad number');
+    if not allDec then LexError('bad number');
     inc(cur.pos);
     while cur.buf[cur.pos] in ['0'..'9'] do inc(cur.pos);
     if cur.buf[cur.pos] = 'E' then begin
       inc(cur.pos);
       if cur.buf[cur.pos] in ['+', '-'] then inc(cur.pos);
-      if not (cur.buf[cur.pos] in ['0'..'9']) then Mark('bad exponent');
+      if not (cur.buf[cur.pos] in ['0'..'9']) then LexError('bad exponent');
       while cur.buf[cur.pos] in ['0'..'9'] do inc(cur.pos);
     end;
-    if cur.pos - start > 255 then Mark('number too long');
+    if cur.pos - start > 255 then LexError('number too long');
     SetLength(s, cur.pos - start);
     Move(cur.buf[start], s[1], cur.pos - start);
     Val(s, rval, code);
-    if code <> 0 then Mark('bad real');
+    if code <> 0 then LexError('bad real');
     tok := sReal;
   end else begin
-    if not allDec then Mark('hex number needs H');
+    if not allDec then LexError('hex number needs H');
     v := 0;
     for i := start to cur.pos - 1 do begin
       d := ord(cur.buf[i]) - ord('0');
-      if v > (qword(high(int64)) - qword(d)) div 10 then Mark('number too big');
+      if v > (qword(high(int64)) - qword(d)) div 10 then LexError('number too big');
       v := v * 10 + qword(d);
     end;
     tok := sInt;
     ival := int64(v);
   end;
-  if cur.buf[cur.pos] in ['A'..'Z', 'a'..'z', '_', '0'..'9'] then Mark('bad number');
+  if cur.buf[cur.pos] in ['A'..'Z', 'a'..'z', '_', '0'..'9'] then LexError('bad number');
 end;
 
 procedure Next;
@@ -492,7 +520,7 @@ begin
       start := cur.pos;
       repeat inc(cur.pos)
       until not (cur.buf[cur.pos] in ['A'..'Z', 'a'..'z', '0'..'9', '_']);
-      if cur.pos - start > MaxIdent then Mark('name too long');
+      if cur.pos - start > MaxIdent then LexError('name too long');
       h := Intern(@cur.buf[start], cur.pos - start);
       if h < NumWords then tok := TSym(ord(sAnd) + h)
       else begin tok := sIdent; id := h end;
@@ -500,9 +528,9 @@ begin
     '0'..'9': Number;
     '''': begin
       inc(cur.pos);
-      if cur.buf[cur.pos] = '''' then Mark('empty character');
+      if cur.buf[cur.pos] = '''' then LexError('empty character');
       v := LitChar(false);
-      if cur.buf[cur.pos] <> '''' then Mark('character not closed');
+      if cur.buf[cur.pos] <> '''' then LexError('character not closed');
       inc(cur.pos);
       tok := sChar;
       ival := v;
@@ -563,7 +591,7 @@ begin
     end;
   else
     if byte(c) >= $80 then
-      Mark('text outside strings, characters and comments must be ASCII');
+      LexError('text outside strings, characters and comments must be ASCII');
     MarkBytes(cur.pos, cur.pos + 1, 'unexpected character');
   end;
 end;

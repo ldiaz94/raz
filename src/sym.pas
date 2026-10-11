@@ -124,6 +124,7 @@ const
 var
   tI8, tI16, tI32, tI64, tU8, tU16, tU32, tU64: PType;
   tBool, tF32, tReal, tRConst, tError, tConst, tNil, tStr, tNone, tPtrU8, tBytes: PType;
+  tPoison: PType;   { of a name reported as not declared }
   curModule: PModule;
 
 function NewType(form: TForm; size, align: int64): PType;
@@ -131,6 +132,8 @@ function NewObj(cls: TClass; name: longint; typ: PType): PObj;
 function NewScope: longint;
 procedure OpenScope(s: longint);
 procedure CloseScope;
+function ScopeDepth: longint;
+procedure CutScopes(d: longint);
 function TopScope: longint;
 procedure SaveScopes(var d: longint; var saved: array of longint);
 procedure RestoreScopes(d: longint; const saved: array of longint);
@@ -221,6 +224,17 @@ var i: longint;
 begin
   depth := d;
   for i := 0 to depth - 1 do scopes[i] := saved[i];
+end;
+
+function ScopeDepth: longint;
+begin
+  ScopeDepth := depth;
+end;
+
+{ Closes the scopes opened since there were d, after an error }
+procedure CutScopes(d: longint);
+begin
+  depth := d;
 end;
 
 function TopScope: longint;
@@ -490,6 +504,8 @@ initialization
   tPtrU8^.base := tU8;
   tBytes := NewType(fSlice, 16, 8);
   tBytes^.base := tU8;
+  tPoison := NewType(fInt, 8, 8);
+  tPoison^.signed := true;
   Enter('true', oConst, tBool, 1);
   Enter('false', oConst, tBool, 0);
   Enter('nil', oConst, tNil, 0);
