@@ -1,0 +1,8 @@
+module GenTooFewValue;
+type F = proc(a: I64);
+proc main*;
+var f: F;
+begin
+    f();
+end;
+end GenTooFewValue.

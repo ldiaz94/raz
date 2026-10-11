@@ -1,0 +1,4 @@
+test/err/StmtVarOrProc.raz:2:8: error: expected "proc" or "var", found a number
+    2 | extern 5;
+      |        ^
+raz: 1 error

@@ -1,0 +1,4 @@
+test/err/GenIntTypes.raz:6:10: error: different types: I32 and I64
+    6 |     b := a + b;
+      |          ^^^^^
+raz: 1 error

@@ -1,0 +1,7 @@
+module ScanUtf8;
+proc main*;
+var s: [4]U8;
+begin
+    s := "ÿ";
+end;
+end ScanUtf8.

@@ -1,4 +1,4 @@
-test/err/AtMany.raz:7:16: error: too many arguments
+test/err/AtMany.raz:7:16: error: too many arguments: Id takes 1
     7 |     x := Id(1, 2 * 3);
       |                ^^^^^
 raz: 1 error

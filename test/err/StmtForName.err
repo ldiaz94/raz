@@ -1,0 +1,4 @@
+test/err/StmtForName.raz:5:9: error: k isn't a variable
+    5 |     for k := 1 to 2 do end;
+      |         ^
+raz: 1 error

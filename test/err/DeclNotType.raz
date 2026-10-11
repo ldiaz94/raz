@@ -1,0 +1,7 @@
+module DeclNotType;
+proc main*;
+var n: I64;
+var a: n;
+begin
+end;
+end DeclNotType.

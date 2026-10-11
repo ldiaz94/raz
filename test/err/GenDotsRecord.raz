@@ -1,0 +1,9 @@
+module GenDotsRecord;
+import C;
+type R = record a, b: I64; end;
+proc main*;
+var r: R;
+begin
+    C.printf("%d", r);
+end;
+end GenDotsRecord.

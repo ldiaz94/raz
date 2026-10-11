@@ -8,12 +8,12 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 248 | 177 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 612 | 509 | Symbols, literals, comments, positions |
+| `src/diag.pas` | 249 | 178 | Messages: positions, source excerpts, colour, counts |
+| `src/scan.pas` | 660 | 529 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 526 | 437 | Types, objects, scopes, layout |
 | `src/x64.pas` | 682 | 548 | Code buffer, chunks, fixups, line notes, instruction encoder |
-| `src/gen.pas` | 1,468 | 1,281 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,053 | 1,873 | Declarations, statements, expressions, built-ins, recovery |
+| `src/gen.pas` | 1,492 | 1,303 | Items: loading, storing, copying, frames, calls |
+| `src/parse.pas` | 2,094 | 1,908 | Declarations, statements, expressions, built-ins, recovery |
 | `src/link.pas` | 131 | 95 | Tree shaking, layout, patching |
 | `src/elf.pas` | 425 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 219 | 172 | The command line, the entry points |
@@ -143,9 +143,13 @@ in strings, characters and comments. Anywhere else it is an error.
 from a saved position to the end of the symbol before the current one,
 and `MissingPos` the place to say a symbol is missing: just after the
 symbol before, when the current one starts a new line. Errors go
-through `Mark`, at the current symbol, or `MarkAt`, at a position; each
-reports the error (`diag.Error`) and jumps to `recovery`, the parser's
-place to go on from (see parse.pas). Errors in the text itself stop the
+through `Mark`, at the current symbol, `MarkAt`, at a position, or
+`MarkHelp`, which adds a line of help; each reports the error
+(`diag.Error`) and jumps to `recovery`, the parser's place to go on
+from (see parse.pas). A message names what it found: `Found` describes
+the current symbol and `SymText` spells an operator or reserved word,
+so that the parser's `Expect` and `Expected` say `expected ";", found
+"end"`. Errors in the text itself stop the
 compiler (`MarkBytes`, `LexError`): past a string left open, the
 symbols can't be trusted. There is no
 recovery: the first error ends the compilation. `SaveScan` and `RestoreScan` keep

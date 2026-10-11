@@ -1,0 +1,8 @@
+module DeclLitNotExported;
+import Plat;
+proc main*;
+var i: Plat.Info;
+begin
+    i := {extra: 1};
+end;
+end DeclLitNotExported.

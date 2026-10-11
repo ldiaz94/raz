@@ -1,0 +1,4 @@
+test/err/ScanHexH.raz:5:10: error: a hex number ends with H
+    5 |     x := 12A;
+      |          ^^^
+raz: 1 error

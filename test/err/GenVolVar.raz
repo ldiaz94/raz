@@ -1,0 +1,8 @@
+module GenVolVar;
+proc P(var a: I64); begin end;
+proc main*;
+var p: ^VOLATILE I64;
+begin
+    P(p^);
+end;
+end GenVolVar.

@@ -1,0 +1,4 @@
+test/err/GenFrame.raz:7:4: error: frame too big
+    7 | end;
+      |    ^
+raz: 1 error

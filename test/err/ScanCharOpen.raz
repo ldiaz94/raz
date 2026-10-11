@@ -1,0 +1,7 @@
+module ScanCharOpen;
+proc main*;
+var c: U8;
+begin
+    c := 'ab';
+end;
+end ScanCharOpen.

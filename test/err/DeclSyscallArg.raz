@@ -1,0 +1,7 @@
+module DeclSyscallArg;
+proc main*;
+var n: I64;
+begin
+    n := SYSCALL(1, 1.5);
+end;
+end DeclSyscallArg.

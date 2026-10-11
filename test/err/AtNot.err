@@ -1,4 +1,4 @@
-test/err/AtNot.raz:5:14: error: not needs BOOL or an integer
+test/err/AtNot.raz:5:14: error: "not" needs a BOOL or an integer, found []U8
     5 |     b := not s;
       |              ^
 raz: 1 error

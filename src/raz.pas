@@ -66,7 +66,7 @@ begin
       seen := false;
       for i := 0 to numNeeded - 1 do seen := seen or (needed[i] = l^.name);
       if not seen then begin
-        if numNeeded > High(needed) then Fatal('too many libraries');
+        if numNeeded > High(needed) then Fatal('more than ' + IntStr(High(needed) + 1) + ' libraries');
         needed[numNeeded] := l^.name;
         inc(numNeeded);
       end;
@@ -107,7 +107,7 @@ begin
     s := ParamStr(i);
     if s = '-I' then begin
       inc(i);
-      if numInc > High(incDirs) then Fatal('too many -I');
+      if numInc > High(incDirs) then Fatal('more than ' + IntStr(High(incDirs) + 1) + ' -I directories');
       incDirs[numInc] := ParamStr(i);
       inc(numInc);
     end else if s = '-o' then begin

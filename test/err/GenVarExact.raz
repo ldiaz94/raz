@@ -1,0 +1,8 @@
+module GenVarExact;
+proc P(var a: I64); begin end;
+proc main*;
+var x: I32;
+begin
+    P(x);
+end;
+end GenVarExact.

@@ -1,4 +1,4 @@
-test/err/AtPNotStmt.raz:5:5: error: not a statement
+test/err/AtPNotStmt.raz:5:5: error: a isn't a statement
     5 |     a;
       |     ^
 raz: 1 error

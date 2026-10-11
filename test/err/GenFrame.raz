@@ -1,0 +1,8 @@
+module GenFrame;
+
+proc main*;
+var a: [3000000000]U8;
+begin
+    
+end;
+end GenFrame.

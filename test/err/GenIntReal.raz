@@ -1,0 +1,8 @@
+module GenIntReal;
+
+proc main*;
+var x: I64; y: F64;
+begin
+    y := x + y;
+end;
+end GenIntReal.

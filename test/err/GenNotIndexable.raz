@@ -1,0 +1,8 @@
+module GenNotIndexable;
+
+proc main*;
+var x: I64;
+begin
+    x := x[0];
+end;
+end GenNotIndexable.

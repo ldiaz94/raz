@@ -1,0 +1,7 @@
+module ScanUBad;
+proc main*;
+var s: [4]U8;
+begin
+    s := "\u{41";
+end;
+end ScanUBad.

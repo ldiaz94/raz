@@ -1,0 +1,7 @@
+module GenReturnNone;
+proc P(): I64; begin return; end;
+proc main*;
+begin
+    P();
+end;
+end GenReturnNone.

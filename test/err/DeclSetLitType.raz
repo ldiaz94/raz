@@ -1,0 +1,8 @@
+module DeclSetLitType;
+type C = (r, g);
+proc main*;
+var n: I64;
+begin
+    n := {r};
+end;
+end DeclSetLitType.

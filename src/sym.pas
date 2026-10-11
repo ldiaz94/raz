@@ -199,7 +199,7 @@ end;
 
 procedure OpenScope(s: longint);
 begin
-  if depth = MaxDepth then Mark('nested too deeply');
+  if depth = MaxDepth then Mark('scopes nested more than ' + IntStr(MaxDepth) + ' deep');
   scopes[depth] := s;
   inc(depth);
 end;

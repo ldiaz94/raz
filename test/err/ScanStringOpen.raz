@@ -1,0 +1,7 @@
+module ScanStringOpen;
+proc main*;
+var s: [4]U8;
+begin
+    s := "abc;
+end;
+end ScanStringOpen.

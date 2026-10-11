@@ -1,0 +1,6 @@
+module StmtNest;
+proc main*;
+  proc inner; forward;
+begin
+end;
+end StmtNest.

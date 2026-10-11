@@ -1,0 +1,4 @@
+test/err/DeclNotExported.raz:6:21: error: hidden isn't exported by DeclHidden
+    6 |     n := DeclHidden.hidden;
+      |                     ^^^^^^
+raz: 1 error

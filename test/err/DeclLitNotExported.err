@@ -1,0 +1,4 @@
+test/err/DeclLitNotExported.raz:6:11: error: field extra of Plat.Info isn't exported
+    6 |     i := {extra: 1};
+      |           ^^^^^
+raz: 1 error

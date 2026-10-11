@@ -1,0 +1,7 @@
+module ScanBigHex;
+proc main*;
+var x: U64;
+begin
+    x := 10000000000000000H;
+end;
+end ScanBigHex.

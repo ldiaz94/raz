@@ -306,7 +306,7 @@ end;
 
 function Mem(base: longint; disp: int64): TMem;
 begin
-  if (disp < low(longint)) or (disp > high(longint)) then Mark('offset too big');
+  if (disp < low(longint)) or (disp > high(longint)) then Mark('an offset beyond 32 bits');
   Mem.base := base; Mem.index := NoIndex; Mem.scale := 1;
   Mem.disp := disp; Mem.chunk := -1;
 end;

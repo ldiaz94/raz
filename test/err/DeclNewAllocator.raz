@@ -1,0 +1,7 @@
+module DeclNewAllocator;
+proc main*;
+var p, q: ^I64;
+begin
+    NEW(p, q);
+end;
+end DeclNewAllocator.

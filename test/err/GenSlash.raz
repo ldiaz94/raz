@@ -1,0 +1,8 @@
+module GenSlash;
+
+proc main*;
+var x: I64;
+begin
+    x := 6 / 3;
+end;
+end GenSlash.

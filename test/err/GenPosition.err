@@ -1,0 +1,4 @@
+test/err/GenPosition.raz:6:12: error: 5 isn't a position of C
+    6 |     c := C(5);
+      |            ^
+raz: 1 error

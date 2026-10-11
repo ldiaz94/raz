@@ -1,0 +1,4 @@
+test/err/GenStringOperand.raz:6:10: error: a string can't be an operand
+    6 |     x := "a" + 1;
+      |          ^^^
+raz: 1 error

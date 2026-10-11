@@ -1,0 +1,3 @@
+module StmtImportName;
+import 5;
+end StmtImportName.

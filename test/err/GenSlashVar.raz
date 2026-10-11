@@ -1,0 +1,8 @@
+module GenSlashVar;
+
+proc main*;
+var x, y: I64;
+begin
+    x := x / y;
+end;
+end GenSlashVar.

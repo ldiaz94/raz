@@ -1,4 +1,4 @@
-test/err/AtPtrMinus.raz:5:10: error: different pointer types
+test/err/AtPtrMinus.raz:5:10: error: different types: ^I64 and ^I32
     5 |     x := p - q;
       |          ^^^^^
 raz: 1 error

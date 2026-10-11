@@ -1,0 +1,8 @@
+module StmtEnd;
+proc main*;
+var a: I64;
+begin
+    a := 1;
+)
+end;
+end StmtEnd.

@@ -1,0 +1,4 @@
+test/err/DeclFwdPtrs.raz:35:11: error: more than 256 pointers to types not yet declared
+   35 |   P256 = ^T256;
+      |           ^^^^
+raz: 1 error

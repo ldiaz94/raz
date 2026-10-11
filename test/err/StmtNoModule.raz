@@ -1,0 +1,3 @@
+module StmtNoModule;
+import Nothing;
+end StmtNoModule.

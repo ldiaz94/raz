@@ -1,0 +1,4 @@
+test/err/DeclNewAllocator.raz:5:12: error: NEW needs a ^Mem.Allocator, found ^I64
+    5 |     NEW(p, q);
+      |            ^
+raz: 1 error

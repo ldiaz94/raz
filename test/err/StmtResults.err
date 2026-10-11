@@ -1,0 +1,4 @@
+test/err/StmtResults.raz:6:16: error: expected a call with 3 results
+    6 |     a, b, c := two();
+      |                ^^^^^
+raz: 1 error

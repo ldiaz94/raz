@@ -1,0 +1,4 @@
+test/err/StmtCodeTakes.raz:3:6: error: a code procedure takes integers, BOOL, reals, pointers and procedures
+    3 | proc f(r: R);
+      |      ^
+raz: 1 error

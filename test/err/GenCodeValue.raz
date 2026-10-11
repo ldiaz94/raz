@@ -1,0 +1,8 @@
+module GenCodeValue;
+type F = proc(): (I64, I64); proc Two(): (I64, I64); code 0C3H;
+proc main*;
+var f: F;
+begin
+    f := Two;
+end;
+end GenCodeValue.

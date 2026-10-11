@@ -1,0 +1,8 @@
+module DeclSetNames;
+type C = (r, g);
+proc main*;
+var s: set of C;
+begin
+    s := {} + {1};
+end;
+end DeclSetNames.

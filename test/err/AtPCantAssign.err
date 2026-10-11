@@ -1,4 +1,4 @@
-test/err/AtPCantAssign.raz:7:8: error: can't assign to this
+test/err/AtPCantAssign.raz:7:8: error: can't assign to k
     7 |     a, k := two();
       |        ^
 raz: 1 error

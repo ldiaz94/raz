@@ -1,0 +1,8 @@
+module GenPosition;
+type C = (red, green);
+proc main*;
+var c: C;
+begin
+    c := C(5);
+end;
+end GenPosition.

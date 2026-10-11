@@ -1,0 +1,4 @@
+test/err/GenVolSlice.raz:6:10: error: can't make a slice through a volatile pointer
+    6 |     s := p^;
+      |          ^^
+raz: 1 error

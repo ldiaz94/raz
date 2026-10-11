@@ -1,19 +1,19 @@
-test/err/Resync.raz:10:5: error: ; expected
+test/err/Resync.raz:10:5: error: expected ";", found a
    10 | end a;
       |     ^
-test/err/Resync.raz:14:31: error: ; expected
+test/err/Resync.raz:14:31: error: expected ";", found "end"
    14 |     while x > 0 do x := x - 1 end;
       |                               ^^^
-test/err/Resync.raz:15:10: error: expression expected
+test/err/Resync.raz:15:10: error: expected an expression, found ")"
    15 |     x := ) + 2;
       |          ^
-test/err/Resync.raz:16:11: error: match needs a variant or an enumeration
+test/err/Resync.raz:16:11: error: match needs a variant or an enumeration, found I64
    16 |     match x
       |           ^
-test/err/Resync.raz:23:13: error: expression expected
+test/err/Resync.raz:23:13: error: expected an expression, found ";"
    23 |     x := 1 +;
       |             ^
-test/err/Resync.raz:23:14: error: end expected
+test/err/Resync.raz:23:14: error: expected "end", found "proc"
    23 |     x := 1 +;
       |              ^
 test/err/Resync.raz:27:10: error: can't use BOOL as I64

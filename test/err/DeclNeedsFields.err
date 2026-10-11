@@ -1,0 +1,4 @@
+test/err/DeclNeedsFields.raz:9:10: error: circle needs its fields
+    9 |     s := circle;
+      |          ^^^^^^
+raz: 1 error

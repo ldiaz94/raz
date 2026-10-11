@@ -1,0 +1,7 @@
+module ScanHexDigits;
+proc main*;
+var s: [4]U8;
+begin
+    s := "\xZ1";
+end;
+end ScanHexDigits.

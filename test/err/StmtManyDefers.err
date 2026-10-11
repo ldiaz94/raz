@@ -1,0 +1,4 @@
+test/err/StmtManyDefers.raz:9:173: error: more than 64 deferred statements in one procedure
+    9 |     defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; 
+      |                                                                                                                                                                             ^^^^^
+raz: 1 error

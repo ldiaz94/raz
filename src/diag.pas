@@ -40,6 +40,7 @@ function Join(const p, q: TPos): TPos;
 procedure Error(const p: TPos; const msg: shortstring);
 procedure Warning(const p: TPos; const msg: shortstring);
 procedure Note(const p: TPos; const msg: shortstring);
+function IntStr(n: int64): shortstring;
 procedure Help(const msg: shortstring);
 procedure Fatal(const msg: shortstring);
 procedure Finish;
@@ -113,7 +114,7 @@ begin
   if colour then Paint := c + s + Plain else Paint := s;
 end;
 
-function IntStr(n: longint): shortstring;
+function IntStr(n: int64): shortstring;
 var s: shortstring;
 begin
   Str(n, s);

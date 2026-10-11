@@ -1,0 +1,15 @@
+module StmtNotCase;
+type S = variant
+    circle(r: F64);
+    rect(w, h: F64);
+    dot;
+end;
+proc main*;
+var s: S;
+begin
+    match s of
+    | square: s := dot;
+    | else:
+    end;
+end;
+end StmtNotCase.

@@ -1,0 +1,4 @@
+test/err/DeclSetNames.raz:6:16: error: a set holds names of an enumeration, found an integer constant
+    6 |     s := {} + {1};
+      |                ^
+raz: 1 error

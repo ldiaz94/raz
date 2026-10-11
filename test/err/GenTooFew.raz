@@ -1,0 +1,8 @@
+module GenTooFew;
+proc Id(a: I64): I64; begin return a; end;
+proc main*;
+var x: I64;
+begin
+    x := Id();
+end;
+end GenTooFew.

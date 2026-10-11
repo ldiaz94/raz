@@ -1,0 +1,8 @@
+module GenPtrOp;
+
+proc main*;
+var p: ^I64; b: BOOL;
+begin
+    b := p + p;
+end;
+end GenPtrOp.

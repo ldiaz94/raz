@@ -1,4 +1,4 @@
-test/err/AtIndexConst.raz:5:12: error: index out of range
+test/err/AtIndexConst.raz:5:12: error: index 5 is out of range for a length of 4
     5 |     x := a[2 + 3];
       |            ^^^^^
 raz: 1 error

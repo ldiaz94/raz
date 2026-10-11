@@ -1,0 +1,4 @@
+test/err/StmtFewFields.raz:11:13: error: name all the fields of rect, or none
+   11 |     | rect(w):
+      |             ^
+raz: 1 error

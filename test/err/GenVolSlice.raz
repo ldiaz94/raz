@@ -1,0 +1,8 @@
+module GenVolSlice;
+
+proc main*;
+var p: ^VOLATILE [4]I64; s: []I64;
+begin
+    s := p^;
+end;
+end GenVolSlice.

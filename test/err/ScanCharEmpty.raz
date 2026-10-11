@@ -1,0 +1,7 @@
+module ScanCharEmpty;
+proc main*;
+var c: U8;
+begin
+    c := '';
+end;
+end ScanCharEmpty.

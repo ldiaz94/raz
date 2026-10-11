@@ -1,0 +1,8 @@
+module DeclLitNoField;
+type R = record a: I64; end;
+proc main*;
+var r: R;
+begin
+    r := {b: 1};
+end;
+end DeclLitNoField.

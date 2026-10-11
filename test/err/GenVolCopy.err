@@ -1,0 +1,4 @@
+test/err/GenVolCopy.raz:6:10: error: can't copy through a volatile pointer
+    6 |     r := p^;
+      |          ^^
+raz: 1 error

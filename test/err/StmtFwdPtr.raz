@@ -1,0 +1,3 @@
+module StmtFwdPtr;
+type P = ^Missing;
+end StmtFwdPtr.

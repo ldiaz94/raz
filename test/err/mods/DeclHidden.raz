@@ -1,0 +1,4 @@
+module DeclHidden;
+const shown* = 1;
+const hidden = 2;
+end DeclHidden.

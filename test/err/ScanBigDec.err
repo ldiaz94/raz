@@ -1,0 +1,4 @@
+test/err/ScanBigDec.raz:5:10: error: 9223372036854775808 is too big for I64
+    5 |     x := 9223372036854775808;
+      |          ^^^^^^^^^^^^^^^^^^^
+raz: 1 error

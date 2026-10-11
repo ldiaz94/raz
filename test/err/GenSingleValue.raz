@@ -1,0 +1,8 @@
+module GenSingleValue;
+type R = record a, b: I64; end;
+proc main*;
+var r: R; x: I64;
+begin
+    x := r + 1;
+end;
+end GenSingleValue.

@@ -1,0 +1,4 @@
+test/err/GenEnumOp.raz:6:10: error: "+" doesn't apply to C
+    6 |     c := c + c;
+      |          ^^^^^
+raz: 1 error

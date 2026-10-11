@@ -1,0 +1,6 @@
+module DeclIntConst;
+proc main*;
+var a: [1.5]I64;
+begin
+end;
+end DeclIntConst.

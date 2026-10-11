@@ -1,0 +1,7 @@
+module ScanHexH;
+proc main*;
+var x: I64;
+begin
+    x := 12A;
+end;
+end ScanHexH.

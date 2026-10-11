@@ -1,0 +1,4 @@
+test/err/ScanTwice.raz:4:11: error: x is declared twice
+    4 |     x: I64;
+      |           ^
+raz: 1 error

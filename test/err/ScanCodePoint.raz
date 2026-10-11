@@ -1,0 +1,7 @@
+module ScanCodePoint;
+proc main*;
+var s: [4]U8;
+begin
+    s := "\u{110000}";
+end;
+end ScanCodePoint.

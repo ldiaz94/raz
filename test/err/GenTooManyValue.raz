@@ -1,0 +1,8 @@
+module GenTooManyValue;
+type F = proc(a: I64);
+proc main*;
+var f: F;
+begin
+    f(1, 2);
+end;
+end GenTooManyValue.

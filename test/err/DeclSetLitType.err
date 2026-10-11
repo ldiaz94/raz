@@ -1,0 +1,4 @@
+test/err/DeclSetLitType.raz:6:10: error: expected a set type, found I64
+    6 |     n := {r};
+      |          ^
+raz: 1 error

@@ -1,0 +1,7 @@
+module ScanUBig;
+proc main*;
+var s: [4]U8;
+begin
+    s := "\u{1234567}";
+end;
+end ScanUBig.

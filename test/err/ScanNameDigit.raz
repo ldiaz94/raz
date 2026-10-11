@@ -1,0 +1,7 @@
+module ScanNameDigit;
+proc main*;
+var x: I64;
+begin
+    x := 12abc;
+end;
+end ScanNameDigit.

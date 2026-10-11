@@ -244,7 +244,7 @@ main model reads every diff before it is committed.
       and fails on a crash or two messages at one place. Writing it
       and sorting what it finds, *agent*; the fixes in `gen.pas`,
       *main*.
-- [ ] 23. Every message reworded to the rules above, each with a test
+- [x] 23. Every message reworded to the rules above, each with a test
       in `test/err` that pins its position too. *agent*, one per file
       (`scan.pas`, `parse.pas` in two halves, `gen.pas`, the rest),
       against a list of messages and their tests the main model writes

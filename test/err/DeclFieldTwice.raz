@@ -1,0 +1,8 @@
+module DeclFieldTwice;
+type R = record a: I64; end;
+proc main*;
+var r: R;
+begin
+    r := {a: 1, a: 2};
+end;
+end DeclFieldTwice.

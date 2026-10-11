@@ -1,0 +1,4 @@
+test/err/StmtExternLocal.raz:3:3: error: extern is only for the top of a module
+    3 |   extern proc f;
+      |   ^^^^^^
+raz: 1 error

@@ -1,0 +1,4 @@
+test/err/DeclSetType.raz:3:15: error: a set needs an enumeration of at most 64 names, found I64
+    3 | var s: set of I64;
+      |               ^^^
+raz: 1 error

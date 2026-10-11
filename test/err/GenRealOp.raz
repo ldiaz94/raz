@@ -1,0 +1,8 @@
+module GenRealOp;
+
+proc main*;
+var x: F64;
+begin
+    x := x mod 2.0;
+end;
+end GenRealOp.

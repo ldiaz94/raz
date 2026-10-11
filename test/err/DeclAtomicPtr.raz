@@ -1,0 +1,7 @@
+module DeclAtomicPtr;
+proc main*;
+var n: I64;
+begin
+    n := XADD(n, 1);
+end;
+end DeclAtomicPtr.

@@ -1,0 +1,7 @@
+module ScanExponent;
+proc main*;
+var x: F64;
+begin
+    x := 1.5E+;
+end;
+end ScanExponent.

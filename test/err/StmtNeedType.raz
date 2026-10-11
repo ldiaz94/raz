@@ -1,0 +1,3 @@
+module StmtNeedType;
+import Str, M := Map(Str.cmp, I64, Str.cmp, Str.eq);
+end StmtNeedType.

@@ -1,0 +1,4 @@
+test/err/GenPtrOp.raz:6:10: error: "+" doesn't apply to ^I64
+    6 |     b := p + p;
+      |          ^^^^^
+raz: 1 error

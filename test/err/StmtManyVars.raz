@@ -1,0 +1,7 @@
+module StmtManyVars;
+proc main*;
+var a: I64;
+begin
+    a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a := 1;
+end;
+end StmtManyVars.

@@ -1,0 +1,7 @@
+module GenNotVariable;
+proc P(var a: I64); begin end;
+proc main*;
+begin
+    P(1);
+end;
+end GenNotVariable.

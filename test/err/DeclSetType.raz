@@ -1,0 +1,6 @@
+module DeclSetType;
+proc main*;
+var s: set of I64;
+begin
+end;
+end DeclSetType.

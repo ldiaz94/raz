@@ -1,4 +1,4 @@
-test/err/ErrOrder.raz:5:8: error: procedures and errors compare only with = and #
+test/err/ErrOrder.raz:5:8: error: "<" doesn't apply to ERROR
     5 |     if A < B then end;
       |        ^^^^^
 raz: 1 error

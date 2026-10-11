@@ -1,0 +1,7 @@
+module ScanRealHex;
+proc main*;
+var x: F64;
+begin
+    x := 1A.5;
+end;
+end ScanRealHex.

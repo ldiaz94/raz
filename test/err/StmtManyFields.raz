@@ -1,0 +1,15 @@
+module StmtManyFields;
+type S = variant
+    circle(r: F64);
+    rect(w, h: F64);
+    dot;
+end;
+proc main*;
+var s: S;
+begin
+    match s of
+    | circle(r, x):
+    | else:
+    end;
+end;
+end StmtManyFields.

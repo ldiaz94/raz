@@ -1,0 +1,7 @@
+test/err/StmtNest.raz:3:3: error: procedures don't nest
+    3 |   proc inner; forward;
+      |   ^^^^
+test/err/StmtNest.raz:5:5: error: expected "begin", found "end"
+    5 | end;
+      |     ^
+raz: 2 errors

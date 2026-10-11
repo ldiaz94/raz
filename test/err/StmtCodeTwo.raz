@@ -1,0 +1,4 @@
+module StmtCodeTwo;
+proc f: (F64, I64);
+code 0C3H;
+end StmtCodeTwo.

@@ -1,0 +1,4 @@
+test/err/StmtAssignConst.raz:5:5: error: can't assign to k
+    5 |     k := 2;
+      |     ^
+raz: 1 error

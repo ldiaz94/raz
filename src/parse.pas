@@ -54,6 +54,7 @@ var
   fwdTypes: array[0..255] of PType;
   fwdPos: array[0..255] of TPos;    { where each names its type }
   numFwd: longint;
+  lastCalled: PObj;      { the procedure the last call was of, if it had a name }
   declExported: boolean;  { the export mark of the declaration being read }
   curLoop: PLoop;         { the innermost loop, or nil }
   defers: array[0..63] of longint;   { the deferred statements in force }
@@ -76,9 +77,15 @@ procedure Statement; forward;
 
 { Little helpers }
 
-procedure Expect(s: TSym; const what: shortstring);
+{ A missing symbol is reported just after the one before it. }
+procedure Expected(const what: shortstring);
 begin
-  if tok <> s then MarkAt(MissingPos, what + ' expected');
+  MarkAt(MissingPos, 'expected ' + what + ', found ' + Found);
+end;
+
+procedure Expect(s: TSym);
+begin
+  if tok <> s then Expected(SymText(s));
   Next;
 end;
 
@@ -89,7 +96,7 @@ end;
 
 procedure IdentDef(var n: longint; var exp: boolean);
 begin
-  if tok <> sIdent then MarkAt(MissingPos, 'name expected');
+  if tok <> sIdent then Expected('a name');
   n := id;
   Next;
   exp := false;
@@ -228,7 +235,7 @@ end;
 
 function ConstValue(var x: TItem): int64;
 begin
-  if x.mode <> mConst then MarkAt(x.pos, 'constant expected');
+  if x.mode <> mConst then MarkAt(x.pos, 'expected a constant');
   ConstValue := x.val;
 end;
 
@@ -236,14 +243,14 @@ function ConstExpr: int64;
 var x: TItem;
 begin
   Expression(x, nil);
-  if not IsInt(x.typ) then MarkAt(x.pos, 'integer constant expected');
+  if not IsInt(x.typ) then MarkAt(x.pos, 'expected an integer constant, found ' + TypeName(x.typ));
   ConstExpr := ConstValue(x);
 end;
 
 function QualIdent: PObj;
-var o: PObj;
+var o: PObj; m: PModule;
 begin
-  if tok <> sIdent then MarkAt(MissingPos, 'name expected');
+  if tok <> sIdent then Expected('a name');
   o := Lookup(id);
   if o = nil then begin
     Poison(id);
@@ -253,10 +260,11 @@ begin
   if o^.typ = tPoison then quiet := true;
   Next;
   if o^.cls = oModule then begin
-    Expect(sPeriod, '.');
-    if tok <> sIdent then MarkAt(MissingPos, 'name expected');
-    o := Find(o^.module^.scope, id);
-    if (o = nil) or not o^.exported then Mark(NameOf(id) + ' isn''t exported');
+    Expect(sPeriod);
+    if tok <> sIdent then Expected('a name');
+    m := o^.module;
+    o := Find(m^.scope, id);
+    if (o = nil) or not o^.exported then Mark(NameOf(id) + ' isn''t exported by ' + NameOf(m^.name));
     Next;
   end;
   QualIdent := o;
@@ -280,19 +288,19 @@ var
 begin
   t := NewType(fRecord, 0, 1);
   if tok = sPacked then begin t^.packd := true; Next end;
-  Expect(sRecord, 'record');
+  Expect(sRecord);
   t^.scope := NewScope;
   off := 0; maxA := 1; last := nil;
   while tok = sIdent do begin
     n := 0;
     repeat
-      if n > High(names) then Mark('too many names');
+      if n > High(names) then Mark('more than ' + IntStr(High(names) + 1) + ' names in one declaration');
       IdentDef(names[n], exps[n]);
       inc(n);
       if tok <> sComma then break;
       Next;
     until false;
-    Expect(sColon, ':');
+    Expect(sColon);
     ft := ParseType;
     if t^.packd then a := 1 else a := ft^.align;
     for i := 0 to n - 1 do begin
@@ -306,9 +314,9 @@ begin
       off := off + ft^.size;
     end;
     if a > maxA then maxA := a;
-    Expect(sSemicolon, ';');
+    Expect(sSemicolon);
   end;
-  Expect(sEnd, 'end');
+  Expect(sEnd);
   t^.align := maxA;
   t^.size := AlignUp(off, maxA);
   RecordType := t;
@@ -317,7 +325,7 @@ end;
 function VariantType: PType;
 var t, ft: PType; c, lastC, f, lastF: PObj; tag, off, maxSize: int64; n: longint;
 begin
-  Expect(sVariant, 'variant');
+  Expect(sVariant);
   t := NewType(fVariant, 8, 8);
   tag := 0; maxSize := 8; lastC := nil;
   while tok = sIdent do begin
@@ -335,7 +343,7 @@ begin
       repeat
         n := 0;
         repeat
-          if tok <> sIdent then MarkAt(MissingPos, 'name expected');
+          if tok <> sIdent then Expected('a name');
           f := NewObj(oField, id, nil);
           f^.exported := true;
           if lastF = nil then c^.fields := f else lastF^.next := f;
@@ -345,7 +353,7 @@ begin
           if tok <> sComma then break;
           Next;
         until false;
-        Expect(sColon, ':');
+        Expect(sColon);
         ft := ParseType;
         f := c^.fields;
         while f^.typ <> nil do f := f^.next;
@@ -360,13 +368,13 @@ begin
         if tok <> sSemicolon then break;
         Next;
       until false;
-      Expect(sRparen, ')');
+      Expect(sRparen);
     end;
     if off > maxSize then maxSize := off;
-    Expect(sSemicolon, ';');
+    Expect(sSemicolon);
     inc(tag);
   end;
-  Expect(sEnd, 'end');
+  Expect(sEnd);
   t^.len := tag;
   t^.size := AlignUp(maxSize, t^.align);
   VariantType := t;
@@ -394,7 +402,7 @@ begin
     if tok <> sComma then break;
     Next;
   until false;
-  Expect(sRparen, ')');
+  Expect(sRparen);
   t^.size := AlignUp(off, t^.align);
   if t^.len = 1 then Results := t^.fields^.typ else Results := t;
 end;
@@ -417,7 +425,7 @@ begin
         if isVar then Next;
         first := nil;
         repeat
-          if tok <> sIdent then MarkAt(MissingPos, 'name expected');
+          if tok <> sIdent then Expected('a name');
           p := NewObj(oVar, id, nil);
           p^.isVar := isVar;
           p^.lev := 1;
@@ -429,13 +437,13 @@ begin
           if tok <> sComma then break;
           Next;
         until false;
-        Expect(sColon, ':');
+        Expect(sColon);
         pt := ParseType;
         while first <> nil do begin first^.typ := pt; first := first^.next end;
         if tok <> sSemicolon then break;
         Next;
       until false;
-    Expect(sRparen, ')');
+    Expect(sRparen);
   end;
   t^.len := n;
   if tok = sColon then begin
@@ -453,7 +461,7 @@ begin
   last := nil;
   repeat
     Next;
-    if tok <> sIdent then MarkAt(MissingPos, 'name expected');
+    if tok <> sIdent then Expected('a name');
     o := NewObj(oConst, id, t);
     o^.val := t^.len;
     o^.exported := declExported;
@@ -463,15 +471,15 @@ begin
     inc(t^.len);
     Next;
   until tok <> sComma;
-  Expect(sRparen, ')');
-  if t^.len > 256 then MarkAt(SpanFrom(start), 'more than 256 names');
+  Expect(sRparen);
+  if t^.len > 256 then MarkAt(SpanFrom(start), 'an enumeration has at most 256 names');
   EnumType := t;
 end;
 
 function SetOf(e: PType; const at: TPos): PType;
 var t: PType;
 begin
-  if (e^.form <> fEnum) or (e^.len > 64) then MarkAt(at, 'a set is of an enumeration of at most 64 names');
+  if (e^.form <> fEnum) or (e^.len > 64) then MarkAt(at, 'a set needs an enumeration of at most 64 names, found ' + TypeName(e));
   t := NewType(fSet, 8, 8);
   if e^.len <= 8 then t^.size := 1
   else if e^.len <= 16 then t^.size := 2
@@ -489,7 +497,7 @@ begin
   case tok of
     sIdent: begin
       o := QualIdent;
-      if o^.cls <> oType then MarkAt(SpanFrom(start), 'type expected');
+      if o^.cls <> oType then MarkAt(SpanFrom(start), NameOf(o^.name) + ' isn''t a type');
       t := o^.typ;
     end;
     sLbrak: begin
@@ -501,8 +509,8 @@ begin
       end else begin
         start := TokPos;
         n := ConstExpr;
-        if (n <= 0) or (n > (int64(1) shl 40)) then MarkAt(SpanFrom(start), 'bad array length');
-        Expect(sRbrak, ']');
+        if (n <= 0) or (n > (int64(1) shl 40)) then MarkAt(SpanFrom(start), 'an array''s length is from 1 to 2^40, found ' + IntStr(n));
+        Expect(sRbrak);
         t := NewType(fArray, 0, 1);
         t^.len := n;
         t^.base := ParseType();
@@ -518,7 +526,7 @@ begin
         { a type declared later in this section }
         t := NewPtr(nil, vol);
         t^.fwd := id;
-        if numFwd > High(fwdTypes) then Mark('too many forward pointers');
+        if numFwd > High(fwdTypes) then Mark('more than ' + IntStr(High(fwdTypes) + 1) + ' pointers to types not yet declared');
         fwdTypes[numFwd] := t;
         fwdPos[numFwd] := TokPos;
         inc(numFwd);
@@ -532,11 +540,11 @@ begin
     sLparen: t := EnumType;
     sSet: begin
       Next;
-      Expect(sOf, 'of');
+      Expect(sOf);
       start := TokPos;
       t := SetOf(ParseType(), start);
     end;
-  else MarkAt(MissingPos, 'type expected');
+  else Expected('a type');
   end;
   ParseType := t;
 end;
@@ -547,7 +555,7 @@ procedure Call(var x: TItem);
 var c: TCall; a: TItem; want: PType;
 begin
   BeginCall(c, x);
-  Expect(sLparen, '(');
+  Expect(sLparen);
   if tok <> sRparen then
     repeat
       if c.param <> nil then want := c.param^.typ else want := nil;
@@ -556,7 +564,7 @@ begin
       if tok <> sComma then break;
       Next;
     until false;
-  Expect(sRparen, ')');
+  Expect(sRparen);
   EndCall(c, x);
 end;
 
@@ -564,9 +572,9 @@ procedure Args(n: longint; var slots: array of int64);
 var i: longint; a: TItem;
 begin
   for i := 0 to n - 1 do begin
-    if i > 0 then Expect(sComma, ',');
+    if i > 0 then Expect(sComma);
     Expression(a, nil);
-    if not (IsScalar(a.typ) and (a.typ^.form <> fReal)) then MarkAt(a.pos, 'integer or pointer expected');
+    if not (IsScalar(a.typ) and (a.typ^.form <> fReal)) then MarkAt(a.pos, 'expected an integer or a pointer, found ' + TypeName(a.typ));
     if a.typ^.form = fConst then Coerce(a, tI64);
     slots[i] := ToSlot(a);
   end;
@@ -576,14 +584,14 @@ procedure Atomic(var x: TItem; which: longint);
 var p, a: TItem; t: PType; s: array[0..2] of int64; i, n: longint;
 begin
   Expression(p, nil);
-  if p.typ^.form <> fPtr then MarkAt(p.pos, 'a pointer expected');
+  if p.typ^.form <> fPtr then MarkAt(p.pos, 'expected a pointer, found ' + TypeName(p.typ));
   t := p.typ^.base;
   if not (((t^.form = fInt) or ((t^.form = fPtr) and (which <> bXadd))) and (t^.size = 8)) then
-    MarkAt(p.pos, 'an 8-byte integer or pointer expected');
+    MarkAt(p.pos, 'expected an 8-byte integer or a pointer, found ' + TypeName(t));
   s[0] := ToSlot(p);
   if which = bCas then n := 2 else n := 1;
   for i := 1 to n do begin
-    Expect(sComma, ',');
+    Expect(sComma);
     Expression(a, t);
     Coerce(a, t);
     s[i] := ToSlot(a);
@@ -613,11 +621,11 @@ begin
   if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fPtr) then MarkAt(x.pos, 'NEW needs a pointer variable');
   t := x.typ^.base;
   Save(x);
-  Expect(sComma, ',');
+  Expect(sComma);
   Expression(y, nil);
   if (y.typ^.form <> fPtr) or (y.typ^.base^.obj = nil) or (y.typ^.base^.obj^.module = nil)
     or (NameOf(y.typ^.base^.obj^.name) <> 'Allocator')
-    or (NameOf(y.typ^.base^.obj^.module^.name) <> 'Mem') then MarkAt(y.pos, 'NEW needs a ^Mem.Allocator');
+    or (NameOf(y.typ^.base^.obj^.module^.name) <> 'Mem') then MarkAt(y.pos, 'NEW needs a ^Mem.Allocator, found ' + TypeName(y.typ));
   f := Find(y.typ^.base^.scope, Name('alloc'));
   s := ToSlot(y);
   Load(RAX, Mem(RBP, s), 8, false);
@@ -649,13 +657,18 @@ begin
   x.mode := mNone;
 end;
 
+function IncOrDec(which: longint): shortstring;
+begin
+  if which = bDec then IncOrDec := 'DEC' else IncOrDec := 'INC';
+end;
+
 procedure Builtin(var x: TItem);
 const SysRegs: array[0..6] of longint = (RAX, RDI, RSI, RDX, R10, R8, R9);
 var which, n, i: longint; y: TItem; t: PType; slots: array[0..6] of int64;
 begin
   which := x.obj^.val;
   if which in [bFence, bArgc, bArgv] then begin
-    if tok = sLparen then begin Next; Expect(sRparen, ')') end;
+    if tok = sLparen then begin Next; Expect(sRparen) end;
     MakeConst(x, tNone, 0);
     case which of
       bFence: begin Mfence; x.mode := mNone end;
@@ -664,7 +677,7 @@ begin
     end;
     exit;
   end;
-  Expect(sLparen, '(');
+  Expect(sLparen);
   case which of
     bSize: begin
       t := ParseType;
@@ -687,7 +700,7 @@ begin
         Load(RAX, Mem(RAX, 8), 8, false);
         MakeConst(x, tI64, 0);
         x.mode := mReg;
-      end else MarkAt(y.pos, 'LEN needs an array or slice');
+      end else MarkAt(y.pos, 'LEN needs an array or a slice, found ' + TypeName(y.typ));
     end;
     bSyscall: begin
       n := 1;
@@ -695,7 +708,7 @@ begin
       while (tok = sComma) and (n < 7) do begin
         Next;
         Expression(y, nil);
-        if not (IsScalar(y.typ) and (y.typ^.form <> fReal)) then MarkAt(y.pos, 'integer or pointer expected');
+        if not (IsScalar(y.typ) and (y.typ^.form <> fReal)) then MarkAt(y.pos, 'expected an integer or a pointer, found ' + TypeName(y.typ));
         if y.typ^.form = fConst then Coerce(y, tI64);
         slots[n] := ToSlot(y);
         inc(n);
@@ -710,7 +723,7 @@ begin
     bInc, bDec: begin
       Expression(x, nil);
       if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fInt) then
-        MarkAt(x.pos, 'INC and DEC need an integer variable');
+        MarkAt(x.pos, IncOrDec(which) + ' needs an integer variable');
       Save(x);
       if tok = sComma then begin
         Next;
@@ -722,7 +735,7 @@ begin
     end;
     bNew: New_(x);
   end;
-  Expect(sRparen, ')');
+  Expect(sRparen);
 end;
 
 procedure ConstructCase(var x: TItem; c: PObj; const at: TPos);
@@ -736,9 +749,9 @@ begin
       Expression(a, f^.typ);
       SetField(x, f, a);
       f := f^.next;
-      if f <> nil then Expect(sComma, ',');
+      if f <> nil then Expect(sComma);
     end;
-    Expect(sRparen, ')');
+    Expect(sRparen);
   end else if f <> nil then MarkAt(at, NameOf(c^.name) + ' needs its fields');
 end;
 
@@ -750,7 +763,7 @@ begin
   start := TokPos;
   o := QualIdent;
   called := false;
-  if o^.cls = oModule then MarkAt(SpanFrom(start), 'a module is not a value');
+  if o^.cls = oModule then MarkAt(SpanFrom(start), NameOf(o^.name) + ' is a module, not a value');
   MakeItem(x, o);
   if x.mode = mBuiltin then begin
     Builtin(x);
@@ -763,12 +776,12 @@ begin
     case tok of
       sPeriod: begin
         Next;
-        if (x.mode <> mVar) or (x.typ^.form <> fRecord) then MarkAt(x.pos, 'not a record');
-        if tok <> sIdent then MarkAt(MissingPos, 'field expected');
+        if (x.mode <> mVar) or (x.typ^.form <> fRecord) then MarkAt(x.pos, 'expected a record, found ' + TypeName(x.typ));
+        if tok <> sIdent then Expected('a field');
         f := Find(x.typ^.scope, id);
-        if f = nil then Mark('no field ' + NameOf(id));
+        if f = nil then Mark(TypeName(x.typ) + ' has no field ' + NameOf(id));
         if not f^.exported and (x.typ^.module <> curModule) then
-          Mark('field ' + NameOf(id) + ' isn''t exported');
+          Mark('field ' + NameOf(id) + ' of ' + TypeName(x.typ) + ' isn''t exported');
         Next;
         Field(x, f);
         called := false;
@@ -784,7 +797,7 @@ begin
           Expression(z, nil);
           Slice(x, y, z);
         end else Index(x, y);
-        Expect(sRbrak, ']');
+        Expect(sRbrak);
         called := false;
       end;
       sLparen: begin
@@ -792,9 +805,10 @@ begin
           t := x.typ;
           Next;
           Expression(x, nil);
-          Expect(sRparen, ')');
+          Expect(sRparen);
           Convert(x, t);
         end else begin
+          if x.mode = mProc then lastCalled := x.obj else lastCalled := nil;
           Call(x);
           called := true;
         end;
@@ -819,7 +833,7 @@ begin
   n := 0;
   if tok <> sRbrak then
     repeat
-      if n > High(slots) then Mark('too many elements');
+      if n > High(slots) then Mark('more than ' + IntStr(High(slots) + 1) + ' elements');
       Expression(e, et);
       Coerce(e, et);
       if IsScalar(et) then slots[n] := ToSlot(e)
@@ -831,8 +845,8 @@ begin
       if tok <> sComma then break;
       Next;
     until false;
-  Expect(sRbrak, ']');
-  if (want^.form = fArray) and (n <> want^.len) then MarkAt(SpanFrom(start), 'wrong number of elements');
+  Expect(sRbrak);
+  if (want^.form = fArray) and (n <> want^.len) then MarkAt(SpanFrom(start), 'expected ' + IntStr(want^.len) + ' elements, found ' + IntStr(n));
   if n = 0 then begin
     MovRI(RAX, 0);
     SliceOf(x, want, 0);
@@ -870,40 +884,44 @@ begin
   n := 0;
   if tok <> sRbrace then
     repeat
-      if tok <> sIdent then MarkAt(MissingPos, 'field expected');
+      if tok <> sIdent then Expected('a field');
       f := Find(t^.scope, id);
-      if f = nil then Mark('no field ' + NameOf(id));
-      if not f^.exported and (t^.module <> curModule) then Mark('field ' + NameOf(id) + ' isn''t exported');
-      for i := 0 to n - 1 do if seen[i] = id then Mark(NameOf(id) + ' twice');
+      if f = nil then Mark(TypeName(t) + ' has no field ' + NameOf(id));
+      if not f^.exported and (t^.module <> curModule) then
+        Mark('field ' + NameOf(id) + ' of ' + TypeName(t) + ' isn''t exported');
+      for i := 0 to n - 1 do if seen[i] = id then Mark('field ' + NameOf(id) + ' is given twice');
       if n <= High(seen) then begin seen[n] := id; inc(n) end;
       Next;
-      Expect(sColon, ':');
+      Expect(sColon);
       Expression(a, f^.typ);
       SetField(x, f, a);
       if tok <> sComma then break;
       Next;
     until false;
-  Expect(sRbrace, '}');
+  Expect(sRbrace);
 end;
 
 { A set literal: the bits of the constant names, or'd at run time with
   those of the others. }
 procedure SetLiteral(var x: TItem; t: PType);
-var e: TItem; bits, slot: int64; start: TPos;
+var e: TItem; bits, slot: int64; start: TPos; s: shortstring;
 begin
   start := TokPos;
   Next;
-  if (t <> nil) and (t^.form <> fSet) then MarkAt(SpanFrom(start), 'a set literal needs a set type');
+  if (t <> nil) and (t^.form <> fSet) then MarkAt(SpanFrom(start), 'expected a set type, found ' + TypeName(t));
   bits := 0;
   slot := 0;
   if tok <> sRbrace then
     repeat
       if t = nil then Expression(e, nil) else Expression(e, t^.base);
       if t = nil then begin
-        if e.typ^.form <> fEnum then MarkAt(e.pos, 'a set holds names of an enumeration');
+        if e.typ^.form <> fEnum then MarkAt(e.pos, 'a set holds names of an enumeration, found ' + TypeName(e.typ));
         t := SetOf(e.typ, e.pos);
       end;
-      if not Same(e.typ, t^.base) then MarkAt(e.pos, 'not a name of ' + TypeName(t^.base));
+      if not Same(e.typ, t^.base) then begin
+        if e.obj <> nil then s := NameOf(e.obj^.name) else s := TypeName(e.typ);
+        MarkAt(e.pos, s + ' isn''t a name of ' + TypeName(t^.base));
+      end;
       if e.mode = mConst then bits := bits or (int64(1) shl e.val)
       else begin
         if slot = 0 then begin
@@ -921,7 +939,7 @@ begin
       if tok <> sComma then break;
       Next;
     until false;
-  Expect(sRbrace, '}');
+  Expect(sRbrace);
   if t = nil then MarkAt(SpanFrom(start), '{} needs a known set type');
   MakeConst(x, t, bits);
   if slot <> 0 then begin
@@ -933,7 +951,7 @@ begin
 end;
 
 procedure Factor(var x: TItem; want: PType);
-var called, vol: boolean; t: PType; start: TPos;
+var called, vol: boolean; t: PType; start: TPos; s: shortstring;
 begin
   start := TokPos;
   case tok of
@@ -946,10 +964,16 @@ begin
     sString: begin MakeStr(x); Next end;
     sIdent: begin
       Designator(x, called);
-      if x.mode = mNone then MarkAt(x.pos, 'this procedure returns nothing');
-      if x.typ^.tuple then MarkAt(x.pos, 'several results go only to a, b := ...');
+      if x.mode = mNone then begin
+        if lastCalled <> nil then s := NameOf(lastCalled^.name) else s := 'this procedure';
+        MarkAt(x.pos, s + ' returns nothing');
+      end;
+      if x.typ^.tuple then begin
+        if lastCalled <> nil then s := NameOf(lastCalled^.name) else s := 'this procedure';
+        MarkHelp(x.pos, s + ' returns several results', 'they go to variables: a, b := ' + s + '(...)');
+      end;
     end;
-    sLparen: begin Next; Expression(x, want); Expect(sRparen, ')') end;
+    sLparen: begin Next; Expression(x, want); Expect(sRparen) end;
     sNot: begin Next; Factor(x, nil); NotOp(x) end;
     sLbrak: ArrayLiteral(x, want);
     sLbrace: if (want <> nil) and (want^.form = fRecord) then RecordLiteral(x, want)
@@ -959,12 +983,12 @@ begin
       vol := tok = sVolatile;
       if vol then Next;
       t := NewPtr(ParseType, vol);
-      Expect(sLparen, '(');
+      Expect(sLparen);
       Expression(x, nil);
-      Expect(sRparen, ')');
+      Expect(sRparen);
       Convert(x, t);
     end;
-  else MarkAt(MissingPos, 'expression expected');
+  else Expected('an expression');
   end;
   x.pos := SpanFrom(start);
 end;
@@ -1040,7 +1064,7 @@ var x: TItem; L, endL: longint;
 begin
   Next;
   Expression(x, nil);
-  Expect(sThen, 'then');
+  Expect(sThen);
   L := NoLabel;
   CondJump(x, L);
   Statements;
@@ -1050,7 +1074,7 @@ begin
     FixLink(L);
     Next;
     Expression(x, nil);
-    Expect(sThen, 'then');
+    Expect(sThen);
     L := NoLabel;
     CondJump(x, L);
     Statements;
@@ -1061,7 +1085,7 @@ begin
     Next;
     Statements;
   end else FixLink(L);
-  Expect(sEnd, 'end');
+  Expect(sEnd);
   FixLink(endL);
 end;
 
@@ -1071,13 +1095,13 @@ begin
   Next;
   top := pc;
   Expression(x, nil);
-  Expect(sDo, 'do');
+  Expect(sDo);
   L := NoLabel;
   CondJump(x, L);
   Loop(lp, old);
   Statements;
   JmpBack(top);
-  Expect(sEnd, 'end');
+  Expect(sEnd);
   FixLink(L);
   FixLink(lp.brk);
   curLoop := old;
@@ -1091,7 +1115,7 @@ begin
   Loop(lp, old);
   Statements;
   curLoop := old;
-  Expect(sUntil, 'until');
+  Expect(sUntil);
   Expression(x, nil);
   L := NoLabel;
   CondJump(x, L);
@@ -1105,17 +1129,20 @@ var
   lp: TLoop; old: PLoop;
 begin
   Next;
-  if tok <> sIdent then MarkAt(MissingPos, 'name expected');
+  if tok <> sIdent then Expected('a name');
   o := Lookup(id);
-  if (o = nil) or (o^.cls <> oVar) or not (o^.typ^.form in [fInt, fEnum]) then
-    Mark('a for loop needs an integer or enumeration variable');
+  if o = nil then Mark(NameOf(id) + ' isn''t declared');
+  if (o^.cls <> oVar) or not (o^.typ^.form in [fInt, fEnum]) then
+    if o^.cls = oVar then
+      Mark('a for loop needs an integer or enumeration variable, found ' + TypeName(o^.typ))
+    else Mark(NameOf(id) + ' isn''t a variable');
   Next;
-  Expect(sBecomes, ':=');
+  Expect(sBecomes);
   MakeItem(v, o);
   Save(v);
   Expression(a, o^.typ);
   Assign(v, a);
-  Expect(sTo, 'to');
+  Expect(sTo);
   Expression(b, o^.typ);
   Coerce(b, o^.typ);
   bslot := ToSlot(b);
@@ -1126,7 +1153,7 @@ begin
     step := ConstValue(s);
     if step = 0 then MarkAt(s.pos, 'the step can''t be zero');
   end;
-  Expect(sDo, 'do');
+  Expect(sDo);
   exitL := NoLabel;
   top := pc;
   MakeItem(v, o);
@@ -1141,7 +1168,7 @@ begin
   Loop(lp, old);
   Statements;
   curLoop := old;
-  Expect(sEnd, 'end');
+  Expect(sEnd);
   ForNext(o, bslot, step, exitL, top);
   FixLink(exitL);
   FixLink(lp.brk);
@@ -1156,7 +1183,7 @@ begin
   Expression(x, nil);
   p := MatchBegin(x);
   t := x.typ;
-  Expect(sOf, 'of');
+  Expect(sOf);
   FillChar(seen, SizeOf(seen), 0);
   hasElse := false;
   endL := NoLabel;
@@ -1165,15 +1192,15 @@ begin
     if hasElse then Mark('else must be the last arm');
     if tok = sElse then begin
       Next;
-      Expect(sColon, ':');
+      Expect(sColon);
       Statements;
       hasElse := true;
     end else begin
-      if tok <> sIdent then MarkAt(MissingPos, 'case expected');
+      if tok <> sIdent then Expected('a case');
       c := t^.fields;
       while (c <> nil) and (c^.name <> id) do c := c^.next;
       if c = nil then Mark(NameOf(id) + ' isn''t a case of ' + TypeName(t));
-      if (c^.val <= High(seen)) and seen[c^.val] then Mark('case twice');
+      if (c^.val <= High(seen)) and seen[c^.val] then Mark(NameOf(c^.name) + ' has two arms');
       if c^.val <= High(seen) then seen[c^.val] := true;
       Next;
       L := NoLabel;
@@ -1184,8 +1211,8 @@ begin
         f := c^.fields;
         n := 0;
         repeat
-          if tok <> sIdent then MarkAt(MissingPos, 'name expected');
-          if f = nil then Mark('too many fields');
+          if tok <> sIdent then Expected('a name');
+          if f = nil then Mark('more names than ' + NameOf(c^.name) + ' has fields');
           o := NewObj(oVar, id, f^.typ);
           o^.lev := 1; o^.ind := true; o^.isVar := true;
           o^.val := p; o^.off := f^.val;
@@ -1196,10 +1223,10 @@ begin
           if tok <> sComma then break;
           Next;
         until false;
-        if f <> nil then Mark('name all the fields, or none');
-        Expect(sRparen, ')');
+        if f <> nil then Mark('name all the fields of ' + NameOf(c^.name) + ', or none');
+        Expect(sRparen);
       end;
-      Expect(sColon, ':');
+      Expect(sColon);
       Statements;
       CloseScope;
       Jmp(endL);
@@ -1207,7 +1234,7 @@ begin
     end;
   end;
   endAt := TokPos;
-  Expect(sEnd, 'end');
+  Expect(sEnd);
   if not hasElse then begin
     c := t^.fields;
     while c <> nil do begin
@@ -1218,26 +1245,37 @@ begin
   FixLink(endL);
 end;
 
+{ What a message calls x: its name n when x is just that name, else what
+  it is. }
+function Subject(const x: TItem; n: longint): shortstring;
+begin
+  if x.pos.b - x.pos.a = length(NameOf(n)) then Subject := NameOf(n)
+  else if x.mode = mConst then Subject := 'a constant'
+  else Subject := 'a value';
+end;
+
 { a, b := f(x): the variables first, left to right, then the call;
   then each result to its variable, in order. }
-procedure MultiAssign(var x: TItem);
-var d: array[0..15] of TItem; y, z: TItem; n, i: longint; called: boolean; f: PObj;
+procedure MultiAssign(var x: TItem; first: longint);
+var d: array[0..15] of TItem; dn: array[0..15] of longint; y, z: TItem; n, i: longint; called: boolean; f: PObj;
 begin
   n := 0;
   d[0] := x;
+  dn[0] := first;
   repeat
-    if (d[n].mode <> mVar) or not d[n].isVar then MarkAt(d[n].pos, 'can''t assign to this');
+    if (d[n].mode <> mVar) or not d[n].isVar then MarkAt(d[n].pos, 'can''t assign to ' + Subject(d[n], dn[n]));
     Pin(d[n]);
     inc(n);
     if tok <> sComma then break;
-    if n > High(d) then Mark('too many variables');
+    if n > High(d) then Mark('more than ' + IntStr(High(d) + 1) + ' variables in one assignment');
     Next;
+    dn[n] := id;
     Designator(d[n], called);
   until false;
-  Expect(sBecomes, ':=');
+  Expect(sBecomes);
   Designator(y, called);
   if not called or not y.typ^.tuple or (y.typ^.len <> n) then
-    MarkAt(y.pos, 'needs a call with as many results as variables');
+    MarkAt(y.pos, 'expected a call with ' + IntStr(n) + ' results');
   f := y.typ^.fields;
   for i := 0 to n - 1 do begin
     z := y;
@@ -1255,7 +1293,7 @@ begin
     Expression(x, f^.typ);
     ReturnField(f, x);
     f := f^.next;
-    if f <> nil then Expect(sComma, ',');
+    if f <> nil then Expect(sComma);
   end;
 end;
 
@@ -1267,7 +1305,7 @@ begin
   start := TokPos;
   Next;
   if directDefer then MarkAt(SpanFrom(start), 'defer can''t be deferred');
-  if numDefers > High(defers) then MarkAt(SpanFrom(start), 'too many deferred statements');
+  if numDefers > High(defers) then MarkAt(SpanFrom(start), 'more than ' + IntStr(High(defers) + 1) + ' deferred statements in one procedure');
   L := NoLabel;
   Jmp(L);
   pos := pc;
@@ -1287,27 +1325,28 @@ begin
 end;
 
 procedure OneStatement;
-var x, y: TItem; called: boolean; m: int64; c: TCall; start: TPos;
+var x, y: TItem; called: boolean; m: int64; c: TCall; start: TPos; first: longint;
 begin
   start := TokPos;
+  first := id;
   NoteLine(CurLine);
   m := TempMark;
   case tok of
     sIdent: begin
       Designator(x, called);
       if tok = sBecomes then begin
-        if (x.mode <> mVar) or not x.isVar then MarkAt(x.pos, 'can''t assign to this');
+        if (x.mode <> mVar) or not x.isVar then MarkAt(x.pos, 'can''t assign to ' + Subject(x, first));
         Save(x);
         Next;
         Expression(y, x.typ);
         Assign(x, y);
       end else if tok = sComma then
-        MultiAssign(x)
+        MultiAssign(x, first)
       else if not called then begin
         if (x.mode = mProc) or ((x.mode in [mVar, mReg]) and (x.typ^.form = fProc)) then begin
           BeginCall(c, x);
           EndCall(c, x);
-        end else MarkAt(x.pos, 'not a statement');
+        end else MarkAt(x.pos, Subject(x, first) + ' isn''t a statement');
       end;
     end;
     sIf: IfStatement;
@@ -1343,8 +1382,8 @@ begin
       Jmp(curLoop^.brk);
     end;
     sDefer: Defer;
-  else if AtLineStart then MarkAt(MissingPos, 'end expected')
-  else MarkAt(MissingPos, 'statement expected');
+  else if AtLineStart then Expected('"end"')
+  else Expected('a statement');
   end;
   ReleaseTemps(m);
 end;
@@ -1375,7 +1414,7 @@ begin
   directDefer := false;
   while not (tok in [sEnd, sElse, sElsif, sUntil, sBar, sEof]) do begin
     Statement;
-    if not skipped or (tok = sSemicolon) then Expect(sSemicolon, ';');
+    if not skipped or (tok = sSemicolon) then Expect(sSemicolon);
   end;
   RunDefers(base);
   numDefers := base;
@@ -1399,7 +1438,7 @@ begin
         dec(d);
         if (d = 0) and sawBegin then begin Next; exit end;
       end;
-      sEof: Mark('end expected');
+      sEof: Expected('"end"');
     end;
     Next;
   until false;
@@ -1430,13 +1469,13 @@ begin
     o := q;
   end;
   Declarations(false);
-  Expect(sBegin, 'begin');
+  Expect(sBegin);
   old := curResult;
   curResult := sig^.base;
   EnterBody(p^.chunk, line);
   Statements;
   NoteLine(CurLine);
-  Expect(sEnd, 'end');
+  Expect(sEnd);
   EndProc(p^.chunk);
   curResult := old;
   CloseScope;
@@ -1466,7 +1505,7 @@ begin
   repeat
     start := TokPos;
     v := ConstExpr;
-    if (v < 0) or (v > 255) then MarkAt(SpanFrom(start), 'a byte expected');
+    if (v < 0) or (v > 255) then MarkAt(SpanFrom(start), 'expected a byte from 0 to 255, found ' + IntStr(v));
     Put1(v);
     if tok <> sComma then break;
     Next;
@@ -1483,11 +1522,11 @@ begin
   IdentDef(n, exp);
   at := SpanFrom(at);
   sig := Signature;
-  Expect(sSemicolon, ';');
+  Expect(sSemicolon);
   p := Find(TopScope, n);
   if (p <> nil) and (p^.cls = oProc) and p^.fwd then begin
-    if not Same(p^.typ, sig) then MarkAt(at, 'not the signature it was declared with');
-    if tok = sForward then Mark('declared forward twice');
+    if not Same(p^.typ, sig) then MarkAt(at, NameOf(n) + ' doesn''t have the signature it was declared forward with');
+    if tok = sForward then Mark(NameOf(n) + ' is declared forward twice');
     p^.exported := p^.exported or exp;
   end else begin
     p := NewObj(oProc, n, sig);
@@ -1511,7 +1550,7 @@ begin
   end;
   if checkMode then SkipBody else Body(p, sig, line);
   if tok = sIdent then begin
-    if id <> n then Mark('the procedure is ' + NameOf(n));
+    if id <> n then Mark('expected ' + NameOf(n) + ', found ' + NameOf(id));
     Next;
   end;
 end;
@@ -1541,11 +1580,11 @@ begin
     if (t^.base <> nil) and not IsScalar(t^.base) then MarkAt(at, 'C returns a single value');
     o := NewObj(oProc, n, t);
   end else begin
-    if tok <> sVar then MarkAt(MissingPos, 'proc or var expected');
+    if tok <> sVar then Expected('"proc" or "var"');
     Next;
     IdentDef(n, exp);
     WillDeclare(n);
-    Expect(sColon, ':');
+    Expect(sColon);
     declExported := exp;
     t := ParseType;
     declExported := false;
@@ -1569,7 +1608,7 @@ begin
     t := ParseType;
     if t <> tError then MarkAt(SpanFrom(start), 'only an ERROR constant has a type');
   end;
-  Expect(sEql, '=');
+  Expect(sEql);
   Expression(x, nil);
   o := NewObj(oConst, n, x.typ);
   o^.exported := exp and top;
@@ -1579,7 +1618,7 @@ begin
   end else if x.mode = mStr then begin o^.val := x.val; o^.chunk := x.chunk end
   else o^.val := ConstValue(x);
   Declare(o);
-  Expect(sSemicolon, ';');
+  Expect(sSemicolon);
 end;
 
 procedure TypeDecl(top: boolean);
@@ -1587,7 +1626,7 @@ var n: longint; exp: boolean; o: PObj; t: PType;
 begin
   IdentDef(n, exp);
   WillDeclare(n);
-  Expect(sEql, '=');
+  Expect(sEql);
   declExported := exp and top;
   inTypes := true;
   t := ParseType;
@@ -1595,7 +1634,7 @@ begin
   o^.exported := exp and top;
   if t^.obj = nil then t^.obj := o;
   Declare(o);
-  Expect(sSemicolon, ';');
+  Expect(sSemicolon);
 end;
 
 procedure VarDecl(top: boolean);
@@ -1605,14 +1644,14 @@ var
 begin
   k := 0;
   repeat
-    if k > High(names) then Mark('too many names');
+    if k > High(names) then Mark('more than ' + IntStr(High(names) + 1) + ' names in one declaration');
     IdentDef(names[k], exps[k]);
     WillDeclare(names[k]);
     inc(k);
     if tok <> sComma then break;
     Next;
   until false;
-  Expect(sColon, ':');
+  Expect(sColon);
   declExported := top and exps[0];
   t := ParseType;
   declExported := false;
@@ -1630,7 +1669,7 @@ begin
     end;
     Declare(o);
   end;
-  Expect(sSemicolon, ';');
+  Expect(sSemicolon);
 end;
 
 { After a procedure had an error: its name is poison if it wasn't
@@ -1669,12 +1708,12 @@ begin
       sProc: begin
         if not top then Mark('procedures don''t nest');
         ProcDecl;
-        Expect(sSemicolon, ';');
+        Expect(sSemicolon);
       end;
       sExtern: begin
-        if not top then Mark('extern only at the top of a module');
+        if not top then Mark('extern is only for the top of a module');
         ExternDecl;
-        Expect(sSemicolon, ';');
+        Expect(sSemicolon);
       end;
     end
   else begin
@@ -1736,18 +1775,18 @@ begin
 end;
 
 { The arguments of an instance: types, or procedures named. }
-procedure ParseArgs(var args: TArgs);
+procedure ParseArgs(var args: TArgs; const mname: shortstring);
 var o: PObj; start: TPos;
 begin
   Next;
   repeat
-    if args.n > High(args.t) then Mark('too many arguments');
+    if args.n > High(args.t) then Mark('too many type arguments for ' + mname);
     args.o[args.n] := nil;
     start := TokPos;
     if tok = sIdent then begin
       o := QualIdent;
       if o^.cls = oProc then args.o[args.n] := o
-      else if o^.cls <> oType then MarkAt(SpanFrom(start), 'a type or a procedure expected');
+      else if o^.cls <> oType then MarkAt(SpanFrom(start), NameOf(o^.name) + ' isn''t a type or a procedure');
       args.t[args.n] := o^.typ;
     end else args.t[args.n] := ParseType;
     args.pos[args.n] := SpanFrom(start);
@@ -1755,7 +1794,7 @@ begin
     if tok <> sComma then break;
     Next;
   until false;
-  Expect(sRparen, ')');
+  Expect(sRparen);
 end;
 
 { A generic module's parameters, bound to the instance's arguments: a
@@ -1767,8 +1806,9 @@ begin
   s := NameOf(m^.name) + '(';
   Next;
   repeat
-    if (tok <> sIdent) or (i >= m^.args.n) then MarkAt(m^.args.at, 'needs a type for each type parameter');
-    if m^.args.o[i] <> nil then MarkAt(m^.args.pos[i], 'needs a type for each type parameter');
+    if tok <> sIdent then Expected('a name');
+    if i >= m^.args.n then MarkAt(m^.args.at, NameOf(m^.name) + ' needs a type for ' + NameOf(id));
+    if m^.args.o[i] <> nil then MarkAt(m^.args.pos[i], NameOf(m^.name) + ' needs a type for ' + NameOf(id));
     Declare(NewObj(oType, id, m^.args.t[i]));
     s := s + TypeName(m^.args.t[i]) + ',';
     inc(i);
@@ -1778,17 +1818,18 @@ begin
   until false;
   while tok = sSemicolon do begin
     Next;
-    if tok <> sIdent then MarkAt(MissingPos, 'name expected');
+    if tok <> sIdent then Expected('a name');
     at := TokPos;
     o := NewObj(oProc, id, nil);
     Next;
-    Expect(sColon, ':');
-    Expect(sProc, 'proc');
+    Expect(sColon);
+    Expect(sProc);
     sig := Signature;
-    if i >= m^.args.n then MarkAt(m^.args.at, 'needs a procedure for ' + NameOf(o^.name));
+    if i >= m^.args.n then MarkAt(m^.args.at, NameOf(m^.name) + ' needs a procedure for ' + NameOf(o^.name));
     a := m^.args.o[i];
-    if (a = nil) or not Same(a^.typ, sig) then begin
-      Error(m^.args.pos[i], 'needs a procedure with the signature of ' + NameOf(o^.name));
+    if a = nil then MarkAt(m^.args.pos[i], NameOf(m^.name) + ' needs a procedure for ' + NameOf(o^.name));
+    if not Same(a^.typ, sig) then begin
+      Error(m^.args.pos[i], NameOf(a^.name) + ' doesn''t have the signature of ' + NameOf(o^.name));
       Note(at, NameOf(o^.name) + ' is declared here');
       Finish;
     end;
@@ -1797,8 +1838,8 @@ begin
     s := s + NameOf(a^.module^.name) + '.' + NameOf(a^.name) + ',';
     inc(i);
   end;
-  Expect(sRparen, ')');
-  if i <> m^.args.n then MarkAt(m^.args.at, 'too many arguments');
+  Expect(sRparen);
+  if i <> m^.args.n then MarkAt(m^.args.at, 'too many type arguments for ' + NameOf(m^.name));
   s[length(s)] := ')';
   m^.sname := Name(s);
 end;
@@ -1839,22 +1880,22 @@ begin
   fileChunk := -1;
   checkMode := checkOnly;
   if not checkOnly then begin
-    if numPending > High(pending) then Mark('modules nested too deeply');
+    if numPending > High(pending) then Mark('imports nested more than ' + IntStr(High(pending) + 1) + ' deep');
     pending[numPending] := m;
     inc(numPending);
   end;
   OpenScope(m^.scope);
   Next;
-  Expect(sModule, 'module');
-  if (tok <> sIdent) or (id <> n) then Mark('this file must hold module ' + NameOf(n));
+  Expect(sModule);
+  if (tok <> sIdent) or (id <> n) then Mark('expected module ' + NameOf(n) + ', found ' + Found);
   Next;
   if tok = sLparen then Params(m)
   else if args.n > 0 then MarkAt(args.at, NameOf(n) + ' isn''t generic');
-  Expect(sSemicolon, ';');
+  Expect(sSemicolon);
   while tok = sImport do begin
     Next;
     repeat
-      if tok <> sIdent then MarkAt(MissingPos, 'module name expected');
+      if tok <> sIdent then Expected('a module name');
       start := TokPos;
       alias := id;
       mname := id;
@@ -1862,10 +1903,10 @@ begin
       Next;
       if tok = sBecomes then begin
         Next;
-        if tok <> sIdent then MarkAt(MissingPos, 'module name expected');
+        if tok <> sIdent then Expected('a module name');
         mname := id;
         Next;
-        if tok = sLparen then ParseArgs(iargs);
+        if tok = sLparen then ParseArgs(iargs, NameOf(mname));
       end;
       iargs.at := SpanFrom(start);
       im := ImportModule(mname, iargs);
@@ -1879,7 +1920,7 @@ begin
       if tok <> sComma then break;
       Next;
     until false;
-    Expect(sSemicolon, ';');
+    Expect(sSemicolon);
   end;
   while tok = sLink do begin
     Next;
@@ -1890,9 +1931,9 @@ begin
       lib^.next := m^.libs;
       m^.libs := lib;
       m^.usesC := true;
-    end else Mark('a library or static expected');
+    end else Expected('a library or "static"');
     Next;
-    Expect(sSemicolon, ';');
+    Expect(sSemicolon);
   end;
   Declarations(true);
   if tok = sBegin then begin
@@ -1908,13 +1949,13 @@ begin
       EnterBody(body, line);
       Statements;
       NoteLine(CurLine);
-      Expect(sEnd, 'end');
+      Expect(sEnd);
       EndProc(body);
     end;
-  end else Expect(sEnd, 'end');
-  if (tok <> sIdent) or (id <> n) then Mark('end ' + NameOf(n) + ' expected');
+  end else Expect(sEnd);
+  if (tok <> sIdent) or (id <> n) then Expected(NameOf(n));
   Next;
-  if tok <> sPeriod then MarkAt(MissingPos, '. expected');
+  if tok <> sPeriod then Expected('"."');
   o := m^.first;
   while o <> nil do begin
     if (o^.cls = oProc) and o^.fwd then Error(TokPos, NameOf(o^.name) + ' is declared forward but never defined');

@@ -1,0 +1,11 @@
+module StmtManyDefers;
+proc main*;
+var a: I64;
+begin
+    defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; 
+    defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; 
+    defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; 
+    defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; 
+    defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; defer a := 1; 
+end;
+end StmtManyDefers.

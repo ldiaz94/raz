@@ -1,0 +1,8 @@
+module GenConvertType;
+
+proc main*;
+var x: I64;
+begin
+    x := I64(I64);
+end;
+end GenConvertType.

@@ -1,0 +1,7 @@
+module StmtAssignConst;
+const k = 1;
+proc main*;
+begin
+    k := 2;
+end;
+end StmtAssignConst.

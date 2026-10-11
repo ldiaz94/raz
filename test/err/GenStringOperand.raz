@@ -1,0 +1,8 @@
+module GenStringOperand;
+
+proc main*;
+var x: I64;
+begin
+    x := "a" + 1;
+end;
+end GenStringOperand.

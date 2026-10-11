@@ -1,0 +1,6 @@
+module DeclSetUnknown;
+proc main*;
+begin
+    if {} = {} then end;
+end;
+end DeclSetUnknown.

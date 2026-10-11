@@ -1,0 +1,8 @@
+module GenEnumOp;
+type C = (red, green);
+proc main*;
+var c: C;
+begin
+    c := c + c;
+end;
+end GenEnumOp.

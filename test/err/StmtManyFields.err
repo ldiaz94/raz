@@ -1,0 +1,4 @@
+test/err/StmtManyFields.raz:11:17: error: more names than circle has fields
+   11 |     | circle(r, x):
+      |                 ^
+raz: 1 error

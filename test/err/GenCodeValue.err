@@ -1,0 +1,4 @@
+test/err/GenCodeValue.raz:6:10: error: a code procedure with two results can only be called
+    6 |     f := Two;
+      |          ^^^
+raz: 1 error

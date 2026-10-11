@@ -1,4 +1,4 @@
-test/err/AtPChar.raz:5:12: error: unexpected character
+test/err/AtPChar.raz:5:12: error: unexpected character "?"
     5 |     a := 1 ? 2;
       |            ^
 raz: 1 error

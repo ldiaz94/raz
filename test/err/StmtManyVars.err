@@ -1,0 +1,4 @@
+test/err/StmtManyVars.raz:5:51: error: more than 16 variables in one assignment
+    5 |     a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a, a := 1;
+      |                                                   ^
+raz: 1 error

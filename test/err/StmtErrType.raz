@@ -1,0 +1,3 @@
+module StmtErrType;
+const k: I64 = "a";
+end StmtErrType.

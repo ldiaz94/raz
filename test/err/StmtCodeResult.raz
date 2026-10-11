@@ -1,0 +1,5 @@
+module StmtCodeResult;
+type R = record a: I64; end;
+proc f: R;
+code 0C3H;
+end StmtCodeResult.

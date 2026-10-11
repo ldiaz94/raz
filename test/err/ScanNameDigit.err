@@ -1,0 +1,4 @@
+test/err/ScanNameDigit.raz:5:10: error: a name can't start with a digit
+    5 |     x := 12abc;
+      |          ^^
+raz: 1 error

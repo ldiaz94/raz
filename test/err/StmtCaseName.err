@@ -1,0 +1,4 @@
+test/err/StmtCaseName.raz:11:7: error: expected a case, found a number
+   11 |     | 5:
+      |       ^
+raz: 1 error

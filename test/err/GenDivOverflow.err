@@ -1,0 +1,4 @@
+test/err/GenDivOverflow.raz:6:10: error: division overflows
+    6 |     x := (-9223372036854775807 - 1) div (0 - 1);
+      |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+raz: 1 error

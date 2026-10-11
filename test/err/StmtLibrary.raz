@@ -1,0 +1,3 @@
+module StmtLibrary;
+link 5;
+end StmtLibrary.

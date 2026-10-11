@@ -1,0 +1,6 @@
+module StmtExternLocal;
+proc main*;
+  extern proc f;
+begin
+end;
+end StmtExternLocal.

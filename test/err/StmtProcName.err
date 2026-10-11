@@ -1,0 +1,4 @@
+test/err/StmtProcName.raz:2:23: error: expected main, found mian
+    2 | proc main*; begin end mian;
+      |                       ^^^^
+raz: 1 error

@@ -1,0 +1,8 @@
+module GenStringAs;
+
+proc main*;
+var x: I64;
+begin
+    x := "a";
+end;
+end GenStringAs.

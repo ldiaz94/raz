@@ -1,0 +1,4 @@
+test/err/StmtLibrary.raz:2:6: error: expected a library or "static", found a number
+    2 | link 5;
+      |      ^
+raz: 1 error

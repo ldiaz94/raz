@@ -1,0 +1,8 @@
+module GenConvertString;
+
+proc main*;
+var x: I64;
+begin
+    x := I64("a");
+end;
+end GenConvertString.

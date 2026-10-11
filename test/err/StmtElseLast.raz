@@ -1,0 +1,15 @@
+module StmtElseLast;
+type S = variant
+    circle(r: F64);
+    rect(w, h: F64);
+    dot;
+end;
+proc main*;
+var s: S;
+begin
+    match s of
+    | else:
+    | dot:
+    end;
+end;
+end StmtElseLast.

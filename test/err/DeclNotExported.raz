@@ -1,0 +1,8 @@
+module DeclNotExported;
+import DeclHidden;
+proc main*;
+var n: I64;
+begin
+    n := DeclHidden.hidden;
+end;
+end DeclNotExported.

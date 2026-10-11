@@ -1,0 +1,7 @@
+module GenErrorString;
+const E: ERROR = 1;
+proc main*;
+begin
+    
+end;
+end GenErrorString.

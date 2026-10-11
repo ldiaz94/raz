@@ -1,0 +1,3 @@
+module StmtArgKind;
+import Mem, L := List(Mem.Page);
+end StmtArgKind.

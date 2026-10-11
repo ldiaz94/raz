@@ -1,0 +1,8 @@
+module GenBoolOp;
+
+proc main*;
+var b: BOOL;
+begin
+    b := b + b;
+end;
+end GenBoolOp.

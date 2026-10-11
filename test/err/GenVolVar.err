@@ -1,0 +1,4 @@
+test/err/GenVolVar.raz:6:7: error: can't pass through a volatile pointer to a var parameter
+    6 |     P(p^);
+      |       ^^
+raz: 1 error

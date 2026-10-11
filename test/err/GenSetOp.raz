@@ -1,0 +1,8 @@
+module GenSetOp;
+type C = (red, green); CS = set of C;
+proc main*;
+var a: CS; b: BOOL;
+begin
+    b := a < a;
+end;
+end GenSetOp.

@@ -1,0 +1,4 @@
+module StmtSigForward;
+proc f(a: I64); forward;
+proc f(a: BOOL); begin end;
+end StmtSigForward.

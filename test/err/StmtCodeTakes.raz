@@ -1,0 +1,5 @@
+module StmtCodeTakes;
+type R = record a: I64; end;
+proc f(r: R);
+code 0C3H;
+end StmtCodeTakes.

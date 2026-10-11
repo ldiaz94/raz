@@ -1,0 +1,6 @@
+module ScanName;
+proc main*;
+begin
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;
+end;
+end ScanName.

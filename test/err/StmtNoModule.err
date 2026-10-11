@@ -1,0 +1,4 @@
+test/err/StmtNoModule.raz:2:8: error: can't find module Nothing
+    2 | import Nothing;
+      |        ^^^^^^^
+raz: 1 error

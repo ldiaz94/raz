@@ -1,0 +1,4 @@
+test/err/StmtCodeParams.raz:2:6: error: too many parameters for a code procedure
+    2 | proc f(a, b, c, d, e, f, g: I64);
+      |      ^
+raz: 1 error

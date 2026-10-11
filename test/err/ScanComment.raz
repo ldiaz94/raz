@@ -1,0 +1,6 @@
+module ScanComment;
+proc main*;
+begin
+    (* never closed
+end;
+end ScanComment.

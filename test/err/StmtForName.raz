@@ -1,0 +1,7 @@
+module StmtForName;
+const k = 1;
+proc main*;
+begin
+    for k := 1 to 2 do end;
+end;
+end StmtForName.

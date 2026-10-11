@@ -1,0 +1,7 @@
+module StmtForType;
+proc main*;
+var b: BOOL;
+begin
+    for b := 1 to 2 do end;
+end;
+end StmtForType.

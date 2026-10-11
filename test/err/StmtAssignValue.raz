@@ -1,0 +1,9 @@
+module StmtAssignValue;
+type R = record a: I64; end;
+proc f(): R; var r: R; begin return r; end;
+proc main*;
+var r: R;
+begin
+    r, f().a := f(), f().a;
+end;
+end StmtAssignValue.

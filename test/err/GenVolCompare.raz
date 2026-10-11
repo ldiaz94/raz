@@ -1,0 +1,8 @@
+module GenVolCompare;
+
+proc main*;
+var p: ^VOLATILE [4]U8; b: BOOL;
+begin
+    b := p^ = "a";
+end;
+end GenVolCompare.

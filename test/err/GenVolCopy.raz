@@ -1,0 +1,8 @@
+module GenVolCopy;
+type R = record a, b: I64; end;
+proc main*;
+var p: ^VOLATILE R; r: R;
+begin
+    r := p^;
+end;
+end GenVolCopy.

@@ -1,4 +1,4 @@
-test/err/AtIndex.raz:5:12: error: an index is an integer
+test/err/AtIndex.raz:5:12: error: an index is an integer, found BOOL
     5 |     x := a[b];
       |            ^
 raz: 1 error

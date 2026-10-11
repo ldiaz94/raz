@@ -1,0 +1,4 @@
+test/err/ScanCharEmpty.raz:5:10: error: empty character
+    5 |     c := '';
+      |          ^
+raz: 1 error

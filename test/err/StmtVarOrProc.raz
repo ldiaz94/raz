@@ -1,0 +1,3 @@
+module StmtVarOrProc;
+extern 5;
+end StmtVarOrProc.

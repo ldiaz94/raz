@@ -1,0 +1,4 @@
+test/err/GenNotIndexable.raz:6:10: error: expected an array, a slice or a pointer, found I64
+    6 |     x := x[0];
+      |          ^
+raz: 1 error

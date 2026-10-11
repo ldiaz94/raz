@@ -1,0 +1,3 @@
+module StmtWrongModule;
+import StmtOther;
+end StmtWrongModule.

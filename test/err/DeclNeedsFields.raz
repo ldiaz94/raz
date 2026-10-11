@@ -1,0 +1,11 @@
+module DeclNeedsFields;
+type Shape = variant
+  circle(r: F64);
+  dot;
+end;
+proc main*;
+var s: Shape;
+begin
+    s := circle;
+end;
+end DeclNeedsFields.

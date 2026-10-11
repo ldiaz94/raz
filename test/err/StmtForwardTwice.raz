@@ -1,0 +1,4 @@
+module StmtForwardTwice;
+proc f; forward;
+proc f; forward;
+end StmtForwardTwice.

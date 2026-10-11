@@ -1,0 +1,4 @@
+test/err/ScanUtf8.raz:5:11: error: invalid UTF-8
+    5 |     s := "ÿ";
+      |           ^
+raz: 1 error

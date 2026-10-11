@@ -1,0 +1,4 @@
+test/err/DeclAtomicSize.raz:8:15: error: expected an 8-byte integer or a pointer, found U8
+    8 |     n := XADD(p, 1);
+      |               ^
+raz: 1 error

@@ -1,0 +1,7 @@
+module ScanUBrace;
+proc main*;
+var s: [4]U8;
+begin
+    s := "\u0041";
+end;
+end ScanUBrace.

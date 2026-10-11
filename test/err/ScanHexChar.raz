@@ -1,0 +1,7 @@
+module ScanHexChar;
+proc main*;
+var c: U8;
+begin
+    c := '\x41';
+end;
+end ScanHexChar.

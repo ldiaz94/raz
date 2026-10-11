@@ -1,0 +1,4 @@
+test/err/GenTooFew.raz:6:14: error: too few arguments: Id takes 1
+    6 |     x := Id();
+      |              ^
+raz: 1 error

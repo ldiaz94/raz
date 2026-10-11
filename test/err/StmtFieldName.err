@@ -1,0 +1,4 @@
+test/err/StmtFieldName.raz:11:14: error: expected a name, found a number
+   11 |     | circle(5):
+      |              ^
+raz: 1 error

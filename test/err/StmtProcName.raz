@@ -1,0 +1,3 @@
+module StmtProcName;
+proc main*; begin end mian;
+end StmtProcName.

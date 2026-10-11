@@ -1,0 +1,5 @@
+test/err/GenSlashVar.raz:6:10: error: "/" is for reals, found I64
+    6 |     x := x / y;
+      |          ^^^^^
+help: integers divide with "div"
+raz: 1 error

@@ -1,0 +1,3 @@
+module StmtParamName;
+import L := StmtParam(I64);
+end StmtParamName.

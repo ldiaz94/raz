@@ -1,0 +1,4 @@
+test/err/DeclEnumNames.raz:2:10: error: an enumeration has at most 256 names
+    2 | type E = (
+      |          ^
+raz: 1 error
