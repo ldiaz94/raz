@@ -68,6 +68,30 @@ begin
     return true;
 end;
 
+(* k maps to nothing; false if it didn't map to anything. The entries
+   after it that were pushed on past its slot move back, so that a
+   search for each still finds it before an empty slot. *)
+proc remove*(m: ^Map; k: K): BOOL;
+var i, j, home: I64;
+begin
+    if m^.cap = 0 then return false; end;
+    i := slot(m, k);
+    if not m^.slots[i].used then return false; end;
+    j := (i + 1) & (m^.cap - 1);
+    while m^.slots[j].used do
+        (* the entry at j may fill i if i lies between its home and j *)
+        home := I64(hash(m^.slots[j].key) & U64(m^.cap - 1));
+        if (j - home) & (m^.cap - 1) >= (j - i) & (m^.cap - 1) then
+            m^.slots[i] := m^.slots[j];
+            i := j;
+        end;
+        j := (j + 1) & (m^.cap - 1);
+    end;
+    m^.slots[i].used := false;
+    DEC(m^.len);
+    return true;
+end;
+
 (* What k maps to, and whether it maps to anything. *)
 proc get*(m: ^Map; k: K): (V, BOOL);
 var i: I64; none: V;
@@ -76,6 +100,18 @@ begin
     i := slot(m, k);
     if not m^.slots[i].used then return none, false; end;
     return m^.slots[i].val, true;
+end;
+
+(* The entry after i, walking from 0: the number to pass for the one
+   after it, or -1 if there are no more, then its key and value. *)
+proc next*(m: ^Map; i: I64): (I64, K, V);
+var k: K; v: V;
+begin
+    while i < m^.cap do
+        if m^.slots[i].used then return i + 1, m^.slots[i].key, m^.slots[i].val; end;
+        INC(i);
+    end;
+    return -1, k, v;
 end;
 
 end Map.

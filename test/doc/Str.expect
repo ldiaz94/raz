@@ -1,6 +1,7 @@
 module Str;
     Operations on strings, which are []U8. = and # compare them; this
-    module orders, searches and hashes them.
+    module orders, searches and hashes them, reads and writes their
+    UTF-8, and reads a number from one.
 
 proc cmp*(a, b: []U8): I64;
     -1, 0 or 1 as a sorts before, with or after b, byte by byte.
@@ -14,6 +15,21 @@ proc find*(s, sub: []U8): I64;
     Where sub first starts in s, or -1.
 
 proc hasPrefix*(s, p: []U8): BOOL;
+
+proc encode*(c: I64): ([4]U8, I64);
+    c in UTF-8: its bytes, and how many. A number that isn't a
+    character, a surrogate or one past 10FFFFH, becomes FFFDH, the
+    character that stands for a wrong one.
+
+proc decode*(s: []U8): (I64, I64);
+    The character s starts with, and its length in bytes: FFFDH and 1
+    if its first byte doesn't start one rightly, being a continuation,
+    or followed by too few continuations, or spelling a surrogate or a
+    character in more bytes than it needs; 0 and 0 if s is empty.
+
+proc toInt*(s: []U8): (I64, BOOL);
+    s as a decimal number, with a - or + before it if any, and nothing
+    else; false if it isn't one, or an I64 can't hold it.
 
 proc main*;
     The module's test: stops the program if something is wrong.

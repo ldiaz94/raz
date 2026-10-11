@@ -1,0 +1,51 @@
+(* Sort: slices in many orders and of every length up to 40 come out
+   in order, holding what they held; and a sort by a record's field. *)
+module Sorted;
+import Fmt, Rt, Ints := Sort(I64, below), ByAge := Sort(Person, younger);
+
+type Person = record name: []U8; age: I64; end;
+
+proc below(a, b: I64): BOOL;
+begin
+    return a < b;
+end;
+
+proc younger(a, b: Person): BOOL;
+begin
+    return a.age < b.age;
+end;
+
+proc main*;
+var
+    a: [40]I64; count: [10]I64; n, i, kind, seed: I64;
+    people: [4]Person;
+begin
+    seed := 7;
+    for n := 0 to 40 do
+        for kind := 0 to 3 do
+            for i := 0 to 9 do count[i] := 0; end;
+            for i := 0 to n - 1 do
+                seed := (seed * 1103515245 + 12345) & 7FFFFFFFH;
+                if kind = 0 then a[i] := seed mod 10;    (* at random, with repeats *)
+                elsif kind = 1 then a[i] := i mod 10;    (* rising *)
+                elsif kind = 2 then a[i] := 9 - i mod 10;    (* falling *)
+                else a[i] := 5;    (* all equal *)
+                end;
+                INC(count[a[i]]);
+            end;
+            Ints.sort(a[0..n]);
+            for i := 0 to n - 1 do
+                if (i > 0) and (a[i - 1] > a[i]) then Rt.stop("out of order"); end;
+                DEC(count[a[i]]);
+            end;
+            for i := 0 to 9 do
+                if count[i] # 0 then Rt.stop("not what it held"); end;
+            end;
+        end;
+    end;
+    people := [{name: "Ana", age: 41}, {name: "Bo", age: 7}, {name: "Cy", age: 90}, {name: "Di", age: 23}];
+    ByAge.sort(people);
+    for i := 0 to 3 do Fmt.print("{} {}\n", [Fmt.str(people[i].name), Fmt.int(people[i].age)]); end;
+end;
+
+end Sorted.

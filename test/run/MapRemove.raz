@@ -1,0 +1,56 @@
+(* Map's remove and next, against an array that holds the same: keys
+   hashed into runs of eight, so that removing moves entries back,
+   around the end of the slots too. *)
+module MapRemove;
+import Fmt, Heap, Rt, Ints := Map(I64, I64, near, same);
+
+const N = 500;
+
+proc near(k: I64): U64;
+begin
+    return U64(k div 8 * 977);
+end;
+
+proc same(a, b: I64): BOOL;
+begin
+    return a = b;
+end;
+
+proc main*;
+var
+    m: Ints.Map; want: [N]I64; i, k, v, n, sum, seed: I64;
+    found, _ok: BOOL;
+begin
+    Ints.init(ADR(m), Heap.heap);
+    seed := 1;
+    for i := 1 to 20000 do
+        seed := (seed * 1103515245 + 12345) & 7FFFFFFFH;
+        k := seed mod N;
+        if seed div N mod 3 = 0 then
+            if Ints.remove(ADR(m), k) # (want[k] # 0) then Rt.stop("remove: wrong answer"); end;
+            want[k] := 0;
+        else
+            _ok := Ints.put(ADR(m), k, i);
+            want[k] := i;
+        end;
+    end;
+    for k := 0 to N - 1 do
+        v, found := Ints.get(ADR(m), k);
+        if (found # (want[k] # 0)) or (v # want[k]) then Rt.stop("get: not what was put"); end;
+        if found then INC(n); INC(sum, v); end;
+    end;
+    if Ints.remove(ADR(m), N) then Rt.stop("remove: a key never put"); end;
+    Fmt.print("{} entries, {} of them, summing {}\n", [Fmt.int(m.len), Fmt.int(n), Fmt.int(sum)]);
+    (* the walk sees each entry once *)
+    n := 0; sum := 0;
+    i, k, v := Ints.next(ADR(m), 0);
+    while i >= 0 do
+        if want[k] # v then Rt.stop("next: not what was put"); end;
+        want[k] := 0;
+        INC(n); INC(sum, v);
+        i, k, v := Ints.next(ADR(m), i);
+    end;
+    Fmt.print("walked {}, summing {}\n", [Fmt.int(n), Fmt.int(sum)]);
+end;
+
+end MapRemove.

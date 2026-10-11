@@ -39,7 +39,7 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
       breaks here: `spawn` changes.
 - [x] 4. `Sys`, the rest: `clock`, `now`, `sleep`, `random`;
       `connectTcp`, `connectUdp`, `listen`, `listenTcp`, `accept`.
-- [ ] 5. `Str.encode`, `Str.decode`, `Str.toInt`; `Map.remove` and
+- [x] 5. `Str.encode`, `Str.decode`, `Str.toInt`; `Map.remove` and
       `Map.next`; `Sort`; `Math`; `Fmt.real`. Each module's `main`
       tests it.
 - [ ] 5a. Asked for rloc, and every program after it: `Opt`, a

@@ -1,0 +1,348 @@
+(* Mathematical functions of F64, as C's math.h has them, to within the
+   last bit or so. They follow fdlibm, Sun's library that most C ones
+   come from: each brings its argument into a small range, where a
+   polynomial is accurate, and puts the range back on the result. The
+   polynomials' coefficients are fdlibm's.
+
+   Left out: tan, the inverse sines and powers, until a program needs
+   them. *)
+module Math;
+import Rt;
+
+const
+    pi* = 3.141592653589793;
+    ln2hi = 6.93147180369123816490E-01;   (* ln 2 in two parts, whose sum is more exact than one F64 *)
+    ln2lo = 1.90821492927058770002E-10;
+
+(* The bits of x, and the F64 with bits u. *)
+proc bits(x: F64): U64;
+var p: ^U64;
+begin
+    p := ^U64(ADR(x));
+    return p^;
+end;
+
+proc fromBits(u: U64): F64;
+var p: ^F64;
+begin
+    p := ^F64(ADR(u));
+    return p^;
+end;
+
+(* Whether x has its sign bit set, -0.0 included. *)
+proc negative(x: F64): BOOL;
+begin
+    return bits(x) shr 63 = 1;
+end;
+
+proc sqrt*(x: F64): F64;
+code 0F2H, 0FH, 51H, 0C0H,   (* sqrtsd xmm0, xmm0 *)
+     0C3H;                   (* ret *)
+
+(* The largest whole number not above x. One of 2^52 or more is whole
+   already, and so are an infinity and NaN. *)
+proc floor*(x: F64): F64;
+var t: F64;
+begin
+    if not (x > -4503599627370496.0) or not (x < 4503599627370496.0) or (x = 0.0) then return x; end;
+    t := F64(I64(x));
+    if t > x then t := t - 1.0; end;
+    return t;
+end;
+
+(* x times 2^k, for k from -1075 to 1024: 2^k is made from its bits,
+   in two steps where k is past what an F64's exponent holds. *)
+proc scale(x: F64; k: I64): F64;
+begin
+    if k > 1023 then x := x * fromBits(U64(2046) shl 52); DEC(k, 1023); end;
+    if k < -1022 then x := x * fromBits(U64(1 + 53) shl 52); INC(k, 1022 - 53); end;
+    return x * fromBits(U64(k + 1023) shl 52);
+end;
+
+(* e^x = 2^k e^r, with r = x - k ln 2 at most ln 2 / 2 across. *)
+proc exp*(x: F64): F64;
+var k: I64; hi, lo, r, rr, c: F64;
+begin
+    if x # x then return x; end;
+    if x > 709.782712893383973096 then return x * fromBits(U64(2046) shl 52); end;   (* too big: inf *)
+    if x < -745.13321910194110842 then return 0.0; end;
+    if x < 0.0 then k := I64(x * 1.44269504088896338700 - 0.5);
+    else k := I64(x * 1.44269504088896338700 + 0.5);
+    end;
+    hi := x - F64(k) * ln2hi;
+    lo := F64(k) * ln2lo;
+    r := hi - lo;
+    rr := r * r;
+    c := r - rr * (1.66666666666666019037E-01 + rr * (-2.77777777770155933842E-03
+        + rr * (6.61375632143793436117E-05 + rr * (-1.65339022054652515390E-06
+        + rr * 4.13813679705723846039E-08))));
+    return scale(1.0 + (r * c / (2.0 - c) - lo + hi), k);
+end;
+
+(* ln x = k ln 2 + ln m, with m from sqrt(2)/2 to sqrt(2): ln m is
+   found through s = f / (2 + f), f = m - 1, whose series converges
+   fast. *)
+proc ln*(x: F64): F64;
+var u: U64; k: I64; f, hfsq, s, z, w, r: F64;
+begin
+    if x # x then return x; end;
+    if x < 0.0 then return (x - x) / 0.0; end;     (* NaN *)
+    if x = 0.0 then return -1.0 / 0.0; end;        (* -inf *)
+    if x > 1.7976931348623157E308 then return x; end;
+    if x < 2.2250738585072014E-308 then           (* subnormal: made normal *)
+        x := x * 18014398509481984.0;              (* 2^54 *)
+        k := -54;
+    end;
+    (* the exponent, counted from m's lower end, and the bits of m *)
+    u := bits(x) + (3FF0000000000000H - 3FE6A09E00000000H);
+    INC(k, I64(u shr 52) - 3FFH);
+    f := fromBits((u & 0FFFFFFFFFFFFFH) + 3FE6A09E00000000H) - 1.0;
+    hfsq := 0.5 * f * f;
+    s := f / (2.0 + f);
+    z := s * s;
+    w := z * z;
+    r := w * (3.999999999940941908E-01 + w * (2.222219843214978396E-01 + w * 1.531383769920937332E-01))
+        + z * (6.666666666666735130E-01 + w * (2.857142874366239149E-01
+        + w * (1.818357216161805012E-01 + w * 1.479819860511658591E-01)));
+    return s * (hfsq + r) + F64(k) * ln2lo - hfsq + f + F64(k) * ln2hi;
+end;
+
+(* a times b: the low 64 bits of the product, and the high. *)
+proc mul(a, b: U64): (U64, U64);
+code 48H, 89H, 0F8H,   (* mov rax, rdi *)
+     48H, 0F7H, 0E6H,  (* mul rsi *)
+     0C3H;             (* ret *)
+
+(* 64 bits of t from bit s on, the first bit of t[0] being 0. *)
+proc window(t: []U64; s: I64): U64;
+var q, r: I64;
+begin
+    q := s div 64;
+    r := s mod 64;
+    if r = 0 then return t[q]; end;
+    return t[q] shl r | t[q + 1] shr (64 - r);
+end;
+
+(* reduce's work, for an x too big for it, by Payne and Hanek's way.
+   x is m 2^e, m a whole number of 53 bits, so x 2/pi is m times the
+   bits of 2/pi moved by e: those that land at 4 or above add whole
+   turns, which change no sine, and are left out; the 192 after them
+   give the two bits of n mod 4 and the fraction past n, exact far
+   beyond an F64. *)
+proc reduceLarge(x: F64): (I64, F64, F64);
+var
+    t: [21]U64;   (* 2/pi's bits after its point, behind a word of zeros *)
+    m, w0, w1, w2, p0, p1, p2, lo: U64; e, s, n, k: I64; y: F64; neg, up: BOOL;
+begin
+    t := [0, 0A2F9836E4E441529H, 0FC2757D1F534DDC0H, 0DB6295993C439041H, 0FE5163ABDEBBC561H,
+        0B7246E3A424DD2E0H, 06492EEA09D1921CH, 0FE1DEB1CB129A73EH, 0E88235F52EBB4484H,
+        0E99C7026B45F7E41H, 03991D639835339F4H, 09C845F8BBDF9283BH, 01FF897FFDE05980FH,
+        0EF2F118B5A0A6D1FH, 06D367ECF27CB09B7H, 04F463F669E5FEA2DH, 07527BAC7EBE5F17BH,
+        03D0739F78A5292EAH, 06BFB5FB11F8D5D08H, 056033046FC7B6BABH, 0F0CFBC209AF4361DH];
+    neg := x < 0.0;
+    if neg then x := -x; end;
+    m := bits(x) & 0FFFFFFFFFFFFFH | 10000000000000H;
+    e := I64(bits(x) shr 52) - 1075;
+    (* W, the 192 bits of 2/pi from the one worth 2^(1 - e), so that
+       x 2/pi is m W 2^-190, of which the bits from 2^192 up are left out *)
+    s := e + 62;
+    w0 := window(t, s);
+    w1 := window(t, s + 64);
+    w2 := window(t, s + 128);
+    p0, p1 := mul(m, w2);
+    lo, p2 := mul(m, w1);
+    INC(p1, lo);
+    INC(p2, m * w0);
+    if p1 < lo then INC(p2); end;
+    (* n is the two bits from 2^190, the fraction those below; from a
+       half up, n is the next and the fraction 1 less, taken as 1 less
+       the fraction, negated: its bits complemented, one in 2^190 short *)
+    n := I64(p2 shr 62);
+    p2 := p2 & 3FFFFFFFFFFFFFFFH;
+    up := p2 shr 61 = 1;
+    if up then
+        INC(n);
+        p0 := ~p0; p1 := ~p1; p2 := ~p2 & 3FFFFFFFFFFFFFFFH;
+    end;
+    (* the fraction as an F64, from the 64 bits that start at its first one *)
+    k := 0;
+    while (p2 shr 61 = 0) and (k < 128) do
+        p2 := p2 shl 1 | p1 shr 63;
+        p1 := p1 shl 1 | p0 shr 63;
+        p0 := p0 shl 1;
+        INC(k);
+    end;
+    y := scale(F64(p2 shl 2 | p1 shr 62) * (pi / 2.0), -64 - k);
+    if up then y := -y; end;
+    if neg then return -n, -y, 0.0; end;
+    return n, y, 0.0;
+end;
+
+(* x less the whole number n of pi/2 nearest it, as y + yy, more exact
+   than one F64; and n. pi/2 is taken in three parts of 33 bits, each
+   with what is left of it after, so that n times each is exact while
+   n is below 2^20, about x = 1.6E6. *)
+proc reduce(x: F64): (I64, F64, F64);
+var n: I64; fn, r, t, w, y: F64;
+begin
+    if (x > 1.6E6) or (x < -1.6E6) then return reduceLarge(x); end;
+    if x < 0.0 then n := I64(x * 6.36619772367581382433E-01 - 0.5);
+    else n := I64(x * 6.36619772367581382433E-01 + 0.5);
+    end;
+    fn := F64(n);
+    r := x - fn * 1.57079632673412561417E+00;
+    t := r;
+    w := fn * 6.07710050630396597660E-11;
+    r := t - w;
+    w := fn * 2.02226624879595063154E-21 - ((t - r) - w);
+    t := r;
+    w := fn * 2.02226624871116645580E-21;
+    r := t - w;
+    w := fn * 8.47842766036889956997E-32 - ((t - r) - w);
+    y := r - w;
+    return n, y, (r - y) - w;
+end;
+
+(* sin and cos of x + y, x at most pi/4 and y far below it. *)
+proc kernelSin(x, y: F64): F64;
+var z, v, r: F64;
+begin
+    z := x * x;
+    v := z * x;
+    r := 8.33333333332248946124E-03 + z * (-1.98412698298579493134E-04 + z * 2.75573137070700676789E-06)
+        + z * z * z * (-2.50507602534068634195E-08 + z * 1.58969099521155010221E-10);
+    return x - ((z * (0.5 * y - v * r) - y) + v * 1.66666666666666324348E-01);
+end;
+
+proc kernelCos(x, y: F64): F64;
+var z, r, hz, w: F64;
+begin
+    z := x * x;
+    r := z * (4.16666666666666019037E-02 + z * (-1.38888888888741095749E-03 + z * 2.48015872894767294178E-05))
+        + z * z * z * z * (-2.75573143513906633035E-07 + z * (2.08757232129817482790E-09
+        - z * 1.13596475577881948265E-11));
+    hz := 0.5 * z;
+    w := 1.0 - hz;
+    return w + (((1.0 - w) - hz) + (z * r - x * y));
+end;
+
+proc sin*(x: F64): F64;
+var n: I64; y, yy: F64;
+begin
+    if (x = 0.0) or (x # x) then return x; end;
+    if (x - x) # 0.0 then return x - x; end;    (* an infinity: NaN *)
+    n, y, yy := reduce(x);
+    n := n & 3;
+    if n = 0 then return kernelSin(y, yy);
+    elsif n = 1 then return kernelCos(y, yy);
+    elsif n = 2 then return -kernelSin(y, yy);
+    end;
+    return -kernelCos(y, yy);
+end;
+
+proc cos*(x: F64): F64;
+var n: I64; y, yy: F64;
+begin
+    if (x - x) # 0.0 then return x - x; end;    (* an infinity or NaN: NaN *)
+    n, y, yy := reduce(x);
+    n := n & 3;
+    if n = 0 then return kernelCos(y, yy);
+    elsif n = 1 then return -kernelSin(y, yy);
+    elsif n = 2 then return -kernelCos(y, yy);
+    end;
+    return kernelSin(y, yy);
+end;
+
+(* The arc tangent of x, at least 0: atan(x) = atan(c) + atan(t), t
+   small, for c one of 1/2, 1, 3/2 and infinity, as x is nearest; the
+   atan(c) in two parts as pi is. *)
+proc atan(x: F64): F64;
+var hi, lo, z, w, s1, s2: F64;
+begin
+    if x < 0.4375 then
+        hi := 0.0; lo := 0.0;
+    elsif x < 0.6875 then
+        hi := 4.63647609000806093515E-01; lo := 2.26987774529616870924E-17;
+        x := (2.0 * x - 1.0) / (2.0 + x);
+    elsif x < 1.1875 then
+        hi := 7.85398163397448278999E-01; lo := 3.06161699786838301793E-17;
+        x := (x - 1.0) / (x + 1.0);
+    elsif x < 2.4375 then
+        hi := 9.82793723247329054082E-01; lo := 1.39033110312309984516E-17;
+        x := (x - 1.5) / (1.0 + 1.5 * x);
+    else
+        hi := 1.57079632679489655800E+00; lo := 6.12323399573676603587E-17;
+        x := -1.0 / x;
+    end;
+    z := x * x;
+    w := z * z;
+    s1 := z * (3.33333333333329318027E-01 + w * (1.42857142725034663711E-01 + w * (9.09088713343650656196E-02
+        + w * (6.66107313738753120669E-02 + w * (4.97687799461593236017E-02 + w * 1.62858201153657823623E-02)))));
+    s2 := w * (-1.99999999998764832476E-01 + w * (-1.11111104054623557880E-01 + w * (-7.69187620504482999495E-02
+        + w * (-5.83357013379057348645E-02 - w * 3.65315727442169155270E-02))));
+    return hi - ((x * (s1 + s2) - lo) - x);
+end;
+
+(* The angle of the point (x, y) from the x axis, from -pi to pi. *)
+proc atan2*(y, x: F64): F64;
+var a: F64;    (* the angle from the x axis on x's side, at least 0 *)
+begin
+    if (x # x) or (y # y) then return x + y; end;
+    if y = 0.0 then
+        if not negative(x) then return y; end;
+        a := pi;
+    else
+        if ((x - x) # 0.0) and ((y - y) # 0.0) then a := pi / 4.0;    (* both infinite *)
+        else
+            a := y / x;
+            if a < 0.0 then a := -a; end;
+            a := atan(a);
+        end;
+        (* pi less a, with what pi lacks of its true value *)
+        if negative(x) then a := pi - (a - 1.2246467991473531772E-16); end;
+    end;
+    if negative(y) then return -a; end;
+    return a;
+end;
+
+(* The module's test: values C's library gives, to within two units in
+   the last place, and the edges. *)
+proc near(got, want: F64): BOOL;
+var d: F64;
+begin
+    d := got - want;
+    if d < 0.0 then d := -d; end;
+    if want < 0.0 then want := -want; end;
+    return d <= want * 4.5E-16;
+end;
+
+proc main*;
+var inf, nan, hard: F64;
+begin
+    inf := 1.0 / 0.0;
+    nan := inf - inf;
+    hard := scale(6381956970095103.0, 797);   (* of all F64s, the nearest a multiple of pi/2 *)
+    if (sqrt(2.0) # 1.4142135623730951) or (sqrt(0.0) # 0.0) or (sqrt(-1.0) = sqrt(-1.0)) then Rt.stop("Math.sqrt"); end;
+    if (floor(2.5) # 2.0) or (floor(-2.5) # -3.0) or (floor(-2.0) # -2.0) or (floor(1.0E300) # 1.0E300)
+        or not negative(floor(-0.0)) or (floor(nan) = floor(nan)) then Rt.stop("Math.floor"); end;
+    if not near(exp(1.0), 2.718281828459045) or not near(exp(-3.5), 0.0301973834223185)
+        or not near(exp(700.0), 1.0142320547350045E304) or not near(exp(-740.0), 4.2E-322)
+        or (exp(0.0) # 1.0) or (exp(710.0) # inf) or (exp(-746.0) # 0.0) or (exp(-inf) # 0.0) then Rt.stop("Math.exp"); end;
+    if not near(ln(10.0), 2.302585092994046) or not near(ln(0.3), -1.2039728043259361)
+        or not near(ln(1.0E-310), -713.8013788281542) or (ln(1.0) # 0.0) or (ln(0.0) # -inf)
+        or (ln(inf) # inf) or (ln(-1.0) = ln(-1.0)) then Rt.stop("Math.ln"); end;
+    if not near(sin(1.0), 0.8414709848078965) or not near(sin(-100.0), 0.5063656411097588)
+        or not near(sin(pi), 1.2246467991473532E-16) or not near(sin(1.0E6), -0.34999350217129294)
+        or not near(sin(1.0E22), -0.8522008497671888) or not negative(sin(-0.0))
+        or (sin(inf) = sin(inf)) then Rt.stop("Math.sin"); end;
+    if not near(cos(1.0), 0.5403023058681398) or not near(cos(-100.0), 0.8623188722876839)
+        or not near(cos(pi / 2.0), 6.123233995736766E-17) or not near(cos(1.0E6), 0.9367521275331447)
+        or not near(cos(1.0E300), -0.5753861119575491) or not near(cos(hard), -4.687165924254628E-19)
+        or (cos(0.0) # 1.0) or (cos(nan) = cos(nan)) then Rt.stop("Math.cos"); end;
+    if not near(atan2(1.0, 2.0), 0.4636476090008061) or not near(atan2(-3.0, -4.0), -2.498091544796509)
+        or not near(atan2(5.0, 0.1), 1.550798992821746) or not near(atan2(1.0, -1.0E-20), 1.5707963267948966)
+        or (atan2(0.0, -1.0) # pi) or not negative(atan2(-0.0, 1.0)) or (atan2(-inf, inf) # -pi / 4.0)
+        or not near(atan2(inf, -inf), 2.356194490192345) or (atan2(1.0, 0.0) # pi / 2.0) then Rt.stop("Math.atan2"); end;
+end;
+
+end Math.

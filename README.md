@@ -127,12 +127,13 @@ The report, `doc/raz.md`, says all of it in about 1,000 lines.
 
 `Rt` (ending the program, failed checks, signals), `Sys` (system calls), `Out`
 (buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
-`Heap`, `Arena`, `Str`, `Buf`, `Fmt`, `List(T)` and `Map(K, V; hash,
-eq)`. `tools/Doc.raz` prints any of them:
+`Heap`, `Arena`, `Str`, `Buf`, `Fmt`, `Math`, `List(T)`, `Map(K, V;
+hash, eq)` and `Sort(T; less)`. `tools/Doc.raz` prints any of them:
 
     $ ./raz -o Doc tools/Doc.raz && ./Doc lib/Str.raz
 
-Each library module's `main` is its test, which `make check` runs.
+Each library module's `main` is its test, which `make check` runs; the
+generic ones, which can't run alone, are tested in `test/run`.
 
 ## Editors
 

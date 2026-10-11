@@ -1,7 +1,10 @@
 (* Operations on strings, which are []U8. = and # compare them; this
-   module orders, searches and hashes them. *)
+   module orders, searches and hashes them, reads and writes their
+   UTF-8, and reads a number from one. *)
 module Str;
 import Rt;
+
+const least = -9223372036854775807 - 1;   (* the smallest I64 *)
 
 (* -1, 0 or 1 as a sorts before, with or after b, byte by byte. *)
 proc cmp*(a, b: []U8): I64;
@@ -51,6 +54,154 @@ begin
     return (LEN(s) >= LEN(p)) and (s[0..LEN(p)] = p);
 end;
 
+(* c in UTF-8: its bytes, and how many. A number that isn't a
+   character, a surrogate or one past 10FFFFH, becomes FFFDH, the
+   character that stands for a wrong one. *)
+proc encode*(c: I64): ([4]U8, I64);
+var b: [4]U8;
+begin
+    if (c < 0) or (c > 10FFFFH) or (c >= 0D800H) and (c <= 0DFFFH) then c := 0FFFDH; end;
+    if c < 80H then
+        b[0] := U8(c);
+        return b, 1;
+    elsif c < 800H then
+        b[0] := U8(0C0H + (c shr 6));
+        b[1] := U8(80H + (c & 3FH));
+        return b, 2;
+    elsif c < 10000H then
+        b[0] := U8(0E0H + (c shr 12));
+        b[1] := U8(80H + (c shr 6 & 3FH));
+        b[2] := U8(80H + (c & 3FH));
+        return b, 3;
+    end;
+    b[0] := U8(0F0H + (c shr 18));
+    b[1] := U8(80H + (c shr 12 & 3FH));
+    b[2] := U8(80H + (c shr 6 & 3FH));
+    b[3] := U8(80H + (c & 3FH));
+    return b, 4;
+end;
+
+(* The character s starts with, and its length in bytes: FFFDH and 1
+   if its first byte doesn't start one rightly, being a continuation,
+   or followed by too few continuations, or spelling a surrogate or a
+   character in more bytes than it needs; 0 and 0 if s is empty. *)
+proc decode*(s: []U8): (I64, I64);
+var c, n, least, i: I64;
+begin
+    if LEN(s) = 0 then return 0, 0; end;
+    c := I64(s[0]);
+    if c < 80H then return c, 1;
+    elsif c < 0C0H then return 0FFFDH, 1;
+    elsif c < 0E0H then n := 2; c := c & 1FH; least := 80H;
+    elsif c < 0F0H then n := 3; c := c & 0FH; least := 800H;
+    elsif c < 0F8H then n := 4; c := c & 7H; least := 10000H;
+    else return 0FFFDH, 1;
+    end;
+    if LEN(s) < n then return 0FFFDH, 1; end;
+    for i := 1 to n - 1 do
+        if s[i] & 0C0H # 80H then return 0FFFDH, 1; end;
+        c := c shl 6 + I64(s[i] & 3FH);
+    end;
+    if (c < least) or (c > 10FFFFH) or (c >= 0D800H) and (c <= 0DFFFH) then return 0FFFDH, 1; end;
+    return c, n;
+end;
+
+(* s as a decimal number, with a - or + before it if any, and nothing
+   else; false if it isn't one, or an I64 can't hold it. *)
+proc toInt*(s: []U8): (I64, BOOL);
+var n, i, d: I64; neg: BOOL;
+begin
+    neg := (LEN(s) > 0) and (s[0] = '-');
+    if (LEN(s) > 0) and ((s[0] = '-') or (s[0] = '+')) then i := 1; end;
+    if i = LEN(s) then return 0, false; end;
+    (* the digits are taken off below zero, since the smallest I64 has no positive *)
+    while i < LEN(s) do
+        if (s[i] < '0') or (s[i] > '9') then return 0, false; end;
+        d := I64(s[i] - '0');
+        if n < (least + d) div 10 then return 0, false; end;
+        n := n * 10 - d;
+        INC(i);
+    end;
+    if not neg then
+        if n = least then return 0, false; end;
+        n := -n;
+    end;
+    return n, true;
+end;
+
+proc testUtf8;
+var b: [4]U8; n, c, i: I64;
+begin
+    b, n := encode('a');
+    if (n # 1) or (b[0] # 'a') then Rt.stop("Str.encode: a"); end;
+    b, n := encode(0E9H);
+    if b[0..n] # "é" then Rt.stop("Str.encode: é"); end;
+    b, n := encode(20ACH);
+    if b[0..n] # "€" then Rt.stop("Str.encode: €"); end;
+    b, n := encode(1F600H);
+    if b[0..n] # "😀" then Rt.stop("Str.encode: 😀"); end;
+    b, n := encode(0D800H);
+    if b[0..n] # "\u{FFFD}" then Rt.stop("Str.encode: a surrogate"); end;
+    b, n := encode(110000H);
+    if n # 3 then Rt.stop("Str.encode: past 10FFFFH"); end;
+    (* every character back through decode *)
+    for i := 0 to 10FFFFH do
+        if (i < 0D800H) or (i > 0DFFFH) then
+            b, n := encode(i);
+            c, n := decode(b[0..n]);
+            if c # i then Rt.stop("Str.decode: not what encode wrote"); end;
+        end;
+    end;
+    c, n := decode("");
+    if (c # 0) or (n # 0) then Rt.stop("Str.decode: empty"); end;
+    c, n := decode("é!");
+    if (c # 0E9H) or (n # 2) then Rt.stop("Str.decode: é"); end;
+    b := [80H, 'a', 0, 0];
+    c, n := decode(b[0..2]);
+    if (c # 0FFFDH) or (n # 1) then Rt.stop("Str.decode: a continuation"); end;
+    b := [0E2H, 82H, 'a', 0];
+    c, n := decode(b[0..3]);
+    if (c # 0FFFDH) or (n # 1) then Rt.stop("Str.decode: too few continuations"); end;
+    c, n := decode(b[0..2]);
+    if (c # 0FFFDH) or (n # 1) then Rt.stop("Str.decode: cut short"); end;
+    b := [0C0H, 0AFH, 0, 0];
+    c, n := decode(b[0..2]);
+    if (c # 0FFFDH) or (n # 1) then Rt.stop("Str.decode: overlong"); end;
+    b := [0EDH, 0A0H, 80H, 0];
+    c, n := decode(b[0..3]);
+    if (c # 0FFFDH) or (n # 1) then Rt.stop("Str.decode: a surrogate"); end;
+    b := [0F4H, 90H, 80H, 80H];
+    c, n := decode(b);
+    if (c # 0FFFDH) or (n # 1) then Rt.stop("Str.decode: past 10FFFFH"); end;
+end;
+
+proc testToInt;
+var n: I64; ok: BOOL;
+begin
+    n, ok := toInt("42");
+    if not ok or (n # 42) then Rt.stop("Str.toInt: 42"); end;
+    n, ok := toInt("-17");
+    if not ok or (n # -17) then Rt.stop("Str.toInt: -17"); end;
+    n, ok := toInt("+0");
+    if not ok or (n # 0) then Rt.stop("Str.toInt: +0"); end;
+    n, ok := toInt("9223372036854775807");
+    if not ok or (n # 9223372036854775807) then Rt.stop("Str.toInt: the largest"); end;
+    n, ok := toInt("-9223372036854775808");
+    if not ok or (n # least) then Rt.stop("Str.toInt: the smallest"); end;
+    n, ok := toInt("9223372036854775808");
+    if ok then Rt.stop("Str.toInt: past the largest"); end;
+    n, ok := toInt("-9223372036854775809");
+    if ok then Rt.stop("Str.toInt: past the smallest"); end;
+    n, ok := toInt("");
+    if ok then Rt.stop("Str.toInt: empty"); end;
+    n, ok := toInt("-");
+    if ok then Rt.stop("Str.toInt: a sign alone"); end;
+    n, ok := toInt("12a");
+    if ok then Rt.stop("Str.toInt: a letter"); end;
+    n, ok := toInt(" 1");
+    if ok then Rt.stop("Str.toInt: a space"); end;
+end;
+
 (* The module's test: stops the program if something is wrong. *)
 proc main*;
 begin
@@ -61,6 +212,8 @@ begin
     if (find("hello", "ll") # 2) or (find("hello", "x") # -1) or (find("", "") # 0)
         or (find("ab", "abc") # -1) then Rt.stop("Str.find"); end;
     if not hasPrefix("hello", "he") or hasPrefix("he", "hello") then Rt.stop("Str.hasPrefix"); end;
+    testUtf8;
+    testToInt;
 end;
 
 end Str.

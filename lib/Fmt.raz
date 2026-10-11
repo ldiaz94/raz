@@ -1,5 +1,5 @@
 (* Formatted output. Each {} in the format takes the next argument:
-       Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.int(m)]);
+       Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)]);
    {{ and }} stand for { and }. print writes to standard output,
    write appends to a Buf. *)
 module Fmt;
@@ -13,6 +13,7 @@ type
         str(s: []U8);
         char(c: U8);
         bool(b: BOOL);
+        real(r: F64; places: I64);
     end;
 
 (* The digits of u in base, at the end of the array: it and where they start. *)
@@ -35,6 +36,42 @@ begin
     if b = nil then Out.str(s); else Buf.str(b, s); end;
 end;
 
+(* x with places digits after the point, at most 9, rounded to the
+   nearest; from 1E15 on, with the exponent that makes it less than 10,
+   as 1.50e17. The whole part and the fraction are taken apart, so that
+   each fits an I64. *)
+proc putReal(b: ^Buf.Buf; x: F64; places: I64);
+const zeros = "00000000";
+var d: [24]U8; at, scale, i, whole, frac, e: I64;
+begin
+    if x # x then put(b, "nan"); return; end;
+    if x < 0.0 then put(b, "-"); x := -x; end;
+    if x > 1.7976931348623157E308 then put(b, "inf"); return; end;
+    if places < 0 then places := 0; elsif places > 9 then places := 9; end;
+    scale := 1;
+    for i := 1 to places do scale := scale * 10; end;
+    if x >= 1.0E15 then
+        while x >= 10.0 do x := x / 10.0; INC(e); end;
+    end;
+    whole := I64(x);
+    frac := I64((x - F64(whole)) * F64(scale) + 0.5);
+    if frac = scale then INC(whole); frac := 0; end;
+    if (e > 0) and (whole = 10) then whole := 1; INC(e); end;
+    d, at := digits(U64(whole), 10);
+    put(b, d[at..24]);
+    if places > 0 then
+        put(b, ".");
+        d, at := digits(U64(frac), 10);
+        put(b, zeros[0..places - (24 - at)]);
+        put(b, d[at..24]);
+    end;
+    if e > 0 then
+        d, at := digits(U64(e), 10);
+        put(b, "e");
+        put(b, d[at..24]);
+    end;
+end;
+
 proc arg(b: ^Buf.Buf; a: Arg);
 var d: [24]U8; at: I64; one: [1]U8;
 begin
@@ -52,6 +89,7 @@ begin
     | str(s):  put(b, s);
     | char(c): one[0] := c; put(b, one);
     | bool(t): if t then put(b, "true"); else put(b, "false"); end;
+    | real(r, places): putReal(b, r, places);
     end;
 end;
 
@@ -89,7 +127,7 @@ end;
 
 (* The module's test: formats into a buffer over an arena. *)
 proc main*;
-var ar: Arena.Arena; b: Buf.Buf;
+var ar: Arena.Arena; b: Buf.Buf; zero: F64;
 begin
     if not Arena.init(ADR(ar), 1 shl 16) then Rt.stop("Fmt: no arena"); end;
     Buf.init(ADR(b), ADR(ar.base));
@@ -99,6 +137,14 @@ begin
     Buf.reset(ADR(b));
     write(ADR(b), "{} and {}", [int(1)]);
     if Buf.bytes(ADR(b)) # "1 and " then Rt.stop("Fmt: too few arguments"); end;
+    Buf.reset(ADR(b));
+    write(ADR(b), "{} {} {} {} {} {} {} {}", [real(3.14159, 2), real(-2.5, 0), real(0.999, 2), real(0.05, 1),
+        real(1.0, 12), real(-0.001, 2), real(123.0, 0), real(999999999999999.9, 0)]);
+    if Buf.bytes(ADR(b)) # "3.14 -3 1.00 0.1 1.000000000 -0.00 123 1000000000000000" then Rt.stop("Fmt.real"); end;
+    Buf.reset(ADR(b));
+    write(ADR(b), "{} {} {} {} {} {}", [real(1.5E17, 2), real(-9.999E20, 2), real(1.0E15, 0), real(1.7976931348623157E308, 3),
+        real(1.0 / zero, 2), real(zero / zero, 2)]);
+    if Buf.bytes(ADR(b)) # "1.50e17 -1.00e21 1e15 1.798e308 inf nan" then Rt.stop("Fmt.real: an exponent"); end;
     Arena.done(ADR(ar));
 end;
 

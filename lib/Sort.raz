@@ -1,0 +1,35 @@
+(* Sorting a slice in place, in the order less gives:
+       import ByAge := Sort(Person, younger);
+   It is a heapsort: no memory of its own, and n log n steps at most,
+   whatever the order it starts in. Two elements equal by less may
+   change places. *)
+module Sort(T; less: proc(a, b: T): BOOL);
+
+(* The element at i sinks through s[0..n], a heap with the largest at
+   its root, to where it is no smaller than its children, 2i+1 and
+   2i+2. *)
+proc sink(s: []T; i, n: I64);
+var c: I64; t: T;
+begin
+    c := 2 * i + 1;
+    while c < n do
+        if (c + 1 < n) and less(s[c], s[c + 1]) then INC(c); end;
+        if not less(s[i], s[c]) then return; end;
+        t := s[i]; s[i] := s[c]; s[c] := t;
+        i := c;
+        c := 2 * i + 1;
+    end;
+end;
+
+(* s made a heap, then its largest taken, in turn, to the end. *)
+proc sort*(s: []T);
+var i: I64; t: T;
+begin
+    for i := LEN(s) div 2 - 1 to 0 by -1 do sink(s, i, LEN(s)); end;
+    for i := LEN(s) - 1 to 1 by -1 do
+        t := s[0]; s[0] := s[i]; s[i] := t;
+        sink(s, 0, i);
+    end;
+end;
+
+end Sort.
