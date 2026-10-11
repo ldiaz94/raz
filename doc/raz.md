@@ -596,7 +596,9 @@ and the program goes on after it. There is no `goto`.
 ### 7.3 Return
 
 `return e;` ends the procedure with the result `e`; `return a, b;` with
-several results; `return;` from a procedure without results. A
+several results; `return f(x);` with the several results of `f`, if
+they are the procedure's own (section 8); `return;` from a procedure
+without results. A
 procedure with results that runs off its end returns zeros, each result
 as a variable of its type starts (section 4).
 
@@ -706,7 +708,9 @@ the parameter's type.
 
 **Results.** A procedure returns nothing, one value, or several. A call
 that returns several values can only stand on the right of a multiple
-assignment, or alone as a statement.
+assignment, alone as a statement, or alone after `return` in a
+procedure whose results are of the same types, in the same order,
+which then returns them as they are: `return divmod(n, 2);`.
 
 ```
 module Divide;
@@ -972,3 +976,5 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   and signals say where (sections 6.5 and 10).
 - **2026-10.2.** `Sys` gains files and directories, the terminal, and
   the environment (section 11).
+- **2026-10.3.** `return f(x);` passes on the several results of `f`
+  (sections 7.3 and 8).
