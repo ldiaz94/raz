@@ -281,113 +281,122 @@ main model reads every diff before it is committed.
       10%, `make bench` at 400,000 lines a second. *agent*, checked by
       *main*.
 
-Stage 5: an editor (proposed, not started)
+Stage 5: ravite, an editor
 
-A small terminal editor written in raz, good enough to write raz in
-every day. Its working name is `Edit`, in `edit/`. It colours raz
-through `tools/Scan.raz`, so the editor and the formatter read raz the
-same way. This stage scopes the least editor worth using. The rest
-waits for later stages: several buffers, split windows, regular
-expressions, a build command and a file finder.
+ravite (raz visual text editor) is a small terminal editor written in
+raz, good enough to write raz in every day. It lives in `ravite/`, and
+its keys are vim's: modes, counts, operators and motions. It colours
+raz through `tools/Scan.raz`, so the editor and the formatter read raz
+the same way. This stage makes the least ravite worth using. Several
+buffers, split windows, regular expressions, a build command and a
+file finder are left for later stages.
 
 Ground rules, besides the plan's:
 
-- About 1,500 lines of code, within 10%, as `test/loc.py` counts them
-  (`make loc-edit`). The compiler's budget doesn't change.
-- No language change and no change to `lib/`. What the editor needs of
+- About 2,000 lines of code, within 10%, as `test/loc.py` counts them
+  (`make loc` counts ravite too, apart). The compiler's budget doesn't
+  change.
+- No language change and no change to `lib/`. What ravite needs of
   the system goes into a per-target module of its own,
-  `edit/Tty.linux-x86_64.raz`, through `SYSCALL`. Then a C `Tty.raz`
-  for FreeBSD and the others can follow later, held to the same
-  interface by the compiler.
+  `ravite/Tty.linux-x86_64.raz`, through `SYSCALL`. A C `Tty.raz` for
+  FreeBSD and the others can follow later, held to the same interface
+  by the compiler.
 - A program without C: a static executable.
-- `make check` builds it and runs its tests; `make fmt` covers `edit/`.
-  It is built with `./raz -I tools -o build/Edit edit/Edit.raz`.
+- `make ravite` builds `build/ravite`; `make install` puts it on PATH
+  beside raz. `make check` runs its tests, and `make fmt` covers
+  `ravite/`.
 
-What it does:
+The keys, as in vim:
 
-- **Files.** `Edit file` opens one file, or a new file if there is
-  none. Ctrl-S saves it to `file.tmp`, then renames that over `file`,
-  so a failed save loses nothing. Ctrl-Q quits, and asks first when
-  there are unsaved changes.
-- **Moving.** The arrows, Home and End, Page Up and Page Down, and
-  Ctrl-Home and Ctrl-End for the ends of the file. Up and down keep
-  the column the cursor wants.
-- **Editing.** Typing inserts. Backspace and Delete remove a code
-  point. Enter keeps the indent of the line before. Tab inserts spaces
-  to the next multiple of 4.
-- **Undo and redo.** Ctrl-Z and Ctrl-Y, unlimited. A run of typing, or
-  of deleting, is one step.
-- **Cutting and pasting lines.** Ctrl-K cuts the line, and cuts in a
-  row add up; Ctrl-U pastes them, as in nano. Selections come later.
-- **Search.** Ctrl-F searches for text, incrementally: Enter or Ctrl-F
-  for the next match, Ctrl-R for the one before, Escape to go back to
-  where it started.
-- **Going to a line.** Ctrl-G asks for a line number. `Edit file:line`
-  opens the file at that line, the form the compiler's messages use.
-- **Screen.** The alternate screen, one line of status (the file, `+`
-  when changed, line and column) and one line for messages and
-  prompts. Long lines scroll sideways rather than wrap. Tabs show to
-  the next multiple of 8. A UTF-8 code point takes one cell; wide
-  characters are left out. The size is read again whenever the editor
-  waits for a key, so resizing works without a signal handler.
-- **Colour.** For a `.raz` file: reserved words, basic types,
-  built-ins, `true`, `false` and `nil`, numbers, strings and
-  characters, and comments, as `editor/vim` colours them. Other files
-  are plain. It uses the 16 standard colours, so the terminal's theme
-  decides how they look. `NO_COLOR` turns colour off.
+- **Normal mode.** A count before a command repeats it or says which
+  line. Motions: `h j k l` and the arrows, `0 ^ $` and Home and End,
+  `w b e`, `gg G`, `{ }`, `%`, `f F t T` with `; ,`, and the search
+  motions `n N *`. Operators `d c y > <` take a motion, or themselves
+  for whole lines (`dd`, `3yy`). Besides them: `x X D C s S Y r J p P`,
+  `i a I A o O` into insert mode, `u` and Ctrl-R for undo and redo,
+  `.` to repeat the last change, Ctrl-D, Ctrl-U, Ctrl-F and Ctrl-B to
+  scroll, `ZZ` to write and quit.
+- **Insert mode.** Typing inserts; Backspace and Delete remove a code
+  point; Enter keeps the indent of the line; Tab inserts spaces to the
+  next multiple of 4; Escape goes back to normal mode.
+- **Visual mode.** `v` by characters and `V` by lines; motions move
+  the cursor; `d x y c > <` act on what is selected.
+- **Command line.** `:w`, `:q`, `:q!`, `:wq`, `:x`, and `:N` for line
+  N. `/` and `?` search forward and back, for text, not patterns, and
+  go round the end of the file.
 
-What it leaves out: the mouse, selections, the system clipboard,
-several files, wrapping, wide characters, settings, other languages'
-colours, and FreeBSD. A crash by a signal leaves the terminal raw
-(`reset` fixes it). A failed check does restore it, since `Rt.fail`
-runs the procedures registered with `Rt.atExit`.
+One register, which every delete and yank fills, by lines or by
+characters. Undo is unlimited; a command, with all it types in insert
+mode, is one step. `ravite file:line` opens the file at that line,
+the form raz's messages use.
+
+The screen: the alternate screen, the text, and a last line for the
+mode, messages and the command line, with the file, `[+]` when
+changed, and the line and column on its right. Lines past the end of
+the file show `~`. Long lines scroll sideways rather than wrap. Tabs
+show to the next multiple of 8. A UTF-8 code point takes one cell;
+wide characters are left out. The size is read again whenever ravite
+waits for a key, so resizing works without a signal handler. A `.raz`
+file is coloured: reserved words, basic types, built-ins, `true`,
+`false` and `nil`, numbers, strings and characters, and comments, as
+`editor/vim` colours them, in the 16 standard colours, so that the
+terminal's theme decides how they look. `NO_COLOR` turns colour off.
+
+A file is kept in memory without its last line break, and written
+with one. Writing goes to a new file beside it, renamed over it once
+written, so that a failed write loses nothing.
+
+What it leaves out: the mouse, the system clipboard, several files or
+windows, wrapping, wide characters, settings, other languages'
+colours, marks, macros, text objects, and FreeBSD. A crash by a signal
+leaves the terminal raw (`reset` fixes it); a failed check restores
+it, since `Rt.fail` runs the procedures registered with `Rt.atExit`.
 
 The modules, with rough lines of code:
 
 | Module | Lines | What |
 |---|---|---|
-| `Tty.linux-x86_64.raz` | 120 | raw mode and back (ioctl `TCGETS` and `TCSETS`), the size (`TIOCGWINSZ`), reading with a time limit (`poll`), `rename` |
-| `Keys.raz` | 150 | the bytes of a key decoded: control keys, `ESC [` and `ESC O` sequences, a lone Escape told apart by a 30 ms wait; and the notation of the tests, `^S`, `<up>` |
-| `Text.raz` | 350 | the text as a gap buffer of bytes: insert, delete, the start of a line, line and column; undo and redo as a log of insertions and deletions |
-| `Colour.raz` | 120 | the colour of each byte on the screen, through `Scan`; the depth of comment at the top of the screen; the words' table |
-| `View.raz` | 300 | the screen drawn into one `Buf` and written at once: the rows, the scrolling, the status and message lines, the cursor |
-| `Edit.raz` | 450 | the command line, the loop, the keys' commands, prompts, search, cutting and pasting, saving and quitting |
-| total | 1,490 | |
+| `Tty.linux-x86_64.raz` | 90 | raw mode and back (ioctl `TCGETS` and `TCSETS`), the size (`TIOCGWINSZ`), waiting for input (`poll`), `rename` |
+| `Keys.raz` | 140 | the bytes of a key decoded: UTF-8, control keys, `ESC [` and `ESC O` sequences; and vim's notation for keys, `<esc>`, `<c-r>`, for the tests |
+| `Text.raz` | 280 | the text as a gap buffer of bytes: inserting, deleting, lines; undo and redo as a log of insertions and deletions, in groups |
+| `Colour.raz` | 130 | the colour of each byte on the screen, through `Scan`; the depth of comment where the screen starts |
+| `View.raz` | 200 | the screen drawn into one `Buf` and written at once, or as plain text for the tests |
+| `Ravite.raz` | 1,150 | the command line, the modes, motions, operators, commands, search, the register, repeating, writing and quitting |
+| total | 1,990 | |
 
 Colouring scans only the screen. `Scan` alone reads about 600,000
 lines a second (measured on `make bench`'s program), so scanning a
 10,000-line file from its start would cost some 16 ms a keystroke. The
-one thing that carries from line to line is a comment, so `Colour`
-keeps the depth of comment at the top line of the screen. Scrolling
-down moves that point on through the lines that scrolled away.
-Jumping back, or an edit above the top, scans again from the start of
-the file, once. When the top is inside a comment, `Colour` finds that
-comment's end itself, then hands the rest to `Scan`. Words are looked
-up in a small hash table, not with `Scan.reserved`: its walk through a
-list of words cuts `Scan` to about 120,000 lines a second. Before
-drawing, the gap moves past the end of the screen, so that what `Scan`
-reads is one slice. Since edits happen on the screen, that moves a
-screenful of bytes at most. The line number in the status line is
-counted from the start of the file, a byte loop that is fast enough
-below some megabytes. A table of where lines start can come later.
+one thing that carries from line to line is a comment, so ravite
+keeps the depth of comment where the screen starts. Scrolling down
+moves that point on through the lines that scrolled away; jumping
+back, or an edit above it, counts again from the start of the file,
+once, with a loop much simpler than `Scan`. When the screen starts
+inside a comment, `Colour` finds that comment's end itself and hands
+the rest to `Scan`. Words are looked up in a hash table, not with
+`Scan.reserved`, whose walk through a list of words cuts `Scan` to
+about 120,000 lines a second. Before drawing, the gap moves past the
+end of the screen, so that what `Scan` reads is one slice; since edits
+happen on the screen, that moves a screenful of bytes at most.
 
 Testing. Each module's `main` is its test, run by `make check` like
-the library's: `Text` against a naive string model under random edits
-and undos, `Keys` on byte sequences. And whole sessions: `Edit
--script W H file` reads keys in the tests' notation from standard
-input, on a screen W by H. At the end it prints the screen as plain
-text, then the file. Each `test/edit/X.keys` has its `X.expect`, and
-optionally an `X.txt` to start from.
+the library's: `Text` against a plain string under random edits, undos
+and redos; `Keys` on byte sequences and notation; `Colour` on a line
+of each kind. And whole sessions: `ravite -script W H file` reads keys
+in vim's notation from standard input, on a screen W by H; at the end
+it prints the screen as plain text, then the text. Each
+`test/ravite/X.keys` has its `X.expect`, and may have an `X.txt` to
+start from.
 
 - [ ] 28. `Tty` and `Keys`, with `Keys`'s test; a program that prints
-      the keys it reads, tried by hand in xterm, the Linux console and
-      tmux.
+      the keys it reads, tried by hand.
 - [ ] 29. `Text`: the gap buffer and undo, with its test.
-- [ ] 30. `View` and `Edit`: opening, moving, typing, saving and
-      quitting; `-script` and `test/edit` in `make check`; `make
-      loc-edit`, and `make fmt` over `edit/`.
+- [ ] 30. `View` and `Ravite`: opening, the modes, motions, operators,
+      the register, undo, repeating, the command line, writing and
+      quitting; `-script` and `test/ravite` in `make check`; `make
+      ravite`, `make loc` and `make fmt` over `ravite/`.
 - [ ] 31. `Colour`.
-- [ ] 32. Search, going to a line, cutting and pasting, the indent
-      kept on Enter, and `file:line`; their session tests.
-- [ ] 33. `doc/edit.md`, how to build and use it and its keys, and a
-      word in `README.md`.
+- [ ] 32. Visual mode, search, `%`, `f t`, and `file:line`; their
+      session tests.
+- [ ] 33. `doc/ravite.md`, how to build and use it and its keys; a
+      word in `README.md` and `CLAUDE.md`.
