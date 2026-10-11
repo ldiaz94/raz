@@ -1,8 +1,9 @@
 # Working on raz
 
-Read `PLAN.md` (the plan, ground rules, steps) and `doc/raz.md` (the
-language report) first. The report defines the language; where the
-plan disagrees, the report wins and the plan is fixed.
+Read `PLAN.md` (the milestone under way and its steps), `doc/raz.md`
+(the language report) and `doc/compiler.md` (the guide to the
+compiler) first. The report defines the language; where the plan
+disagrees, the report wins and the plan is fixed.
 
 ## Setup and checks
 
@@ -34,10 +35,13 @@ library's tests: they must have no warnings.
 
 ## How we work
 
-- Work goes stage by stage. A stage starts only on the owner's explicit
-  go-ahead; within it, one commit per step, pushed as it is done, then
-  stop for review. Never start a stage, or change the report's
-  language, without being asked.
+- The compiler is Free Pascal 3.2.2, `{$mode objfpc}{$H-}`: records,
+  pointers, shortstrings. No classes, ansistrings, exceptions, dynamic
+  arrays or SysUtils.
+- Plans go by milestones, each a release (`PLAN.md`). A milestone
+  starts only on the owner's explicit go-ahead; within it, one commit
+  per step, pushed as it is done, then stop for review. Never start a
+  milestone, or change the report's language, without being asked.
 - Language changes go into `doc/raz.md` first, for the owner to review,
   before any code.
 - Commits: author
@@ -68,8 +72,7 @@ for rlX11 and rat (reports 2026-10.4 and 10.7, steps 49a-c), with
 stage 9, several results in place of var parameters (2026-10.8,
 steps 52-53). The compiler says it follows report 2026-10.8, the last
 version all done.
-New work starts
-only on the owner's word. Keep
+v0.5.0 is under way (`PLAN.md`). Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.
 

@@ -42,7 +42,7 @@ a million lines a second.
 | `tools/Pretty.raz` | The formatter: fixes indentation and spacing |
 | `editor/` | Support for vim and emacs |
 | `test/` | Tests, and the scripts that run them |
-| `PLAN.md` | How the compiler was built, step by step |
+| `PLAN.md` | The plan: the milestone under way and its steps |
 
 ## Building
 
