@@ -17,6 +17,20 @@ extern proc __errno_location*: ^I32;   (* errno is this thread's: through here *
 extern proc sched_yield*: I32;
 extern proc pthread_create*(t: ^U64; attr: ^U8; start: proc(arg: ^U8): ^U8; arg: ^U8): I32;
 extern proc pthread_join*(t: U64; result: ^^U8): I32;
+extern proc rename*(old, new: ^U8): I32;
+extern proc unlink*(path: ^U8): I32;
+extern proc mkdir*(path: ^U8; mode: U32): I32;
+extern proc lseek*(fd: I32; off: I64; whence: I32): I64;
+extern proc opendir*(path: ^U8): ^U8;        (* DIR * *)
+extern proc readdir*(d: ^U8): ^U8;           (* struct dirent * *)
+extern proc closedir*(d: ^U8): I32;
+extern proc tcgetattr*(fd: I32; t: ^U8): I32;
+extern proc tcsetattr*(fd: I32; when: I32; t: ^U8): I32;
+extern proc cfmakeraw*(t: ^U8);
+extern proc ioctl*(fd: I32; request: U64; ...): I32;
+extern proc poll*(fds: ^U8; n: U64; ms: I32): I32;
+extern proc getenv*(name: ^U8): ^U8;
+extern proc getcwd*(buf: ^U8; n: U64): ^U8;
 extern proc printf*(format: ^U8; ...): I32;
 extern proc fflush*(f: ^U8): I32;
 extern var stdout*: ^U8;               (* FILE * *)

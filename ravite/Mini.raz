@@ -11,10 +11,10 @@
    into the directory, DEL after a / out of it, ~/ and // start again
    at home and at the root, and C-d opens the directory itself.
 
-   Depends on: Core, Text, Keys; Tty to read directories.
+   Depends on: Core, Text, Keys; Sys to read directories.
    Leaves out: history, and ido's flex matching and its other keys. *)
 module Mini;
-import Buf, Heap, Str, Text, Keys, Tty, Core;
+import Sys, Buf, Heap, Str, Text, Keys, Core;
 
 const
     Max = 512;     (* choices shown *)
@@ -27,7 +27,7 @@ var
     starts, ends: [Max]I64;        (* each in pool *)
     order: [Max]I64;               (* the choices, in the order shown *)
     numChoices: I64;
-    entry: Tty.Dir;
+    entry: Sys.Dir;
     typed, dir: Buf.Buf;
 
 (* Opens the minibuffer after prompt, holding initial, the point at its
@@ -172,7 +172,7 @@ end;
    the entries of its directory that hold the part after the /,
    directories ending in /. *)
 proc gather(names: Names; files: BOOL);
-var i, k: I64; s, name: []U8; ok: BOOL; info: Tty.Info; err: I64;
+var i, k: I64; s, name: []U8; ok: BOOL; info: Sys.Info; err: I64;
 begin
     numChoices := 0;
     Buf.reset(ADR(pool));
@@ -189,21 +189,21 @@ begin
     end;
     k := nameStart(s);
     Core.absolute(s[0..k], ADR(dir));
-    if Tty.openDir(ADR(entry), Buf.bytes(ADR(dir))) # 0 then return; end;
-    name, ok := Tty.nextEntry(ADR(entry));
+    if Sys.openDir(ADR(entry), Buf.bytes(ADR(dir))) # 0 then return; end;
+    name, ok := Sys.nextEntry(ADR(entry));
     while ok do
         Buf.reset(ADR(Core.tmp));
         Buf.str(ADR(Core.tmp), Buf.bytes(ADR(dir)));
         if dir.len > 1 then Buf.add(ADR(Core.tmp), '/'); end;
         Buf.str(ADR(Core.tmp), name);
-        info, err := Tty.info(Buf.bytes(ADR(Core.tmp)));
+        info, err := Sys.info(Buf.bytes(ADR(Core.tmp)));
         Buf.reset(ADR(Core.tmp));
         Buf.str(ADR(Core.tmp), name);
         if (err = 0) and info.dir then Buf.add(ADR(Core.tmp), '/'); end;
         offer(Buf.bytes(ADR(Core.tmp)), s[k..LEN(s)], true);
-        name, ok := Tty.nextEntry(ADR(entry));
+        name, ok := Sys.nextEntry(ADR(entry));
     end;
-    Tty.closeDir(ADR(entry));
+    Sys.closeDir(ADR(entry));
 end;
 
 (* The choices, after what is typed, as ido shows them. *)

@@ -292,11 +292,12 @@ stand as they are; the rest is redone from step 35.
 
 Ground rules, besides the plan's:
 
-- About 3,000 lines of code, within 10%, as `make loc` counts them,
-  apart from the compiler's budget.
-- A program without C, a static executable. What it needs of the
-  system is in its own `ravite/Tty.linux-x86_64.raz` until `Sys` has
-  it (step 34, then 42).
+- No line budget: code that is easy to read and follow, and well
+  commented, comes before its length (the owner's word, after step
+  40). `make loc` counts it, as a measure.
+- On Linux a program without C, a static executable; what it needs of
+  the system is `Sys`'s (steps 34 and 41), so that over the C `Sys`
+  it runs through the C library.
 - Every session test, `test/ravite/X.keys`, does what emacs (`emacs -Q
   -nw`) does with the same keys, checked when it is written, except
   where ravite says it differs (`doc/ravite.md`).
@@ -362,9 +363,9 @@ The modules:
 | `Ravite.raz` | 250 (271) | the arguments, the screen, the keys from the terminal or a script, the loop |
 | total | 3,150 (3,842) | |
 
-In brackets, what each came to: 3,842 lines, past the budget's 3,300.
-The owner decides between a larger budget and cutting; step 41 takes
-`Tty`'s 155 lines out to `Sys`.
+In brackets, what each came to by step 40: 3,842 lines, past the
+3,300 then planned. The owner set the budget aside for readability;
+step 41 took `Tty`'s 155 lines out to `Sys`.
 
 Testing. `ravite -script W H file...` reads keys as emacs writes them
 from standard input, on a screen W by H, and at their end, or at C-x
@@ -401,5 +402,6 @@ Steps 34 on (emacs's keys):
       C-h k, C-h b.
 - [x] 40. `doc/ravite.md` again, `README.md`, `CLAUDE.md`; `test/emacs.py`,
       which checks a session against emacs.
-- [ ] 41. Once the owner approves step 34: `Sys` gains it, on Linux
-      and over C, with tests; ravite's `Tty` goes.
+- [x] 41. Once the owner approves step 34: `Sys` gains it, on Linux
+      and over C, with tests; ravite's `Tty` goes. `make check` runs
+      ravite's sessions over both.

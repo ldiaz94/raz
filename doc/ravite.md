@@ -3,7 +3,11 @@
 ravite (raz visual text editor) is a terminal editor written in raz,
 with emacs's keys: buffers, the minibuffer, ido, a small dired, M-x and
 settings. It colours raz through the scanner the formatter uses,
-`tools/Scan.raz`. It is a static program, with no C.
+`tools/Scan.raz`. On Linux it is a static program, with no C; built
+over `lib/Sys.raz`, the C one, it runs through the C library instead,
+as it would on other systems:
+
+    $ ./raz -I test/libc/mods -I tools -o ravite ravite/Ravite.raz
 
     $ make ravite                   # build/ravite
     $ build/ravite Module.raz       # or several files, or none for *scratch*
@@ -131,15 +135,14 @@ for what is below.
 Several windows, the mouse, the system clipboard, wrapping, wide
 characters (each takes one column), file:line on the command line,
 keyboard macros, and colours for other languages. A crash by a signal
-leaves the terminal raw: `reset` puts it right. It runs on Linux for
-x86-64; FreeBSD needs `Sys` to gain what `ravite/Tty.linux-x86_64.raz`
-does now (the report's draft, section 11).
+leaves the terminal raw: `reset` puts it right. Over C it needs a C
+library whose `struct dirent` and `TIOCGWINSZ` are glibc's; FreeBSD's
+aren't, so FreeBSD wants a `Sys` of its own (section 11 of the report).
 
 ## Inside
 
 | Module | Lines | What |
 |---|---|---|
-| `Tty.linux-x86_64.raz` | 155 | the terminal, files and directories, the environment, until `Sys` has them |
 | `Keys.raz` | 271 | a key from a terminal's bytes, Meta too; keys as emacs writes them |
 | `Text.raz` | 337 | the text, a gap buffer of bytes, with undo and redo |
 | `Colour.raz` | 109 | the colour of each byte on the screen |
@@ -152,7 +155,8 @@ does now (the report's draft, section 11).
 | `Commands.raz` | 799 | the commands' names, keymaps, counts, M-x, files, buffers, settings, help |
 | `Ravite.raz` | 271 | the arguments, the screen, keys from the terminal or a script, the loop |
 
-Lines are those of code, as `make loc` counts them.
+Lines are those of code, as `make loc` counts them; they are a
+measure, not a limit: ravite is written to be read.
 
 **Keys and commands.** Every key comes through `Commands.runKey`, which
 reads the rest of its sequence while the keymaps say it is a prefix,
@@ -160,6 +164,9 @@ and runs the command bound to it, for the kind of buffer first, then
 for all. A command is a procedure that takes its count. The minibuffer
 is a buffer too: while it is open, the keys go through the same
 keymaps, on it, but RET and C-g.
+
+What ravite needs of the system, the terminal, files, directories and
+the environment, is `Sys`'s (section 11 of the report).
 
 **Core** holds what the parts share, and procedures the main module
 sets, through which a part reads a key or runs one without importing
@@ -182,4 +189,5 @@ prints the screen as plain text and then the buffer. `make check` runs
 each `test/ravite/X.keys` on a copy of `X.txt`, or with `X.args`, in a
 home of its own with a fresh copy of `test/ravite/tree` and `X.init` as
 its `.ravite`, against `X.expect`; and the tests in `Keys`, `Text` and
-`Colour`.
+`Colour`. Every session runs twice, over Linux's `Sys` and over the C
+one.

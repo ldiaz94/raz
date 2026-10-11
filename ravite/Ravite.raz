@@ -14,10 +14,10 @@
    emacs does.
 
    Depends on: Core and the modules of commands; View and Colour to
-   draw; Tty for the terminal.
+   draw; Sys for the terminal.
    Leaves out: see doc/ravite.md. *)
 module Ravite;
-import Sys, Rt, Buf, Fmt, Heap, Files, Text, Tty, Keys, View, Colour, Core, Commands, Dired;
+import Sys, Rt, Buf, Fmt, Heap, Files, Text, Keys, View, Colour, Core, Commands, Dired;
 
 var
     script: BOOL;
@@ -168,7 +168,7 @@ end;
 
 proc redraw;
 begin
-    Core.cols, Core.rows := Tty.termSize(Sys.stdout);
+    Core.cols, Core.rows := Sys.termSize(Sys.stdout);
     if Core.cols < 20 then Core.cols := 20; end;
     if Core.rows < 4 then Core.rows := 4; end;
     frame(false);
@@ -206,7 +206,7 @@ end;
 proc fill(ms: I64): BOOL;
 var n: I64;
 begin
-    if (have = LEN(pending)) or not Tty.ready(Sys.stdin, ms) then return false; end;
+    if (have = LEN(pending)) or not Sys.ready(Sys.stdin, ms) then return false; end;
     n := Sys.read(Sys.stdin, pending[have..LEN(pending)]);
     if n = -4 then return false; end;   (* -EINTR *)
     if n <= 0 then Rt.exit(1); end;     (* the terminal is gone *)
@@ -228,7 +228,7 @@ begin
     if have = 0 then
         redraw;
         while not fill(250) do
-            c, r := Tty.termSize(Sys.stdout);
+            c, r := Sys.termSize(Sys.stdout);
             if (c # Core.cols) or (r # Core.rows) then redraw; end;
         end;
     end;
@@ -249,7 +249,7 @@ end;
 proc restore;
 begin
     Sys.write(Sys.stdout, "\x1b[?25h\x1b[?1049l");
-    Tty.restoreMode(Sys.stdin);
+    Sys.restoreMode(Sys.stdin);
 end;
 
 (* Reads the arguments: -script and its size, then the files. *)
@@ -277,10 +277,10 @@ begin
     Buf.init(ADR(mode), Heap.heap);
     Buf.init(ADR(echo), Heap.heap);
     Buf.init(ADR(b), Heap.heap);
-    Buf.str(ADR(Core.home), Tty.env("HOME"));
-    n := Tty.workDir(dir);
+    Buf.str(ADR(Core.home), Sys.env("HOME"));
+    n := Sys.workDir(dir);
     if n > 0 then Buf.str(ADR(Core.cwd), dir[0..n]); else Buf.add(ADR(Core.cwd), '/'); end;
-    Core.colour := LEN(Tty.env("NO_COLOR")) = 0;
+    Core.colour := LEN(Sys.env("NO_COLOR")) = 0;
     Core.nextKey := nextKey;
     Core.runKey := Commands.runKey;
     Core.openDir := Dired.open;
@@ -304,7 +304,7 @@ begin
         until n <= 0;
         Keys.notation(Buf.bytes(ADR(b)), addKey);
     else
-        if not Tty.rawMode(Sys.stdin) then
+        if not Sys.rawMode(Sys.stdin) then
             Sys.write(Sys.stderr, "ravite: not a terminal\n");
             return 1;
         end;

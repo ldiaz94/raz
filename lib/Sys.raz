@@ -1,6 +1,12 @@
 (* System calls through the C library: Sys for the targets that have no
    file of their own, with the same exports. A program that imports it
-   uses C. *)
+   uses C.
+
+   It keeps to what POSIX gives: raw mode is cfmakeraw's, and a file's
+   size is where lseek finds its end, so that no struct stat is read.
+   Two things are glibc's: where a name lies in struct dirent, and the
+   number of the TIOCGWINSZ request. A C library that differs needs a
+   Sys of its own. *)
 module Sys;
 import C;
 
@@ -8,6 +14,26 @@ const
     stdin* = 0;
     stdout* = 1;
     stderr* = 2;
+    DirentName = 19;          (* the offset of d_name in glibc's struct dirent *)
+    TIOCGWINSZ = 5413H;       (* glibc's *)
+
+type
+    (* What info says of a file. *)
+    Info* = record
+        size*: I64;     (* in bytes *)
+        dir*: BOOL;     (* a directory *)
+    end;
+
+    (* An open directory: C's DIR. *)
+    Dir* = record
+        d: ^U8;
+    end;
+
+    Winsize = record rows, cols, xpixel, ypixel: U16; end;
+    Pollfd = record fd: I32; events, revents: I16; end;
+
+var
+    saved: [256]U8;   (* the terminal as rawMode found it: a struct termios, of the C library's size *)
 
 (* minus errno, as a system call returns it *)
 proc failed: I64;
@@ -91,6 +117,145 @@ begin
     C.munmap(p, U64(size));
 end;
 
+(* Renames old to new, replacing what new names: 0, or minus an errno. *)
+proc rename*(old, new: []U8): I64;
+var a, b: [4096]U8;
+begin
+    if not cstr(old, a) or not cstr(new, b) then return -36; end;
+    if C.rename(ADR(a[0]), ADR(b[0])) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* Removes the file at path; not a directory. *)
+proc remove*(path: []U8): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    if C.unlink(ADR(a[0])) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* Makes a directory at path, readable by all, writable by its owner. *)
+proc makeDir*(path: []U8): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    if C.mkdir(ADR(a[0]), 1EDH) # 0 then return failed(); end;   (* mode 755 *)
+    return 0;
+end;
+
+(* The size of what path names, and whether it is a directory,
+   following a symbolic link; and 0, or minus an errno. A directory is
+   what opendir opens; a file's size is where lseek finds its end, so a
+   file that can't be read has none. *)
+proc info*(path: []U8): (Info, I64);
+var a: [4096]U8; i: Info; d: ^U8; fd: I32;
+begin
+    if not cstr(path, a) then return i, -36; end;
+    d := C.opendir(ADR(a[0]));
+    if d # nil then
+        C.closedir(d);
+        i.dir := true;
+        return i, 0;
+    end;
+    fd := C.open(ADR(a[0]), 0);                      (* O_RDONLY *)
+    if fd < 0 then return i, failed(); end;
+    i.size := C.lseek(fd, 0, 2);                     (* SEEK_END *)
+    C.close(fd);
+    return i, 0;
+end;
+
+(* Opens the directory at path, for nextEntry. *)
+proc openDir*(d: ^Dir; path: []U8): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    d^.d := C.opendir(ADR(a[0]));
+    if d^.d = nil then return failed(); end;
+    return 0;
+end;
+
+(* The next name in the directory, good until the next call, but . and
+   .., in no order; false at the end. *)
+proc nextEntry*(d: ^Dir): ([]U8, BOOL);
+var e: ^U8; n: I64;
+begin
+    while true do
+        e := C.readdir(d^.d);
+        if e = nil then return "", false; end;
+        e := e + DirentName;
+        n := 0;
+        while e[n] # 0 do INC(n); end;
+        if (e[0..n] # ".") and (e[0..n] # "..") then return e[0..n], true; end;
+    end;
+    return "", false;
+end;
+
+proc closeDir*(d: ^Dir);
+begin
+    C.closedir(d^.d);
+end;
+
+(* Puts the terminal on fd into raw mode, as cfmakeraw makes it: no
+   echo, no lines, no signals, no flow control, no CR to NL, no NL to
+   CR NL; false if fd isn't a terminal. *)
+proc rawMode*(fd: I64): BOOL;
+var t: [256]U8;
+begin
+    if C.tcgetattr(I32(fd), ADR(saved[0])) # 0 then return false; end;
+    t := saved;
+    C.cfmakeraw(ADR(t[0]));
+    return C.tcsetattr(I32(fd), 0, ADR(t[0])) = 0;   (* TCSANOW *)
+end;
+
+(* The terminal on fd as rawMode found it. *)
+proc restoreMode*(fd: I64);
+begin
+    C.tcsetattr(I32(fd), 0, ADR(saved[0]));
+end;
+
+(* The columns and rows of the terminal on fd; 80 by 24 if it doesn't
+   say. *)
+proc termSize*(fd: I64): (I64, I64);
+var w: Winsize;
+begin
+    if (C.ioctl(I32(fd), TIOCGWINSZ, ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then
+        return 80, 24;
+    end;
+    return I64(w.cols), I64(w.rows);
+end;
+
+(* Whether fd has something to read within ms milliseconds; ms < 0
+   waits as long as it takes. *)
+proc ready*(fd, ms: I64): BOOL;
+var p: Pollfd;
+begin
+    p := {fd: I32(fd), events: 1};                   (* POLLIN *)
+    return C.poll(^U8(ADR(p)), 1, I32(ms)) > 0;
+end;
+
+(* The value of the environment variable name; "" if it isn't set. *)
+proc env*(name: []U8): []U8;
+var a: [4096]U8; s: ^U8; n: I64;
+begin
+    if not cstr(name, a) then return ""; end;
+    s := C.getenv(ADR(a[0]));
+    if s = nil then return ""; end;
+    n := 0;
+    while s[n] # 0 do INC(n); end;
+    return s[0..n];
+end;
+
+(* The working directory into buf: its length, or minus an errno. *)
+proc workDir*(var buf: [4096]U8): I64;
+var n: I64;
+begin
+    if C.getcwd(ADR(buf[0]), LEN(buf)) = nil then return failed(); end;
+    n := 0;
+    while buf[n] # 0 do INC(n); end;
+    return n;
+end;
+
 proc isTerminal*(fd: I64): BOOL;
 begin
     return C.isatty(I32(fd)) = 1;
@@ -107,9 +272,11 @@ begin
     C._exit(I32(status));
 end;
 
-(* The module's test: a file written, read back and closed. *)
+(* The module's test, as Linux's Sys has it: a file written, read back
+   and closed; a directory made, listed and emptied; no terminal. *)
 proc main*;
-var fd, n: I64; buf: [16]U8; p: ^U8;
+var fd, n, err, w, h: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
+    dir: [4096]U8;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
@@ -125,6 +292,36 @@ begin
     p := mmap(100);
     if (p = nil) or (p[99] # 0) then exit(2); end;
     munmap(p, 100);
+    (* files and directories *)
+    remove("/tmp/raz-sys-dir/f");
+    remove("/tmp/raz-sys-dir/g");
+    makeDir("/tmp/raz-sys-dir");
+    fd := create("/tmp/raz-sys-dir/f");
+    if (fd < 0) or (write(fd, "abc") # 3) then exit(2); end;
+    close(fd);
+    if rename("/tmp/raz-sys-dir/f", "/tmp/raz-sys-dir/g") # 0 then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/g");
+    if (err # 0) or (i.size # 3) or i.dir then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir");
+    if (err # 0) or not i.dir then exit(2); end;
+    i, err := info("/no/such/file");
+    if err >= 0 then exit(2); end;
+    if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
+    name, ok := nextEntry(ADR(d));
+    if not ok or (name # "g") then exit(2); end;
+    name, ok := nextEntry(ADR(d));
+    if ok then exit(2); end;
+    closeDir(ADR(d));
+    if (remove("/tmp/raz-sys-dir/g") # 0) or (remove("/tmp/raz-sys-dir/g") >= 0) then exit(2); end;
+    if openDir(ADR(d), "/no/such/dir") >= 0 then exit(2); end;
+    (* the terminal: none here, fd -1 *)
+    if rawMode(-1) or ready(-1, 0) then exit(2); end;
+    w, h := termSize(-1);
+    if (w # 80) or (h # 24) then exit(2); end;
+    (* the environment *)
+    if (LEN(env("PATH")) = 0) or (LEN(env("RAZ_NO_SUCH_VARIABLE")) # 0) then exit(2); end;
+    n := workDir(dir);
+    if (n <= 0) or (dir[0] # '/') then exit(2); end;
 end;
 
 end Sys.

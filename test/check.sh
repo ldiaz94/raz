@@ -181,19 +181,22 @@ done
 # there is one, and X.args, if there is one, must leave the screen and
 # the buffer as X.expect says. Home is where they run, so that paths
 # show as ~, with a fresh copy of test/ravite/tree in it, and X.init
-# as its .ravite.
-if $raz -I tools -o $out/ravite ravite/Ravite.raz 2>$out/ravite.cerr; then
+# as its .ravite. Each runs twice: on Linux's Sys, and on the C one.
+if $raz -I tools -o $out/ravite ravite/Ravite.raz 2>$out/ravite.cerr &&
+    $raz -I test/libc/mods -I tools -o $out/ravite-c ravite/Ravite.raz 2>>$out/ravite.cerr; then
     rm -rf $out/rv; mkdir -p $out/rv
     for f in test/ravite/*.keys; do
         name=$(basename $f .keys)
-        rm -rf $out/rv/tree $out/rv/.ravite; cp -r test/ravite/tree $out/rv/
-        [ -f test/ravite/$name.init ] && cp test/ravite/$name.init $out/rv/.ravite
-        set --
-        if [ -f test/ravite/$name.txt ]; then cp test/ravite/$name.txt $out/rv/; set -- $name.txt; fi
-        [ -f test/ravite/$name.args ] && set -- $(cat test/ravite/$name.args)
-        (cd $out/rv && HOME=$(pwd) ../ravite -script 40 12 "$@") < $f > $out/rv/$name.out 2>&1
-        if cmp -s $out/rv/$name.out test/ravite/$name.expect; then pass=$((pass + 1))
-        else echo "FAIL ravite $f"; diff $out/rv/$name.out test/ravite/$name.expect | head -5; fail=$((fail + 1)); fi
+        for r in ravite ravite-c; do
+            rm -rf $out/rv/tree $out/rv/.ravite; cp -r test/ravite/tree $out/rv/
+            [ -f test/ravite/$name.init ] && cp test/ravite/$name.init $out/rv/.ravite
+            set --
+            if [ -f test/ravite/$name.txt ]; then cp test/ravite/$name.txt $out/rv/; set -- $name.txt; fi
+            [ -f test/ravite/$name.args ] && set -- $(cat test/ravite/$name.args)
+            (cd $out/rv && HOME=$(pwd) ../$r -script 40 12 "$@") < $f > $out/rv/$name.out 2>&1
+            if cmp -s $out/rv/$name.out test/ravite/$name.expect; then pass=$((pass + 1))
+            else echo "FAIL $r $f"; diff $out/rv/$name.out test/ravite/$name.expect | head -5; fail=$((fail + 1)); fi
+        done
     done
 else
     echo "FAIL ravite/Ravite.raz: $(cat $out/ravite.cerr)"; fail=$((fail + 1))

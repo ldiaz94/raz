@@ -8,11 +8,11 @@
    Positions are those of Text, in the buffer commands act on. insert
    and delete keep the mark where it was in the text.
 
-   Depends on: Text, and Tty for files.
+   Depends on: Text, and Sys for files.
    Leaves out: the commands themselves, in Edit, Mini, Search, Dired
    and Commands. *)
 module Core;
-import Sys, Rt, Buf, Fmt, Heap, Files, Text, Tty;
+import Sys, Rt, Buf, Fmt, Heap, Files, Text;
 
 const
     File* = 0;        (* a buffer of text: a file's, or no file's, as *scratch* *)
@@ -372,11 +372,11 @@ end;
    has it already, or a new one with what the file holds, or empty for
    a new file; nil if it can't be read. *)
 proc visit*(path: []U8): ^Buffer;
-var x: ^Buffer; i, fd, err: I64; info: Tty.Info;
+var x: ^Buffer; i, fd, err: I64; info: Sys.Info;
 begin
     x := visiting(path);
     if x # nil then return x; end;
-    info, err := Tty.info(path);
+    info, err := Sys.info(path);
     if (err = 0) and info.dir then return openDir(path); end;
     i := LEN(path);
     while (i > 0) and (path[i - 1] # '/') do DEC(i); end;
@@ -431,7 +431,7 @@ begin
     end;
     ok := writeAll(fd, Text.slice(ADR(x^.t), 0, Text.len(ADR(x^.t))));
     Sys.close(fd);
-    if not ok or (Tty.rename(Buf.bytes(ADR(tmp)), path) # 0) then
+    if not ok or (Sys.rename(Buf.bytes(ADR(tmp)), path) # 0) then
         Fmt.write(ADR(echo), "Write error: {}", [Fmt.str(path)]);
         return false;
     end;

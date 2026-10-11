@@ -26,7 +26,7 @@
    Leaves out: dired's marks and its commands on many files, deleting
    directories, and sorting the buffers. *)
 module Dired;
-import Buf, Fmt, Heap, Str, Text, Tty, Core, Mini;
+import Sys, Buf, Fmt, Heap, Str, Text, Core, Mini;
 
 const
     Max = 256;
@@ -39,7 +39,7 @@ var
     line, names, path, given: Buf.Buf;   (* given: a path, before Core.absolute *)
     starts: [MaxEntries]I64;     (* each name in names, sorted *)
     numNames: I64;
-    dir: Tty.Dir;
+    dir: Sys.Dir;
 
 (* Pads line with spaces to n bytes. *)
 proc pad(n: I64);
@@ -217,7 +217,7 @@ end;
 
 (* The directory x lists, read again into it, with the point on line l. *)
 proc fillDir(x: ^Core.Buffer; l: I64);
-var saved: ^Core.Buffer; name: []U8; ok: BOOL; i, j, k, err, moved: I64; info: Tty.Info;
+var saved: ^Core.Buffer; name: []U8; ok: BOOL; i, j, k, err, moved: I64; info: Sys.Info;
 begin
     saved := Core.b;
     Core.b := x;
@@ -229,8 +229,8 @@ begin
     Core.insert(0, Buf.bytes(ADR(line)));
     Buf.reset(ADR(names));
     numNames := 0;
-    if Tty.openDir(ADR(dir), Buf.bytes(ADR(x^.path))) = 0 then
-        name, ok := Tty.nextEntry(ADR(dir));
+    if Sys.openDir(ADR(dir), Buf.bytes(ADR(x^.path))) = 0 then
+        name, ok := Sys.nextEntry(ADR(dir));
         while ok and (numNames < MaxEntries) do
             k := names.len;
             Buf.str(ADR(names), name);
@@ -243,9 +243,9 @@ begin
             end;
             starts[i] := k;
             INC(numNames);
-            name, ok := Tty.nextEntry(ADR(dir));
+            name, ok := Sys.nextEntry(ADR(dir));
         end;
-        Tty.closeDir(ADR(dir));
+        Sys.closeDir(ADR(dir));
     end;
     Core.insert(Core.size(), "  d          -  ..");
     for j := 0 to numNames - 1 do
@@ -253,7 +253,7 @@ begin
         Buf.str(ADR(path), Buf.bytes(ADR(x^.path)));
         if path.len > 1 then Buf.add(ADR(path), '/'); end;
         Buf.str(ADR(path), nameAt(j));
-        info, err := Tty.info(Buf.bytes(ADR(path)));
+        info, err := Sys.info(Buf.bytes(ADR(path)));
         Buf.reset(ADR(Core.tmp));
         if info.dir then
             Buf.add(ADR(Core.tmp), '-');
@@ -358,7 +358,7 @@ end;
 proc diredCreateDirectory*(n: I64);
 begin
     if not ask("Create directory: ") then return; end;
-    if Tty.makeDir(Buf.bytes(ADR(path))) # 0 then
+    if Sys.makeDir(Buf.bytes(ADR(path))) # 0 then
         Fmt.write(ADR(Core.echo), "Can't make {}", [Fmt.str(Buf.bytes(ADR(path)))]);
     end;
     revertDir;
@@ -375,7 +375,7 @@ begin
     Buf.reset(ADR(line));
     Fmt.write(ADR(line), "Rename {} to: ", [Fmt.str(Core.slice(s + Name, Core.lineEnd(s)))]);
     if not ask(Buf.bytes(ADR(line))) then return; end;
-    if Tty.rename(Buf.bytes(ADR(old)), Buf.bytes(ADR(path))) # 0 then
+    if Sys.rename(Buf.bytes(ADR(old)), Buf.bytes(ADR(path))) # 0 then
         Fmt.write(ADR(Core.echo), "Can't rename to {}", [Fmt.str(Buf.bytes(ADR(path)))]);
     end;
     revertDir;
@@ -390,16 +390,16 @@ begin
     Buf.reset(ADR(line));
     Fmt.write(ADR(line), "Delete {}? (yes or no) ", [Fmt.str(Core.slice(s + Name, Core.lineEnd(s)))]);
     if not Mini.yesOrNo(Buf.bytes(ADR(line))) then return; end;
-    if Tty.remove(Buf.bytes(ADR(path))) # 0 then Core.message("Can't delete it"); end;
+    if Sys.remove(Buf.bytes(ADR(path))) # 0 then Core.message("Can't delete it"); end;
     revertDir;
 end;
 
 (* C-x d: a directory, named in the minibuffer, listed. *)
 proc dired*(n: I64);
-var x: ^Core.Buffer; info: Tty.Info; err: I64;
+var x: ^Core.Buffer; info: Sys.Info; err: I64;
 begin
     if not ask("Dired (directory): ") then return; end;
-    info, err := Tty.info(Buf.bytes(ADR(path)));
+    info, err := Sys.info(Buf.bytes(ADR(path)));
     if (err # 0) or not info.dir then
         Fmt.write(ADR(Core.echo), "No such directory: {}", [Fmt.str(Buf.bytes(ADR(path)))]);
         return;
