@@ -1,0 +1,218 @@
+(* Keys: the keys ravite reads. A key is a code point, a control
+   character among them (Ctrl-R is 18), or one of the special keys
+   below, which lie past the last code point. decode takes the bytes a
+   terminal sends for a key; notation takes keys written as vim writes
+   them, <esc> and <c-r>, which the tests use.
+
+   Depends on: nothing but Rt, for its test.
+   Leaves out: modifiers on special keys (Ctrl-Up is Up), function
+   keys, and the mouse. *)
+module Keys;
+import Rt;
+
+const
+    Tab* = 9;
+    Enter* = 13;
+    Esc* = 27;
+    Backspace* = 127;
+    Up* = 110001H;
+    Down* = 110002H;
+    Right* = 110003H;
+    Left* = 110004H;
+    Home* = 110005H;
+    End* = 110006H;
+    PageUp* = 110007H;
+    PageDown* = 110008H;
+    Delete* = 110009H;
+    Insert* = 11000AH;
+    Unknown* = 11000BH;   (* a sequence decode doesn't know *)
+
+(* Control and the letter c: ctrl('r') is 18. *)
+proc ctrl*(c: I64): I64;
+begin
+    return c and 1FH;
+end;
+
+(* An escape sequence at the start of b, ESC [ ... or ESC O x. *)
+proc escape(b: []U8): (I64, I64);
+var i, n: I64; c: U8;
+begin
+    if LEN(b) = 1 then return 0, 0; end;
+    if b[1] = 'O' then
+        if LEN(b) = 2 then return 0, 0; end;
+        c := b[2];
+        if c = 'A' then return Up, 3;
+        elsif c = 'B' then return Down, 3;
+        elsif c = 'C' then return Right, 3;
+        elsif c = 'D' then return Left, 3;
+        elsif c = 'H' then return Home, 3;
+        elsif c = 'F' then return End, 3;
+        end;
+        return Esc, 1;
+    end;
+    if b[1] # '[' then return Esc, 1; end;
+    (* parameters, digits and ;, then a final byte; only the first
+       number matters *)
+    i := 2;
+    n := 0;
+    while (i < LEN(b)) and (b[i] >= '0') and (b[i] <= '9') do
+        n := n * 10 + I64(b[i] - '0');
+        INC(i);
+    end;
+    while (i < LEN(b)) and ((b[i] >= '0') and (b[i] <= '9') or (b[i] = ';')) do INC(i); end;
+    if i = LEN(b) then return 0, 0; end;
+    c := b[i];
+    INC(i);
+    if c = 'A' then return Up, i;
+    elsif c = 'B' then return Down, i;
+    elsif c = 'C' then return Right, i;
+    elsif c = 'D' then return Left, i;
+    elsif c = 'H' then return Home, i;
+    elsif c = 'F' then return End, i;
+    elsif c = '~' then
+        if (n = 1) or (n = 7) then return Home, i;
+        elsif (n = 4) or (n = 8) then return End, i;
+        elsif n = 2 then return Insert, i;
+        elsif n = 3 then return Delete, i;
+        elsif n = 5 then return PageUp, i;
+        elsif n = 6 then return PageDown, i;
+        end;
+    end;
+    return Unknown, i;
+end;
+
+(* The key at the start of b, and the number of bytes it takes; 0
+   bytes if b holds only the start of one, and more may come. A byte
+   that starts nothing valid is a key of its own, its value. *)
+proc decode*(b: []U8): (I64, I64);
+var c, n, k, i: I64;
+begin
+    if LEN(b) = 0 then return 0, 0; end;
+    c := I64(b[0]);
+    if c = Esc then
+        k, n := escape(b);
+        return k, n;
+    end;
+    if c < 80H then return c, 1;
+    elsif c >= 0F8H then return c, 1;
+    elsif c >= 0F0H then n := 4; k := c and 7;
+    elsif c >= 0E0H then n := 3; k := c and 0FH;
+    elsif c >= 0C0H then n := 2; k := c and 1FH;
+    else return c, 1;
+    end;
+    if LEN(b) < n then return 0, 0; end;
+    for i := 1 to n - 1 do
+        if b[i] and 0C0H # 80H then return c, 1; end;
+        k := k shl 6 or I64(b[i] and 3FH);
+    end;
+    return k, n;
+end;
+
+(* The key named by s, as in <s>, in any case, or Unknown. *)
+proc named(s: []U8): I64;
+var buf: [12]U8; name: []U8; i: I64;
+begin
+    if LEN(s) > LEN(buf) then return Unknown; end;
+    for i := 0 to LEN(s) - 1 do
+        buf[i] := s[i];
+        if (s[i] >= 'A') and (s[i] <= 'Z') then buf[i] := s[i] + 32; end;
+    end;
+    name := buf[0..LEN(s)];
+    if (LEN(name) = 3) and (name[0..2] = "c-") then return ctrl(I64(name[2])); end;
+    if name = "esc" then return Esc;
+    elsif (name = "cr") or (name = "enter") then return Enter;
+    elsif name = "tab" then return Tab;
+    elsif name = "bs" then return Backspace;
+    elsif name = "del" then return Delete;
+    elsif name = "up" then return Up;
+    elsif name = "down" then return Down;
+    elsif name = "left" then return Left;
+    elsif name = "right" then return Right;
+    elsif name = "home" then return Home;
+    elsif name = "end" then return End;
+    elsif name = "pageup" then return PageUp;
+    elsif name = "pagedown" then return PageDown;
+    elsif name = "lt" then return '<';
+    elsif name = "space" then return ' ';
+    end;
+    return Unknown;
+end;
+
+(* Gives add each key of s, written as vim writes keys: a character
+   is itself, <name> a key by its name. Line breaks in s are left out,
+   so that a long run of keys can take several lines. A < that starts
+   no name is itself. *)
+proc notation*(s: []U8; add: proc(k: I64));
+var i, j, k, n: I64;
+begin
+    i := 0;
+    while i < LEN(s) do
+        if s[i] = '\n' then
+            INC(i);
+        elsif s[i] = '<' then
+            j := i + 1;
+            while (j < LEN(s)) and (j - i < 12) and (s[j] # '>') and (s[j] # '<') do INC(j); end;
+            k := Unknown;
+            if (j < LEN(s)) and (s[j] = '>') then k := named(s[i + 1..j]); end;
+            if k = Unknown then
+                add('<'); INC(i);
+            else
+                add(k); i := j + 1;
+            end;
+        else
+            k, n := decode(s[i..LEN(s)]);
+            if n = 0 then k := I64(s[i]); n := 1; end;
+            add(k);
+            INC(i, n);
+        end;
+    end;
+end;
+
+var
+    got: [16]I64;   (* the keys notation gave, for the test *)
+    numGot: I64;
+
+proc keep(k: I64);
+begin
+    got[numGot] := k;
+    INC(numGot);
+end;
+
+(* One key decoded from b: key, using n bytes. *)
+proc expect(b: []U8; key, n: I64);
+var k, m: I64;
+begin
+    k, m := decode(b);
+    if (k # key) or (m # n) then Rt.stop("Keys.decode"); end;
+end;
+
+(* The module's test. *)
+proc main*;
+begin
+    expect("a", 'a', 1);
+    expect("\x12", 18, 1);
+    expect("é!", 'é', 2);
+    expect("\xe2\x82", 0, 0);
+    expect("\xe2\x82\xac", 20ACH, 3);
+    expect("\xf0\x9f\x98\x80", 1F600H, 4);
+    expect("\x80", 80H, 1);
+    expect("\xc3(", 0C3H, 1);
+    expect("\x1b", 0, 0);
+    expect("\x1b[", 0, 0);
+    expect("\x1b[A", Up, 3);
+    expect("\x1bOD", Left, 3);
+    expect("\x1b[5~x", PageUp, 4);
+    expect("\x1b[1;5C", Right, 6);
+    expect("\x1b[3~", Delete, 4);
+    expect("\x1b[99~", Unknown, 5);
+    expect("\x1bOx", Esc, 1);
+    expect("\x1bj", Esc, 1);
+    notation("ia<esc>\n<c-R><lt><bad><CR>é", keep);
+    if (numGot # 12) or (got[0] # 'i') or (got[1] # 'a') or (got[2] # Esc)
+        or (got[3] # 18) or (got[4] # '<') or (got[5] # '<') or (got[6] # 'b')
+        or (got[9] # '>') or (got[10] # Enter) or (got[11] # 'é') then
+        Rt.stop("Keys.notation");
+    end;
+end;
+
+end Keys.

@@ -1,0 +1,104 @@
+(* Tty: what ravite needs of the terminal and the system on Linux for
+   x86-64, through system calls: raw mode and back, the size of the
+   screen, waiting for a key, and renaming a file. Other targets supply
+   their own Tty, with the same exports.
+
+   Depends on: Sys, to write; Rt, to restore the terminal at exit.
+   Leaves out: signals. The size is asked for again each time ravite
+   waits, so it needs no SIGWINCH. *)
+module Tty;
+import Sys, Rt;
+link static;
+
+type
+    (* struct termios as the kernel's TCGETS fills it: 36 bytes *)
+    Termios = record
+        iflag, oflag, cflag, lflag: U32;
+        line: U8;
+        cc: [19]U8;
+    end;
+    Winsize = record rows, cols, xpixel, ypixel: U16; end;
+    Pollfd = record fd: I32; events, revents: I16; end;
+
+const
+    TCGETS = 5401H;
+    TCSETS = 5402H;
+    TIOCGWINSZ = 5413H;
+    VTIME = 5;
+    VMIN = 6;
+
+var
+    saved: Termios;
+    isRaw: BOOL;
+
+(* The terminal as raw found it, back on its main screen. *)
+proc restore*;
+begin
+    if not isRaw then return; end;
+    isRaw := false;
+    Sys.write(Sys.stdout, "\x1b[?25h\x1b[?1049l");
+    SYSCALL(16, Sys.stdin, TCSETS, ADR(saved));
+end;
+
+(* Puts the terminal on standard input into raw mode and onto the
+   alternate screen, until restore or the end of the program; false if
+   standard input isn't a terminal. *)
+proc raw*: BOOL;
+var t: Termios;
+begin
+    if SYSCALL(16, Sys.stdin, TCGETS, ADR(saved)) # 0 then return false; end;
+    t := saved;
+    (* no break, parity marks, stripping, CR to NL or flow control *)
+    t.iflag := t.iflag and not U32(5EBH);
+    t.oflag := t.oflag and not U32(1);           (* OPOST *)
+    t.cflag := t.cflag and not U32(130H) or 30H;   (* 8 bits, no parity *)
+    (* no signals, lines, echo or extended input *)
+    t.lflag := t.lflag and not U32(804BH);
+    t.cc[VTIME] := 0;
+    t.cc[VMIN] := 1;
+    if SYSCALL(16, Sys.stdin, TCSETS, ADR(t)) # 0 then return false; end;
+    isRaw := true;
+    Rt.atExit(restore);
+    Sys.write(Sys.stdout, "\x1b[?1049h");
+    return true;
+end;
+
+(* The screen's columns and rows; 80 by 24 if the terminal doesn't say. *)
+proc size*: (I64, I64);
+var w: Winsize;
+begin
+    if (SYSCALL(16, Sys.stdout, TIOCGWINSZ, ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then
+        return 80, 24;
+    end;
+    return I64(w.cols), I64(w.rows);
+end;
+
+(* Whether standard input has something to read within ms
+   milliseconds; ms < 0 waits as long as it takes. *)
+proc wait*(ms: I64): BOOL;
+var p: Pollfd;
+begin
+    p := {fd: I32(Sys.stdin), events: 1};   (* POLLIN *)
+    return SYSCALL(7, ADR(p), 1, ms) > 0;
+end;
+
+(* path, a C string in buf, or false if it doesn't fit. *)
+proc cstr(path: []U8; var buf: [4096]U8): BOOL;
+var i: I64;
+begin
+    if LEN(path) >= LEN(buf) then return false; end;
+    for i := 0 to LEN(path) - 1 do buf[i] := path[i]; end;
+    buf[LEN(path)] := 0;
+    return true;
+end;
+
+(* Renames the file at old to new, replacing what is there: 0, or
+   minus an errno. *)
+proc rename*(old, new: []U8): I64;
+var a, b: [4096]U8;
+begin
+    if not cstr(old, a) or not cstr(new, b) then return -36; end;   (* ENAMETOOLONG *)
+    return SYSCALL(82, ADR(a), ADR(b));
+end;
+
+end Tty.

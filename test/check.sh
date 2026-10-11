@@ -112,7 +112,7 @@ if ./raz -o $out/Pretty tools/Pretty.raz 2>$out/Pretty.cerr; then
             pass=$((pass + 1))
         else echo "FAIL Pretty $f: output differs"; fail=$((fail + 1)); fi
     done
-    for f in lib/*.raz examples/*.raz tools/*.raz; do
+    for f in lib/*.raz examples/*.raz tools/*.raz ravite/*.raz; do
         if ! $out/Pretty $f | cmp -s - $f; then
             echo "FAIL Pretty $f: not formatted"; fail=$((fail + 1))
         fi
@@ -161,6 +161,18 @@ for f in lib/*.raz; do
     if ! $raz -o $out/$name $f 2>$out/$name.cerr; then
         echo "FAIL $f: doesn't compile: $(cat $out/$name.cerr)"; fail=$((fail + 1))
     elif ! $out/$name > $out/$name.out 2>&1; then
+        echo "FAIL $f: its test says $(cat $out/$name.out)"; fail=$((fail + 1))
+    else pass=$((pass + 1)); fi
+done
+
+# ravite: each of its modules' main is its test
+for f in ravite/*.raz; do
+    grep -q '^proc main\*' $f || continue
+    [ $f = ravite/Ravite.raz ] && continue
+    name=ravite_$(basename $f .raz)
+    if ! $raz -I tools -o $out/$name $f 2>$out/$name.cerr; then
+        echo "FAIL $f: doesn't compile: $(cat $out/$name.cerr)"; fail=$((fail + 1))
+    elif ! $out/$name > $out/$name.out 2>&1 </dev/null; then
         echo "FAIL $f: its test says $(cat $out/$name.out)"; fail=$((fail + 1))
     else pass=$((pass + 1)); fi
 done

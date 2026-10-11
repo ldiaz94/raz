@@ -388,8 +388,8 @@ it prints the screen as plain text, then the text. Each
 `test/ravite/X.keys` has its `X.expect`, and may have an `X.txt` to
 start from.
 
-- [ ] 28. `Tty` and `Keys`, with `Keys`'s test; a program that prints
-      the keys it reads, tried by hand.
+- [x] 28. `Tty` and `Keys`, with `Keys`'s test; raw mode, the size
+      and the keys tried through a pseudo-terminal.
 - [ ] 29. `Text`: the gap buffer and undo, with its test.
 - [ ] 30. `View` and `Ravite`: opening, the modes, motions, operators,
       the register, undo, repeating, the command line, writing and

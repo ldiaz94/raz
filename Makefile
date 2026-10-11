@@ -60,11 +60,11 @@ stress: raz | build
 	build/Stress 40000 200
 	(ulimit -v 60000; build/Stress fail)
 
-# the formatter, tools/Pretty.raz: the library, examples and tools are
-# formatted already
+# the formatter, tools/Pretty.raz: the library, examples, tools and
+# ravite are formatted already
 fmt: raz | build
 	./raz -o build/Pretty tools/Pretty.raz
-	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz; do \
+	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz ravite/*.raz; do \
 	    build/Pretty $$f | cmp -s - $$f || { echo "not formatted: $$f"; fail=1; }; \
 	done; test $$fail = 0
 
