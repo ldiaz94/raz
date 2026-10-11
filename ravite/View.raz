@@ -26,6 +26,7 @@ type
         status*: []U8;         (* the left of the last line *)
         ruler*: []U8;          (* its right *)
         prompt*: BOOL;         (* the cursor is on the last line, after status *)
+        colour*: BOOL;         (* the ~ past the end in colour *)
         bar*: BOOL;            (* the cursor is a bar, for insert mode *)
     end;
 
@@ -146,9 +147,9 @@ begin
     cr := 0;
     for r := 0 to f^.rows - 2 do
         if pos > n then
-            if not plain then Buf.str(out, sgr(8)); end;
+            if f^.colour and not plain then Buf.str(out, sgr(8)); end;
             Buf.add(out, '~');
-            if not plain then Buf.str(out, "\x1b[0m"); end;
+            if f^.colour and not plain then Buf.str(out, "\x1b[0m"); end;
         else
             if (f^.cursor >= pos) and (f^.cursor <= Text.lineEnd(f^.t, pos)) then cr := r; end;
             row(f, out, pos, plain);

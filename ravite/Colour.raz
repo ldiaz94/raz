@@ -1,0 +1,151 @@
+(* Colour: the colour of each byte of raz source on the screen, by
+   what the symbol it is part of is: a reserved word, a basic type, a
+   built-in procedure, a constant, a number, a string or character, or
+   a comment. Symbols are read by tools/Scan.raz, as the formatter
+   reads them.
+
+   Only the screen is coloured, so the comment it starts in, if any,
+   has to be known: depth counts comments over the text above, and
+   paint finishes such a comment itself before handing the rest to
+   Scan. A comment is the one thing that carries from line to line,
+   since strings and characters end with their line.
+
+   Depends on: Scan; Map and Str for the table of words.
+   Leaves out: other languages. *)
+module Colour;
+import Scan, Str, Heap, Rt;
+import Words := Map([]U8, U8, Str.hash, Str.eq);
+
+const
+    Plain* = 0;
+    Reserved* = 1;
+    Basic* = 2;
+    Builtin* = 3;
+    Constant* = 4;
+    Number* = 5;
+    Literal* = 6;
+    Comment* = 7;
+
+var
+    words: Words.Map;   (* each word's colour *)
+    ready: BOOL;
+
+(* Each word of list, separated by single spaces, as colour c. *)
+proc add(list: []U8; c: U8);
+var i, j: I64;
+begin
+    i := 0;
+    while i < LEN(list) do
+        j := i;
+        while (j < LEN(list)) and (list[j] # ' ') do INC(j); end;
+        if not Words.put(ADR(words), list[i..j], c) then Rt.stop("Colour: out of memory"); end;
+        i := j + 1;
+    end;
+end;
+
+proc setUp;
+begin
+    Words.init(ADR(words), Heap.heap);
+    add("and begin break by code const defer div do else elsif end extern for forward if import in link match mod module not of or packed proc record repeat return set shl shr then to type until var variant VOLATILE while xor", Reserved);
+    add("I8 I16 I32 I64 U8 U16 U32 U64 BOOL F32 F64 ERROR", Basic);
+    add("SIZE ADR LEN NEW MSG SYSCALL FENCE CAS XCHG XADD ARGC ARGV INC DEC", Builtin);
+    add("true false nil", Constant);
+    ready := true;
+end;
+
+(* Whether s[i..] starts with a and b. *)
+proc pair(s: []U8; i: I64; a, b: U8): BOOL;
+begin
+    return (i + 1 < LEN(s)) and (s[i] = a) and (s[i + 1] = b);
+end;
+
+(* Past the string or character that starts at i, as Scan reads it. *)
+proc pastLiteral(s: []U8; i: I64): I64;
+var q: U8;
+begin
+    q := s[i];
+    INC(i);
+    while (i < LEN(s)) and (s[i] # q) and (s[i] # '\n') do
+        if (s[i] = '\\') and (i + 1 < LEN(s)) then INC(i); end;
+        INC(i);
+    end;
+    if i < LEN(s) then INC(i); end;
+    return i;
+end;
+
+(* The depth of comment at the end of s, if it starts at depth d. *)
+proc depth*(s: []U8; d: I64): I64;
+var i: I64;
+begin
+    i := 0;
+    while i < LEN(s) do
+        if pair(s, i, '(', '*') then
+            INC(d); INC(i, 2);
+        elsif (d > 0) and pair(s, i, '*', ')') then
+            DEC(d); INC(i, 2);
+        elsif (d = 0) and ((s[i] = '"') or (s[i] = '\'')) then
+            i := pastLiteral(s, i);
+        else
+            INC(i);
+        end;
+    end;
+    return d;
+end;
+
+(* The colour of each byte of s into out, s starting at depth d of
+   comment. *)
+proc paint*(s: []U8; d: I64; out: []U8);
+var i, j: I64; c: U8; sc: Scan.Scanner; found: BOOL;
+begin
+    if not ready then setUp; end;
+    for j := 0 to LEN(s) - 1 do out[j] := Plain; end;
+    i := 0;
+    while (d > 0) and (i < LEN(s)) do
+        if pair(s, i, '(', '*') then
+            INC(d); INC(i, 2);
+        elsif pair(s, i, '*', ')') then
+            DEC(d); INC(i, 2);
+        else
+            INC(i);
+        end;
+    end;
+    for j := 0 to i - 1 do out[j] := Comment; end;
+    Scan.init(ADR(sc), s[i..LEN(s)]);
+    Scan.next(ADR(sc));
+    while sc.kind # Scan.eof do
+        c := Plain;
+        match sc.kind of
+        | word:
+            c, found := Words.get(ADR(words), Scan.text(ADR(sc)));
+        | number: c := Number;
+        | literal: c := Literal;
+        | comment: c := Comment;
+        | else:
+        end;
+        for j := sc.start to sc.stop - 1 do out[i + j] := c; end;
+        Scan.next(ADR(sc));
+    end;
+end;
+
+(* The module's test. *)
+proc main*;
+const
+    line = "x := LEN(s) + 0FFH; (* a (* b *) *) if \"(*\" = '\\'' then I64(nil)";
+    want = "0000033300000055550077777777777777701106666000666601111022204440";
+var out: [64]U8; i: I64;
+begin
+    paint(line, 0, out);
+    for i := 0 to LEN(line) - 1 do
+        if out[i] + '0' # want[i] then Rt.stop("Colour.paint"); end;
+    end;
+    if (depth(line, 0) # 0) or (depth("(* (* *)", 0) # 1) or (depth("*) x", 1) # 0)
+        or (depth("\"(*\" '(' (*", 0) # 1) then
+        Rt.stop("Colour.depth");
+    end;
+    paint("b *) end", 1, out);
+    if (out[0] # Comment) or (out[3] # Comment) or (out[4] # Plain) or (out[5] # Reserved) then
+        Rt.stop("Colour.paint: in a comment");
+    end;
+end;
+
+end Colour.

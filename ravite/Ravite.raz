@@ -19,7 +19,7 @@
    for what a word is.
    Leaves out: see doc/ravite.md. *)
 module Ravite;
-import Sys, Rt, Buf, Fmt, Heap, Files, Scan, Tty, Keys, Text, View;
+import Sys, Rt, Buf, Fmt, Heap, Files, Scan, Tty, Keys, Text, View, Colour;
 
 const
     Normal = 0;
@@ -65,6 +65,11 @@ var
     numKeys, capKeys, atKey: I64;
     pending: [256]U8;     (* bytes read from the terminal, not yet keys *)
     have: I64;
+
+    colour: BOOL;         (* colour isn't turned off *)
+    coloured: BOOL;       (* the file is raz, and in colour *)
+    paint: [65536]U8;     (* the colours of the screen's bytes, as far as they go *)
+    known, knownDepth: I64;   (* the depth of comment at position known *)
 
 proc size: I64;
 begin
@@ -189,6 +194,33 @@ begin
     if c >= left + cols then left := c - cols + 1; end;
 end;
 
+(* The colours of the bytes on the screen, as far as paint goes. The
+   depth of comment at the top is counted from where it was last
+   known, if no change came before that; else from the start. *)
+proc colours: []U8;
+var e, i, d: I64;
+begin
+    if not coloured then return ""; end;
+    if (t.low < known) or (known > top) then
+        known := 0;
+        knownDepth := 0;
+    end;
+    t.low := Far;
+    d := Colour.depth(Text.slice(ADR(t), known, top), knownDepth);
+    known := top;
+    knownDepth := d;
+    e := top;
+    i := 1;
+    while (i < rows) and (e < size()) do
+        e := lineEnd(e) + 1;
+        INC(i);
+    end;
+    if e > size() then e := size(); end;
+    if e - top > LEN(paint) then e := top + LEN(paint); end;
+    Colour.paint(Text.slice(ADR(t), top, e), d, paint[0..e - top]);
+    return paint[0..e - top];
+end;
+
 (* The screen as it stands, drawn into the buffer screen. *)
 proc frame(plain: BOOL);
 var f: View.Frame;
@@ -214,7 +246,8 @@ begin
         Fmt.int(View.column(ADR(t), cur) + 1)]);
     f := {t: ADR(t), cols: cols, rows: rows, top: top, left: left, cursor: cur,
         status: Buf.bytes(ADR(status)), ruler: Buf.bytes(ADR(ruler)),
-        prompt: prompting, bar: mode = Insert};
+        prompt: prompting, bar: mode = Insert, colour: colour};
+    if not plain then f.colours := colours(); end;
     Buf.reset(ADR(screen));
     View.draw(ADR(f), ADR(screen), plain);
 end;
@@ -1094,6 +1127,22 @@ begin
     cur := onChar(cur);
 end;
 
+(* Whether the environment variable name is set, and not empty. *)
+proc env(name: []U8): BOOL;
+var e: ^^U8; s: ^U8; i, n: I64;
+begin
+    e := ARGV() + (ARGC() + 1);   (* the environment follows the arguments *)
+    i := 0;
+    while e[i] # nil do
+        s := e[i];
+        n := 0;
+        while (n < LEN(name)) and (s[n] = name[n]) do INC(n); end;
+        if (n = LEN(name)) and (s[n] = '=') and (s[n + 1] # 0) then return true; end;
+        INC(i);
+    end;
+    return false;
+end;
+
 (* Reads the file at path into the text; false if it is there and
    can't be read. *)
 proc load: BOOL;
@@ -1156,6 +1205,8 @@ begin
         Sys.write(Sys.stderr, "\n");
         return 1;
     end;
+    colour := not env("NO_COLOR");
+    coloured := colour and (LEN(path) > 4) and (path[LEN(path) - 4..LEN(path)] = ".raz");
     if not script and not Tty.raw() then
         Sys.write(Sys.stderr, "ravite: not a terminal\n");
         return 1;
