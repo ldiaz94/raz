@@ -1,0 +1,392 @@
+(* Text: the text ravite edits, as a gap buffer of bytes, with undo
+   and redo.
+
+   A position is a byte offset, from 0 to len. The bytes are
+   data[0..gap] then data[gapEnd..cap], and a change happens at the
+   gap, which moves there first. Every change is logged, an insertion
+   or a deletion with its bytes, in steps: undo takes back the changes
+   of the last step and redo makes them again; step starts a new one;
+   a new change forgets what could have been redone.
+
+   Depends on: Mem for memory, Buf for the log's bytes.
+   Leaves out: a table of where lines start. lineOf and lineAt count
+   line breaks from the start, which is fast enough below some
+   megabytes. *)
+module Text;
+import Mem, Buf, Heap, Rt;
+
+type
+    Change = record
+        pos: I64;       (* where *)
+        at, len: I64;   (* its bytes: log[at..at + len] *)
+        insert: BOOL;   (* an insertion; else a deletion *)
+        step: I64;
+    end;
+
+    Text* = record
+        a: ^Mem.Allocator;
+        data: ^U8;
+        cap, gap, gapEnd: I64;
+        changes: ^Change;
+        numChanges, capChanges: I64;
+        done: I64;      (* the changes in effect: changes[0..done] *)
+        log: Buf.Buf;
+        step: I64;
+        saved: I64;     (* done when last written; -1 if that can't come back *)
+        low*: I64;      (* the lowest position changed since its owner last set it *)
+    end;
+
+proc init*(t: ^Text; a: ^Mem.Allocator);
+begin
+    t^ := {a: a};
+    Buf.init(ADR(t^.log), a);
+end;
+
+proc len*(t: ^Text): I64;
+begin
+    return t^.cap - (t^.gapEnd - t^.gap);
+end;
+
+(* The byte at position i, which must be below len. *)
+proc at*(t: ^Text; i: I64): U8;
+begin
+    if (i < 0) or (i >= len(t)) then Rt.stop("Text.at: out of range"); end;
+    if i < t^.gap then return t^.data[i]; end;
+    return t^.data[i + t^.gapEnd - t^.gap];
+end;
+
+(* The gap moved to position p. *)
+proc moveGap(t: ^Text; p: I64);
+var i, n: I64; d: ^U8;
+begin
+    d := t^.data;
+    n := t^.gapEnd - t^.gap;
+    if p < t^.gap then
+        for i := t^.gap - 1 to p by -1 do d[i + n] := d[i]; end;
+    else
+        for i := t^.gap to p - 1 do d[i] := d[i + n]; end;
+    end;
+    t^.gap := p;
+    t^.gapEnd := p + n;
+end;
+
+(* A gap of at least n bytes; false if there is no memory for it. *)
+proc room(t: ^Text; n: I64): BOOL;
+var cap, tail, i: I64; d: ^U8;
+begin
+    if t^.gapEnd - t^.gap >= n then return true; end;
+    cap := t^.cap * 2;
+    if cap < t^.cap + n + 4096 then cap := t^.cap + n + 4096; end;
+    d := Mem.alloc(t^.a, cap, 1);
+    if d = nil then return false; end;
+    tail := t^.cap - t^.gapEnd;
+    for i := 0 to t^.gap - 1 do d[i] := t^.data[i]; end;
+    for i := 0 to tail - 1 do d[cap - tail + i] := t^.data[t^.gapEnd + i]; end;
+    if t^.data # nil then Mem.free(t^.a, t^.data); end;
+    t^.data := d;
+    t^.gapEnd := cap - tail;
+    t^.cap := cap;
+    return true;
+end;
+
+(* The bytes from lo up to hi, as one slice, good until the next
+   change; the gap moves past them if it is among them. *)
+proc slice*(t: ^Text; lo, hi: I64): []U8;
+var n: I64;
+begin
+    if (lo < 0) or (lo > hi) or (hi > len(t)) then Rt.stop("Text.slice: out of range"); end;
+    if lo = hi then return ""; end;
+    n := t^.gapEnd - t^.gap;
+    if hi <= t^.gap then return t^.data[lo..hi]; end;
+    if lo >= t^.gap then return t^.data[lo + n..hi + n]; end;
+    moveGap(t, hi);
+    return t^.data[lo..hi];
+end;
+
+proc rawInsert(t: ^Text; pos: I64; s: []U8): BOOL;
+var i: I64;
+begin
+    if not room(t, LEN(s)) then return false; end;
+    moveGap(t, pos);
+    for i := 0 to LEN(s) - 1 do t^.data[pos + i] := s[i]; end;
+    INC(t^.gap, LEN(s));
+    if pos < t^.low then t^.low := pos; end;
+    return true;
+end;
+
+proc rawDelete(t: ^Text; pos, n: I64);
+begin
+    moveGap(t, pos);
+    INC(t^.gapEnd, n);
+    if pos < t^.low then t^.low := pos; end;
+end;
+
+(* Logs a change: s inserted at pos, or deleted from there. A run of
+   insertions in one step, each where the last one ended, is one
+   change. *)
+proc remember(t: ^Text; pos: I64; s: []U8; insert: BOOL): BOOL;
+var c: ^Change; p: ^Change; n: I64;
+begin
+    t^.numChanges := t^.done;
+    if t^.saved > t^.done then t^.saved := -1; end;
+    t^.log.len := 0;
+    if t^.done > 0 then
+        c := ADR(t^.changes[t^.done - 1]);
+        t^.log.len := c^.at + c^.len;
+        if insert and c^.insert and (c^.step = t^.step) and (c^.pos + c^.len = pos) then
+            n := t^.log.len;
+            Buf.str(ADR(t^.log), s);
+            if t^.log.len # n + LEN(s) then return false; end;
+            INC(c^.len, LEN(s));
+            return true;
+        end;
+    end;
+    if t^.numChanges = t^.capChanges then
+        n := t^.capChanges * 2 + 64;
+        p := ^Change(Mem.alloc(t^.a, n * SIZE(Change), 8));
+        if p = nil then return false; end;
+        for n := 0 to t^.numChanges - 1 do p[n] := t^.changes[n]; end;
+        if t^.changes # nil then Mem.free(t^.a, ^U8(t^.changes)); end;
+        t^.changes := p;
+        t^.capChanges := t^.capChanges * 2 + 64;
+    end;
+    n := t^.log.len;
+    Buf.str(ADR(t^.log), s);
+    if t^.log.len # n + LEN(s) then return false; end;
+    t^.changes[t^.numChanges] := {pos: pos, at: n, len: LEN(s), insert: insert, step: t^.step};
+    INC(t^.numChanges);
+    t^.done := t^.numChanges;
+    return true;
+end;
+
+(* Inserts s at pos; false if there is no memory for it. *)
+proc insert*(t: ^Text; pos: I64; s: []U8): BOOL;
+begin
+    if LEN(s) = 0 then return true; end;
+    if (pos < 0) or (pos > len(t)) then Rt.stop("Text.insert: out of range"); end;
+    if not room(t, LEN(s)) or not remember(t, pos, s, true) then return false; end;
+    return rawInsert(t, pos, s);
+end;
+
+(* Deletes the n bytes from pos; false if there is no memory to log it. *)
+proc delete*(t: ^Text; pos, n: I64): BOOL;
+begin
+    if n <= 0 then return true; end;
+    if not remember(t, pos, slice(t, pos, pos + n), false) then return false; end;
+    rawDelete(t, pos, n);
+    return true;
+end;
+
+(* s as the whole text, which must be empty, with nothing to undo. *)
+proc load*(t: ^Text; s: []U8): BOOL;
+begin
+    return rawInsert(t, 0, s);
+end;
+
+(* The changes from here on are a new step, undone together. *)
+proc step*(t: ^Text);
+begin
+    INC(t^.step);
+end;
+
+(* Takes back the last step: where its first change was, or false if
+   there is nothing to undo. *)
+proc undo*(t: ^Text): (I64, BOOL);
+var c: Change; s: I64;
+begin
+    if t^.done = 0 then return 0, false; end;
+    s := t^.changes[t^.done - 1].step;
+    while (t^.done > 0) and (t^.changes[t^.done - 1].step = s) do
+        DEC(t^.done);
+        c := t^.changes[t^.done];
+        if c.insert then
+            rawDelete(t, c.pos, c.len);
+        else
+            rawInsert(t, c.pos, Buf.bytes(ADR(t^.log))[c.at..c.at + c.len]);
+        end;
+    end;
+    return c.pos, true;
+end;
+
+(* Makes the next step undone again: where its first change was, or
+   false if there is nothing to redo. *)
+proc redo*(t: ^Text): (I64, BOOL);
+var c: Change; s, pos: I64;
+begin
+    if t^.done = t^.numChanges then return 0, false; end;
+    s := t^.changes[t^.done].step;
+    pos := t^.changes[t^.done].pos;
+    while (t^.done < t^.numChanges) and (t^.changes[t^.done].step = s) do
+        c := t^.changes[t^.done];
+        if c.insert then
+            rawInsert(t, c.pos, Buf.bytes(ADR(t^.log))[c.at..c.at + c.len]);
+        else
+            rawDelete(t, c.pos, c.len);
+        end;
+        INC(t^.done);
+    end;
+    return pos, true;
+end;
+
+(* Whether the text has changed since it was last written. *)
+proc changed*(t: ^Text): BOOL;
+begin
+    return t^.done # t^.saved;
+end;
+
+(* The text, as it is now, has been written. *)
+proc written*(t: ^Text);
+begin
+    t^.saved := t^.done;
+end;
+
+(* The number of line breaks from lo up to hi. *)
+proc count*(t: ^Text; lo, hi: I64): I64;
+var i, n, g: I64; d: ^U8;
+begin
+    d := t^.data;
+    g := t^.gapEnd - t^.gap;
+    n := 0;
+    i := lo;
+    while (i < hi) and (i < t^.gap) do
+        if d[i] = '\n' then INC(n); end;
+        INC(i);
+    end;
+    while i < hi do
+        if d[i + g] = '\n' then INC(n); end;
+        INC(i);
+    end;
+    return n;
+end;
+
+(* The number of lines: one more than the line breaks. *)
+proc lines*(t: ^Text): I64;
+begin
+    return count(t, 0, len(t)) + 1;
+end;
+
+(* The start of the line pos is in. *)
+proc lineStart*(t: ^Text; pos: I64): I64;
+begin
+    while (pos > 0) and (at(t, pos - 1) # '\n') do DEC(pos); end;
+    return pos;
+end;
+
+(* The end of the line pos is in: its line break, or the end. *)
+proc lineEnd*(t: ^Text; pos: I64): I64;
+var n: I64;
+begin
+    n := len(t);
+    while (pos < n) and (at(t, pos) # '\n') do INC(pos); end;
+    return pos;
+end;
+
+(* The line pos is in, counted from 0. *)
+proc lineOf*(t: ^Text; pos: I64): I64;
+begin
+    return count(t, 0, pos);
+end;
+
+(* The start of line n, counted from 0; of the last line if there are
+   fewer. *)
+proc lineAt*(t: ^Text; n: I64): I64;
+var pos, end_: I64;
+begin
+    pos := 0;
+    end_ := len(t);
+    while (n > 0) and (pos < end_) do
+        if at(t, pos) = '\n' then DEC(n); end;
+        INC(pos);
+    end;
+    return lineStart(t, pos);
+end;
+
+var seed: U64;
+
+(* A number from 0 up to n, for the test. *)
+proc random(n: I64): I64;
+begin
+    seed := seed * 6364136223846793005 + 1442695040888963407;
+    return I64(seed shr 33) mod n;
+end;
+
+(* Whether t holds what b holds. *)
+proc same(t: ^Text; b: ^Buf.Buf): BOOL;
+var i: I64; s: []U8;
+begin
+    s := Buf.bytes(b);
+    if LEN(s) # len(t) then return false; end;
+    for i := 0 to LEN(s) - 1 do
+        if at(t, i) # s[i] then return false; end;
+    end;
+    return true;
+end;
+
+(* The module's test: random steps of insertions and deletions against
+   a plain copy of the text after each step; then every step undone,
+   redone, and undone halfway, where a new change forgets the rest. *)
+proc main*;
+const
+    Steps = 60;
+    sample = "abc\ndefghij\n";
+var
+    t: Text;
+    shots: [Steps + 1]Buf.Buf;   (* the text after each step *)
+    i, j, k, pos, n: I64;
+    s: []U8;
+    ok: BOOL;
+begin
+    init(ADR(t), Heap.heap);
+    if not load(ADR(t), "first line\nsecond\n\nfourth") then Rt.stop("Text.load"); end;
+    if (lines(ADR(t)) # 4) or (lineAt(ADR(t), 3) # 19) or (lineAt(ADR(t), 9) # 19)
+        or (lineOf(ADR(t), 12) # 1) or (lineStart(ADR(t), 14) # 11) or (lineStart(ADR(t), 1) # 0)
+        or (lineEnd(ADR(t), 11) # 17) or (lineEnd(ADR(t), 19) # 25) then
+        Rt.stop("Text: lines");
+    end;
+    if changed(ADR(t)) or (slice(ADR(t), 6, 13) # "line\nse") then Rt.stop("Text.slice"); end;
+    for i := 0 to Steps do Buf.init(ADR(shots[i]), Heap.heap); end;
+    Buf.str(ADR(shots[0]), slice(ADR(t), 0, len(ADR(t))));
+    seed := 1;
+    for i := 1 to Steps do
+        step(ADR(t));
+        for j := 0 to random(5) do
+            n := len(ADR(t));
+            pos := random(n + 1);
+            if (random(3) = 0) and (pos < n) then
+                k := random(n - pos) + 1;
+                if k > 20 then k := 20; end;
+                if not delete(ADR(t), pos, k) then Rt.stop("Text.delete"); end;
+            else
+                s := sample[random(12)..12];
+                if not insert(ADR(t), pos, s) then Rt.stop("Text.insert"); end;
+                (* typing goes on where it ended *)
+                if not insert(ADR(t), pos + LEN(s), "xy") then Rt.stop("Text.insert"); end;
+            end;
+        end;
+        Buf.str(ADR(shots[i]), slice(ADR(t), 0, len(ADR(t))));
+        if (count(ADR(t), 0, len(ADR(t))) # lines(ADR(t)) - 1) then Rt.stop("Text.count"); end;
+    end;
+    if not changed(ADR(t)) then Rt.stop("Text.changed"); end;
+    for i := Steps - 1 to 0 by -1 do
+        pos, ok := undo(ADR(t));
+        if not ok or not same(ADR(t), ADR(shots[i])) then Rt.stop("Text.undo"); end;
+    end;
+    pos, ok := undo(ADR(t));
+    if ok or changed(ADR(t)) then Rt.stop("Text.undo: past the start"); end;
+    for i := 1 to Steps do
+        pos, ok := redo(ADR(t));
+        if not ok or not same(ADR(t), ADR(shots[i])) then Rt.stop("Text.redo"); end;
+    end;
+    pos, ok := redo(ADR(t));
+    if ok then Rt.stop("Text.redo: past the end"); end;
+    written(ADR(t));
+    for i := 1 to Steps div 2 do undo(ADR(t)); end;
+    step(ADR(t));
+    insert(ADR(t), 0, "new");
+    pos, ok := redo(ADR(t));
+    if ok or not changed(ADR(t)) then Rt.stop("Text: a new change after undo"); end;
+    undo(ADR(t));
+    if not same(ADR(t), ADR(shots[Steps - Steps div 2])) then Rt.stop("Text: undo after a new change"); end;
+end;
+
+end Text.
