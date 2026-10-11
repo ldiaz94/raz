@@ -64,6 +64,58 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
       `doc/compiler.md`'s table, the report's version and the
       compiler's; tag `v0.5.0`.
 
+## Proposed, v0.6.0: raz to be rebuilt by anyone
+
+Not started; it waits for the owner's go-ahead, and it lifts the
+freeze for what it names, and nothing else.
+
+**For:** a language a person alone can implement again, from the
+report, on any machine, in weeks; programs that run on small machines
+as well as large; code within reach of a simple optimising compiler,
+without one.
+
+**Done when:** the report alone is enough to rebuild raz, with a
+conformance suite to say when a rebuild is done; the report has a
+system integer, optional reals and object files; the compiler goes
+through an IR, which is what an object file holds, and keeps its
+values in registers as Wirth's compilers do; `make bench` still
+passes; a new code budget is written down; `v0.6.0` is tagged.
+
+**Kept out:** a second back end (aarch64 is the milestone after, to
+measure a port); an optimiser; the wishes below.
+
+- [ ] 1. The report as it stands, made complete: the whole grammar;
+      the readings in CLAUDE.md moved into the report; what every
+      implementation must do set apart from what each may choose
+      (code procedures, `SYSCALL`, `extern`'s convention, how several
+      results come back, the text of messages); the core a port must
+      have (the language, `Rt` and `Out`, over writing, exiting and
+      getting memory) and what it may leave out. No language change.
+      For review before anything else.
+- [ ] 2. The report, the new language, for review before any code: the
+      system integer, the size of an address, which `LEN`, indexes and
+      sizes give, and how it converts to and from `I64`; reals a
+      target may leave out; object files, a module's interface and its
+      IR, and a generic's instances in them, named by their arguments
+      and the fingerprints they were built from.
+- [ ] 3. The IR, in its own document, for review: proposed, a stack
+      code close to what the parser asks of `gen` today, with types
+      and places, so that a back end turns its stack into registers and
+      an interpreter of it stays small.
+- [ ] 4. The tests split: a conformance suite any implementation
+      passes, apart from this compiler's own messages.
+- [ ] 5. The system integer.
+- [ ] 6. Optional reals: a target says whether it has them.
+- [ ] 7. The parser emits the IR and the x86-64 back end reads it;
+      every test gives the same output as before.
+- [ ] 8. Wirth's register stack in the back end: a value is held in
+      one of a stack of registers, not pushed.
+- [ ] 9. Object files: written for each module, read in place of its
+      source when they are current; instances kept once each by the
+      linker.
+- [ ] 10. `doc/compiler.md`, README, the budget, the report's version
+      and the compiler's; tag `v0.6.0`.
+
 ## Wishes, for a later thaw
 
 What the language or the library might have, met while writing raz;
