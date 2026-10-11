@@ -1,4 +1,4 @@
-(* Files: what the tools need of the command line and of files: an
+(* What most programs need of the command line and of files: an
    argument as a string, and a whole file read or written. *)
 module Files;
 import Sys, Buf;

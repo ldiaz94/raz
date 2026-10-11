@@ -1,0 +1,537 @@
+(* A command line read through one table, by the rules of the C
+   library's getopt with GNU's long options (report, section 11). The
+   program describes its synopsis lines, subcommands and options once,
+   in a slice of Row; the help and the messages for mistakes are made
+   from it, so they can't drift from it.
+
+   Depends on Files for the words, and writes the help and the
+   messages itself, then ends the program.
+   Leaves out: options after operands (GNU's reordering), a program
+   that keeps -h for itself, and completion for concha. *)
+module Opt;
+import Files, Str, Buf, Fmt, Heap, Out, Sys, Rt;
+
+type
+    Row* = variant
+        usage(scope, line: []U8);           (* a synopsis line, without "usage: " *)
+        sub(scope, name, help: []U8);       (* a subcommand *)
+        option(scope: []U8; letter: U8; long, value, help: []U8);
+    end;
+    Parser* = record
+        letter*: U8;    (* the option just read *)
+        value*: []U8;   (* its value; "" for a flag *)
+        long*: BOOL;    (* it was written by its long name *)
+        (* the rest are Opt's own *)
+        name: []U8;     (* the program's, as the messages begin *)
+        table: []Row;
+        scope: []U8;
+        at: I64;        (* the next word *)
+        group: []U8;    (* the letters left of a word of them, as -lw *)
+        spelt: []U8;    (* the option just read as written, without its dashes *)
+        ended: BOOL;    (* the scope's options have ended *)
+        help: BOOL;     (* the option just read is -h or --help *)
+    end;
+
+(* What read makes of a word or a letter. *)
+const read1 = 1; readEnd = 0; readSkip = -1;
+
+(* b written whole to fd, then freed. *)
+proc say(fd: I64; b: ^Buf.Buf);
+var s: []U8; n: I64;
+begin
+    s := Buf.bytes(b);
+    while LEN(s) > 0 do
+        n := Sys.write(fd, s);
+        if n <= 0 then break; end;
+        s := s[n..LEN(s)];
+    end;
+    Buf.done(b);
+end;
+
+proc inScope(p: ^Parser; r: Row): BOOL;
+begin
+    match r of
+    | usage(s, _line): return s = p^.scope;
+    | sub(s, _name, _help): return s = p^.scope;
+    | option(s, _l, _long, _v, _help): return s = p^.scope;
+    end;
+end;
+
+(* The scope's synopsis lines, as the help and the mistakes begin:
+   "usage: " and the first, the others under it; or, for a scope with
+   none, "usage: keep start". *)
+proc usageOf(p: ^Parser; b: ^Buf.Buf);
+var i, lines: I64; c: U8;
+begin
+    for i := 0 to LEN(p^.table) - 1 do
+        match p^.table[i] of
+        | usage(s, line):
+            if s = p^.scope then
+                if lines = 0 then Buf.str(b, "usage: "); else Buf.str(b, "       "); end;
+                Fmt.write(b, "{}\n", [Fmt.str(line)]);
+                INC(lines);
+            end;
+        | else:
+        end;
+    end;
+    if lines = 0 then
+        Fmt.write(b, "usage: {}", [Fmt.str(p^.name)]);
+        if LEN(p^.scope) > 0 then Buf.add(b, ' '); end;
+        for i := 0 to LEN(p^.scope) - 1 do
+            c := p^.scope[i];
+            if c = '.' then c := ' '; end;
+            Buf.add(b, c);
+        end;
+        Buf.add(b, 10);
+    end;
+end;
+
+(* A mistake on the command line: the sentence f, the scope's synopsis
+   lines under it, and status 2. *)
+proc refuse(p: ^Parser; f: []U8; args: []Fmt.Arg);
+var b: Buf.Buf;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    Fmt.write(ADR(b), "{}: ", [Fmt.str(p^.name)]);
+    Fmt.write(ADR(b), f, args);
+    Buf.add(ADR(b), 10);
+    usageOf(p, ADR(b));
+    say(Sys.stderr, ADR(b));
+    Rt.exit(2);
+end;
+
+proc dashes(p: ^Parser): []U8;
+begin
+    if p^.long then return "--"; end;
+    return "-";
+end;
+
+(* The left column of a row in the help, as "-b, --bar label"; the
+   help's own row if r is nil. *)
+proc left(b: ^Buf.Buf; r: ^Row);
+begin
+    if r = nil then Buf.str(b, "-h, --help"); return; end;
+    match r^ of
+    | sub(_s, name, _help): Buf.str(b, name);
+    | option(_s, letter, long, value, _help):
+        if letter >= '!' then Fmt.write(b, "-{}", [Fmt.char(letter)]); else Buf.str(b, "  "); end;
+        if LEN(long) > 0 then
+            if letter >= '!' then Buf.str(b, ", "); else Buf.str(b, "  "); end;
+            Fmt.write(b, "--{}", [Fmt.str(long)]);
+        end;
+        if LEN(value) > 0 then Fmt.write(b, " {}", [Fmt.str(value)]); end;
+    | else:
+    end;
+end;
+
+proc leftWidth(r: ^Row): I64;
+var b: Buf.Buf; n: I64;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    left(ADR(b), r);
+    n := LEN(Buf.bytes(ADR(b)));
+    Buf.done(ADR(b));
+    return n;
+end;
+
+(* A line of the list: the left column, padded to width and three
+   spaces more, and the line of help. *)
+proc item(b: ^Buf.Buf; r: ^Row; width: I64);
+var i: I64;
+begin
+    Buf.str(b, "  ");
+    left(b, r);
+    for i := leftWidth(r) to width + 2 do Buf.add(b, ' '); end;
+    if r = nil then Buf.str(b, "print this and exit\n"); return; end;
+    match r^ of
+    | sub(_s, _name, help): Fmt.write(b, "{}\n", [Fmt.str(help)]);
+    | option(_s, _l, _long, _v, help): Fmt.write(b, "{}\n", [Fmt.str(help)]);
+    | else:
+    end;
+end;
+
+(* The scope's help: its synopsis lines, then its subcommands, its
+   options and the help itself, each with its line; and status 0. *)
+proc printHelp(p: ^Parser);
+var b: Buf.Buf; i, width: I64; r: ^Row;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    usageOf(p, ADR(b));
+    Buf.add(ADR(b), 10);
+    width := leftWidth(nil);
+    for i := 0 to LEN(p^.table) - 1 do
+        r := ADR(p^.table[i]);
+        if inScope(p, r^) and (leftWidth(r) > width) then width := leftWidth(r); end;
+    end;
+    for i := 0 to LEN(p^.table) - 1 do
+        r := ADR(p^.table[i]);
+        match r^ of
+        | sub(s, _name, _help): if s = p^.scope then item(ADR(b), r, width); end;
+        | else:
+        end;
+    end;
+    for i := 0 to LEN(p^.table) - 1 do
+        r := ADR(p^.table[i]);
+        match r^ of
+        | option(s, _l, _long, _v, _help): if s = p^.scope then item(ADR(b), r, width); end;
+        | else:
+        end;
+    end;
+    item(ADR(b), nil, width);
+    say(Sys.stdout, ADR(b));
+    Rt.exit(0);
+end;
+
+(* The scope's option with the letter c, or with the long name long:
+   its row, or -1, and its letter and the name of its value. *)
+proc find(p: ^Parser; c: U8; long: []U8): (I64, U8, []U8);
+var i: I64;
+begin
+    for i := 0 to LEN(p^.table) - 1 do
+        match p^.table[i] of
+        | option(s, letter, lg, value, _help):
+            if (s = p^.scope) and ((c >= '!') and (letter = c) or (LEN(long) > 0) and (lg = long)) then
+                return i, letter, value;
+            end;
+        | else:
+        end;
+    end;
+    return -1, 0, "";
+end;
+
+(* The next option, a word or a letter of one, into p: read1, or
+   readEnd at the end of the options. A mistake is refused, or, if
+   quiet, passed over, as readSkip. *)
+proc read(p: ^Parser; quiet: BOOL): I64;
+var w, val: []U8; r, eq: I64; c: U8;
+begin
+    p^.help := false;
+    p^.value := "";
+    if LEN(p^.group) = 0 then
+        if p^.ended or (p^.at >= ARGC()) then p^.ended := true; return readEnd; end;
+        w := Files.arg(p^.at);
+        if (LEN(w) < 2) or (w[0] # '-') then p^.ended := true; return readEnd; end;   (* an operand *)
+        INC(p^.at);
+        if w = "--" then p^.ended := true; return readEnd; end;
+        if w[1] # '-' then
+            p^.group := w[1..LEN(w)];
+        else
+            eq := Str.find(w, "=");
+            if eq < 0 then p^.spelt := w[2..LEN(w)]; else p^.spelt := w[2..eq]; end;
+            p^.long := true;
+            if p^.spelt = "help" then p^.help := true; return read1; end;
+            r, p^.letter, val := find(p, 0, p^.spelt);
+            if r < 0 then
+                if quiet then return readSkip; end;
+                refuse(p, "unknown option --{}", [Fmt.str(p^.spelt)]);
+            end;
+            if (eq >= 0) and (LEN(val) = 0) then
+                if quiet then return readSkip; end;
+                refuse(p, "--{} takes no value", [Fmt.str(p^.spelt)]);
+            elsif eq >= 0 then
+                p^.value := w[eq + 1..LEN(w)];
+            elsif LEN(val) > 0 then
+                if p^.at >= ARGC() then
+                    if quiet then return readEnd; end;
+                    refuse(p, "--{} needs a {}", [Fmt.str(p^.spelt), Fmt.str(val)]);
+                end;
+                p^.value := Files.arg(p^.at);
+                INC(p^.at);
+            end;
+            return read1;
+        end;
+    end;
+    (* a letter of a group *)
+    c := p^.group[0];
+    p^.spelt := p^.group[0..1];
+    p^.group := p^.group[1..LEN(p^.group)];
+    p^.long := false;
+    p^.letter := c;
+    if c = 'h' then p^.help := true; return read1; end;
+    r, p^.letter, val := find(p, c, "");
+    if r < 0 then
+        if quiet then return readSkip; end;
+        refuse(p, "unknown option -{}", [Fmt.str(p^.spelt)]);
+    end;
+    if LEN(val) > 0 then
+        if LEN(p^.group) > 0 then
+            p^.value := p^.group;
+            p^.group := "";
+        elsif p^.at < ARGC() then
+            p^.value := Files.arg(p^.at);
+            INC(p^.at);
+        else
+            if quiet then return readEnd; end;
+            refuse(p, "-{} needs a {}", [Fmt.str(p^.spelt), Fmt.str(val)]);
+        end;
+    end;
+    return read1;
+end;
+
+(* -h or --help among the scope's options is answered before the
+   program sees one: a copy of the parser reads them, passing over
+   mistakes. *)
+proc answerHelp(p: ^Parser);
+var q: Parser; k: I64;
+begin
+    q := p^;
+    repeat
+        k := read(ADR(q), true);
+        if q.help and (k = read1) then printHelp(p); end;
+    until k = readEnd;
+end;
+
+(* A mistake in the table: the program's, with status 1. *)
+proc badTable(p: ^Parser; row: I64; why: []U8);
+var b: Buf.Buf;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    Fmt.write(ADR(b), "{}: option table, row {}: {}\n", [Fmt.str(p^.name), Fmt.int(row), Fmt.str(why)]);
+    say(Sys.stderr, ADR(b));
+    Rt.exit(1);
+end;
+
+proc check(p: ^Parser);
+var i, j: I64;
+begin
+    for i := 0 to LEN(p^.table) - 1 do
+        match p^.table[i] of
+        | sub(_s, name, _help):
+            if LEN(name) = 0 then badTable(p, i, "a subcommand needs a name"); end;
+        | option(s, letter, long, _v, _help):
+            if (letter < '!') and (LEN(long) = 0) then
+                badTable(p, i, "an option needs a letter, or a key below ! and a long name");
+            end;
+            if letter = '-' then badTable(p, i, "no option is -"); end;
+            if Str.find(long, "=") >= 0 then badTable(p, i, "a long name has no ="); end;
+            if (letter = 'h') or (long = "help") then badTable(p, i, "-h and --help are Opt's"); end;
+            for j := 0 to i - 1 do
+                match p^.table[j] of
+                | option(s2, letter2, long2, _v2, _help2):
+                    if (s2 = s) and ((letter2 = letter) or (LEN(long) > 0) and (long2 = long)) then
+                        badTable(p, i, "the option is in the scope already");
+                    end;
+                | else:
+                end;
+            end;
+        | else:
+        end;
+    end;
+end;
+
+(* p reads the arguments from 1 on, by table, in the program's own
+   scope; name begins the messages. *)
+proc init*(p: ^Parser; name: []U8; table: []Row);
+begin
+    p^ := {name: name, table: table, at: 1};
+    check(p);
+    answerHelp(p);
+end;
+
+(* The next option, in p.letter, p.value and p.long; false when the
+   scope's options end. *)
+proc next*(p: ^Parser): BOOL;
+begin
+    if read(p, false) = readEnd then return false; end;
+    if p^.help then printHelp(p); end;
+    return true;
+end;
+
+(* The next operand, after what options are left; false when there are
+   no more. *)
+proc operand*(p: ^Parser): ([]U8, BOOL);
+begin
+    while next(p) do end;
+    if p^.at >= ARGC() then return "", false; end;
+    INC(p^.at);
+    return Files.arg(p^.at - 1), true;
+end;
+
+(* The options of the subcommand name, from the word after its own,
+   which operand has given. *)
+proc scope*(p: ^Parser; name: []U8);
+begin
+    p^.scope := name;
+    p^.ended := false;
+    p^.group := "";
+    answerHelp(p);
+end;
+
+(* The value of the option just read, as a whole number from lo to hi;
+   anything else is a mistake. *)
+proc number*(p: ^Parser; lo, hi: I64): I64;
+var n: I64; ok: BOOL;
+begin
+    n, ok := Str.toInt(p^.value);
+    if not ok or (n < lo) or (n > hi) then
+        refuse(p, "{}{} wants a number from {} to {}, not '{}'",
+            [Fmt.str(dashes(p)), Fmt.str(p^.spelt), Fmt.int(lo), Fmt.int(hi), Fmt.str(p^.value)]);
+    end;
+    return n;
+end;
+
+(* The program's own mistake, written as Opt's are but alone, and
+   status 2. *)
+proc fail*(p: ^Parser; text: []U8);
+var b: Buf.Buf;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    Fmt.write(ADR(b), "{}: {}\n", [Fmt.str(p^.name), Fmt.str(text)]);
+    say(Sys.stderr, ADR(b));
+    Rt.exit(2);
+end;
+
+(* The module's test. main runs itself once for each case, with the
+   case's words and OPTTEST in its environment, which makes it keep, the
+   program of getopt's page, or a program with a bad table, or one with
+   no synopsis lines; and holds each to what it writes, and its status. *)
+proc keep;
+const wait = 1;
+var p: Parser; verbose, ok: BOOL; secs: I64; bar, job, w: []U8; b: Buf.Buf;
+begin
+    secs := 10;
+    init(ADR(p), "keep", [
+        usage("", "keep [-v] [--wait secs] start ..."),
+        sub("", "start", "start a job"),
+        option("", 'v', "verbose", "", "say more"),
+        option("", wait, "wait", "secs", "give the job secs to start"),
+        usage("start", "keep start [-b label] name command [argument ...]"),
+        option("start", 'b', "bar", "label", "show the job in the bar as label")]);
+    while next(ADR(p)) do
+        if p.letter = 'v' then verbose := true;
+        elsif p.letter = wait then secs := number(ADR(p), 1, 600);
+        end;
+    end;
+    w, ok := operand(ADR(p));
+    if not ok then fail(ADR(p), "no command; see keep -h"); end;
+    if w # "start" then
+        Buf.init(ADR(b), Heap.heap);
+        Fmt.write(ADR(b), "no command {}; see keep -h", [Fmt.str(w)]);
+        fail(ADR(p), Buf.bytes(ADR(b)));
+    end;
+    scope(ADR(p), "start");
+    while next(ADR(p)) do
+        if p.letter = 'b' then bar := p.value; end;
+    end;
+    job, ok := operand(ADR(p));
+    w, ok := operand(ADR(p));
+    if not ok then fail(ADR(p), "start needs a name and a command; see keep start -h"); end;
+    if verbose then Fmt.print("waiting {}s\n", [Fmt.int(secs)]); end;
+    Fmt.print("job {}", [Fmt.str(job)]);
+    if LEN(bar) > 0 then Fmt.print(" [{}]", [Fmt.str(bar)]); end;
+    Fmt.print(":", []);
+    while ok do
+        Fmt.print(" {}", [Fmt.str(w)]);
+        w, ok := operand(ADR(p));
+    end;
+    Fmt.print("\n", []);
+end;
+
+proc badTableTest;
+var p: Parser;
+begin
+    init(ADR(p), "bad", [
+        option("", 'v', "verbose", "", "say more"),
+        option("", 'q', "quiet", "", "say less"),
+        option("", 'v', "loud", "", "say it again")]);
+end;
+
+(* Subcommands of subcommands, and no synopsis lines. *)
+proc plain;
+var p: Parser; _w: []U8; _ok: BOOL;
+begin
+    init(ADR(p), "plain", [
+        sub("", "remote", "the remotes"),
+        sub("remote", "add", "add one"),
+        option("remote.add", 'f', "force", "", "even if it is there")]);
+    _w, _ok := operand(ADR(p));
+    scope(ADR(p), "remote");
+    _w, _ok := operand(ADR(p));
+    scope(ADR(p), "remote.add");
+    while next(ADR(p)) do Fmt.print("{}\n", [Fmt.char(p.letter)]); end;
+end;
+
+type Case = record
+    mode: []U8;     (* OPTTEST=... *)
+    args: [][]U8;
+    out, err: []U8;
+    status: I64;
+end;
+
+(* Everything left to read on fd, into buf: how much. *)
+proc readAll(fd: I64; buf: []U8): I64;
+var n, k: I64;
+begin
+    repeat
+        k := Sys.read(fd, buf[n..LEN(buf)]);
+        if k > 0 then INC(n, k); end;
+    until k <= 0;
+    Sys.close(fd);
+    return n;
+end;
+
+proc run(c: Case; n: I64);
+var outR, outW, errR, errW, pid, status, no, ne: I64; st: Sys.Status; out, err: [4096]U8;
+begin
+    outR, outW := Sys.pipe();
+    errR, errW := Sys.pipe();
+    pid := Sys.spawn({path: "/proc/self/exe", args: c.args, env: [c.mode], fds: [0, outW, errW]});
+    Sys.close(outW);
+    Sys.close(errW);
+    if pid < 0 then Rt.stop("Opt: can't run the test's cases"); end;
+    pid, st, status := Sys.wait(pid, true);
+    no := readAll(outR, out);
+    ne := readAll(errR, err);
+    if (st # Sys.exited) or (status # c.status) or (out[0..no] # c.out) or (err[0..ne] # c.err) then
+        Fmt.print("case {}: status {}, out:\n{}err:\n{}", [Fmt.int(n), Fmt.int(status), Fmt.str(out[0..no]), Fmt.str(err[0..ne])]);
+        Out.flush;
+        Rt.stop("Opt: a case went wrong");
+    end;
+end;
+
+proc main*;
+const
+    keepHelp = "usage: keep [-v] [--wait secs] start ...\n\n  start             start a job\n  -v, --verbose     say more\n      --wait secs   give the job secs to start\n  -h, --help        print this and exit\n";
+    startHelp = "usage: keep start [-b label] name command [argument ...]\n\n  -b, --bar label   show the job in the bar as label\n  -h, --help        print this and exit\n";
+    k = "OPTTEST=keep";
+var cases: []Case; i: I64; mode: []U8;
+begin
+    mode := Sys.env("OPTTEST");
+    if mode = "keep" then keep; return;
+    elsif mode = "bad" then badTableTest; return;
+    elsif mode = "plain" then plain; return;
+    end;
+    cases := [
+        {mode: k, args: ["keep", "-v", "--wait=30", "start", "-b", "web", "site", "python", "-m", "http.server", "--port", "8000"],
+            out: "waiting 30s\njob site [web]: python -m http.server --port 8000\n"},
+        {mode: k, args: ["keep", "--wait", "30", "-vv", "start", "--bar=web", "site", "x"], out: "waiting 30s\njob site [web]: x\n"},
+        {mode: k, args: ["keep", "start", "-bweb", "n", "c"], out: "job n [web]: c\n"},
+        {mode: k, args: ["keep", "start", "-b", "", "n", "c"], out: "job n: c\n"},
+        {mode: k, args: ["keep", "start", "-b", "-x", "n", "c"], out: "job n [-x]: c\n"},
+        {mode: k, args: ["keep", "start", "--", "-n", "ls", "-l"], out: "job -n: ls -l\n"},
+        {mode: k, args: ["keep", "start", "-", "c", "--", "-h"], out: "job -: c -- -h\n"},
+        {mode: k, args: ["keep", "start", "n", "c", "-b", "x"], out: "job n: c -b x\n"},
+        {mode: k, args: ["keep", "start", "-bh", "n", "c"], out: "job n [h]: c\n"},
+        {mode: k, args: ["keep", "-h"], out: keepHelp},
+        {mode: k, args: ["keep", "-v", "--help", "-x"], out: keepHelp},
+        {mode: k, args: ["keep", "-vh"], out: keepHelp},
+        {mode: k, args: ["keep", "start", "-x", "-h"], out: startHelp},
+        {mode: k, args: ["keep"], err: "keep: no command; see keep -h\n", status: 2},
+        {mode: k, args: ["keep", "stop"], err: "keep: no command stop; see keep -h\n", status: 2},
+        {mode: k, args: ["keep", "start", "-x"], err: "keep: unknown option -x\nusage: keep start [-b label] name command [argument ...]\n", status: 2},
+        {mode: k, args: ["keep", "--verb", "start"], err: "keep: unknown option --verb\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
+        {mode: k, args: ["keep", "--bar=x", "start"], err: "keep: unknown option --bar\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
+        {mode: k, args: ["keep", "--verbose=x"], err: "keep: --verbose takes no value\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
+        {mode: k, args: ["keep", "start", "-b"], err: "keep: -b needs a label\nusage: keep start [-b label] name command [argument ...]\n", status: 2},
+        {mode: k, args: ["keep", "--wait"], err: "keep: --wait needs a secs\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
+        {mode: k, args: ["keep", "--wait", "0", "start", "a", "b"],
+            err: "keep: --wait wants a number from 1 to 600, not '0'\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
+        {mode: k, args: ["keep", "--wait=9x", "start"], err: "keep: --wait wants a number from 1 to 600, not '9x'\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
+        {mode: "OPTTEST=bad", args: ["bad", "-v"], err: "bad: option table, row 2: the option is in the scope already\n", status: 1},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--force"], out: "f\nf\n"},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-x"], err: "plain: unknown option -x\nusage: plain remote add\n", status: 2},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "-h"], out: "usage: plain remote\n\n  add          add one\n  -h, --help   print this and exit\n"}];
+    for i := 0 to LEN(cases) - 1 do run(cases[i], i); end;
+end;
+
+end Opt.

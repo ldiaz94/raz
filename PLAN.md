@@ -42,7 +42,7 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 - [x] 5. `Str.encode`, `Str.decode`, `Str.toInt`; `Map.remove` and
       `Map.next`; `Sort`; `Math`; `Fmt.real`. Each module's `main`
       tests it.
-- [ ] 5a. Asked for rloc, and every program after it: `Opt`, a
+- [x] 5a. Asked for rloc, and every program after it: `Opt`, a
       command line read through one table, after `~/lib/getopt`.
       getopt(3)'s rules with GNU's long options (`-lw`, `-b dev`,
       `--bar=dev`, `--`); the usage line and a sentence for every

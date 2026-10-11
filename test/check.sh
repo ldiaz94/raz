@@ -158,7 +158,7 @@ fuzz() {   # fuzz file seed
     else pass=$((pass + 1)); fi
 }
 if ./raz -Werror -o $out/Mutate tools/Mutate.raz 2>$out/Mutate.cerr; then
-    for f in examples/*.raz test/run/*.raz; do
+    for f in examples/*.raz test/run/*.raz lib/Opt.raz; do
         $raz -I $(dirname $f)/mods -o $out/mutant $f 2>/dev/null || continue
         for seed in ${FUZZ_SEEDS:-1 2 3}; do fuzz $f $seed; done
     done

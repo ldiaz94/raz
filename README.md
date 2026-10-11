@@ -127,8 +127,9 @@ The report, `doc/raz.md`, says all of it in about 1,000 lines.
 
 `Rt` (ending the program, failed checks, signals), `Sys` (system calls), `Out`
 (buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
-`Heap`, `Arena`, `Str`, `Buf`, `Fmt`, `Math`, `List(T)`, `Map(K, V;
-hash, eq)` and `Sort(T; less)`. `tools/Doc.raz` prints any of them:
+`Heap`, `Arena`, `Str`, `Buf`, `Fmt`, `Math`, `Files`, `Opt` (a command
+line read through one table), `List(T)`, `Map(K, V; hash, eq)` and
+`Sort(T; less)`. `tools/Doc.raz` prints any of them:
 
     $ ./raz -o Doc tools/Doc.raz && ./Doc lib/Str.raz
 
