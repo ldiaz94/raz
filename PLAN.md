@@ -42,6 +42,16 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 - [ ] 5. `Str.encode`, `Str.decode`, `Str.toInt`; `Map.remove` and
       `Map.next`; `Sort`; `Math`; `Fmt.real`. Each module's `main`
       tests it.
+- [ ] 5a. Asked for rloc, and every program after it: `Opt`, a
+      command line read through one table, after `~/lib/getopt`.
+      getopt(3)'s rules with GNU's long options (`-lw`, `-b dev`,
+      `--bar=dev`, `--`); the usage line and a sentence for every
+      mistake made from the table, so they can't drift from it;
+      `-h` and `--help` answered; no global state. `Files` moves from
+      `tools` to the library, and `Opt` reads its words with
+      `Files.arg`. The report first, for review; then the module,
+      its test in its `main`, and `Doc`, `Pretty` and `Mutate` on it.
+      Kept out: concha's completion from the table, until asked.
 - [ ] 6. `examples/Sh.raz`: pipelines, redirection, `cd`, `&`, `wait`,
       and Ctrl-C to the job in the foreground, in a few hundred lines.
       Its test runs scripts given with `-c`.
