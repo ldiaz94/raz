@@ -1690,7 +1690,10 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 
 Everything in this report binds every implementation of raz, except
 what follows, which each chooses for itself and documents. This
-compiler's choices are in `doc/compiler.md`.
+compiler's choices are in `doc/compiler.md`. The programs in
+`conform/` are how an implementation shows that it follows this
+report: it passes them all, its reals aside where its target has none;
+`conform/check.sh` runs them.
 
 - **The target.** Which machines and systems it compiles for, and the
   names of their files (`linux-x86_64`, section 3); for each, the size
