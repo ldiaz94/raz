@@ -4,8 +4,8 @@
 
    It keeps to POSIX's names, and raw mode is cfmakeraw's. What is
    glibc's, on x86-64: where a name lies in struct dirent; struct stat;
-   the numbers of the requests TIOCGWINSZ, TIOCSWINSZ and TIOCSCTTY;
-   close_range; and struct sockaddr_un, which on the BSDs starts with a
+   open's flags; the numbers of the requests TIOCGWINSZ, TIOCSWINSZ and
+   TIOCSCTTY; close_range; and struct sockaddr_un, which on the BSDs starts with a
    byte of length. A C library that differs needs a Sys of its own. *)
 module Sys;
 import C;
@@ -20,9 +20,16 @@ const
     TIOCSCTTY = 540EH;
 
 type
+    (* What open is asked for: reading, writing or both, and what else
+       it does to the file. *)
+    Access* = (reading, writing, creating, exclusive, truncating, appending);
+    Accesses* = set of Access;
+
     (* What info says of a file. *)
     Info* = record
         size*: I64;     (* in bytes *)
+        mtime*: I64;    (* when its contents last changed, in nanoseconds since 1970 *)
+        mode*: I64;     (* its permission bits, rwxrwxrwx *)
         dir*: BOOL;     (* a directory *)
         file*: BOOL;    (* a regular file: not a directory, device, pipe or socket *)
         symlink*: BOOL; (* the path itself is a symbolic link *)
@@ -44,6 +51,7 @@ type
 
 var
     cwd: [4096]U8;    (* what workDir gives *)
+    linked: [4096]U8; (* what readLink gives *)
     saved: [256]U8;   (* the terminal as rawMode found it: a struct termios, of the C library's size *)
 
 (* minus errno, as a system call returns it *)
@@ -86,24 +94,53 @@ begin
     return true;
 end;
 
-(* The file at path, opened for reading: its file descriptor, or minus
-   an errno. *)
-proc openRead*(path: []U8): I64;
+(* open's flags for how; glibc's numbers *)
+proc flags(how: Accesses): I32;
+var f: I32;
+begin
+    f := 0;                                         (* O_RDONLY *)
+    if writing in how then
+        f := 1;                                     (* O_WRONLY *)
+        if reading in how then f := 2; end;         (* O_RDWR *)
+    end;
+    if creating in how then f := f | 40H; end;
+    if exclusive in how then f := f | 80H; end;
+    if truncating in how then f := f | 200H; end;
+    if appending in how then f := f | 400H; end;
+    return f;
+end;
+
+(* The file at path, opened as how asks: its file descriptor, or minus
+   an errno. A file it creates is readable by all, writable by its
+   owner. *)
+proc open*(path: []U8; how: Accesses): I64;
 var buf: [4096]U8; r: I64;
 begin
     if not cstr(path, buf) then return -36; end;
-    r := I64(C.open(ADR(buf[0]), 0));               (* O_RDONLY is 0 everywhere *)
+    r := I64(C.open(ADR(buf[0]), flags(how), 1A4H));   (* mode 644 *)
     if r < 0 then return failed(); end;
     return r;
 end;
 
-(* The file at path, made empty or new, opened for writing, readable by
-   all: its file descriptor, or minus an errno. *)
-proc create*(path: []U8): I64;
-var buf: [4096]U8; r: I64;
+(* The file at path, opened for reading. *)
+proc openRead*(path: []U8): I64;
 begin
-    if not cstr(path, buf) then return -36; end;
-    r := I64(C.creat(ADR(buf[0]), 420));            (* mode 644 *)
+    return open(path, {reading});
+end;
+
+(* The file at path, made empty or new, opened for writing. *)
+proc create*(path: []U8): I64;
+begin
+    return open(path, {writing, creating, truncating});
+end;
+
+(* Moves fd to pos from the start of its file, or from the end if
+   fromEnd: the new position, or minus an errno. *)
+proc seek*(fd, pos: I64; fromEnd: BOOL): I64;
+var r: I64;
+begin
+    if fromEnd then r := C.lseek(I32(fd), pos, 2);    (* SEEK_END *)
+    else r := C.lseek(I32(fd), pos, 0); end;          (* SEEK_SET *)
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -155,6 +192,45 @@ begin
     return 0;
 end;
 
+(* Removes the directory at path, which must be empty. *)
+proc removeDir*(path: []U8): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    if C.rmdir(ADR(a[0])) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* Sets the permission bits of what path names. *)
+proc chmod*(path: []U8; mode: I64): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    if C.chmod(ADR(a[0]), U32(mode)) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* Makes path a symbolic link to target. *)
+proc symlink*(target, path: []U8): I64;
+var a, b: [4096]U8;
+begin
+    if not cstr(target, a) or not cstr(path, b) then return -36; end;
+    if C.symlink(ADR(a[0]), ADR(b[0])) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* What the symbolic link at path names, good until the next call; and
+   0, or minus an errno. *)
+proc readLink*(path: []U8): ([]U8, I64);
+var a: [4096]U8; n: I64;
+begin
+    if not cstr(path, a) then return "", -36; end;
+    n := C.readlink(ADR(a[0]), ADR(linked[0]), U64(LEN(linked)));
+    if n < 0 then return "", failed(); end;
+    if n = LEN(linked) then return "", -36; end;          (* it may be cut short *)
+    return linked[0..n], 0;
+end;
+
 (* The size of what path names, whether it is a directory or a regular
    file, following a symbolic link, and whether path is one; and 0, or
    minus an errno. *)
@@ -166,6 +242,8 @@ begin
     i.symlink := st[3] & 0F000H = 0A000H;          (* st_mode is S_IFLNK *)
     if C.stat(ADR(a[0]), ^U8(ADR(st))) # 0 then return i, failed(); end;
     i.size := st[6];                                 (* st_size *)
+    i.mtime := st[11] * 1000000000 + st[12];         (* st_mtim *)
+    i.mode := st[3] & 1FFH;
     i.dir := st[3] & 0F000H = 4000H;               (* S_IFDIR *)
     i.file := st[3] & 0F000H = 8000H;              (* S_IFREG *)
     return i, 0;
@@ -307,6 +385,15 @@ begin
     n := 0;
     while cwd[n] # 0 do INC(n); end;
     return cwd[0..n], 0;
+end;
+
+(* Makes path the working directory. *)
+proc setWorkDir*(path: []U8): I64;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    if C.chdir(ADR(a[0])) # 0 then return failed(); end;
+    return 0;
 end;
 
 (* A pseudo-terminal: the file descriptor of its controlling side, or
@@ -516,7 +603,6 @@ end;
    socket, sent to after its end. *)
 proc main*;
 var fd, n, err, w, h, l, c, a: I64; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
-    dir, name2: [4096]U8;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
@@ -547,12 +633,34 @@ begin
     i, err := info("/dev/null");
     if (err # 0) or i.dir or i.file then exit(2); end;
     remove("/tmp/raz-sys-link");
-    cstr("/tmp/raz-sys-dir", dir);
-    cstr("/tmp/raz-sys-link", name2);
-    if C.symlink(ADR(dir[0]), ADR(name2[0])) # 0 then exit(2); end;
+    if symlink("/tmp/raz-sys-dir", "/tmp/raz-sys-link") # 0 then exit(2); end;
     i, err := info("/tmp/raz-sys-link");
     if (err # 0) or not i.dir or not i.symlink then exit(2); end;
+    name, err := readLink("/tmp/raz-sys-link");
+    if (err # 0) or (name # "/tmp/raz-sys-dir") then exit(2); end;
+    name, err := readLink("/tmp/raz-sys-dir");
+    if err # -22 then exit(2); end;                    (* EINVAL: not a link *)
     remove("/tmp/raz-sys-link");
+    (* open as asked, seek, the mode and the time *)
+    remove("/tmp/raz-sys-dir/h");
+    fd := open("/tmp/raz-sys-dir/h", {writing, creating, exclusive});
+    if (fd < 0) or (write(fd, "abc") # 3) then exit(2); end;
+    close(fd);
+    if open("/tmp/raz-sys-dir/h", {writing, creating, exclusive}) # -17 then exit(2); end;
+    fd := open("/tmp/raz-sys-dir/h", {writing, appending});
+    if (fd < 0) or (seek(fd, 0, false) # 0) or (write(fd, "de") # 2) then exit(2); end;
+    close(fd);
+    fd := open("/tmp/raz-sys-dir/h", {reading, writing});
+    if (seek(fd, -2, true) # 3) or (read(fd, buf) # 2) or (buf[0..2] # "de") then exit(2); end;
+    if (seek(fd, 1, false) # 1) or (write(fd, "B") # 1) or (seek(fd, 0, false) # 0) then exit(2); end;
+    if (read(fd, buf) # 5) or (buf[0..5] # "aBcde") then exit(2); end;
+    close(fd);
+    i, err := info("/tmp/raz-sys-dir/h");
+    if (err # 0) or (i.mode & 1C0H # 180H) or (i.mtime < 1700000000 * 1000000000) then exit(2); end;
+    if chmod("/tmp/raz-sys-dir/h", 1EDH) # 0 then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/h");
+    if i.mode # 1EDH then exit(2); end;
+    remove("/tmp/raz-sys-dir/h");
     i, err := info("/no/such/file");
     if err >= 0 then exit(2); end;
     if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
@@ -571,6 +679,8 @@ begin
     if (LEN(env("PATH")) = 0) or (LEN(env("RAZ_NO_SUCH_VARIABLE")) # 0) then exit(2); end;
     name, err := workDir();
     if (err # 0) or (LEN(name) = 0) or (name[0] # '/') then exit(2); end;
+    if (setWorkDir("/tmp/raz-sys-dir") # 0) or (removeDir("/tmp/raz-sys-dir") # 0) then exit(2); end;
+    if (setWorkDir("/") # 0) or (removeDir("/tmp/raz-sys-dir") # -2) then exit(2); end;
     (* a socket: nothing at a path, then a listener that a connection
        makes ready, and a byte from it to the connection *)
     if connect("/tmp/raz-no-such-socket") # -2 then exit(2); end;    (* ENOENT *)

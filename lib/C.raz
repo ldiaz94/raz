@@ -20,6 +20,9 @@ extern proc pthread_join*(t: U64; result: ^^U8): I32;
 extern proc rename*(old, new: ^U8): I32;
 extern proc unlink*(path: ^U8): I32;
 extern proc mkdir*(path: ^U8; mode: U32): I32;
+extern proc rmdir*(path: ^U8): I32;
+extern proc chmod*(path: ^U8; mode: U32): I32;
+extern proc readlink*(path, buf: ^U8; n: U64): I64;
 extern proc lseek*(fd: I32; off: I64; whence: I32): I64;
 extern proc opendir*(path: ^U8): ^U8;        (* DIR * *)
 extern proc readdir*(d: ^U8): ^U8;           (* struct dirent * *)
@@ -37,6 +40,7 @@ extern proc listen*(fd, backlog: I32): I32;
 extern proc accept*(fd: I32; addr: ^U8; len: ^U32): I32;
 extern proc getenv*(name: ^U8): ^U8;
 extern proc getcwd*(buf: ^U8; n: U64): ^U8;
+extern proc chdir*(path: ^U8): I32;
 extern proc stat*(path, st: ^U8): I32;
 extern proc lstat*(path, st: ^U8): I32;
 extern proc symlink*(target, path: ^U8): I32;

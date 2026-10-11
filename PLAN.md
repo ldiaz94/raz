@@ -27,10 +27,10 @@ program needs it. The compiler doesn't change.
 Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 `Sys.raz` over the C library, and tested through both (`test/libc`).
 
-- [ ] 1. The report, version 2026-10.9: every new and changed export of
+- [x] 1. The report, version 2026-10.9: every new and changed export of
       `Sys`, `Str`, `Map`, `Sort`, `Math` and `Fmt` (section 11), for
       review before any code.
-- [ ] 2. `Sys`, files: `open` with a set of `Access`, `seek`, `Info`'s
+- [x] 2. `Sys`, files: `open` with a set of `Access`, `seek`, `Info`'s
       `mtime` and `mode`, `chmod`, `readLink`, `symlink`, `removeDir`,
       `setWorkDir`.
 - [ ] 3. `Sys`, programs: `pipe`, `spawn` of a `Program`, `wait` of any
