@@ -58,11 +58,23 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 - [ ] 7. rat, rlX11, rmacs and ravite on this raz, in their own
       repositories: the four copies of UTF-8 encoding go to
       `Str.encode`.
-- [ ] 8. The freeze, in CLAUDE.md and the report's first section: the
+- [x] 8. The freeze, in CLAUDE.md and the report's first section: the
       language changes only to mend a defect; the library grows only by
       what breaks nothing; wishes go to a list for a later thaw. README,
       `doc/compiler.md`'s table, the report's version and the
       compiler's; tag `v0.5.0`.
+
+## Wishes, for a later thaw
+
+What the language or the library might have, met while writing raz;
+none is built while the freeze holds.
+
+- `case` on integers and characters: `match` takes variants only, so
+  a choice among numbers is a chain of `elsif` (`examples/Sh.raz`).
+- Constant arrays: a table of numbers is assigned in a procedure, as
+  `Math`'s bits of 2/pi are, or kept in a variable.
+- Joining string constants, `"a" + B`: a test's expected text is
+  written out whole each time (`Opt`'s test).
 
 ## After v0.5.0
 

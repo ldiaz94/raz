@@ -9,8 +9,13 @@ the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.8 of the report; section 12 says what each
+This is version 2026-10.9 of the report; section 12 says what each
 version changed.
+
+The language is frozen, softly, from this version on: it changes only
+to mend a defect, and its library grows only by what breaks no program
+written for it. What anyone wishes it had waits on a list, for a later
+thaw.
 
 ## 1. A first look
 
@@ -1402,8 +1407,8 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   (section 11).
 - **2026-10.8.** `Sys.workDir` returns the directory, with no `var`
   parameter (section 11).
-- **2026-10.9**, under way: what follows is in the report, but not
-  yet all in the library. `Sys` gains opening a file for any use, seeking,
+- **2026-10.9.** The language is frozen (the start of the report).
+  `Sys` gains opening a file for any use, seeking,
   links, permissions and times; pipes, process groups and the
   terminal's foreground; signals caught on a file descriptor; clocks,
   sleeping and random bytes; and network sockets. `Sys.spawn` takes a

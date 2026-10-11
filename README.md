@@ -24,7 +24,7 @@ end Hello.
     $ examples/Hello
     hello, world
 
-The compiler is under 6,000 lines of Free Pascal: one pass, no
+The compiler is about 6,000 lines of Free Pascal: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
 ELF executable itself, with no assembler or linker, and compiles about
 a million lines a second.
@@ -160,16 +160,16 @@ with vim's. Both colour raz through `tools/Scan.raz`.
 The compiler says its own version and that of the report it follows:
 
     $ ./raz --version
-    raz 0.4.0, report 2026-10.8
+    raz 0.5.0, report 2026-10.9
 
 The compiler's version is git's name for the commit it was built from:
-`0.4.0` at the tag `v0.4.0`, `0.4.0-5-g38d29a8` five commits past it.
+`0.5.0` at the tag `v0.5.0`, `0.5.0-5-g38d29a8` five commits past it.
 To release, check `main` and tag it; the tag's message is what
 `raz --version` will print:
 
     $ make check
-    $ git tag -a v0.4.1 -m 'raz 0.4.1, report 2026-10.8'
-    $ git push origin v0.4.1
+    $ git tag -a v0.5.1 -m 'raz 0.5.1, report 2026-10.9'
+    $ git push origin v0.5.1
 
 GitHub then builds and checks the tag, and makes a release of it with
 a tarball of `raz` and its `lib/`. A tag pushed before the workflow
@@ -177,6 +177,10 @@ existed is released from the Actions tab: run "ci" with its name.
 
 A version of the report is named by its month and a count; the report's
 last section says what each version changed.
+
+Since v0.5.0 the language is frozen, softly: it changes only to mend a
+defect, and the library grows only by what breaks no program. Wishes
+wait on a list in `PLAN.md`, for a later thaw.
 
 ## Not here
 

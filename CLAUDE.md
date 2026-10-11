@@ -70,9 +70,13 @@ one module to a name (report 2026-10.5, step 51), and stage 7, `Sys`
 for rlX11 and rat (reports 2026-10.4 and 10.7, steps 49a-c), with
 `Info`'s `file` and `symlink` for rloc (2026-10.6, step 49d), and
 stage 9, several results in place of var parameters (2026-10.8,
-steps 52-53). The compiler says it follows report 2026-10.8, the last
-version all done.
-v0.5.0 is under way (`PLAN.md`). Keep
+steps 52-53), and v0.5.0, the library of report 2026-10.9, which the
+compiler says it follows.
+
+**The freeze.** Since v0.5.0 the language changes only to mend a
+defect, and the library grows only by what breaks no program written
+for it. A wish for more, the owner's or yours, goes on the list in
+`PLAN.md`, for a later thaw; it isn't built. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.
 
@@ -83,7 +87,7 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.4.0, report 2026-10.8, the latest.
+the first; v0.5.0, report 2026-10.9, the latest.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
