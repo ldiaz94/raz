@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrays, slices and strings - Raz, Set, Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html">Modules</a></li>
+<li><a href="values.html">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='5'>
+<li><a href="slices.html" aria-current="page">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='9'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html">Defer</a></li>
+<li><a href="checks.html">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html">Threads</a></li>
+</ol></aside><article><p class="kicker">Set &middot; lesson 5 of 14</p><h1>Arrays, slices and strings</h1>
+<div class="file"><span>Slices.raz</span></div><pre class="code"><code><span class="kw">module</span> Slices;
+<span class="kw">import</span> Out, Str;
+
+<span class="kw">proc</span> sum(s: []<span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="kw">var</span> i, t: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    t := <span class="number">0</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(s) - <span class="number">1</span> <span class="kw">do</span> t := t + s[i]; <span class="kw">end</span>;
+    <span class="kw">return</span> t;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a: [<span class="number">5</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>; s: []<span class="ty">U8</span>; name: [<span class="number">8</span>]<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4</span> <span class="kw">do</span> a[i] := i * i; <span class="kw">end</span>;
+    Out.int(sum(a)); Out.ln;        <span class="comment">(* the array, as a slice *)</span>
+    Out.int(sum(a[<span class="number">1</span>..<span class="number">3</span>])); Out.ln;  <span class="comment">(* a[1] and a[2] *)</span>
+    s := <span class="string">&quot;hello, world&quot;</span>;
+    Out.str(s[<span class="number">7</span>..<span class="ty">LEN</span>(s)]); Out.ln;
+    <span class="kw">if</span> s[<span class="number">0</span>..<span class="number">5</span>] = <span class="string">&quot;hello&quot;</span> <span class="kw">then</span> Out.str(<span class="string">&quot;it says hello\n&quot;</span>); <span class="kw">end</span>;
+    Out.int(Str.find(s, <span class="string">&quot;world&quot;</span>)); Out.ln;
+    name := <span class="string">&quot;raz&quot;</span>;                  <span class="comment">(* a copy, the program&#x27;s own *)</span>
+    name[<span class="number">0</span>] := <span class="string">&#x27;R&#x27;</span>;
+    Out.str(name[<span class="number">0</span>..<span class="number">3</span>]); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Slices.</code></pre>
+<pre class="output"><code>30
+5
+world
+it says hello
+7
+Raz
+</code></pre>
+<p><code>[5]INT</code> is an array: five <code>INT</code>s in a row, copied when it is assigned. <code>[]INT</code> is a slice: a pointer to elements that live elsewhere, and their number, <code>LEN(s)</code>. <code>a[lo..hi]</code> is the slice of the elements from <code>lo</code> up to, but not including, <code>hi</code>, and an array goes silently where a slice is wanted.</p>
+<p>A string is a slice of bytes, <code>[]U8</code>, in UTF-8, and its bytes are constant; a <code>[8]U8</code> made from one is a copy. Arrays and slices of integers compare with <code>=</code> and <code>#</code>; <code>Str</code> has the rest: ordering, finding, hashing and reading a number.</p>
+<p>A <code>for</code> loop takes its bounds once, and never steps past the last: with an empty slice, <code>0 to LEN(s) - 1</code> doesn't run at all.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="procedures.html">&larr; Procedures and several results</a><a href="index.html">Contents</a><a class="next" href="records.html">Records and pointers &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

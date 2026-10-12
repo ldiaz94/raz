@@ -1,0 +1,10 @@
+title: Defer
+part: Go
+summary: Clean up beside the line that needs it.
+---
+```raz Defers run
+```
+
+`defer s;` runs `s` when the program leaves the statements the `defer` stands in: at their end, or by a `return` or a `break`. Deferred statements run the last first, and only those whose `defer` was reached.
+
+So a file is closed beside the line that opens it, however the procedure ends.

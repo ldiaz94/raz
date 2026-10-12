@@ -1,0 +1,10 @@
+title: Errors
+part: Go
+summary: A second result, compared by identity. No exceptions.
+---
+```raz Errors run
+```
+
+A procedure that can fail returns an `ERROR` beside its result, and `nil` when it didn't. Each `ERROR` constant is an error of its own, compared with `=` by which declaration made it, never by its message; `MSG(err)` is the message.
+
+An exported one, as `Empty` is here, lets the callers tell it from the others. raz has no exceptions.

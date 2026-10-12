@@ -1,0 +1,17 @@
+title: Generic modules
+part: Go
+summary: A module that takes types and procedures as arguments.
+---
+A module may take types, and the procedures it needs on them, as parameters. `Biggest.raz`:
+
+```raz Biggest
+```
+
+and a program that uses it:
+
+```raz Generics run
+```
+
+Each import with its own arguments makes an instance: the module compiled again, with `T` standing for the type given, and `less` calling the procedure given. The arguments may name what the importing module declares later, as `before` is here.
+
+The library's `List`, `Map` and `Sort` are generic modules: `import Count := Map([]U8, INT, Str.hash, Str.eq);`

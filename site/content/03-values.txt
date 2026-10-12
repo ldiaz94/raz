@@ -1,0 +1,14 @@
+title: Values and conversions
+part: Raz
+summary: Sized integers that wrap, and nothing converts unasked.
+---
+```raz Values run
+```
+
+The integers are `I8`, `I16`, `I32`, `I64` and `U8`, `U16`, `U32`, `U64`, and `INT` and `UINT`, as big as an address. `INT` is the everyday one: lengths, indexes and counts are `INT`s. The reals are `F32` and `F64`.
+
+Arithmetic wraps at the type's width and never stops the program, except dividing by zero. That is why `250 + 10` in a `U8` is 4.
+
+Two types never mix: with `i: I64`, `i < LEN(s)` is an error. A type's name converts, as `F64(n)` and `I64(b)` do above. The one silent conversion between numbers is an `INT` into an `I64`, which loses nothing.
+
+`#`, not `<>`, is "different". `and`, `or` and `not` are for `BOOL`s; `&`, `|`, `xor` and `~` are for the bits of integers. Every variable starts at zero.

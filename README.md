@@ -41,6 +41,7 @@ a million lines a second.
 | `examples/` | Small programs, each with the output it should give |
 | `tools/Doc.raz` | Prints what a module exports, with its comments |
 | `tools/Pretty.raz` | The formatter: fixes indentation and spacing |
+| `site/` | The website: home page, the tour "Raz, Set, Go" and the report, as plain files in `site/public/`; `make site` rebuilds them |
 | `editor/` | Support for vim and emacs |
 | `conform/` | The conformance suite: what every implementation must do |
 | `test/` | This compiler's own tests, and the scripts that run them |
@@ -70,6 +71,7 @@ emacs is installed.
     make loc        # the compiler's lines
     make tests      # tests of the scanner, encoder and linker on their own
     make pdf        # build/raz.pdf, the report, by pandoc and Chromium
+    make site       # site/public/, the website, by pandoc and python3
 
 ## Using it
 

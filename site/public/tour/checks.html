@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>When it goes wrong - Raz, Set, Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html">Modules</a></li>
+<li><a href="values.html">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='5'>
+<li><a href="slices.html">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='9'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html">Defer</a></li>
+<li><a href="checks.html" aria-current="page">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html">Threads</a></li>
+</ol></aside><article><p class="kicker">Go &middot; lesson 11 of 14</p><h1>When it goes wrong</h1>
+<div class="file"><span>Fail.raz</span></div><pre class="code"><code><span class="kw">module</span> Fail;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> get(a: []<span class="ty">INT</span>; i: <span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> a[i];
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a: [<span class="number">3</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span>
+        Out.int(get(a, i));
+        Out.ln;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Fail.</code></pre>
+<pre class="output"><code>0
+0
+0
+<span class="err">Fail.raz:6:14: index 3 is out of range for a length of 3
+  in Fail.get at Fail.raz:6:14: i = 3
+  in Fail.main at Fail.raz:13:9: i = 3
+</span></code></pre>
+<p>Every index and slice is checked. A failed check says where it failed and with what values, then the calls under way with their variables, and ends the program with status 2. So do a <code>nil</code> pointer, a division by zero and a stack overflow.</p>
+<p>A module that is sure of its indexes may say <code>check off;</code> after its imports, for speed; an index out of range there reads or writes whatever it reaches.</p>
+<p>The program carries line numbers for gdb, and <code>RAZ_PROFILE=1</code> in its environment has it say where its time went.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="defer.html">&larr; Defer</a><a href="index.html">Contents</a><a class="next" href="generics.html">Generic modules &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

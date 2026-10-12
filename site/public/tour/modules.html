@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Modules - Raz, Set, Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html" aria-current="page">Modules</a></li>
+<li><a href="values.html">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='5'>
+<li><a href="slices.html">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='9'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html">Defer</a></li>
+<li><a href="checks.html">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html">Threads</a></li>
+</ol></aside><article><p class="kicker">Raz &middot; lesson 2 of 14</p><h1>Modules</h1>
+<p>A program is a set of modules. Here is one, saved as <code>Greet.raz</code>:</p>
+<div class="file"><span>Greet.raz</span></div><pre class="code"><code><span class="kw">module</span> Greet;
+<span class="kw">import</span> Out;
+
+<span class="kw">var</span> count*: <span class="ty">INT</span>;    <span class="comment">(* the greetings so far *)</span>
+
+<span class="kw">proc</span> hello*(name: []<span class="ty">U8</span>);
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;hello, &quot;</span>);
+    Out.str(name);
+    Out.ln;
+    <span class="ty">INC</span>(count);
+<span class="kw">end</span>;
+
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;Greet is ready\n&quot;</span>);
+<span class="kw">end</span> Greet.</code></pre>
+<p>and a program beside it that uses it:</p>
+<div class="file"><span>Twice.raz</span></div><pre class="code"><code><span class="kw">module</span> Twice;
+<span class="kw">import</span> Out, G := Greet;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    G.hello(<span class="string">&quot;world&quot;</span>);
+    G.hello(<span class="string">&quot;raz&quot;</span>);
+    Out.int(G.count);
+    Out.str(<span class="string">&quot; greetings\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Twice.</code></pre>
+<pre class="output"><code>Greet is ready
+hello, world
+hello, raz
+2 greetings
+</code></pre>
+<p>A name with <code>*</code> is exported; any other is the module's own. <code>G := Greet</code> imports <code>Greet</code> under a shorter name. Another module may read <code>G.count</code>, but only <code>Greet</code> may change it.</p>
+<p>The statements after a module's last <code>begin</code> are its body. It runs once, before <code>main</code>, which is why "Greet is ready" comes first.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="hello.html">&larr; Hello, world</a><a href="index.html">Contents</a><a class="next" href="values.html">Values and conversions &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

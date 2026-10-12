@@ -1,0 +1,10 @@
+title: Procedures and several results
+part: Raz
+summary: Return two values, change a variable, pass a procedure.
+---
+```raz Procs run
+```
+
+A parameter is a copy, unless it is `var`, when it is the caller's variable itself. A procedure may return several results, which a multiple assignment takes apart; the blank, `_`, drops one.
+
+A procedure is a value too, of a procedure type, as `f` is in `twice`. A procedure without parameters leaves out the parentheses, as `Out.ln` does. Procedures don't nest, and a name is declared before it is used.

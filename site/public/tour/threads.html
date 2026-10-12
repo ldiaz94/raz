@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threads - Raz, Set, Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html">Modules</a></li>
+<li><a href="values.html">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='5'>
+<li><a href="slices.html">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='9'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html">Defer</a></li>
+<li><a href="checks.html">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html" aria-current="page">Threads</a></li>
+</ol></aside><article><p class="kicker">Go &middot; lesson 14 of 14</p><h1>Threads</h1>
+<div class="file"><span>Hits.raz</span></div><pre class="code"><code><span class="kw">module</span> Hits;
+<span class="kw">import</span> Out, Thread;
+
+<span class="kw">const</span> Workers = <span class="number">4</span>;
+
+<span class="kw">var</span>
+    hits: <span class="ty">INT</span>;      <span class="comment">(* added to by every thread at once, by XADD *)</span>
+    m: Thread.Mutex;
+    total: <span class="ty">INT</span>;     <span class="comment">(* added to under m *)</span>
+
+<span class="kw">proc</span> work(arg: ^<span class="ty">U8</span>);
+<span class="kw">var</span> i, n, sum: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    n := <span class="ty">INT</span>(arg);
+    sum := <span class="number">0</span>;
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> n <span class="kw">do</span>
+        sum := sum + i;
+        _ := <span class="ty">XADD</span>(<span class="ty">ADR</span>(hits), <span class="number">1</span>);
+    <span class="kw">end</span>;
+    Thread.lock(<span class="ty">ADR</span>(m));
+    total := total + sum;
+    Thread.unlock(<span class="ty">ADR</span>(m));
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> t: [Workers]^Thread.Thread; i: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> Workers - <span class="number">1</span> <span class="kw">do</span>
+        t[i], err := Thread.spawn(work, ^<span class="ty">U8</span>(<span class="number">1000</span> * (i + <span class="number">1</span>)));
+        <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="kw">end</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> Workers - <span class="number">1</span> <span class="kw">do</span> Thread.join(t[i]); <span class="kw">end</span>;
+    Out.int(hits); Out.char(<span class="string">&#x27; &#x27;</span>); Out.int(total); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Hits.</code></pre>
+<pre class="output"><code>10000 15005000
+</code></pre>
+<p><code>Thread.spawn</code> runs a procedure in a thread of its own, with a stack of its own, and <code>Thread.join</code> waits for it to end. <code>XADD</code>, <code>CAS</code> and <code>XCHG</code> change a word atomically; a <code>Thread.Mutex</code> keeps a longer section to one thread at a time. <code>Out</code> and <code>Heap</code> lock themselves.</p>
+<p><code>Thread</code> makes its own threads, without C, so a program that uses it can't use C; one that does makes its threads with C's <code>pthread_create</code> instead.</p>
+<p>That is the tour. The rest is in <a href="../spec.html">the report</a>, and the library's interfaces are printed by <code>tools/Doc.raz</code>.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="c.html">&larr; Talking to C</a><a href="index.html">Contents</a><a class="next" href="../spec.html">The report &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

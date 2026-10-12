@@ -119,4 +119,10 @@ uninstall:
 	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(MAN)/man1/raz.1 $(MAN)/man3/raz-lib.3 \
 	    $(MAN)/man7/raz.7 $(MAN)/man7/raz-tutorial.7
 
-.PHONY: units tests check gdb bench kernels stress fmt loc man pdf clean install uninstall
+# The website, plain files in site/public/: its home page, the tour
+# "Raz, Set, Go" (whose programs are run here, so the output shown is
+# real) and the report. site/build.py says how; it needs ./raz and pandoc.
+site: raz
+	python3 site/build.py
+
+.PHONY: units tests check gdb bench kernels stress fmt loc man pdf site clean install uninstall

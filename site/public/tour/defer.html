@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Defer - Raz, Set, Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html">Modules</a></li>
+<li><a href="values.html">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='5'>
+<li><a href="slices.html">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='9'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html" aria-current="page">Defer</a></li>
+<li><a href="checks.html">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html">Threads</a></li>
+</ol></aside><article><p class="kicker">Go &middot; lesson 10 of 14</p><h1>Defer</h1>
+<div class="file"><span>Defers.raz</span></div><pre class="code"><code><span class="kw">module</span> Defers;
+<span class="kw">import</span> Out, Sys;
+
+<span class="kw">proc</span> step(n: <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;in &quot;</span>); Out.int(n); Out.ln;
+    <span class="kw">defer</span> Out.str(<span class="string">&quot;out\n&quot;</span>);
+    <span class="kw">if</span> n = <span class="number">2</span> <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="kw">defer</span> Out.str(<span class="string">&quot;done\n&quot;</span>);
+    Out.str(<span class="string">&quot;working\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="comment">(* the lines of the file at path, or -1 if it can&#x27;t be read *)</span>
+<span class="kw">proc</span> lines(path: []<span class="ty">U8</span>): <span class="ty">INT</span>;
+<span class="kw">var</span> fd, n, i, count: <span class="ty">INT</span>; buf: [<span class="number">4096</span>]<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    fd := Sys.openRead(path);
+    <span class="kw">if</span> fd &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> -<span class="number">1</span>; <span class="kw">end</span>;
+    <span class="kw">defer</span> Sys.close(fd);
+    count := <span class="number">0</span>;
+    n := Sys.read(fd, buf);
+    <span class="kw">while</span> n &gt; <span class="number">0</span> <span class="kw">do</span>
+        <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> n - <span class="number">1</span> <span class="kw">do</span>
+            <span class="kw">if</span> buf[i] = <span class="string">&#x27;\n&#x27;</span> <span class="kw">then</span> <span class="ty">INC</span>(count); <span class="kw">end</span>;
+        <span class="kw">end</span>;
+        n := Sys.read(fd, buf);
+    <span class="kw">end</span>;
+    <span class="kw">return</span> count;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    step(<span class="number">1</span>);
+    step(<span class="number">2</span>);
+    Out.int(lines(<span class="string">&quot;/dev/null&quot;</span>)); Out.ln;
+    Out.int(lines(<span class="string">&quot;/no/such/file&quot;</span>)); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Defers.</code></pre>
+<pre class="output"><code>in 1
+working
+done
+out
+in 2
+out
+0
+-1
+</code></pre>
+<p><code>defer s;</code> runs <code>s</code> when the program leaves the statements the <code>defer</code> stands in: at their end, or by a <code>return</code> or a <code>break</code>. Deferred statements run the last first, and only those whose <code>defer</code> was reached.</p>
+<p>So a file is closed beside the line that opens it, however the procedure ends.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="errors.html">&larr; Errors</a><a href="index.html">Contents</a><a class="next" href="checks.html">When it goes wrong &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

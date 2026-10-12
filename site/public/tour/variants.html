@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enumerations, sets, variants and match - Raz, Set, Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html">Modules</a></li>
+<li><a href="values.html">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='5'>
+<li><a href="slices.html">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html" aria-current="page">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='9'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html">Defer</a></li>
+<li><a href="checks.html">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html">Threads</a></li>
+</ol></aside><article><p class="kicker">Set &middot; lesson 7 of 14</p><h1>Enumerations, sets, variants and match</h1>
+<div class="file"><span>Shapes.raz</span></div><pre class="code"><code><span class="kw">module</span> Shapes;
+<span class="kw">import</span> Out, Fmt, Math;
+
+<span class="kw">type</span>
+    Colour = (red, green, blue);
+    Colours = <span class="kw">set</span> <span class="kw">of</span> Colour;
+    Shape = <span class="kw">variant</span>
+        circle(r: <span class="ty">F64</span>);
+        rect(w, h: <span class="ty">F64</span>);
+        dot;
+    <span class="kw">end</span>;
+
+<span class="kw">proc</span> area(s: Shape): <span class="ty">F64</span>;
+<span class="kw">begin</span>
+    <span class="kw">match</span> s <span class="kw">of</span>
+    | circle(r): <span class="kw">return</span> Math.pi * r * r;
+    | rect(w, h): <span class="kw">return</span> w * h;
+    | dot: <span class="kw">return</span> <span class="number">0.0</span>;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> kind(c: <span class="ty">I32</span>): []<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">match</span> c <span class="kw">of</span>
+    | <span class="string">&#x27; &#x27;</span>, <span class="string">&#x27;\t&#x27;</span>, <span class="string">&#x27;\n&#x27;</span>: <span class="kw">return</span> <span class="string">&quot;space&quot;</span>;
+    | <span class="string">&#x27;0&#x27;</span> .. <span class="string">&#x27;9&#x27;</span>: <span class="kw">return</span> <span class="string">&quot;digit&quot;</span>;
+    | <span class="string">&#x27;a&#x27;</span> .. <span class="string">&#x27;z&#x27;</span>, <span class="string">&#x27;A&#x27;</span> .. <span class="string">&#x27;Z&#x27;</span>: <span class="kw">return</span> <span class="string">&quot;letter&quot;</span>;
+    | <span class="kw">else</span>: <span class="kw">return</span> <span class="string">&quot;other&quot;</span>;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> shapes: [<span class="number">3</span>]Shape; i: <span class="ty">INT</span>; warm: Colours; c: Colour;
+<span class="kw">begin</span>
+    shapes := [circle(<span class="number">1.0</span>), rect(<span class="number">2.0</span>, <span class="number">3.5</span>), dot];
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">2</span> <span class="kw">do</span>
+        Fmt.print(<span class="string">&quot;{}\n&quot;</span>, [Fmt.real(area(shapes[i]), <span class="number">2</span>)]);
+    <span class="kw">end</span>;
+    Fmt.print(<span class="string">&quot;{} {} {}\n&quot;</span>, [Fmt.str(kind(<span class="string">&#x27;7&#x27;</span>)), Fmt.str(kind(<span class="string">&#x27;x&#x27;</span>)),
+        Fmt.str(kind(<span class="string">&#x27;+&#x27;</span>))]);
+    warm := {red, blue} - {blue} + {green};
+    <span class="kw">for</span> c := red <span class="kw">to</span> blue <span class="kw">do</span>
+        <span class="kw">if</span> c <span class="kw">in</span> warm <span class="kw">then</span> Out.int(<span class="ty">I64</span>(c)); Out.ln; <span class="kw">end</span>;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Shapes.</code></pre>
+<pre class="output"><code>3.14
+7.00
+0.00
+digit letter other
+0
+1
+</code></pre>
+<p>An enumeration is a list of names, in order; a <code>set of</code> it holds any choice of them, in the bits of a word, with <code>in</code>, <code>+</code> for union, <code>*</code> for intersection and <code>-</code> for difference.</p>
+<p>A variant holds one of its cases, each with fields of its own, and <code>match</code> is the only way to read them: it runs the arm of the case the variant holds, naming its fields. Every case has an arm, unless an <code>| else:</code> comes last. On an integer, <code>match</code> takes constants and ranges, and must have an <code>| else:</code>.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="records.html">&larr; Records and pointers</a><a href="index.html">Contents</a><a class="next" href="memory.html">Memory and allocators &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

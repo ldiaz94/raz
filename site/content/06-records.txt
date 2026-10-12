@@ -1,0 +1,10 @@
+title: Records and pointers
+part: Set
+summary: Laid out as C lays out a struct, reached through ^.
+---
+```raz Boxes run
+```
+
+A record is laid out as C lays out a struct. `{lo: ..., hi: ...}` builds one, naming its fields; the ones it leaves out are zero.
+
+`^Box` is a pointer to a `Box`, `ADR(b)` the address of `b`, and `b^` what a pointer points at. A pointer is never the record: it is `b^.lo`, never `b.lo`.
