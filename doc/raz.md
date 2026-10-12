@@ -9,7 +9,7 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.15 of the report; section 12 says what each
+This is version 2026-10.16 of the report; section 12 says what each
 version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -298,7 +298,8 @@ procedure may be declared `forward` and defined later (section 8).
 **Constants** are evaluated by the compiler. Their expressions use only
 literals, other constants, operators, conversions, `SIZE` and the `LEN`
 of arrays and strings. A constant is an integer, a real, a `BOOL`, a
-name of an enumeration, a set, a string, an array or an `ERROR`. A constant of an integer type wraps as the
+name of an enumeration, a set, a string, an array, a record or an
+`ERROR`. A constant of an integer type wraps as the
 program would: `U8(250) + 10` is 4. Dividing by zero in a constant is
 an error, and so is dividing the smallest value of a signed type by -1,
 with `div` or `mod`, which stops a program (section 6.1). A string constant can be indexed and sliced as an array of
@@ -312,22 +313,27 @@ const Text = "the cat";
 w := Text[4..7];    (* "cat" *)
 ```
 
-A constant with a type is an `ERROR` (section 5.8) or an array. An
-array constant has a type `[n]T`, where `T` is an integer type, a
-real, `BOOL`, an enumeration or a set, and its value is an array
-literal (section 6.5) of constants:
+A constant with a type is an `ERROR` (section 5.8), an array or a
+record, and the value of an array or record constant is a literal
+(section 6.5) of constants. Its elements and fields are integers,
+reals, `BOOL`s, enumerations, sets, `ERROR`s, procedures, `nil`, a
+string for a `[]U8`, an array constant for a slice of its element type,
+and arrays and records of these; no variant and no other pointer:
 
 ```
 const Primes: [5]I64 = [2, 3, 5, 7, 11];
+type Rule = record class: []U8; tag: INT; float: BOOL; end;
+const Rules: [2]Rule = [{class: "firefox", tag: 2}, {class: "mpv", float: true}];
 ...
 p := Primes[i];
 ```
 
-It is used as a variable of that type is, but can't be changed: it can
-be indexed and sliced, its `LEN` is `n`, it can be assigned and
-compared, and it can be passed as a `[n]T` or a `[]T`. Its elements
-are constant as a string's bytes are (section 5.10). An element of it
-isn't a constant, even at a constant index.
+It is used as a variable of that type is, but can't be changed: an
+array constant can be indexed and sliced and its `LEN` is `n`, a
+record constant's fields can be read, and either can be assigned,
+compared as its type allows, and passed. Its parts are constant as a
+string's bytes are (section 5.10). A part of it isn't a constant, even
+at a constant index.
 
 **Variables** of a module live as long as the program; variables of a
 procedure live as long as its call. Both start at zero: every byte of
@@ -1562,6 +1568,7 @@ is ready for either; the 64 it looks at are `reads`, then `writes`.
 module Str;
 proc cmp*(a, b: []U8): INT;           (* -1, 0 or 1 as a sorts before, with or after b, byte by byte *)
 proc eq*(a, b: []U8): BOOL;
+proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);   (* s's bytes in memory from a; false if a has none *)
 proc hash*(s: []U8): U64;             (* FNV-1a, 64 bits *)
 proc find*(s, sub: []U8): INT;        (* where sub first starts in s, or -1 *)
 proc hasPrefix*(s, p: []U8): BOOL;
@@ -1906,6 +1913,9 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.15.** `Math` gains `pow`, `ceil`, `round`, `log2`,
   `log10`, `tan`, `asin`, `acos` and `atan`; `Sys` gains `space`
   (section 11).
+- **2026-10.16.** Record constants, and array and record constants of
+  records, strings, procedures and more (section 4); `Str` gains
+  `copy` (section 11).
 
 ## Appendix A. What an implementation chooses
 
