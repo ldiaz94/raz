@@ -24,7 +24,7 @@ one that buys less than 2% on both is reverted and noted here.
    its length, chosen by the read-ahead as a single value is, and
    counted as two. FPC's search keeps its slice in `rdi` and `rsi`;
    raz's reads both from the frame on every round.
-2. **Parameters left where they arrive.** In a procedure that calls
+2. Done: **Parameters left where they arrive.** In a procedure that calls
    nothing, copies no block and divides by no variable, as the
    read-ahead can tell, a parameter stays in the register it came in,
    and no register is saved for it. Most of rat's hot procedures are

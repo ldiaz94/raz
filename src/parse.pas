@@ -1814,8 +1814,8 @@ begin
   else exit(0);
   end;
   VarKind := k + o^.typ^.size * 16 + ord(o^.ind) * 256;
-  for i := 0 to 4 do
-    if o^.reg = VarRegs[i] then VarKind := k + o^.typ^.size * 16 + (i + 1) * 512;
+  for i := 0 to High(ShownRegs) do
+    if o^.reg = ShownRegs[i] then VarKind := k + o^.typ^.size * 16 + (i + 1) * 512;
 end;
 
 { Whether variable o could live in registers: a single value, not a
@@ -1840,12 +1840,16 @@ end;
   its "begin" to its end, a use counts 1, in a loop 4, in two 16, in
   three or more 64, and a variable ADR is taken of can't have one. A register costs a save
   and a restore, so a variable used less than three times keeps its
-  place in memory. A slice takes two, its pointer's and its length's. }
+  place in memory. A slice takes two, its pointer's and its length's.
+  In a procedure that names no procedure, so calls nothing, the
+  parameters that arrive in the registers no call needs stay there
+  (KeepArrived), at no cost. }
 procedure ChooseRegs(params, before: PObj);
 var
   cand: array[0..63] of PObj; weight: array[0..63] of longint;
   isLoop: array[0..255] of boolean;
-  n, i, k, d, loops, best, need: longint; o: PObj; st: TScanState; afterDot, wasSkipping: boolean;
+  n, i, k, d, loops, best, need: longint; o, q, qual: PObj; st: TScanState;
+  afterDot, wasSkipping, leaf: boolean;
 
   function Candidate(name: longint): longint;
   var j: longint;
@@ -1859,6 +1863,14 @@ var
     if RegFit(o) and (n <= High(cand)) then begin cand[n] := o; weight[n] := 0; inc(n) end;
   end;
 
+  { Whether naming o may make a call: a procedure, a procedure variable,
+    or NEW, SYSCALL or COPY, which use the registers a call would }
+  function Calls(o: PObj): boolean;
+  begin
+    Calls := (o <> nil) and ((o^.cls = oProc) or (o^.cls = oVar) and (o^.typ^.form = fProc)
+      or (o^.cls = oBuiltin) and ((o^.val = bNew) or (o^.val = bSyscall) or (o^.val = bCopy)));
+  end;
+
 begin
   n := 0;
   o := params;
@@ -1869,8 +1881,18 @@ begin
     SaveScan(st);
     wasSkipping := skipping;
     skipping := true;      { its slips are told when it is compiled }
-    d := 0; loops := 0; afterDot := false;
+    d := 0; loops := 0; afterDot := false; leaf := true; qual := nil;
     repeat
+      { a name, or a module's name and one of its exports, that calls }
+      if (tok = sIdent) and not afterDot then begin
+        q := Lookup(id);
+        if Calls(q) then leaf := false;
+        qual := nil;
+        if (q <> nil) and (q^.cls = oModule) then qual := q;
+      end else if (tok = sIdent) and (qual <> nil) then begin
+        if (qual^.module = nil) or Calls(Find(qual^.module^.scope, id)) then leaf := false;
+        qual := nil;
+      end;
       case tok of
         sBegin, sIf, sMatch, sWhile, sFor, sRepeat:
           if d < High(isLoop) then begin
@@ -1899,6 +1921,13 @@ begin
     until (d = 0) or (tok = sEof);
     RestoreScan(st);
     skipping := wasSkipping;
+    if leaf then begin
+      o := params;
+      while o <> nil do begin
+        if RegFit(o) and (weight[Candidate(o^.name)] >= 0) then KeepArrived(o);
+        o := o^.next;
+      end;
+    end;
     { a slice's weight is shared by its two registers }
     for i := 0 to n - 1 do
       if cand[i]^.typ^.form = fSlice then weight[i] := weight[i] div 2;
@@ -2001,7 +2030,16 @@ begin
     p^.openEnd := (curResult <> nil) and not ends;
     NoteLine(CurLine, CurCol);
     Expect(sEnd);
-    if not demoted or (errors <> errs) then break;
+    if not (demoted or lost) or (errors <> errs) then break;
+    { a parameter kept where it arrived goes to memory: a call or a copy
+      wanted its register }
+    if lost then begin
+      o := params;
+      while o <> nil do begin
+        if KeptIn(o) then begin o^.reg := 0; o^.reg2 := 0 end;
+        o := o^.next;
+      end;
+    end;
     numDrops := drops0;
     Redo(mark);
     PlaceLocals(params, before);

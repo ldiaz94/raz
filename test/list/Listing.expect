@@ -8,17 +8,15 @@ Listing.add:
              0  push rbp
              1  mov rbp, rsp
              4  sub rsp, 16
-            11  mov [rbp - 8], rdi
-            15  mov [rbp - 16], rsi
     14      return a + b * 2;
-            19  mov r8, [rbp - 8]
-            23  mov r9, [rbp - 16]
-            27  shl r9, 1
-            31  add r8, r9
-            34  mov rax, r8
+            11  mov r9, rsi
+            14  shl r9, 1
+            18  mov r8, rdi
+            21  add r8, r9
+            24  mov rax, r8
     15  end add;
-            37  leave
-            38  ret
+            27  leave
+            28  ret
 
 Listing.main:
     17  proc main*;

@@ -110,22 +110,22 @@ under each line of source, named by the compiler as it made them):
 push   rbp                            ; EnterBody: the frame
 mov    rbp,rsp
 sub    rsp,0x10                       ; its size, patched in by EndProc
-mov    QWORD PTR [rbp-0x8],rdi        ; the parameters, into their slots
-mov    QWORD PTR [rbp-0x10],rsi
-mov    r8,QWORD PTR [rbp-0x8]         ; a, at depth 0
-mov    r9,QWORD PTR [rbp-0x10]        ; b, at depth 1; the 2 is only noted
-shl    r9,0x1                         ; times 2 is a shift
+mov    r9,rsi                         ; b, at depth 1; a, at depth 0, and
+shl    r9,0x1                         ;   the 2 are only noted; times 2
+mov    r8,rdi                         ;   is a shift; a is loaded for +
 add    r8,r9
 mov    rax,r8                         ; return: the result
 leave                                 ; no jump to here, as it is next
 ret
 ```
 
-Every line of it can be traced to a routine in `gen.pas`: the loads
-are `PushVar`'s, the shift and the add `Op`'s, the result
-`ReturnJump`'s, and the frame is `EnterBody`'s and `EndProc`'s. It is
-not fast code. It is code whose every instruction you can account
-for, which is the point.
+`scale` calls nothing, so its parameters stay in `rdi` and `rsi`,
+where they arrive (`KeepArrived`): they are register variables that
+cost nothing to keep. Every line of it can be traced to a routine in
+`gen.pas`: the moves are `Loaded`'s, the shift and the add `Op`'s, the
+result `ReturnJump`'s, and the frame is `EnterBody`'s and `EndProc`'s.
+It is not the fastest code. It is code whose every instruction you
+can account for, which is the point.
 
 ## Better code, in one procedure
 
@@ -303,6 +303,30 @@ bought less than 2% on both was taken out again.
    memory, a comparison or `COPY`, has its words stored in a
    temporary first (`CopyToTemp`). rat 5% faster, the heap sort 5%,
    the search 4%.
+
+2. **Parameters left where they arrive.** `find(s, sub: []U8)` stored
+   its first slice in its frame, or in two registers it saved and
+   restored:
+
+   ```
+   mov [rbp - 40], r12       ; the caller's r12 and r13, saved
+   mov [rbp - 32], r13
+   mov r12, rdi              ; s, into them
+   mov r13, rsi
+   ```
+
+   In a procedure that names no procedure, a procedure variable, `NEW`,
+   `SYSCALL` or `COPY`, as `ChooseRegs` sees reading ahead, the
+   parameters that arrive in `rdi` and `rsi` stay there, which only a
+   call or a copy needs: nothing is saved or moved, and `s[i]` is read
+   through `rdi` itself (`KeepArrived`). Where gen needs them after
+   all, to copy a record or compare two slices, it sets `lost`, and
+   `Body` compiles the procedure again with the parameters in memory,
+   as for a variable demoted. The trap report shows a parameter kept
+   so: `Rt.fail` is given `rdi` and `rsi` as the failing code had
+   them, and the signal handler takes them from the context the
+   kernel saved. The search 9% faster, rat 1.5%, its text 0.7%
+   smaller.
 
 ## diag.pas: messages
 
@@ -519,7 +543,9 @@ That code puts the values involved where `Rt.fail` wants them and
 calls a stub for its kind of failure (`failStubs`, made by
 `EntryPoint`), which says the kind and passes the address it was
 called from, by which `Rt` finds the place: the failing code has the
-place of the offending expression (`LineCol` in `scan.pas`). A check
+place of the offending expression (`LineCol` in `scan.pas`). It leaves
+`rdi` and `rsi` as they were, so that the stub can pass them on, for
+the trap report to show a parameter kept in them. A check
 costs a compare and a jump where it stands, and a dozen bytes out of
 the way. Code is aligned to 32 bytes, the windows x86 fetches it in,
 so that where a procedure's loops fall doesn't depend on what comes
@@ -906,8 +932,10 @@ this one does.
   `_ := f(x)` drops one on purpose. `-Werror` makes each an error.
 - **Registers for variables.** Up to five of a procedure's single
   values, not reals, whose address is never taken, live in `rbx` and
-  `r12` to `r15`, a slice taking two of them; the trap report shows
-  them as it shows the others, but for slices, which it never shows.
+  `r12` to `r15`, a slice taking two of them; in a procedure that
+  calls nothing, a parameter that arrives in `rdi` or `rsi` stays
+  there. The trap report shows them as it shows the others, but for
+  slices, which it never shows.
 - **Several results** that are two words, and a slice, come back in
   rax and rdx, as from a code procedure; others through a hidden
   pointer to the caller's slots.

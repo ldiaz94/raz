@@ -19,8 +19,8 @@ begin
   AluI(aluAdd, RAX, 1); AluI(aluAnd, RAX, 1000); AluI(aluCmp, RSP, 8); AluM(aluCmp, RAX, Mem(RCX, 8)); AluM(aluAdd, RAX, Mem(RCX, 0));
   Imul(RAX, RCX); ImulI(RAX, 24); Shift(shShl, RAX); Shift(shSar, RAX); ShiftI(shShr, RCX, 3);
   Unary(2, RAX); Unary(3, RAX); Unary(6, RCX); Unary(7, RCX); Cqo;
-  Extend(RAX, 1, true); Extend(RAX, 1, false); Extend(RAX, 2, true); Extend(RAX, 2, false); Extend(RAX, 4, true); Extend(RAX, 4, false);
-  SetCC(ccL, RAX); SetCC(ccA, RCX); TestRR(RAX, RAX);
+  Extend(RAX, 1, true); Extend(RAX, 1, false); Extend(RDI, 1, false); Extend(RSI, 1, true); Extend(RAX, 2, true); Extend(RAX, 2, false); Extend(RAX, 4, true); Extend(RAX, 4, false);
+  SetCC(ccL, RAX); SetCC(ccA, RCX); SetCC(ccE, RDI); TestRR(RAX, RAX);
   Push(RAX); Push(12); Pop(RCX); Pop(R11); CallR(R11); CallM(Mem(RCX, 8)); Ret; Leave; Syscall; Mfence; Ud2; RepMovsb; RepStosb;
   LockCmpxchg(Mem(RCX, 0), RDX); Xchg(Mem(RCX, 0), RAX); LockXadd(Mem(RCX, 0), RAX);
   MovqXR(0, RAX); MovqXR(1, RCX); MovqRX(RAX, 0); MovsdXM(2, Mem(RBP, -8)); MovsdMX(Mem(RBP, -8), 7);

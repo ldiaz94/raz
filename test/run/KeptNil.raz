@@ -1,0 +1,21 @@
+(* A parameter kept in rdi or rsi is shown when a signal stops the
+   procedure that keeps it. *)
+module KeptNil;
+import Out;
+
+type Rec = record x: INT; end;
+
+proc get(p: ^Rec; k: INT): INT;
+begin
+    return p^.x + k;
+end;
+
+proc main*;
+var r: Rec;
+begin
+    r.x := 1;
+    Out.int(get(ADR(r), 2)); Out.ln;
+    Out.int(get(nil, 5)); Out.ln;
+end;
+
+end KeptNil.

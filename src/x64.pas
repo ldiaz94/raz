@@ -495,7 +495,7 @@ begin
   end else if signed then Say('movsx ' + RN(r) + ', ' + RN(r, size))
   else Say('movzx ' + RN(r, 4) + ', ' + RN(r, size));
   case size of
-    1: if signed then OpR(0, true, $BE0F, r, r) else OpR(0, false, $B60F, r, r);
+    1: if signed then OpR(0, true, $BE0F, r, r, true) else OpR(0, false, $B60F, r, r, true);
     2: if signed then OpR(0, true, $BF0F, r, r) else OpR(0, false, $B70F, r, r);
     4: if signed then OpR(0, true, $63, r, r) else OpR(0, false, $89, r, r);
   end;
@@ -505,9 +505,9 @@ end;
 procedure SetCC(cc, r: longint);
 begin
   if listing then Say('set' + CondNames[cc] + ' ' + RN(r, 1));
-  OpR(0, false, $900F + cc shl 8, 0, r);
+  OpR(0, false, $900F + cc shl 8, 0, r, true);
   if listing then Say('movzx ' + RN(r, 4) + ', ' + RN(r, 1));
-  OpR(0, false, $B60F, r, r);
+  OpR(0, false, $B60F, r, r, true);
 end;
 
 procedure TestRR(a, b: longint);

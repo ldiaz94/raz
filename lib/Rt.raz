@@ -72,8 +72,10 @@ var
     places: ^INT;
     line: [256]U8;              (* the message being made *)
     (* rbx, r12, r13, r14 and r15 in the frame being told of, where the
-       compiler keeps a procedure's busiest variables *)
-    regs: [5]UINT;
+       compiler keeps a procedure's busiest variables; then rdi and rsi
+       where the program stopped, where a procedure that calls nothing
+       keeps the parameters that arrive in them *)
+    regs: [7]UINT;
     lineLen: INT;
     act: Action;
     alt: Stack;
@@ -425,10 +427,13 @@ end;
    runs backwards. What a target's machine doesn't catch the code
    tests for, and stops at with what 4, a nil pointer; 5, a division
    by zero; 6, a stack overflow; these end the program by the signal
-   the machine would have given, as if it had. *)
-proc fail*(what, a, b, len: INT; at: UINT; name: ^U8);
+   the machine would have given, as if it had. rdi and rsi are the
+   registers as the failing code had them. *)
+proc fail*(what, a, b, len: INT; at: UINT; name: ^U8; rdi, rsi: UINT);
 var sig: INT;
 begin
+    regs[5] := rdi;
+    regs[6] := rsi;
     where(at);
     if what >= 4 then
         put("stopped by ");
@@ -481,8 +486,10 @@ end sigReturn;
 proc onSignal(sig: INT; info, ctx: ^U8);
 var adr, sp, ip, bp: UINT; q: ^UINT; why: []U8;
 begin
-    q := ^UINT(ctx + 120);     (* uc_mcontext's rbp *)
-    bp := q^;
+    q := ^UINT(ctx + 104);     (* uc_mcontext's rdi, then rsi, then rbp *)
+    regs[5] := q[0];
+    regs[6] := q[1];
+    bp := q[2];
     q := ^UINT(info + 16);   (* si_addr *)
     adr := q^;
     q := ^UINT(ctx + 160);   (* uc_mcontext's rsp, then rip *)

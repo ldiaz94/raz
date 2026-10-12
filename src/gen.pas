@@ -100,12 +100,19 @@ const
     callee-saved ones, so they live through calls (a register variable); a procedure saves
     those it uses, and Rt finds them there for the trap report }
   VarRegs: array[0..4] of longint = (RBX, R12, R13, R14, R15);
+  { the registers the trap report can show a variable in: VarRegs, then
+    rdi and rsi, where a procedure that calls nothing keeps the
+    parameters that arrive in them (KeptIn) }
+  ShownRegs: array[0..6] of longint = (RBX, R12, R13, R14, R15, RDI, RSI);
 
 var
   rtFail, argcChunk, argvChunk: longint;
   { the stubs that Check's code calls, one for each kind of failure,
     made by EntryPoint for those used }
   failStubs: array[0..5] of longint = (-1, -1, -1, -1, -1, -1);
+  lost: boolean;       { a parameter kept where it arrived was wanted
+                         for other work: the procedure is compiled again,
+                         the parameter in memory }
   depth: longint;      { the values on the stack }
   pushed: longint;     { quadwords pushed on the machine's stack }
   codeChunk: longint = -1;   { the procedure or body being compiled, or -1 }
@@ -171,6 +178,8 @@ procedure KeepTemps;
 
 procedure BeginProc(sig: PType; params: PObj);
 procedure ResetLocals;
+procedure KeepArrived(o: PObj);
+function KeptIn(o: PObj): boolean;
 procedure UseRegs(mask: longint);
 procedure MarkCode(var m: TCodeMark);
 procedure Redo(const m: TCodeMark);
@@ -234,6 +243,7 @@ var
   numIn: longint;
   procParams: PObj;             { the parameters, for EnterBody }
   regMask: longint;             { the registers of variables: bit i is VarRegs[i] }
+  kept: longint;                { bit r: register r holds a parameter, as it arrived }
   saveAt: int64;                { where they are saved, a quadword each }
   frameAt: array[0..2] of int64;   { frameTop, frameMax, permTop after the declarations }
   { the checks of the procedure, whose failures EndFails makes }
@@ -364,6 +374,13 @@ procedure Drop;
 begin
   dec(depth);
   if stack[depth].loc = lReg then owner[depth mod NumRegs] := -1;
+end;
+
+{ rsi and rdi are about to be used for other work, as in copying: a
+  parameter kept in either must go to memory (lost). }
+procedure ClobberArgs;
+begin
+  if kept <> 0 then lost := true;
 end;
 
 { The value i into register r, from wherever it is: a constant or an
@@ -556,6 +573,7 @@ end;
   size bytes to off bytes past the destination. }
 procedure CopyBlock(size, off: int64);
 begin
+  ClobberArgs;
   PopTo(RSI);
   PopTo(RDI);
   if off <> 0 then Lea(RDI, Mem(RDI, off));
@@ -566,6 +584,7 @@ end;
   registers, its two words into them. }
 procedure CopyTo(const a: TAdr; size: int64);
 begin
+  ClobberArgs;
   PopTo(RSI);
   if a.base = bReg then begin
     Load(a.chunk, Mem(RSI, 0), 8, false);
@@ -578,6 +597,7 @@ end;
 
 procedure ZeroVar(const a: TAdr; size: int64);
 begin
+  ClobberArgs;
   Lea(RDI, Place(a, RDI));
   MovRI(RCX, size);
   MovRI(RAX, 0);
@@ -871,6 +891,7 @@ end;
 procedure CompareSeq(a, b: int64; shift: longint; eq: boolean);
 var differ, r: longint;
 begin
+  ClobberArgs;
   r := Target;
   Load(RCX, Mem(RBP, b + 8), 8, false);
   AluM(aluCmp, RCX, Mem(RBP, a + 8));
@@ -941,6 +962,7 @@ end;
 procedure ZeroNew(size: int64);
 var L, r: longint;
 begin
+  ClobberArgs;
   r := Top;
   L := NoLabel;
   TestRR(r, r);
@@ -977,6 +999,7 @@ procedure SysCall(n: longint);
 const SysRegs: array[0..6] of longint = (RAX, RDI, RSI, RDX, R10, R8, R9);
 var i: longint;
 begin
+  ClobberArgs;
   SpillBelow(depth);
   for i := 0 to n - 1 do
     with stack[depth - n + i] do
@@ -1095,7 +1118,10 @@ const
   division fault and a stack overflow, which this machine catches
   itself, so no check here has them. The arguments go in rdi, rsi, rdx,
   rcx, r8 and r9: a is in register ra, b in RDX; len is in memory at m,
-  or n if m.base is NoBase. The failing code is out of the way, at the
+  or n if m.base is NoBase, or in register m.index if it is ARegister.
+  rdi and rsi are passed on as they were, since a parameter may be kept
+  in them, for the trap report to show: so a goes to the stub in rax.
+  The failing code is out of the way, at the
   procedure's end (EndFails), so that a check that holds costs a jump
   not taken; it has p for its place (at is p's offset in the source),
   never returns, and may use any register once it has read what it
@@ -1125,7 +1151,7 @@ begin
       FixLink(L);
       LineCol(at, line, col);
       NoteLine(line, col);
-      if ra <> RSI then MovRR(RSI, ra);
+      if ra <> RAX then MovRR(RAX, ra);
       if m.base = NoBase then MovRI(RCX, n)
       else if m.base = ARegister then MovRR(RCX, m.index)
       else Load(RCX, m, 8, false);
@@ -1223,6 +1249,7 @@ var m, ml: TMem;
 begin
   PopTo(RDX);
   PopTo(RCX);
+  if a.base = bSlot then ClobberArgs;   { Place loads its slot into rdi }
   if a.base = bReg then ml := InRegister(a.hi)   { a slice in registers }
   else begin
     m := Place(a, RDI);
@@ -1256,6 +1283,7 @@ end;
 procedure CopySlice(dOff, sOff, size: int64; checked: boolean; const p: TPos);
 var ml: TMem; L, E: longint;
 begin
+  ClobberArgs;
   Load(RDX, Mem(RBP, sOff + 8), 8, false);
   if checked then begin
     ml := Mem(RBP, dOff + 8);
@@ -1288,6 +1316,7 @@ end;
   bounds can't be known, but it can't run backwards. }
 procedure SlicePtr(size, tmp: int64; checked: boolean; const p: TPos);
 begin
+  ClobberArgs;
   PopTo(RDX);
   PopTo(RCX);
   PopTo(RDI);
@@ -1322,6 +1351,7 @@ var
 begin
   { the arguments are the c.n values on top, where computing them left
     them; the registers in use under them are saved around the call }
+  ClobberArgs;
   first := depth - c.n;
   SpillBelow(first);
   res := c.sig^.base;
@@ -1463,6 +1493,8 @@ begin
   ResetStack(0, 0);
   exitL := NoLabel;
   numIn := 0;
+  lost := false;
+  kept := 0;
   resType := sig^.base;
   procParams := params;
   regMask := 0;
@@ -1517,16 +1549,54 @@ begin
   frameTop := paramTop; frameMax := paramTop; permTop := paramTop;
 end;
 
+{ The register the word (0, or 1 for a slice's second) of parameter o
+  arrives in, or -1 if it comes on the stack or in an xmm register }
+function ArrivesIn(o: PObj; word: longint): longint;
+var i: longint;
+begin
+  ArrivesIn := -1;
+  for i := 0 to numIn - 1 do
+    if (inObj[i] = o) and (inSlot[i] = o^.val + 8 * word) and (inReg[i] >= 0) then ArrivesIn := inReg[i];
+end;
+
+{ Parameter o, of a procedure that calls nothing, stays in the register
+  it arrives in if that is rdi or rsi, which only a call or a copy needs:
+  no register is saved for it, and nothing is moved. A slice stays only
+  if it has both. If the procedure turns out to copy after all, lost is
+  set, and it is compiled again with o in memory. }
+procedure KeepArrived(o: PObj);
+var r: longint;
+begin
+  r := ArrivesIn(o, 0);
+  if o^.typ^.form = fSlice then begin
+    if (r = RDI) and (ArrivesIn(o, 1) = RSI) then begin o^.reg := RDI; o^.reg2 := RSI end;
+  end else if (r = RDI) or (r = RSI) then o^.reg := r;
+end;
+
+{ Whether parameter o is kept where it arrived }
+function KeptIn(o: PObj): boolean;
+begin
+  KeptIn := (o^.reg = RDI) or (o^.reg = RSI);
+end;
+
 { The locals in memory have their slots: the prologue zeroes those and
   nothing below. The procedure keeps variables in the registers of
   mask, which are saved next, a quadword each, in slots that need no
   zeroing; the frame as it then stands is where a second try at the
   body starts. }
 procedure UseRegs(mask: longint);
-var i, k: longint;
+var i, k: longint; p: PObj;
 begin
   zeroTop := permTop;
   regMask := mask;
+  { the parameters left in rdi and rsi, as they arrived }
+  kept := 0;
+  p := procParams;
+  while p <> nil do begin
+    if p^.reg in [RDI, RSI] then kept := kept or (1 shl p^.reg);
+    if p^.reg2 in [RDI, RSI] then kept := kept or (1 shl p^.reg2);
+    p := p^.next;
+  end;
   k := 0;
   for i := 0 to 4 do if mask and (1 shl i) <> 0 then inc(k);
   if k > 0 then saveAt := AllocPerm(8 * k, 8);
@@ -1544,6 +1614,7 @@ procedure Redo(const m: TCodeMark);
 begin
   pc := m.pc; numFixups := m.fixups; numLines := m.lines; Unsay(m.said);
   numFails := 0;
+  lost := false;
   frameTop := frameAt[0]; frameMax := frameAt[1]; permTop := frameAt[2];
   exitL := NoLabel;
 end;
@@ -1598,7 +1669,7 @@ begin
     else if (inObj[i] <> nil) and (inObj[i]^.reg <> 0) then begin
       r := inObj[i]^.reg;
       if inSlot[i] <> inObj[i]^.val then r := inObj[i]^.reg2;
-      MovRR(r, inReg[i]);
+      if r <> inReg[i] then MovRR(r, inReg[i]);   { else it is kept where it is }
       if inSize[i] < 8 then Extend(r, inSize[i], inObj[i]^.typ^.signed);
     end else Store(Mem(RBP, inSlot[i]), inReg[i], inSize[i]);
   { a register variable's parameter that came on the stack, above the
@@ -1631,6 +1702,7 @@ end;
   bytes into it. }
 procedure CopyResult(off, size: int64);
 begin
+  ClobberArgs;
   PopTo(RSI);
   Load(RDI, Mem(RBP, retSlot), 8, false);
   if off <> 0 then Lea(RDI, Mem(RDI, off));
@@ -1788,14 +1860,19 @@ begin
     check's call is. The return address is the next instruction's, which
     may belong to another line; one byte back is inside the call, so the
     lookup finds the call's line. rsp is aligned for the call, as the
-    check's code may have pushed an odd number of quadwords. }
+    check's code may have pushed an odd number of quadwords. rdi and rsi
+    as the failing code had them go on the stack, as Rt.fail's last two
+    arguments, and a comes in rax (EndFails). }
   for i := 0 to High(failStubs) do
     if failStubs[i] >= 0 then begin
       BeginChunk(failStubs[i]);
-      MovRI(RDI, i);
       Load(R8, Mem(RSP, 0), 8, false);
       AluI(aluSub, R8, 1);
       AluI(aluAnd, RSP, -16);
+      Push(RSI);
+      Push(RDI);
+      MovRR(RSI, RAX);
+      MovRI(RDI, i);
       CallChunk(rtFail);
       Ud2;
       EndChunk(failStubs[i]);
