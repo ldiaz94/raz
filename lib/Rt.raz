@@ -7,7 +7,9 @@
    the calls under way and their variables, from the frames' chain of
    rbp and the compiler's tables in places. A program run with
    RAZ_PROFILE set is sampled every millisecond of its time, and at its
-   end Rt says which procedures and places in the source took it.
+   end Rt says which procedures and places in the source took it: each
+   procedure's samples in its own code, and in all, with those in the
+   procedures it was calling.
    The handlers are Linux's on x86-64, set by system calls: what the
    kernel hands them is laid out as it is there. *)
 module Rt;
@@ -27,6 +29,7 @@ const
     MaxSamples = 100000;
     MaxProcs = 8192;
     MaxPlaces = 65536;
+    Depth = 24;   (* the callers noted with each sample, at most *)
     (* SA_SIGINFO, SA_ONSTACK, SA_RESTORER and SA_RESETHAND *)
     Flags = 4H + 8000000H + 4000000H + 80000000H;
 
@@ -72,9 +75,13 @@ var
     (* the profile: where the program was at each sample, and how many
        samples fell in each procedure and at each place *)
     samples: [MaxSamples]UINT;
+    (* the callers at each sample, by their return addresses: a row of
+       Depth for each, a short one ended by 0; mapped when profiling *)
+    chains: ^UINT;
     numSamples: INT;
     profiling: BOOL;
     procCount: [MaxProcs]INT;
+    procTotal: [MaxProcs]INT;    (* the samples each procedure was on the chain of *)
     placeCount: [MaxPlaces]INT;
     timerv: [4]INT;              (* setitimer's interval and value *)
 
@@ -483,14 +490,48 @@ begin
     calls(ip, bp, why # "a stack overflow");
 end;
 
+(* Whether a is in the program's own code, not C's *)
+proc inCode(a: UINT): BOOL;
+begin
+    return (a >= UINT(places[1])) and (a < UINT(places[2]));
+end;
+
 (* SIGPROF, every millisecond the program runs, in any of its threads:
-   notes where it was *)
+   notes where it was, and the calls under way, up the chain of frames.
+   The chain is followed only through the program's own code, whose
+   frames all keep it in rbp: C's code may use rbp for anything. *)
 proc onProf(_sig: INT; _info, ctx: ^U8);
-var n: INT; q: ^UINT;
+var n, k: INT; q, f, row: ^UINT; ip, bp: UINT;
 begin
     n := XADD(ADR(numSamples), 1);
+    if n >= MaxSamples then return; end;
+    q := ^UINT(ctx + 120);   (* uc_mcontext's rbp *)
+    bp := q^;
     q := ^UINT(ctx + 168);   (* uc_mcontext's rip *)
-    if n < MaxSamples then samples[n] := q^; end;
+    ip := q^;
+    samples[n] := ip;
+    row := chains + n * Depth;
+    k := 0;
+    if (places # nil) and inCode(ip) then
+        while (k < Depth) and (bp # 0) and (bp & 7 = 0) do
+            f := ^UINT(bp);
+            if not inCode(f[1]) then break; end;
+            row[k] := f[1] - 1;   (* the call, by its return address *)
+            INC(k);
+            if f[0] <= bp then break; end;
+            bp := f[0];
+        end;
+    end;
+    if k < Depth then row[k] := 0; end;
+end;
+
+(* The number of the procedure the code at address a is in, or -1 *)
+proc procNum(a: UINT): INT;
+var p: ^Proc;
+begin
+    p := procAt(a);
+    if p = nil then return -1; end;
+    return p - ^Proc(^U8(places + 5) + 16 * places[0]);
 end;
 
 (* The index of the place the code at address a comes from, or -1 *)
@@ -505,8 +546,19 @@ begin
     return best;
 end;
 
-(* Says the ten that took most of count's n samples, by name *)
-proc top(count: []INT; n: INT; byPlace: BOOL);
+(* Puts the share of n that k is, as a percentage four wide *)
+proc putShare(k, n: INT);
+var i: INT;
+begin
+    i := k * 100 div n;
+    if i < 10 then put("    "); elsif i < 100 then put("   "); else put("  "); end;
+    putInt(i);
+    put("%");
+end;
+
+(* Says the ten that took most of count's n samples, by name, with
+   their totals beside them if total isn't empty *)
+proc top(count, total: []INT; n: INT; byPlace: BOOL);
 var i, k, best: INT; p: ^Proc; q: ^Place;
 begin
     p := ^Proc(^U8(places + 5) + 16 * places[0]);
@@ -517,10 +569,9 @@ begin
             if count[i] > count[best] then best := i; end;
         end;
         if count[best] = 0 then return; end;
-        i := count[best] * 100 div n;
-        if i < 10 then put("    "); elsif i < 100 then put("   "); else put("  "); end;
-        putInt(i);
-        put("%  ");
+        putShare(count[best], n);
+        if LEN(total) > 0 then put("  "); putShare(total[best], n); end;
+        put("  ");
         if byPlace then
             putStr(names() + INT(q[best].path));
             put(":"); putInt(INT(q[best].line));
@@ -535,7 +586,7 @@ end;
 (* At the end of a profiled run: which procedures, and which places in
    the source, took the time, as shares of the samples *)
 proc profile;
-var t: [4]INT; i, n, k: INT; p: ^Proc;
+var t: [4]INT; i, n, k, j, m, s: INT; seen: [Depth + 1]INT; row: ^UINT;
 begin
     t := [0, 0, 0, 0];
     _ := SYSCALL(38, 2, ADR(t), 0);   (* setitimer(ITIMER_PROF): no more *)
@@ -544,22 +595,34 @@ begin
     if n > MaxSamples then n := MaxSamples; end;
     if (places = nil) or (n = 0) then return; end;
     for i := 0 to n - 1 do
-        p := procAt(samples[i]);
-        if p # nil then
-            k := (p - ^Proc(^U8(places + 5) + 16 * places[0]));
-            if k < MaxProcs then INC(procCount[k]); end;
+        k := procNum(samples[i]);
+        if (k >= 0) and (k < MaxProcs) then INC(procCount[k]); end;
+        (* each procedure on the sample's chain counts once in its
+           total, however often it is there *)
+        row := chains + i * Depth;
+        m := 0;
+        for j := -1 to Depth - 1 do
+            if j < 0 then k := procNum(samples[i]);
+            elsif row[j] = 0 then break;
+            else k := procNum(row[j]);
+            end;
+            if (k >= 0) and (k < MaxProcs) then
+                s := 0;
+                while (s < m) and (seen[s] # k) do INC(s); end;
+                if s = m then seen[m] := k; INC(m); INC(procTotal[k]); end;
+            end;
         end;
         k := placeAt(samples[i]);
         if (k >= 0) and (k < MaxPlaces) then INC(placeCount[k]); end;
     end;
     put("profile: ");
     putInt(n);
-    put(" samples of a millisecond");
+    put(" samples of a millisecond; each procedure's own, then with its calls'");
     say;
-    top(procCount[0..places[3]], n, false);
+    top(procCount[0..places[3]], procTotal[0..places[3]], n, false);
     put("by place:");
     say;
-    top(placeCount[0..places[0]], n, true);
+    top(placeCount[0..places[0]], placeCount[0..0], n, true);
 end;
 
 begin
@@ -569,6 +632,9 @@ begin
     _ := SYSCALL(13, SigSegv, ADR(act), 0, 8);   (* rt_sigaction *)
     _ := SYSCALL(13, SigFpe, ADR(act), 0, 8);
     if LEN(Sys.env("RAZ_PROFILE")) > 0 then
+        chains := ^UINT(Sys.mmap(MaxSamples * Depth * SIZE(UINT)));
+    end;
+    if chains # nil then
         act := {handler: onProf, flags: ProfFlags, restorer: sigReturn};
         _ := SYSCALL(13, SigProf, ADR(act), 0, 8);
         timerv := [0, 1000, 0, 1000];   (* every millisecond, from one on *)

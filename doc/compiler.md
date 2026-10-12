@@ -761,9 +761,11 @@ caller's, and says each call under way and its variables (`calls`);
 `Rt.trace` does the same on demand. A thread's first frame has `rbp`
 zero, which ends the chain. With `RAZ_PROFILE` set, `Rt`'s body has the
 kernel send SIGPROF every millisecond of the program's time
-(`setitimer`); `onProf` notes the address it interrupted, and `exit`
-has `profile` say which procedures and places those fell in, by the
-same tables.
+(`setitimer`); `onProf` notes the address it interrupted and the
+calls under way, up the chain of frames while it stays in the program's
+own code, and `exit` has `profile` say which procedures and places
+those fell in, by the same tables: each procedure's samples in its own
+code, and its total, counting once each sample it was on the chain of.
 
 The layout is chosen so the file can be mapped as it lies: text just
 after the headers, rodata on the next page, then a writable page that

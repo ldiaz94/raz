@@ -105,7 +105,8 @@ calls under way, each with its variables:
 
 A program run with `RAZ_PROFILE` set in its environment is sampled
 every millisecond of its time; at its end it says which procedures, and
-which places in the source, took the most of it.
+which places in the source, took the most of it: each procedure's time
+in its own code, and its total, with the procedures it called.
 
 `raz run Main.raz a b` compiles the same way, then runs the program
 with the arguments `a b`, writing no file: its output and exit status
