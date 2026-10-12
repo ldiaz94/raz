@@ -1287,24 +1287,50 @@ begin
   ends := all;
 end;
 
+{ while c do s end: the test comes after the body, and the loop jumps to
+  it first, so that a round takes one jump, back to the top if c holds:
+
+      jmp test                 rather than   top:  c, jump to out if false
+      top:  s                                      s
+      test: c, jump to top if true                 jmp top
+                                             out:
+
+  One pass reads c before s: so c is compiled where it is written, for
+  its messages, and its code taken back (Rewind); then read again, and
+  compiled, after s (SaveScan, RestoreScan). }
 procedure WhileStatement(const start: TPos; ind: longint);
-var x: TItem; top, L: longint; lp: TLoop; old: PLoop; forever: boolean;
+var x: TItem; top, L, test: longint; lp: TLoop; old: PLoop; cond, after: TScanState; m: TCodeMark;
 begin
   Next;
-  top := pc;
+  SaveScan(cond);
+  MarkCode(m);
   Expression(x, nil);
-  forever := (x.mode = mConst) and (x.val <> 0);
+  Discard(x);
+  Rewind(m);
   Expect(sDo);
-  L := NoLabel;
-  CondJump(x, L);
+  test := NoLabel;
+  Jump(test);
+  AlignLoop;
+  top := pc;
   Loop(lp, old);
   Statements;
-  JumpBack(top);
-  CloseEnd(start, ind);
-  ends := forever and (lp.brk = NoLabel);
-  Fix(L);
-  Fix(lp.brk);
   curLoop := old;
+  SaveScan(after);
+  RestoreScan(cond);
+  Fix(test);
+  NoteLine(CurLine, CurCol);
+  Expression(x, nil);
+  ends := (x.mode = mConst) and (x.val <> 0) and (lp.brk = NoLabel);   { while true }
+  if (x.mode = mConst) and (x.typ^.form = fBool) then begin
+    if x.val <> 0 then JumpBack(top);
+  end else begin
+    L := NoLabel;
+    CondJumpTrue(x, L);
+    FixTo(L, top);
+  end;
+  RestoreScan(after);
+  CloseEnd(start, ind);
+  Fix(lp.brk);
 end;
 
 procedure RepeatStatement;

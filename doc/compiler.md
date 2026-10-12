@@ -387,6 +387,36 @@ bought less than 2% on both was taken out again.
    of 32 bytes (`AlignLoop`, `Align` in x64), the no-ops before it
    never run. The sum 41% faster, the search 6%; rat within noise.
 
+4. **`while` tested at the bottom.** A `while` loop tested its
+   condition at the top and jumped back to it, two jumps a round, one
+   taken each way:
+
+   ```
+   top:  cmp rbx, r13        ; while child < hi
+         jge out
+         ...                 ; the body
+         jmp top
+   out:
+   ```
+
+   Now the loop jumps to its test first, which comes after the body
+   and jumps back to the top while the condition holds:
+
+   ```
+         jmp test
+   top:  ...                 ; the body, at a multiple of 32 bytes
+   test: cmp rbx, r13
+         jl top
+   ```
+
+   One pass reads the condition before the body, so `WhileStatement`
+   compiles it where it is written, for its messages, takes its code
+   back (`Rewind`), and reads it again after the body (`SaveScan`,
+   `RestoreScan`). A constant condition, as in `while true`, is no
+   test. The heap sort 3% faster, rat 2%; the search lost 7%, all of
+   it to where its loops fell: without the top aligned it lost
+   nothing, and rat gained nothing either.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is

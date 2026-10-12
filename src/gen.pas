@@ -76,7 +76,7 @@ type
   end;
 
   { The code made so far, to go back to for a second try at a body }
-  TCodeMark = record pc, fixups, lines, said: longint; end;
+  TCodeMark = record pc, fixups, lines, said, fails: longint; end;
 
   { For EntryPoint: the address of chunk, put in the variable whose
     chunk is into before the program starts }
@@ -188,6 +188,7 @@ function KeptIn(o: PObj): boolean;
 procedure UseRegs(mask: longint);
 procedure MarkCode(var m: TCodeMark);
 procedure Redo(const m: TCodeMark);
+procedure Rewind(const m: TCodeMark);
 procedure EnterBody(c, line: longint);
 procedure ResultTo(off: int64; size: longint);
 procedure CopyResult(off, size: int64);
@@ -1707,6 +1708,15 @@ end;
 procedure MarkCode(var m: TCodeMark);
 begin
   m.pc := pc; m.fixups := numFixups; m.lines := numLines; m.said := SaidCount;
+  m.fails := numFails;
+end;
+
+{ The code made since m taken back, as if it had never been made; the
+  frame is left as it is }
+procedure Rewind(const m: TCodeMark);
+begin
+  pc := m.pc; numFixups := m.fixups; numLines := m.lines; Unsay(m.said);
+  numFails := m.fails;
 end;
 
 { For a second try at the body: the code as it was at m, and the frame

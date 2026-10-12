@@ -1,0 +1,37 @@
+(* while, tested after its body: rounds none, one and many; a condition
+   with and, or and a call; break; while true; and a check that fails in
+   the condition, told at its place in the source. *)
+module WhileBottom;
+import Out;
+
+var calls: INT;
+
+proc small(n: INT): BOOL;
+begin
+    INC(calls);
+    return n < 3;
+end;
+
+proc main*;
+var i, n: INT; a: [4]INT;
+begin
+    i := 5;
+    while i < 3 do INC(i); end;
+    Out.int(i); Out.ln;
+    i := 0;
+    while i < 1 do INC(i); end;
+    Out.int(i); Out.ln;
+    i := 0;
+    while (i < 10) and small(i) or (i = 7) do INC(i); end;
+    Out.int(i); Out.char(' '); Out.int(calls); Out.ln;
+    n := 0;
+    while true do
+        INC(n);
+        if n = 4 then break; end;
+    end;
+    Out.int(n); Out.ln;
+    i := 0;
+    while a[i] = 0 do INC(i); end;
+end;
+
+end WhileBottom.
