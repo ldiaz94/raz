@@ -1,0 +1,21 @@
+module JoinStr;
+import Out;
+
+const
+    Text = "the cat";
+    Line = Text + "\n";
+    Both = "<" + Text + ">" + "";
+    Word = ("sat" + " ") + "on";
+
+proc main*;
+var w: []U8;
+begin
+    Out.str(Line);
+    Out.str(Both); Out.ln;
+    Out.int(LEN(Both)); Out.ln;
+    w := Text[4..7];
+    Out.str(w); Out.str(" "); Out.str(Word + "\n");
+    Out.int(I64(Line[7])); Out.ln;
+end;
+
+end JoinStr.

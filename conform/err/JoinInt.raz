@@ -1,0 +1,5 @@
+module JoinInt;
+
+const Bad = "count: " + 1;
+
+end JoinInt.

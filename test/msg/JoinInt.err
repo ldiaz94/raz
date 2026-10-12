@@ -1,0 +1,4 @@
+conform/err/JoinInt.raz:3:25: error: "+" joins two strings, found 1
+    3 | const Bad = "count: " + 1;
+      |                         ^
+raz: 1 error

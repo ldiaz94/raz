@@ -275,7 +275,9 @@ width first, and `DivTrap` makes the smallest value of one divided by
 -1 fault as an `I64`'s does.
 `=` and `#` on arrays, slices and strings make a slice of each side
 (`SeqSlice`), compare the lengths, and then the bytes with `repe
-cmpsb`, right where the comparison stands: no call.
+cmpsb`, right where the comparison stands: no call. `+` on two string
+constants is `JoinStr`, which makes one string of them, in a chunk of
+its own.
 
 Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a
 variable into an item for part of it, mostly by adding to `off`. An

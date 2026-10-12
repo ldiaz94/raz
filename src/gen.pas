@@ -865,6 +865,8 @@ begin
     if op = sAnd then Jcc(ccE, L) else Jcc(ccNE, L);
   end else if (op in [sEql, sNeq]) and IsSeq(x.typ) then
     SeqSlice(x)
+  else if (op = sPlus) and (x.mode = mStr) then
+    { two string constants to be joined: nothing to compute }
   else if x.mode in [mType, mBuiltin, mNone, mCase, mStr] then
     NotValue(x)
   else if x.mode <> mConst then begin
@@ -1010,6 +1012,22 @@ begin
   MarkAt(x.pos, SymText(op) + ' needs BOOLs, found ' + What(x));
 end;
 
+{ x + y, of two string constants: one string, in a chunk of its own
+  (report section 4) }
+procedure JoinStr(var x, y: TItem);
+var p: PBytes; c: longint;
+begin
+  if y.mode <> mStr then MarkAt(y.pos, '"+" joins two strings, found ' + What(y));
+  p := GetMem(x.val + y.val + 1);
+  Move(rodata^[chunks^[x.chunk].start], p^[0], x.val);
+  Move(rodata^[chunks^[y.chunk].start], p^[x.val], y.val + 1);
+  c := NewChunk(secRodata, -1, -1);
+  SetData(c, p, x.val + y.val + 1, 1);
+  FreeMem(p);
+  x.chunk := c;
+  x.val := x.val + y.val;
+end;
+
 procedure Op2(op: TSym; var x, y: TItem; L: longint);
 const
   Rel = [sEql, sNeq, sLss, sLeq, sGtr, sGeq];
@@ -1020,6 +1038,7 @@ var
 begin
   xt := x.typ; yt := y.typ;
   if y.mode in [mType, mBuiltin, mNone, mCase] then NotValue(y);
+  if (op = sPlus) and (x.mode = mStr) then begin JoinStr(x, y); exit end;
 
   if op in [sAnd, sOr] then begin
     if xt^.form <> fBool then WrongLogic(op, x);
