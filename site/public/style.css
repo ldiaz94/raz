@@ -22,7 +22,9 @@ header nav, main, footer { max-width: 62rem; margin: 0 auto; padding: 0 16px; }
 header nav { display: flex; flex-wrap: wrap; gap: 4px 20px; padding-top: 14px; padding-bottom: 14px;
   font-family: system-ui, sans-serif; font-size: 15px; }
 header nav a { color: var(--fg); text-decoration: none; }
-header nav a:first-child { font: 700 20px ui-monospace, monospace; color: var(--accent); }
+header nav .mark { display: flex; align-items: center; gap: 8px; margin-right: 8px;
+  font: 700 20px ui-monospace, monospace; color: var(--accent); }
+header nav .mark img { display: block; }
 header nav a[aria-current] { border-bottom: 2px solid var(--accent); }
 header nav .repo { margin-left: auto; color: var(--muted); }
 main { padding-top: 28px; padding-bottom: 48px; }

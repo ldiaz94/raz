@@ -38,6 +38,7 @@ ROOT = os.path.dirname(HERE)
 OUT = os.path.join(HERE, "public")
 RAZ = os.path.join(ROOT, "raz")
 REPO = "https://github.com/ldiaz94/raz"
+SITE = "https://raz.lucelad.workers.dev"   # where the pages live, for the preview image
 
 # folder in content/, folder in public/, name, the sentence under the name
 TOURS = [
@@ -214,7 +215,6 @@ def page(title, body, depth=0, current=""):
     nav = "".join('<a href="%s%s"%s>%s</a>' % (
         up, href, ' aria-current="page"' if key == current else "", label)
         for key, href, label in [
-            ("home", "index.html", "raz"),
             ("tour", "tour/index.html", "Raz, Set, Go"),
             ("advanced", "advanced/index.html", "More Raz"),
             ("spec", "spec.html", "Report"),
@@ -225,17 +225,26 @@ def page(title, body, depth=0, current=""):
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>%s</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="%s">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="%s/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="%sfavicon.svg" type="image/svg+xml">
+<link rel="icon" href="%sfavicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="%sapple-touch-icon.png">
 <link rel="stylesheet" href="%sstyle.css">
 </head>
 <body>
-<header><nav>%s<a class="repo" href="%s">GitHub</a></nav></header>
+<header><nav><a class="mark" href="%sindex.html"><img src="%slogo.svg" width="26" height="26" alt="">raz</a>%s<a class="repo" href="%s">GitHub</a></nav></header>
 <main>
 %s
 </main>
 <footer>raz is under the ISC license. <a href="%s">Source</a>.</footer>
 </body>
 </html>
-""" % (html.escape(title), up, nav, REPO, body, REPO)
+""" % (html.escape(title), html.escape(title), SITE, up, up, up, up, up, up, nav, REPO, body, REPO)
 
 def write(path, text):
     path = os.path.join(OUT, path)
@@ -325,6 +334,9 @@ def main():
     shutil.rmtree(OUT, ignore_errors=True)
     os.makedirs(OUT)
     shutil.copy(os.path.join(HERE, "style.css"), OUT)
+    for f in os.listdir(os.path.join(HERE, "assets")):      # the logo and icons
+        if f not in ("social.html", "render.sh"):
+            shutil.copy(os.path.join(HERE, "assets", f), OUT)
     names = sorted(f for f in os.listdir(os.path.join(HERE, "content"))
                    if re.match(r"\d+-.*\.txt$", f))
     counts = []
