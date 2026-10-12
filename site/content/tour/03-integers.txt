@@ -1,0 +1,273 @@
+title: Integers
+part: Raz
+summary: The ten integer types, literals, wrapping, signed and unsigned, division, shifts and bits.
+---
+raz has ten integer types, and a program that works with bytes, addresses, hashes and file offsets uses most of them. Each is a different type, so each has rules, and the rules are the same everywhere: that is the point of having them.
+
+| Type | Size | Values |
+|---|---|---|
+| `I8` `I16` `I32` `I64` | 1, 2, 4, 8 bytes | signed, two's complement |
+| `U8` `U16` `U32` `U64` | 1, 2, 4, 8 bytes | unsigned |
+| `INT` | an address's: 8 on x86-64 | signed, as big as an address |
+| `UINT` | an address's | unsigned, as big as an address |
+
+`SIZE(T)` says how many bytes a type takes, and an unsigned type's largest value is what you get by taking one from zero. This program asks each type.
+
+```raz Family run
+module Family;
+import Out;
+
+proc main*;
+var a: U8; b: U16; c: U32; d: U64;
+begin
+    a := 0; a := a - 1;
+    b := 0; b := b - 1;
+    c := 0; c := c - 1;
+    d := 0; d := d - 1;
+    Out.str("U8   "); Out.int(SIZE(U8));  Out.str(" byte,  largest "); Out.int(I64(a)); Out.ln;
+    Out.str("U16  "); Out.int(SIZE(U16)); Out.str(" bytes, largest "); Out.int(I64(b)); Out.ln;
+    Out.str("U32  "); Out.int(SIZE(U32)); Out.str(" bytes, largest "); Out.int(I64(c)); Out.ln;
+    Out.str("U64  "); Out.int(SIZE(U64)); Out.str(" bytes, largest 0x"); Out.hex(d, 16); Out.ln;
+    Out.str("INT  "); Out.int(SIZE(INT)); Out.str(" bytes, as big as an address\n");
+    Out.str("I8   "); Out.int(SIZE(I8));  Out.str(" byte,  from -128 to 127\n");
+end;
+
+end Family.
+```
+
+## INT is the everyday one
+
+Lengths, indexes, counts and sizes are `INT`s. `LEN(s)` of a slice is an `INT`, and so is the loop variable that walks it. It is as big as an address, so it is the integer a pointer converts to, and the word the atomics work on. Reach for `INT` unless you have a reason: a byte is a `U8`, a character an `I32`, a file's size an `I64`, a hash a `U64`.
+
+`INT` and `I64` are two types even where they have the same size. An `INT` goes silently into an `I64` (and a `UINT` into a `U64`), which is why `Out.int(n)` and `Fmt.int(n)` take an `I64` and accept any `INT`. Nothing else converts unasked: any other integer is converted where it is written, as `Out.int(I64(b))`.
+
+## A number written in the program
+
+A number in the program text is untyped until it meets a type, and then it must fit. `0FFH` is hexadecimal (it starts with a digit and ends in `H`), a character in quotes is its code point, and `'\u{E9}'` is a code point written by number. A hexadecimal literal too big for an `I64` is a `U64`.
+
+```raz Literals run
+module Literals;
+import Out;
+
+proc main*;
+var b: U8; w: I16; big: U64;
+begin
+    b := 0FFH;                    (* fits a U8 *)
+    w := -300;
+    big := 0FFFFFFFFFFFFFFFFH;    (* above the largest I64: a U64 *)
+    Out.int(I64(b)); Out.char(' ');
+    Out.int(I64(w)); Out.char(' ');
+    Out.int(I64('a')); Out.char(' ');
+    Out.int(I64('\u{E9}')); Out.char(' ');
+    Out.hex(big, 16); Out.ln;
+end;
+
+end Literals.
+```
+
+A constant that doesn't fit is an error, not a quiet cut. A conversion of a constant, which says you mean it, is allowed: `U8(300)` is 44.
+
+```raz Fits
+module Fits;
+
+proc main*;
+var b: U8; c: U8;
+begin
+    b := 300;
+    c := U8(300);
+end;
+
+end Fits.
+```
+
+```sh
+$ raz Fits.raz
+```
+
+## Wrapping
+
+Arithmetic wraps at the type's width and never stops the program. `250 + 10` in a `U8` is 4; one more than the largest `I8` is the smallest. A unary minus wraps too: for an unsigned `x`, `-x` is `0 - x`. This is not undefined behaviour, as in C; it is what the report says, in every program, on every target, so a hash function can rely on it.
+
+```raz Wrap run
+module Wrap;
+import Out;
+
+proc main*;
+var a: U8; b: I8; c: U32; d: U8;
+begin
+    a := 250;  a := a + 10;
+    Out.int(I64(a)); Out.ln;               (* 4 *)
+    b := 127;  b := b + 1;
+    Out.int(I64(b)); Out.ln;               (* -128 *)
+    c := 0;    c := c - 1;
+    Out.int(I64(c)); Out.ln;               (* 4294967295 *)
+    d := 1;    d := -d;
+    Out.int(I64(d)); Out.ln;               (* 255: 0 - 1 *)
+end;
+
+end Wrap.
+```
+
+Because wrapping is defined, a hash that depends on it is portable. Here is the FNV-1a hash that `Str.hash` uses, written in a few lines; the multiplication overflows a `U64` on every byte, on purpose.
+
+```raz Fnv run
+module Fnv;
+import Out, Str;
+
+const Offset = 0CBF29CE484222325H;
+const Prime = 100000001B3H;
+
+(* FNV-1a: xor each byte in, then multiply, all modulo 2^64 *)
+proc fnv(s: []U8): U64;
+var h: U64; i: INT;
+begin
+    h := Offset;
+    for i := 0 to LEN(s) - 1 do
+        h := (h xor U64(s[i])) * Prime;
+    end;
+    return h;
+end;
+
+proc main*;
+begin
+    Out.hex(fnv("raz"), 16); Out.ln;
+    Out.hex(Str.hash("raz"), 16); Out.ln;
+    if fnv("raz") = Str.hash("raz") then Out.str("the same\n"); end;
+end;
+
+end Fnv.
+```
+
+## Widening, narrowing, and sign
+
+A conversion to a narrower integer cuts the value to the new width. To a wider one it extends by the sign for a signed source and with zeros for an unsigned one. That difference is the whole story of "why did my byte come out negative".
+
+```raz Widths run
+module Widths;
+import Out;
+
+proc main*;
+var s: I8; u: U8;
+begin
+    s := -1;
+    u := 255;                         (* the same eight bits *)
+    Out.int(I64(s)); Out.char(' ');   (* sign-extended: -1 *)
+    Out.int(I64(u)); Out.char(' ');   (* zero-extended: 255 *)
+    Out.int(I64(U8(s))); Out.char(' ');   (* the bits, read as unsigned: 255 *)
+    Out.int(I64(I8(u))); Out.char(' ');   (* and back: -1 *)
+    Out.int(I64(U8(300 + INT(u)))); Out.ln;   (* 555 cut to 8 bits: 43 *)
+end;
+
+end Widths.
+```
+
+Relations compare as signed or unsigned according to the type, so the same bits order differently:
+
+```raz Order run
+module Order;
+import Out;
+
+proc main*;
+var s: I8; u: U8;
+begin
+    s := -1;
+    u := U8(s);                        (* 255 *)
+    if s < 0 then Out.str("s is below zero\n"); end;
+    if u > 100 then Out.str("u is above 100\n"); end;
+    if U8(s) = u then Out.str("but they are the same bits\n"); end;
+end;
+
+end Order.
+```
+
+## Division
+
+`div` rounds toward zero, and `mod` takes the sign of the dividend, as in C: `-7 div 2` is -3 and `-7 mod 2` is -1. Dividing by zero stops the program, and so does dividing the smallest value of a signed type by -1, whose result can't be represented. Neither is a silent wrong answer.
+
+```raz Divide run
+module Divide;
+import Out;
+
+proc main*;
+var n, d: INT;
+begin
+    n := -7; d := 2;
+    Out.int(n div d); Out.char(' '); Out.int(n mod d); Out.char(' ');   (* -3 -1 *)
+    n := 7; d := -2;
+    Out.int(n div d); Out.char(' '); Out.int(n mod d); Out.ln;          (* -3 1 *)
+end;
+
+end Divide.
+```
+
+## Shifts and bits
+
+`&` (and), `|` (or), `xor` and `~` (not) work on every bit. `x shl n` and `x shr n` shift by `n` modulo the width of `x`'s type: for a `U8`, `x shl 9` is `x shl 1`. `shr` brings in copies of the sign bit for signed types, so it divides by two keeping the sign, and zeros for unsigned ones. The result has `x`'s type, cut to its width: in a `U8`, `0C0H shl 1` is `80H`.
+
+```raz Shifts run
+module Shifts;
+import Out;
+
+proc main*;
+var u: U8; s: I8;
+begin
+    u := 0C0H;
+    Out.hex(U64(u shl 1), 2); Out.char(' ');        (* 80: cut to 8 bits *)
+    Out.hex(U64(u shr 4), 2); Out.char(' ');        (* 0C: zeros come in *)
+    Out.hex(U64(u shl 9), 2); Out.ln;               (* 9 mod 8 = 1: 80 *)
+    s := -64;
+    Out.int(I64(s shr 2)); Out.char(' ');           (* -16: the sign comes in *)
+    Out.int(I64(s shr 7)); Out.ln;                  (* -1 *)
+end;
+
+end Shifts.
+```
+
+A packed value is the usual use of all this: several small numbers in one word. This puts a colour in the bytes of a `U32` and takes it out again.
+
+```raz Colour run
+module Colour;
+import Out;
+
+(* red, green and blue, each 0 to 255, in the low 24 bits *)
+proc pack(r, g, b: U8): U32;
+begin
+    return (U32(r) shl 16) | (U32(g) shl 8) | U32(b);
+end;
+
+proc red(c: U32): U8;
+begin
+    return U8(c shr 16);
+end;
+
+proc green(c: U32): U8;
+begin
+    return U8((c shr 8) & 0FFH);
+end;
+
+proc blue(c: U32): U8;
+begin
+    return U8(c & 0FFH);
+end;
+
+proc main*;
+var c: U32;
+begin
+    c := pack(0FFH, 80H, 10H);
+    Out.str("0x"); Out.hex(U64(c), 6); Out.ln;
+    Out.int(I64(red(c))); Out.char(' ');
+    Out.int(I64(green(c))); Out.char(' ');
+    Out.int(I64(blue(c))); Out.ln;
+end;
+
+end Colour.
+```
+
+## Which one to use
+
+- **`INT`** for lengths, indexes, counts, loop variables, and anything you'd write `int` for in C.
+- **`U8`** for bytes, and for a string's elements (`[]U8`). **`I32`** for a character, a code point.
+- **`U32`, `U64`** for hashes, bit sets, masks and addresses you do arithmetic on.
+- **`I64`** for what must not shrink on a smaller target: a file's size or position, a time in nanoseconds, a number read from text.
+- **`I8`, `I16`, `U16`** when a format or a layout says so, in a record or an array, to save space or match a protocol. Convert at the edge and compute in `INT`.
+- **`UINT`** rarely: for a count that must use the whole address range, or an address.

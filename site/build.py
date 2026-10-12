@@ -42,7 +42,7 @@ REPO = "https://github.com/ldiaz94/raz"
 # folder in content/, folder in public/, name, the sentence under the name
 TOURS = [
     ("tour", "tour", "Raz, Set, Go", "tour-intro.html"),
-    ("advanced", "advanced", "Beyond Go", "advanced-intro.html"),
+    ("advanced", "advanced", "Close to the Metal", "advanced-intro.html"),
 ]
 
 KEYWORDS = set("""and begin break by code const defer div do else elsif end
@@ -216,7 +216,7 @@ def page(title, body, depth=0, current=""):
         for key, href, label in [
             ("home", "index.html", "raz"),
             ("tour", "tour/index.html", "Raz, Set, Go"),
-            ("advanced", "advanced/index.html", "Beyond Go"),
+            ("advanced", "advanced/index.html", "Close to the Metal"),
             ("spec", "spec.html", "Report"),
             ("get", "index.html#download", "Download")])
     return """<!doctype html>

@@ -1,0 +1,99 @@
+title: Values and conversions
+part: Raz
+summary: Nothing converts unasked; what converts to what; booleans and reals.
+---
+This program uses several of the basic types at once, with each conversion written where it happens.
+
+```raz Values run
+```
+
+## Conversions are written
+
+Two types never mix: with `i: I64` and a slice `s`, `i < LEN(s)` is an error. A type's name converts: `F64(n)`, `I64(b)`, `U8(x)`. The one silent conversion between numbers is an `INT` into an `I64`, which loses nothing. The [lesson on integers](integers.html) says what each width conversion does.
+
+A number written in the program is untyped until it meets a type, and `1.5` is a real, which an integer never becomes without a conversion.
+
+```raz Mix
+module Mix;
+import Out;
+
+proc main*;
+var i: I64; s: []U8;
+begin
+    s := "four";
+    i := 3;
+    if i < LEN(s) then Out.str("smaller\n"); end;
+end;
+
+end Mix.
+```
+
+```sh
+$ raz Mix.raz
+```
+
+The fix is the conversion, written where it happens: `if i < I64(LEN(s))`. It costs nothing at run time and says what is meant.
+
+## What converts to what
+
+Everything else that converts does so with the type's name, and the rules are short:
+
+| From | To | Result |
+|---|---|---|
+| integer | integer | cut to the new width, or extended by the sign (signed) or zeros (unsigned) |
+| integer | `F32`, `F64` | the nearest real |
+| `F32`, `F64` | integer | rounded toward zero |
+| `F32` | `F64` | the same value; the other way, the nearest `F32` |
+| enumeration | integer | its position; and back, if there is a name at that position |
+| set | integer | its bits; and back |
+| `INT`, `UINT` | pointer | the address; and back |
+
+There is no conversion between `BOOL` and an integer: say what you mean with `if`. A `BOOL` is `true` or `false`, and `and`, `or` and `not` are for `BOOL`s: they bind below the relations, so `i < n and a[i] # 0` needs no parentheses, and `and` and `or` evaluate their right operand only when it decides the result. `#`, not `<>`, is "different".
+
+```raz Truth run
+module Truth;
+import Out;
+
+proc positive(n: INT): BOOL;
+begin
+    return n > 0;
+end;
+
+proc main*;
+var a: [3]INT; i: INT; found: BOOL;
+begin
+    a := [4, 0, 9];
+    i := 0;
+    while (i < LEN(a)) and (a[i] # 0) do INC(i); end;   (* never reads a[3] *)
+    Out.int(i); Out.ln;
+    found := positive(i) or positive(-1);
+    if found and not positive(0) then Out.str("true and true\n"); end;
+end;
+
+end Truth.
+```
+
+## Reals
+
+`F32` and `F64` are the reals. A real constant is written with a point, `1.5` or `2.0E-3`. `Fmt.real(x, places)` writes one with that many digits after the point, and `Math` has the functions.
+
+```raz Reals run
+module Reals;
+import Fmt, Math;
+
+proc main*;
+var n: INT; x: F64; y: F32;
+begin
+    n := 22;
+    x := F64(n) / 7.0;
+    y := F32(x);
+    Fmt.print("22/7 = {}\n", [Fmt.real(x, 6)]);
+    Fmt.print("as F32 = {}\n", [Fmt.real(F64(y), 6)]);
+    Fmt.print("sqrt 2 = {}, pi = {}\n", [Fmt.real(Math.sqrt(2.0), 5), Fmt.real(Math.pi, 5)]);
+    Fmt.print("truncated: {} {}\n", [Fmt.int(I64(2.9)), Fmt.int(I64(-2.9))]);
+end;
+
+end Reals.
+```
+
+A real converts to an integer by rounding toward zero. Every variable starts at zero, a real's `0.0` and a `BOOL`'s `false` included, so there is no uninitialised value to be surprised by.

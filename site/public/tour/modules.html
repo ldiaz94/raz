@@ -7,28 +7,29 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Close to the Metal</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
 <div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
 <li><a href="modules.html" aria-current="page">Modules</a></li>
+<li><a href="integers.html">Integers</a></li>
 <li><a href="values.html">Values and conversions</a></li>
 <li><a href="procedures.html">Procedures and several results</a></li>
 </ol>
-<h3>Set</h3><ol start='5'>
+<h3>Set</h3><ol start='6'>
 <li><a href="slices.html">Arrays, slices and strings</a></li>
 <li><a href="records.html">Records and pointers</a></li>
 <li><a href="variants.html">Enumerations, sets, variants and match</a></li>
 <li><a href="memory.html">Memory and allocators</a></li>
 </ol>
-<h3>Go</h3><ol start='9'>
+<h3>Go</h3><ol start='10'>
 <li><a href="errors.html">Errors</a></li>
 <li><a href="defer.html">Defer</a></li>
 <li><a href="checks.html">When it goes wrong</a></li>
 <li><a href="generics.html">Generic modules</a></li>
 <li><a href="c.html">Talking to C</a></li>
 <li><a href="threads.html">Threads</a></li>
-</ol></aside><article><p class="kicker">Raz &middot; lesson 2 of 14</p><h1>Modules</h1>
+</ol></aside><article><p class="kicker">Raz &middot; lesson 2 of 15</p><h1>Modules</h1>
 <p>A program is a set of modules, one to a file, and a module's interface is everything it marks with <code>*</code>. Everything else is private to it. Here is one, saved as <code>Greet.raz</code>:</p>
 <div class="file"><span>Greet.raz</span></div><pre class="code"><code><span class="kw">module</span> Greet;
 <span class="kw">import</span> Out;
@@ -182,7 +183,7 @@ Peek.raz:9:11: error: made isn&#x27;t exported by Shape
    11 | var made: INT;             (* only Shape may read or write it *)
       |     ^^^^
 raz: 2 errors</code></pre>
-<p>The compiler goes on to find the others, up to 20, and says what it can: where a name was declared, or a name spelled almost alike. A module with errors writes no executable.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="hello.html">&larr; Hello, world</a><a href="index.html">Contents</a><a class="next" href="values.html">Values and conversions &rarr;</a></div></article></div>
+<p>The compiler goes on to find the others, up to 20, and says what it can: where a name was declared, or a name spelled almost alike. A module with errors writes no executable.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="hello.html">&larr; Hello, world</a><a href="index.html">Contents</a><a class="next" href="integers.html">Integers &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>
