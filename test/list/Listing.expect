@@ -28,39 +28,36 @@ Listing.main:
              0  push rbp
              1  mov rbp, rsp
              4  sub rsp, 32
-            11  xor eax, eax
-            13  mov [rbp - 8], rax
-            17  mov [rbp - 16], rax
-            21  mov [rbp - 16], rbx
-            25  xor ebx, ebx
+            11  mov [rbp - 8], rbx
+            15  xor ebx, ebx
     20      for i := 1 to 3 do
-            27  mov rbx, 1
-            32  mov qword [rbp - 24], 3
-            40  mov r9, [rbp - 24]
-            44  cmp rbx, r9
-            47  jg 139
+            17  mov rbx, 1
+            22  mov qword [rbp - 16], 3
+            30  mov r9, [rbp - 16]
+            34  cmp rbx, r9
+            37  jg 129
     21          if i # 2 then total := add(total, twice(i)); end;
-            53  cmp rbx, 2
-            57  je 107
-            63  mov r8, [Listing.total]
-            70  mov [rbp - 32], r8
-            74  mov rdi, rbx
-            77  call Listing.twice
-            82  mov r9, rax
-            85  mov rdi, [rbp - 32]
-            89  mov rsi, r9
-            92  call Listing.add
-            97  mov r8, rax
-           100  mov [Listing.total], r8
-           107  mov r8, [rbp - 24]
-           111  sub r8, rbx
-           114  cmp r8, 1
-           118  jb 139
-           124  mov r8, rbx
-           127  add r8, 1
-           131  mov rbx, r8
-           134  jmp 40
+            43  cmp rbx, 2
+            47  je 97
+            53  mov r8, [Listing.total]
+            60  mov [rbp - 24], r8
+            64  mov rdi, rbx
+            67  call Listing.twice
+            72  mov r9, rax
+            75  mov rdi, [rbp - 24]
+            79  mov rsi, r9
+            82  call Listing.add
+            87  mov r8, rax
+            90  mov [Listing.total], r8
+            97  mov r8, [rbp - 16]
+           101  sub r8, rbx
+           104  cmp r8, 1
+           108  jb 129
+           114  mov r8, rbx
+           117  add r8, 1
+           121  mov rbx, r8
+           124  jmp 30
     23  end main;
-           139  mov rbx, [rbp - 16]
-           143  leave
-           144  ret
+           129  mov rbx, [rbp - 8]
+           133  leave
+           134  ret

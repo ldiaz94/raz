@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of Free Pascal, under 8,400 lines of code.
+The compiler is eleven files of Free Pascal, under 10,000 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -13,9 +13,9 @@ disassembly.
 | `src/sym.pas` | 617 | 512 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 302 | 234 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,113 | 930 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,616 | 1,270 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/gen.pas` | 1,633 | 1,280 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,444 | 1,204 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,904 | 2,575 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/parse.pas` | 2,913 | 2,579 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -358,16 +358,19 @@ through a hidden pointer in `rdi`, as C's structs do, and so do several
 results (`ResultTo`, `CopyResult`).
 
 Frames: `BeginProc` gives the parameters their slots; `EnterBody`
-writes the prologue, which zeroes the locals (with a few stores, or a
-loop for more; there are none to zero in `scale`) but not the
-temporaries, since each is written before it is read; `EndProc` writes
+writes the prologue, which zeroes the locals in memory (with a few
+stores, or a loop for more; there are none to zero in `scale`) but not
+the temporaries, since each is written before it is read; `EndProc` writes
 the epilogue and patches the frame's size in. Within a statement,
 scratch space comes from `AllocTemp` and is given back by
 `ReleaseTemps`; `AllocPerm` reserves space for the whole procedure.
 
-Register variables: the parser chooses them (`ChooseRegs`, below) and
-tells gen (`UseRegs`): the registers, as bits of `VarRegs`, and the
-slots they are saved in, a quadword each after the variables. The
+Register variables: the parser chooses them (`ChooseRegs`, below),
+then gives the locals left in memory their slots (`PlaceLocals`), and
+tells gen (`UseRegs`) the registers, as bits of `VarRegs`. A variable
+in a register has no slot of its own. Gen saves the registers in slots
+a quadword each, after the locals and not zeroed, as each is written
+first. The
 prologue saves them, zeroes them, and takes a parameter's value from
 where it came; the epilogue restores them. A variable in one is an
 item at `bReg`: `PushVar` notes it (`lHeld`) rather than copying it,
@@ -553,7 +556,8 @@ five busiest used at least three times get registers (`o^.reg`). An
 address wanted after all, by a `var` parameter, say, comes to
 `Address` (`item.pas`), which puts the variable back in memory and
 sets `demoted`: `Body` then throws the procedure's code away
-(`MarkCode`, `Redo`) and compiles its statements again. Its notes for
+(`MarkCode`, `Redo`), places the locals again, and compiles its
+statements again. Its notes for
 the trap report are made after, by `VarKind`, which marks a variable
 in a register with the register's number.
 

@@ -1782,12 +1782,12 @@ end;
   its "begin" to its end, a use counts 1, in a loop 4, in two 16, and
   a variable ADR is taken of can't have one. A register costs a save
   and a restore, so a variable used less than three times keeps its
-  place in memory. The registers are saved after the variables. }
+  place in memory. }
 procedure ChooseRegs(params, before: PObj);
 var
   cand: array[0..63] of PObj; weight: array[0..63] of longint;
   isLoop: array[0..255] of boolean;
-  n, i, k, d, loops, mask, best: longint; o: PObj; st: TScanState; afterDot, wasSkipping: boolean;
+  n, i, k, d, loops, best: longint; o: PObj; st: TScanState; afterDot, wasSkipping: boolean;
 
   function Find(name: longint): longint;
   var j: longint;
@@ -1807,7 +1807,6 @@ begin
   while o <> nil do begin Add(o); o := o^.next end;
   if before = nil then o := curModule^.locals else o := before^.link;
   while o <> nil do begin Add(o); o := o^.link end;
-  mask := 0;
   if n > 0 then begin
     SaveScan(st);
     wasSkipping := skipping;
@@ -1846,17 +1845,12 @@ begin
         if (cand[i]^.reg = 0) and (weight[i] >= 3) and ((best < 0) or (weight[i] > weight[best])) then best := i;
       if best < 0 then break;
       cand[best]^.reg := VarRegs[k];
-      mask := mask or (1 shl k);
     end;
   end;
-  k := 0;
-  for i := 0 to 4 do if mask and (1 shl i) <> 0 then inc(k);
-  if k = 0 then UseRegs(0, 0)
-  else UseRegs(mask, AllocPerm(8 * k, 8));
 end;
 
-{ The registers the variables of the procedure are in, as ChooseRegs's
-  mask }
+{ The registers the variables of the procedure are in, as bits of
+  VarRegs }
 function RegsOf(params, before: PObj): longint;
 var o: PObj; m, k: longint;
 begin
@@ -1873,6 +1867,22 @@ begin
     o := o^.link;
   end;
   RegsOf := m;
+end;
+
+{ Gives each local not in a register its slot in the frame, the slots
+  the prologue zeroes, and then tells gen which registers the
+  variables are in. A variable in a register has no slot: it starts at
+  zero in its register, and the trap report finds it there. }
+procedure PlaceLocals(params, before: PObj);
+var o: PObj;
+begin
+  LocalsFromScratch;
+  if before = nil then o := curModule^.locals else o := before^.link;
+  while o <> nil do begin
+    if (o^.cls = oVar) and (o^.reg = 0) then o^.val := AllocPerm(o^.typ^.size, o^.typ^.align);
+    o := o^.link;
+  end;
+  UseRegs(RegsOf(params, before));
 end;
 
 procedure Body(p: PObj; sig: PType; line: longint);
@@ -1905,6 +1915,7 @@ begin
   before := curModule^.lastLocal;
   Declarations(false);
   ChooseRegs(params, before);
+  PlaceLocals(params, before);
   { the body, made again if a variable in a register must be in memory }
   SaveScan(st);
   MarkCode(mark); drops0 := numDrops; errs := errors;
@@ -1922,7 +1933,7 @@ begin
     if not demoted or (errors <> errs) then break;
     numDrops := drops0;
     Redo(mark);
-    UseRegs(RegsOf(params, before), chunks^[p^.chunk].saveAt);
+    PlaceLocals(params, before);
     RestoreScan(st);
   until false;
   EndProc(p^.chunk);
@@ -2227,10 +2238,8 @@ begin
       o^.lev := 0;
       o^.chunk := NewChunk(secBss, curModule^.sname, names[i]);
       SetBss(o^.chunk, t^.size, t^.align);
-    end else begin
-      o^.lev := 1;
-      o^.val := AllocPerm(t^.size, t^.align);
-    end;
+    end else
+      o^.lev := 1;   { its slot comes from PlaceLocals, if it needs one }
     Declare(o);
   end;
   Expect(sSemicolon);

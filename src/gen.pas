@@ -154,7 +154,8 @@ procedure ReleaseTemps(m: int64);
 procedure KeepTemps;
 
 procedure BeginProc(sig: PType; params: PObj);
-procedure UseRegs(mask: longint; at: int64);
+procedure LocalsFromScratch;
+procedure UseRegs(mask: longint);
 procedure MarkCode(var m: TCodeMark);
 procedure Redo(const m: TCodeMark);
 procedure EnterBody(c, line: longint);
@@ -203,6 +204,7 @@ var
   frameTop, frameMax, permTop: int64;
   frameFix: longint;            { where the frame size is patched in }
   paramTop: int64;              { the parameters' slots end here }
+  zeroTop: int64;               { the locals the prologue zeroes end here }
   retSlot: int64;               { holds the hidden result pointer }
   resType: PType;               { the procedure's result, or nil }
   exitL: longint;
@@ -1352,12 +1354,26 @@ begin
   paramTop := frameTop;
 end;
 
-{ The procedure keeps variables in the registers of mask, saved at at;
-  the frame as it stands is where a second try at its body starts. }
-procedure UseRegs(mask: longint; at: int64);
+{ The frame as BeginProc left it, with the parameters' slots only: the
+  locals are given theirs again once their registers are chosen. }
+procedure LocalsFromScratch;
 begin
+  frameTop := paramTop; frameMax := paramTop; permTop := paramTop;
+end;
+
+{ The locals in memory have their slots: the prologue zeroes those and
+  nothing below. The procedure keeps variables in the registers of
+  mask, which are saved next, a quadword each, in slots that need no
+  zeroing; the frame as it then stands is where a second try at the
+  body starts. }
+procedure UseRegs(mask: longint);
+var i, k: longint;
+begin
+  zeroTop := permTop;
   regMask := mask;
-  saveAt := at;
+  k := 0;
+  for i := 0 to 4 do if mask and (1 shl i) <> 0 then inc(k);
+  if k > 0 then saveAt := AllocPerm(8 * k, 8);
   frameAt[0] := frameTop; frameAt[1] := frameMax; frameAt[2] := permTop;
 end;
 
@@ -1377,9 +1393,10 @@ begin
 end;
 
 { The prologue, which is for the procedure's first line. Only the
-  locals are zeroed: the parameters are stored over their slots next,
-  and every temporary is written before it is read. The locals are all
-  declared by now, below the parameters' slots. }
+  locals in memory are zeroed, from the parameters' slots down to
+  zeroTop: the parameters are stored over their slots next, the
+  registers of variables are zeroed in place, their save slots are
+  written before they are read, and so is every temporary. }
 procedure EnterBody(c, line: longint);
 var i, top: longint; n: int64; p: PObj;
 begin
@@ -1391,7 +1408,7 @@ begin
   Say('sub rsp, frame');
   Put1($48); Put1($81); Put1($EC);           { sub rsp, imm32 }
   frameFix := pc; Put4(0);
-  n := (AlignUp(frameMax, 8) - paramTop) div 8;
+  n := (AlignUp(zeroTop, 8) - paramTop) div 8;
   if n > 0 then MovRI(RAX, 0);
   if n <= 4 then
     for i := 1 to n do Store(Mem(RBP, -paramTop - 8 * i), RAX, 8)
