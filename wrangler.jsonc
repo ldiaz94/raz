@@ -1,0 +1,7 @@
+{
+  // Cloudflare: serves site/public/ (made by make site) as static files.
+  // The dashboard's deploy command is "npx wrangler deploy"; no build.
+  "name": "raz",
+  "compatibility_date": "2026-10-01",
+  "assets": { "directory": "./site/public" }
+}
