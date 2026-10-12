@@ -1,0 +1,57 @@
+module Deep;
+import Out;
+
+(* Expressions deeper than the registers of the stack, with calls,
+   and, or, constants on the left and system calls among them. *)
+
+var g: I64;
+
+proc f(x: I64): I64;
+begin
+    g := g + 1;
+    return x * 3;
+end;
+
+proc b(x: BOOL): BOOL;
+begin
+    g := g + 10;
+    return x;
+end;
+
+proc n(x: BOOL): I64;
+begin
+    if x then return 1; end;
+    return 0;
+end;
+
+proc main*;
+var a, c, d, e: I64; s: [8]I64; t: BOOL; k: I32; u: U8; p: ^I64;
+begin
+    a := 1; c := 2; d := 3; e := 4;
+    (* nine values deep, right-nested *)
+    Out.int(a - (c - (d - (e - (a - (c - (d - (e - (a - 7))))))))); Out.ln;
+    (* calls under values held in registers *)
+    Out.int(a + (c * (d + f(e + f(a) * (c - f(d)))))); Out.ln;
+    Out.int(g); Out.ln;
+    (* constants on the left of operators that don't commute *)
+    Out.int(100 - a); Out.str(" "); Out.int(100 div c); Out.str(" ");
+    Out.int(100 mod (d + e)); Out.str(" "); Out.int(1 shl e); Out.str(" ");
+    Out.int(n(-1000000000000 < a)); Out.ln;
+    (* and, or over values held below them *)
+    t := (a + c > d) and b(c < d) or b(false);
+    Out.int(a + c * (d + n(t or b(true)))); Out.ln;
+    Out.int(g); Out.ln;
+    (* a constant too big for an instruction's operand *)
+    Out.int(a + 123456789012 * c - 9876543210); Out.ln;
+    (* narrow integers, division of their smallest by -1 aside *)
+    k := 2147483647; k := k + I32(a); Out.int(I64(k)); Out.str(" ");
+    u := 250; u := u + U8(c * 5) + U8(d); Out.int(I64(u)); Out.ln;
+    (* array elements and pointers among deep values *)
+    for d := 0 to 7 do s[d] := d * d; end;
+    p := ADR(s[3]);
+    Out.int(s[a] + (s[c] * (s[e] - (p^ + s[s[2]] * (s[7] - s[6]))))); Out.ln;
+    (* a system call under values *)
+    Out.int(a + (c * n(SYSCALL(39) > 0) + d)); Out.ln;
+end;
+
+end Deep.

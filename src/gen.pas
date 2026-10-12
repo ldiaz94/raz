@@ -9,10 +9,10 @@
   code for those calls, and nothing above it knows the machine: a port
   is a new gen.pas, with an encoder of its own.
 
-  Here the stack is the machine's: the value on top, once computed, is
-  in rax, and the values under it are pushed when another is computed.
-  A constant is only noted until something needs it in a register, so
-  that it can be an instruction's operand.
+  The stack is kept in registers, as in Wirth's compilers: the value at
+  depth d in register d, of r8 to r11, a deeper one spilled to the frame
+  while its register is wanted. A constant is only noted until something
+  needs it in a register, so that it can be an instruction's operand.
 
   Calls use the System V convention. Arguments are computed left to
   right into frame slots, then loaded into registers just before the
@@ -144,15 +144,28 @@ function EntryPoint(dynamic: boolean; first: PModule; main: PObj; cExit, places,
 implementation
 
 type
+  { where a value on the stack is }
+  TLoc = (lConst,     { not loaded: val is the value }
+          lReg,       { in its register }
+          lFrame);    { spilled: in the frame slot val }
+
   TEntry = record
-    isConst: boolean;   { not loaded: val is the value }
+    loc: TLoc;
     val: int64;
     k: TKind;
   end;
 
+const
+  { the registers of the stack: the value at depth d is in Regs[d mod
+    NumRegs]. rax, rdx and rcx, which division and shifts need, and rsi
+    and rdi, which copying needs, aren't among them. }
+  NumRegs = 4;
+  Regs: array[0..NumRegs - 1] of longint = (R8, R9, R10, R11);
+  IntRegs: array[0..5] of longint = (RDI, RSI, RDX, RCX, R8, R9);
+
 var
   stack: array[0..255] of TEntry;
-  inRax: longint;               { the entry whose value is in rax, or -1 }
+  owner: array[0..NumRegs - 1] of longint;   { the value in each register, or -1 }
   frameTop, frameMax, permTop: int64;
   frameFix: longint;            { where the frame size is patched in }
   paramTop: int64;              { the parameters' slots end here }
@@ -165,9 +178,6 @@ var
   inSize: array[0..13] of longint;
   numIn: longint;
 
-const
-  IntRegs: array[0..5] of longint = (RDI, RSI, RDX, RCX, R8, R9);
-
 function KindOf(t: PType): TKind;
 begin
   if t^.form = fReal then begin
@@ -176,158 +186,186 @@ begin
   else KindOf := kWord;
 end;
 
-{ The stack }
+{ The stack, as in Wirth's compilers: the value at depth d is held in
+  register d, for as many registers as there are. A value deeper than
+  that, when its register is wanted, and every value in a register
+  when a call would clobber them, is spilled to a frame slot, and loaded
+  again where it is used. A constant is only noted. }
 
-{ rax is wanted for a new value: the one in it is pushed }
-procedure Spill;
+function RegOf(i: longint): longint;
 begin
-  if inRax >= 0 then begin
-    Push(RAX);
-    inc(pushed);
-    inRax := -1;
-  end;
+  RegOf := Regs[i mod NumRegs];
 end;
 
-procedure NewEntry(k: TKind; isConst: boolean; v: int64);
+{ The value i, in a register, goes to a frame slot }
+procedure Spill(i: longint);
+var s: int64;
+begin
+  s := AllocTemp(8, 8);
+  Store(Mem(RBP, s), RegOf(i), 8);
+  stack[i].loc := lFrame;
+  stack[i].val := s;
+  owner[i mod NumRegs] := -1;
+end;
+
+{ Every value below depth d in a register, spilled }
+procedure SpillBelow(d: longint);
+var r: longint;
+begin
+  for r := 0 to NumRegs - 1 do
+    if (owner[r] >= 0) and (owner[r] < d) then Spill(owner[r]);
+end;
+
+{ The register of value i, for it to hold: a deeper value in it is
+  spilled. }
+function Claim(i: longint): longint;
+var r: longint;
+begin
+  r := i mod NumRegs;
+  if (owner[r] >= 0) and (owner[r] <> i) then Spill(owner[r]);
+  owner[r] := i;
+  Claim := Regs[r];
+end;
+
+{ The value i, in its register }
+function Loaded(i: longint): longint;
+var r: longint;
+begin
+  if stack[i].loc <> lReg then begin
+    r := Claim(i);
+    if stack[i].loc = lConst then MovRI(r, stack[i].val)
+    else Load(r, Mem(RBP, stack[i].val), 8, false);
+    stack[i].loc := lReg;
+  end;
+  Loaded := RegOf(i);
+end;
+
+function Top: longint;
+begin
+  if depth = 0 then Fatal('internal error: the stack is empty');
+  Top := Loaded(depth - 1);
+end;
+
+procedure NewEntry(k: TKind; loc: TLoc; v: int64);
 begin
   if depth > High(stack) then Mark('the expression is too deep');
   stack[depth].k := k;
-  stack[depth].isConst := isConst;
+  stack[depth].loc := loc;
   stack[depth].val := v;
   inc(depth);
 end;
 
-{ The value just computed in rax goes on top }
+{ The register a new value on top is to be computed in }
+function Target: longint;
+begin
+  Target := Claim(depth);
+end;
+
+{ The value just computed in Target goes on top }
 procedure Computed(k: TKind);
 begin
-  NewEntry(k, false, 0);
-  inRax := depth - 1;
+  NewEntry(k, lReg, 0);
 end;
 
-{ The value on top, popped into register r }
-procedure PopTo(r: longint);
-var e: TEntry;
+procedure Drop;
 begin
-  if depth = 0 then Fatal('internal error: the stack is empty');
   dec(depth);
-  e := stack[depth];
-  if e.isConst then begin
-    if r = RAX then Spill;
-    MovRI(r, e.val);
-  end else if inRax = depth then begin
-    if r <> RAX then MovRR(r, RAX);
-    inRax := -1;
-  end else begin
-    Pop(r);
-    dec(pushed);
-  end;
+  if stack[depth].loc = lReg then owner[depth mod NumRegs] := -1;
 end;
 
-{ The value on top, into rax, and on top still }
-procedure TopToRax;
-var k: TKind;
+{ Whether the value on top is a constant, and if so, which }
+function TopConst(var v: int64): boolean;
 begin
-  k := stack[depth - 1].k;
-  PopTo(RAX);
-  Computed(k);
+  TopConst := stack[depth - 1].loc = lConst;
+  v := stack[depth - 1].val;
 end;
 
 procedure ResetStack(d, p: longint);
+var r: longint;
 begin
   depth := d;
   pushed := p;
-  inRax := -1;
+  for r := 0 to NumRegs - 1 do owner[r] := -1;
 end;
 
 procedure PushConst(k: TKind; v: int64);
 begin
-  NewEntry(k, true, v);
+  NewEntry(k, lConst, v);
 end;
 
-{ The memory a names: an address on the stack is popped into r, one in
-  a slot loaded into r }
+{ The memory a names. An address on the stack is popped, and is in its
+  register still; one in a slot is loaded into r. }
 function Place(const a: TAdr; r: longint): TMem;
+var ra: longint;
 begin
   case a.base of
     bFrame: Place := Mem(RBP, a.off);
     bGlobal: Place := MemRip(a.chunk, a.off);
-    bStack: begin PopTo(r); Place := Mem(r, a.off) end;
+    bStack: begin ra := Top; Drop; Place := Mem(ra, a.off) end;
   else
-    if r = RAX then Spill;
     Load(r, Mem(RBP, a.chunk), 8, false);
     Place := Mem(r, a.off);
   end;
 end;
 
 procedure PushAdr(const a: TAdr);
-var m: TMem;
+var m: TMem; r: longint;
 begin
   if (a.base = bStack) and (a.off = 0) then exit;
-  m := Place(a, RAX);
-  Spill;
-  Lea(RAX, m);
+  if a.base = bStack then begin m := Place(a, -1); r := Target end
+  else begin r := Target; m := Place(a, r) end;
+  Lea(r, m);
   Computed(kWord);
 end;
 
 procedure PushVar(const a: TAdr; size: longint; signed: boolean; k: TKind);
-var m: TMem;
+var m: TMem; r: longint;
 begin
-  m := Place(a, RAX);
-  Spill;
-  Load(RAX, m, size, signed);
+  if a.base = bStack then begin m := Place(a, -1); r := Target end
+  else begin r := Target; m := Place(a, r) end;
+  Load(r, m, size, signed);
   Computed(k);
 end;
 
 procedure PushProc(c: longint; ext: boolean);
+var r: longint;
 begin
-  Spill;
-  if ext then Load(RAX, MemRip(c, 0), 8, false)
-  else Lea(RAX, MemRip(c, 0));
+  r := Target;
+  if ext then Load(r, MemRip(c, 0), 8, false)
+  else Lea(r, MemRip(c, 0));
   Computed(kWord);
 end;
 
 { Pops a value into the variable at a; an address on the stack is under
   the value. }
 procedure PopVar(const a: TAdr; size: longint);
-var m: TMem;
+var r: longint; v: int64;
 begin
-  if a.base in [bFrame, bGlobal] then begin
-    PopTo(RAX);
-    Store(Place(a, RAX), RAX, size);
-  end else begin
-    PopTo(RCX);
-    m := Place(a, RAX);
-    Store(m, RCX, size);
-  end;
-end;
-
-procedure Drop;
-begin
-  dec(depth);
-  if stack[depth].isConst then exit;
-  if inRax = depth then inRax := -1
-  else begin
-    AluI(aluAdd, RSP, 8);
-    dec(pushed);
-  end;
+  if TopConst(v) then begin r := RAX; MovRI(RAX, v) end
+  else r := Top;
+  Drop;
+  Store(Place(a, RCX), r, size);
 end;
 
 { The two values on top change places. }
 procedure Swap;
-var e: TEntry; a, b: boolean;
+var e: TEntry; x, y: longint; rx, ry: boolean;
 begin
-  a := stack[depth - 2].isConst;
-  b := stack[depth - 1].isConst;
-  if not a and not b then begin
-    { the one on top is in rax, or pushed over the other }
-    if inRax <> depth - 1 then begin Pop(RAX); dec(pushed) end;
-    Xchg(Mem(RSP, 0), RAX);
-    inRax := depth - 1;
-  end else if inRax = depth - 1 then inRax := depth - 2
-  else if inRax = depth - 2 then inRax := depth - 1;
-  e := stack[depth - 1];
-  stack[depth - 1] := stack[depth - 2];
-  stack[depth - 2] := e;
+  x := depth - 2; y := depth - 1;
+  rx := stack[x].loc = lReg;
+  ry := stack[y].loc = lReg;
+  if rx and ry then begin
+    MovRR(RAX, RegOf(x));
+    MovRR(RegOf(x), RegOf(y));
+    MovRR(RegOf(y), RAX);
+  end else if rx then begin
+    owner[x mod NumRegs] := -1;
+    MovRR(Claim(y), RegOf(x));
+  end else if ry then begin
+    owner[y mod NumRegs] := -1;
+    MovRR(Claim(x), RegOf(y));
+  end;
+  e := stack[x]; stack[x] := stack[y]; stack[y] := e;
 end;
 
 { Copying }
@@ -358,8 +396,10 @@ end;
   size bytes to off bytes past the destination. }
 procedure CopyBlock(size, off: int64);
 begin
-  PopTo(RSI);
-  PopTo(RDI);
+  MovRR(RSI, Top);
+  Drop;
+  MovRR(RDI, Top);
+  Drop;
   if off <> 0 then Lea(RDI, Mem(RDI, off));
   CopyBytes(size);
 end;
@@ -367,7 +407,8 @@ end;
 { Pops a source's address, and copies size bytes to a. }
 procedure CopyTo(const a: TAdr; size: int64);
 begin
-  PopTo(RSI);
+  MovRR(RSI, Top);
+  Drop;
   Lea(RDI, Place(a, RDI));
   CopyBytes(size);
 end;
@@ -375,7 +416,6 @@ end;
 procedure ZeroVar(const a: TAdr; size: int64);
 begin
   Lea(RDI, Place(a, RDI));
-  Spill;
   MovRI(RCX, size);
   MovRI(RAX, 0);
   RepStosb;
@@ -392,39 +432,45 @@ begin
   Log2 := n;
 end;
 
-{ rax div or mod 2^k, 1 <= k <= 62, with shifts: div truncates towards
-  zero, so a negative dividend first gets 2^k - 1 added (the bias). }
-procedure DivPow2(op: TSym; k: longint; unsign: boolean);
+function Fits32(v: int64): boolean;
 begin
-  if unsign then begin
-    if op = sDiv then ShiftI(shShr, RAX, k)
-    else begin ShiftI(shShl, RAX, 64 - k); ShiftI(shShr, RAX, 64 - k) end;
-    exit;
-  end;
-  MovRR(RCX, RAX);
-  ShiftI(shSar, RCX, 63);
-  ShiftI(shShr, RCX, 64 - k);
-  Alu(aluAdd, RCX, RAX);
-  ShiftI(shSar, RCX, k);
-  if op = sDiv then MovRR(RAX, RCX)
-  else begin ShiftI(shShl, RCX, k); Alu(aluSub, RAX, RCX) end;
+  Fits32 := (v >= low(longint)) and (v <= high(longint));
 end;
 
+{ r compared with v, through rdx if v needs more than 32 bits }
 procedure CmpI(r: longint; v: int64);
 begin
-  if (v >= low(longint)) and (v <= high(longint)) then AluI(aluCmp, r, v)
-  else begin MovRI(R11, v); Alu(aluCmp, r, R11) end;
+  if Fits32(v) then AluI(aluCmp, r, v)
+  else begin MovRI(RDX, v); Alu(aluCmp, r, RDX) end;
 end;
 
-{ Before rax div rcx, of a signed type of bits < 64: its smallest value
+{ r div or mod 2^k, 1 <= k <= 62, with shifts: div truncates towards
+  zero, so a negative dividend first gets 2^k - 1 added (the bias). }
+procedure DivPow2(op: TSym; r, k: longint; unsign: boolean);
+begin
+  if unsign then begin
+    if op = sDiv then ShiftI(shShr, r, k)
+    else begin ShiftI(shShl, r, 64 - k); ShiftI(shShr, r, 64 - k) end;
+    exit;
+  end;
+  MovRR(RCX, r);
+  ShiftI(shSar, RCX, 63);
+  ShiftI(shShr, RCX, 64 - k);
+  Alu(aluAdd, RCX, r);
+  ShiftI(shSar, RCX, k);
+  if op = sDiv then MovRR(r, RCX)
+  else begin ShiftI(shShl, RCX, k); Alu(aluSub, r, RCX) end;
+end;
+
+{ Before rax div y, of a signed type of bits < 64: its smallest value
   divided by -1 overflows it, which must stop the program as it does for
   an I64 (report section 6.1). idiv on the 64-bit values wouldn't fault,
   so then rax is made the smallest I64, and it does. }
-procedure DivTrap(bits: longint);
+procedure DivTrap(bits, y: longint);
 var L: longint;
 begin
   L := NoLabel;
-  CmpI(RCX, -1);
+  CmpI(y, -1);
   Jcc(ccNE, L);
   CmpI(RAX, int64(-1) shl (bits - 1));
   Jcc(ccNE, L);
@@ -432,69 +478,93 @@ begin
   FixLink(L);
 end;
 
-{ The two values on top, the left one into rax and the right into rcx }
-procedure Operands;
+{ The right operand of the two values on top, popped, in register y:
+  its own, or rcx for a constant; the left one stays, in its register,
+  which is returned. }
+function Operands(var y: longint): longint;
+var v: int64;
 begin
-  PopTo(RCX);
-  PopTo(RAX);
+  if TopConst(v) then begin MovRI(RCX, v); y := RCX end else y := Top;
+  Drop;
+  Operands := Top;
 end;
 
 procedure RealOp(op: TSym; k: TKind);
-var f: boolean;
+var f: boolean; r, y: longint;
 begin
   f := k = kF32;
-  Operands;
-  MovqXR(0, RAX);
-  MovqXR(1, RCX);
+  r := Operands(y);
+  MovqXR(0, r);
+  MovqXR(1, y);
   case op of
     sPlus: Sse($58, 0, 1, f);
     sMinus: Sse($5C, 0, 1, f);
     sTimes: Sse($59, 0, 1, f);
     sSlash: Sse($5E, 0, 1, f);
   end;
-  MovqRX(RAX, 0);
-  Computed(k);
+  MovqRX(r, 0);
+end;
+
+{ The group 1 operation of +, -, &, | and xor }
+function AluOf(op: TSym): longint;
+begin
+  case op of
+    sPlus: AluOf := aluAdd;
+    sMinus: AluOf := aluSub;
+    sAmp: AluOf := aluAnd;
+    sBar: AluOf := aluOr;
+  else AluOf := aluXor;
+  end;
 end;
 
 { The two values on top, the left op the right, an integer of size
   bytes, signed or not, brought back to its width. }
 procedure Op(op: TSym; k: TKind; size: longint; signed: boolean);
-var y: TEntry; sh, bits: longint;
+var v: int64; r, y, sh, bits: longint; c: boolean;
 begin
   if k in [kF32, kF64] then begin RealOp(op, k); exit end;
   bits := size * 8;
-  y := stack[depth - 1];
+  c := TopConst(v);
   sh := -1;
-  if y.isConst and (op in [sTimes, sDiv, sMod]) then sh := Log2(y.val);
-  if y.isConst then begin
-    dec(depth);
-    PopTo(RAX);
-    if sh < 1 then MovRI(RCX, y.val);
-  end else Operands;
-  case op of
-    sPlus: Alu(aluAdd, RAX, RCX);
-    sMinus: Alu(aluSub, RAX, RCX);
-    sTimes: if sh >= 1 then ShiftI(shShl, RAX, sh) else Imul(RAX, RCX);
-    sDiv, sMod: if sh >= 1 then DivPow2(op, sh, not signed) else begin
-      if not signed then begin MovRI(RDX, 0); Unary(6, RCX) end
-      else begin
-        if (bits < 64) and (not y.isConst or (y.val = -1)) then DivTrap(bits);
-        Cqo; Unary(7, RCX)
-      end;
-      if op = sMod then MovRR(RAX, RDX);
+  if c and (op in [sTimes, sDiv, sMod]) then sh := Log2(v);
+  if c and (sh >= 1) then begin
+    Drop;
+    r := Top;
+    if op = sTimes then ShiftI(shShl, r, sh) else DivPow2(op, r, sh, not signed);
+  end else if c and Fits32(v) and (op in [sPlus, sMinus, sBar, sXor, sAmp, sTimes, sShl, sShr]) then begin
+    Drop;
+    r := Top;
+    case op of
+      sTimes: ImulI(r, v);
+      sShl: ShiftI(shShl, r, v and (bits - 1));
+      sShr: if signed then ShiftI(shSar, r, v and (bits - 1)) else ShiftI(shShr, r, v and (bits - 1));
+    else AluI(AluOf(op), r, v);
     end;
-    sAmp: Alu(aluAnd, RAX, RCX);
-    sBar: Alu(aluOr, RAX, RCX);
-    sXor: Alu(aluXor, RAX, RCX);
-    sShl, sShr: begin
-      { the count modulo the width: the machine takes it modulo 64 }
-      if bits < 64 then AluI(aluAnd, RCX, bits - 1);
-      if op = sShl then Shift(shShl, RAX)
-      else if signed then Shift(shSar, RAX) else Shift(shShr, RAX);
+  end else begin
+    r := Operands(y);
+    case op of
+      sPlus, sMinus, sAmp, sBar, sXor: Alu(AluOf(op), r, y);
+      sTimes: Imul(r, y);
+      sDiv, sMod: begin
+        MovRR(RAX, r);
+        if not signed then begin MovRI(RDX, 0); Unary(6, y) end
+        else begin
+          if (bits < 64) and (not c or (v = -1)) then DivTrap(bits, y);
+          Cqo; Unary(7, y)
+        end;
+        if op = sDiv then MovRR(r, RAX) else MovRR(r, RDX);
+      end;
+      sShl, sShr: begin
+        { the count modulo the width: the machine takes it modulo 64 }
+        if y <> RCX then MovRR(RCX, y);
+        if bits < 64 then AluI(aluAnd, RCX, bits - 1);
+        if op = sShl then Shift(shShl, r)
+        else if signed then Shift(shSar, r) else Shift(shShr, r);
+      end;
     end;
   end;
-  if bits < 64 then Extend(RAX, size, signed);
-  Computed(k);
+  if bits < 64 then Extend(r, size, signed);
+  stack[depth - 1].k := k;
 end;
 
 { The left op the right of the two values on top, as a BOOL }
@@ -502,125 +572,119 @@ procedure Compare(op: TSym; k: TKind; signed: boolean);
 const
   CcSigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccL, ccLE, ccG, ccGE);
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
-var y: TEntry; f: boolean;
+var f: boolean; r, y: longint; v: int64;
 begin
   if k in [kF32, kF64] then begin
     f := k = kF32;
-    Operands;
-    MovqXR(0, RAX);
-    MovqXR(1, RCX);
+    r := Operands(y);
+    MovqXR(0, r);
+    MovqXR(1, y);
     case op of
-      sEql: begin Ucomis(0, 1, f); SetCC(ccE, RAX); SetCC(ccNP, RCX); Alu(aluAnd, RAX, RCX) end;
-      sNeq: begin Ucomis(0, 1, f); SetCC(ccNE, RAX); SetCC(ccP, RCX); Alu(aluOr, RAX, RCX) end;
-      sLss: begin Ucomis(1, 0, f); SetCC(ccA, RAX) end;
-      sLeq: begin Ucomis(1, 0, f); SetCC(ccAE, RAX) end;
-      sGtr: begin Ucomis(0, 1, f); SetCC(ccA, RAX) end;
-      sGeq: begin Ucomis(0, 1, f); SetCC(ccAE, RAX) end;
+      sEql: begin Ucomis(0, 1, f); SetCC(ccE, r); SetCC(ccNP, RCX); Alu(aluAnd, r, RCX) end;
+      sNeq: begin Ucomis(0, 1, f); SetCC(ccNE, r); SetCC(ccP, RCX); Alu(aluOr, r, RCX) end;
+      sLss: begin Ucomis(1, 0, f); SetCC(ccA, r) end;
+      sLeq: begin Ucomis(1, 0, f); SetCC(ccAE, r) end;
+      sGtr: begin Ucomis(0, 1, f); SetCC(ccA, r) end;
+      sGeq: begin Ucomis(0, 1, f); SetCC(ccAE, r) end;
     end;
   end else begin
-    y := stack[depth - 1];
-    if y.isConst then begin
-      dec(depth);
-      PopTo(RAX);
-      CmpI(RAX, y.val);
-    end else begin
-      Operands;
-      Alu(aluCmp, RAX, RCX);
-    end;
-    if signed then SetCC(CcSigned[op], RAX) else SetCC(CcUnsigned[op], RAX);
+    if TopConst(v) then begin Drop; r := Top; CmpI(r, v) end
+    else begin r := Operands(y); Alu(aluCmp, r, y) end;
+    if signed then SetCC(CcSigned[op], r) else SetCC(CcUnsigned[op], r);
   end;
-  Computed(kWord);
+  stack[depth - 1].k := kWord;
 end;
 
 procedure Neg(k: TKind; size: longint; signed: boolean);
+var r: longint;
 begin
-  PopTo(RAX);
+  r := Top;
   case k of
-    kF32: Btc(RAX, 31);
-    kF64: Btc(RAX, 63);
+    kF32: Btc(r, 31);
+    kF64: Btc(r, 63);
   else
-    Unary(3, RAX);
-    if size < 8 then Extend(RAX, size, signed);
+    Unary(3, r);
+    if size < 8 then Extend(r, size, signed);
   end;
-  Computed(k);
 end;
 
 procedure Complement(size: longint; signed: boolean);
+var r: longint;
 begin
-  PopTo(RAX);
-  Unary(2, RAX);
-  if size < 8 then Extend(RAX, size, signed);
-  Computed(kWord);
+  r := Top;
+  Unary(2, r);
+  if size < 8 then Extend(r, size, signed);
 end;
 
 procedure NotBool;
 begin
-  PopTo(RAX);
-  AluI(aluXor, RAX, 1);
-  Computed(kWord);
+  AluI(aluXor, Top, 1);
 end;
 
 { The integer on top, brought to size bytes }
 procedure Narrow(size: longint; signed: boolean);
+var r: longint;
 begin
-  PopTo(RAX);
-  if size < 8 then Extend(RAX, size, signed);
-  Computed(kWord);
+  r := Top;
+  if size < 8 then Extend(r, size, signed);
+  stack[depth - 1].k := kWord;
 end;
 
 { The integer on top, as a real of kind k; big if it may be a U64 above
   high(I64), which the machine would take as negative }
 procedure IntToReal(k: TKind; big: boolean);
-var L1, L2: longint; f: boolean;
+var L1, L2, r: longint; f: boolean;
 begin
   f := k = kF32;
-  PopTo(RAX);
+  r := Top;
   if big then begin
     { above high(I64): halve, keeping the low bit, and double }
     L1 := NoLabel; L2 := NoLabel;
-    TestRR(RAX, RAX);
+    TestRR(r, r);
     Jcc(ccS, L1);
-    Cvtsi2s(0, RAX, f);
+    Cvtsi2s(0, r, f);
     Jmp(L2);
     FixLink(L1);
-    MovRR(RCX, RAX);
+    MovRR(RCX, r);
     ShiftI(shShr, RCX, 1);
-    AluI(aluAnd, RAX, 1);
-    Alu(aluOr, RCX, RAX);
+    AluI(aluAnd, r, 1);
+    Alu(aluOr, RCX, r);
     Cvtsi2s(0, RCX, f);
     Sse($58, 0, 0, f);
     FixLink(L2);
-  end else Cvtsi2s(0, RAX, f);
-  MovqRX(RAX, 0);
-  Computed(k);
+  end else Cvtsi2s(0, r, f);
+  MovqRX(r, 0);
+  stack[depth - 1].k := k;
 end;
 
 { The real of kind k on top, truncated to an integer }
 procedure RealToInt(k: TKind);
+var r: longint;
 begin
-  PopTo(RAX);
-  MovqXR(0, RAX);
-  Cvtts2si(RAX, 0, k = kF32);
-  Computed(kWord);
+  r := Top;
+  MovqXR(0, r);
+  Cvtts2si(r, 0, k = kF32);
+  stack[depth - 1].k := kWord;
 end;
 
 { The real of kind k on top, as the other kind }
 procedure RealToReal(k: TKind);
+var r: longint;
 begin
-  PopTo(RAX);
-  MovqXR(0, RAX);
+  r := Top;
+  MovqXR(0, r);
   Sse($5A, 0, 0, k = kF32);
-  MovqRX(RAX, 0);
-  if k = kF32 then Computed(kF64) else Computed(kF32);
+  MovqRX(r, 0);
+  if k = kF32 then stack[depth - 1].k := kF64 else stack[depth - 1].k := kF32;
 end;
 
 { Whether the slices in the frame at a and b are equal (or not, if not
   eq): the lengths, then the bytes, len shl shift of them, compared
   right where the comparison stands. }
 procedure CompareSeq(a, b: int64; shift: longint; eq: boolean);
-var differ: longint;
+var differ, r: longint;
 begin
-  Spill;
+  r := Target;
   Load(RCX, Mem(RBP, b + 8), 8, false);
   AluM(aluCmp, RCX, Mem(RBP, a + 8));
   differ := NoLabel;
@@ -631,7 +695,7 @@ begin
   Alu(aluCmp, RCX, RCX);   { equal, if there are no bytes }
   RepeCmpsb;
   FixLink(differ);
-  if eq then SetCC(ccE, RAX) else SetCC(ccNE, RAX);
+  if eq then SetCC(ccE, r) else SetCC(ccNE, r);
   Computed(kWord);
 end;
 
@@ -640,7 +704,8 @@ end;
 procedure ErrorText(tmp: int64);
 var L: longint;
 begin
-  PopTo(RAX);
+  MovRR(RAX, Top);
+  Drop;
   MovRI(RCX, 0);
   L := NoLabel;
   TestRR(RAX, RAX);
@@ -655,54 +720,61 @@ end;
 { Pops a step and an integer variable's address, and adds the step to
   it, or takes it away. }
 procedure IncDec(size: longint; signed, dec: boolean);
+var r, y: longint;
 begin
-  PopTo(RCX);
-  PopTo(RDX);
-  Spill;
-  Load(RAX, Mem(RDX, 0), size, signed);
-  if dec then Alu(aluSub, RAX, RCX) else Alu(aluAdd, RAX, RCX);
-  Store(Mem(RDX, 0), RAX, size);
+  r := Operands(y);
+  Drop;
+  Load(RAX, Mem(r, 0), size, signed);
+  if dec then Alu(aluSub, RAX, y) else Alu(aluAdd, RAX, y);
+  Store(Mem(r, 0), RAX, size);
 end;
 
 { The pointer on top, which NEW got, to size zero bytes unless nil }
 procedure ZeroNew(size: int64);
-var L: longint;
+var L, r: longint;
 begin
-  PopTo(RAX);
+  r := Top;
   L := NoLabel;
-  TestRR(RAX, RAX);
+  TestRR(r, r);
   Jcc(ccE, L);
-  MovRR(RDX, RAX);
-  MovRR(RDI, RAX);
+  MovRR(RDI, r);
   MovRI(RCX, size);
   MovRI(RAX, 0);
   RepStosb;
-  MovRR(RAX, RDX);
   FixLink(L);
-  Computed(kWord);
 end;
 
-{ CAS(p, old, new), XCHG(p, v) or XADD(p, v), from the stack }
+{ CAS(p, old, new), XCHG(p, v) or XADD(p, v), from the stack: the
+  result where p was }
 procedure Atomic(which: longint);
+var r, n: longint;
 begin
-  if which = bCas then PopTo(RDX);
-  PopTo(RAX);
-  PopTo(RCX);
+  if which = bCas then begin n := Top; Drop end;
+  MovRR(RAX, Top);
+  Drop;
+  r := Top;
   case which of
-    bCas: begin LockCmpxchg(Mem(RCX, 0), RDX); SetCC(ccE, RAX) end;
-    bXchg: Xchg(Mem(RCX, 0), RAX);
-    bXadd: LockXadd(Mem(RCX, 0), RAX);
+    bCas: begin LockCmpxchg(Mem(r, 0), n); SetCC(ccE, r) end;
+    bXchg: begin Xchg(Mem(r, 0), RAX); MovRR(r, RAX) end;
+    bXadd: begin LockXadd(Mem(r, 0), RAX); MovRR(r, RAX) end;
   end;
-  Computed(kWord);
+  stack[depth - 1].k := kWord;
 end;
 
-{ The system call and its arguments, n values on the stack }
+{ The system call and its arguments, n values on the stack; every value
+  in a register is spilled first, as the arguments go in its registers }
 procedure SysCall(n: longint);
-const Regs: array[0..6] of longint = (RAX, RDI, RSI, RDX, R10, R8, R9);
+const SysRegs: array[0..6] of longint = (RAX, RDI, RSI, RDX, R10, R8, R9);
 var i: longint;
 begin
-  for i := n - 1 downto 0 do PopTo(Regs[i]);
+  SpillBelow(depth);
+  for i := 0 to n - 1 do
+    with stack[depth - n + i] do
+      if loc = lConst then MovRI(SysRegs[i], val)
+      else Load(SysRegs[i], Mem(RBP, val), 8, false);
+  for i := 1 to n do Drop;
   x64.Syscall;
+  MovRR(Target, RAX);
   Computed(kWord);
 end;
 
@@ -720,23 +792,27 @@ end;
 
 { Pops a BOOL, and jumps if it is when }
 procedure JumpIf(var L: longint; when: boolean);
+var r: longint;
 begin
-  PopTo(RAX);
-  TestRR(RAX, RAX);
+  r := Top;
+  Drop;
+  TestRR(r, r);
   if when then Jcc(ccNE, L) else Jcc(ccE, L);
 end;
 
-{ For and and or: jumps if the BOOL on top is when, keeping it for
-  where the jump goes, and drops it if not. }
+{ For and and or: jumps if the BOOL on top is when, keeping it, in its
+  register, for where the jump goes; drops it if not. The values under
+  it are spilled first, so that both ways find them in the same place. }
 procedure JumpKeep(var L: longint; when: boolean);
 begin
+  SpillBelow(depth - 1);
   JumpIf(L, when);
 end;
 
 { Where JumpKeep went: the BOOL on top is there, as it was there. }
 procedure FixKeep(L: longint);
 begin
-  TopToRax;
+  Top;
   FixLink(L);
 end;
 
@@ -745,17 +821,11 @@ procedure JumpCmp(op: TSym; signed: boolean; var L: longint);
 const
   CcSigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccL, ccLE, ccG, ccGE);
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
-var y: TEntry;
+var r, y: longint; v: int64;
 begin
-  y := stack[depth - 1];
-  if y.isConst then begin
-    dec(depth);
-    PopTo(RAX);
-    CmpI(RAX, y.val);
-  end else begin
-    Operands;
-    Alu(aluCmp, RAX, RCX);
-  end;
+  if TopConst(v) then begin Drop; r := Top; CmpI(r, v) end
+  else begin r := Operands(y); Alu(aluCmp, r, y) end;
+  Drop;
   if signed then Jcc(CcSigned[op], L) else Jcc(CcUnsigned[op], L);
 end;
 
@@ -786,7 +856,8 @@ const
   called name (2), or a slice of a pointer a..b that runs backwards
   (3). a is in register ra, b in RDX; len is in memory at m, or n if
   m.base is NoBase. The failing code has p for its place, and the code
-  after it the place before it again. }
+  after it the place before it again; it never returns, and may use
+  any register once it has read what it needs. }
 procedure Check(cc, what: longint; const p: TPos; ra: longint; const m: TMem; n: int64; name: longint);
 var L, line, col: longint; before: TLine;
 begin
@@ -815,18 +886,20 @@ end;
 
 { The index on top is below n, unsigned }
 procedure CheckIndex(n: int64; const p: TPos);
+var r: longint;
 begin
-  TopToRax;
-  CmpI(RAX, n);
-  Check(ccB, 0, p, RAX, NoMem, n, -1);
+  r := Top;
+  CmpI(r, n);
+  Check(ccB, 0, p, r, NoMem, n, -1);
 end;
 
 { The integer on top is a position of an enumeration of n names }
 procedure CheckEnum(n: int64; name: longint; const p: TPos);
+var r: longint;
 begin
-  TopToRax;
-  CmpI(RAX, n);
-  Check(ccB, 2, p, RAX, NoMem, n, name);
+  r := Top;
+  CmpI(r, n);
+  Check(ccB, 2, p, r, NoMem, n, name);
 end;
 
 { Pops an index, and the address of the slice at a if it is on the
@@ -834,7 +907,8 @@ end;
 procedure IndexSlice(const a: TAdr; size: int64; checked: boolean; const p: TPos);
 var m, ml: TMem;
 begin
-  PopTo(RAX);
+  MovRR(RAX, Top);
+  Drop;
   m := Place(a, RCX);
   ml := m; ml.disp := ml.disp + 8;
   if checked then begin
@@ -843,6 +917,7 @@ begin
   end;
   if size <> 1 then ImulI(RAX, size);
   AluM(aluAdd, RAX, m);
+  MovRR(Target, RAX);
   Computed(kWord);
 end;
 
@@ -852,9 +927,11 @@ end;
 procedure Slice(const a: TAdr; isArray: boolean; n, size, tmp: int64; checked: boolean; const p: TPos);
 var m, ml: TMem;
 begin
-  PopTo(RDX);
-  PopTo(RCX);
-  m := Place(a, R8);
+  MovRR(RDX, Top);
+  Drop;
+  MovRR(RCX, Top);
+  Drop;
+  m := Place(a, RDI);
   ml := m; ml.disp := ml.disp + 8;
   if checked then begin
     if isArray then begin CmpI(RDX, n); ml := NoMem end
@@ -863,7 +940,6 @@ begin
     Alu(aluCmp, RCX, RDX);
     Check(ccBE, 1, p, RCX, ml, n, -1);
   end;
-  Spill;
   MovRR(RAX, RDX);
   Alu(aluSub, RAX, RCX);
   Store(Mem(RBP, tmp + 8), RAX, 8);
@@ -877,31 +953,32 @@ end;
   bounds can't be known, but it can't run backwards. }
 procedure SlicePtr(size, tmp: int64; checked: boolean; const p: TPos);
 begin
-  PopTo(RDX);
-  PopTo(RCX);
-  PopTo(R8);
+  MovRR(RDX, Top);
+  Drop;
+  MovRR(RCX, Top);
+  Drop;
+  MovRR(RDI, Top);
+  Drop;
   if checked then begin
     Alu(aluCmp, RCX, RDX);
     Check(ccLE, 3, p, RCX, NoMem, 0, -1);
   end;
-  Spill;
   MovRR(RAX, RDX);
   Alu(aluSub, RAX, RCX);
   Store(Mem(RBP, tmp + 8), RAX, 8);
   if size <> 1 then ImulI(RCX, size);
-  MovRR(RAX, R8);
-  Alu(aluAdd, RAX, RCX);
-  Store(Mem(RBP, tmp), RAX, 8);
+  Alu(aluAdd, RCX, RDI);
+  Store(Mem(RBP, tmp), RCX, 8);
 end;
 
 { Calls }
 
 procedure Call(var c: TCall);
 var
-  res: PType; i, ni, nf, k, pad: longint;
+  res: PType; i, ni, nf, k, pad, r: longint;
   onStack: array[0..63] of boolean;
 begin
-  Spill;   { the value in rax waits on the stack, past the call }
+  SpillBelow(depth);   { the registers in use, saved around the call }
   res := c.sig^.base;
   c.ret := 0;
   ni := 0; nf := 0;
@@ -944,9 +1021,13 @@ begin
     Store(Mem(RBP, c.ret + 8), RDX, 8);
   end;
   if (res <> nil) and (c.ret = 0) then begin
-    if res^.form = fReal then MovqRX(RAX, 0)
-    else if res^.form = fBool then Extend(RAX, 1, false)
-    else if (res^.form = fInt) and (res^.size < 8) then Extend(RAX, res^.size, res^.signed);
+    r := Target;
+    if res^.form = fReal then MovqRX(r, 0)
+    else begin
+      MovRR(r, RAX);
+      if res^.form = fBool then Extend(r, 1, false)
+      else if (res^.form = fInt) and (res^.size < 8) then Extend(r, res^.size, res^.signed);
+    end;
     Computed(KindOf(res));
   end;
 end;
@@ -1060,17 +1141,20 @@ end;
 { Pops one of several results, a value of size bytes, into its place
   off bytes into the caller's, behind the hidden pointer. }
 procedure ResultTo(off: int64; size: longint);
+var r: longint;
 begin
-  PopTo(RAX);
+  r := Top;
+  Drop;
   Load(RCX, Mem(RBP, retSlot), 8, false);
-  Store(Mem(RCX, off), RAX, size);
+  Store(Mem(RCX, off), r, size);
 end;
 
 { Pops an address, and copies size bytes from it to the result, off
   bytes into it. }
 procedure CopyResult(off, size: int64);
 begin
-  PopTo(RSI);
+  MovRR(RSI, Top);
+  Drop;
   Load(RDI, Mem(RBP, retSlot), 8, false);
   if off <> 0 then Lea(RDI, Mem(RDI, off));
   CopyBytes(size);
@@ -1083,8 +1167,8 @@ begin
   if resType <> nil then
     if IsAggregate(resType) then Load(RAX, Mem(RBP, retSlot), 8, false)
     else begin
-      PopTo(RAX);
-      if resType^.form = fReal then MovqXR(0, RAX);
+      if resType^.form = fReal then MovqXR(0, Top) else MovRR(RAX, Top);
+      Drop;
     end;
   Jmp(exitL);
 end;
@@ -1197,7 +1281,7 @@ begin
 end;
 
 initialization
-  inRax := -1;
+  ResetStack(0, 0);
   rtFail := NewChunk(secText, Intern('Rt', 2), Intern('fail', 4));
   argcChunk := NewChunk(secBss, -1, Intern('argc', 4));
   SetBss(argcChunk, 8, 8);

@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of Free Pascal, under 7,000 lines of code.
+The compiler is eleven files of Free Pascal, some 7,000 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -13,7 +13,7 @@ disassembly.
 | `src/sym.pas` | 596 | 497 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 244 | 192 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 476 | 377 | The instruction encoder, and jumps within a procedure |
-| `src/gen.pas` | 1,206 | 963 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/gen.pas` | 1,290 | 1,020 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,303 | 1,090 | Items: types, constants, variables, operators, conversions, calls |
 | `src/parse.pas` | 2,538 | 2,276 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 139 | Tree shaking, layout, patching, the places |
@@ -41,13 +41,13 @@ an `F64`). `gen.pas` is the only one that knows x86-64; a port to
 another machine is a new `gen.pas`, with an encoder of its own in place
 of `x64.pas`.
 
-On x86-64 the stack machine's stack is the machine's: the value on
-top is in `rax`, and the values under it are pushed when another is
-computed; a constant is only noted, until something needs it in a
-register, so that it can be an instruction's operand. No register is
-ever allocated, so there is no register allocator, and every access
-the program writes is one instruction, in the order written. That is
-also why `VOLATILE` costs the compiler nothing: it never does anything
+On x86-64 the stack lives in registers, as in Wirth's compilers: the
+value at depth `d` is in register `d`, of `r8` to `r11`, and a constant
+is only noted, until something needs it in a register, so that it can
+be an instruction's operand. Which register a value goes in is settled
+by its depth, so there is no register allocator, and every access the
+program writes is one instruction, in the order written. That is also
+why `VOLATILE` costs the compiler nothing: it never does anything
 clever to begin with.
 
 The output is a set of *chunks*: one for each procedure, each module
@@ -100,13 +100,11 @@ mov    rbp,rsp
 sub    rsp,0x10                       ; its size, patched in by EndProc
 mov    QWORD PTR [rbp-0x8],rdi        ; the parameters, into their slots
 mov    QWORD PTR [rbp-0x10],rsi
-mov    rax,QWORD PTR [rbp-0x8]        ; a
-push   rax                            ;   kept while b is loaded
-mov    rax,QWORD PTR [rbp-0x10]       ; b; the 2 is only noted
-shl    rax,0x1                        ; times 2 is a shift
-mov    rcx,rax
-pop    rax                            ; a again
-add    rax,rcx
+mov    r8,QWORD PTR [rbp-0x8]         ; a, at depth 0
+mov    r9,QWORD PTR [rbp-0x10]        ; b, at depth 1; the 2 is only noted
+shl    r9,0x1                         ; times 2 is a shift
+add    r8,r9
+mov    rax,r8                         ; the result
 jmp    <leave>                        ; return
 xor    eax,eax                        ; running off the end returns zero
 movq   xmm0,rax
@@ -114,9 +112,9 @@ leave
 ret
 ```
 
-Every line of it can be traced to a routine in `gen.pas`; the push is
-`Spill`'s, as `PushVar` loads `b`, the pop `PopTo`'s, as `Op` takes
-its operands, and the frame is `EnterBody`'s and `EndProc`'s. It is
+Every line of it can be traced to a routine in `gen.pas`: the loads
+are `PushVar`'s, the shift and the add `Op`'s, the result
+`ReturnJump`'s, and the frame is `EnterBody`'s and `EndProc`'s. It is
 not fast code. It is code whose every instruction you can account
 for, which is the point.
 
@@ -271,12 +269,21 @@ held in a frame slot (`bSlot`, as a `var` parameter's is); plus `off`.
 address first, so that a variable is read or written with one
 instruction.
 
-The stack: `stack` notes each value, a constant or one computed;
-`inRax` is the one in `rax`, if any. `Computed` puts a value just
-computed in `rax` on top; `Spill` pushes the one in `rax` first, when
-`rax` is wanted for another; `PopTo` brings the value on top into a
-register, from the constant, from `rax` or by a pop. `pushed` counts
-what is on the machine's stack, which a call must align. `Op` takes a
+The stack: `stack` notes where each value is, a constant (`lConst`),
+in its register (`lReg`) or in a frame slot (`lFrame`); `owner` which
+value each register holds. The value at depth `d` belongs in
+`Regs[d mod 4]`, `r8` to `r11`: `rax`, `rdx` and `rcx`, which division
+and shifts need, and `rsi` and `rdi`, which copying needs, aren't among
+them. `Claim` gives a value its register, and `Spill`s a deeper one
+that holds it, when an expression is deeper than the registers;
+`Loaded` brings a value into its register, from its constant or its
+slot; `Top` is `Loaded` for the value on top, and `Target` the
+register a new one is computed in. Before a call every value in a
+register is spilled (`SpillBelow`), since the call may change them, and
+so are the values under `and`'s and `or`'s left operand, which both
+ways to its label must find in the same place. `pushed` counts what
+is on the machine's stack, which a call must align: the return
+address, in a deferred statement. `Op` takes a
 constant on the right as it is, and a power of two on the right of
 `*`, `div` or `mod` becomes shifts (`DivPow2`), since `idiv` is slow.
 Narrow integers are brought back to their width after each operation,

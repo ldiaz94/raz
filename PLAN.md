@@ -134,7 +134,7 @@ the wishes below.
       integer, an `F32`, an `F64`) and the place in the source, and no
       x86-64 in the parser; a port is a new `gen`. Every test gives
       the same output as before.
-- [ ] 8. Wirth's register stack in the x86-64 `gen`: the value at
+- [x] 8. Wirth's register stack in the x86-64 `gen`: the value at
       depth `d` is held in register `d`, not pushed. The registers in
       use are saved around a call, and spilled to the frame when an
       expression is deeper than the registers; the stack is empty when
