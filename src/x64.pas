@@ -1,17 +1,11 @@
-{ x64.pas: machine code.
-
-  The code of a program is a set of chunks: one per procedure, module
-  variable and string. A chunk's bytes go in one of three sections:
-  text (code), rodata (strings), bss (variables, which are all zero).
-  A reference from code to another chunk (a call, or a rip-relative
-  address) is a fixup, patched once the linker has placed every chunk.
-  Jumps within a procedure are patched here, as soon as their target
-  is known.
+{ x64.pas: machine code for x86-64.
 
   The encoder writes the instructions the code generator needs, and
-  no others. Registers are numbered as the hardware numbers them.
+  no others, into the text of chunk.pas. Registers are numbered as the
+  hardware numbers them. Jumps within a procedure are patched here, as
+  soon as their target is known.
 
-  Depends on: scan, for errors.
+  Depends on: scan, for errors; chunk, for the code buffer and fixups.
   Leaves out: choosing instructions; that is gen.pas. }
 
 unit x64;
@@ -20,7 +14,7 @@ unit x64;
 
 interface
 
-uses scan, diag;
+uses scan, diag, chunk;
 
 const
   RAX = 0; RCX = 1; RDX = 2; RBX = 3; RSP = 4; RBP = 5; RSI = 6; RDI = 7;
@@ -41,8 +35,6 @@ const
   NoLabel = -1;
 
 type
-  TSection = (secText, secRodata, secBss);
-
   TMem = record
     base: longint;    { a register, or RIP }
     index: longint;   { a register, or NoIndex }
@@ -51,66 +43,10 @@ type
     chunk: longint;   { with RIP: the chunk addressed }
   end;
 
-  TChunk = record
-    sec: TSection;
-    start, size, align: longint;   { in its section's buffer }
-    firstFix, numFix: longint;     { its fixups, text chunks only }
-    module, name: longint;         { for the symbol table; -1 if none }
-    adr: int64;                    { its address, set by the linker }
-    live: boolean;                 { reached from the entry point }
-    ext: boolean;                  { bss: the address of a C symbol, its name }
-    reals: boolean;                { code: computes with reals, first at realsAt }
-    realsAt: TPos;
-  end;
-
-  { A place in the source whose code starts at a place in text: for
-    gdb, and for Rt to say where a failed check or a signal was }
-  TLine = record
-    at, chunk: longint;   { the place in text, and its chunk }
-    path, line, col: longint;  { the file's path, interned, the line and column }
-  end;
-
-  TFixup = record
-    at: longint;      { the rel32 field, as an offset in text }
-    chunk: longint;   { the chunk it refers to }
-    addend: longint;  { added to the chunk's address }
-  end;
-
-  PChunks = ^TChunkArray;
-  TChunkArray = array[0..MaxInt div SizeOf(TChunk) - 1] of TChunk;
-  PLines = ^TLineArray;
-  TLineArray = array[0..MaxInt div SizeOf(TLine) - 1] of TLine;
-  PFixups = ^TFixupArray;
-  TFixupArray = array[0..MaxInt div SizeOf(TFixup) - 1] of TFixup;
-
 var
-  code: PBytes;      { text }
-  pc: longint;       { its length }
-  rodata: PBytes;
-  rolen: longint;
-  chunks: PChunks;
-  numChunks: longint;
-  fixups: PFixups;
-  numFixups: longint;
-  lines: PLines;
-  numLines: longint;
-  curFile: longint;   { the file being compiled, for NoteLine }
   labelAt: longint;   { the last place a jump was made to land }
 
-function NewChunk(sec: TSection; module, name: longint): longint;
-procedure BeginChunk(c: longint);
-procedure EndChunk(c: longint);
-procedure SetData(c: longint; p: PBytes; n, align: longint);
-procedure SetBss(c: longint; size, align: longint);
-function ExternChunk(name: longint): longint;
-procedure NoteLine(line, col: longint);
 function Here: TMem;
-
-procedure Put1(b: longint);
-procedure Put4(v: longint);
-procedure Put4At(at, v: longint);
-function Get4At(at: longint): longint;
-
 function Mem(base: longint; disp: int64): TMem;
 function MemRip(chunk: longint; disp: longint): TMem;
 function MemIdx(base, index, scale: longint; disp: int64): TMem;
@@ -169,151 +105,6 @@ procedure FixLinkTo(L, target: longint);
 
 implementation
 
-var
-  codeCap, roCap, chunkCap, fixCap, lineCap: longint;
-  curChunk: longint;
-
-{ Buffers and chunks }
-
-procedure Room(n: longint);
-begin
-  if pc + n > codeCap then begin
-    codeCap := codeCap * 2 + n;
-    code := ReAllocMem(code, codeCap);
-  end;
-end;
-
-procedure Put1(b: longint);
-begin
-  if pc + 16 > codeCap then Room(16);
-  code^[pc] := byte(b);
-  inc(pc);
-end;
-
-procedure Put4(v: longint);
-begin
-  if pc + 16 > codeCap then Room(16);
-  PLongint(@code^[pc])^ := v;
-  inc(pc, 4);
-end;
-
-procedure Put4At(at, v: longint);
-begin
-  PLongint(@code^[at])^ := v;
-end;
-
-function Get4At(at: longint): longint;
-begin
-  Get4At := PLongint(@code^[at])^;
-end;
-
-procedure Put8(v: int64);
-begin
-  Put4(longint(v and $FFFFFFFF));
-  Put4(longint(v shr 32));
-end;
-
-function NewChunk(sec: TSection; module, name: longint): longint;
-begin
-  if numChunks = chunkCap then begin
-    chunkCap := chunkCap * 2;
-    chunks := ReAllocMem(chunks, chunkCap * SizeOf(TChunk));
-  end;
-  FillChar(chunks^[numChunks], SizeOf(TChunk), 0);
-  chunks^[numChunks].sec := sec;
-  chunks^[numChunks].module := module;
-  chunks^[numChunks].name := name;
-  chunks^[numChunks].align := 1;
-  chunks^[numChunks].size := -1;   { not yet defined }
-  NewChunk := numChunks;
-  inc(numChunks);
-end;
-
-procedure BeginChunk(c: longint);
-begin
-  { code is aligned to 16 bytes, padded with int3 }
-  while pc and 15 <> 0 do Put1($CC);
-  curChunk := c;
-  chunks^[c].start := pc;
-  chunks^[c].align := 16;
-  chunks^[c].firstFix := numFixups;
-end;
-
-procedure EndChunk(c: longint);
-begin
-  chunks^[c].size := pc - chunks^[c].start;
-  chunks^[c].numFix := numFixups - chunks^[c].firstFix;
-end;
-
-procedure SetData(c: longint; p: PBytes; n, align: longint);
-begin
-  if rolen + n > roCap then begin
-    roCap := roCap * 2 + n;
-    rodata := ReAllocMem(rodata, roCap);
-  end;
-  Move(p^, rodata^[rolen], n);
-  chunks^[c].start := rolen;
-  chunks^[c].size := n;
-  chunks^[c].align := align;
-  inc(rolen, n);
-end;
-
-procedure SetBss(c: longint; size, align: longint);
-begin
-  chunks^[c].size := size;
-  chunks^[c].align := align;
-end;
-
-{ The code from here on is for line and column of the current file. A
-  place with no code of its own gives way to the next. }
-procedure NoteLine(line, col: longint);
-begin
-  if (numLines > 0) and (lines^[numLines - 1].at = pc) then dec(numLines);
-  if (numLines > 0) and (lines^[numLines - 1].chunk = curChunk) and (lines^[numLines - 1].line = line)
-    and (lines^[numLines - 1].col = col) and (lines^[numLines - 1].path = curFile) then exit;
-  if numLines = lineCap then begin
-    lineCap := lineCap * 2;
-    lines := ReAllocMem(lines, lineCap * SizeOf(TLine));
-  end;
-  lines^[numLines].at := pc;
-  lines^[numLines].chunk := curChunk;
-  lines^[numLines].path := curFile;
-  lines^[numLines].line := line;
-  lines^[numLines].col := col;
-  inc(numLines);
-end;
-
-{ The address of the code about to be written, as an operand }
-function Here: TMem;
-begin
-  Here := MemRip(curChunk, pc - chunks^[curChunk].start);
-end;
-
-{ The quadword that holds the address of C's symbol name, filled in
-  when the program starts; one for each name. }
-function ExternChunk(name: longint): longint;
-var c: longint;
-begin
-  for c := 0 to numChunks - 1 do
-    if chunks^[c].ext and (chunks^[c].name = name) then exit(c);
-  c := NewChunk(secBss, -1, name);
-  SetBss(c, 8, 8);
-  chunks^[c].ext := true;
-  ExternChunk := c;
-end;
-
-procedure AddFixup(at, chunk, addend: longint);
-begin
-  if numFixups = fixCap then begin
-    fixCap := fixCap * 2;
-    fixups := ReAllocMem(fixups, fixCap * SizeOf(TFixup));
-  end;
-  fixups^[numFixups].at := at;
-  fixups^[numFixups].chunk := chunk;
-  fixups^[numFixups].addend := addend;
-  inc(numFixups);
-end;
-
 { Operands }
 
 function Mem(base: longint; disp: int64): TMem;
@@ -334,6 +125,12 @@ begin
   MemIdx := Mem(base, disp);
   MemIdx.index := index;
   MemIdx.scale := scale;
+end;
+
+{ The address of the code about to be written, as an operand }
+function Here: TMem;
+begin
+  Here := MemRip(curChunk, pc - chunks^[curChunk].start);
 end;
 
 { Encoding. An instruction is: a legacy prefix, REX, the opcode, ModRM,
@@ -676,20 +473,4 @@ begin
   FixLinkTo(L, pc);
 end;
 
-initialization
-  codeCap := 1 shl 20;
-  code := GetMem(codeCap);
-  pc := 0;
-  roCap := 1 shl 16;
-  rodata := GetMem(roCap);
-  rolen := 0;
-  chunkCap := 1 shl 10;
-  chunks := GetMem(chunkCap * SizeOf(TChunk));
-  numChunks := 0;
-  fixCap := 1 shl 12;
-  fixups := GetMem(fixCap * SizeOf(TFixup));
-  numFixups := 0;
-  lineCap := 1 shl 12;
-  lines := GetMem(lineCap * SizeOf(TLine));
-  numLines := 0;
 end.

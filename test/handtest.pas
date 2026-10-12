@@ -5,7 +5,7 @@
   left out. }
 program handtest;
 {$mode objfpc}{$H-}
-uses scan, x64, link, elf;
+uses scan, chunk, x64, link, elf;
 var entry, msg, count, bump, unused: longint; s: shortstring;
 begin
   s := 'hand'#10;
@@ -41,5 +41,6 @@ begin
   Syscall;
   EndChunk(entry);
 
+  MarkLive(entry);
   WriteElf(ParamStr(1), entry);
 end.

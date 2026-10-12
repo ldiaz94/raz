@@ -12,7 +12,7 @@
   loader's other tables come at the end of rodata; elf.pas writes them
   in the room left there.
 
-  Depends on: x64 for chunks and fixups, scan for names and errors.
+  Depends on: chunk for chunks and fixups, scan for names and errors.
   Leaves out: the file format; that is elf.pas. }
 
 unit link;
@@ -21,7 +21,7 @@ unit link;
 
 interface
 
-uses scan, diag, x64;
+uses scan, diag, chunk;
 
 const
   Base = $400000;

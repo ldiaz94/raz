@@ -2,7 +2,7 @@
   of the encoder in x64.pas. }
 program enctest;
 {$mode objfpc}{$H-}
-uses scan, x64, link, elf;
+uses scan, chunk, x64, link, elf;
 var e, d: longint; L: longint;
 begin
   d := NewChunk(secBss, -1, Intern('data', 4)); SetBss(d, 8, 8);
@@ -29,5 +29,6 @@ begin
   Cvtts2si(RAX, 0, false); Cvtts2si(RAX, 0, true); Btc(RAX, 63);
   L := NoLabel; Jcc(ccE, L); Jmp(L); FixLink(L); JmpBack(chunks^[e].start); JccBack(ccNE, chunks^[e].start);
   EndChunk(e);
+  MarkLive(e);
   WriteElf(ParamStr(1), e);
 end.

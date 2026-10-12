@@ -55,7 +55,7 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
 - [x] 6. `examples/Sh.raz`: pipelines, redirection, `cd`, `&`, `wait`,
       and Ctrl-C to the job in the foreground, in a few hundred lines.
       Its test runs scripts given with `-c`.
-- [ ] 7. rat, rlX11, rmacs and ravite on this raz, in their own
+- [x] 7. rat, rlX11, rmacs and ravite on this raz, in their own
       repositories: the four copies of UTF-8 encoding go to
       `Str.encode`.
 - [x] 8. The freeze, in CLAUDE.md and the report's first section: the
@@ -129,7 +129,7 @@ the wishes below.
       labels, no value in two, `else` required (7.4); compares and
       branches, no jump table. `examples/Sh.raz`'s chains of `elsif`
       become `match`.
-- [ ] 7. The parser reaches the machine only through `gen`: calls of
+- [x] 7. The parser reaches the machine only through `gen`: calls of
       a stack machine, with the kind of each value (a word, a 64-bit
       integer, an `F32`, an `F64`) and the place in the source, and no
       x86-64 in the parser; a port is a new `gen`. Every test gives

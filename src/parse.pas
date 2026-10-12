@@ -11,7 +11,7 @@
   are read for their declarations only, and must export the same
   interface.
 
-  Depends on: scan, sym, x64, gen.
+  Depends on: scan, sym, chunk for data, item and gen for code.
   Leaves out: linking; a module only records the libraries it names,
   and whether it uses C or says link static. }
 
@@ -21,7 +21,7 @@ unit parse;
 
 interface
 
-uses scan, diag, sym, x64, gen;
+uses scan, diag, sym, chunk, gen, item;
 
 const
   Target = 'linux-x86_64';
@@ -178,7 +178,7 @@ type
     jb: jmp_buf;
     outer: ^jmp_buf;
     scan: TScanState;
-    scopes, depth, numDefers: longint;
+    scopes, depth, pushed, numDefers: longint;
     loop: PLoop;
     result: PType;
     deferring, directDefer, quiet: boolean;
@@ -188,7 +188,7 @@ procedure Guard(var r: TRecover);
 begin
   r.outer := recovery;
   SaveScan(r.scan);
-  r.scopes := ScopeDepth; r.depth := depth; r.numDefers := numDefers;
+  r.scopes := ScopeDepth; r.depth := depth; r.pushed := pushed; r.numDefers := numDefers;
   r.loop := curLoop; r.result := curResult;
   r.deferring := deferring; r.directDefer := directDefer; r.quiet := quiet;
   recovery := @r.jb;
@@ -208,7 +208,7 @@ procedure Restore(var r: TRecover);
 begin
   RestoreScan(r.scan);
   skipping := true;
-  CutScopes(r.scopes); depth := r.depth; numDefers := r.numDefers;
+  CutScopes(r.scopes); ResetStack(r.depth, r.pushed); numDefers := r.numDefers;
   curLoop := r.loop; curResult := r.result;
   deferring := r.deferring; directDefer := r.directDefer;
   inTypes := false; declExported := false; inExtern := false; making := false;
@@ -664,20 +664,8 @@ begin
   EndCall(c, x);
 end;
 
-procedure Args(n: longint; var slots: array of int64);
-var i: longint; a: TItem;
-begin
-  for i := 0 to n - 1 do begin
-    if i > 0 then Expect(sComma);
-    Expression(a, nil);
-    if not (IsScalar(a.typ) and (a.typ^.form <> fReal)) then MarkAt(a.pos, 'expected an integer or a pointer, found ' + What(a));
-    if a.typ^.form = fConst then Coerce(a, tInt);
-    slots[i] := ToSlot(a);
-  end;
-end;
-
 procedure Atomic(var x: TItem; which: longint);
-var p, a: TItem; t: PType; s: array[0..2] of int64; i, n: longint;
+var p, a: TItem; t: PType; i, n: longint;
 begin
   Expression(p, nil);
   if p.typ^.form <> fPtr then MarkAt(p.pos, 'expected a pointer, found ' + What(p));
@@ -685,40 +673,29 @@ begin
   if not (IsWord(t) or ((t^.form = fPtr) and (which <> bXadd))) then
     if which = bXadd then MarkAt(p.pos, 'expected a pointer to an INT or a UINT, found ' + TypeName(p.typ))
     else MarkAt(p.pos, 'expected a pointer to an INT, a UINT or a pointer, found ' + TypeName(p.typ));
-  s[0] := ToSlot(p);
+  Value(p);
   if which = bCas then n := 2 else n := 1;
   for i := 1 to n do begin
     Expect(sComma);
     Expression(a, t);
     Coerce(a, t);
-    s[i] := ToSlot(a);
+    Value(a);
   end;
-  Load(RCX, Mem(RBP, s[0]), 8, false);
-  Load(RAX, Mem(RBP, s[1]), 8, false);
+  gen.Atomic(which);
   MakeConst(x, t, 0);
-  case which of
-    bCas: begin
-      Load(RDX, Mem(RBP, s[2]), 8, false);
-      LockCmpxchg(Mem(RCX, 0), RDX);
-      SetCC(ccE, RAX);
-      x.typ := tBool;
-    end;
-    bXchg: Xchg(Mem(RCX, 0), RAX);
-    bXadd: LockXadd(Mem(RCX, 0), RAX);
-  end;
-  x.mode := mReg;
+  if which = bCas then x.typ := tBool;
+  x.mode := mStack;
 end;
 
 { NEW(p, a): p := a^.alloc(a, SIZE(T), alignment), zeroed if not nil.
   a is a ^Mem.Allocator, the one interface the compiler knows. }
 procedure New_(var x: TItem);
-var y, z: TItem; t: PType; f: PObj; s: int64; c: TCall; L: longint;
+var y, z: TItem; t: PType; f: PObj; s: int64; c: TCall;
 begin
   Expression(x, nil);
   NotReadOnly(x);
   if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fPtr) then MarkAt(x.pos, 'NEW needs a pointer variable');
   t := x.typ^.base;
-  Save(x);
   Expect(sComma);
   Expression(y, nil);
   if (y.typ^.form <> fPtr) or (y.typ^.base^.obj = nil) or (y.typ^.base^.obj^.module = nil)
@@ -726,29 +703,20 @@ begin
     or (NameOf(y.typ^.base^.obj^.module^.name) <> 'Mem') then MarkAt(y.pos, 'NEW needs a ^Mem.Allocator, found ' + What(y));
   f := Find(y.typ^.base^.scope, Name('alloc'));
   s := ToSlot(y);
-  Load(RAX, Mem(RBP, s), 8, false);
+  PushVar(FrameAdr(s), 8, false, kWord);
   MakeConst(z, f^.typ, 0);
-  z.mode := mVar; z.base := bReg; z.reg := RAX; z.off := f^.val;
+  z.mode := mVar; z.base := bStack; z.off := f^.val;
   BeginCall(c, z);
-  Load(RAX, Mem(RBP, s), 8, false);
+  PushVar(FrameAdr(s), 8, false, kWord);
   MakeConst(z, y.typ, 0);
-  z.mode := mReg;
+  z.mode := mStack;
   PassArg(c, z);
   MakeConst(z, tInt, t^.size);
   PassArg(c, z);
   MakeConst(z, tInt, t^.align);
   PassArg(c, z);
   EndCall(c, z);
-  L := NoLabel;
-  TestRR(RAX, RAX);
-  Jcc(ccE, L);
-  MovRR(RDX, RAX);
-  MovRR(RDI, RAX);
-  MovRI(RCX, t^.size);
-  MovRI(RAX, 0);
-  RepStosb;
-  MovRR(RAX, RDX);
-  FixLink(L);
+  ZeroNew(t^.size);
   z.typ := x.typ;
   Assign(x, z);
   MakeConst(x, tNone, 0);
@@ -761,17 +729,16 @@ begin
 end;
 
 procedure Builtin(var x: TItem);
-const SysRegs: array[0..6] of longint = (RAX, RDI, RSI, RDX, R10, R8, R9);
-var which, n, i: longint; y: TItem; t: PType; slots: array[0..6] of int64;
+var which, n: longint; y: TItem; t: PType;
 begin
   which := x.obj^.val;
   if which in [bFence, bArgc, bArgv] then begin
     if tok = sLparen then begin Next; Expect(sRparen) end;
     MakeConst(x, tNone, 0);
     case which of
-      bFence: begin Mfence; x.mode := mNone end;
-      bArgc: begin Load(RAX, MemRip(argcChunk, 0), 8, false); x.typ := tInt; x.mode := mReg end;
-      bArgv: begin Load(RAX, MemRip(argvChunk, 0), 8, false); x.typ := tArgv; x.mode := mReg end;
+      bFence: begin Fence; x.mode := mNone end;
+      bArgc: begin PushVar(GlobalAdr(argcChunk), 8, false, kWord); x.typ := tInt; x.mode := mStack end;
+      bArgv: begin PushVar(GlobalAdr(argvChunk), 8, false, kWord); x.typ := tArgv; x.mode := mStack end;
     end;
     exit;
   end;
@@ -787,36 +754,37 @@ begin
       if (y.mode <> mVar) or not y.isVar then MarkAt(y.pos, 'ADR needs a variable');
       if y.odd then MarkAt(y.pos, 'a field of a packed record has no address');
       t := NewPtr(y.typ, y.vol);
-      Address(y, RAX);
+      Address(y);
       MakeConst(x, t, 0);
-      x.mode := mReg;
+      x.mode := mStack;
     end;
     bLen: begin
       Expression(y, nil);
       if y.mode = mStr then MakeConst(x, tConst, y.val)
-      else if y.typ^.form = fArray then MakeConst(x, tConst, y.typ^.len)
-      else if (y.typ^.form = fSlice) and (y.mode = mVar) then begin
-        Address(y, RAX);
-        Load(RAX, Mem(RAX, 8), 8, false);
-        MakeConst(x, tInt, 0);
-        x.mode := mReg;
+      else if y.typ^.form = fArray then begin
+        Discard(y);
+        MakeConst(x, tConst, y.typ^.len)
+      end else if (y.typ^.form = fSlice) and (y.mode = mVar) then begin
+        { its length, the word after its pointer }
+        y.off := y.off + 8;
+        y.typ := tInt;
+        Value(y);
+        x := y;
       end else MarkAt(y.pos, 'LEN needs an array or a slice, found ' + What(y));
     end;
     bSyscall: begin
-      n := 1;
-      Args(1, slots);
-      while (tok = sComma) and (n < 7) do begin
-        Next;
+      n := 0;
+      repeat
+        if n > 0 then Next;
         Expression(y, nil);
         if not (IsScalar(y.typ) and (y.typ^.form <> fReal)) then MarkAt(y.pos, 'expected an integer or a pointer, found ' + What(y));
         if y.typ^.form = fConst then Coerce(y, tInt);
-        slots[n] := ToSlot(y);
+        Value(y);
         inc(n);
-      end;
-      for i := 0 to n - 1 do Load(SysRegs[i], Mem(RBP, slots[i]), 8, false);
-      Syscall;
+      until (tok <> sComma) or (n = 7);
+      SysCall(n);
       MakeConst(x, tInt, 0);
-      x.mode := mReg;
+      x.mode := mStack;
     end;
     bCas, bXchg, bXadd: Atomic(x, which);
     bMsg: begin Expression(x, tError); Msg(x) end;
@@ -825,7 +793,7 @@ begin
       NotReadOnly(x);
       if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fInt) then
         MarkAt(x.pos, IncOrDec(which) + ' needs an integer variable');
-      Save(x);
+      Address(x);
       if tok = sComma then begin
         Next;
         Expression(y, x.typ);
@@ -946,7 +914,7 @@ begin
   Expect(sRbrak);
   if (want^.form = fArray) and (n <> want^.len) then MarkAt(SpanFrom(start), 'expected ' + IntStr(want^.len) + ' elements, found ' + IntStr(n));
   if n = 0 then begin
-    MovRI(RAX, 0);
+    PushConst(kWord, 0);
     SliceOf(x, want, 0);
     exit;
   end;
@@ -961,13 +929,11 @@ begin
   end;
   for i := 0 to n - 1 do
     if IsScalar(et) then begin
-      Load(RAX, Mem(RBP, slots[i]), 8, false);
-      Store(Mem(RBP, off + i * es), RAX, ScalarSize(et));
+      PushVar(FrameAdr(slots[i]), 8, false, KindOf(et));
+      PopVar(FrameAdr(off + i * es), ScalarSize(et));
     end else begin
-      Lea(RSI, Mem(RBP, slots[i]));
-      Lea(RDI, Mem(RBP, off + i * es));
-      MovRI(RCX, es);
-      RepMovsb;
+      PushAdr(FrameAdr(slots[i]));
+      CopyTo(FrameAdr(off + i * es), es);
     end;
   TempItem(x, at, off);
 end;
@@ -1021,15 +987,16 @@ begin
       else begin
         if slot = 0 then begin
           slot := AllocTemp(8, 8);
-          MovRI(RAX, 0);
-          Store(Mem(RBP, slot), RAX, 8);
+          PushConst(kWord, 0);
+          PopVar(FrameAdr(slot), 8);
         end;
         Value(e);
-        MovRR(RCX, RAX);
-        MovRI(RAX, 1);
-        Shift(shShl, RAX);
-        AluM(aluOr, RAX, Mem(RBP, slot));
-        Store(Mem(RBP, slot), RAX, 8);
+        PushConst(kWord, 1);
+        Swap;
+        Op(sShl, kWord, 8, false);
+        PushVar(FrameAdr(slot), 8, false, kWord);
+        Op(sBar, kWord, 8, false);
+        PopVar(FrameAdr(slot), 8);
       end;
       if tok <> sComma then break;
       Next;
@@ -1038,10 +1005,10 @@ begin
   if t = nil then MarkAt(SpanFrom(start), '{} needs a known set type');
   MakeConst(x, t, bits);
   if slot <> 0 then begin
-    Load(RAX, Mem(RBP, slot), 8, false);
-    MovRI(RCX, bits);
-    Alu(aluOr, RAX, RCX);
-    x.mode := mReg;
+    PushVar(FrameAdr(slot), 8, false, kWord);
+    PushConst(kWord, bits);
+    Op(sBar, kWord, 8, false);
+    x.mode := mStack;
   end;
 end;
 
@@ -1183,7 +1150,7 @@ end;
 procedure RunDefers(base: longint);
 var i: longint;
 begin
-  for i := numDefers - 1 downto base do CallBack(defers[i]);
+  for i := numDefers - 1 downto base do RunDefer(defers[i]);
 end;
 
 procedure IfStatement;
@@ -1197,8 +1164,8 @@ begin
   Statements;
   endL := NoLabel;
   while tok = sElsif do begin
-    Jmp(endL);
-    FixLink(L);
+    Jump(endL);
+    Fix(L);
     Next;
     Expression(x, nil);
     Expect(sThen);
@@ -1207,13 +1174,13 @@ begin
     Statements;
   end;
   if tok = sElse then begin
-    Jmp(endL);
-    FixLink(L);
+    Jump(endL);
+    Fix(L);
     Next;
     Statements;
-  end else FixLink(L);
+  end else Fix(L);
   Expect(sEnd);
-  FixLink(endL);
+  Fix(endL);
 end;
 
 procedure WhileStatement;
@@ -1227,10 +1194,10 @@ begin
   CondJump(x, L);
   Loop(lp, old);
   Statements;
-  JmpBack(top);
+  JumpBack(top);
   Expect(sEnd);
-  FixLink(L);
-  FixLink(lp.brk);
+  Fix(L);
+  Fix(lp.brk);
   curLoop := old;
 end;
 
@@ -1246,8 +1213,8 @@ begin
   Expression(x, nil);
   L := NoLabel;
   CondJump(x, L);
-  FixLinkTo(L, top);
-  FixLink(lp.brk);
+  FixTo(L, top);
+  Fix(lp.brk);
 end;
 
 procedure ForStatement;
@@ -1267,7 +1234,6 @@ begin
   Next;
   Expect(sBecomes);
   MakeItem(v, o);
-  Save(v);
   Expression(a, o^.typ);
   CoerceExact(a, o^.typ, '');
   Assign(v, a);
@@ -1287,20 +1253,16 @@ begin
   top := pc;
   MakeItem(v, o);
   Value(v);
-  Load(RCX, Mem(RBP, bslot), 8, false);
-  Alu(aluCmp, RAX, RCX);
-  if o^.typ^.signed then begin
-    if step > 0 then Jcc(ccG, exitL) else Jcc(ccL, exitL)
-  end else begin
-    if step > 0 then Jcc(ccA, exitL) else Jcc(ccB, exitL)
-  end;
+  PushVar(FrameAdr(bslot), 8, false, kWord);
+  if step > 0 then JumpCmp(sGtr, o^.typ^.signed, exitL)
+  else JumpCmp(sLss, o^.typ^.signed, exitL);
   Loop(lp, old);
   Statements;
   curLoop := old;
   Expect(sEnd);
   ForNext(o, bslot, step, exitL, top);
-  FixLink(exitL);
-  FixLink(lp.brk);
+  Fix(exitL);
+  Fix(lp.brk);
 end;
 
 type
@@ -1348,12 +1310,12 @@ begin
     Next;
   until false;
   L := NoLabel;
-  Jmp(L);
-  FixLink(body);
+  Jump(L);
+  Fix(body);
   Expect(sColon);
   Statements;
-  Jmp(endL);
-  FixLink(L);
+  Jump(endL);
+  Fix(L);
 end;
 
 procedure MatchStatement;
@@ -1415,8 +1377,8 @@ begin
       Expect(sColon);
       Statements;
       CloseScope;
-      Jmp(endL);
-      FixLink(L);
+      Jump(endL);
+      Fix(L);
     end;
   end;
   endAt := TokPos;
@@ -1430,7 +1392,7 @@ begin
       c := c^.next;
     end;
   end;
-  FixLink(endL);
+  Fix(endL);
 end;
 
 { What a message calls x: its name n when x is just that name, else what
@@ -1521,32 +1483,28 @@ end;
 { defer s: s is compiled where it stands, as a little subroutine of the
   procedure, jumped over; each way out of the statement list calls it. }
 procedure Defer;
-var L, pos, oldDepth: longint; oldLoop: PLoop; oldDeferring: boolean; start: TPos;
+var L, pos, saved: longint; oldLoop: PLoop; oldDeferring: boolean; start: TPos;
 begin
   start := TokPos;
   Next;
   if directDefer then MarkAt(SpanFrom(start), 'defer can''t be deferred');
   if numDefers > High(defers) then MarkAt(SpanFrom(start), 'more than ' + IntStr(High(defers) + 1) + ' deferred statements in one procedure');
   L := NoLabel;
-  Jmp(L);
-  pos := pc;
-  oldDepth := depth; oldLoop := curLoop; oldDeferring := deferring;
-  depth := 1;           { the return address }
+  pos := DeferBegin(L, saved);
+  oldLoop := curLoop; oldDeferring := deferring;
   curLoop := nil;
   deferring := true;
   directDefer := true;
   Statement;
   directDefer := false;
-  KeepTemps;
-  depth := oldDepth; curLoop := oldLoop; deferring := oldDeferring;
-  Ret;
-  FixLink(L);
+  curLoop := oldLoop; deferring := oldDeferring;
+  DeferEnd(L, saved);
   defers[numDefers] := pos;
   inc(numDefers);
 end;
 
 procedure OneStatement;
-var x, y: TItem; called: boolean; m: int64; c: TCall; start: TPos; first: longint;
+var x, y: TItem; called, scalar: boolean; m: int64; c: TCall; start: TPos; first: longint;
 begin
   start := TokPos;
   first := id;
@@ -1558,20 +1516,20 @@ begin
       if tok = sBecomes then begin
         NotReadOnly(x);
         Assignable(x, first);
-        Save(x);
         Next;
         Expression(y, x.typ);
         Assign(x, y);
       end else if tok = sComma then
         MultiAssign(x, first)
       else if not called then begin
-        if (x.mode = mProc) or ((x.mode in [mVar, mReg]) and (x.typ^.form = fProc)) then begin
+        if (x.mode = mProc) or ((x.mode in [mVar, mStack]) and (x.typ^.form = fProc)) then begin
           BeginCall(c, x);
           EndCall(c, x);
+          Discard(x);
         end else if tok = sEql then
           MarkHelp(x.pos, Subject(x, first) + ' isn''t a statement', 'assignment is written :=')
         else MarkAt(x.pos, Subject(x, first) + ' isn''t a statement');
-      end;
+      end else Discard(x);
     end;
     sIf: IfStatement;
     sWhile: WhileStatement;
@@ -1590,12 +1548,14 @@ begin
           Expression(x, curResult);
           ReturnValue(x);
         end;
-        if numDefers > 0 then begin
+        { the result waits in the frame while the deferred statements run }
+        scalar := (curResult <> nil) and not IsAggregate(curResult);
+        if (numDefers > 0) and scalar then begin
           if deferSlot = 0 then deferSlot := AllocPerm(8, 8);
-          Store(Mem(RBP, deferSlot), RAX, 8);
+          PopVar(FrameAdr(deferSlot), 8);
           RunDefers(0);
-          Load(RAX, Mem(RBP, deferSlot), 8, false);
-        end;
+          PushVar(FrameAdr(deferSlot), 8, false, KindOf(curResult));
+        end else RunDefers(0);
         ReturnJump;
       end;
     end;
@@ -1603,7 +1563,7 @@ begin
       Next;
       if curLoop = nil then MarkAt(SpanFrom(start), 'break outside a loop');
       RunDefers(curLoop^.base);
-      Jmp(curLoop^.brk);
+      Jump(curLoop^.brk);
     end;
     sDefer: Defer;
   else if AtLineStart then Expected('"end"')
@@ -2569,11 +2529,6 @@ initialization
   nameStatic := Name('static');
   nameCheck := Name('check');
   nameOff := Name('off');
-  rtFail := NewChunk(secText, nameRt, nameFail);
-  argcChunk := NewChunk(secBss, -1, Name('argc'));
-  SetBss(argcChunk, 8, 8);
-  argvChunk := NewChunk(secBss, -1, Name('argv'));
-  SetBss(argvChunk, 8, 8);
   tArgv := NewPtr(NewPtr(tU8, false), false);
   tBodySig := NewType(fProc, 8, 8);
   curLoop := nil;

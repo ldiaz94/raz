@@ -16,7 +16,7 @@ build/version.inc: FORCE | build
 FORCE:
 
 units: src/*.pas | build
-	for u in diag scan sym x64 link elf; do $(FPC) $(FPCFLAGS) src/$$u.pas || exit 1; done
+	for u in diag scan sym chunk x64 link elf; do $(FPC) $(FPCFLAGS) src/$$u.pas || exit 1; done
 
 # tests of the parts below the parser, built from test/
 tests: units

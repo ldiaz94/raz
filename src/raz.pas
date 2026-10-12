@@ -25,7 +25,7 @@ program raz;
 
 {$mode objfpc}{$H-}
 
-uses math, BaseUnix, syscall, scan, diag, sym, x64, gen, parse, link, elf;
+uses math, BaseUnix, syscall, scan, diag, sym, chunk, gen, parse, link, elf;
 
 const
   { what git describe says, made by make: 0.3.0 at the tag v0.3.0,
@@ -90,10 +90,10 @@ end;
 
 var
   path, outPath, dir, s: shortstring;
-  i, first, entry, start, fd: longint;
+  i, first, entry, fd: longint;
   m, rt: PModule;
   main: PObj;
-  hasResult, dynamic, run: boolean;
+  run: boolean;
 
 begin
   { constants fold as the machine computes: NaN and infinities, no traps }
@@ -150,67 +150,21 @@ begin
   if rt <> nil then Use(rt);
 
   main := Find(m^.scope, Intern('main', 4));
-  hasResult := false;
   if main <> nil then begin
     if (main^.cls <> oProc) or not main^.exported then Error(main^.pos, 'main must be an exported procedure')
     else if (main^.typ^.len <> 0) or ((main^.typ^.base <> nil) and (main^.typ^.base <> tInt)) then
       Error(main^.pos, 'main must be proc main* or proc main*: INT');
     if errors > 0 then Finish;
-    hasResult := main^.typ^.base <> nil;
   end;
   Finish;
 
   if rt = nil then Fatal('can''t find module Rt');
-  dynamic := UsesC;
-  entry := NewChunk(secText, -1, Intern('_start', 6));
-  if dynamic then begin
-    { _start as C's crt1 does it: __libc_start_main(main, argc, argv,
-      nil, nil, rtld_fini, stack_end), with rsp aligned }
-    start := NewChunk(secText, -1, Intern('main', 4));
-    BeginChunk(entry);
-    MovRI(RBP, 0);
-    MovRR(R9, RDX);
-    Pop(RSI);
-    MovRR(RDX, RSP);
-    AluI(aluAnd, RSP, -16);
-    Push(RAX);
-    Push(RSP);
-    MovRI(R8, 0);
-    MovRI(RCX, 0);
-    Lea(RDI, MemRip(start, 0));
-    CallM(MemRip(ExternChunk(Intern('__libc_start_main', 17)), 0));
-    Ud2;
-    EndChunk(entry);
-    BeginChunk(start);
-    Push(RBP);   { aligns the stack again }
-    Store(MemRip(argcChunk, 0), RDI, 8);
-    Store(MemRip(argvChunk, 0), RSI, 8);
-    Load(RAX, MemRip(ExternChunk(Intern('exit', 4)), 0), 8, false);
-    Store(MemRip(RtObj(rt, 'cExit')^.chunk, 0), RAX, 8);
-  end else begin
-    start := entry;
-    BeginChunk(entry);
-    Load(RAX, Mem(RSP, 0), 8, false);
-    Store(MemRip(argcChunk, 0), RAX, 8);
-    Lea(RAX, Mem(RSP, 8));
-    Store(MemRip(argvChunk, 0), RAX, 8);
-  end;
   { the places, which the linker makes, for Rt to say where a failed
     check or a signal was }
   placesChunk := NewChunk(secRodata, -1, -1);
   SetData(placesChunk, nil, 0, 8);
-  Lea(RAX, MemRip(placesChunk, 0));
-  Store(MemRip(RtObj(rt, 'places')^.chunk, 0), RAX, 8);
-  m := firstModule;
-  while m <> nil do begin
-    if m^.used and (m^.body >= 0) then CallChunk(m^.body);
-    m := m^.next;
-  end;
-  if main <> nil then CallChunk(main^.chunk);
-  if hasResult then MovRR(RDI, RAX) else MovRI(RDI, 0);
-  CallChunk(RtObj(rt, 'exit')^.chunk);
-  Ud2;
-  EndChunk(start);
+  entry := EntryPoint(UsesC, firstModule, main, RtObj(rt, 'cExit')^.chunk, placesChunk,
+    RtObj(rt, 'places')^.chunk, RtObj(rt, 'exit')^.chunk);
 
   MarkLive(entry);
   if not HasReals then

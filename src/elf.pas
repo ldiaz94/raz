@@ -13,7 +13,7 @@
   (a GLOB_DAT relocation), which the code calls or reads through.
   There is no PLT and no lazy binding, and the program exports nothing.
 
-  Depends on: link for the images and addresses, x64 for the chunks,
+  Depends on: link for the images and addresses, chunk for the chunks,
   scan for names and errors, BaseUnix to write the file.
   Leaves out: position independent executables, symbol versions, the
   rest of DWARF. }
@@ -24,7 +24,7 @@ unit elf;
 
 interface
 
-uses scan, diag, x64, link;
+uses scan, diag, chunk, link;
 
 var
   needed: array[0..31] of longint;   { the libraries to load, names interned }

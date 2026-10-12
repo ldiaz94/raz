@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is nine files of Free Pascal, under 6,500 lines of code.
+The compiler is eleven files of Free Pascal, under 7,000 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -11,12 +11,14 @@ disassembly.
 | `src/diag.pas` | 274 | 198 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 851 | 722 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 596 | 497 | Types, objects, scopes, layout |
-| `src/x64.pas` | 695 | 559 | Code buffer, chunks, fixups, places, instruction encoder |
-| `src/gen.pas` | 1,750 | 1,493 | Items: loading, storing, copying, frames, calls |
-| `src/parse.pas` | 2,468 | 2,222 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/chunk.pas` | 244 | 192 | The compiled program: chunks, fixups, line notes |
+| `src/x64.pas` | 476 | 377 | The instruction encoder, and jumps within a procedure |
+| `src/gen.pas` | 1,206 | 963 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,303 | 1,090 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,538 | 2,276 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 139 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 424 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 234 | 185 | The command line, the entry points |
+| `src/raz.pas` | 188 | 141 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -28,15 +30,25 @@ the same breath, has the code generator emit its machine code. Nothing
 is kept to be looked at again, except the declarations, which live in
 the symbol table for as long as the compiler runs.
 
-The code generator is a stack machine through `rax`. An expression's
-value is computed into `rax`; when a second operand has to be computed,
-the first is pushed, and popped into `rax` when both are ready, the
-second going to `rcx`; if the second needed no code of its own (a
-constant, or a plain variable), the push is taken back instead. No
-register is ever allocated, so there is no register allocator, and
-every access the program writes is one instruction, in the order
-written. That is also why `VOLATILE` costs the compiler nothing: it
-never does anything clever to begin with.
+Three layers do it. `parse.pas` knows the language's syntax. `item.pas`
+knows what the program means: each operand is an *item*, as in Wirth's
+compilers, and the routines there check the items' types, fold
+constants and work out where variables are. Neither knows the machine:
+they drive a stack machine, `gen.pas`, by its calls (push a value,
+add the two on top, store the top in a variable, jump if it is false),
+each with the kind of the value (a word, a 64-bit integer, an `F32`,
+an `F64`). `gen.pas` is the only one that knows x86-64; a port to
+another machine is a new `gen.pas`, with an encoder of its own in place
+of `x64.pas`.
+
+On x86-64 the stack machine's stack is the machine's: the value on
+top is in `rax`, and the values under it are pushed when another is
+computed; a constant is only noted, until something needs it in a
+register, so that it can be an instruction's operand. No register is
+ever allocated, so there is no register allocator, and every access
+the program writes is one instruction, in the order written. That is
+also why `VOLATILE` costs the compiler nothing: it never does anything
+clever to begin with.
 
 The output is a set of *chunks*: one for each procedure, each module
 variable, each string. Code refers to other chunks through *fixups*,
@@ -64,9 +76,9 @@ files, no symbol files, and nothing to keep up to date.
 4. Each procedure becomes a chunk of code; `Out.str("hello, world\n")`
    becomes a string chunk, a call, and a fixup to `Out.str`'s chunk.
 5. Back in `raz.pas`, `Use` marks the modules the program uses; the
-   entry point, `_start`, is written as one more chunk: save `argc` and
-   `argv` and the address of the places (below), call every used
-   module's body, call `main`, call `Rt.exit`.
+   entry point, `_start`, is written by `gen.pas`'s `EntryPoint` as one
+   more chunk: save `argc` and `argv` and the address of the places
+   (below), call every used module's body, call `main`, call `Rt.exit`.
 6. `MarkLive` (`link.pas`) marks what `_start` reaches; then
    `WriteElf` (`elf.pas`) has `link.pas` place it and patch it, and
    writes headers, code, data, symbols and line numbers.
@@ -89,8 +101,8 @@ sub    rsp,0x10                       ; its size, patched in by EndProc
 mov    QWORD PTR [rbp-0x8],rdi        ; the parameters, into their slots
 mov    QWORD PTR [rbp-0x10],rsi
 mov    rax,QWORD PTR [rbp-0x8]        ; a
-push   rax                            ;   kept while b * 2 is computed
-mov    rax,QWORD PTR [rbp-0x10]       ; b, its push taken back for the 2
+push   rax                            ;   kept while b is loaded
+mov    rax,QWORD PTR [rbp-0x10]       ; b; the 2 is only noted
 shl    rax,0x1                        ; times 2 is a shift
 mov    rcx,rax
 pop    rax                            ; a again
@@ -102,9 +114,10 @@ leave
 ret
 ```
 
-Every line of it can be traced to a routine in `gen.pas`; the pushes
-and pops are `Op1` and `Op2`, the frame `EnterBody` and `EndProc`. It
-is not fast code. It is code whose every instruction you can account
+Every line of it can be traced to a routine in `gen.pas`; the push is
+`Spill`'s, as `PushVar` loads `b`, the pop `PopTo`'s, as `Op` takes
+its operands, and the frame is `EnterBody`'s and `EndProc`'s. It is
+not fast code. It is code whose every instruction you can account
 for, which is the point.
 
 ## diag.pas: messages
@@ -197,17 +210,31 @@ hashes what a declaration exports, for the check that a module's files
 for different targets agree. The universe, the basic types and built-in
 procedures, is set up in the unit's `initialization`.
 
-## x64.pas: machine code
+## chunk.pas: the compiled program
 
 Code is written into one growing buffer, `code`, with `pc` its length;
-strings go to `rodata`. A chunk (`TChunk`) records its section, where
-its bytes start, how many, and the fixups it makes. `BeginChunk` and
-`EndChunk` bracket a procedure; `SetData` and `SetBss` make data
-chunks.
+strings and other constants go to `rodata`. A chunk (`TChunk`) records
+its section, where its bytes start, how many, and the fixups it makes.
+`BeginChunk` and `EndChunk` bracket a procedure; `SetData` and `SetBss`
+make data chunks.
 
 A *fixup* (`TFixup`) is a 32-bit field in the code that will hold the
 distance to another chunk: a call's target, or a rip-relative address.
-`AddFixup` records one; `link.pas` fills them in.
+`AddFixup` records one; `link.pas` fills them in. `NoteLine` records
+which line and column of the source the code from `pc` on belongs to,
+for gdb and for the places. `ExternChunk` makes, once per C symbol,
+the quadword the dynamic loader will fill with that symbol's address.
+None of this depends on the machine.
+
+## x64.pas: machine code
+
+The encoder is `OpM` and `OpR`: a prefix, the REX byte, the opcode, the
+ModRM and SIB bytes and the displacement, for a register and a memory
+operand (`TMem`) or two registers. Everything else (`MovRR`, `Load`,
+`Store`, `Alu`, `Sse`, ...) is a line or two that calls them with the
+right opcode. Only the instructions the code generator uses are here.
+`test/enctest.pas` emits one of each for `objdump` to check. `Here` is
+the address of the code being written, as an operand.
 
 Jumps within a procedure don't wait for the linker. A label not yet
 placed is a chain of the jumps to it, each jump's 32-bit field holding
@@ -215,32 +242,78 @@ the position of the one before (`Jmp`, `Jcc`); `FixLink` walks the
 chain and patches each once the label's position is known. This is the
 trick from Wirth's compilers, and it means a label is one integer.
 
-The encoder is `OpM` and `OpR`: a prefix, the REX byte, the opcode, the
-ModRM and SIB bytes and the displacement, for a register and a memory
-operand (`TMem`) or two registers. Everything else (`MovRR`, `Load`,
-`Store`, `Alu`, `Sse`, ...) is a line or two that calls them with the
-right opcode. Only the instructions the code generator uses are here.
-`test/enctest.pas` emits one of each for `objdump` to check.
+## gen.pas: the stack machine
 
-Two more things live here because they are tied to code positions:
-`NoteLine` records which line and column of the source the code from
-`pc` on belongs to, for gdb and for the places; `Here` is the address
-of the code being written, as an operand. `ExternChunk` makes, once per C symbol, the quadword the
-dynamic loader will fill with that symbol's address.
+This is the only unit that knows the machine. The calls it answers:
 
-## gen.pas: the code generator
+- values: `PushConst`, `PushAdr` (the address of a variable),
+  `PushVar` (its value), `PushProc`, and `PopVar`, which stores the
+  value on top; `Drop` and `Swap`;
+- operations on the values on top: `Op`, `Compare`, `Neg`,
+  `Complement`, `NotBool`, `Narrow` (to a narrow integer's width),
+  the conversions between integers and reals, `CompareSeq` (of two
+  slices), and copying: `CopyBlock`, `CopyTo`, `ZeroVar`;
+- jumps: `Jump`, `JumpIf` (on a `BOOL`), `JumpCmp` (on two integers),
+  `JumpKeep` and `FixKeep` for `and` and `or`, `Fix` where the label
+  is;
+- checks: `CheckIndex`, `CheckEnum`, and `IndexSlice`, `Slice` and
+  `SlicePtr`, which check as they make their address or slice;
+- calls (`Call`), frames (`BeginProc`, `EnterBody`, `ReturnJump`,
+  `EndProc`, the temporaries of `AllocTemp`), deferred statements
+  (`DeferBegin`, `DeferEnd`, `RunDefer`), the built-ins that are
+  instructions (`Atomic`, `SysCall`, `Fence`), and the program's entry
+  point (`EntryPoint`).
 
-This is the heart, and the file to read slowly.
+A variable's place is a `TAdr`: relative to the frame (`bFrame`), to a
+chunk (`bGlobal`), to an address on the stack (`bStack`), or to one
+held in a frame slot (`bSlot`, as a `var` parameter's is); plus `off`.
+`Place` turns it into an x64 memory operand, popping or loading the
+address first, so that a variable is read or written with one
+instruction.
+
+The stack: `stack` notes each value, a constant or one computed;
+`inRax` is the one in `rax`, if any. `Computed` puts a value just
+computed in `rax` on top; `Spill` pushes the one in `rax` first, when
+`rax` is wanted for another; `PopTo` brings the value on top into a
+register, from the constant, from `rax` or by a pop. `pushed` counts
+what is on the machine's stack, which a call must align. `Op` takes a
+constant on the right as it is, and a power of two on the right of
+`*`, `div` or `mod` becomes shifts (`DivPow2`), since `idiv` is slow.
+Narrow integers are brought back to their width after each operation,
+which is how `U8` arithmetic wraps; since they are computed in 64 bits,
+a shift's count is cut to their width first, and `DivTrap` makes the
+smallest value of one divided by -1 fault as an `I64`'s does.
+
+Checks: `Check` jumps over a call to `Rt.fail` when the check holds.
+The call passes what failed, the values involved and its own address,
+by which `Rt` finds the place; that code has the place of the
+offending expression (`LineCol` in `scan.pas`), and the code after it
+the statement's again.
+
+Calls: the arguments are in frame slots by the time `Call` runs, one
+each, computed left to right; only then are they loaded into the
+registers System V wants, and the stack aligned for the call. A record
+passed by value goes as the address of a copy; one returned comes back
+through a hidden pointer in `rdi`, as C's structs do, and so do several
+results (`ResultTo`, `CopyResult`).
+
+Frames: `BeginProc` gives the parameters their slots; `EnterBody`
+writes the prologue, which zeroes the locals (with a few stores, or a
+loop for more; there are none to zero in `scale`) but not the
+temporaries, since each is written before it is read; `EndProc` writes
+the epilogue and patches the frame's size in. Within a statement,
+scratch space comes from `AllocTemp` and is given back by
+`ReleaseTemps`; `AllocPerm` reserves space for the whole procedure.
+
+## item.pas: items
 
 An operand is an *item* (`TItem`), as in Wirth's compilers. Its `mode`
 says what it is now:
 
 - `mConst`: a value known to the compiler, in `val`;
-- `mVar`: a variable at an address the code can name: relative to
-  `rbp` (`bFrame`), to a chunk (`bGlobal`), to a register (`bReg`), to
-  an address pushed on the stack (`bStack`), or kept in a frame slot
-  (`bSlot`); plus `off`;
-- `mReg`: a value in `rax`; `mStack`: a value pushed on the stack;
+- `mVar`: a variable, at `base`, `chunk` and `off`, which `AdrOf`
+  makes a `TAdr` for gen;
+- `mStack`: a value on gen's stack;
 - `mProc`, `mType`, `mStr`, and a few more the parser needs.
 
 An item also carries `pos`, the stretch of source it came from, which
@@ -250,99 +323,74 @@ across both (`Join(x.pos, y.pos)`). `What` names an item for a
 message: a constant without a type of its own as it is written
 (`found 1.5`), anything else by its type.
 
-Three routines move items towards the machine. `Value` brings a value
-into `rax`, loading it with the one instruction its size needs.
-`Address` brings a variable's address into a register. `Save` pushes
-whatever an item has in a register, so that another expression can be
-computed; the item remembers that it's on the stack. Read these three,
-then `MemOf`, which turns an `mVar` into an x64 memory operand, popping
-its address first if it was pushed.
+Two routines move items towards the machine: `Value` pushes an item's
+value, and `Address` a variable's address. Both leave the item saying
+it is on the stack. An item nothing more is done with is given back to
+`Discard`.
 
 Expressions: `Op1` is called when the parser has seen an operator and
-its left operand, `Op2` when it has the right one. `Op1` saves the left
-operand (or, for `and` and `or`, emits the test that skips the right
-one). `Op2` checks the types, folds constants (`FoldInt`, `FoldReal`),
-and otherwise puts the left operand in `rax`, the right in `rcx`, and
-emits the operation. When the left was the last thing pushed and the
-right needs no code (a constant, or a variable on the frame or in a
-chunk), `Unpush` takes the push back, and the right goes straight to
-`rcx`; not if a jump or a line starts after the push. A power of two
-on the right of `*`, `div` or `mod` becomes shifts (`DivPow2`), since
-`idiv` is slow. Narrow integers are brought back to their width
-after each operation (`Norm`), which is how `U8` arithmetic wraps.
-Since they are computed in 64 bits, a shift's count is cut to their
-width first, and `DivTrap` makes the smallest value of one divided by
--1 fault as an `I64`'s does.
-`=` and `#` on arrays, slices and strings make a slice of each side
-(`SeqSlice`), compare the lengths, and then the bytes with `repe
-cmpsb`, right where the comparison stands: no call. `+` on two string
-constants is `JoinStr`, which makes one string of them, in a chunk of
-its own.
+its left operand, `Op2` when it has the right one. `Op1` pushes the
+left operand, unless it is a constant (or, for `and` and `or`, has gen
+jump past the right one). `Op2` checks the types, folds constants
+(`FoldInt`, `FoldReal`), and otherwise pushes the right operand and has
+gen do the operation; a constant on the left goes on after the right,
+and the two `Swap`. A set's operations are operations on its bits
+(`SetOp`). `=` and `#` on arrays, slices and strings make a slice of
+each side (`SeqSlice`) and have gen compare them right where the
+comparison stands: no call. `+` on two string constants is `JoinStr`,
+which makes one string of them, in a chunk of its own.
 
 Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a
 variable into an item for part of it, mostly by adding to `off`. An
 item for another module's exported variable, or part of it, is `ro`:
 it isn't a variable (`isVar`), and `NotReadOnly` says why where one is
-wanted; what it points at is. An array constant is a variable too,
-in read-only data: `ArrayConst` (`parse.pas`) reads its literal into the
+wanted; what it points at is. An array constant is a variable too, in
+read-only data: `ArrayConst` (`parse.pas`) reads its literal into the
 bytes of a chunk, as a string constant's are, and `MakeItem` makes it
 an `mVar` there that isn't `isVar`, so it is read, indexed, sliced and
-passed, never changed.
-`Index` and `Slice` emit the bounds checks, unless the module says
-`check off;` (`checks`, which `CompileFile` sets for each module), and
-`Convert` the check of an enumeration's position; `Check` jumps over a call to `Rt.fail` when
-the check holds. The call passes what failed, the values involved and
-its own address, by which `Rt` finds the place; that code has the
-place of the offending expression (`LineCol` in `scan.pas`), and the
-code after it the statement's again.
+passed, never changed. `Index` and `Slice` have gen make the bounds
+checks, unless the module says `check off;` (`checks`, which
+`CompileFile` sets for each module), and `Convert` the check of an
+enumeration's position.
 
 Assignment and conversion: `Coerce` makes a value fit the type it's
 going to, or reports that it can't; it's where a string literal becomes
 a slice, an array a slice, an untyped constant a typed one, and an
 `INT` an `I64` (`Widens`). `CoerceExact` is for where the types must
 be the same, as in a `for` loop, `INC` and several results. `Assign`
-stores, copying records and arrays with `rep movsb`. `Convert` is the
-written conversion, `T(x)`.
+stores, or copies records and arrays. `Convert` is the written
+conversion, `T(x)`.
 
-Calls: `BeginCall`, then `PassArg` for each argument, then `EndCall`.
-Each argument is computed into a frame slot of its own, left to right;
-only in `EndCall` are they loaded into the registers System V wants,
-and the stack aligned for the call. A record passed by value goes as
-the address of a copy; one returned comes back through a hidden pointer
-in `rdi`, as C's structs do, and so do several results. `return
-f(x);` passing on f's several results copies them, with `ReturnAll`,
-from the call's temporary to the place its own hidden pointer names.
-
-Frames: `BeginProc` gives the parameters their slots; `EnterBody`
-writes the prologue, which zeroes the locals (with a few stores, or a
-loop for more; there are none to zero in `scale`) but not the
-temporaries, since each is written before it is read;
-`EndProc` writes the epilogue and patches the frame's size in. Within
-a statement, scratch space comes from `AllocTemp` and is given back by
-`ReleaseTemps`; `AllocPerm` reserves space for the whole procedure.
+Calls: `BeginCall`, then `PassArg` for each argument, then `EndCall`,
+which has gen's `Call` make the call. Each argument is computed into a
+frame slot of its own. `return f(x);` passing on f's several results
+copies them, with `ReturnAll`, from the call's temporary to the place
+its own hidden pointer names.
 
 ## parse.pas: the parser
 
 A recursive descent parser, one routine for each rule of the grammar in
-the report, calling `gen.pas` as it goes.
+the report, calling `item.pas`, and for jumps `gen.pas`, as it goes.
 
 Start with expressions, bottom up: `Factor`, `Term`, `SimpleExpr`,
 `Relation`, `Conjunct` (the `and`s), `Expression` (the `or`s). Then `Designator`, which reads a name and what follows
 it: `.field`, `^`, `[i]`, `[lo..hi]`, a call, a conversion. Each step
-calls the matching routine in `gen.pas` on the item it has. The
+calls the matching routine in `item.pas` on the item it has. The
 `want` parameter carries the type an expression must have, where it is
 known, so that `[1, 2, 3]`, `{x: 1}` and `{red}` know what to build.
 
 Then statements: `Statement` makes each one a recovery point (below)
 and `OneStatement` dispatches; `IfStatement`,
 `WhileStatement`, `ForStatement` and `MatchStatement` emit their jumps
-with `x64.pas`'s labels. A `match` on an integer reads each arm's
+with gen's labels. A `match` on an integer reads each arm's
 labels in `IntArm`, which refuses a value in two of them, and tests them
 one after another with `MatchRange`: compares and branches, no jump
 table. `Defer` is worth reading: a deferred statement
 is compiled where it stands, as a little subroutine of the procedure
-that the code jumps over, and `RunDefers` emits a call to it at every
-way out of its statement list: the end, `return` and `break`.
+that the code jumps over (gen's `DeferBegin` and `DeferEnd`), and
+`RunDefers` emits a call to it at every way out of its statement list:
+the end, `return` and `break`. A `return`'s result waits in the frame
+meanwhile, so that gen's stack is empty when they run.
 
 Then declarations: `Declarations` reads `const`, `type`, `var`, `proc`
 and `extern`, each one through `Declaration`, a recovery point, which
@@ -451,11 +499,12 @@ it; gdb can stop at a line and show where it is, not print a variable.
 `raz.pas` parses the arguments, calls `CompileMain`, and works out what
 the program uses: `Use` marks the modules imported from the main module
 and `Rt`; `UsesC` decides whether the program is dynamic, refusing one
-that both uses C and has a module saying `link static`. Then it writes
-the entry point, and has `MarkLive` mark what it reaches. On a target
+that both uses C and has a module saying `link static`. Then it has
+gen's `EntryPoint` write the entry point, and `MarkLive` mark what it
+reaches. On a target
 without reals (`HasReals`, beside `Target` in `parse.pas`; x86-64 has
 them), a live chunk that computes with one is an error at the first
-place it does: `UsesReals` in `gen.pas` notes it, from `Value` and a
+place it does: `UsesReals` in `item.pas` notes it, from `Value` and a
 real literal, on the chunk of the procedure being compiled. A real
 moved whole, as a record's bytes are, isn't noted. A static program starts at `_start` itself. A dynamic
 one starts at a `_start` that calls `__libc_start_main` the way C's own
@@ -470,9 +519,12 @@ status is the command's.
 ## Where to start changing it
 
 - **A built-in procedure:** an entry in `sym.pas`'s universe, a case in
-  `Builtin` in `parse.pas`, and the code, in `gen.pas` or right there.
+  `Builtin` in `parse.pas`, and the code, in `gen.pas` if it is an
+  instruction, or of calls to gen right there.
 - **An instruction:** a routine in `x64.pas` built on `OpM` or `OpR`,
   and a line in `test/enctest.pas` to check its encoding.
+- **A machine:** a new `gen.pas`, answering the same calls, and an
+  encoder for it in place of `x64.pas`.
 - **A statement:** a reserved word in `scan.pas` (in `TSym` and `Words`,
   in the same order), a case in `Statement`, and a routine beside the
   others.
