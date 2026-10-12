@@ -129,8 +129,10 @@ otherwise.
 - `for`: the step is a constant; the loop never steps past the limit, so
   it can't wrap; afterwards the variable holds the last value it took;
   the body may assign it. Leave as is.
-- Several results come back through a hidden pointer; a code procedure
-  returns two in rax and rdx.
+- Two results that are each a single value of a word at most, not a
+  real, come back in rax and rdx, and so does a slice, as from a code
+  procedure (owner's word, v0.7.0); other several results, and records,
+  through a hidden pointer.
 - `NEW(p, a)` requires `a: ^Mem.Allocator` and calls its `alloc` field:
   the one library type the compiler knows by name. `Rt.fail` is
   found by name too.

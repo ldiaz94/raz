@@ -1,0 +1,61 @@
+module TwoWords;
+
+(* Two results, and a slice, returned: with deferred statements, passed
+   on, through a procedure value, run off the end, and with a call in
+   the second. *)
+import Out;
+
+var log: INT;
+
+proc note; begin log := log * 10 + 1; end;
+
+proc pair(a, b: I32): (I32, I32);
+begin
+    defer note;
+    return b, a;
+end;
+
+proc mixed(n: INT): (BOOL, I64);
+begin
+    if n < 0 then return false, -n; end;
+    return true, n * 3;
+end;
+
+proc twice(n: INT): INT; begin return 2 * n; end;
+
+proc nested(n: INT): (INT, INT);
+begin
+    return n, twice(n) + twice(n + 1);
+end;
+
+proc passOn(n: INT): (INT, INT);
+begin
+    defer note;
+    return nested(n);
+end;
+
+proc tail(s: []U8; i: INT): []U8;
+begin
+    defer note;
+    return s[i..LEN(s)];
+end;
+
+proc fallOff(n: INT): (INT, INT);
+begin
+    if n > 0 then return 1, 2; end;
+end;
+
+proc main*;
+var x, y: I32; b: BOOL; v, p, q: INT; w: I64; h: proc(n: INT): (INT, INT);
+begin
+    x, y := pair(-5, 7); Out.int(I64(x)); Out.str(" "); Out.int(I64(y)); Out.ln;
+    b, w := mixed(-4); if b then Out.str("T"); else Out.str("F"); end; Out.str(" "); Out.int(w); Out.ln;
+    b, w := mixed(4); if b then Out.str("T"); else Out.str("F"); end; Out.str(" "); Out.int(w); Out.ln;
+    p, q := passOn(5); Out.int(p); Out.str(" "); Out.int(q); Out.ln;
+    h := nested; p, q := h(1); Out.int(p); Out.str(" "); Out.int(q); Out.ln;
+    Out.str(tail("hello", 2)); Out.ln;
+    p, q := fallOff(0); Out.int(p); Out.str(" "); Out.int(q); Out.ln;
+    _, v := nested(3); Out.int(v); Out.str(" "); Out.int(log); Out.ln;
+end;
+
+end TwoWords.

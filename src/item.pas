@@ -1119,9 +1119,9 @@ procedure BeginCall(var c: TCall; var x: TItem);
 begin
   if x.mode = mProc then begin
     c.sig := x.obj^.typ; c.chunk := x.obj^.chunk; c.target := 0;
-    c.obj := x.obj; c.code := x.obj^.isCode; c.ext := x.obj^.ext;
+    c.obj := x.obj; c.ext := x.obj^.ext;
   end else begin
-    c.obj := nil; c.code := false; c.ext := false;
+    c.obj := nil; c.ext := false;
     if x.typ^.form <> fProc then MarkAt(x.pos, 'expected a procedure, found ' + What(x));
     c.sig := x.typ; c.chunk := -1;
     c.target := ToSlot(x);
@@ -1139,8 +1139,29 @@ begin
   Fail;
 end;
 
+{ Pushes the two words of x, a slice or two results (InTwoRegs), read
+  from memory now, so that what comes after can't change them. }
+procedure PushWords(var x: TItem);
+var adr: TAdr; f: PObj;
+begin
+  if (x.mode <> mVar) or x.vol or not (x.base in [bFrame, bGlobal, bSlot]) then CopyToTemp(x);
+  adr := AdrOf(x);
+  if x.typ^.form = fSlice then begin
+    PushVar(adr, 8, false, kWord);
+    inc(adr.off, 8);
+    PushVar(adr, 8, false, kWord);
+  end else begin
+    f := x.typ^.fields;
+    while f <> nil do begin
+      adr.off := AdrOf(x).off + f^.val;
+      PushVar(adr, ScalarSize(f^.typ), Signed(f^.typ), KindOf(f^.typ));
+      f := f^.next;
+    end;
+  end;
+end;
+
 procedure PassArg(var c: TCall; var a: TItem);
-var p: PObj; adr: TAdr; s: int64;
+var p: PObj;
 begin
   p := c.param;
   if c.n >= High(c.isF) then MarkAt(a.pos, 'too many arguments');
@@ -1171,16 +1192,11 @@ begin
     if a.vol then MarkAt(a.pos, 'can''t pass through a volatile pointer to a var parameter');
     Address(a);
   end else if p^.typ^.form = fSlice then begin
-    { its two words, read now, so that a later argument can't change them }
     Coerce(a, p^.typ);
-    if (a.mode <> mVar) or a.vol or not (a.base in [bFrame, bGlobal, bSlot]) then CopyToTemp(a);
-    adr := AdrOf(a);
-    PushVar(adr, 8, false, kWord);
+    PushWords(a);
     c.pair[c.n] := true;
     inc(c.n);
     c.isF[c.n] := false;
-    inc(adr.off, 8);
-    PushVar(adr, 8, false, kWord);
   end else if IsAggregate(p^.typ) then begin
     Coerce(a, p^.typ);
     if a.isVar or a.vol or (a.base <> bFrame) then CopyToTemp(a);
@@ -1335,24 +1351,28 @@ begin
   gen.BeginProc(sig, params);
 end;
 
-{ The result of return x: a value on top, or one copied behind the
-  hidden pointer }
+{ The result of return x: a value on top, a slice's two words on top,
+  or one copied behind the hidden pointer }
 procedure ReturnValue(var x: TItem);
 begin
   if result = nil then MarkAt(x.pos, 'this procedure returns nothing');
   Coerce(x, result);
-  if IsAggregate(result) then begin
+  if InTwoRegs(result) then PushWords(x)
+  else if IsAggregate(result) then begin
     if x.vol then MarkAt(x.pos, 'can''t copy through a volatile pointer');
     Address(x);
     CopyResult(0, result^.size);
   end else Value(x);
 end;
 
-{ One of several results, into its place behind the hidden pointer. }
+{ One of several results: of two words, a value left on top for
+  ReturnJump to put in rax or rdx; else into its place behind the
+  hidden pointer. }
 procedure ReturnField(f: PObj; var x: TItem);
 begin
   Coerce(x, f^.typ);
-  if IsScalar(f^.typ) then begin
+  if InTwoRegs(result) then Value(x)
+  else if IsScalar(f^.typ) then begin
     Value(x);
     ResultTo(f^.val, ScalarSize(f^.typ));
   end else begin
@@ -1365,8 +1385,11 @@ end;
 { Several results at once, the call's that return f(x) passes on. }
 procedure ReturnAll(var x: TItem);
 begin
-  Address(x);
-  CopyResult(0, result^.size);
+  if InTwoRegs(result) then PushWords(x)
+  else begin
+    Address(x);
+    CopyResult(0, result^.size);
+  end;
 end;
 
 procedure ReturnNone;

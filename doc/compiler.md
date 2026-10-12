@@ -10,12 +10,12 @@ disassembly.
 |---|---|---|---|
 | `src/diag.pas` | 310 | 229 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 617 | 512 | Types, objects, scopes, layout |
+| `src/sym.pas` | 643 | 527 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 302 | 234 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,113 | 930 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,633 | 1,280 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,444 | 1,204 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,913 | 2,579 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/gen.pas` | 1,641 | 1,287 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,467 | 1,223 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,916 | 2,580 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -353,9 +353,13 @@ wants (`ArgTo`), `r8` and `r9` last since they may hold others, and
 aligns the stack. A slice goes as its two words, in two registers or
 both on the stack, as System V passes a struct of two integers, and
 the procedure keeps them in its frame. A record
-passed by value goes as the address of a copy; one returned comes back
-through a hidden pointer in `rdi`, as C's structs do, and so do several
-results (`ResultTo`, `CopyResult`).
+passed by value goes as the address of a copy. A result of two words,
+a slice or two single values that aren't reals (`InTwoRegs`, in
+`sym.pas`), comes back in rax and rdx, as System V returns a struct of
+two integers: `return` leaves both on the stack for `ReturnJump`, and
+`Call` stores them in a temporary of the caller's. Any other record or
+several results come back through a hidden pointer in `rdi`, as C's
+structs do (`BehindPointer`, `ResultTo`, `CopyResult`).
 
 Frames: `BeginProc` gives the parameters their slots; `EnterBody`
 writes the prologue, which zeroes the locals in memory (with a few
@@ -444,10 +448,11 @@ stores, or copies records and arrays. `Convert` is the written
 conversion, `T(x)`.
 
 Calls: `BeginCall`, then `PassArg` for each argument, then `EndCall`,
-which has gen's `Call` make the call. Each argument is computed into a
-frame slot of its own. `return f(x);` passing on f's several results
-copies them, with `ReturnAll`, from the call's temporary to the place
-its own hidden pointer names.
+which has gen's `Call` make the call. Each argument is left on gen's
+stack, a slice as its two words (`PushWords`). `return f(x);` passing
+on f's several results, with `ReturnAll`, pushes them from the call's
+temporary if they are two words, or else copies them to the place its
+own hidden pointer names.
 
 ## parse.pas: the parser
 
@@ -678,8 +683,9 @@ this one does.
 - **Registers for variables.** Up to five of a procedure's single
   values, not reals, whose address is never taken, live in `rbx` and
   `r12` to `r15`; the trap report shows them as it shows the others.
-- **Several results** come back through a hidden pointer to the
-  caller's slots; a code procedure returns two in rax and rdx.
+- **Several results** that are two words, and a slice, come back in
+  rax and rdx, as from a code procedure; others through a hidden
+  pointer to the caller's slots.
 - **Reals.** A real constant is held as an F64. An `F32` in a register
   is its low 32 bits; the upper ones are left as they fall.
 - **How a failure is caught.** A division by zero, a stack overflow

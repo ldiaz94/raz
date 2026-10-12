@@ -74,9 +74,8 @@ type
     pair: array[0..63] of boolean;   { ... is a slice's first word, the next its second }
     target: int64;     { the frame slot of a procedure value, if chunk < 0 }
     chunk: longint;    { else the procedure's chunk }
-    code: boolean;     { a code procedure: two results come in rax and rdx }
     ext: boolean;      { C's: called through the chunk holding its address }
-    ret: int64;        { set by Call: the temporary an aggregate result is in }
+    ret: int64;        { set by Call: the temporary a result of more than one word is in }
   end;
 
 const
@@ -1192,7 +1191,7 @@ begin
   ni := 0; nf := 0;
   if (res <> nil) and IsAggregate(res) then begin
     c.ret := AllocTemp(res^.size, res^.align);
-    if not c.code then ni := 1;
+    if BehindPointer(res) then ni := 1;
   end;
   { the System V classes: each argument in the next free register of
     its kind, or else on the stack }
@@ -1219,7 +1218,7 @@ begin
     end;
   ni := 0; nf := 0;
   late[4] := -1; late[5] := -1;
-  if (c.ret <> 0) and not c.code then begin Lea(RDI, Mem(RBP, c.ret)); ni := 1 end;
+  if (c.ret <> 0) and BehindPointer(res) then begin Lea(RDI, Mem(RBP, c.ret)); ni := 1 end;
   { rdi, rsi, rdx, rcx and the xmm registers first; r8 and r9 last, as
     they may hold arguments still }
   for i := 0 to c.n - 1 do
@@ -1247,10 +1246,14 @@ begin
     CallR(R11);
   end;
   if k + pad > 0 then AluI(aluAdd, RSP, 8 * (k + pad));
-  if (c.ret <> 0) and c.code then begin
-    Store(Mem(RBP, c.ret), RAX, 8);
-    Store(Mem(RBP, c.ret + 8), RDX, 8);
-  end;
+  if (c.ret <> 0) and InTwoRegs(res) then
+    if res^.form = fSlice then begin
+      Store(Mem(RBP, c.ret), RAX, 8);
+      Store(Mem(RBP, c.ret + 8), RDX, 8);
+    end else begin
+      Store(Mem(RBP, c.ret + res^.fields^.val), RAX, res^.fields^.typ^.size);
+      Store(Mem(RBP, c.ret + res^.fields^.next^.val), RDX, res^.fields^.next^.typ^.size);
+    end;
   if (res <> nil) and (c.ret = 0) then begin
     r := Target;
     if res^.form = fReal then MovqRX(r, 0)
@@ -1313,7 +1316,7 @@ begin
   procParams := params;
   regMask := 0;
   ni := 0; nf := 0; stackOff := 16;
-  if (resType <> nil) and IsAggregate(resType) then begin
+  if (resType <> nil) and BehindPointer(resType) then begin
     retSlot := AllocPerm(8, 8);
     inReg[0] := RDI; inSlot[0] := retSlot; inSize[0] := 8; inObj[0] := nil;
     numIn := 1; ni := 1;
@@ -1469,13 +1472,17 @@ begin
   CopyBytes(size);
 end;
 
-{ return: the result, a value on top, goes in rax or xmm0; one behind
-  the hidden pointer goes back with that pointer in rax. }
+{ return: the result, a value on top, goes in rax or xmm0; two words,
+  the two values on top, in rax and rdx; one behind the hidden pointer
+  goes back with that pointer in rax. }
 procedure ReturnJump;
 begin
   if resType <> nil then
-    if IsAggregate(resType) then Load(RAX, Mem(RBP, retSlot), 8, false)
-    else begin
+    if BehindPointer(resType) then Load(RAX, Mem(RBP, retSlot), 8, false)
+    else if InTwoRegs(resType) then begin
+      MovRR(RDX, Top); Drop;
+      MovRR(RAX, Top); Drop;
+    end else begin
       if resType^.form = fReal then MovqXR(0, Top) else MovRR(RAX, Top);
       Drop;
     end;
@@ -1491,7 +1498,7 @@ begin
   if (depth <> 0) or (pushed <> 0) then Fatal('internal error: stack depth');
   { running off the end returns zeros }
   if resType <> nil then
-    if IsAggregate(resType) then begin
+    if BehindPointer(resType) then begin
       Load(RDI, Mem(RBP, retSlot), 8, false);
       MovRI(RCX, resType^.size);
       MovRI(RAX, 0);
@@ -1499,6 +1506,7 @@ begin
       Load(RAX, Mem(RBP, retSlot), 8, false);
     end else begin
       MovRI(RAX, 0);
+      if InTwoRegs(resType) then MovRI(RDX, 0);
       MovqXR(0, RAX);
     end;
   FixLink(exitL);

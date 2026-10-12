@@ -513,7 +513,8 @@ begin
 end;
 
 { Several results: a record of them, laid out as C would, and
-  returned through a hidden pointer. }
+  returned in rax and rdx if they are two words (InTwoRegs), or else
+  through a hidden pointer. }
 function Results: PType;
 var t, ft: PType; f, last: PObj; off: int64;
 begin
@@ -1599,7 +1600,7 @@ begin
 end;
 
 procedure OneStatement;
-var x, y: TItem; called, scalar: boolean; m: int64; c: TCall; start: TPos; first: longint;
+var x, y: TItem; called: boolean; m: int64; c: TCall; start: TPos; first, n, i: longint; k: TKind;
 begin
   start := TokPos;
   first := id;
@@ -1664,13 +1665,15 @@ begin
           Expression(x, curResult);
           ReturnValue(x);
         end;
-        { the result waits in the frame while the deferred statements run }
-        scalar := (curResult <> nil) and not IsAggregate(curResult);
-        if (numDefers > 0) and scalar then begin
-          if deferSlot = 0 then deferSlot := AllocPerm(8, 8);
-          PopVar(FrameAdr(deferSlot), 8);
+        { the result, one value or two words on top, waits in the frame
+          while the deferred statements run }
+        if (numDefers > 0) and (curResult <> nil) and not BehindPointer(curResult) then begin
+          n := 1; k := KindOf(curResult);
+          if InTwoRegs(curResult) then begin n := 2; k := kWord end;
+          if deferSlot = 0 then deferSlot := AllocPerm(16, 8);
+          for i := n - 1 downto 0 do PopVar(FrameAdr(deferSlot + 8 * i), 8);
           RunDefers(0);
-          PushVar(FrameAdr(deferSlot), 8, false, KindOf(curResult));
+          for i := 0 to n - 1 do PushVar(FrameAdr(deferSlot + 8 * i), 8, false, k);
         end else RunDefers(0);
         ReturnJump;
         ends := true;

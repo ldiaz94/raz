@@ -43,7 +43,7 @@ type
     variadic: boolean; { fProc: ends in ... }
     tuple: boolean;    { fRecord: the results of a procedure that has several }
     base: PType;       { fPtr, fArray, fSlice: what it holds; fProc: result }
-    len: int64;        { fArray: elements; fProc: parameters; fVariant: cases }
+    len: int64;        { fArray: elements; fProc: parameters; fVariant: cases; a tuple: results }
     fields: PObj;      { fRecord: fields; fVariant: cases; fProc: parameters }
     scope: longint;    { fRecord: the scope of its fields }
     fwd: longint;      { fPtr whose base isn't declared yet: its name, else -1 }
@@ -156,6 +156,8 @@ function Same(a, b: PType): boolean;
 function IsInt(t: PType): boolean;
 function IsScalar(t: PType): boolean;
 function IsAggregate(t: PType): boolean;
+function InTwoRegs(t: PType): boolean;
+function BehindPointer(t: PType): boolean;
 function Fits(v: int64; t: PType): boolean;
 function TypeName(t: PType): shortstring;
 function Fingerprint(o: PObj): qword;
@@ -391,6 +393,30 @@ end;
 function IsAggregate(t: PType): boolean;
 begin
   IsAggregate := t^.form in [fArray, fSlice, fRecord, fVariant];
+end;
+
+{ Whether a procedure's result t is two words, which come back in rax
+  and rdx, as System V returns a struct of two integers: a slice (its
+  pointer, then its length), or two results that are each a single
+  value of 8 bytes at most and not a real. }
+function InTwoRegs(t: PType): boolean;
+
+  function OneWord(f: PObj): boolean;
+  begin
+    OneWord := IsScalar(f^.typ) and (f^.typ^.form <> fReal) and (f^.typ^.size <= 8);
+  end;
+
+begin
+  if t^.form = fSlice then exit(true);
+  InTwoRegs := t^.tuple and (t^.len = 2) and OneWord(t^.fields) and OneWord(t^.fields^.next);
+end;
+
+{ Whether a procedure's result t comes back in the caller's memory, in
+  a place a hidden pointer, passed first, says: any result that is
+  neither one value, in rax or xmm0, nor two words, in rax and rdx. }
+function BehindPointer(t: PType): boolean;
+begin
+  BehindPointer := IsAggregate(t) and not InTwoRegs(t);
 end;
 
 function Fits(v: int64; t: PType): boolean;
