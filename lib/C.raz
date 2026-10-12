@@ -50,6 +50,7 @@ extern proc getcwd*(buf: ^U8; n: UINT): ^U8;
 extern proc chdir*(path: ^U8): I32;
 extern proc stat*(path, st: ^U8): I32;
 extern proc lstat*(path, st: ^U8): I32;
+extern proc statvfs*(path, st: ^U8): I32;
 extern proc symlink*(target, path: ^U8): I32;
 extern proc posix_openpt*(flags: I32): I32;
 extern proc grantpt*(fd: I32): I32;
