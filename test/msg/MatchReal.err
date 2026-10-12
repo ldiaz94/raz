@@ -1,0 +1,4 @@
+conform/err/MatchReal.raz:4:11: error: match needs a variant, an enumeration or an integer, found F64
+    4 |     match n of
+      |           ^
+raz: 1 error

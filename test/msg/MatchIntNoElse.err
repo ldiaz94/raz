@@ -1,0 +1,5 @@
+conform/err/MatchIntNoElse.raz:6:5: error: a match on an integer needs an else arm
+    6 |     end;
+      |     ^^^
+help: it may be empty: | else:
+raz: 1 error

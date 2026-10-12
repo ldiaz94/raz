@@ -1,0 +1,8 @@
+module MatchIntNoElse;
+proc f(n: I64);
+begin
+    match n of
+    | 1: n := 0;
+    end;
+end;
+end MatchIntNoElse.

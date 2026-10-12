@@ -111,6 +111,7 @@ procedure Construct(var x: TItem; c: PObj);
 procedure SetField(const x: TItem; f: PObj; var a: TItem);
 function MatchBegin(var x: TItem): int64;
 procedure MatchTag(p: int64; tag: int64; var L: longint; isEnum: boolean);
+procedure MatchRange(p, lo, hi: int64; var body: longint);
 procedure CondJump(var x: TItem; var L: longint);
 
 procedure SliceOf(var x: TItem; t: PType; len: int64);
@@ -1513,8 +1514,8 @@ end;
 function MatchBegin(var x: TItem): int64;
 var p: int64;
 begin
-  if x.typ^.form = fEnum then exit(ToSlot(x));
-  if (x.mode <> mVar) or (x.typ^.form <> fVariant) then MarkAt(x.pos, 'match needs a variant or an enumeration, found ' + What(x));
+  if x.typ^.form in [fEnum, fInt] then exit(ToSlot(x));
+  if (x.mode <> mVar) or (x.typ^.form <> fVariant) then MarkAt(x.pos, 'match needs a variant, an enumeration or an integer, found ' + What(x));
   if x.ro then CopyToTemp(x);   { its arms' names stand for a copy's fields }
   Address(x, RAX);
   p := AllocTemp(8, 8);
@@ -1528,6 +1529,22 @@ begin
   if not isEnum then Load(RAX, Mem(RAX, 0), 8, false);
   CmpI(RAX, tag);
   Jcc(ccNE, L);
+end;
+
+{ To body if the integer in slot p is from lo to hi: less its lo, it is
+  then at most hi - lo, compared unsigned, which holds for a signed type
+  or not, with no second jump. }
+procedure MatchRange(p, lo, hi: int64; var body: longint);
+begin
+  Load(RAX, Mem(RBP, p), 8, false);
+  if lo = hi then begin
+    CmpI(RAX, lo);
+    Jcc(ccE, body);
+    exit;
+  end;
+  if lo <> 0 then begin MovRI(RCX, lo); Alu(aluSub, RAX, RCX) end;
+  CmpI(RAX, hi - lo);
+  Jcc(ccBE, body);
 end;
 
 { The end of a round of a for loop: stop if the step would pass the

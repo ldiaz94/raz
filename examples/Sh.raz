@@ -57,8 +57,10 @@ end;
 
 proc special(c: U8): BOOL;
 begin
-    return (c = ' ') or (c = 9) or (c = 10) or (c = ';') or (c = '|') or (c = '&')
-        or (c = '<') or (c = '>');
+    match c of
+    | ' ', 9, 10, ';', '|', '&', '<', '>': return true;
+    | else: return false;
+    end;
 end;
 
 (* $NAME or $? at s[at], its value added to b; a $ before anything else
@@ -86,11 +88,12 @@ begin
     Buf.init(ADR(b), ADR(arena.base));
     while (at < LEN(s)) and not special(s[at]) do
         q := s[at];
-        if q = 39 then             (* '...': every character as it is *)
+        match q of
+        | 39:                      (* '...': every character as it is *)
             INC(at);
             while (at < LEN(s)) and (s[at] # 39) do Buf.add(ADR(b), s[at]); INC(at); end;
             INC(at);
-        elsif q = '"' then         (* "...": dollars, and \" and \\ *)
+        | '"':                     (* "...": dollars, and \" and \\ *)
             INC(at);
             while (at < LEN(s)) and (s[at] # '"') do
                 if s[at] = '$' then dollar(ADR(b));
@@ -101,9 +104,9 @@ begin
                 end;
             end;
             INC(at);
-        elsif q = '$' then
+        | '$':
             dollar(ADR(b));
-        else
+        | else:
             if (q = '\\') and (at + 1 < LEN(s)) then INC(at); end;
             Buf.add(ADR(b), s[at]);
             INC(at);
@@ -122,16 +125,17 @@ begin
     if at >= LEN(s) then return eof; end;
     c := s[at];
     INC(at);
-    if (c = ';') or (c = 10) then return sep;
-    elsif c = '|' then return pipe;
-    elsif c = '&' then return amp;
-    elsif c = '<' then return from;
-    elsif c = '>' then
+    match c of
+    | ';', 10: return sep;
+    | '|': return pipe;
+    | '&': return amp;
+    | '<': return from;
+    | '>':
         if (at < LEN(s)) and (s[at] = '>') then INC(at); return onto; end;
         return into;
-    elsif (c = '2') and (at < LEN(s)) and (s[at] = '>') then
-        INC(at);
-        return errTo;
+    | '2':
+        if (at < LEN(s)) and (s[at] = '>') then INC(at); return errTo; end;
+    | else:
     end;
     DEC(at);
     readWord;

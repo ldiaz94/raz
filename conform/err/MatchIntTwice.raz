@@ -1,0 +1,10 @@
+module MatchIntTwice;
+proc f(n: I64);
+begin
+    match n of
+    | 1 .. 5: n := 0;
+    | 7, 5: n := 1;
+    | else:
+    end;
+end;
+end MatchIntTwice.

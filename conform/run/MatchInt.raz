@@ -1,0 +1,65 @@
+module MatchInt;
+import Out;
+
+const Max = 100;
+
+proc kind(ch: U8): I64;
+var k: I64;
+begin
+    match ch of
+    | ' ', '\t', '\n': k := 1;
+    | '0' .. '9': k := 2;
+    | 'a' .. 'z', 'A' .. 'Z', '_': k := 3;
+    | else:
+    end;
+    return k;
+end;
+
+proc signed(n: I32): I64;
+begin
+    match n of
+    | -2147483648 .. -1000: return -2;
+    | -999 .. -1: return -1;
+    | 0: return 0;
+    | Max: return 100;
+    | Max + 1 .. 2147483647: return 2;
+    | else: return 1;
+    end;
+end;
+
+proc big(n: U64): I64;
+begin
+    match n of
+    | 0FFFFFFFFFFFFFFFFH: return 3;
+    | 8000000000000000H .. 0FFFFFFFFFFFFFFFEH: return 2;
+    | 0 .. 0FFFFFFFFH: return 0;
+    | else: return 1;
+    end;
+end;
+
+proc main*;
+var i: INT; s: []U8;
+begin
+    s := "a1 _Z\t9?";
+    for i := 0 to LEN(s) - 1 do Out.int(kind(s[i])); end;
+    Out.ln;
+    Out.int(signed(-2147483648)); Out.str(" ");
+    Out.int(signed(-1000)); Out.str(" ");
+    Out.int(signed(-999)); Out.str(" ");
+    Out.int(signed(0)); Out.str(" ");
+    Out.int(signed(50)); Out.str(" ");
+    Out.int(signed(100)); Out.str(" ");
+    Out.int(signed(101)); Out.str(" ");
+    Out.int(signed(2147483647)); Out.ln;
+    Out.int(big(0)); Out.int(big(0FFFFFFFFH)); Out.int(big(100000000H));
+    Out.int(big(8000000000000000H)); Out.int(big(0FFFFFFFFFFFFFFFEH));
+    Out.int(big(0FFFFFFFFFFFFFFFFH)); Out.ln;
+    match 7 of
+    | 1 .. 6: Out.str("low");
+    | 7: Out.str("seven");
+    | else: Out.str("high");
+    end;
+    Out.ln;
+end;
+
+end MatchInt.

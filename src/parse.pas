@@ -1303,19 +1303,74 @@ begin
   FixLink(lp.brk);
 end;
 
+type
+  TLabels = record
+    lo, hi: array[0..1023] of int64;   { the ranges of the arms so far }
+    n: longint;
+  end;
+
+{ a < b, for values of an integer type, unsigned or not }
+function Below(a, b: int64; unsign: boolean): boolean;
+begin
+  if unsign then Below := qword(a) < qword(b) else Below := a < b;
+end;
+
+{ An arm of a match on an integer of type t, held in slot p: its labels,
+  each a constant or a range, none overlapping another (report section
+  7.4), then its statements. }
+procedure IntArm(t: PType; p: int64; var ls: TLabels; var endL: longint);
+var lo, hi: TItem; L, body, i: longint; u: boolean; start: TPos;
+begin
+  u := not t^.signed;
+  body := NoLabel;
+  repeat
+    start := TokPos;
+    Expression(lo, t);
+    Coerce(lo, t);
+    ConstValue(lo);
+    hi := lo;
+    if tok = sUpto then begin
+      Next;
+      Expression(hi, t);
+      Coerce(hi, t);
+      ConstValue(hi);
+      if Below(hi.val, lo.val, u) then MarkAt(SpanFrom(start), 'the range is empty');
+    end;
+    for i := 0 to ls.n - 1 do
+      if not Below(hi.val, ls.lo[i], u) and not Below(ls.hi[i], lo.val, u) then
+        if lo.val = hi.val then MarkAt(SpanFrom(start), Source(SpanFrom(start)) + ' is in another label too')
+        else MarkAt(SpanFrom(start), Source(SpanFrom(start)) + ' overlaps another label');
+    if ls.n > High(ls.lo) then MarkAt(SpanFrom(start), 'more than ' + IntStr(High(ls.lo) + 1) + ' labels in one match');
+    ls.lo[ls.n] := lo.val; ls.hi[ls.n] := hi.val;
+    inc(ls.n);
+    MatchRange(p, lo.val, hi.val, body);
+    if tok <> sComma then break;
+    Next;
+  until false;
+  L := NoLabel;
+  Jmp(L);
+  FixLink(body);
+  Expect(sColon);
+  Statements;
+  Jmp(endL);
+  FixLink(L);
+end;
+
 procedure MatchStatement;
 var
   x: TItem; t: PType; c, f, o: PObj; p: int64; L, endL, n: longint;
-  seen: array[0..255] of boolean; hasElse: boolean; endAt: TPos;
+  seen: array[0..255] of boolean; hasElse: boolean; endAt: TPos; ls: TLabels;
 begin
   Next;
   Expression(x, nil);
+  if x.typ^.form = fConst then Coerce(x, tI64);
   p := MatchBegin(x);
   t := x.typ;
   Expect(sOf);
   FillChar(seen, SizeOf(seen), 0);
   hasElse := false;
   endL := NoLabel;
+  ls.n := 0;
   while tok = sBar do begin
     Next;
     if hasElse then Mark('else must be the last arm');
@@ -1324,7 +1379,9 @@ begin
       Expect(sColon);
       Statements;
       hasElse := true;
-    end else begin
+    end else if t^.form = fInt then
+      IntArm(t, p, ls, endL)
+    else begin
       if tok <> sIdent then Expected('a case');
       c := t^.fields;
       while (c <> nil) and (c^.name <> id) do c := c^.next;
@@ -1364,6 +1421,8 @@ begin
   end;
   endAt := TokPos;
   Expect(sEnd);
+  if (t^.form = fInt) and not hasElse then
+    MarkHelp(endAt, 'a match on an integer needs an else arm', 'it may be empty: | else:');
   if not hasElse then begin
     c := t^.fields;
     while c <> nil do begin

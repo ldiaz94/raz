@@ -1,7 +1,7 @@
 module AtMatch;
 proc main*;
-var x: I64;
+var x: F64;
 begin
-    match x + 1 do end;
+    match x + 1.0 of end;
 end;
 end AtMatch.

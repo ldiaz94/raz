@@ -7,9 +7,9 @@ conform/err/Resync.raz:14:31: error: expected ";", found "end"
 conform/err/Resync.raz:15:10: error: expected an expression, found ")"
    15 |     x := ) + 2;
       |          ^
-conform/err/Resync.raz:16:11: error: match needs a variant or an enumeration, found I64
-   16 |     match x
-      |           ^
+conform/err/Resync.raz:17:8: error: expected "of", found ":"
+   17 |     | 1: x := true;
+      |        ^
 conform/err/Resync.raz:23:13: error: expected an expression, found ";"
    23 |     x := 1 +;
       |             ^

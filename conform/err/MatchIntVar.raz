@@ -1,0 +1,9 @@
+module MatchIntVar;
+proc f(n, m: I64);
+begin
+    match n of
+    | m: n := 0;
+    | else:
+    end;
+end;
+end MatchIntVar.

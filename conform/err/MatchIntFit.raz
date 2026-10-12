@@ -1,0 +1,9 @@
+module MatchIntFit;
+proc f(n: U8);
+begin
+    match n of
+    | 0 .. 256: n := 0;
+    | else:
+    end;
+end;
+end MatchIntFit.

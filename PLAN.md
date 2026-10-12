@@ -125,7 +125,7 @@ the wishes below.
 - [x] 6b. Array constants: `const P: [5]I64 = [...]`, in read-only
       data, used as a variable that can't be changed (section 4).
       Done so that a string constant is the same mechanism.
-- [ ] 6c. `match` on integers: constants and inclusive ranges as
+- [x] 6c. `match` on integers: constants and inclusive ranges as
       labels, no value in two, `else` required (7.4); compares and
       branches, no jump table. `examples/Sh.raz`'s chains of `elsif`
       become `match`.

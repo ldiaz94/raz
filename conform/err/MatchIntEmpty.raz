@@ -1,0 +1,9 @@
+module MatchIntEmpty;
+proc f(n: I64);
+begin
+    match n of
+    | 5 .. 1: n := 0;
+    | else:
+    end;
+end;
+end MatchIntEmpty.

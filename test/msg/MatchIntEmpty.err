@@ -1,0 +1,4 @@
+conform/err/MatchIntEmpty.raz:5:7: error: the range is empty
+    5 |     | 5 .. 1: n := 0;
+      |       ^^^^^^
+raz: 1 error

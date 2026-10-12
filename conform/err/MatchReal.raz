@@ -1,0 +1,8 @@
+module MatchReal;
+proc f(n: F64);
+begin
+    match n of
+    | else:
+    end;
+end;
+end MatchReal.

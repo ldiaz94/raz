@@ -1,0 +1,4 @@
+conform/err/MatchIntTwice.raz:6:10: error: 5 is in another label too
+    6 |     | 7, 5: n := 1;
+      |          ^
+raz: 1 error

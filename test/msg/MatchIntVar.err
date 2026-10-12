@@ -1,0 +1,4 @@
+conform/err/MatchIntVar.raz:5:7: error: expected a constant
+    5 |     | m: n := 0;
+      |       ^
+raz: 1 error

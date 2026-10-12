@@ -336,7 +336,10 @@ known, so that `[1, 2, 3]`, `{x: 1}` and `{red}` know what to build.
 Then statements: `Statement` makes each one a recovery point (below)
 and `OneStatement` dispatches; `IfStatement`,
 `WhileStatement`, `ForStatement` and `MatchStatement` emit their jumps
-with `x64.pas`'s labels. `Defer` is worth reading: a deferred statement
+with `x64.pas`'s labels. A `match` on an integer reads each arm's
+labels in `IntArm`, which refuses a value in two of them, and tests them
+one after another with `MatchRange`: compares and branches, no jump
+table. `Defer` is worth reading: a deferred statement
 is compiled where it stands, as a little subroutine of the procedure
 that the code jumps over, and `RunDefers` emits a call to it at every
 way out of its statement list: the end, `return` and `break`.

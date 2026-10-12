@@ -1,0 +1,4 @@
+conform/err/MatchIntFit.raz:5:12: error: 256 doesn't fit U8
+    5 |     | 0 .. 256: n := 0;
+      |            ^^^
+raz: 1 error
