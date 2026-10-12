@@ -72,7 +72,9 @@ type
     fwd: boolean;      { oProc: declared forward, no body yet }
     isCode: boolean;   { oProc: a code procedure }
     openEnd: boolean;  { oProc: has results, and may reach its end }
-    reg: longint;      { oVar: the register it lives in, or 0 if in memory }
+    reg: longint;      { oVar: the register it lives in, or 0 if in memory;
+                         for a slice, the one its pointer is in }
+    reg2: longint;     { oVar: a slice in registers: the one its length is in }
     ext: boolean;      { oProc, oVar: C's, reached through its chunk, which
                          holds its address }
     fields: PObj;      { oCase: its fields }

@@ -65,7 +65,7 @@ run() {   # run dir name
     fi
 }
 
-for f in examples/*.raz test/run/*.raz test/libc/*.raz; do
+for f in examples/*.raz test/run/*.raz test/libc/*.raz test/bench/*.raz; do
     run $(dirname $f) $(basename $f .raz)
 done
 

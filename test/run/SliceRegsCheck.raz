@@ -1,0 +1,21 @@
+(* A failed check of an index into a slice in registers says the
+   length, read from its register. *)
+module SliceRegsCheck;
+import Out;
+
+proc squares(s: []INT; n: INT): INT;
+var i, t: INT;
+begin
+    for i := 0 to n do t := t + s[i] * s[i]; end;
+    return t;
+end;
+
+proc main*;
+var x: [3]INT;
+begin
+    x := [1, 2, 3];
+    Out.int(squares(x, 2)); Out.ln;
+    Out.int(squares(x, 3)); Out.ln;
+end;
+
+end SliceRegsCheck.

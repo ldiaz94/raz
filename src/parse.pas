@@ -1818,12 +1818,12 @@ begin
     if o^.reg = VarRegs[i] then VarKind := k + o^.typ^.size * 16 + (i + 1) * 512;
 end;
 
-{ Whether variable o could live in a register: a single value, not
-  a real, that isn't C's }
+{ Whether variable o could live in registers: a single value, not a
+  real, or a slice, in two, that isn't C's }
 function RegFit(o: PObj): boolean;
 begin
   RegFit := (o^.cls = oVar) and not o^.ind and not o^.ext
-    and ((o^.typ^.form in [fInt, fBool, fEnum, fPtr, fProc, fError])
+    and ((o^.typ^.form in [fInt, fBool, fEnum, fPtr, fProc, fError, fSlice])
       or (o^.typ^.form = fSet) and (o^.typ^.size <= 8));
 end;
 
@@ -1840,12 +1840,12 @@ end;
   its "begin" to its end, a use counts 1, in a loop 4, in two 16, in
   three or more 64, and a variable ADR is taken of can't have one. A register costs a save
   and a restore, so a variable used less than three times keeps its
-  place in memory. }
+  place in memory. A slice takes two, its pointer's and its length's. }
 procedure ChooseRegs(params, before: PObj);
 var
   cand: array[0..63] of PObj; weight: array[0..63] of longint;
   isLoop: array[0..255] of boolean;
-  n, i, k, d, loops, best: longint; o: PObj; st: TScanState; afterDot, wasSkipping: boolean;
+  n, i, k, d, loops, best, need: longint; o: PObj; st: TScanState; afterDot, wasSkipping: boolean;
 
   function Candidate(name: longint): longint;
   var j: longint;
@@ -1899,15 +1899,24 @@ begin
     until (d = 0) or (tok = sEof);
     RestoreScan(st);
     skipping := wasSkipping;
-    { the five heaviest, each used at least three times, take the
-      registers in turn }
-    for k := 0 to 4 do begin
+    { a slice's weight is shared by its two registers }
+    for i := 0 to n - 1 do
+      if cand[i]^.typ^.form = fSlice then weight[i] := weight[i] div 2;
+    { the heaviest, each used at least three times a register, take the
+      five registers in turn, while there are enough for each }
+    k := 0;
+    repeat
       best := -1;
       for i := 0 to n - 1 do
         if (cand[i]^.reg = 0) and (weight[i] >= 3) and ((best < 0) or (weight[i] > weight[best])) then best := i;
       if best < 0 then break;
-      cand[best]^.reg := VarRegs[k];
-    end;
+      need := 1 + ord(cand[best]^.typ^.form = fSlice);
+      if k + need <= 5 then begin
+        cand[best]^.reg := VarRegs[k];
+        if need = 2 then cand[best]^.reg2 := VarRegs[k + 1];
+        inc(k, need);
+      end else weight[best] := 0;   { too big for what is left }
+    until k = 5;
   end;
 end;
 
@@ -1919,13 +1928,13 @@ begin
   m := 0;
   o := params;
   while o <> nil do begin
-    for k := 0 to 4 do if o^.reg = VarRegs[k] then m := m or (1 shl k);
+    for k := 0 to 4 do if (o^.reg = VarRegs[k]) or (o^.reg2 = VarRegs[k]) then m := m or (1 shl k);
     o := o^.next;
   end;
   o := FirstLocal(before);
   while o <> nil do begin
     if o^.cls = oVar then
-      for k := 0 to 4 do if o^.reg = VarRegs[k] then m := m or (1 shl k);
+      for k := 0 to 4 do if (o^.reg = VarRegs[k]) or (o^.reg2 = VarRegs[k]) then m := m or (1 shl k);
     o := o^.link;
   end;
   RegsOf := m;

@@ -19,7 +19,7 @@ v0.7.0 left it, and under 10,000 lines. No change to the language.
 Each step is measured as v0.7.0's were, on rat and on its kernel, and
 one that buys less than 2% on both is reverted and noted here.
 
-1. **Slices in registers.** A slice parameter or variable whose address
+1. Done: **Slices in registers.** A slice parameter or variable whose address
    isn't taken lives in two of the variables' registers, its pointer and
    its length, chosen by the read-ahead as a single value is, and
    counted as two. FPC's search keeps its slice in `rdi` and `rsi`;

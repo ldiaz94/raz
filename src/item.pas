@@ -191,6 +191,7 @@ begin
   FrameAdr.base := bFrame;
   FrameAdr.chunk := -1;
   FrameAdr.off := off;
+  FrameAdr.hi := 0;
 end;
 
 function GlobalAdr(c: longint): TAdr;
@@ -198,14 +199,17 @@ begin
   GlobalAdr.base := bGlobal;
   GlobalAdr.chunk := c;
   GlobalAdr.off := 0;
+  GlobalAdr.hi := 0;
 end;
 
-{ Where the variable x is, for gen }
+{ Where the variable x is, for gen; a slice in registers has two }
 function AdrOf(const x: TItem): TAdr;
 begin
   AdrOf.base := x.base;
   AdrOf.chunk := x.chunk;
   AdrOf.off := x.off;
+  AdrOf.hi := 0;
+  if x.base = bReg then AdrOf.hi := x.obj^.reg2;
 end;
 
 { An item for "found ...": a constant without a type of its own as it
@@ -373,6 +377,7 @@ begin
     { its address is wanted after all: the procedure is compiled again
       with the variable in memory; till then, this code is thrown away }
     x.obj^.reg := 0;
+    x.obj^.reg2 := 0;
     demoted := true;
     x.base := bFrame;
     x.off := x.obj^.val;
@@ -417,10 +422,21 @@ end;
 
 { x, copied to a temporary }
 procedure CopyToTemp(var x: TItem);
-var t: int64; f, g: PObj;
+var t: int64; f, g: PObj; a: TAdr;
 begin
   if x.vol then MarkAt(x.pos, 'can''t copy through a volatile pointer');
   t := AllocTemp(x.typ^.size, x.typ^.align);
+  if (x.mode = mVar) and (x.base = bReg) then begin
+    { a slice in registers, which has no address: its words stored }
+    a := AdrOf(x);
+    PushVar(a, 8, false, kWord);
+    PopVar(FrameAdr(t), 8);
+    a.off := 8;
+    PushVar(a, 8, false, kWord);
+    PopVar(FrameAdr(t + 8), 8);
+    TempItem(x, x.typ, t);
+    exit;
+  end;
   if x.mode = mWords then begin
     { the second result is on top, so it is popped first }
     f := x.typ^.fields; g := f^.next;
@@ -542,6 +558,7 @@ begin
     PopVar(AdrOf(dst), ScalarSize(dst.typ));
   end else begin
     if dst.vol or src.vol then MarkAt(src.pos, 'can''t copy through a volatile pointer');
+    if (src.mode = mVar) and (src.base = bReg) then CopyToTemp(src);   { a slice in registers }
     Address(src);
     if dst.base = bStack then CopyBlock(dst.typ^.size, dst.off)
     else CopyTo(AdrOf(dst), dst.typ^.size);
@@ -1164,7 +1181,7 @@ begin
   if x.mode = mWords then exit;   { there already }
   { copied to a temporary unless its two words are in memory at a place
     that a later argument can't change }
-  if (x.mode <> mVar) or x.vol or not (x.base in [bFrame, bGlobal, bSlot]) then CopyToTemp(x);
+  if (x.mode <> mVar) or x.vol or not (x.base in [bFrame, bGlobal, bSlot, bReg]) then CopyToTemp(x);
   adr := AdrOf(x);
   if x.typ^.form = fSlice then begin
     PushVar(adr, 8, false, kWord);

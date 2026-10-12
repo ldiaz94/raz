@@ -1,0 +1,3 @@
+test/run/SliceRegsCheck.raz:9:35: index 3 is out of range for a length of 3
+  in SliceRegsCheck.squares at test/run/SliceRegsCheck.raz:9:35: n = 3, i = 3, t = 14
+  in SliceRegsCheck.main at test/run/SliceRegsCheck.raz:18:5

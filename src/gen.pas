@@ -70,7 +70,9 @@ type
   TAdr = record
     base: TBase;
     chunk: longint;   { bGlobal: the chunk; bSlot: the frame slot; bReg: the register }
-    off: int64;       { added to the address }
+    off: int64;       { added to the address; for bReg, which word, 0 or 8 }
+    hi: longint;      { bReg, a slice: the register of its length, the
+                        second word; chunk is that of its pointer }
   end;
 
   { The code made so far, to go back to for a second try at a body }
@@ -411,6 +413,13 @@ begin
   Fits32 := (v >= low(longint)) and (v <= high(longint));
 end;
 
+{ The register of the word at a, a variable in registers: the variable's
+  own, or for a slice its pointer's (off 0) or its length's (off 8) }
+function RegAt(const a: TAdr): longint;
+begin
+  if a.off = 0 then RegAt := a.chunk else RegAt := a.hi;
+end;
+
 { The memory a names. An address on the stack is popped, and is in its
   register still; one in a slot is loaded into r. }
 function Place(const a: TAdr; r: longint): TMem;
@@ -458,7 +467,7 @@ procedure PushVar(const a: TAdr; size: longint; signed: boolean; k: TKind);
 var m: TMem; r: longint;
 begin
   if a.base = bReg then begin
-    NewEntry(k, lHeld, a.chunk);
+    NewEntry(k, lHeld, RegAt(a));
     exit;
   end;
   { in the order PushAdr explains }
@@ -483,7 +492,7 @@ procedure PopVar(const a: TAdr; size: longint);
 var r: longint; v: int64;
 begin
   if a.base = bReg then begin
-    if TopConst(v) then MovRI(a.chunk, v) else MovRR(a.chunk, Peek(depth - 1));
+    if TopConst(v) then MovRI(RegAt(a), v) else MovRR(RegAt(a), Peek(depth - 1));
     Drop;
     exit;
   end;
@@ -553,10 +562,16 @@ begin
   CopyBytes(size);
 end;
 
-{ Pops a source's address, and copies size bytes to a. }
+{ Pops a source's address, and copies size bytes to a: for a slice in
+  registers, its two words into them. }
 procedure CopyTo(const a: TAdr; size: int64);
 begin
   PopTo(RSI);
+  if a.base = bReg then begin
+    Load(a.chunk, Mem(RSI, 0), 8, false);
+    Load(a.hi, Mem(RSI, 8), 8, false);
+    exit;
+  end;
   Lea(RDI, Place(a, RDI));
   CopyBytes(size);
 end;
@@ -1069,6 +1084,7 @@ end;
 
 const
   NoBase = -2;   { a TMem that is no memory }
+  ARegister = -3;   { a TMem that is no memory but a register, its index }
 
 { The program goes on if the condition cc holds, and otherwise stops
   in Rt.fail(what, a, b, len, at, name), which says what failed at p,
@@ -1110,7 +1126,9 @@ begin
       LineCol(at, line, col);
       NoteLine(line, col);
       if ra <> RSI then MovRR(RSI, ra);
-      if m.base = NoBase then MovRI(RCX, n) else Load(RCX, m, 8, false);
+      if m.base = NoBase then MovRI(RCX, n)
+      else if m.base = ARegister then MovRR(RCX, m.index)
+      else Load(RCX, m, 8, false);
       if name >= 0 then Lea(R9, MemRip(name, 0));
       if failStubs[what] < 0 then failStubs[what] := NewChunk(secText, Intern('Rt', 2), Intern(@StubNames[what][1], 6));
       CallChunk(failStubs[what]);
@@ -1122,6 +1140,13 @@ end;
 function NoMem: TMem;
 begin
   NoMem := Mem(NoBase, 0);
+end;
+
+{ For Check: a length in register r, a slice's in registers }
+function InRegister(r: longint): TMem;
+begin
+  InRegister := Mem(ARegister, 0);
+  InRegister.index := r;
 end;
 
 { The index on top is below n, unsigned }
@@ -1160,21 +1185,31 @@ end;
   It is worked out in the index's own register, which then holds the
   address; but if the slice's address is on the stack, under the
   index, the element's register is the one that holds that, still
-  needed, so the work is done in rax. }
+  needed, so the work is done in rax. A slice in registers is
+  compared with and added to them. }
 procedure IndexSlice(const a: TAdr; size: int64; checked: boolean; const p: TPos);
 var m, ml: TMem; r: longint; inRax: boolean;
 begin
   inRax := a.base = bStack;
   if inRax then begin r := RAX; PopTo(RAX) end
   else begin r := Top; Drop end;
-  m := Place(a, RCX);
-  ml := m; ml.disp := ml.disp + 8;
-  if checked then begin
-    AluM(aluCmp, r, ml);
-    Check(ccB, 0, p, r, ml, 0, -1);
+  if a.base = bReg then begin
+    if checked then begin
+      Alu(aluCmp, r, a.hi);
+      Check(ccB, 0, p, r, InRegister(a.hi), 0, -1);
+    end;
+    MulI(r, size);
+    Alu(aluAdd, r, a.chunk);
+  end else begin
+    m := Place(a, RCX);
+    ml := m; ml.disp := ml.disp + 8;
+    if checked then begin
+      AluM(aluCmp, r, ml);
+      Check(ccB, 0, p, r, ml, 0, -1);
+    end;
+    MulI(r, size);
+    AluM(aluAdd, r, m);
   end;
-  MulI(r, size);
-  AluM(aluAdd, r, m);
   if inRax then MovRR(Target, RAX)
   else Claim(depth);   { the index's register again, now for the address }
   Computed(kWord);
@@ -1188,12 +1223,16 @@ var m, ml: TMem;
 begin
   PopTo(RDX);
   PopTo(RCX);
-  m := Place(a, RDI);
-  ml := m; ml.disp := ml.disp + 8;
+  if a.base = bReg then ml := InRegister(a.hi)   { a slice in registers }
+  else begin
+    m := Place(a, RDI);
+    ml := m; ml.disp := ml.disp + 8;
+  end;
   if checked then begin
     { two checks, both unsigned, so that a negative bound fails too:
       hi against the length, then lo against hi }
     if isArray then begin CmpI(RDX, n); ml := NoMem end
+    else if a.base = bReg then Alu(aluCmp, RDX, a.hi)
     else AluM(aluCmp, RDX, ml);
     Check(ccBE, 1, p, RCX, ml, n, -1);
     Alu(aluCmp, RCX, RDX);
@@ -1203,7 +1242,9 @@ begin
   Alu(aluSub, RAX, RCX);
   Store(Mem(RBP, tmp + 8), RAX, 8);
   MulI(RCX, size);
-  if isArray then Lea(RAX, m) else Load(RAX, m, 8, false);
+  if isArray then Lea(RAX, m)
+  else if a.base = bReg then MovRR(RAX, a.chunk)
+  else Load(RAX, m, 8, false);
   Alu(aluAdd, RAX, RCX);
   Store(Mem(RBP, tmp), RAX, 8);
 end;
@@ -1441,7 +1482,7 @@ begin
         p^.val := AllocPerm(16, 8);
         for k := 0 to 1 do begin
           inReg[numIn] := IntRegs[ni]; inSlot[numIn] := p^.val + 8 * k;
-          inSize[numIn] := 8; inObj[numIn] := nil;
+          inSize[numIn] := 8; inObj[numIn] := p;
           inc(numIn); inc(ni);
         end;
       end else begin
@@ -1513,7 +1554,7 @@ end;
   registers of variables are zeroed in place, their save slots are
   written before they are read, and so is every temporary. }
 procedure EnterBody(c, line: longint);
-var i, top: longint; n: int64; p: PObj;
+var i, top, r: longint; n: int64; p: PObj;
 begin
   BeginChunk(c);
   codeChunk := c;
@@ -1550,12 +1591,15 @@ begin
       inc(n);
     end;
   { the parameters that came in registers, to their slots or, for a
-    register variable, to its register }
+    register variable, to its register: a slice's second word, the one
+    for the slot 8 bytes into its own, to its length's }
   for i := 0 to numIn - 1 do
     if inReg[i] < 0 then MovsdMX(Mem(RBP, inSlot[i]), -1 - inReg[i])
     else if (inObj[i] <> nil) and (inObj[i]^.reg <> 0) then begin
-      MovRR(inObj[i]^.reg, inReg[i]);
-      if inSize[i] < 8 then Extend(inObj[i]^.reg, inSize[i], inObj[i]^.typ^.signed);
+      r := inObj[i]^.reg;
+      if inSlot[i] <> inObj[i]^.val then r := inObj[i]^.reg2;
+      MovRR(r, inReg[i]);
+      if inSize[i] < 8 then Extend(r, inSize[i], inObj[i]^.typ^.signed);
     end else Store(Mem(RBP, inSlot[i]), inReg[i], inSize[i]);
   { a register variable's parameter that came on the stack, above the
     frame (val > 0), is loaded from there }
@@ -1564,7 +1608,10 @@ begin
     if (p^.reg <> 0) and (p^.val > 0) then
       if p^.typ^.form in [fInt, fBool, fEnum, fSet] then
         Load(p^.reg, Mem(RBP, p^.val), p^.typ^.size, p^.typ^.signed)
-      else Load(p^.reg, Mem(RBP, p^.val), 8, false);
+      else begin
+        Load(p^.reg, Mem(RBP, p^.val), 8, false);
+        if p^.typ^.form = fSlice then Load(p^.reg2, Mem(RBP, p^.val + 8), 8, false);
+      end;
     p := p^.next;
   end;
 end;

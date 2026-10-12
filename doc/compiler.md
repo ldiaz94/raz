@@ -262,6 +262,48 @@ would do; and the four registers are saved and restored on every call,
 though this path uses one of them. Each could go, at the cost of lines
 a reader would have to follow.
 
+## Better code again, in v0.8.0
+
+Each change below was measured on rat, a terminal emulator written in
+raz, running its 26 MB workload, and on the kernels of `test/bench`,
+against their twins built by FPC `-O2` (`make kernels`); one that
+bought less than 2% on both was taken out again.
+
+1. **Slices in registers.** `sum(s: []INT)` kept its slice in the
+   frame, and read its pointer from there for each element:
+
+   ```
+   mov [rbp - 16], rdi       ; the prologue: s, to its slots
+   mov [rbp - 8], rsi
+   ...
+   mov r9, r14               ; s[i], each time round
+   shl r9, 3
+   add r9, [rbp - 16]
+   ```
+
+   Now a slice whose address isn't taken can have two of the
+   variables' registers, its pointer's and its length's
+   (`o^.reg2`), chosen as a single value's is but for half its weight
+   in each:
+
+   ```
+   mov r12, rdi
+   mov r13, rsi
+   ...
+   mov r9, r14
+   shl r9, 3
+   add r9, r12
+   ```
+
+   Its item is at `bReg`, and its `TAdr` names both registers (`hi`
+   for the length's): `PushVar` reads either word (`RegAt`),
+   `IndexSlice` and `Slice` compare with the length's and add the
+   pointer's, a failed check takes the length from its register
+   (`InRegister`), and `CopyTo` loads both. What wants a slice's
+   memory, a comparison or `COPY`, has its words stored in a
+   temporary first (`CopyToTemp`). rat 5% faster, the heap sort 5%,
+   the search 4%.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is
@@ -532,7 +574,8 @@ a quadword each, after the locals and not zeroed, as each is written
 first. The
 prologue saves them, zeroes them, and moves a parameter into its
 register from the register or stack slot it arrived in; the epilogue
-restores them. A variable in one is an
+restores them. A slice may have two, its pointer's and its length's
+(see "Better code again" above). A variable in one is an
 item at `bReg`: `PushVar` notes it (`lHeld`) rather than copying it,
 `Peek` reads it in place where the value is only read, so `i < n` is
 `cmp rbx, r12`, and `PopVar` and `IncDecReg` write it. Rt finds the
@@ -726,7 +769,8 @@ address will be taken before its code is made, so `ChooseRegs` reads
 the body ahead, as `InstancesFor` does, and counts each variable's
 uses: 1 for each, 4 in a loop, 16 in two, at most 64 (loops nested three
 deep or more); one `ADR` takes is out. The
-five busiest used at least three times get registers (`o^.reg`). An
+busiest used at least three times get the five registers (`o^.reg`),
+a slice two (`o^.reg2` too), its count halved for each. An
 address wanted after all, by a `var` parameter, say, comes to
 `Address` (`item.pas`), which puts the variable back in memory and
 sets `demoted`: `Body` then throws the procedure's code away
@@ -862,7 +906,8 @@ this one does.
   `_ := f(x)` drops one on purpose. `-Werror` makes each an error.
 - **Registers for variables.** Up to five of a procedure's single
   values, not reals, whose address is never taken, live in `rbx` and
-  `r12` to `r15`; the trap report shows them as it shows the others.
+  `r12` to `r15`, a slice taking two of them; the trap report shows
+  them as it shows the others, but for slices, which it never shows.
 - **Several results** that are two words, and a slice, come back in
   rax and rdx, as from a code procedure; others through a hidden
   pointer to the caller's slots.

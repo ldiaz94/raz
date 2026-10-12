@@ -1,0 +1,78 @@
+(* Slices in registers: a slice parameter or variable used enough to
+   be given its two registers, through every way a slice is used. *)
+module SliceRegs;
+import Out;
+
+proc sum(s: []INT): INT;
+var i, t: INT;
+begin
+    for i := 0 to LEN(s) - 1 do t := t + s[i]; end;
+    return t;
+end;
+
+(* s sliced, assigned, passed and returned, all in registers *)
+proc tail(s: []INT; n: INT): []INT;
+var i: INT;
+begin
+    for i := 1 to n do
+        if LEN(s) > 0 then s := s[1..LEN(s)]; end;
+    end;
+    return s;
+end;
+
+(* two slices compared, copied and assigned to each other *)
+proc mix(a, b: []U8): INT;
+var i, n: INT; c: []U8;
+begin
+    for i := 0 to LEN(a) - 1 do
+        if a[i] = b[i] then INC(n); end;
+    end;
+    if a = b then INC(n, 100); end;
+    COPY(b, a);
+    if a = b then INC(n, 1000); end;
+    c := a;
+    for i := 0 to LEN(c) - 1 do INC(n, INT(c[i]) - INT(a[i])); end;
+    return n;
+end;
+
+proc bump(var s: []INT);
+begin
+    s := s[1..LEN(s)];
+end;
+
+(* s passed to a var parameter: demoted to memory, and still right *)
+proc demote(s: []INT): INT;
+var i, t: INT;
+begin
+    for i := 0 to LEN(s) - 1 do t := t + s[i]; end;
+    bump(s);
+    for i := 0 to LEN(s) - 1 do t := t + s[i]; end;
+    return t;
+end;
+
+(* seven slices: some in registers, some not *)
+proc many(a, b, c, d, e, f, g: []INT): INT;
+var i, t: INT;
+begin
+    for i := 0 to 1 do
+        t := t + a[i] + b[i] + c[i] + d[i] + e[i] + f[i] + g[i];
+    end;
+    return t;
+end;
+
+proc main*;
+var x: [6]INT; i: INT; p, q: [4]U8; s: []INT;
+begin
+    for i := 0 to 5 do x[i] := i + 1; end;
+    Out.int(sum(x)); Out.ln;
+    s := tail(x, 2);
+    Out.int(LEN(s)); Out.char(' '); Out.int(s[0]); Out.ln;
+    Out.int(LEN(tail(x, 9))); Out.ln;
+    p := "abcd";
+    q := "abxd";
+    Out.int(mix(p, q)); Out.char(' '); Out.str(q); Out.ln;
+    Out.int(demote(x)); Out.ln;
+    Out.int(many(x, x[1..6], x, x, x, x[2..6], x)); Out.ln;
+end;
+
+end SliceRegs.
