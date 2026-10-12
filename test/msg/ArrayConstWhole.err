@@ -1,0 +1,4 @@
+conform/err/ArrayConstWhole.raz:5:5: error: P is a constant, and can't be changed
+    5 |     P := [3, 4];
+      |     ^
+raz: 1 error

@@ -1,0 +1,4 @@
+conform/err/ArrayConstFit.raz:2:22: error: 256 doesn't fit U8
+    2 | const P: [2]U8 = [1, 256];
+      |                      ^^^
+raz: 1 error

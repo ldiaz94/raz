@@ -1,0 +1,3 @@
+module ArrayConstFit;
+const P: [2]U8 = [1, 256];
+end ArrayConstFit.

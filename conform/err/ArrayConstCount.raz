@@ -1,0 +1,3 @@
+module ArrayConstCount;
+const P: [3]I64 = [1, 2];
+end ArrayConstCount.

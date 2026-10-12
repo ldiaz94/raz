@@ -1,0 +1,4 @@
+conform/err/ArrayConstAssign.raz:5:5: error: P is a constant, and can't be changed
+    5 |     P[0] := 3;
+      |     ^^^^
+raz: 1 error

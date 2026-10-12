@@ -1,0 +1,7 @@
+module ArrayConstWhole;
+const P: [2]I64 = [1, 2];
+proc main*;
+begin
+    P := [3, 4];
+end;
+end ArrayConstWhole.

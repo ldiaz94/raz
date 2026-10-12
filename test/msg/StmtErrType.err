@@ -1,4 +1,4 @@
-conform/err/StmtErrType.raz:2:10: error: only an ERROR constant has a type
+conform/err/StmtErrType.raz:2:10: error: only an ERROR or an array constant has a type
     2 | const k: I64 = "a";
       |          ^^^
 raz: 1 error

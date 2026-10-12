@@ -1,0 +1,4 @@
+conform/err/ArrayConstElem.raz:3:10: error: an array constant holds integers, reals, BOOLs, enumerations or sets, found R
+    3 | const P: [1]R = [{a: 1}];
+      |          ^^^^
+raz: 1 error

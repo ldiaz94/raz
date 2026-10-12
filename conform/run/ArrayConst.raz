@@ -1,0 +1,53 @@
+module ArrayConst;
+import Out;
+
+type Color = (red, green, blue);
+
+const
+    Primes*: [5]I64 = [2, 3, 5, 7, 11];
+    Small: [4]U8 = [1, 2, 0FFH, 'A'];
+    Halves: [3]F64 = [0.5, 1.5, -2.5];
+    Narrow: [2]F32 = [0.25, 3.0];
+    Flags: [3]BOOL = [true, false, true];
+    Colors: [2]Color = [blue, red];
+    Mixes: [2]set of Color = [{red, blue}, {}];
+    Neg: [3]I16 = [-1, -32768, 32767];
+
+proc sum(a: []I64): I64;
+var s: I64; i: INT;
+begin
+    for i := 0 to LEN(a) - 1 do s := s + a[i]; end;
+    return s;
+end;
+
+proc first(a: [5]I64): I64;
+begin
+    return a[0];
+end;
+
+proc main*;
+const Local: [2]I32 = [40, 2];
+var a: [5]I64; i: INT;
+begin
+    for i := 0 to LEN(Primes) - 1 do Out.int(Primes[i]); Out.str(" "); end;
+    Out.ln;
+    Out.int(sum(Primes)); Out.str(" ");
+    Out.int(sum(Primes[1..3])); Out.str(" ");
+    Out.int(first(Primes)); Out.ln;
+    a := Primes;
+    a[0] := 1;
+    if a # Primes then Out.str("differ "); end;
+    a[0] := 2;
+    if a = Primes then Out.str("same"); end;
+    Out.ln;
+    for i := 0 to 3 do Out.int(I64(Small[i])); Out.str(" "); end;
+    Out.ln;
+    if (Halves[0] = 0.5) and (Halves[2] = -2.5) and (Narrow[1] = 3.0) then Out.str("reals "); end;
+    if Flags[0] and not Flags[1] then Out.str("bools "); end;
+    if (Colors[0] = blue) and not (green in Mixes[0]) and (blue in Mixes[0]) then Out.str("enums"); end;
+    Out.ln;
+    Out.int(I64(Neg[0])); Out.str(" "); Out.int(I64(Neg[1])); Out.str(" "); Out.int(I64(Neg[2])); Out.ln;
+    Out.int(I64(Local[0] + Local[1])); Out.str(" "); Out.int(LEN(Local)); Out.ln;
+end;
+
+end ArrayConst.

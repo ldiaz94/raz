@@ -1,0 +1,4 @@
+module ArrayConstElem;
+type R = record a: I64; end;
+const P: [1]R = [{a: 1}];
+end ArrayConstElem.

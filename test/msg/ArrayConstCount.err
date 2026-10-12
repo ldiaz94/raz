@@ -1,0 +1,4 @@
+conform/err/ArrayConstCount.raz:2:19: error: expected 3 elements, found 2
+    2 | const P: [3]I64 = [1, 2];
+      |                   ^^^^^^
+raz: 1 error

@@ -1,0 +1,7 @@
+module ArrayConstAssign;
+const P: [2]I64 = [1, 2];
+proc main*;
+begin
+    P[0] := 3;
+end;
+end ArrayConstAssign.

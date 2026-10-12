@@ -1,0 +1,4 @@
+conform/err/ArrayConstNotConst.raz:3:23: error: expected a constant, found I64
+    3 | const P: [2]I64 = [1, v];
+      |                       ^
+raz: 1 error

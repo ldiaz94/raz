@@ -1,0 +1,4 @@
+conform/err/ArrayConstAdr.raz:6:14: error: ADR needs a variable
+    6 |     p := ADR(P);
+      |              ^
+raz: 1 error

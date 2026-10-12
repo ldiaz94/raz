@@ -1,0 +1,4 @@
+conform/err/ArrayConstVar.raz:9:9: error: a var parameter needs a variable
+    9 |     put(P);
+      |         ^
+raz: 1 error

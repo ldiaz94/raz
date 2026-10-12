@@ -283,7 +283,11 @@ Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a
 variable into an item for part of it, mostly by adding to `off`. An
 item for another module's exported variable, or part of it, is `ro`:
 it isn't a variable (`isVar`), and `NotReadOnly` says why where one is
-wanted; what it points at is.
+wanted; what it points at is. An array constant is a variable too,
+in read-only data: `ArrayConst` (`parse.pas`) reads its literal into the
+bytes of a chunk, as a string constant's are, and `MakeItem` makes it
+an `mVar` there that isn't `isVar`, so it is read, indexed, sliced and
+passed, never changed.
 `Index` and `Slice` emit the bounds checks, unless the module says
 `check off;` (`checks`, which `CompileFile` sets for each module), and
 `Convert` the check of an enumeration's position; `Check` jumps over a call to `Rt.fail` when

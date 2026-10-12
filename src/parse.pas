@@ -1383,6 +1383,15 @@ begin
   else Subject := 'a value';
 end;
 
+{ x, named first n, is a variable the program may assign: not an
+  array constant, nor any part of one. }
+procedure Assignable(const x: TItem; n: longint);
+begin
+  if (x.mode = mVar) and (x.obj <> nil) and (x.obj^.cls = oConst) then
+    MarkAt(x.pos, NameOf(x.obj^.name) + ' is a constant, and can''t be changed');
+  if (x.mode <> mVar) or not x.isVar then MarkAt(x.pos, 'can''t assign to ' + Subject(x, n));
+end;
+
 { The designator a statement starts with. A variable named whole
   before := is assigned, not read: naming it there leaves it as unread
   as it was. }
@@ -1407,7 +1416,7 @@ begin
   dn[0] := first;
   repeat
     NotReadOnly(d[n]);
-    if (d[n].mode <> mVar) or not d[n].isVar then MarkAt(d[n].pos, 'can''t assign to ' + Subject(d[n], dn[n]));
+    Assignable(d[n], dn[n]);
     Pin(d[n]);
     inc(n);
     if tok <> sComma then break;
@@ -1489,7 +1498,7 @@ begin
       LeftSide(x, called);
       if tok = sBecomes then begin
         NotReadOnly(x);
-        if (x.mode <> mVar) or not x.isVar then MarkAt(x.pos, 'can''t assign to ' + Subject(x, first));
+        Assignable(x, first);
         Save(x);
         Next;
         Expression(y, x.typ);
@@ -1758,6 +1767,41 @@ begin
   Declare(o);
 end;
 
+{ The value of n, an array constant of type t: an array literal of
+  constants, which become the bytes of a read-only chunk, as a string
+  constant's do (report section 4). The bytes are the compiler's own
+  machine's, little-endian, as the target's are. }
+function ArrayConst(t: PType; n: longint): longint;
+var et: PType; e: TItem; p: PBytes; k, es: int64; f: single; c: longint; start: TPos;
+begin
+  et := t^.base;
+  es := et^.size;
+  start := TokPos;
+  if tok <> sLbrak then Expected('an array literal');
+  Next;
+  p := nil; k := 0;
+  if tok <> sRbrak then
+    repeat
+      Expression(e, et);
+      Coerce(e, et);
+      if e.mode <> mConst then MarkAt(e.pos, 'expected a constant, found ' + What(e));
+      ReAllocMem(p, (k + 1) * es);
+      if (et^.form = fReal) and (es = 4) then begin
+        f := RealOf(e);
+        Move(f, p^[k * es], 4);
+      end else Move(e.val, p^[k * es], es);
+      inc(k);
+      if tok <> sComma then break;
+      Next;
+    until false;
+  Expect(sRbrak);
+  if k <> t^.len then MarkAt(SpanFrom(start), 'expected ' + IntStr(t^.len) + ' elements, found ' + IntStr(k));
+  c := NewChunk(secRodata, curModule^.sname, n);
+  SetData(c, p, t^.size, t^.align);
+  FreeMem(p);
+  ArrayConst := c;
+end;
+
 procedure ConstDecl(top: boolean);
 var n: longint; exp: boolean; x: TItem; o: PObj; t: PType; start, at: TPos;
 begin
@@ -1768,9 +1812,21 @@ begin
     Next;
     start := TokPos;
     t := ParseType;
-    if t <> tError then MarkAt(SpanFrom(start), 'only an ERROR constant has a type');
+    if (t^.form = fArray) and not (t^.base^.form in [fInt, fReal, fBool, fEnum, fSet]) then
+      MarkAt(SpanFrom(start), 'an array constant holds integers, reals, BOOLs, enumerations or sets, found ' + TypeName(t^.base))
+    else if (t <> tError) and (t^.form <> fArray) then
+      MarkAt(SpanFrom(start), 'only an ERROR or an array constant has a type');
   end;
   Expect(sEql);
+  if (t <> nil) and (t^.form = fArray) then begin
+    o := NewObj(oConst, n, t);
+    o^.chunk := ArrayConst(t, n);
+    o^.pos := at;
+    o^.exported := exp and top;
+    Declare(o);
+    Expect(sSemicolon);
+    exit;
+  end;
   Expression(x, nil);
   o := NewObj(oConst, n, x.typ);
   o^.pos := at;

@@ -1,0 +1,4 @@
+module ArrayConstNotConst;
+var v: I64;
+const P: [2]I64 = [1, v];
+end ArrayConstNotConst.

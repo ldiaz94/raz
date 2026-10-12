@@ -1,0 +1,11 @@
+module ArrayConstVar;
+const P: [2]I64 = [1, 2];
+proc put(var a: [2]I64);
+begin
+    a[0] := 0;
+end;
+proc main*;
+begin
+    put(P);
+end;
+end ArrayConstVar.
