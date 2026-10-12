@@ -12,10 +12,10 @@ disassembly.
 | `src/scan.pas` | 851 | 722 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 596 | 497 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 244 | 192 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 476 | 377 | The instruction encoder, and jumps within a procedure |
-| `src/gen.pas` | 1,290 | 1,020 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,303 | 1,090 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,538 | 2,276 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/x64.pas` | 834 | 694 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 1,319 | 1,037 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,318 | 1,100 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,529 | 2,267 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 139 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 424 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 188 | 141 | The command line |
@@ -234,6 +234,15 @@ right opcode. Only the instructions the code generator uses are here.
 `test/enctest.pas` emits one of each for `objdump` to check. `Here` is
 the address of the code being written, as an operand.
 
+The assembler, `Assemble`, reads a code procedure's instructions with
+the scanner, Intel's syntax as NASM writes it, and encodes them with
+`OpM` and `OpR`: `Operand` reads a register, a memory operand or a
+constant (by the parser's `ConstExpr`, handed in), and a few tables
+give the operations of a kind their opcodes (`Alus`, `Unaries`,
+`Shifts`, `SseOps`, `Plain`). Labels are chains of jumps, as below.
+`db` gives bytes it doesn't know. `RegNames` and `CondNames` are the
+names of the registers and conditions.
+
 Jumps within a procedure don't wait for the linker. A label not yet
 placed is a chain of the jumps to it, each jump's 32-bit field holding
 the position of the one before (`Jmp`, `Jcc`); `FixLink` walks the
@@ -414,7 +423,8 @@ meanwhile, so that gen's stack is empty when they run.
 Then declarations: `Declarations` reads `const`, `type`, `var`, `proc`
 and `extern`, each one through `Declaration`, a recovery point, which
 calls `ConstDecl`, `TypeDecl`, `VarDecl`, `ProcDecl` or `ExternDecl`. `ProcDecl` handles forward declarations, code procedures
-(`CodeBody`, which just copies the bytes) and bodies (`Body`).
+(`CodeBody`, which checks the signature and has gen's `CodeProc` run
+the target's assembler) and bodies (`Body`).
 `ParseType` and its helpers (`RecordType`, `VariantType`, `Signature`,
 `EnumType`) build `TType`s.
 

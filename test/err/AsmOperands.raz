@@ -1,0 +1,7 @@
+module AsmOperands;
+proc f;
+code
+    lea rax, rbx;
+    ret;
+end f;
+end AsmOperands.

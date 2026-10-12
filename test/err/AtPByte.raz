@@ -1,4 +1,6 @@
 module AtPByte;
 proc f(a: I64);
-code 300;
+code
+    db 1, 300;
+end;
 end AtPByte.

@@ -1,0 +1,132 @@
+module Asm;
+(* Code procedures in assembly: the instructions the assembler knows,
+   each checked by what it computes *)
+import Out;
+
+const Seven = 7;
+
+(* a * 10 + b - 7, by lea, shifts and adds *)
+proc tens(a, b: I64): I64;
+code
+    lea rax, [rdi + rdi * 4];
+    shl rax, 1;
+    add rax, rsi;
+    sub rax, Seven;
+    ret;
+end tens;
+
+(* the sum of n quadwords at p, by a loop back to a label *)
+proc sum(p: ^I64; n: INT): I64;
+code
+    xor eax, eax;
+    test rsi, rsi;
+    jz done;
+    again:
+    add rax, [rdi];
+    add rdi, 8;
+    dec rsi;
+    jnz again;
+    done:
+    ret;
+end sum;
+
+(* the byte at p + i, zero-extended, and the byte there set to v *)
+proc swapByte(p: ^U8; i: INT; v: U8): I64;
+code
+    movzx eax, byte [rdi + rsi];
+    mov [rdi + rsi * 1], dl;
+    ret;
+end swapByte;
+
+(* a div b and a mod b, unsigned; two results in rax and rdx *)
+proc udivmod(a, b: U64): (U64, U64);
+code
+    mov rax, rdi;
+    xor edx, edx;
+    div rsi;
+    ret;
+end udivmod;
+
+(* the larger of a and b, signed, by cmov; and whether a < b by setl *)
+proc max(a, b: I64): I64;
+code
+    cmp rdi, rsi;
+    mov rax, rdi;
+    cmovl rax, rsi;
+    ret;
+end max;
+
+proc below(a, b: I64): BOOL;
+code
+    xor eax, eax;
+    cmp rdi, rsi;
+    setl al;
+    ret;
+end below;
+
+(* (x + y) * x, then its square root *)
+proc real(x, y: F64): F64;
+code
+    movsd xmm2, xmm0;
+    addsd xmm0, xmm1;
+    mulsd xmm0, xmm2;
+    sqrtsd xmm0, xmm0;
+    ret;
+end real;
+
+(* -a, ~a and a * 3 + 1 for an I32, through eax *)
+proc mix(a: I32): I64;
+code
+    mov eax, edi;
+    neg eax;
+    not eax;
+    imul eax, eax, 3;
+    inc eax;
+    movsxd rax, eax;
+    ret;
+end mix;
+
+(* XADD by hand: the old value of p^, which goes up by v *)
+proc fetchAdd(p: ^INT; v: INT): INT;
+code
+    mov rax, rsi;
+    lock xadd [rdi], rax;
+    ret;
+end fetchAdd;
+
+(* the real 2.0, from its bits, through a general register *)
+proc two: F64;
+code
+    mov rax, 4000000000000000H;
+    movq xmm0, rax;
+    ret;
+end two;
+
+(* bytes the assembler is given as they are: mov eax, 42; ret *)
+proc answer: I64;
+code
+    db 0B8H, 42, 0, 0, 0;
+    db 0C3H;
+end answer;
+
+proc main*;
+var a: [4]I64; s: [3]U8; q, r: U64; c: INT;
+begin
+    Out.int(tens(4, 2)); Out.ln;
+    a := [1, 20, 300, 4000];
+    Out.int(sum(ADR(a[0]), 4)); Out.str(" "); Out.int(sum(ADR(a[0]), 0)); Out.ln;
+    s := "abc";
+    Out.int(swapByte(ADR(s[0]), 1, 'z')); Out.str(" "); Out.str(s[0..3]); Out.ln;
+    q, r := udivmod(1000, 7);
+    Out.int(I64(q)); Out.str(" "); Out.int(I64(r)); Out.ln;
+    Out.int(max(-5, 3)); Out.str(" "); Out.int(max(9, 3)); Out.str(" ");
+    if below(-1, 1) and not below(1, -1) then Out.str("below"); end;
+    Out.ln;
+    Out.int(I64(real(1.0, 3.0))); Out.ln;
+    Out.int(mix(5)); Out.ln;
+    c := 40;
+    Out.int(fetchAdd(ADR(c), 2)); Out.str(" "); Out.int(c); Out.ln;
+    Out.int(I64(two() * 21.0)); Out.str(" "); Out.int(answer()); Out.ln;
+end;
+
+end Asm.

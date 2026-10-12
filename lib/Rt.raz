@@ -194,8 +194,10 @@ end;
 
 (* Returns from a signal handler: rt_sigreturn *)
 proc sigReturn;
-code 0B8H, 0FH, 0, 0, 0,   (* mov eax, 15 *)
-     0FH, 05H;             (* syscall *)
+code
+    mov eax, 15;
+    syscall;
+end sigReturn;
 
 (* A signal stops the program: says where it was and why on standard
    error, and returns to the instruction that faulted. The handler was

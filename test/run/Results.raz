@@ -32,13 +32,16 @@ begin
 end;
 
 proc minmax(a, b: I64): (I64, I64);
-code 48H, 89H, 0F8H,         (* mov rax, rdi *)
-     48H, 89H, 0F2H,         (* mov rdx, rsi *)
-     48H, 39H, 0F7H,         (* cmp rdi, rsi *)
-     7EH, 06H,               (* jle +6 *)
-     48H, 89H, 0F0H,         (* mov rax, rsi *)
-     48H, 89H, 0FAH,         (* mov rdx, rdi *)
-     0C3H;
+code
+    mov rax, rdi;
+    mov rdx, rsi;
+    cmp rdi, rsi;
+    jle done;
+    mov rax, rsi;
+    mov rdx, rdi;
+    done:
+    ret;
+end minmax;
 
 proc nothing: (I64, ERROR);
 begin

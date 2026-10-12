@@ -15,9 +15,12 @@ extern proc sqrtf(x: F32): F32;
 extern proc fabsf(x: F32): F32;
 extern proc sqrt(x: F64): F64;
 
-(* addss xmm0, xmm0; ret *)
+(* x + x, by hand *)
 proc twice(x: F32): F32;
-code 0F3H, 0FH, 58H, 0C0H, 0C3H;
+code
+    addss xmm0, xmm0;
+    ret;
+end twice;
 
 proc dot(a, b: Vec): F32;
 begin

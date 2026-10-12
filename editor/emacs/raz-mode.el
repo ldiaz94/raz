@@ -62,10 +62,10 @@
 ;;; Indenting
 
 (defconst raz--decl
-  "^[ \t]*\\(?:module\\|import\\|link\\|extern\\|proc\\|const\\|type\\|var\\|begin\\)\\_>")
+  "^[ \t]*\\(?:module\\|import\\|link\\|extern\\|proc\\|const\\|type\\|var\\|begin\\|code\\)\\_>")
 (defconst raz--leading "^[ \t]*\\(?:or\\|and\\)\\_>")
 (defconst raz--block-word
-  "\\_<\\(if\\|while\\|for\\|match\\|record\\|variant\\|begin\\|repeat\\|end\\|until\\)\\_>")
+  "\\_<\\(if\\|while\\|for\\|match\\|record\\|variant\\|begin\\|repeat\\|code\\|end\\|until\\)\\_>")
 
 (defun raz--line (n)
   "The text of line N."

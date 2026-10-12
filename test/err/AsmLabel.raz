@@ -1,0 +1,6 @@
+module AsmLabel;
+proc f;
+code
+    jmp nowhere;
+end f;
+end AsmLabel.

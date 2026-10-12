@@ -1,0 +1,6 @@
+module AsmMemory;
+proc f;
+code
+    mov rax, [8];
+end f;
+end AsmMemory.

@@ -10,9 +10,11 @@ var g: Outer; calls: I64;
 (* rsp mod 16 at the call, as the callee sees it after its return
    address: always 8 when the caller keeps the stack aligned *)
 proc rspmod: I64;
-code 48H, 89H, 0E0H,          (* mov rax, rsp *)
-     48H, 83H, 0E0H, 0FH,     (* and rax, 15 *)
-     0C3H;
+code
+    mov rax, rsp;
+    and rax, 15;
+    ret;
+end rspmod;
 
 proc next: I64;
 begin

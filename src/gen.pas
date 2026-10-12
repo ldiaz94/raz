@@ -147,6 +147,7 @@ procedure DeferEnd(L, saved: longint);
 procedure RunDefer(at: longint);
 
 function EntryPoint(dynamic: boolean; first: PModule; main: PObj; cExit, places, placesVar, exitProc: longint): longint;
+procedure CodeProc(c: longint; constExpr: TConstFn);
 
 implementation
 
@@ -1297,6 +1298,15 @@ begin
   Ud2;
   EndChunk(start);
   EntryPoint := entry;
+end;
+
+{ A code procedure: its instructions, read by the assembler (x64.pas),
+  are the whole of chunk c }
+procedure CodeProc(c: longint; constExpr: TConstFn);
+begin
+  BeginChunk(c);
+  Assemble(constExpr);
+  EndChunk(c);
 end;
 
 initialization

@@ -147,7 +147,7 @@ the wishes below.
       before a division; chosen per target. A `nil` test is left out
       only where the offset falls in the unmapped page at address 0.
       On x86-64 that means a field past 4,095 bytes still gets one.
-- [ ] 9b. Assembly procedures in place of byte procedures: the
+- [x] 9b. Assembly procedures in place of byte procedures: the
       target's own syntax (appendix A), for the instructions the
       encoder knows and a few of the system's, bytes for the rest.
 - [ ] 9c. `raz -S`: each line of source with its instructions, named

@@ -8,8 +8,8 @@
 
    Every line break and comment stays where it is. A line is indented
    4 spaces for each block it stands in: the statements of if, while,
-   for, repeat and begin, the fields of a record or variant, the
-   declarations of const, type and var. end, until, else, elsif and a
+   for, repeat and begin, the instructions of code, the fields of a
+   record or variant, the declarations of const, type and var. end, until, else, elsif and a
    match's arms stand at the level of the statement that opened them;
    module, import, proc, the sections and begin at the margin, with the
    comment just before them. A line that goes on with the expression of
@@ -25,7 +25,7 @@ import Out, Rt, Buf, Heap, Scan, Files;
 
 const
     width = 4;   (* the spaces of a level *)
-    openers = "if while for match record variant begin repeat";
+    openers = "if while for match record variant begin repeat code";
     declarations = "module import link extern proc const type var begin code";
     binaryWords = "div mod and or xor shl shr in";
     binarySymbols = "+ - * / & | = # < <= > >= :=";

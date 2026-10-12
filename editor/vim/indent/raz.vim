@@ -19,10 +19,10 @@ if exists("*GetRazIndent")
 endif
 
 " searchpair() needs groups that don't capture
-let s:opener = '\C\<\%(if\|while\|for\|match\|record\|variant\|begin\|repeat\)\>'
+let s:opener = '\C\<\%(if\|while\|for\|match\|record\|variant\|begin\|repeat\|code\)\>'
 let s:closer = '\C\<\%(end\|until\)\>'
 let s:skip = 'synIDattr(synID(line("."), col("."), 1), "name") =~? "string\\|char\\|comment"'
-let s:decl = '^\s*\%(module\|import\|link\|extern\|proc\|const\|type\|var\|begin\)\>'
+let s:decl = '^\s*\%(module\|import\|link\|extern\|proc\|const\|type\|var\|begin\|code\)\>'
 
 " The line's code, without strings, characters and comments.
 function! s:Code(lnum)
@@ -81,7 +81,7 @@ function! s:Opens(code)
   let n = 0
   let i = 0
   while 1
-    let m = matchstrpos(a:code, '\C\<\%(if\|while\|for\|record\|variant\|begin\|repeat\|end\|until\)\>', i)
+    let m = matchstrpos(a:code, '\C\<\%(if\|while\|for\|record\|variant\|begin\|repeat\|code\|end\|until\)\>', i)
     if m[1] < 0
       return n
     endif

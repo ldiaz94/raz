@@ -4,9 +4,11 @@ import Out;
 var counter: INT; flag: UINT; p: ^INT;
 
 proc add3*(a, b, c: I64): I64;
-code 48H, 8DH, 04H, 37H,   (* lea rax, [rdi+rsi] *)
-     48H, 01H, 0D0H,       (* add rax, rdx *)
-     0C3H;                 (* ret *)
+code
+    lea rax, [rdi + rsi];
+    add rax, rdx;
+    ret;
+end add3;
 
 proc main*;
 var old: INT; ok: BOOL; v: ^VOLATILE INT; x: INT;

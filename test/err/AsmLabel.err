@@ -1,0 +1,4 @@
+test/err/AsmLabel.raz:4:9: error: label nowhere isn't defined
+    4 |     jmp nowhere;
+      |         ^^^^^^^
+raz: 1 error

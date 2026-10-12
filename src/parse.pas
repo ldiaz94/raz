@@ -1671,7 +1671,7 @@ begin
 end;
 
 procedure CodeBody(p: PObj; sig: PType; const at: TPos);
-var q: PObj; ni, nf: longint; v: int64; start: TPos;
+var q: PObj; ni, nf: longint;
 begin
   ni := 0; nf := 0;
   q := sig^.fields;
@@ -1690,16 +1690,8 @@ begin
         or (q^.typ^.form = fReal) or (q^.next^.typ^.form = fReal) then
         MarkAt(at, 'a code procedure returns two results only in rax and rdx');
     end else if not IsScalar(sig^.base) then MarkAt(at, 'a code procedure returns a single value');
-  BeginChunk(p^.chunk);
-  repeat
-    start := TokPos;
-    v := ConstExpr;
-    if (v < 0) or (v > 255) then MarkAt(SpanFrom(start), 'expected a byte from 0 to 255, found ' + IntStr(v));
-    Put1(v);
-    if tok <> sComma then break;
-    Next;
-  until false;
-  EndChunk(p^.chunk);
+  CodeProc(p^.chunk, @ConstExpr);
+  Expect(sEnd);
 end;
 
 procedure ProcDecl;
@@ -1738,9 +1730,7 @@ begin
     Next;
     p^.isCode := true;
     CodeBody(p, sig, at);
-    exit;
-  end;
-  if checkMode then SkipBody else Body(p, sig, line);
+  end else if checkMode then SkipBody else Body(p, sig, line);
   if tok = sIdent then begin
     if id <> n then Mark('expected ' + NameOf(n) + ', found ' + NameOf(id));
     Next;

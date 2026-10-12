@@ -5,15 +5,17 @@ import Out;
 
 (* cpuid leaf 0: puts the 12 bytes of the vendor in buf, rdi. *)
 proc vendor(buf: ^U8);
-code 53H,                        (* push rbx *)
-     49H, 89H, 0F8H,             (* mov r8, rdi *)
-     31H, 0C0H,                  (* xor eax, eax *)
-     0FH, 0A2H,                  (* cpuid *)
-     41H, 89H, 18H,              (* mov [r8], ebx *)
-     41H, 89H, 50H, 04H,         (* mov [r8+4], edx *)
-     41H, 89H, 48H, 08H,         (* mov [r8+8], ecx *)
-     5BH,                        (* pop rbx *)
-     0C3H;                       (* ret *)
+code
+    push rbx;
+    mov r8, rdi;
+    xor eax, eax;
+    cpuid;
+    mov [r8], ebx;
+    mov [r8 + 4], edx;
+    mov [r8 + 8], ecx;
+    pop rbx;
+    ret;
+end vendor;
 
 proc main*;
 var buf: [12]U8; i: INT; ok: BOOL;

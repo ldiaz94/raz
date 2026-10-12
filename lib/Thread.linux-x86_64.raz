@@ -41,22 +41,25 @@ type
    registers but rsp of its own to find them by. Returns the new
    thread's id, or minus an errno. *)
 proc start(flags: INT; stack: ^U8; ptid, ctid: ^INT; fn: proc(arg: ^U8); arg: ^U8): INT;
-code 48H, 83H, 0EEH, 10H,           (* sub rsi, 16 *)
-     4CH, 89H, 06H,                 (* mov [rsi], r8 *)
-     4CH, 89H, 4EH, 08H,            (* mov [rsi + 8], r9 *)
-     49H, 89H, 0CAH,                (* mov r10, rcx *)
-     45H, 31H, 0C0H,                (* xor r8d, r8d: no tls *)
-     0B8H, 38H, 0, 0, 0,            (* mov eax, 56: clone *)
-     0FH, 05H,                      (* syscall *)
-     48H, 85H, 0C0H,                (* test rax, rax *)
-     75H, 0DH,                      (* jnz parent *)
-     58H,                           (* pop rax: fn *)
-     5FH,                           (* pop rdi: arg *)
-     0FFH, 0D0H,                    (* call rax *)
-     31H, 0FFH,                     (* xor edi, edi *)
-     0B8H, 3CH, 0, 0, 0,            (* mov eax, 60: exit, this thread only *)
-     0FH, 05H,                      (* syscall *)
-     0C3H;                          (* parent: ret *)
+code
+    sub rsi, 16;
+    mov [rsi], r8;
+    mov [rsi + 8], r9;
+    mov r10, rcx;
+    xor r8d, r8d;       (* no tls *)
+    mov eax, 56;        (* clone *)
+    syscall;
+    test rax, rax;
+    jnz parent;
+    pop rax;            (* fn *)
+    pop rdi;            (* arg *)
+    call rax;
+    xor edi, edi;
+    mov eax, 60;        (* exit, this thread only *)
+    syscall;
+    parent:
+    ret;
+end start;
 
 proc futex(word: ^INT; op, val: INT): INT;
 begin

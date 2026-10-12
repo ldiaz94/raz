@@ -146,15 +146,15 @@ begin
     return false;
 end;
 
-(* A procedure's body: to the end that closes its begin, the procedure
-   name after it and its ;. *)
+(* A procedure's body: to the end that closes its begin or code, the
+   procedure name after it and its ;. *)
 proc skipBody;
 var depth: INT; sawBegin: BOOL;
 begin
     depth := 0;
     sawBegin := false;
     while sc.kind # Scan.eof do
-        if is("begin") then
+        if is("begin") or is("code") then
             if depth = 0 then sawBegin := true; end;
             INC(depth);
         elsif is("if") or is("while") or is("for") or is("match") or is("record") or is("variant") then
@@ -178,7 +178,7 @@ begin
     exp := name();
     stop := toSemicolon();
     next;
-    if is("forward") or is("code") then toSemicolon();
+    if is("forward") then toSemicolon();
     else skipBody;
     end;
     declaration("", exp, start, ds, de, stop);

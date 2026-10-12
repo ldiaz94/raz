@@ -1,4 +1,4 @@
 module StmtCodeParams;
 proc f(a, b, c, d, e, f, g: I64);
-code 0C3H;
+code ret; end;
 end StmtCodeParams.

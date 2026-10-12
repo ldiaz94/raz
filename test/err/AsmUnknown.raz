@@ -1,0 +1,7 @@
+module AsmUnknown;
+proc f;
+code
+    frob rax;
+    ret;
+end f;
+end AsmUnknown.

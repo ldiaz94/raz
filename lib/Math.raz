@@ -36,8 +36,10 @@ begin
 end;
 
 proc sqrt*(x: F64): F64;
-code 0F2H, 0FH, 51H, 0C0H,   (* sqrtsd xmm0, xmm0 *)
-     0C3H;                   (* ret *)
+code
+    sqrtsd xmm0, xmm0;
+    ret;
+end sqrt;
 
 (* The largest whole number not above x. One of 2^52 or more is whole
    already, and so are an infinity and NaN. *)
@@ -109,9 +111,11 @@ end;
 
 (* a times b: the low 64 bits of the product, and the high. *)
 proc mul(a, b: U64): (U64, U64);
-code 48H, 89H, 0F8H,   (* mov rax, rdi *)
-     48H, 0F7H, 0E6H,  (* mul rsi *)
-     0C3H;             (* ret *)
+code
+    mov rax, rdi;
+    mul rsi;
+    ret;
+end mul;
 
 (* 64 bits of t from bit s on, the first bit of t[0] being 0. *)
 proc window(t: []U64; s: INT): U64;

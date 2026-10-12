@@ -103,6 +103,24 @@ procedure JccBack(cc, target: longint);
 procedure FixLink(L: longint);
 procedure FixLinkTo(L, target: longint);
 
+type
+  TConstFn = function: int64;
+
+const
+  RegNames: array[0..3, 0..15] of string[5] = (
+    ('rax', 'rcx', 'rdx', 'rbx', 'rsp', 'rbp', 'rsi', 'rdi',
+     'r8', 'r9', 'r10', 'r11', 'r12', 'r13', 'r14', 'r15'),
+    ('eax', 'ecx', 'edx', 'ebx', 'esp', 'ebp', 'esi', 'edi',
+     'r8d', 'r9d', 'r10d', 'r11d', 'r12d', 'r13d', 'r14d', 'r15d'),
+    ('ax', 'cx', 'dx', 'bx', 'sp', 'bp', 'si', 'di',
+     'r8w', 'r9w', 'r10w', 'r11w', 'r12w', 'r13w', 'r14w', 'r15w'),
+    ('al', 'cl', 'dl', 'bl', 'spl', 'bpl', 'sil', 'dil',
+     'r8b', 'r9b', 'r10b', 'r11b', 'r12b', 'r13b', 'r14b', 'r15b'));
+  CondNames: array[0..15] of string[3] = ('o', 'no', 'b', 'ae', 'e', 'ne',
+    'be', 'a', 's', 'ns', 'p', 'np', 'l', 'ge', 'le', 'g');
+
+procedure Assemble(constExpr: TConstFn);
+
 implementation
 
 { Operands }
@@ -145,7 +163,10 @@ begin
   until op = 0;
 end;
 
-procedure Prefix(pfx: longint; w: boolean; reg, index, base: longint; byteReg: boolean);
+{ The legacy prefix pfx, if any, and REX: wide is REX.W; byte4 says
+  a byte register of 4 to 7 is used, spl to dil, which exist only with
+  a REX prefix. }
+procedure Prefix(pfx: longint; w: boolean; reg, index, base: longint; byte4: boolean);
 var rex: longint;
 begin
   if pfx <> 0 then Put1(pfx);
@@ -154,14 +175,14 @@ begin
   if reg >= 8 then rex := rex or 4;
   if index >= 8 then rex := rex or 2;
   if base >= 8 then rex := rex or 1;
-  { sil and dil exist only with a REX prefix }
-  if (rex <> 0) or (byteReg and (reg >= 4) and (reg <= 7)) then Put1($40 or rex);
+  if (rex <> 0) or byte4 then Put1($40 or rex);
 end;
 
 { op reg, [mem] }
 procedure OpM(pfx: longint; w: boolean; op, reg: longint; const m: TMem; byteReg: boolean = false);
 var md, b, sc: longint;
 begin
+  byteReg := byteReg and (reg >= 4) and (reg <= 7);
   if m.base = RIP then Prefix(pfx, w, reg, NoIndex, 0, byteReg)
   else Prefix(pfx, w, reg, m.index, m.base, byteReg);
   Opcode(op);
@@ -190,9 +211,9 @@ begin
 end;
 
 { op reg, rm (both registers) }
-procedure OpR(pfx: longint; w: boolean; op, reg, rm: longint);
+procedure OpR(pfx: longint; w: boolean; op, reg, rm: longint; byteReg: boolean = false);
 begin
-  Prefix(pfx, w, reg, NoIndex, rm, false);
+  Prefix(pfx, w, reg, NoIndex, rm, byteReg and ((reg in [4..7]) or (rm in [4..7])));
   Opcode(op);
   Put1($C0 or (reg and 7) shl 3 or (rm and 7));
 end;
@@ -471,6 +492,343 @@ end;
 procedure FixLink(L: longint);
 begin
   FixLinkTo(L, pc);
+end;
+
+
+{ The assembler, for code procedures: x86-64 in Intel's syntax as NASM
+  writes it (report, appendix A). It reads instructions with the
+  scanner up to end, and encodes them with OpM and OpR; constants are
+  read by the parser's constExpr. }
+
+const
+  NoBase = -3;   { a memory operand's base, not yet read }
+
+type
+  TOpKind = (oReg, oXmm, oMem, oImm);
+  TOpd = record
+    kind: TOpKind;
+    r, size: longint;   { oReg, oXmm: the register and its size; oMem: its size, or 0 }
+    m: TMem;
+    v: int64;           { oImm }
+  end;
+
+{ The current symbol as a word: an identifier, or a reserved word that
+  is also an instruction }
+function AsmWord: shortstring;
+begin
+  case tok of
+    sIdent: AsmWord := NameOf(id);
+    sAnd: AsmWord := 'and';
+    sOr: AsmWord := 'or';
+    sXor: AsmWord := 'xor';
+    sNot: AsmWord := 'not';
+    sDiv: AsmWord := 'div';
+    sShl: AsmWord := 'shl';
+    sShr: AsmWord := 'shr';
+  else AsmWord := '';
+  end;
+end;
+
+{ Whether w names a register: rax, eax, ax, al and so on, or xmm0 to
+  xmm15 (size 16) }
+function IsReg(const w: shortstring; var r, size: longint): boolean;
+const Sizes: array[0..3] of longint = (8, 4, 2, 1);
+var i, j, e: longint;
+begin
+  IsReg := true;
+  for i := 0 to 3 do
+    for j := 0 to 15 do
+      if RegNames[i, j] = w then begin r := j; size := Sizes[i]; exit end;
+  size := 16;
+  Val(copy(w, 4, 2), r, e);
+  IsReg := (copy(w, 1, 3) = 'xmm') and (length(w) > 3) and (e = 0) and (r in [0..15]);
+end;
+
+{ Which word of list, a list of words each with a space either side,
+  w is, from 0; -1 if none }
+function WordIndex(const w, list: shortstring): longint;
+var i, k: longint;
+begin
+  k := pos(' ' + w + ' ', list);
+  WordIndex := -1;
+  if k = 0 then exit;
+  WordIndex := 0;
+  for i := 2 to k do if list[i] = ' ' then inc(WordIndex);
+end;
+
+{ The condition a name ends in: e of je, nz of jnz }
+function Cond(const w: shortstring): longint;
+const
+  Alias: array[0..11] of string[3] = ('c', 'nae', 'nc', 'nb', 'z', 'nz', 'na', 'nbe', 'nge', 'nl', 'ng', 'nle');
+  AliasCc: array[0..11] of longint = (2, 2, 3, 3, 4, 5, 6, 7, 12, 13, 14, 15);
+var i: longint;
+begin
+  for i := 0 to 15 do if CondNames[i] = w then exit(i);
+  for i := 0 to 11 do if Alias[i] = w then exit(AliasCc[i]);
+  Cond := -1;
+end;
+
+procedure Operand(var o: TOpd; constExpr: TConstFn);
+var w: shortstring; r, size, sz: longint; st: TScanState;
+begin
+  FillChar(o, SizeOf(o), 0);
+  w := AsmWord;
+  sz := 0;
+  if w = 'byte' then sz := 1 else if w = 'word' then sz := 2
+  else if w = 'dword' then sz := 4 else if w = 'qword' then sz := 8;
+  if sz <> 0 then begin Next; w := AsmWord end;
+  if tok = sLbrak then begin
+    { [base + index * scale + disp], the displacement last }
+    Next;
+    o.kind := oMem; o.size := sz;
+    o.m := Mem(NoBase, 0);
+    repeat
+      if IsReg(AsmWord, r, size) and (size = 8) then begin
+        Next;
+        if tok = sTimes then begin Next; o.m.index := r; o.m.scale := constExpr() end
+        else if o.m.base = NoBase then o.m.base := r
+        else begin o.m.index := r; o.m.scale := 1 end;
+      end else o.m.disp := o.m.disp + constExpr();
+      if not (tok in [sPlus, sMinus]) then break;
+      SaveScan(st);
+      Next;
+      if not IsReg(AsmWord, r, size) and (st.tok = sMinus) then RestoreScan(st);
+    until false;
+    if (tok <> sRbrak) or (o.m.base = NoBase) or not (o.m.scale in [1, 2, 4, 8]) then
+      Mark('expected a memory operand, [base + index * scale + disp]');
+    Next;
+  end else if IsReg(w, o.r, o.size) then begin
+    if o.size = 16 then o.kind := oXmm else o.kind := oReg;
+    Next;
+  end else begin
+    o.kind := oImm;
+    o.v := constExpr();
+  end;
+end;
+
+{ op with register reg and the register or memory operand o }
+procedure RM(pfx: longint; w: boolean; op, reg: longint; const o: TOpd; byteReg: boolean = false);
+begin
+  if o.kind = oMem then OpM(pfx, w, op, reg, o.m, byteReg)
+  else OpR(pfx, w, op, reg, o.r, byteReg);
+end;
+
+procedure PutImm(v: int64; size: longint);
+begin
+  case size of
+    1: Put1(v);
+    2: begin Put1(v); Put1(v shr 8) end;
+  else Put4(v);
+  end;
+end;
+
+procedure Assemble(constExpr: TConstFn);
+const
+  Alus = ' add or adc sbb and sub xor cmp ';
+  Unaries = ' not neg mul imul div idiv ';
+  Shifts = ' rol ror rcl rcr shl shr sal sar ';
+  SseOps = ' sqrt add mul sub min div max ';
+  SseCodes: array[0..6] of longint = ($51, $58, $59, $5C, $5D, $5E, $5F);
+  Plain: array[0..14] of string[7] = ('ret', 'leave', 'syscall', 'cpuid', 'rdtsc',
+    'pause', 'nop', 'ud2', 'int3', 'hlt', 'cqo', 'cdq', 'mfence', 'lfence', 'sfence');
+  PlainOp: array[0..14] of longint = ($C3, $C9, $050F, $A20F, $310F,
+    $90F3, $90, $0B0F, $CC, $F4, $9948, $99, $F0AE0F, $E8AE0F, $F8AE0F);
+var
+  w: shortstring; o: array[0..2] of TOpd; n, i, k, size, pfx, cc: longint;
+  wide, byteOp: boolean; at, start: TPos; v: int64;
+  names, places, chains: array[0..63] of longint; numLabels: longint;
+  usedAt: array[0..63] of TPos;
+
+  { the label called n, entered if new }
+  function Lab(n: longint): longint;
+  var i: longint;
+  begin
+    for i := 0 to numLabels - 1 do if names[i] = n then exit(i);
+    if numLabels > High(names) then Mark('more than 64 labels');
+    names[numLabels] := n; places[numLabels] := -1; chains[numLabels] := NoLabel;
+    usedAt[numLabels] := TokPos;
+    Lab := numLabels;
+    inc(numLabels);
+  end;
+
+  procedure Bad;
+  begin
+    MarkAt(at, 'can''t assemble ' + w + ' with these operands');
+  end;
+
+  { an instruction of two operands: a register or memory, and a
+    register (opcode toRM), the other way (fromRM), or an immediate
+    (opImm /digit, or none if opImm < 0) }
+  procedure Two(toRM, fromRM, opImm, digit: longint);
+  begin
+    if n <> 2 then Bad;
+    if o[1].kind = oImm then begin
+      if (o[0].kind = oImm) or (opImm < 0) then Bad;
+      if (opImm = $81) and not byteOp and (o[1].v >= -128) and (o[1].v <= 127) then begin
+        RM(pfx, wide, $83, digit, o[0]);   { a byte, sign-extended }
+        Put1(o[1].v);
+      end else begin
+        RM(pfx, wide, opImm - ord(byteOp), digit, o[0]);
+        PutImm(o[1].v, size);
+      end;
+    end else if (o[1].kind = oReg) and (o[0].kind in [oReg, oMem]) then
+      RM(pfx, wide, toRM - ord(byteOp), o[1].r, o[0], byteOp)
+    else if (o[0].kind = oReg) and (o[1].kind = oMem) then
+      RM(pfx, wide, fromRM - ord(byteOp), o[0].r, o[1], byteOp)
+    else Bad;
+  end;
+
+begin
+  numLabels := 0;
+  while not (tok in [sEnd, sEof]) do begin
+    at := TokPos;
+    w := AsmWord;
+    if tok = sSemicolon then begin Next; continue end;
+    if w = '' then Mark('expected an instruction');
+    Next;
+    if tok = sColon then begin
+      k := Lab(Intern(@w[1], length(w)));
+      if places[k] >= 0 then MarkAt(at, 'label ' + w + ' is defined twice');
+      places[k] := pc;
+      FixLink(chains[k]);
+      Next;
+      continue;
+    end;
+    if w = 'lock' then begin
+      Put1($F0);
+      w := AsmWord;
+      Next;
+    end;
+    cc := -1;
+    if w = 'db' then
+      repeat
+        start := TokPos;
+        v := constExpr();
+        if (v < -128) or (v > 255) then MarkAt(SpanFrom(start), 'expected a byte from 0 to 255, found ' + IntStr(v));
+        Put1(v);
+        if tok <> sComma then break;
+        Next;
+      until false
+    else if (w[1] = 'j') and ((w = 'jmp') or (Cond(copy(w, 2, 3)) >= 0)) and (tok = sIdent) then begin
+      { a jump to a label }
+      k := Lab(id);
+      Next;
+      if w <> 'jmp' then cc := Cond(copy(w, 2, 3));
+      if places[k] >= 0 then begin
+        if cc < 0 then JmpBack(places[k]) else JccBack(cc, places[k])
+      end else if cc < 0 then Jmp(chains[k]) else Jcc(cc, chains[k]);
+    end else begin
+      n := 0;
+      if tok <> sSemicolon then
+        repeat
+          if n > High(o) then Mark('too many operands');
+          Operand(o[n], constExpr);
+          inc(n);
+          if tok <> sComma then break;
+          Next;
+        until false;
+      { the size: a register's, or what the memory operand says }
+      size := 8;
+      for i := n - 1 downto 0 do
+        if (o[i].kind = oReg) or (o[i].kind = oMem) and (o[i].size <> 0) then size := o[i].size;
+      if n > 0 then
+        if (o[0].kind = oReg) or (o[0].kind = oMem) and (o[0].size <> 0) then size := o[0].size;
+      wide := size = 8;
+      byteOp := size = 1;
+      if size = 2 then pfx := $66 else pfx := 0;
+      if WordIndex(w, Alus) >= 0 then begin
+        k := WordIndex(w, Alus);
+        Two(k * 8 + 1, k * 8 + 3, $81, k)
+      end
+      else if w = 'mov' then begin
+        if (n = 2) and (o[0].kind = oReg) and (o[1].kind = oImm) and (size >= 4) then begin
+          if wide then MovRI(o[0].r, o[1].v)
+          else begin Prefix(0, false, 0, NoIndex, o[0].r, false); Put1($B8 + o[0].r and 7); Put4(o[1].v) end;
+        end else Two($89, $8B, $C7, 0);
+      end else if w = 'test' then Two($85, $85, $F7, 0)
+      else if w = 'xchg' then Two($87, $87, -1, 0)
+      else if (w = 'cmpxchg') or (w = 'xadd') then begin
+        if (n <> 2) or (o[1].kind <> oReg) then Bad;
+        if w = 'xadd' then k := $C10F else k := $B10F;
+        RM(pfx, wide, k - ord(byteOp) shl 8, o[1].r, o[0], byteOp);
+      end else if w = 'lea' then begin
+        if (n <> 2) or (o[0].kind <> oReg) or (o[1].kind <> oMem) then Bad;
+        RM(pfx, wide, $8D, o[0].r, o[1]);
+      end else if (w = 'movzx') or (w = 'movsx') or (w = 'movsxd') then begin
+        if (n <> 2) or (o[0].kind <> oReg) or (o[1].kind = oImm) then Bad;
+        if w = 'movsxd' then k := $63
+        else if o[1].size = 1 then k := $B60F
+        else if o[1].size = 2 then k := $B70F
+        else Bad;
+        if w = 'movsx' then k := k + $0800;
+        RM(pfx, wide, k, o[0].r, o[1], o[1].size = 1);
+      end else if ((WordIndex(w, Unaries) >= 0) and (n = 1)) or (w = 'inc') or (w = 'dec') then begin
+        if o[0].kind = oImm then Bad;
+        if w = 'inc' then RM(pfx, wide, $FF - ord(byteOp), 0, o[0], byteOp)
+        else if w = 'dec' then RM(pfx, wide, $FF - ord(byteOp), 1, o[0], byteOp)
+        else RM(pfx, wide, $F7 - ord(byteOp), WordIndex(w, Unaries) + 2, o[0], byteOp);
+      end else if w = 'imul' then begin
+        if (n < 2) or (o[0].kind <> oReg) or (o[1].kind = oImm) then Bad;
+        if n = 2 then RM(pfx, wide, $AF0F, o[0].r, o[1])
+        else begin RM(pfx, wide, $69, o[0].r, o[1]); PutImm(o[2].v, size) end;
+      end else if WordIndex(w, Shifts) >= 0 then begin
+        k := WordIndex(w, Shifts);
+        if k = 6 then k := 4;   { sal is shl }
+        if (n <> 2) or (o[0].kind = oImm) then Bad;
+        if o[1].kind = oImm then begin RM(pfx, wide, $C1 - ord(byteOp), k, o[0], byteOp); Put1(o[1].v) end
+        else if (o[1].kind = oReg) and (o[1].r = RCX) and (o[1].size = 1) then RM(pfx, wide, $D3 - ord(byteOp), k, o[0], byteOp)
+        else Bad;
+      end else if (w = 'push') or (w = 'pop') then begin
+        if (n <> 1) or (o[0].kind <> oReg) or not wide then Bad;
+        if w = 'push' then Push(o[0].r) else Pop(o[0].r);
+      end else if (w = 'call') or (w = 'jmp') then begin
+        if (n <> 1) or (o[0].kind = oImm) then Bad;
+        if w = 'call' then RM(0, false, $FF, 2, o[0]) else RM(0, false, $FF, 4, o[0]);
+      end else if (copy(w, 1, 3) = 'set') and (Cond(copy(w, 4, 3)) >= 0) then begin
+        if (n <> 1) or (o[0].kind = oImm) or (size <> 1) then Bad;
+        RM(0, false, $900F + Cond(copy(w, 4, 3)) shl 8, 0, o[0], true);
+      end else if (copy(w, 1, 4) = 'cmov') and (Cond(copy(w, 5, 3)) >= 0) then begin
+        if (n <> 2) or (o[0].kind <> oReg) or (o[1].kind = oImm) then Bad;
+        RM(pfx, wide, $400F + Cond(copy(w, 5, 3)) shl 8, o[0].r, o[1]);
+      end else if (length(w) > 2) and (WordIndex(copy(w, 1, length(w) - 2), SseOps) >= 0)
+        and ((copy(w, length(w) - 1, 2) = 'sd') or (copy(w, length(w) - 1, 2) = 'ss')) then begin
+        { sqrtsd, addss and the like: xmm, xmm or memory }
+        if (n <> 2) or (o[0].kind <> oXmm) or not (o[1].kind in [oXmm, oMem]) then Bad;
+        k := $0F or SseCodes[WordIndex(copy(w, 1, length(w) - 2), SseOps)] shl 8;
+        RM(RealPfx[w[length(w)] = 's'], false, k, o[0].r, o[1]);
+      end else if (w = 'movsd') or (w = 'movss') then begin
+        if w = 'movsd' then k := $F2 else k := $F3;
+        if (n = 2) and (o[0].kind = oXmm) and (o[1].kind in [oXmm, oMem]) then RM(k, false, $100F, o[0].r, o[1])
+        else if (n = 2) and (o[0].kind = oMem) and (o[1].kind = oXmm) then RM(k, false, $110F, o[1].r, o[0])
+        else Bad;
+      end else if (w = 'movq') or (w = 'movd') then begin
+        if (n = 2) and (o[0].kind = oXmm) and (o[1].kind in [oReg, oMem]) then RM($66, w = 'movq', $6E0F, o[0].r, o[1])
+        else if (n = 2) and (o[1].kind = oXmm) and (o[0].kind in [oReg, oMem]) then RM($66, w = 'movq', $7E0F, o[1].r, o[0])
+        else Bad;
+      end else if (w = 'ucomisd') or (w = 'ucomiss') then begin
+        if (n <> 2) or (o[0].kind <> oXmm) or not (o[1].kind in [oXmm, oMem]) then Bad;
+        if w = 'ucomisd' then RM($66, false, $2E0F, o[0].r, o[1]) else RM(0, false, $2E0F, o[0].r, o[1]);
+      end else if (w = 'cvtsi2sd') or (w = 'cvtsi2ss') then begin
+        if (n <> 2) or (o[0].kind <> oXmm) or not (o[1].kind in [oReg, oMem]) then Bad;
+        RM(RealPfx[w = 'cvtsi2ss'], o[1].size <> 4, $2A0F, o[0].r, o[1]);
+      end else if (w = 'cvttsd2si') or (w = 'cvttss2si') then begin
+        if (n <> 2) or (o[0].kind <> oReg) or not (o[1].kind in [oXmm, oMem]) then Bad;
+        RM(RealPfx[w = 'cvttss2si'], wide, $2C0F, o[0].r, o[1]);
+      end else if (w = 'cvtsd2ss') or (w = 'cvtss2sd') then begin
+        if (n <> 2) or (o[0].kind <> oXmm) or not (o[1].kind in [oXmm, oMem]) then Bad;
+        RM(RealPfx[w = 'cvtss2sd'], false, $5A0F, o[0].r, o[1]);
+      end else begin
+        k := 0;
+        while (k <= High(Plain)) and (Plain[k] <> w) do inc(k);
+        if (k > High(Plain)) or (n <> 0) then MarkAt(at, 'unknown instruction ' + w);
+        Opcode(PlainOp[k]);
+      end;
+    end;
+    if tok <> sSemicolon then Mark('expected ";"');
+    Next;
+  end;
+  for k := 0 to numLabels - 1 do
+    if places[k] < 0 then MarkAt(usedAt[k], 'label ' + NameOf(names[k]) + ' isn''t defined');
 end;
 
 end.

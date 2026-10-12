@@ -1,0 +1,4 @@
+test/err/AsmOperands.raz:4:5: error: can't assemble lea with these operands
+    4 |     lea rax, rbx;
+      |     ^^^
+raz: 1 error
