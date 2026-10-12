@@ -20,7 +20,8 @@ interface
 uses scan, diag, sym, chunk, gen;
 
 type
-  TMode = (mConst, mVar, mStack, mProc, mType, mStr, mBuiltin, mCase, mNone, mCond);
+  TMode = (mConst, mVar, mStack, mProc, mType, mStr, mBuiltin, mCase, mNone, mCond,
+           mWords);   { two results of a call, on the stack, the first under the second }
 
   TItem = record
     mode: TMode;
@@ -383,6 +384,7 @@ var y: TItem;
 begin
   if x.mode = mCond then begin y := x; Value(y); Drop; exit end;
   if (x.mode = mStack) or ((x.mode = mVar) and (x.base = bStack)) then Drop;
+  if x.mode = mWords then begin Drop; Drop end;
 end;
 
 { Frames }
@@ -408,10 +410,17 @@ end;
 { Copying }
 
 procedure CopyToTemp(var x: TItem);
-var t: int64;
+var t: int64; f, g: PObj;
 begin
   if x.vol then MarkAt(x.pos, 'can''t copy through a volatile pointer');
   t := AllocTemp(x.typ^.size, x.typ^.align);
+  if x.mode = mWords then begin
+    f := x.typ^.fields; g := f^.next;
+    PopVar(FrameAdr(t + g^.val), ScalarSize(g^.typ));
+    PopVar(FrameAdr(t + f^.val), ScalarSize(f^.typ));
+    TempItem(x, x.typ, t);
+    exit;
+  end;
   Address(x);
   CopyTo(FrameAdr(t), x.typ^.size);
   TempItem(x, x.typ, t);
@@ -1144,6 +1153,7 @@ end;
 procedure PushWords(var x: TItem);
 var adr: TAdr; f: PObj;
 begin
+  if x.mode = mWords then exit;   { there already }
   if (x.mode <> mVar) or x.vol or not (x.base in [bFrame, bGlobal, bSlot]) then CopyToTemp(x);
   adr := AdrOf(x);
   if x.typ^.form = fSlice then begin
@@ -1223,6 +1233,7 @@ begin
     TempItem(x, res, c.ret)
   else begin
     x.mode := mStack; x.typ := res;
+    if res^.tuple then x.mode := mWords;
   end;
 end;
 

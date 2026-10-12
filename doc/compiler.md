@@ -13,9 +13,9 @@ disassembly.
 | `src/sym.pas` | 643 | 527 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 302 | 234 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,113 | 930 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,641 | 1,287 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,467 | 1,223 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,916 | 2,580 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/gen.pas` | 1,650 | 1,282 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,478 | 1,234 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,927 | 2,588 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -349,15 +349,16 @@ they wait for `Call`, as any values do: a constant, an address or a
 variable in a register only noted, the rest in registers, or spilled
 by a call in a later argument, so that it can't disturb them. `Call`
 spills what is under them, moves each into the register System V
-wants (`ArgTo`), `r8` and `r9` last since they may hold others, and
+wants (`ValueTo`), `r8` and `r9` last since they may hold others, and
 aligns the stack. A slice goes as its two words, in two registers or
 both on the stack, as System V passes a struct of two integers, and
 the procedure keeps them in its frame. A record
 passed by value goes as the address of a copy. A result of two words,
 a slice or two single values that aren't reals (`InTwoRegs`, in
 `sym.pas`), comes back in rax and rdx, as System V returns a struct of
-two integers: `return` leaves both on the stack for `ReturnJump`, and
-`Call` stores them in a temporary of the caller's. Any other record or
+two integers: `return` leaves both on the stack for `ReturnJump`.
+`Call` leaves two results on the stack, and stores a slice in a
+temporary of the caller's. Any other record or
 several results come back through a hidden pointer in `rdi`, as C's
 structs do (`BehindPointer`, `ResultTo`, `CopyResult`).
 
@@ -392,6 +393,11 @@ says what it is now:
 - `mVar`: a variable, at `base`, `chunk` and `off`, which `AdrOf`
   makes a `TAdr` for gen;
 - `mStack`: a value on gen's stack;
+- `mWords`: the two results of a call, as rax and rdx brought them, on
+  gen's stack, the first under the second. `a, b := f(x)` brings the
+  first to the top (`Swap`) and pops each into its variable, so that
+  nothing goes through memory; `return f(x)` leaves them for
+  `ReturnJump`; anything else makes them a temporary (`CopyToTemp`);
 - `mCond`: a condition, as Wirth's compilers keep one: two integers on
   gen's stack, compared by `rel` once something wants the result, and
   the jumps of `and` and `or` that land where it is false (`fj`) or

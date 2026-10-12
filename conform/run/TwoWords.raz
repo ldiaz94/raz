@@ -46,7 +46,7 @@ begin
 end;
 
 proc main*;
-var x, y: I32; b: BOOL; v, p, q: INT; w: I64; h: proc(n: INT): (INT, INT);
+var x, y: I32; b: BOOL; v, p, q: INT; w: I64; h: proc(n: INT): (INT, INT); pv: ^INT;
 begin
     x, y := pair(-5, 7); Out.int(I64(x)); Out.str(" "); Out.int(I64(y)); Out.ln;
     b, w := mixed(-4); if b then Out.str("T"); else Out.str("F"); end; Out.str(" "); Out.int(w); Out.ln;
@@ -56,6 +56,9 @@ begin
     Out.str(tail("hello", 2)); Out.ln;
     p, q := fallOff(0); Out.int(p); Out.str(" "); Out.int(q); Out.ln;
     _, v := nested(3); Out.int(v); Out.str(" "); Out.int(log); Out.ln;
+    (* in order: the second result is the one left *)
+    v, v := nested(4); Out.int(v); Out.ln;
+    pv := ADR(q); pv^, p := nested(5); Out.int(q); Out.str(" "); Out.int(p); Out.ln;
 end;
 
 end TwoWords.

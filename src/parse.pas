@@ -1097,6 +1097,7 @@ begin
       if x.typ^.tuple and not several then begin
         if lastCalled <> nil then s := NameOf(lastCalled^.name) else s := 'this procedure';
         MarkHelp(x.pos, s + ' returns several results', 'they go to variables: a, b := ' + s + '(...)');
+        if x.mode = mWords then CopyToTemp(x);
       end;
     end;
     sLparen: begin Next; Expression(x, want); Expect(sRparen) end;
@@ -1542,13 +1543,23 @@ begin
   until false;
   Expect(sBecomes);
   Designator(y, called);
-  if not called or not y.typ^.tuple or (y.typ^.len <> n) then
+  if not called or not y.typ^.tuple or (y.typ^.len <> n) then begin
     MarkAt(y.pos, 'expected a call with ' + IntStr(n) + ' results');
+    if y.mode = mWords then CopyToTemp(y);
+  end;
+  { two results on the stack: the first is brought to the top, and each
+    is popped into its variable in turn, as one value; else each is
+    read from the temporary they came back in }
+  if y.mode = mWords then Swap;
   f := y.typ^.fields;
   for i := 0 to n - 1 do begin
-    if not blanks[i] then begin
+    if y.mode = mWords then begin
       z := y;
-      Field(z, f);
+      z.mode := mStack; z.typ := f^.typ;
+    end;
+    if blanks[i] then Discard(z)
+    else begin
+      if y.mode <> mWords then begin z := y; Field(z, f) end;
       CoerceExact(z, d[i].typ, 'several results go to variables of just their types');
       Assign(d[i], z);
     end;

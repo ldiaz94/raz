@@ -75,7 +75,7 @@ type
     target: int64;     { the frame slot of a procedure value, if chunk < 0 }
     chunk: longint;    { else the procedure's chunk }
     ext: boolean;      { C's: called through the chunk holding its address }
-    ret: int64;        { set by Call: the temporary a result of more than one word is in }
+    ret: int64;        { set by Call: the temporary a slice or a record result is in }
   end;
 
 const
@@ -337,6 +337,28 @@ begin
   if stack[depth].loc = lReg then owner[depth mod NumRegs] := -1;
 end;
 
+{ The value i into register r, from wherever it is: a constant or an
+  address is made there, a variable's register or the value's own
+  register copied, a spilled value loaded. Unlike Loaded, it leaves the
+  value where it was, so r is its only new copy. }
+procedure ValueTo(i, r: longint);
+begin
+  case stack[i].loc of
+    lConst: MovRI(r, stack[i].val);
+    lHeld: MovRR(r, stack[i].val);
+    lAdr: Lea(r, AdrMem(i, 0));
+    lReg: if RegOf(i) <> r then MovRR(r, RegOf(i));
+  else Load(r, Mem(RBP, stack[i].val), 8, false);
+  end;
+end;
+
+{ The value on top, popped into register r }
+procedure PopTo(r: longint);
+begin
+  ValueTo(depth - 1, r);
+  Drop;
+end;
+
 { Whether the value on top is a constant, and if so, which }
 function TopConst(var v: int64): boolean;
 begin
@@ -493,10 +515,8 @@ end;
   size bytes to off bytes past the destination. }
 procedure CopyBlock(size, off: int64);
 begin
-  MovRR(RSI, Top);
-  Drop;
-  MovRR(RDI, Top);
-  Drop;
+  PopTo(RSI);
+  PopTo(RDI);
   if off <> 0 then Lea(RDI, Mem(RDI, off));
   CopyBytes(size);
 end;
@@ -504,8 +524,7 @@ end;
 { Pops a source's address, and copies size bytes to a. }
 procedure CopyTo(const a: TAdr; size: int64);
 begin
-  MovRR(RSI, Top);
-  Drop;
+  PopTo(RSI);
   Lea(RDI, Place(a, RDI));
   CopyBytes(size);
 end;
@@ -796,8 +815,7 @@ end;
 procedure ErrorText(tmp: int64);
 var L: longint;
 begin
-  MovRR(RAX, Top);
-  Drop;
+  PopTo(RAX);
   MovRI(RCX, 0);
   L := NoLabel;
   TestRR(RAX, RAX);
@@ -861,8 +879,7 @@ procedure Atomic(which: longint);
 var r, n: longint;
 begin
   if which = bCas then begin n := Top; Drop end;
-  MovRR(RAX, Top);
-  Drop;
+  PopTo(RAX);
   r := Top;
   case which of
     bCas: begin LockCmpxchg(Mem(r, 0), n); SetCC(ccE, r) end;
@@ -1059,21 +1076,28 @@ begin
 end;
 
 { Pops an index, and the address of the slice at a if it is on the
-  stack, and pushes the address of its element of size bytes. }
+  stack, and pushes the address of its element of size bytes: the
+  index, checked against the length, times size, plus the pointer.
+  It is worked out in the index's own register, which then holds the
+  address; but if the slice's address is on the stack, under the
+  index, the element's register is the one that holds that, still
+  needed, so the work is done in rax. }
 procedure IndexSlice(const a: TAdr; size: int64; checked: boolean; const p: TPos);
-var m, ml: TMem;
+var m, ml: TMem; r: longint; inRax: boolean;
 begin
-  MovRR(RAX, Top);
-  Drop;
+  inRax := a.base = bStack;
+  if inRax then begin r := RAX; PopTo(RAX) end
+  else begin r := Top; Drop end;
   m := Place(a, RCX);
   ml := m; ml.disp := ml.disp + 8;
   if checked then begin
-    AluM(aluCmp, RAX, ml);
-    Check(ccB, 0, p, RAX, ml, 0, -1);
+    AluM(aluCmp, r, ml);
+    Check(ccB, 0, p, r, ml, 0, -1);
   end;
-  if size <> 1 then ImulI(RAX, size);
-  AluM(aluAdd, RAX, m);
-  MovRR(Target, RAX);
+  if size <> 1 then ImulI(r, size);
+  AluM(aluAdd, r, m);
+  if inRax then MovRR(Target, RAX)
+  else Claim(depth);   { the index's register again, now for the address }
   Computed(kWord);
 end;
 
@@ -1083,10 +1107,8 @@ end;
 procedure Slice(const a: TAdr; isArray: boolean; n, size, tmp: int64; checked: boolean; const p: TPos);
 var m, ml: TMem;
 begin
-  MovRR(RDX, Top);
-  Drop;
-  MovRR(RCX, Top);
-  Drop;
+  PopTo(RDX);
+  PopTo(RCX);
   m := Place(a, RDI);
   ml := m; ml.disp := ml.disp + 8;
   if checked then begin
@@ -1142,12 +1164,9 @@ end;
   bounds can't be known, but it can't run backwards. }
 procedure SlicePtr(size, tmp: int64; checked: boolean; const p: TPos);
 begin
-  MovRR(RDX, Top);
-  Drop;
-  MovRR(RCX, Top);
-  Drop;
-  MovRR(RDI, Top);
-  Drop;
+  PopTo(RDX);
+  PopTo(RCX);
+  PopTo(RDI);
   if checked then begin
     Alu(aluCmp, RCX, RDX);
     Check(ccLE, 3, p, RCX, NoMem, 0, -1);
@@ -1165,17 +1184,6 @@ end;
 { The call c, its arguments already in their frame slots: they go to
   registers or the stack, the procedure is called, and its result, if
   any, is pushed on the value stack. }
-{ Argument value i, as it is on the stack, into register r }
-procedure ArgTo(i, r: longint);
-begin
-  case stack[i].loc of
-    lConst: MovRI(r, stack[i].val);
-    lHeld: MovRR(r, stack[i].val);
-    lAdr: Lea(r, AdrMem(i, 0));
-    lReg: if RegOf(i) <> r then MovRR(r, RegOf(i));
-  else Load(r, Mem(RBP, stack[i].val), 8, false);
-  end;
-end;
 
 procedure Call(var c: TCall);
 var
@@ -1189,7 +1197,7 @@ begin
   res := c.sig^.base;
   c.ret := 0;
   ni := 0; nf := 0;
-  if (res <> nil) and IsAggregate(res) then begin
+  if (res <> nil) and (BehindPointer(res) or (res^.form = fSlice)) then begin
     c.ret := AllocTemp(res^.size, res^.align);
     if BehindPointer(res) then ni := 1;
   end;
@@ -1213,7 +1221,7 @@ begin
   if pad <> 0 then AluI(aluSub, RSP, 8);
   for i := c.n - 1 downto 0 do
     if onStack[i] then begin
-      ArgTo(first + i, RAX);
+      ValueTo(first + i, RAX);
       Push(RAX);
     end;
   ni := 0; nf := 0;
@@ -1225,14 +1233,14 @@ begin
     if not onStack[i] then
       if c.isF[i] then begin
         if stack[first + i].loc = lFrame then MovsdXM(nf, Mem(RBP, stack[first + i].val))
-        else begin ArgTo(first + i, RAX); MovqXR(nf, RAX) end;
+        else begin ValueTo(first + i, RAX); MovqXR(nf, RAX) end;
         inc(nf);
       end else begin
-        if ni < 4 then ArgTo(first + i, IntRegs[ni]) else late[ni] := first + i;
+        if ni < 4 then ValueTo(first + i, IntRegs[ni]) else late[ni] := first + i;
         inc(ni);
       end;
-  if late[4] >= 0 then ArgTo(late[4], RAX);
-  if late[5] >= 0 then ArgTo(late[5], R9);
+  if late[4] >= 0 then ValueTo(late[4], RAX);
+  if late[5] >= 0 then ValueTo(late[5], R9);
   if late[4] >= 0 then MovRR(R8, RAX);
   for i := 1 to c.n do Drop;
   { a procedure taking ... is told in al how many xmm registers it got }
@@ -1246,15 +1254,17 @@ begin
     CallR(R11);
   end;
   if k + pad > 0 then AluI(aluAdd, RSP, 8 * (k + pad));
-  if (c.ret <> 0) and InTwoRegs(res) then
-    if res^.form = fSlice then begin
-      Store(Mem(RBP, c.ret), RAX, 8);
-      Store(Mem(RBP, c.ret + 8), RDX, 8);
-    end else begin
-      Store(Mem(RBP, c.ret + res^.fields^.val), RAX, res^.fields^.typ^.size);
-      Store(Mem(RBP, c.ret + res^.fields^.next^.val), RDX, res^.fields^.next^.typ^.size);
-    end;
-  if (res <> nil) and (c.ret = 0) then begin
+  { the result: a slice in rax and rdx goes to the caller's temporary,
+    two results on the stack, the first under the second, and a single
+    value on top }
+  if res = nil then
+  else if res^.form = fSlice then begin
+    Store(Mem(RBP, c.ret), RAX, 8);
+    Store(Mem(RBP, c.ret + 8), RDX, 8);
+  end else if InTwoRegs(res) then begin
+    MovRR(Target, RAX); Computed(kWord);
+    MovRR(Target, RDX); Computed(kWord);
+  end else if c.ret = 0 then begin
     r := Target;
     if res^.form = fReal then MovqRX(r, 0)
     else begin
@@ -1465,8 +1475,7 @@ end;
   bytes into it. }
 procedure CopyResult(off, size: int64);
 begin
-  MovRR(RSI, Top);
-  Drop;
+  PopTo(RSI);
   Load(RDI, Mem(RBP, retSlot), 8, false);
   if off <> 0 then Lea(RDI, Mem(RDI, off));
   CopyBytes(size);
@@ -1480,11 +1489,11 @@ begin
   if resType <> nil then
     if BehindPointer(resType) then Load(RAX, Mem(RBP, retSlot), 8, false)
     else if InTwoRegs(resType) then begin
-      MovRR(RDX, Top); Drop;
-      MovRR(RAX, Top); Drop;
+      PopTo(RDX);
+      PopTo(RAX);
     end else begin
-      if resType^.form = fReal then MovqXR(0, Top) else MovRR(RAX, Top);
-      Drop;
+      if resType^.form = fReal then begin MovqXR(0, Top); Drop end
+      else PopTo(RAX);
     end;
   Jmp(exitL);
 end;
