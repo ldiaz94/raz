@@ -40,7 +40,9 @@ directory in turn, then in the library,
 .Pa lib/
 beside the
 .Nm
-executable.
+executable, whose modules
+.Xr raz-lib 3
+says.
 A program has one module of each name: a module found in two of these
 places is an error, unless one of the files is a symbolic link to the
 other, which chooses it.
@@ -148,9 +150,15 @@ raz -s -o hello Hello.raz
 raz -o prog Prog.raz && RAZ_PROFILE=1 ./prog
 .Ed
 .Sh SEE ALSO
-.Xr gdb 1 ;
-the language,
+.Xr raz-lib 3 ,
+the library;
+.Xr raz-tutorial 7 ,
+a tour of the language;
+.Xr raz 7 ,
+the language at a glance;
+.Xr gdb 1 .
+The report,
 .Pa doc/raz.md ,
-and the guide to the compiler,
+defines the language, and the guide to the compiler,
 .Pa doc/compiler.md ,
-in raz's sources.
+walks through its sources.

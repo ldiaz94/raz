@@ -97,17 +97,21 @@ build/raz.pdf: doc/raz.md doc/report.css | build
 
 # raz and its library go together under $(PREFIX)/lib/raz; the link
 # on PATH works since raz finds lib/ beside its real path. The manual
-# page goes where man looks, beside bin.
+# pages go where man looks, beside bin.
 PREFIX = $(HOME)/.local
+MAN = $(PREFIX)/share/man
 
-install: raz
+install: raz build/raz-lib.3
 	rm -rf $(PREFIX)/lib/raz
-	mkdir -p $(PREFIX)/lib/raz $(PREFIX)/bin $(PREFIX)/share/man/man1
+	mkdir -p $(PREFIX)/lib/raz $(PREFIX)/bin $(MAN)/man1 $(MAN)/man3 $(MAN)/man7
 	cp -r raz lib $(PREFIX)/lib/raz
 	ln -sf $(PREFIX)/lib/raz/raz $(PREFIX)/bin/raz
-	cp doc/raz.1 $(PREFIX)/share/man/man1/raz.1
+	cp doc/raz.1 $(MAN)/man1/raz.1
+	cp build/raz-lib.3 $(MAN)/man3/raz-lib.3
+	cp doc/raz.7 doc/raz-tutorial.7 $(MAN)/man7
 
 uninstall:
-	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(PREFIX)/share/man/man1/raz.1
+	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(MAN)/man1/raz.1 $(MAN)/man3/raz-lib.3 \
+	    $(MAN)/man7/raz.7 $(MAN)/man7/raz-tutorial.7
 
 .PHONY: units tests check gdb bench stress fmt loc man pdf clean install uninstall

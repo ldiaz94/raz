@@ -35,6 +35,7 @@ a million lines a second.
 |---|---|
 | `doc/raz.md` | The language report: the definition of raz |
 | `doc/compiler.md` | A guide to reading the compiler, file by file |
+| `doc/raz.1`, `doc/raz.7`, `doc/raz-tutorial.7` | The manual pages: the command, the language at a glance, a tour; `make man` makes the library's, raz-lib(3), from `lib/` |
 | `src/` | The compiler, in Free Pascal |
 | `lib/` | The library, in raz; the compiler finds it beside itself |
 | `examples/` | Small programs, each with the output it should give |
@@ -52,7 +53,8 @@ and builds into the repository's root:
 
     make            # ./raz
     make install    # ~/.local/bin/raz, its library in ~/.local/lib/raz,
-                    # and its manual page, raz(1)
+                    # and its manual pages, raz(1), raz(7),
+                    # raz-tutorial(7) and raz-lib(3)
     make uninstall  # removes them again
 
 Both take `PREFIX=/usr/local` (or another place) instead of `~/.local`.
@@ -76,7 +78,9 @@ emacs is installed.
     raz -h
     raz --version
 
-`raz -h` says the options, and `man raz` says more.
+`raz -h` says the options, and `man raz` says more. `man
+raz-tutorial` is a tour of the language, `man 7 raz` the language at
+a glance, and `man raz-lib` the library, made from its sources.
 
 `raz Main.raz` compiles module `Main` and every module it imports, and
 writes the executable `Main`. A module `Name` lives in `Name.raz`, found

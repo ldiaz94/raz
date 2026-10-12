@@ -4,7 +4,9 @@ The compiler is eleven files of Free Pascal, under 10,000 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
-disassembly.
+disassembly. The manual pages say the rest: `raz(1)` the command,
+`raz-tutorial(7)` and `raz(7)` the language, and `raz-lib(3)` the
+library, made from `lib/` by `tools/Doc.raz`.
 
 | File | Lines | Code | What |
 |---|---|---|---|

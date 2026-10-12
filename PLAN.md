@@ -44,7 +44,7 @@ before it is done.
    their order, the built-in procedures, the statements, what is
    checked, and the limits; each pointing to the report's section for
    the whole of it. About 400 lines.
-4. **`raz(1)` again, and the pages together.** The command's page
+4. Done: **`raz(1)` again, and the pages together.** The command's page
    points into the others; `make install` installs all four, and
    `make uninstall` removes them; README and `doc/compiler.md` name
    them; the desktop guide gets an entry for raz as one of our own
