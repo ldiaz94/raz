@@ -79,6 +79,50 @@ Each step stops if it buys less than its lines: one that gains under
 (code 5 to 8% smaller in ulam's estimate) are left for after, measured
 on their own.
 
+## Proposed: the manual
+
+For: someone who has never seen raz can learn it from `man`, and come
+back to it as a reference, without the report open; the report stays
+the definition, and the manual never disagrees with it. No change to
+the language or the compiler. Modelled on concha's three pages, which
+the owner knows: a reference, a tour, and the rest.
+
+The rules for every page: mdoc, so man, mandoc and groff all set it
+well; short sections, each with one idea; every example a whole
+program or a piece of one that `make check` compiles and runs, as it
+does the report's, so none can go stale; plain, short prose, as the
+report's; `groff -mdoc -ww` and `mandoc -Tlint`, if there, say
+nothing; and each page read whole at 80 columns, as a user would,
+before it is done.
+
+1. **`raz-tutorial(7)`, a tour of the language.** Numbered sections,
+   each one idea with a program to run: hello, world and modules;
+   values, types and conversions; procedures and several results;
+   arrays, slices and strings; records and pointers; memory and
+   allocators; errors, `ERROR` and `MSG`; `defer`; checks and what a
+   failure says; generic modules; talking to C; threads. Then "From
+   Pascal and C to raz", a table of what each spells differently, as
+   concha's tour has from sh. About 500 lines. The examples go in
+   `test/man`, run by `make check`.
+2. **`raz-lib(3)`, the library, made from its sources.** `tools/Doc`
+   learns to write mdoc: each module's own comment, then its exported
+   declarations with theirs, under a heading of its name. `make` builds
+   the page from `lib/`, so it says what the library says, always.
+   About 60 lines of `Doc`.
+3. **`raz(7)`, the language at a glance.** What a programmer looks up:
+   the grammar in brief, the types and their sizes, the operators and
+   their order, the built-in procedures, the statements, what is
+   checked, and the limits; each pointing to the report's section for
+   the whole of it. About 400 lines.
+4. **`raz(1)` again, and the pages together.** The command's page
+   points into the others; `make install` installs all four, and
+   `make uninstall` removes them; README and `doc/compiler.md` name
+   them; the desktop guide gets an entry for raz as one of our own
+   tools. The pages are read whole once more, together.
+
+Each step is a commit and stops for review. Step 1 stands on its own
+and is most of the worth; 2 to 4 can wait.
+
 ## Next, when the owner says
 
 - The book, "Compiling Raz": its brief is `doc/book/PLAN.md`.
