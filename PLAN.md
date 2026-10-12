@@ -141,7 +141,7 @@ the wishes below.
       deferred statements run, a `return`'s results kept in the frame
       meanwhile; `rax`, `rdx` and `rcx`, which division and shifts
       need, aren't in the stack. `make bench` still passes.
-- [ ] 9a. Failures caught by the code where the machine can't: a
+- [x] 9a. Failures caught by the code where the machine can't: a
       `nil` test before a dereference or a call through a procedure
       value, a stack limit at each procedure's start, a zero test
       before a division; chosen per target. A `nil` test is left out

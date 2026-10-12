@@ -297,6 +297,18 @@ by which `Rt` finds the place; that code has the place of the
 offending expression (`LineCol` in `scan.pas`), and the code after it
 the statement's again.
 
+What the machine catches, the code doesn't test for (report section
+10, appendix A): on x86-64 Linux a division by zero raises SIGFPE, a
+stack overflow meets the guard page under the stack, a call to `nil`
+jumps to an address never mapped, and so does a load or store within
+`NilPage` bytes of address 0. `Rt`'s handlers say where and why. What
+is left is a field of a `nil` pointer past that page: an item reached
+through `^` is `deref` until `NilTest` (`item.pas`) has it used, and
+gen's `CheckNil` tests the pointer only if the use reaches past
+`NilPage`. A port whose machine catches less tests for more, in its
+own `gen.pas`: `Rt.fail` stops for a nil pointer, a division by zero
+and a stack overflow as the signals would.
+
 Calls: the arguments are in frame slots by the time `Call` runs, one
 each, computed left to right; only then are they loaded into the
 registers System V wants, and the stack aligned for the call. A record

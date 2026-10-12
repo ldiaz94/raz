@@ -1,0 +1,18 @@
+module NilBig;
+(* A field of a nil pointer past the page at address 0 that is never
+   mapped, which the machine wouldn't catch: the code tests for nil *)
+import Out;
+
+type Big = record pad: [100000]U8; last: I64; end;
+
+var p: ^Big;
+
+proc main*;
+begin
+    Out.str("before"); Out.ln;
+    Out.flush;
+    p^.last := 1;
+    Out.str("after"); Out.ln;
+end;
+
+end NilBig.

@@ -883,6 +883,7 @@ begin
     end;
   until false;
   x.pos := SpanFrom(start);
+  NilTest(x);
 end;
 
 procedure ArrayLiteral(var x: TItem; want: PType);

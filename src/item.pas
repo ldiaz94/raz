@@ -34,6 +34,8 @@ type
     odd: boolean;      { mVar: in a packed record, so maybe misaligned }
     ro: boolean;       { mVar: another module's exported variable, or part
                          of one, which only that module changes }
+    deref: boolean;    { mVar: at an address from a pointer, which may be
+                         nil and isn't tested yet (NilTest) }
     obj: PObj;         { mProc, mBuiltin, mCase; mVar: the variable named }
     pos: TPos;         { where it is in the source, for messages }
   end;
@@ -56,6 +58,7 @@ procedure UsesReals(const p: TPos);
 procedure Value(var x: TItem);
 procedure Address(var x: TItem);
 procedure Discard(const x: TItem);
+procedure NilTest(var x: TItem);
 procedure Coerce(var x: TItem; t: PType);
 procedure CoerceExact(var x: TItem; t: PType; const help: shortstring);
 procedure NotReadOnly(const x: TItem);
@@ -297,11 +300,21 @@ begin
   end;
 end;
 
+{ x, at an address from a pointer, is about to be used: gen tests the
+  address for nil where the machine wouldn't stop at it (report section
+  10), from its offset to its end. }
+procedure NilTest(var x: TItem);
+begin
+  if (x.mode = mVar) and x.deref then CheckNil(x.off + x.typ^.size, x.pos);
+  x.deref := false;
+end;
+
 { x's value, on top of the stack }
 procedure Value(var x: TItem);
 var f: single;
 begin
   if x.typ^.form = fReal then UsesReals(x.pos);
+  NilTest(x);
   case x.mode of
     mConst:
       if (x.typ^.form = fError) and (x.val > 0) then PushAdr(GlobalAdr(x.val - 1))
@@ -327,6 +340,7 @@ end;
 { The address of the variable or string x, on top of the stack }
 procedure Address(var x: TItem);
 begin
+  NilTest(x);
   if x.mode = mStr then PushAdr(GlobalAdr(x.chunk))
   else if x.mode = mVar then begin
     PushAdr(AdrOf(x));
@@ -486,7 +500,7 @@ begin
   if t^.form <> fPtr then MarkAt(x.pos, 'expected a pointer, found ' + TypeName(t));
   if t^.base = nil then MarkAt(x.pos, TypeName(t) + ' points to a type never declared');
   Value(x);
-  x.mode := mVar; x.base := bStack; x.off := 0;
+  x.mode := mVar; x.base := bStack; x.off := 0; x.deref := true;
   x.typ := t^.base; x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
 end;
 
@@ -506,6 +520,7 @@ end;
 
 procedure IndexPrep(var x: TItem);
 begin
+  NilTest(x);
   if x.mode = mStr then Coerce(x, tBytes);
   if (x.typ^.form = fPtr) and (x.typ^.base^.form = fArray) then
     MarkAt(x.pos, 'a pointer to an array is indexed as p^[i]');

@@ -41,6 +41,12 @@ uses scan, diag, sym, chunk, x64;
 const
   NoLabel = -1;
   WordSize = 8;   { the size of an address, and of INT }
+  { What the machine catches by itself, which the code needn't test for
+    (report section 10): on x86-64 Linux, a division by zero, a stack
+    overflow (at the guard page under the stack), a call to nil, and
+    a load or store within NilPage bytes of address 0, which is never
+    mapped. }
+  NilPage = 4096;
 
 type
   TKind = (kWord, kLong, kF32, kF64);
@@ -117,6 +123,7 @@ procedure FixTo(L, top: longint);
 
 procedure CheckIndex(n: int64; const p: TPos);
 procedure CheckEnum(n: int64; name: longint; const p: TPos);
+procedure CheckNil(reach: int64; const p: TPos);
 procedure IndexSlice(const a: TAdr; size: int64; checked: boolean; const p: TPos);
 procedure Slice(const a: TAdr; isArray: boolean; n, size, tmp: int64; checked: boolean; const p: TPos);
 procedure SlicePtr(size, tmp: int64; checked: boolean; const p: TPos);
@@ -900,6 +907,18 @@ begin
   r := Top;
   CmpI(r, n);
   Check(ccB, 2, p, r, NoMem, n, name);
+end;
+
+{ The address on top, from a pointer, which is to be used reach bytes
+  past: the program stops if it is nil, unless the machine would stop
+  it, as for a reach within NilPage. }
+procedure CheckNil(reach: int64; const p: TPos);
+var r: longint;
+begin
+  if reach <= NilPage then exit;
+  r := Top;
+  TestRR(r, r);
+  Check(ccNE, 4, p, r, NoMem, 0, -1);
 end;
 
 { Pops an index, and the address of the slice at a if it is on the

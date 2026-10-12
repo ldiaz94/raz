@@ -150,10 +150,26 @@ end;
    status 2. what is 0 for an index a and 1 for a slice a..b, of
    something whose length is len; 2 for a, which is no position of
    the enumeration called name; 3 for a slice a..b of a pointer, which
-   runs backwards. *)
+   runs backwards. What a target's machine doesn't catch the code
+   tests for, and stops at with what 4, a nil pointer; 5, a division
+   by zero; 6, a stack overflow; these end the program by the signal
+   the machine would have given, as if it had. *)
 proc fail*(what, a, b, len: INT; at: UINT; name: ^U8);
+var sig: INT;
 begin
     where(at);
+    if what >= 4 then
+        put("stopped by ");
+        sig := SigSegv;
+        if what = 4 then put("a nil pointer");
+        elsif what = 5 then put("a division fault"); sig := SigFpe;
+        else put("a stack overflow");
+        end;
+        say;
+        act := {};   (* the signal's default action *)
+        SYSCALL(13, sig, ADR(act), 0, 8);   (* rt_sigaction *)
+        SYSCALL(62, SYSCALL(39), sig);      (* kill(getpid(), sig) *)
+    end;
     if what = 0 then
         put("index ");
         putInt(a);
