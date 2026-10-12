@@ -44,7 +44,6 @@ type
   end;
 
 var
-  labelAt: longint;   { the last place a jump was made to land }
   listing: boolean;   { -S: each instruction's text is kept, for List }
 
 function Here: TMem;
@@ -106,6 +105,7 @@ procedure Jcc(cc: longint; var L: longint);
 procedure JmpBack(target: longint);
 procedure JccBack(cc, target: longint);
 procedure FixLink(L: longint);
+procedure DropJumpTo(var L: longint);
 procedure FixLinkTo(L, target: longint);
 function JoinLinks(L1, L2: longint): longint;
 
@@ -695,7 +695,6 @@ end;
 procedure FixLinkTo(L, target: longint);
 var next: longint;
 begin
-  if L <> NoLabel then labelAt := target;
   while L <> NoLabel do begin
     next := Get4At(L);
     Put4At(L, target - (L + 4));
@@ -706,6 +705,19 @@ end;
 procedure FixLink(L: longint);
 begin
   FixLinkTo(L, pc);
+end;
+
+{ If the last instruction made is a jmp to L, it is taken back, since L
+  is to be placed just after it: a return at the end of a procedure
+  needn't jump to the code that returns. The caller must place L next,
+  before anything can have noted where the jmp ended. A jcc's field
+  follows the bytes 0F 8x, never E9. }
+procedure DropJumpTo(var L: longint);
+begin
+  if (L = NoLabel) or (L <> pc - 4) or (code^[L - 1] <> $E9) then exit;
+  L := Get4At(L);
+  TakeBack(5);
+  if listing and (numSaid > 0) and (said[numSaid - 1].at = pc) then dec(numSaid);
 end;
 
 { The jumps of chains L1 and L2, as one chain: each jump's field holds

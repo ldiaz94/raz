@@ -100,6 +100,7 @@ function MatchBegin(var x: TItem): int64;
 procedure MatchTag(p: int64; tag: int64; var L: longint; isEnum: boolean);
 procedure MatchRange(p, lo, hi: int64; var body: longint);
 procedure CondJump(var x: TItem; var L: longint);
+procedure CondJumpTrue(var x: TItem; var L: longint);
 
 procedure SliceOf(var x: TItem; t: PType; len: int64);
 procedure TempItem(var x: TItem; t: PType; off: int64);
@@ -1352,6 +1353,20 @@ begin
   end;
   Value(x);
   JumpIf(L, false);
+end;
+
+{ As CondJump, but the jump is taken where the condition holds }
+procedure CondJumpTrue(var x: TItem; var L: longint);
+begin
+  if x.typ^.form <> fBool then MarkAt(x.pos, 'a condition is a BOOL, found ' + What(x));
+  if x.mode = mCond then begin
+    JumpCmp(x.rel, x.relSigned, L);
+    L := JoinJumps(L, x.tj);
+    Fix(x.fj);
+    exit;
+  end;
+  Value(x);
+  JumpIf(L, true);
 end;
 
 { Procedures }

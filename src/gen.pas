@@ -161,7 +161,7 @@ procedure EnterBody(c, line: longint);
 procedure ResultTo(off: int64; size: longint);
 procedure CopyResult(off, size: int64);
 procedure ReturnJump;
-procedure EndProc(c: longint);
+procedure EndProc(c: longint; open: boolean);
 function DeferBegin(var L, saved: longint): longint;
 procedure DeferEnd(L, saved: longint);
 procedure RunDefer(at: longint);
@@ -548,10 +548,12 @@ begin
   Log2 := n;
 end;
 
-{ r compared with v, through rdx if v needs more than 32 bits }
+{ r compared with v, through rdx if v needs more than 32 bits; with
+  zero by test, which sets the flags as cmp would and is shorter }
 procedure CmpI(r: longint; v: int64);
 begin
-  if Fits32(v) then AluI(aluCmp, r, v)
+  if v = 0 then TestRR(r, r)
+  else if Fits32(v) then AluI(aluCmp, r, v)
   else begin MovRI(RDX, v); Alu(aluCmp, r, RDX) end;
 end;
 
@@ -924,7 +926,7 @@ end;
 procedure JumpIf(var L: longint; when: boolean);
 var r: longint;
 begin
-  r := Top;
+  r := Peek(depth - 1);
   Drop;
   TestRR(r, r);
   if when then Jcc(ccNE, L) else Jcc(ccE, L);
@@ -1499,14 +1501,14 @@ begin
 end;
 
 { The end of the procedure in chunk c: the code that returns, and the
-  frame's size, known only now, patched into its prologue. }
-procedure EndProc(c: longint);
+  frame's size, known only now, patched into its prologue. If it is
+  open, running off its end, it returns zeros. }
+procedure EndProc(c: longint; open: boolean);
 var n: int64; i: longint;
 begin
   codeChunk := -1;
   if (depth <> 0) or (pushed <> 0) then Fatal('internal error: stack depth');
-  { running off the end returns zeros }
-  if resType <> nil then
+  if open then
     if BehindPointer(resType) then begin
       Load(RDI, Mem(RBP, retSlot), 8, false);
       MovRI(RCX, resType^.size);
@@ -1517,7 +1519,8 @@ begin
       MovRI(RAX, 0);
       if InTwoRegs(resType) then MovRI(RDX, 0);
       MovqXR(0, RAX);
-    end;
+    end
+  else DropJumpTo(exitL);
   FixLink(exitL);
   n := 0;
   for i := 0 to 4 do

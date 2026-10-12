@@ -1,0 +1,22 @@
+module Breaks;
+
+(* Leaving loops by break: on conditions of and and or, before elsif
+   and else, and with a deferred statement to run on the way out. *)
+import Out;
+var log: INT;
+proc note; begin INC(log); end;
+proc main*;
+var i, s: INT; b: BOOL;
+begin
+    for i := 0 to 100 do if i > 3 and i # 4 then break; end; s := s + i; end;
+    Out.int(s); Out.ln;   (* 0+1+2+3+4 = 10 *)
+    s := 0;
+    for i := 0 to 100 do if i = 7 or i * i > 30 then break; elsif i = 2 then s := s + 100; else s := s + i; end; end;
+    Out.int(s); Out.ln;   (* 0+1+100+3+4+5 = 113 *)
+    s := 0; i := 0;
+    while true do b := i = 5; if b then break; end; INC(i); end;
+    Out.int(i); Out.ln;   (* 5 *)
+    for i := 0 to 3 do defer note; if i = 2 then break; end; end;
+    Out.int(log); Out.ln;   (* 3 *)
+end;
+end Breaks.

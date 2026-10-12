@@ -11,11 +11,11 @@ disassembly.
 | `src/diag.pas` | 310 | 229 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 643 | 527 | Types, objects, scopes, layout |
-| `src/chunk.pas` | 302 | 234 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,113 | 930 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,650 | 1,282 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,478 | 1,234 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,927 | 2,588 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
+| `src/x64.pas` | 1,125 | 936 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 1,653 | 1,284 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,493 | 1,247 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,957 | 2,609 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -263,6 +263,10 @@ placed is a chain of the jumps to it, each jump's 32-bit field holding
 the position of the one before (`Jmp`, `Jcc`); `FixLink` walks the
 chain and patches each once the label's position is known. This is the
 trick from Wirth's compilers, and it means a label is one integer.
+`DropJumpTo` takes back a `jmp` just made to a label about to be
+placed after it, so a `return` that ends a procedure doesn't jump to
+the next instruction; the line notes made after it move back with it
+(`TakeBack`, in `chunk.pas`).
 
 ## gen.pas: the stack machine
 
@@ -475,7 +479,10 @@ known, so that `[1, 2, 3]`, `{x: 1}` and `{red}` know what to build.
 Then statements: `Statement` makes each one a recovery point (below)
 and `OneStatement` dispatches; `IfStatement`,
 `WhileStatement`, `ForStatement` and `MatchStatement` emit their jumps
-with gen's labels. The blank is a symbol of its own, `sBlank`, so
+with gen's labels. A branch of an `if` that ends, in `return` or
+`break` (`ends`), gets no jump past the others; and `if c then break;
+end` is one jump out of the loop where `c` holds (`ThenPart`,
+`LoneBreak`, `CondJumpTrue`), not a jump past a jump. The blank is a symbol of its own, `sBlank`, so
 no declaration or expression takes it: `_ := e` loads a single value
 and drops it, and `MultiAssign` skips the results it stands for. A
 `match` on an integer reads each arm's

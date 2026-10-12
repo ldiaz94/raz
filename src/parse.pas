@@ -1216,30 +1216,60 @@ begin
   for i := numDefers - 1 downto base do RunDefer(defers[i]);
 end;
 
+{ Whether what follows "then" is a lone "break;", with no deferred
+  statement to run on the way out of the loop }
+function LoneBreak: boolean;
+var st: TScanState;
+begin
+  LoneBreak := false;
+  if (tok <> sBreak) or (curLoop = nil) or (numDefers <> curLoop^.base) then exit;
+  SaveScan(st);
+  Next;
+  if tok = sSemicolon then begin
+    Next;
+    LoneBreak := tok in [sEnd, sElsif, sElse];
+  end;
+  RestoreScan(st);
+end;
+
+{ The condition x of if or elsif, and the statements it guards, which
+  L skips when it is false. "if c then break; end" is one jump out of
+  the loop when c holds, not one past a jump out. }
+procedure ThenPart(var x: TItem; var L: longint);
+begin
+  Expect(sThen);
+  L := NoLabel;
+  if LoneBreak then begin
+    NoteLine(CurLine, CurCol);
+    CondJumpTrue(x, curLoop^.brk);
+    Next; Next;   { break; }
+    ends := true;
+  end else begin
+    CondJump(x, L);
+    Statements;
+  end;
+end;
+
+{ A branch that ends, in return or break, needs no jump past the
+  others. }
 procedure IfStatement(const start: TPos; ind: longint);
 var x: TItem; L, endL: longint; all: boolean;
 begin
   Next;
   Expression(x, nil);
-  Expect(sThen);
-  L := NoLabel;
-  CondJump(x, L);
-  Statements;
+  ThenPart(x, L);
   all := ends;
   endL := NoLabel;
   while tok = sElsif do begin
-    Jump(endL);
+    if not ends then Jump(endL);
     Fix(L);
     Next;
     Expression(x, nil);
-    Expect(sThen);
-    L := NoLabel;
-    CondJump(x, L);
-    Statements;
+    ThenPart(x, L);
     all := all and ends;
   end;
   if tok = sElse then begin
-    Jump(endL);
+    if not ends then Jump(endL);
     Fix(L);
     Next;
     if tok = sIf then elseIf := true;
@@ -1950,7 +1980,7 @@ begin
     PlaceLocals(params, before);
     RestoreScan(st);
   until false;
-  EndProc(p^.chunk);
+  EndProc(p^.chunk, p^.openEnd);
   { its parameters and variables, for the trap report }
   if before = nil then o := curModule^.locals else o := before^.link;
   q := params;
@@ -2655,7 +2685,7 @@ begin
       Statements;
       NoteLine(CurLine, CurCol);
       Expect(sEnd);
-      EndProc(body);
+      EndProc(body, false);
     end;
   end else Expect(sEnd);
   if (tok <> sIdent) or (id <> n) then EndMissing(MissingPos, 'expected ' + NameOf(n) + ', found ' + Found);

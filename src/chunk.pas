@@ -106,6 +106,7 @@ procedure Put4(v: longint);
 procedure Put8(v: int64);
 procedure Put4At(at, v: longint);
 function Get4At(at: longint): longint;
+procedure TakeBack(n: longint);
 
 implementation
 
@@ -142,6 +143,21 @@ end;
 function Get4At(at: longint): longint;
 begin
   Get4At := PLongint(@code^[at])^;
+end;
+
+{ The last n bytes of code taken back. A line noted past the new end
+  now starts there, in place of one noted there before, as NoteLine
+  would have it. }
+procedure TakeBack(n: longint);
+begin
+  dec(pc, n);
+  if (numLines > 0) and (lines^[numLines - 1].at > pc) then begin
+    lines^[numLines - 1].at := pc;
+    if (numLines > 1) and (lines^[numLines - 2].at = pc) then begin
+      lines^[numLines - 2] := lines^[numLines - 1];
+      dec(numLines);
+    end;
+  end;
 end;
 
 procedure Put8(v: int64);
