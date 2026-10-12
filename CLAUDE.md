@@ -87,8 +87,8 @@ defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes on the list in
 `PLAN.md`, for a later thaw; it isn't built. v0.6.0 was such a thaw,
 by the owner's word: report 2026-10.12, which the compiler follows,
-its parser reaching the machine only through `gen.pas` (`PLAN.md`;
-its steps 5 to 10 await the owner's review). Keep
+its parser reaching the machine only through `gen.pas`; its steps 5
+to 10 await the owner's review, and git has them. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.
 
