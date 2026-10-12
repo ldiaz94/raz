@@ -425,6 +425,11 @@ bought less than 2% on both was taken out again.
    it looked through its own; `.debug_line`'s section header points
    at it in rodata. Hello is 7 KB smaller, 28 KB; rat 17%, 505 KB.
 
+All told, against v0.7.1, in user-space cycles: the heap sort 23%
+fewer, the search 15%, the sum 41%, each now within 2% of FPC
+`-O2`'s; rat 2.5% fewer cycles and 6% fewer instructions on its
+workload. Every default program is 20 to 25% smaller.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is
