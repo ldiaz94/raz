@@ -5,10 +5,11 @@ for, what is in it and when it is done; its steps are commits, each
 stopping for the owner's review. A finished milestone is cut from this
 file: git keeps the history, and the report's section 12 the language's.
 
-v0.7.0, better code, is under way. v0.6.0 is tagged; its steps 5 to 10 await
+v0.7.0, better code, has all its steps done and awaits the owner's
+review before its tag. v0.6.0 is tagged; its steps 5 to 10 await
 the owner's review.
 
-## Under way: better code (v0.7.0)
+## Done, for review: better code (v0.7.0)
 
 For: rat within 1.25 times the time of pt built by FPC `-O2 -Cr`
 (today 634 ms against 428, 1.48 times), with the compiler still a
@@ -20,11 +21,12 @@ Where rat's time goes (ulam-prof): `Utf8.next` 22%, `Str.decode` 15%,
 listings show the steps below. ulam's `doc/codegen.md` measured the
 same rewrites in a compiler of the same kind; its gains are quoted.
 
-**Where it stands.** Steps 1 to 6 are done and pushed. rat takes 504
-to 512 ms against 614 to 625 for the same workload built by the
-milestone's first compiler, on a machine that drifts by 3%; pt built
-with `-O2 -Cr` takes 424 ms on the same day, so rat is at 1.19 times,
-inside the goal. Text is 1.5% smaller. Each step, with its commit:
+**Where it stands.** All seven steps are done and pushed. rat takes
+513 ms against 622 for the same workload built by the milestone's
+first compiler (-18%), on a machine that drifts by 3%; pt built with
+`-O2 -Cr` takes 426 ms the same hour, so rat is at 1.20 times, inside
+the goal. Text is 1.5% smaller; the compiler is 8,559 lines of code
+and compiles 980,000 lines a second. Each step:
 
 | Step | rat | Its kernel |
 |---|---|---|
@@ -34,6 +36,7 @@ inside the goal. Text is 1.5% smaller. Each step, with its commit:
 | 4. Conditions as jumps | noise | a search leaving by break, -28% |
 | 5. Shifts, constants right | noise | heap sort and list walk, -11% |
 | 6. for loops | noise | matrix product -14%, sum -21% |
+| 7. Read by a beginner | | |
 
 Steps that left rat's time alone stayed for their kernels, which the
 2% rule allows. Moves between registers bought size, not time: this

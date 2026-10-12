@@ -85,7 +85,8 @@ for rlX11 and rat (reports 2026-10.4 and 10.7, steps 49a-c), with
 `Info`'s `file` and `symlink` for rloc (2026-10.6, step 49d), and
 stage 9, several results in place of var parameters (2026-10.8,
 steps 52-53), and v0.5.0, the library of report 2026-10.9, which the
-compiler says it follows.
+compiler says it follows. v0.7.0, better code (`PLAN.md`), has its
+seven steps pushed and awaits the owner's review before its tag.
 
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
