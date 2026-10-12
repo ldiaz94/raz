@@ -1,10 +1,22 @@
 (* Operations on strings, which are []U8. = and # compare them; this
    module orders, searches and hashes them, reads and writes their
-   UTF-8, and reads a number from one. *)
+   UTF-8, reads a number from one, and copies one to keep. *)
 module Str;
-import Rt;
+import Mem, Heap, Rt;
 
 const least = -9223372036854775807 - 1;   (* the smallest I64 *)
+
+(* s's bytes, copied into memory from a, to keep after s's own are
+   gone; "" and false if a has no room. *)
+proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);
+var p: ^U8; i: INT;
+begin
+    if LEN(s) = 0 then return "", true; end;
+    p := Mem.alloc(a, LEN(s), 1);
+    if p = nil then return "", false; end;
+    for i := 0 to LEN(s) - 1 do p[i] := s[i]; end;
+    return p[0..LEN(s)], true;
+end;
 
 (* -1, 0 or 1 as a sorts before, with or after b, byte by byte. *)
 proc cmp*(a, b: []U8): INT;
@@ -258,7 +270,12 @@ end;
 
 (* The module's test: stops the program if something is wrong. *)
 proc main*;
+var buf: [3]U8; t: []U8; ok: BOOL;
 begin
+    buf := "abc";
+    t, ok := copy(Heap.heap, buf);
+    buf[0] := 'x';
+    if not ok or (t # "abc") then Rt.stop("Str.copy"); end;
     if (cmp("a", "b") # -1) or (cmp("b", "a") # 1) or (cmp("ab", "ab") # 0)
         or (cmp("a", "ab") # -1) or (cmp("", "") # 0) then Rt.stop("Str.cmp"); end;
     if not eq("x", "x") or eq("x", "y") then Rt.stop("Str.eq"); end;

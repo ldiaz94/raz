@@ -42,7 +42,7 @@ implementation
 
 { Marks live each chunk reached from entry through the fixups. }
 procedure MarkLive(entry: longint);
-var stack: PLongs; sp, c, f, t: longint;
+var stack: PLongs; sp, c, f, t: longint; fx: PFixups;
 begin
   stack := GetMem(numChunks * 4);
   sp := 0;
@@ -53,10 +53,15 @@ begin
     dec(sp);
     c := stack^[sp];
     if chunks^[c].size < 0 then Fatal(ChunkName(c) + ' is declared but never defined');
-    { only code has fixups: data holds no addresses, so it uses nothing }
-    if chunks^[c].sec <> secText then continue;
+    { code and constants have fixups; variables start at zero, holding
+      no addresses }
+    case chunks^[c].sec of
+      secText: fx := fixups;
+      secRodata: fx := dataFixups;
+    else continue;
+    end;
     for f := chunks^[c].firstFix to chunks^[c].firstFix + chunks^[c].numFix - 1 do begin
-      t := fixups^[f].chunk;
+      t := fx^[f].chunk;
       if not chunks^[t].live then begin
         chunks^[t].live := true;
         stack^[sp] := t;
@@ -225,9 +230,13 @@ begin
             PLongint(@textImg^[p + at])^ := longint(v);
           end;
         end;
-        secRodata:
-          Move(rodata^[chunks^[c].start], roImg^[chunks^[c].adr - (Base + roOff)],
-            chunks^[c].size);
+        secRodata: begin
+          p := chunks^[c].adr - (Base + roOff);
+          Move(rodata^[chunks^[c].start], roImg^[p], chunks^[c].size);
+          for f := chunks^[c].firstFix to chunks^[c].firstFix + chunks^[c].numFix - 1 do
+            PInt64(@roImg^[p + dataFixups^[f].at])^ :=
+              chunks^[dataFixups^[f].chunk].adr + dataFixups^[f].addend;
+        end;
       end;
 end;
 

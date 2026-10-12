@@ -11,12 +11,12 @@ disassembly.
 | `src/diag.pas` | 310 | 229 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 615 | 510 | Types, objects, scopes, layout |
-| `src/chunk.pas` | 276 | 217 | The compiled program: chunks, fixups, line notes |
+| `src/chunk.pas` | 298 | 232 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,039 | 870 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/gen.pas` | 1,332 | 1,039 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,342 | 1,118 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,712 | 2,407 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/link.pas` | 234 | 180 | Tree shaking, layout, patching, the places |
+| `src/parse.pas` | 2,771 | 2,459 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/link.pas` | 243 | 188 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
 
@@ -219,7 +219,10 @@ make data chunks.
 
 A *fixup* (`TFixup`) is a 32-bit field in the code that will hold the
 distance to another chunk: a call's target, or a rip-relative address.
-`AddFixup` records one; `link.pas` fills them in. `NoteLine` records
+`AddFixup` records one; `link.pas` fills them in. A constant's
+addresses are *data fixups*, `AddDataFixup`'s: 64-bit fields in
+rodata that will hold a chunk's address itself, since the executable is
+loaded where the linker placed it. `NoteLine` records
 which line and column of the source the code from `pc` on belongs to,
 for gdb and for the places. `ExternChunk` makes, once per C symbol,
 the quadword the dynamic loader will fill with that symbol's address.
@@ -380,9 +383,11 @@ Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a
 variable into an item for part of it, mostly by adding to `off`. An
 item for another module's exported variable, or part of it, is `ro`:
 it isn't a variable (`isVar`), and `NotReadOnly` says why where one is
-wanted; what it points at is. An array constant is a variable too, in
-read-only data: `ArrayConst` (`parse.pas`) reads its literal into the
-bytes of a chunk, as a string constant's are, and `MakeItem` makes it
+wanted; what it points at is. An array or record constant is a
+variable too, in read-only data: `AggregateConst` (`parse.pas`) reads
+its literal, part by part in `ConstPart`, into the bytes of a chunk,
+as a string constant's are; an address in it, of a string, an array
+constant, a procedure or an `ERROR`, becomes a data fixup. `MakeItem` makes it
 an `mVar` there that isn't `isVar`, so it is read, indexed, sliced and
 passed, never changed. `Index` and `Slice` have gen make the bounds
 checks, unless the module says `check off;` (`checks`, which
@@ -505,11 +510,12 @@ variable.
 ## link.pas: tree shaking and layout
 
 `MarkLive` starts from the entry chunk and follows fixups, marking each
-chunk it reaches; nothing else goes into the executable. `LinkAll`
+chunk it reaches, through the data fixups of constants too; nothing
+else goes into the executable. `LinkAll`
 places the live chunks section by section (`Place`), each at its
 alignment, then copies their bytes into the images of text and rodata,
 patching every fixup with the distance from the end of its field to its
-target.
+target, and every data fixup with its target's address.
 
 Between placing text and placing rodata, `MakePlaces` writes the
 places, a rodata chunk: for each line note in live code, its address,

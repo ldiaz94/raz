@@ -230,8 +230,8 @@ begin
     oConst:
       if o^.typ = tStr then begin
         x.mode := mStr; x.val := o^.val; x.chunk := o^.chunk
-      end else if o^.typ^.form = fArray then begin
-        { an array constant: a variable in read-only data, not one of
+      end else if o^.typ^.form in [fArray, fRecord] then begin
+        { an array or record constant: a variable in read-only data, not one of
           the program's, so nothing can change it }
         x.mode := mVar; x.base := bGlobal; x.chunk := o^.chunk
       end else begin

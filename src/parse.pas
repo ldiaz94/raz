@@ -1918,39 +1918,100 @@ begin
   Declare(o);
 end;
 
-{ The value of n, an array constant of type t: an array literal of
-  constants, which become the bytes of a read-only chunk, as a string
-  constant's do (report section 4). The bytes are the compiler's own
+{ An array or record constant: a literal of constants, which become
+  the bytes of a read-only chunk, as a string constant's do (report
+  section 4). An address in it, of a string, an array constant, a
+  procedure or an ERROR, waits in fixes until the chunk is made, then
+  is a fixup the linker patches. The bytes are the compiler's own
   machine's, little-endian, as the target's are. }
-function ArrayConst(t: PType; n: longint): longint;
-var et: PType; e: TItem; p: PBytes; k, es: int64; f: single; c: longint; start: TPos;
+var
+  constBytes: PBytes;
+  fixes: array[0..4095] of record off: int64; chunk: longint; end;
+  numFixes: longint;
+
+procedure ConstFix(off: int64; chunk: longint);
 begin
-  et := t^.base;
-  es := et^.size;
+  if numFixes > High(fixes) then MarkAt(TokPos, 'more than ' + IntStr(High(fixes) + 1) + ' addresses in one constant');
+  fixes[numFixes].off := off;
+  fixes[numFixes].chunk := chunk;
+  inc(numFixes);
+end;
+
+{ The part of type t at offset off of the constant }
+procedure ConstPart(t: PType; off: int64);
+var e: TItem; f: PObj; k: int64; r: single; start: TPos;
+begin
   start := TokPos;
-  if tok <> sLbrak then Expected('an array literal');
-  Next;
-  p := nil; k := 0;
-  if tok <> sRbrak then
-    repeat
-      Expression(e, et);
-      Coerce(e, et);
-      if e.mode <> mConst then MarkAt(e.pos, 'expected a constant, found ' + What(e));
-      ReAllocMem(p, (k + 1) * es);
-      if (et^.form = fReal) and (es = 4) then begin
-        f := RealOf(e);
-        Move(f, p^[k * es], 4);
-      end else Move(e.val, p^[k * es], es);
-      inc(k);
-      if tok <> sComma then break;
-      Next;
-    until false;
-  Expect(sRbrak);
-  if k <> t^.len then MarkAt(SpanFrom(start), 'expected ' + IntStr(t^.len) + ' elements, found ' + IntStr(k));
+  if (t^.form = fArray) and (tok = sLbrak) then begin
+    Next;
+    k := 0;
+    if tok <> sRbrak then
+      repeat
+        if k < t^.len then ConstPart(t^.base, off + k * t^.base^.size)
+        else ConstPart(t^.base, off);
+        inc(k);
+        if tok <> sComma then break;
+        Next;
+      until false;
+    Expect(sRbrak);
+    if k <> t^.len then MarkAt(SpanFrom(start), 'expected ' + IntStr(t^.len) + ' elements, found ' + IntStr(k));
+    exit;
+  end;
+  if (t^.form = fRecord) and not t^.tuple and (tok = sLbrace) then begin
+    Next;
+    if tok <> sRbrace then
+      repeat
+        if tok <> sIdent then Expected('a field');
+        f := FieldOf(t);
+        Next;
+        Expect(sColon);
+        ConstPart(f^.typ, off + f^.val);
+        if tok <> sComma then break;
+        Next;
+      until false;
+    Expect(sRbrace);
+    exit;
+  end;
+  Expression(e, t);
+  if (e.mode = mStr) and ((t^.form = fSlice) or (t^.form = fArray)) and (t^.base = tU8) then begin
+    if t^.form = fSlice then begin
+      ConstFix(off, e.chunk);
+      Move(e.val, constBytes^[off + 8], 8);
+    end else if e.val > t^.len then MarkAt(e.pos, 'the string is longer than ' + TypeName(t))
+    else Move(rodata^[chunks^[e.chunk].start], constBytes^[off], e.val);
+  end else if t^.form = fSlice then begin
+    if (e.mode <> mVar) or (e.obj = nil) or (e.obj^.cls <> oConst) or (e.typ^.form <> fArray)
+      or (e.pos.b - e.pos.a <> length(NameOf(e.obj^.name))) or not Same(e.typ^.base, t^.base) then
+      MarkAt(e.pos, 'a constant slice is a string or an array constant of its elements, found ' + What(e));
+    ConstFix(off, e.chunk);
+    Move(e.typ^.len, constBytes^[off + 8], 8);
+  end else if t^.form = fVariant then MarkAt(e.pos, 'a constant holds no variant')
+  else if t^.form in [fArray, fRecord] then MarkAt(e.pos, 'expected a literal of ' + TypeName(t))
+  else begin
+    Coerce(e, t);
+    if (e.mode = mProc) and not e.obj^.ext then ConstFix(off, e.obj^.chunk)
+    else if e.mode <> mConst then MarkAt(e.pos, 'expected a constant, found ' + What(e))
+    else if (t^.form = fError) and (e.val > 0) then ConstFix(off, e.val - 1)
+    else if (t^.form = fPtr) and (e.val <> 0) then MarkAt(e.pos, 'a constant pointer is nil')
+    else if (t^.form = fReal) and (t^.size = 4) then begin
+      r := RealOf(e);
+      Move(r, constBytes^[off], 4);
+    end else Move(e.val, constBytes^[off], t^.size);
+  end;
+end;
+
+{ The chunk of n, a constant of type t whose literal is next }
+function AggregateConst(t: PType; n: longint): longint;
+var c, i: longint;
+begin
+  constBytes := AllocMem(t^.size + 8);
+  numFixes := 0;
+  ConstPart(t, 0);
   c := NewChunk(secRodata, curModule^.sname, n);
-  SetData(c, p, t^.size, t^.align);
-  FreeMem(p);
-  ArrayConst := c;
+  SetData(c, constBytes, t^.size, t^.align);
+  for i := 0 to numFixes - 1 do AddDataFixup(c, fixes[i].off, fixes[i].chunk, 0);
+  FreeMem(constBytes);
+  AggregateConst := c;
 end;
 
 procedure ConstDecl(top: boolean);
@@ -1963,15 +2024,13 @@ begin
     Next;
     start := TokPos;
     t := ParseType;
-    if (t^.form = fArray) and not (t^.base^.form in [fInt, fReal, fBool, fEnum, fSet]) then
-      MarkAt(SpanFrom(start), 'an array constant holds integers, reals, BOOLs, enumerations or sets, found ' + TypeName(t^.base))
-    else if (t <> tError) and (t^.form <> fArray) then
-      MarkAt(SpanFrom(start), 'only an ERROR or an array constant has a type');
+    if (t <> tError) and not ((t^.form = fArray) or (t^.form = fRecord) and not t^.tuple) then
+      MarkAt(SpanFrom(start), 'only an ERROR, an array or a record constant has a type');
   end;
   Expect(sEql);
-  if (t <> nil) and (t^.form = fArray) then begin
+  if (t <> nil) and (t^.form in [fArray, fRecord]) then begin
     o := NewObj(oConst, n, t);
-    o^.chunk := ArrayConst(t, n);
+    o^.chunk := AggregateConst(t, n);
     o^.pos := at;
     o^.exported := exp and top;
     Declare(o);

@@ -28,7 +28,7 @@ type
   TChunk = record
     sec: TSection;
     start, size, align: longint;   { in its section's buffer }
-    firstFix, numFix: longint;     { its fixups, text chunks only }
+    firstFix, numFix: longint;     { its fixups: text's in fixups, rodata's in dataFixups }
     module, name: longint;         { for the symbol table; -1 if none }
     adr: int64;                    { its address, set by the linker }
     live: boolean;                 { reached from the entry point }
@@ -53,7 +53,8 @@ type
   end;
 
   TFixup = record
-    at: longint;      { the 32-bit field, as an offset in text }
+    at: longint;      { the 32-bit field, as an offset in text; in
+                        dataFixups, the 64-bit one, from its chunk's start }
     chunk: longint;   { the chunk it refers to }
     addend: longint;  { added to the chunk's address }
   end;
@@ -74,6 +75,11 @@ var
   numChunks: longint;
   fixups: PFixups;
   numFixups: longint;
+  { Addresses in read-only data, as in an array constant of strings:
+    each 8 bytes, the chunk's absolute address, since the executable
+    is loaded where the linker placed it }
+  dataFixups: PFixups;
+  numDataFixups: longint;
   lines: PLines;
   numLines: longint;
   curFile: longint;   { the file being compiled, for NoteLine }
@@ -89,6 +95,7 @@ procedure SetBss(c: longint; size, align: longint);
 function ExternChunk(name: longint): longint;
 procedure NoteLine(line, col: longint);
 procedure AddFixup(at, chunk, addend: longint);
+procedure AddDataFixup(c, at, chunk, addend: longint);
 procedure NoteVar(chunk, name, off, kind: longint);
 function ChunkName(c: longint): shortstring;
 
@@ -181,6 +188,8 @@ begin
     rodata := ReAllocMem(rodata, roCap);
   end;
   Move(p^, rodata^[rolen], n);
+  chunks^[c].firstFix := numDataFixups;
+  chunks^[c].numFix := 0;
   chunks^[c].start := rolen;
   chunks^[c].size := n;
   chunks^[c].align := align;
@@ -235,6 +244,19 @@ begin
   fixups^[numFixups].chunk := chunk;
   fixups^[numFixups].addend := addend;
   inc(numFixups);
+end;
+
+{ The address of chunk, plus addend, at offset at of rodata chunk c,
+  whose data is set: its fixups follow one another. }
+procedure AddDataFixup(c, at, chunk, addend: longint);
+begin
+  if numDataFixups and 255 = 0 then
+    dataFixups := ReAllocMem(dataFixups, (numDataFixups + 256) * SizeOf(TFixup));
+  dataFixups^[numDataFixups].at := at;
+  dataFixups^[numDataFixups].chunk := chunk;
+  dataFixups^[numDataFixups].addend := addend;
+  inc(numDataFixups);
+  inc(chunks^[c].numFix);
 end;
 
 procedure NoteVar(chunk, name, off, kind: longint);
