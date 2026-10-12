@@ -94,6 +94,9 @@ const
 
 var
   rtFail, argcChunk, argvChunk: longint;
+  { the stubs that Check's code calls, one for each kind of failure,
+    made by EntryPoint for those used }
+  failStubs: array[0..5] of longint = (-1, -1, -1, -1, -1, -1);
   depth: longint;      { the values on the stack }
   pushed: longint;     { quadwords pushed on the machine's stack }
   codeChunk: longint = -1;   { the procedure or body being compiled, or -1 }
@@ -194,6 +197,7 @@ type
   end;
 
 const
+  StubNames: array[0..5] of string[6] = ('check0', 'check1', 'check2', 'check3', 'check4', 'check5');
   { the registers of the stack: the value at depth d is in Regs[d mod
     NumRegs]. rax, rdx and rcx, which division and shifts need, and rsi
     and rdi, which copying needs, aren't among them. }
@@ -220,6 +224,13 @@ var
   regMask: longint;             { the registers of variables, as bits of VarRegs }
   saveAt: int64;                { where they are saved, a quadword each }
   frameAt: array[0..2] of int64;   { frameTop, frameMax, permTop after the declarations }
+  { the checks of the procedure, whose failures EndFails makes }
+  fails: array[0..4095] of record
+    L, what, ra, name, at: longint;
+    m: TMem;
+    n: int64;
+  end;
+  numFails: longint;
 
 function KindOf(t: PType): TKind;
 begin
@@ -980,27 +991,42 @@ const
   a..b (1), each for a length len, a position a of the enumeration
   called name (2), or a slice of a pointer a..b that runs backwards
   (3). a is in register ra, b in RDX; len is in memory at m, or n if
-  m.base is NoBase. The failing code has p for its place, and the code
-  after it the place before it again; it never returns, and may use
-  any register once it has read what it needs. }
+  m.base is NoBase. The failing code is out of the way, at the
+  procedure's end (EndFails), so that a check that holds costs a jump
+  not taken; it has p for its place, never returns, and may use any
+  register once it has read what it needs. }
 procedure Check(cc, what: longint; const p: TPos; ra: longint; const m: TMem; n: int64; name: longint);
-var L, line, col: longint; before: TLine;
 begin
-  L := NoLabel;
-  Jcc(cc, L);
-  before := lines^[numLines - 1];
-  LineCol(p.a, line, col);
-  NoteLine(line, col);
-  MovRR(RSI, ra);
-  if m.base = NoBase then MovRI(RCX, n) else Load(RCX, m, 8, false);
-  Lea(R8, Here);
-  MovRI(RDI, what);
-  if name >= 0 then Lea(R9, MemRip(name, 0));
-  AluI(aluAnd, RSP, -16);
-  CallChunk(rtFail);
-  Ud2;
-  FixLink(L);
-  NoteLine(before.line, before.col);
+  if numFails > High(fails) then Mark('more than ' + IntStr(High(fails) + 1) + ' checks in one procedure');
+  fails[numFails].L := NoLabel;
+  Jcc(cc xor 1, fails[numFails].L);   { x86's conditions come in pairs, the other one its last bit flipped }
+  fails[numFails].what := what;
+  fails[numFails].ra := ra;
+  fails[numFails].m := m;
+  fails[numFails].n := n;
+  fails[numFails].name := name;
+  fails[numFails].at := p.a;
+  inc(numFails);
+end;
+
+{ The failures of the procedure's checks: each gives Rt.fail its values
+  and the place of the offending expression, through a stub for its
+  kind, which takes the place from where it was called }
+procedure EndFails;
+var i, line, col: longint;
+begin
+  for i := 0 to numFails - 1 do
+    with fails[i] do begin
+      FixLink(L);
+      LineCol(at, line, col);
+      NoteLine(line, col);
+      if ra <> RSI then MovRR(RSI, ra);
+      if m.base = NoBase then MovRI(RCX, n) else Load(RCX, m, 8, false);
+      if name >= 0 then Lea(R9, MemRip(name, 0));
+      if failStubs[what] < 0 then failStubs[what] := NewChunk(secText, Intern('Rt', 2), Intern(@StubNames[what][1], 6));
+      CallChunk(failStubs[what]);
+    end;
+  numFails := 0;
 end;
 
 { For Check: a length known here, not in memory }
@@ -1340,6 +1366,7 @@ end;
 procedure Redo(const m: TCodeMark);
 begin
   pc := m.pc; numFixups := m.fixups; numLines := m.lines; Unsay(m.said);
+  numFails := 0;
   frameTop := frameAt[0]; frameMax := frameAt[1]; permTop := frameAt[2];
   exitL := NoLabel;
 end;
@@ -1461,6 +1488,7 @@ begin
     end;
   Leave;
   Ret;
+  EndFails;
   n := AlignUp(frameMax, 16);
   if n < 16 then n := 16;
   if n > high(longint) then Mark('frame too big');
@@ -1503,7 +1531,7 @@ end;
   nil, nil, rtld_fini, stack_end), with rsp aligned; its main first
   gives Rt C's exit, in cExit. }
 function EntryPoint(dynamic: boolean; first: PModule; main: PObj; cExit, places, placesVar, exitProc: longint): longint;
-var entry, start: longint; m: PModule;
+var entry, start, i: longint; m: PModule;
 begin
   entry := NewChunk(secText, -1, Intern('_start', 6));
   if dynamic then begin
@@ -1548,6 +1576,19 @@ begin
   CallChunk(exitProc);
   Ud2;
   EndChunk(start);
+  { Rt.fail, for the failures of each kind: the place is where the
+    check's call is, a byte before where it would return to }
+  for i := 0 to High(failStubs) do
+    if failStubs[i] >= 0 then begin
+      BeginChunk(failStubs[i]);
+      MovRI(RDI, i);
+      Load(R8, Mem(RSP, 0), 8, false);
+      AluI(aluSub, R8, 1);
+      AluI(aluAnd, RSP, -16);
+      CallChunk(rtFail);
+      Ud2;
+      EndChunk(failStubs[i]);
+    end;
   EntryPoint := entry;
 end;
 

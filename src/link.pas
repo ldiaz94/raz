@@ -202,7 +202,7 @@ end;
 procedure LinkAll(headerSize, roExtra, dynSize: int64);
 var c, f, at: longint; e, p, v: int64;
 begin
-  textOff := (headerSize + 15) div 16 * 16;   { as each code chunk is }
+  textOff := (headerSize + 31) div 32 * 32;   { as each code chunk is }
   e := Place(secText, Base + textOff);
   textSize := e - (Base + textOff);
   if placesChunk >= 0 then MakePlaces(Base + textOff, e);

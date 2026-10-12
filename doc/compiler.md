@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of Free Pascal, under 8,300 lines of code.
+The compiler is eleven files of Free Pascal, under 8,400 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -11,9 +11,9 @@ disassembly.
 | `src/diag.pas` | 310 | 229 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 617 | 512 | Types, objects, scopes, layout |
-| `src/chunk.pas` | 300 | 234 | The compiled program: chunks, fixups, line notes |
+| `src/chunk.pas` | 302 | 234 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,113 | 930 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,570 | 1,232 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/gen.pas` | 1,611 | 1,263 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,433 | 1,194 | Items: types, constants, variables, operators, conversions, calls |
 | `src/parse.pas` | 2,904 | 2,575 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
@@ -320,11 +320,17 @@ which is how `U8` arithmetic wraps; since they are computed in 64 bits,
 a shift's count is cut to their width first, and `DivTrap` makes the
 smallest value of one divided by -1 fault as an `I64`'s does.
 
-Checks: `Check` jumps over a call to `Rt.fail` when the check holds.
-The call passes what failed, the values involved and its own address,
-by which `Rt` finds the place; that code has the place of the
-offending expression (`LineCol` in `scan.pas`), and the code after it
-the statement's again.
+Checks: `Check` jumps, when the check fails, to code at the end of the
+procedure (`EndFails`), so that a check that holds is a jump not taken.
+That code puts the values involved where `Rt.fail` wants them and
+calls a stub for its kind of failure (`failStubs`, made by
+`EntryPoint`), which says the kind and passes the address it was
+called from, by which `Rt` finds the place: the failing code has the
+place of the offending expression (`LineCol` in `scan.pas`). A check
+costs a compare and a jump where it stands, and a dozen bytes out of
+the way. Code is aligned to 32 bytes, the windows x86 fetches it in,
+so that where a procedure's loops fall doesn't depend on what comes
+before it.
 
 What the machine catches, the code doesn't test for (report section
 10, appendix A): on x86-64 Linux a division by zero raises SIGFPE, a

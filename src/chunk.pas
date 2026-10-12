@@ -168,12 +168,14 @@ end;
 
 procedure BeginChunk(c: longint);
 begin
-  { code is aligned to 16 bytes, padded with CC, x86's int3: a trap if
-    it were ever run }
-  while pc and 15 <> 0 do Put1($CC);
+  { code is aligned to 32 bytes, the windows in which x86 fetches and
+    caches it, so that a procedure's loops sit in them the same way
+    whatever comes before: rat ran 5% slower at 16, by where its loops
+    fell. Padded with CC, x86's int3: a trap if it were ever run }
+  while pc and 31 <> 0 do Put1($CC);
   curChunk := c;
   chunks^[c].start := pc;
-  chunks^[c].align := 16;
+  chunks^[c].align := 32;
   chunks^[c].firstFix := numFixups;
 end;
 
