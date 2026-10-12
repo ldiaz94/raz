@@ -1,0 +1,25 @@
+module Listing;
+(* raz -S: each line of source, and the instructions made for it *)
+
+var total: I64;
+
+proc twice(x: I64): I64;
+code
+    lea rax, [rdi + rdi];
+    ret;
+end twice;
+
+proc add(a, b: I64): I64;
+begin
+    return a + b * 2;
+end add;
+
+proc main*;
+var i: I64;
+begin
+    for i := 1 to 3 do
+        if i # 2 then total := add(total, twice(i)); end;
+    end;
+end main;
+
+end Listing.

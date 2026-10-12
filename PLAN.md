@@ -150,7 +150,7 @@ the wishes below.
 - [x] 9b. Assembly procedures in place of byte procedures: the
       target's own syntax (appendix A), for the instructions the
       encoder knows and a few of the system's, bytes for the rest.
-- [ ] 9c. `raz -S`: each line of source with its instructions, named
+- [x] 9c. `raz -S`: each line of source with its instructions, named
       by the encoder as it makes them, not by a disassembler.
 - [ ] 9d. The trap report: on a failed check or a trap, the calls
       under way, each with its variables by name and value, from

@@ -42,6 +42,7 @@ function PathOf(f: longint): shortstring;
 function LineOf(const p: TPos): longint;
 function Join(const p, q: TPos): TPos;
 function Source(const p: TPos): shortstring;
+function LineText(const path: shortstring; line: longint): shortstring;
 procedure Error(const p: TPos; const msg: shortstring);
 procedure Warning(const p: TPos; const msg: shortstring);
 procedure Note(const p: TPos; const msg: shortstring);
@@ -210,6 +211,27 @@ begin
 end;
 
 { Messages }
+
+{ Line line of the file at path, as written }
+function LineText(const path: shortstring; line: longint): shortstring;
+var i, k, n: longint; s: shortstring;
+begin
+  s := '';
+  for i := 0 to numFiles - 1 do
+    if files[i].path = ShownPath(path) then begin
+      k := 0; n := 1;
+      while (n < line) and (k < files[i].len) do begin
+        if files[i].buf[k] = #10 then inc(n);
+        inc(k);
+      end;
+      while (k < files[i].len) and (files[i].buf[k] <> #10) and (length(s) < 255) do begin
+        s := s + files[i].buf[k];
+        inc(k);
+      end;
+      break;
+    end;
+  LineText := s;
+end;
 
 procedure Error(const p: TPos; const msg: shortstring);
 begin

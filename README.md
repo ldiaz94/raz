@@ -70,7 +70,7 @@ emacs is installed.
 
 ## Using it
 
-    raz [-I dir]... [-o file] [-Werror] Main.raz
+    raz [-I dir]... [-o file] [-Werror] [-S] Main.raz
     raz run [-I dir]... [-Werror] Main.raz [arg]...
     raz --version
 
@@ -86,7 +86,9 @@ underlined, and notes and help where they help: where a name is
 declared, a name spelled almost alike. The compiler goes on to find
 the others, up to 20. It warns of what is declared and never used,
 and of a variable assigned but never read, unless its name starts with
-`_`; `-Werror` makes warnings errors.
+`_`; `-Werror` makes warnings errors. `-S` prints the main module's
+code instead of writing it: each line of source, and under it the
+instructions made for it.
 
 At run time, a failed check says where it is and what failed, as in
 `Main.raz:12:9: index 7 is out of range for a length of 5`, and ends

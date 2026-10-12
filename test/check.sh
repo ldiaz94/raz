@@ -92,6 +92,12 @@ for f in test/err/*.raz; do
         pass=$((pass + 1))
     fi
 done
+# raz -S: test/list/X.raz lists as X.expect
+for f in test/list/*.raz; do
+    want=test/list/$(basename $f .raz).expect
+    if $raz -S $f 2>&1 | cmp -s $want -; then pass=$((pass + 1))
+    else echo "FAIL raz -S $f"; $raz -S $f 2>&1 | diff $want - | head; fail=$((fail + 1)); fi
+done
 # the report's version is the one the compiler says it follows
 # the version the compiler follows: the report's, or one it names while
 # the compiler catches up

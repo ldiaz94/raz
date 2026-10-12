@@ -45,6 +45,7 @@ type
 
 var
   labelAt: longint;   { the last place a jump was made to land }
+  listing: boolean;   { -S: each instruction's text is kept, for List }
 
 function Here: TMem;
 function Mem(base: longint; disp: int64): TMem;
@@ -120,6 +121,9 @@ const
     'be', 'a', 's', 'ns', 'p', 'np', 'l', 'ge', 'le', 'g');
 
 procedure Assemble(constExpr: TConstFn);
+procedure Say(const s: shortstring);
+procedure Restate(at: longint; const s: shortstring);
+procedure List(module: longint);
 
 implementation
 
@@ -218,13 +222,105 @@ begin
   Put1($C0 or (reg and 7) shl 3 or (rm and 7));
 end;
 
+{ The listing: the text of each instruction, as it is made }
+
+type
+  TSaid = record
+    at: longint;          { where the instruction starts in code }
+    text: string[63];
+  end;
+
+var
+  said: ^TSaid;
+  numSaid, saidCap: longint;
+
+procedure SayAt(at: longint; const s: shortstring);
+begin
+  if not listing then exit;
+  if numSaid = saidCap then begin
+    saidCap := saidCap * 2 + 1024;
+    said := ReAllocMem(said, saidCap * SizeOf(TSaid));
+  end;
+  said[numSaid].at := at;
+  said[numSaid].text := s;
+  inc(numSaid);
+end;
+
+{ The text of the instruction about to be written }
+procedure Say(const s: shortstring);
+begin
+  SayAt(pc, s);
+end;
+
+{ The text of the instruction at at, said again, as when its operand is
+  patched }
+procedure Restate(at: longint; const s: shortstring);
+var i: longint;
+begin
+  i := numSaid - 1;
+  while (i >= 0) and (said[i].at <> at) do dec(i);
+  if i >= 0 then said[i].text := s;
+end;
+
+function RN(r: longint; size: longint = 8): shortstring;
+begin
+  case size of
+    1: RN := RegNames[3, r];
+    2: RN := RegNames[2, r];
+    4: RN := RegNames[1, r];
+  else RN := RegNames[0, r];
+  end;
+end;
+
+function XN(x: longint): shortstring;
+begin
+  XN := 'xmm' + IntStr(x);
+end;
+
+function ChunkName(c: longint): shortstring;
+begin
+  with chunks^[c] do
+    if name < 0 then ChunkName := 'data' + IntStr(c)
+    else if module < 0 then ChunkName := NameOf(name)
+    else ChunkName := NameOf(module) + '.' + NameOf(name);
+end;
+
+{ A memory operand, with the size of what it holds, as the assembler
+  reads it }
+function MN(const m: TMem; size: longint = 0): shortstring;
+var s: shortstring;
+begin
+  case size of
+    1: s := 'byte ';
+    2: s := 'word ';
+    4: s := 'dword ';
+    8: s := 'qword ';
+  else s := '';
+  end;
+  if m.base = RIP then s := s + '[' + ChunkName(m.chunk)
+  else s := s + '[' + RN(m.base);
+  if m.index <> NoIndex then s := s + ' + ' + RN(m.index) + ' * ' + IntStr(m.scale);
+  if m.disp > 0 then s := s + ' + ' + IntStr(m.disp)
+  else if m.disp < 0 then s := s + ' - ' + IntStr(-m.disp);
+  MN := s + ']';
+end;
+
+const
+  AluNames: array[0..7] of string[3] = ('add', 'or', 'adc', 'sbb', 'and', 'sub', 'xor', 'cmp');
+  ShiftNames: array[0..7] of string[3] = ('rol', 'ror', 'rcl', 'rcr', 'shl', 'shr', 'sal', 'sar');
+  UnaryNames: array[2..7] of string[4] = ('not', 'neg', 'mul', 'imul', 'div', 'idiv');
+
 procedure MovRR(dst, src: longint);
 begin
+  if listing then Say('mov ' + RN(dst) + ', ' + RN(src));
   OpR(0, true, $89, src, dst);
 end;
 
 procedure MovRI(r: longint; v: int64);
 begin
+  if not listing then
+  else if v = 0 then Say('xor ' + RN(r, 4) + ', ' + RN(r, 4))
+  else Say('mov ' + RN(r) + ', ' + IntStr(v));
   if (v >= low(longint)) and (v <= high(longint)) then begin
     if v = 0 then OpR(0, false, $31, r, r)        { xor r32, r32 }
     else if v > 0 then begin                      { mov r32, imm32 }
@@ -241,6 +337,12 @@ end;
 
 procedure Load(r: longint; const m: TMem; size: longint; signed: boolean);
 begin
+  if not listing then
+  else if size = 8 then Say('mov ' + RN(r) + ', ' + MN(m))
+  else if (size = 4) and not signed then Say('mov ' + RN(r, 4) + ', ' + MN(m))
+  else if size = 4 then Say('movsxd ' + RN(r) + ', ' + MN(m, 4))
+  else if signed then Say('movsx ' + RN(r) + ', ' + MN(m, size))
+  else Say('movzx ' + RN(r, 4) + ', ' + MN(m, size));
   case size of
     1: if signed then OpM(0, true, $BE0F, r, m) else OpM(0, false, $B60F, r, m);
     2: if signed then OpM(0, true, $BF0F, r, m) else OpM(0, false, $B70F, r, m);
@@ -251,6 +353,7 @@ end;
 
 procedure Store(const m: TMem; r: longint; size: longint);
 begin
+  if listing then Say('mov ' + MN(m) + ', ' + RN(r, size));
   case size of
     1: OpM(0, false, $88, r, m, true);
     2: OpM($66, false, $89, r, m);
@@ -261,16 +364,19 @@ end;
 
 procedure Lea(r: longint; const m: TMem);
 begin
+  if listing then Say('lea ' + RN(r) + ', ' + MN(m));
   OpM(0, true, $8D, r, m);
 end;
 
 procedure Alu(op, dst, src: longint);
 begin
+  if listing then Say(AluNames[op] + ' ' + RN(dst) + ', ' + RN(src));
   OpR(0, true, op shl 3 or 1, src, dst);
 end;
 
 procedure AluI(op, r: longint; v: longint);
 begin
+  if listing then Say(AluNames[op] + ' ' + RN(r) + ', ' + IntStr(v));
   if (v >= -128) and (v <= 127) then begin
     OpR(0, true, $83, op, r); Put1(v)
   end else begin
@@ -281,44 +387,56 @@ end;
 { op r, [m] }
 procedure AluM(op, r: longint; const m: TMem);
 begin
+  if listing then Say(AluNames[op] + ' ' + RN(r) + ', ' + MN(m));
   OpM(0, true, op shl 3 or 3, r, m);
 end;
 
 procedure Imul(dst, src: longint);
 begin
+  if listing then Say('imul ' + RN(dst) + ', ' + RN(src));
   OpR(0, true, $AF0F, dst, src);
 end;
 
 procedure ImulI(r: longint; v: longint);
 begin
+  if listing then Say('imul ' + RN(r) + ', ' + RN(r) + ', ' + IntStr(v));
   OpR(0, true, $69, r, r);
   Put4(v);
 end;
 
 procedure Shift(op, r: longint);
 begin
+  if listing then Say(ShiftNames[op] + ' ' + RN(r) + ', cl');
   OpR(0, true, $D3, op, r);
 end;
 
 procedure ShiftI(op, r, n: longint);
 begin
+  if listing then Say(ShiftNames[op] + ' ' + RN(r) + ', ' + IntStr(n));
   OpR(0, true, $C1, op, r);
   Put1(n);
 end;
 
 procedure Unary(ext, r: longint);
 begin
+  if listing then Say(UnaryNames[ext] + ' ' + RN(r));
   OpR(0, true, $F7, ext, r);
 end;
 
 procedure Cqo;
 begin
+  if listing then Say('cqo');
   Put1($48); Put1($99);
 end;
 
 { Brings a value of size bytes in r to 64 bits, by its sign or zeros. }
 procedure Extend(r, size: longint; signed: boolean);
 begin
+  if not listing then
+  else if size = 4 then begin
+    if signed then Say('movsxd ' + RN(r) + ', ' + RN(r, 4)) else Say('mov ' + RN(r, 4) + ', ' + RN(r, 4))
+  end else if signed then Say('movsx ' + RN(r) + ', ' + RN(r, size))
+  else Say('movzx ' + RN(r, 4) + ', ' + RN(r, size));
   case size of
     1: if signed then OpR(0, true, $BE0F, r, r) else OpR(0, false, $B60F, r, r);
     2: if signed then OpR(0, true, $BF0F, r, r) else OpR(0, false, $B70F, r, r);
@@ -329,29 +447,35 @@ end;
 { r := 1 if the condition holds, else 0 }
 procedure SetCC(cc, r: longint);
 begin
+  if listing then Say('set' + CondNames[cc] + ' ' + RN(r, 1));
   OpR(0, false, $900F + cc shl 8, 0, r);
+  if listing then Say('movzx ' + RN(r, 4) + ', ' + RN(r, 1));
   OpR(0, false, $B60F, r, r);
 end;
 
 procedure TestRR(a, b: longint);
 begin
+  if listing then Say('test ' + RN(a) + ', ' + RN(b));
   OpR(0, true, $85, b, a);
 end;
 
 procedure Push(r: longint);
 begin
+  if listing then Say('push ' + RN(r));
   if r >= 8 then Put1($41);
   Put1($50 + r and 7);
 end;
 
 procedure Pop(r: longint);
 begin
+  if listing then Say('pop ' + RN(r));
   if r >= 8 then Put1($41);
   Put1($58 + r and 7);
 end;
 
 procedure CallChunk(c: longint);
 begin
+  if listing then Say('call ' + ChunkName(c));
   Put1($E8);
   AddFixup(pc, c, 0);
   Put4(0);
@@ -359,91 +483,117 @@ end;
 
 procedure CallBack(target: longint);
 begin
+  if listing then Say('call');
   Put1($E8);
   Put4(target - (pc + 4));
 end;
 
 procedure CallR(r: longint);
 begin
+  if listing then Say('call ' + RN(r));
   OpR(0, false, $FF, 2, r);
 end;
 
 procedure CallM(const m: TMem);
 begin
+  if listing then Say('call ' + MN(m));
   OpM(0, false, $FF, 2, m);
 end;
 
-procedure Ret; begin Put1($C3) end;
-procedure Leave; begin Put1($C9) end;
-procedure Syscall; begin Put1($0F); Put1($05) end;
-procedure Mfence; begin Put1($0F); Put1($AE); Put1($F0) end;
-procedure Ud2; begin Put1($0F); Put1($0B) end;
-procedure RepMovsb; begin Put1($F3); Put1($A4) end;
-procedure RepStosb; begin Put1($F3); Put1($AA) end;
-procedure RepeCmpsb; begin Put1($F3); Put1($A6) end;
+procedure Ret; begin if listing then Say('ret'); Put1($C3) end;
+procedure Leave; begin Say('leave'); Put1($C9) end;
+procedure Syscall; begin Say('syscall'); Put1($0F); Put1($05) end;
+procedure Mfence; begin Say('mfence'); Put1($0F); Put1($AE); Put1($F0) end;
+procedure Ud2; begin Say('ud2'); Put1($0F); Put1($0B) end;
+procedure RepMovsb; begin Say('rep movsb'); Put1($F3); Put1($A4) end;
+procedure RepStosb; begin Say('rep stosb'); Put1($F3); Put1($AA) end;
+procedure RepeCmpsb; begin Say('repe cmpsb'); Put1($F3); Put1($A6) end;
 
 procedure LockCmpxchg(const m: TMem; r: longint);
 begin
+  if listing then Say('lock cmpxchg ' + MN(m) + ', ' + RN(r));
   Put1($F0);
   OpM(0, true, $B10F, r, m);
 end;
 
 procedure Xchg(const m: TMem; r: longint);
 begin
+  if listing then Say('xchg ' + MN(m) + ', ' + RN(r));
   OpM(0, true, $87, r, m);
 end;
 
 procedure LockXadd(const m: TMem; r: longint);
 begin
+  if listing then Say('lock xadd ' + MN(m) + ', ' + RN(r));
   Put1($F0);
   OpM(0, true, $C10F, r, m);
 end;
 
 procedure MovqXR(x, r: longint);
 begin
+  if listing then Say('movq ' + XN(x) + ', ' + RN(r));
   OpR($66, true, $6E0F, x, r);
 end;
 
 procedure MovqRX(r, x: longint);
 begin
+  if listing then Say('movq ' + RN(r) + ', ' + XN(x));
   OpR($66, true, $7E0F, x, r);
 end;
 
 procedure MovsdXM(x: longint; const m: TMem);
 begin
+  if listing then Say('movsd ' + XN(x) + ', ' + MN(m));
   OpM($F2, false, $100F, x, m);
 end;
 
 procedure MovsdMX(const m: TMem; x: longint);
 begin
+  if listing then Say('movsd ' + MN(m) + ', ' + XN(x));
   OpM($F2, false, $110F, x, m);
 end;
 
 const
   RealPfx: array[boolean] of longint = ($F2, $F3);
+  RealEnd: array[boolean] of string[2] = ('sd', 'ss');
 
 procedure Sse(op, x, y: longint; single: boolean);
+var s: shortstring;
 begin
+  if listing then begin
+  case op of
+    $58: s := 'add' + RealEnd[single];
+    $59: s := 'mul' + RealEnd[single];
+    $5C: s := 'sub' + RealEnd[single];
+    $5E: s := 'div' + RealEnd[single];
+  else s := 'cvt' + RealEnd[single] + '2' + RealEnd[not single];
+  end;
+  Say(s + ' ' + XN(x) + ', ' + XN(y));
+  end;
   OpR(RealPfx[single], false, $0F or op shl 8, x, y);
 end;
 
 procedure Ucomis(x, y: longint; single: boolean);
 begin
+  if listing then Say('ucomi' + RealEnd[single] + ' ' + XN(x) + ', ' + XN(y));
   if single then OpR(0, false, $2E0F, x, y) else OpR($66, false, $2E0F, x, y);
 end;
 
 procedure Cvtsi2s(x, r: longint; single: boolean);
 begin
+  if listing then Say('cvtsi2' + RealEnd[single] + ' ' + XN(x) + ', ' + RN(r));
   OpR(RealPfx[single], true, $2A0F, x, r);
 end;
 
 procedure Cvtts2si(r, x: longint; single: boolean);
 begin
+  if listing then Say('cvtt' + RealEnd[single] + '2si ' + RN(r) + ', ' + XN(x));
   OpR(RealPfx[single], true, $2C0F, r, x);
 end;
 
 procedure Btc(r, bit: longint);
 begin
+  if listing then Say('btc ' + RN(r) + ', ' + IntStr(bit));
   OpR(0, true, $BA0F, 7, r);
   Put1(bit);
 end;
@@ -454,6 +604,7 @@ end;
 
 procedure Jmp(var L: longint);
 begin
+  if listing then Say('jmp');
   Put1($E9);
   Put4(L);
   L := pc - 4;
@@ -461,6 +612,7 @@ end;
 
 procedure Jcc(cc: longint; var L: longint);
 begin
+  if listing then Say('j' + CondNames[cc]);
   Put1($0F); Put1($80 + cc);
   Put4(L);
   L := pc - 4;
@@ -468,12 +620,14 @@ end;
 
 procedure JmpBack(target: longint);
 begin
+  if listing then Say('jmp');
   Put1($E9);
   Put4(target - (pc + 4));
 end;
 
 procedure JccBack(cc, target: longint);
 begin
+  if listing then Say('j' + CondNames[cc]);
   Put1($0F); Put1($80 + cc);
   Put4(target - (pc + 4));
 end;
@@ -635,7 +789,7 @@ const
     $90F3, $90, $0B0F, $CC, $F4, $9948, $99, $F0AE0F, $E8AE0F, $F8AE0F);
 var
   w: shortstring; o: array[0..2] of TOpd; n, i, k, size, pfx, cc: longint;
-  wide, byteOp: boolean; at, start: TPos; v: int64;
+  wide, byteOp, wasListing: boolean; at, start: TPos; v: int64; first: longint;
   names, places, chains: array[0..63] of longint; numLabels: longint;
   usedAt: array[0..63] of TPos;
 
@@ -687,6 +841,7 @@ begin
     if w = '' then Mark('expected an instruction');
     Next;
     if tok = sColon then begin
+      SayAt(pc, w + ':');
       k := Lab(Intern(@w[1], length(w)));
       if places[k] >= 0 then MarkAt(at, 'label ' + w + ' is defined twice');
       places[k] := pc;
@@ -694,6 +849,9 @@ begin
       Next;
       continue;
     end;
+    first := pc;
+    wasListing := listing;
+    listing := false;   { the instruction is said as it is written }
     if w = 'lock' then begin
       Put1($F0);
       w := AsmWord;
@@ -825,10 +983,57 @@ begin
       end;
     end;
     if tok <> sSemicolon then Mark('expected ";"');
+    listing := wasListing;
+    SayAt(first, Source(SpanFrom(at)));
     Next;
   end;
   for k := 0 to numLabels - 1 do
     if places[k] < 0 then MarkAt(usedAt[k], 'label ' + NameOf(names[k]) + ' isn''t defined');
+end;
+
+{ The listing, raz -S: each live procedure of the module in the order
+  it was made, each line of source it comes from, and under it the
+  instructions made for it, at their offsets in the procedure; a jump
+  within it says where to by its offset too. }
+procedure List(module: longint);
+var order: ^longint; n, i, j, k, c, t, line: longint; text: shortstring;
+begin
+  order := GetMem(numChunks * SizeOf(longint));
+  n := 0;
+  for c := 0 to numChunks - 1 do
+    if chunks^[c].live and (chunks^[c].sec = secText) and (chunks^[c].module = module) then begin
+      i := n;
+      while (i > 0) and (chunks^[order[i - 1]].start > chunks^[c].start) do begin
+        order[i] := order[i - 1];
+        dec(i);
+      end;
+      order[i] := c;
+      inc(n);
+    end;
+  i := 0; j := 0;
+  for k := 0 to n - 1 do begin
+    c := order[k];
+    writeln;
+    writeln(ChunkName(c), ':');
+    line := -1;
+    while (i < numSaid) and (said[i].at < chunks^[c].start) do inc(i);
+    while (i < numSaid) and (said[i].at < chunks^[c].start + chunks^[c].size) do begin
+      while (j < numLines) and (lines^[j].at <= said[i].at) do begin
+        if (lines^[j].chunk = c) and (lines^[j].line <> line) then begin
+          line := lines^[j].line;
+          writeln(line: 6, '  ', LineText(NameOf(lines^[j].path), line));
+        end;
+        inc(j);
+      end;
+      text := said[i].text;
+      t := said[i].at;
+      if (text = 'jmp') or (text = 'call') then text := text + ' ' + IntStr(t + 5 + Get4At(t + 1) - chunks^[c].start)
+      else if (text[1] = 'j') and (pos(' ', text) = 0) then text := text + ' ' + IntStr(t + 6 + Get4At(t + 2) - chunks^[c].start);
+      writeln(t - chunks^[c].start: 14, '  ', text);
+      inc(i);
+    end;
+  end;
+  FreeMem(order);
 end;
 
 end.

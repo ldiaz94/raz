@@ -1139,6 +1139,7 @@ begin
   NoteLine(line, 1);   { a declaration starts a line }
   Push(RBP);
   MovRR(RBP, RSP);
+  Say('sub rsp, frame');
   Put1($48); Put1($81); Put1($EC);           { sub rsp, imm32 }
   frameFix := pc; Put4(0);
   n := (AlignUp(frameMax, 8) - paramTop) div 8;
@@ -1217,6 +1218,7 @@ begin
   if n < 16 then n := 16;
   if n > high(longint) then Mark('frame too big');
   Put4At(frameFix, n);
+  Restate(frameFix - 3, 'sub rsp, ' + IntStr(n));
   EndChunk(c);
 end;
 

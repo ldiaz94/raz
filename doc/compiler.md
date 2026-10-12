@@ -8,17 +8,17 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 274 | 198 | Messages: positions, source excerpts, colour, counts |
+| `src/diag.pas` | 296 | 218 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 851 | 722 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 596 | 497 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 244 | 192 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 834 | 694 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,319 | 1,037 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/x64.pas` | 1,039 | 877 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 1,321 | 1,039 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,318 | 1,100 | Items: types, constants, variables, operators, conversions, calls |
 | `src/parse.pas` | 2,529 | 2,267 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 180 | 139 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 424 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 188 | 141 | The command line |
+| `src/raz.pas` | 195 | 147 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -242,6 +242,13 @@ give the operations of a kind their opcodes (`Alus`, `Unaries`,
 `Shifts`, `SseOps`, `Plain`). Labels are chains of jumps, as below.
 `db` gives bytes it doesn't know. `RegNames` and `CondNames` are the
 names of the registers and conditions.
+
+The listing, `raz -S`: with `listing` set, each routine of the encoder
+says, with `Say`, the instruction it is about to write, as the
+assembler would read it; `List` prints the main module's live
+procedures with each line of source (`LineText` in `diag.pas`) and the
+instructions under it. Nothing is disassembled: the listing is what
+the encoder meant.
 
 Jumps within a procedure don't wait for the linker. A label not yet
 placed is a chain of the jumps to it, each jump's 32-bit field holding
@@ -540,7 +547,8 @@ one starts at a `_start` that calls `__libc_start_main` the way C's own
 start-up does, which sets C up and calls back a `main` that runs the
 module bodies and the program's `main`.
 
-`raz run` writes the executable to a memfd, a file only in memory, and
+`raz -S` lists the code (`List`, in `x64.pas`) instead of writing
+it. `raz run` writes the executable to a memfd, a file only in memory, and
 executes it through `/proc/self/fd` in raz's own place, handing it the
 rest of raz's `argv`. Nothing is left on disk, and the program's
 status is the command's.

@@ -1,12 +1,13 @@
 { raz.pas: the command line.
 
-    raz [-I dir]... [-o file] Main.raz
+    raz [-I dir]... [-o file] [-Werror] [-S] Main.raz
     raz run [-I dir]... Main.raz [arg]...
     raz --version
 
   Compiles the main module and every module it imports, writes the
   entry point, links what it reaches, and writes the executable: by
-  default the main module's file without its .raz. raz run writes it
+  default the main module's file without its .raz; with -S, it lists
+  the main module's code instead. raz run writes it
   to a memfd instead, a file that lives only in memory, and executes
   it in raz's place with the arguments after Main.raz, so its status
   is the program's; its argv[0] is Main.raz.
@@ -25,7 +26,7 @@ program raz;
 
 {$mode objfpc}{$H-}
 
-uses math, BaseUnix, syscall, scan, diag, sym, chunk, gen, parse, link, elf;
+uses math, BaseUnix, syscall, scan, diag, sym, chunk, x64, gen, parse, link, elf;
 
 const
   { what git describe says, made by make: 0.3.0 at the tag v0.3.0,
@@ -115,6 +116,8 @@ begin
       outPath := ParamStr(i);
     end else if s = '-Werror' then
       werror := true
+    else if s = '-S' then
+      listing := true
     else if s = '--version' then begin
       writeln('raz ', Version, ', report ', Report);
       Halt(0);
@@ -128,7 +131,7 @@ begin
     inc(i);
   end;
   if path = '' then
-    Fatal('usage: raz [-I dir]... [-o file] [-Werror] Main.raz, or raz run [options] Main.raz [arg]...');
+    Fatal('usage: raz [-I dir]... [-o file] [-Werror] [-S] Main.raz, or raz run [options] Main.raz [arg]...');
   if run and (outPath <> '') then Fatal('raz run takes no -o');
   dir := ParamStr(0);
   i := length(dir);
@@ -172,6 +175,10 @@ begin
       if chunks^[i].live and chunks^[i].reals then
         Error(chunks^[i].realsAt, 'this target has no reals');
   if errors > 0 then Finish;
+  if listing then begin
+    List(m^.sname);
+    exit;
+  end;
 
   mainPath := path;
   if run then begin
