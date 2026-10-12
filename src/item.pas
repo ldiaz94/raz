@@ -1350,6 +1350,12 @@ procedure ForStep(o: PObj; step: int64);
 var v, w: TItem;
 begin
   MakeItem(v, o);
+  if v.base = bReg then begin
+    { a variable in a register is stepped in it }
+    PushConst(kWord, step);
+    IncDecReg(v.chunk, IntSize(o^.typ), Signed(o^.typ), false);
+    exit;
+  end;
   MakeItem(w, o);
   Value(w);
   PushConst(kWord, step);

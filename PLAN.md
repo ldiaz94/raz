@@ -33,7 +33,10 @@ one that buys less than 2% on both is reverted and noted here.
 3. Done: **Addresses and operands as the machine has them.** An element of a
    slice in registers is `[base + i*8]`, read where it is used; a
    compare or an addition takes its right operand from memory
-   (`cmp r8, [rbp - 16]`), not through a register first.
+   (`cmp r8, [rbp - 16]`), not through a register first. Beyond the
+   plan, as the sum stayed at 1.75 without them: `t := t + e` and a
+   `for` loop's step are worked out in the variable's own register,
+   and a `for` loop's top is aligned to 32 bytes.
 4. **`while` tested at the bottom**, its test moved after the body and
    jumped to first, as `for` is now. ulam found nothing in it, and lost
    3% where the test was long: measured, and kept only if it pays.

@@ -113,6 +113,10 @@ var
   lost: boolean;       { a parameter kept where it arrived was wanted
                          for other work: the procedure is compiled again,
                          the parameter in memory }
+  inPlace: longint = -1;   { the register of a variable that the statement
+                         being compiled assigns, x := x + e, where the
+                         value can be worked out in the variable's own
+                         register, from its first push on (lInto) }
   depth: longint;      { the values on the stack }
   pushed: longint;     { quadwords pushed on the machine's stack }
   codeChunk: longint = -1;   { the procedure or body being compiled, or -1 }
@@ -156,6 +160,7 @@ procedure JumpCmp(op: TSym; signed: boolean; var L: longint);
 procedure JumpOut(op: TSym; signed: boolean; var L: longint);
 procedure CondValue(notOp: TSym; signed: boolean; fj, tj: longint);
 procedure JumpBack(top: longint);
+procedure AlignLoop;
 procedure Fix(L: longint);
 procedure FixTo(L, top: longint);
 function JoinJumps(L1, L2: longint): longint;
@@ -212,6 +217,9 @@ type
           lMem,       { not loaded: the value of size bytes at m, in the
                         frame, a chunk, or at an address lAdr or lIdx
                         noted, read where it is used (PushVar) }
+          lInto,      { in register val, a register variable's own, which
+                        is what the value goes to (inPlace): so it is
+                        changed in place }
           lReg,       { in its register }
           lFrame);    { spilled: in the frame slot val }
 
@@ -349,6 +357,7 @@ end;
 function Loaded(i: longint): longint;
 var r: longint;
 begin
+  if stack[i].loc = lInto then exit(stack[i].val);
   if stack[i].loc <> lReg then begin
     r := Claim(i);
     case stack[i].loc of
@@ -432,7 +441,7 @@ procedure ValueTo(i, r: longint);
 begin
   case stack[i].loc of
     lConst: MovRI(r, stack[i].val);
-    lHeld: MovRR(r, stack[i].val);
+    lHeld, lInto: MovRR(r, stack[i].val);
     lAdr: Lea(r, AdrMem(i, 0));
     lIdx: Lea(r, stack[i].m);
     lMem: Load(r, stack[i].m, stack[i].size, stack[i].signed);
@@ -530,6 +539,12 @@ end;
 procedure PushVar(const a: TAdr; size: longint; signed: boolean; k: TKind);
 var m: TMem; r: longint;
 begin
+  r := inPlace;
+  inPlace := -1;
+  if (a.base = bReg) and (RegAt(a) = r) then begin
+    NewEntry(k, lInto, r);
+    exit;
+  end;
   if a.base = bReg then begin
     NewEntry(k, lHeld, RegAt(a));
     exit;
@@ -563,7 +578,8 @@ procedure PopVar(const a: TAdr; size: longint);
 var r: longint; v: int64;
 begin
   if a.base = bReg then begin
-    if TopConst(v) then MovRI(RegAt(a), v) else MovRR(RegAt(a), Peek(depth - 1));
+    if TopConst(v) then MovRI(RegAt(a), v)
+    else if Peek(depth - 1) <> RegAt(a) then MovRR(RegAt(a), Peek(depth - 1));   { else it is there, lInto }
     Drop;
     exit;
   end;
@@ -1159,6 +1175,11 @@ end;
 procedure Fix(L: longint);
 begin
   FixLink(L);
+end;
+
+procedure AlignLoop;
+begin
+  Align(32);
 end;
 
 function JoinJumps(L1, L2: longint): longint;

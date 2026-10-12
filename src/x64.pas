@@ -81,6 +81,7 @@ procedure Leave;
 procedure Syscall;
 procedure Mfence;
 procedure Ud2;
+procedure Align(n: longint);
 procedure RepMovsb;
 procedure Std;
 procedure Cld;
@@ -562,6 +563,23 @@ procedure Leave; begin Say('leave'); Put1($C9) end;
 procedure Syscall; begin Say('syscall'); Put1($0F); Put1($05) end;
 procedure Mfence; begin Say('mfence'); Put1($0F); Put1($AE); Put1($F0) end;
 procedure Ud2; begin Say('ud2'); Put1($0F); Put1($0B) end;
+
+{ Code made up to a multiple of n bytes with no-ops, the fewest: the
+  long forms of nop, of up to 8 bytes, that x86 decodes as one }
+procedure Align(n: longint);
+const
+  Nops: array[1..8] of string[8] = (#$90, #$66#$90, #$0F#$1F#$00, #$0F#$1F#$40#$00,
+    #$0F#$1F#$44#$00#$00, #$66#$0F#$1F#$44#$00#$00, #$0F#$1F#$80#$00#$00#$00#$00,
+    #$0F#$1F#$84#$00#$00#$00#$00#$00);
+var k, i: longint;
+begin
+  while pc mod n <> 0 do begin
+    k := n - pc mod n;
+    if k > 8 then k := 8;
+    Say('nop');
+    for i := 1 to k do Put1(ord(Nops[k][i]));
+  end;
+end;
 procedure RepMovsb; begin Say('rep movsb'); Put1($F3); Put1($A4) end;
 { the direction flag, which has rep movsb go down, and back up }
 procedure Std; begin Say('std'); Put1($FD) end;

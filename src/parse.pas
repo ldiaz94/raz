@@ -1370,6 +1370,7 @@ begin
   if step > 0 then ForCmp(o, b, sGtr, exitL) else ForCmp(o, b, sLss, exitL);
   bodyL := NoLabel;
   Jump(bodyL);
+  AlignLoop;
   top := pc;
   ForStep(o, step);
   Fix(bodyL);
@@ -1646,6 +1647,33 @@ begin
   inc(numDefers);
 end;
 
+{ Whether the expression of x := ..., which starts at the current
+  symbol, is x changed by adding to it, taking from it or its bits:
+  x + e, x - e, x | e or x xor e, with x nowhere in e, so that it can be
+  worked out in x's own register, if x is in one (gen's inPlace). }
+function ChangesItself(const x: TItem): boolean;
+var st: TScanState; wasSkipping: boolean; d: longint;
+begin
+  ChangesItself := false;
+  if (x.mode <> mVar) or (x.base <> bReg) or (x.typ^.form = fSlice) or (tok <> sIdent) or (id <> x.obj^.name) then exit;
+  SaveScan(st);
+  wasSkipping := skipping;
+  skipping := true;   { its slips are told when it is compiled }
+  Next;
+  if tok in [sPlus, sMinus, sBar, sXor] then begin
+    ChangesItself := true;
+    d := 0;
+    while not ((d = 0) and (tok in [sSemicolon, sEnd])) and (tok <> sEof) do begin
+      if (tok = sIdent) and (id = x.obj^.name) then ChangesItself := false;
+      if tok in [sLparen, sLbrak, sLbrace] then inc(d)
+      else if tok in [sRparen, sRbrak, sRbrace] then dec(d);
+      Next;
+    end;
+  end;
+  RestoreScan(st);
+  skipping := wasSkipping;
+end;
+
 procedure OneStatement;
 var x, y: TItem; called: boolean; m: int64; c: TCall; start: TPos; first, n, i: longint; k: TKind;
 begin
@@ -1661,7 +1689,9 @@ begin
         NotReadOnly(x);
         Assignable(x, first);
         Next;
+        if ChangesItself(x) then inPlace := x.chunk;
         Expression(y, x.typ);
+        inPlace := -1;
         Assign(x, y);
       end else if tok = sComma then
         MultiAssign(x, first, false)

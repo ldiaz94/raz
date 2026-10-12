@@ -360,6 +360,33 @@ bought less than 2% on both was taken out again.
    bytes were tried with it, and taken out: the search lost 3%, and
    rat gained nothing.
 
+   Then the left operand, as the machine has it: `t := t + s[i]` still
+   went through a register of the stack,
+
+   ```
+   mov r8, rbx
+   add r8, [rdi + r12 * 8]
+   mov rbx, r8
+   ```
+
+   and `i`'s step as well. An assignment whose expression starts with
+   its variable, in a register, and changes it by `+`, `-`, `|` or
+   `xor`, naming it nowhere else (`ChangesItself`, read ahead in the
+   statement), has gen work the value out in the variable's own
+   register (`inPlace`, `lInto`), and `ForStep` steps one so too:
+
+   ```
+   add r12, 1
+   add rbx, [rdi + r12 * 8]
+   ```
+
+   That left the sum's loop four instructions, as FPC's are, and as
+   slow as before, for it crossed a 64-byte line that the processor
+   fetches decoded instructions in. The top of a `for` loop, which
+   the code jumps to rather than runs into, now starts at a multiple
+   of 32 bytes (`AlignLoop`, `Align` in x64), the no-ops before it
+   never run. The sum 41% faster, the search 6%; rat within noise.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is

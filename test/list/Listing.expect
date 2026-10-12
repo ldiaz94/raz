@@ -28,34 +28,34 @@ Listing.main:
     20      for i := 1 to 3 do
             17  mov rbx, 1
             22  cmp rbx, 3
-            26  jg 141
-            32  jmp 47
-            37  mov r8, rbx
-            40  add r8, 1
-            44  mov rbx, r8
+            26  jg 156
+            32  jmp 68
+            37  nop
+            45  nop
+            53  nop
+            61  nop
+            64  add rbx, 1
     21          if i # 2 then total := add(total, twice(i)); end;
-            47  cmp rbx, 2
-            51  je 101
-            57  mov r8, [Listing.total]
-            64  mov [rbp - 16], r8
-            68  mov rdi, rbx
-            71  call Listing.twice
-            76  mov r9, rax
-            79  mov rdi, [rbp - 16]
-            83  mov rsi, r9
-            86  call Listing.add
-            91  mov r8, rax
-            94  mov [Listing.total], r8
-           101  cmp rbx, 3
-           105  jl 37
-           111  cmp rbx, 3
-           115  je 141
-           121  mov r8, rbx
-           124  add r8, 1
-           128  mov rbx, r8
-           131  cmp rbx, 3
-           135  jle 47
+            68  cmp rbx, 2
+            72  je 122
+            78  mov r8, [Listing.total]
+            85  mov [rbp - 16], r8
+            89  mov rdi, rbx
+            92  call Listing.twice
+            97  mov r9, rax
+           100  mov rdi, [rbp - 16]
+           104  mov rsi, r9
+           107  call Listing.add
+           112  mov r8, rax
+           115  mov [Listing.total], r8
+           122  cmp rbx, 3
+           126  jl 64
+           132  cmp rbx, 3
+           136  je 156
+           142  add rbx, 1
+           146  cmp rbx, 3
+           150  jle 68
     23  end main;
-           141  mov rbx, [rbp - 8]
-           145  leave
-           146  ret
+           156  mov rbx, [rbp - 8]
+           160  leave
+           161  ret

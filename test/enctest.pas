@@ -28,6 +28,7 @@ begin
   Ucomis(0, 1, false); Ucomis(0, 1, true); Cvtsi2s(0, RAX, false); Cvtsi2s(0, RAX, true);
   Cvtts2si(RAX, 0, false); Cvtts2si(RAX, 0, true); Btc(RAX, 63);
   L := NoLabel; Jcc(ccE, L); Jmp(L); FixLink(L); JmpBack(chunks^[e].start); JccBack(ccNE, chunks^[e].start);
+  Ret; Align(32);
   EndChunk(e);
   MarkLive(e);
   WriteElf(ParamStr(1), e);
