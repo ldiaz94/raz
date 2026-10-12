@@ -5,6 +5,12 @@
    each exported declaration as it is written, with the comment just
    before it.
 
+       Doc man Module.raz ...
+   prints the same of each module, as the manual page raz-lib(3), in
+   mdoc: the module's name a heading, each declaration a literal
+   display, each comment filled text, indented, but for its lines
+   indented further, which are code.
+
        Doc examples report.md dir
        Doc examples page.7 dir
    writes each example of the report, or of a manual page, that is a
@@ -13,10 +19,15 @@
 module Doc;
 import Out, Rt, Str, Buf, Heap, Scan, Files;
 
+const Date = "October 12, 2026";   (* raz-lib(3)'s, when the library last changed *)
+
 var
     sc: Scan.Scanner;         (* the text being read, at the current symbol *)
     src: []U8;
     docStart, docEnd: INT;    (* the comment just before it, or -1 *)
+    man: BOOL;                (* writing mdoc *)
+    atStart: BOOL;            (* emit is at the start of a line *)
+    shown: BOOL;              (* a literal display of mdoc's is open *)
 
 (* On to the next symbol that isn't a comment, keeping where the last
    comment that starts a line was: one after code on its line belongs
@@ -33,6 +44,34 @@ begin
             docStart := sc.start; docEnd := sc.stop;
         end;
     until sc.kind # Scan.comment;
+end;
+
+(* c, written out; in mdoc, so that roff takes it as text: a backslash
+   is \e, and a line that would start with . or ' is a control line
+   unless \& comes first. *)
+proc emit(c: U8);
+begin
+    if man and (c = '\\') then Out.str("\\e");
+    else
+        if man and atStart and ((c = '.') or (c = '\'')) then Out.str("\\&"); end;
+        Out.char(c);
+    end;
+    atStart := c = 10;
+end;
+
+(* a line of mdoc's own, such as .Ed *)
+proc control(s: []U8);
+begin
+    Out.str(s);
+    Out.ln;
+    atStart := true;
+end;
+
+(* the literal display, if open, closed *)
+proc close;
+begin
+    if shown then control(".Ed"); end;
+    shown := false;
 end;
 
 proc text: []U8;
@@ -95,46 +134,69 @@ begin
     col := start - lineStart(start);
     i := start;
     while i < stop do
-        Out.char(src[i]);
+        emit(src[i]);
         if src[i] = 10 then
             n := 0;
             while (n < col) and (i + 1 < stop) and (src[i + 1] = ' ') do INC(i); INC(n); end;
         end;
         INC(i);
     end;
-    Out.ln;
+    emit(10);
 end;
 
 (* The comment from start to stop, without its brackets, each line
-   indented by four. *)
+   indented by four; in mdoc, filled, but for the lines indented past
+   its own, which are code, kept as they are. *)
 proc comment(start, stop: INT);
-var i, j: INT; atLine: BOOL;
+var i, j, k, m, n, deep, indent: INT;
 begin
     if start < 0 then return; end;
+    deep := start - lineStart(start) + 3;
+    indent := -1;     (* the indent of the code being written, or -1 *)
     i := start + 2;
     j := stop - 2;
     while (i < j) and Scan.isSpace(src[i]) do INC(i); end;
     while (j > i) and Scan.isSpace(src[j - 1]) do DEC(j); end;
-    atLine := true;
+    if man then control(".Bd -filled -offset indent -compact"); end;
     while i < j do
-        if atLine then Out.str("    "); atLine := false; end;
-        Out.char(src[i]);
-        if src[i] = 10 then
-            atLine := true;
-            while (i + 1 < j) and (src[i + 1] = ' ') do INC(i); end;
+        k := i;
+        while (k < j) and (src[k] # 10) do INC(k); end;
+        n := 0;
+        while (i + n < k) and (src[i + n] = ' ') do INC(n); end;
+        if man and (n > deep) and (indent < 0) then
+            control(".Bd -literal -offset indent -compact");
+            indent := n;
+        elsif man and (n <= deep) and (indent >= 0) then
+            control(".Ed");
+            indent := -1;
         end;
-        INC(i);
+        if man and (n = k - i) and (indent < 0) then control(".Pp");
+        else
+            if not man then Out.str("    ");
+            elsif (indent >= 0) and (n > indent) then n := indent;
+            end;
+            for m := i + n to k - 1 do emit(src[m]); end;
+            emit(10);
+        end;
+        i := k + 1;
     end;
-    Out.ln;
+    if indent >= 0 then control(".Ed"); end;
+    if man then control(".Ed"); end;
 end;
 
-(* One declaration, from its first token, the comment before it kept. *)
+(* One declaration, from its first token, the comment before it kept.
+   In mdoc a module's test, its main, is left out, and declarations
+   with no comment share a display. *)
 proc declaration(prefix: []U8; exported: BOOL; start, ds, de, stop: INT);
 begin
     if not exported then return; end;
-    Out.ln;
-    Out.str(prefix);
+    if not man then Out.ln;
+    elsif Str.hasPrefix(src[start..stop], "proc main*") then return;
+    elsif not shown then control(".Bd -literal"); shown := true;
+    end;
+    if LEN(prefix) > 0 then Out.str(prefix); Out.str(" "); end;
     block(start, trailing(stop));
+    if ds >= 0 then close; end;
     comment(ds, de);
 end;
 
@@ -196,12 +258,7 @@ begin
         sc.pos := sc.start;      (* name reads the name again *)
         exp := name();
         stop := toSemicolon();
-        if exp then
-            Out.ln;
-            Out.str(word); Out.str(" ");
-            block(start, trailing(stop));
-            comment(ds, de);
-        end;
+        declaration(word, exp, start, ds, de, stop);
         next;
     end;
 end;
@@ -229,8 +286,15 @@ begin
     if sc.kind = Scan.eof then Rt.stop("Doc: no module"); end;
     start := sc.start;
     ds := docStart; de := docEnd;
-    block(start, toSemicolon());
-    comment(ds, de);
+    next;
+    if man then
+        close;
+        Out.str(".Ss "); Out.str(text()); emit(10);
+        declaration("", true, start, ds, de, toSemicolon());
+    else
+        block(start, toSemicolon());
+        comment(ds, de);
+    end;
     next;
     while (sc.kind # Scan.eof) and not is("begin") and not is("end") do
         if is("const") or is("type") or is("var") then section;
@@ -337,11 +401,50 @@ begin
     end;
 end;
 
+(* raz-lib(3): the modules named from argument 2 on, under a head and
+   above a tail of the page's own. *)
+proc page;
+var i: INT;
+begin
+    man := true;
+    atStart := true;
+    control(".\\\" raz-lib(3) - the library; made by tools/Doc.raz from lib/");
+    Out.str(".Dd "); Out.str(Date); emit(10);
+    control(".Dt RAZ-LIB 3");
+    control(".Os");
+    control(".Sh NAME");
+    control(".Nm raz-lib");
+    control(".Nd the library of the raz language");
+    control(".Sh DESCRIPTION");
+    control("The modules a raz program imports from");
+    control(".Pa lib/ ,");
+    control("beside the compiler, each as its source gives it: the module's own");
+    control("comment, then every declaration it exports, as it is written, with");
+    control("the comment just before it.");
+    control("A module's");
+    control(".Ic main ,");
+    control("where it has one, is its test, and is left out.");
+    control(".Pp");
+    control("The report, section 11, says what the library promises, and which");
+    control("of its modules every target has.");
+    control(".Sh MODULES");
+    for i := 2 to ARGC() - 1 do document(Files.arg(i)); end;
+    close;
+    control(".Sh SEE ALSO");
+    control(".Xr raz 1 ,");
+    control(".Xr raz 7 ,");
+    control(".Xr raz-tutorial 7 ;");
+    control("the report,");
+    control(".Pa doc/raz.md ,");
+    control("in raz's sources.");
+end;
+
 proc main*;
 begin
     if (ARGC() = 4) and (Files.arg(1) = "examples") then examples(Files.arg(2), Files.arg(3));
+    elsif (ARGC() >= 3) and (Files.arg(1) = "man") then page;
     elsif ARGC() = 2 then document(Files.arg(1));
-    else Rt.stop("usage: Doc Module.raz, or Doc examples file dir");
+    else Rt.stop("usage: Doc Module.raz, Doc man Module.raz ..., or Doc examples file dir");
     end;
 end;
 

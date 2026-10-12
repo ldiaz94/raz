@@ -98,9 +98,9 @@ done
 $raz -o $out/Busy test/list/Busy.raz
 if RAZ_PROFILE=1 $out/Busy 2>&1 >/dev/null | sed -n 2p | grep -q 'Busy.spin$'; then pass=$((pass + 1))
 else echo "FAIL RAZ_PROFILE: Busy.spin isn't first"; fail=$((fail + 1)); fi
-# the manual pages, which groff and mandoc, where there, must read
-# without a warning
-for f in doc/*.[1-9]; do
+# the manual pages, raz-lib(3) as make made it from lib/, which groff
+# and mandoc, where there, must read without a warning
+for f in doc/*.[1-9] build/raz-lib.3; do
     : > $out/man.out
     command -v groff > /dev/null && groff -mdoc -ww -z $f >> $out/man.out 2>&1
     command -v mandoc > /dev/null && mandoc -Tlint -Wwarning $f >> $out/man.out 2>&1

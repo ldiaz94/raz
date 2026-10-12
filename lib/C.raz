@@ -13,9 +13,10 @@ extern proc munmap*(addr: ^U8; n: UINT): I32;
 extern proc isatty*(fd: I32): I32;
 extern proc exit*(status: I32);
 extern proc _exit*(status: I32);
-extern proc __errno_location*: ^I32;   (* errno is this thread's: through here *)
+extern proc __errno_location*: ^I32;   (* errno, this thread's *)
 extern proc sched_yield*: I32;
-extern proc pthread_create*(t: ^UINT; attr: ^U8; start: proc(arg: ^U8): ^U8; arg: ^U8): I32;
+extern proc pthread_create*(t: ^UINT; attr: ^U8;
+    start: proc(arg: ^U8): ^U8; arg: ^U8): I32;
 extern proc pthread_join*(t: UINT; result: ^^U8): I32;
 extern proc rename*(old, new: ^U8): I32;
 extern proc unlink*(path: ^U8): I32;

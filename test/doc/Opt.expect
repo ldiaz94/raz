@@ -11,7 +11,7 @@ module Opt;
     that keeps -h for itself, and completion for concha.
 
 type Row* = variant
-    usage(scope, line: []U8);           (* a synopsis line, without "usage: " *)
+    usage(scope, line: []U8);           (* a synopsis, without "usage: " *)
     sub(scope, name, help: []U8);       (* a subcommand *)
     option(scope: []U8; letter: U8; long, value, help: []U8);
 end;
@@ -26,7 +26,7 @@ type Parser* = record
     scope: []U8;
     at: INT;        (* the next word *)
     group: []U8;    (* the letters left of a word of them, as -lw *)
-    spelt: []U8;    (* the option just read as written, without its dashes *)
+    spelt: []U8;    (* the option just read, as written, no dashes *)
     ended: BOOL;    (* the scope's options have ended *)
     help: BOOL;     (* the option just read is -h or --help *)
 end;

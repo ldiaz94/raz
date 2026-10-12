@@ -30,16 +30,17 @@ const
 type
     (* What open is asked for: reading, writing or both, and what else
        it does to the file. *)
-    Access* = (reading, writing, creating, exclusive, truncating, appending);
+    Access* = (reading, writing, creating, exclusive, truncating,
+        appending);
     Accesses* = set of Access;   (* what open is given *)
 
     (* What info says of a file. *)
     Info* = record
         size*: I64;     (* in bytes *)
-        mtime*: I64;    (* when its contents last changed, in nanoseconds since 1970 *)
+        mtime*: I64;    (* its contents' last change, in ns since 1970 *)
         mode*: INT;     (* its permission bits, rwxrwxrwx *)
         dir*: BOOL;     (* a directory *)
-        file*: BOOL;    (* a regular file: not a directory, device, pipe or socket *)
+        file*: BOOL;    (* not a directory, device, pipe or socket *)
         symlink*: BOOL; (* the path itself is a symbolic link *)
     end;
 
@@ -52,13 +53,13 @@ type
     Program* = record
         path*: []U8;
         args*: [][]U8;      (* the first is its name *)
-        env*: [][]U8;       (* NAME=value, each added to this program's environment *)
+        env*: [][]U8;       (* NAME=value, each added to this environment *)
         onlyEnv*: BOOL;     (* env is its whole environment *)
         dir*: []U8;         (* its working directory; "" for this program's *)
-        fds*: [3]INT;       (* its standard input, output and error; 0 for this program's own *)
-        group*: INT;        (* the process group it joins: 0 for this program's, -1 a new one it leads *)
-        foreground*: BOOL;  (* its group takes the terminal on standard input *)
-        tty*: INT;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
+        fds*: [3]INT;       (* stdin, stdout, stderr; 0 for this program's *)
+        group*: INT;        (* its group: 0 for this program's, -1 a new one *)
+        foreground*: BOOL;  (* its group gets the terminal on standard input *)
+        tty*: INT;          (* a pseudo-terminal to start a session on, or 0 *)
     end;
     (* How a program that wait waited for changed. *)
     Status* = (running, exited, killed, stopped);

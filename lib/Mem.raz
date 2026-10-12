@@ -5,7 +5,7 @@ import Sys, Rt;
 
 type
     Allocator* = record
-        alloc*: proc(a: ^Allocator; size, align: INT): ^U8;   (* nil if out of room *)
+        alloc*: proc(a: ^Allocator; size, align: INT): ^U8;   (* or nil *)
         free*:  proc(a: ^Allocator; p: ^U8);
     end;
 

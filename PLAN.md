@@ -34,7 +34,7 @@ before it is done.
    Pascal and C to raz", a table of what each spells differently, as
    concha's tour has from sh. About 500 lines. The examples go in
    `test/man`, run by `make check`.
-2. **`raz-lib(3)`, the library, made from its sources.** `tools/Doc`
+2. Done: **`raz-lib(3)`, the library, made from its sources.** `tools/Doc`
    learns to write mdoc: each module's own comment, then its exported
    declarations with theirs, under a heading of its name. `make` builds
    the page from `lib/`, so it says what the library says, always.

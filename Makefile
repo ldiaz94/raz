@@ -32,7 +32,7 @@ clean:
 	rm -rf build raz
 
 # every example and test, against what it should print
-check: raz
+check: raz build/raz-lib.3
 	test/check.sh
 
 # line numbers: gdb stops at a line and names it
@@ -74,6 +74,17 @@ loc:
 	@rloc -f src/*.pas
 	@rloc -c src/*.pas
 
+# raz-lib(3), the library's manual page, made by tools/Doc.raz from
+# its sources, in the order of the report's section 11
+LIBDOC = Rt Mem Heap Arena Lock Thread.linux-x86_64 Out Sys.linux-x86_64 \
+	Str Buf Fmt List Map Sort Math Files Opt C
+
+man: build/raz-lib.3
+
+build/raz-lib.3: raz tools/Doc.raz tools/Scan.raz lib/*.raz | build
+	./raz -Werror -o build/Doc tools/Doc.raz
+	build/Doc man $(LIBDOC:%=lib/%.raz) > $@
+
 # the report as a PDF, by pandoc and Chromium; not part of check, as
 # CI has neither
 pdf: build/raz.pdf
@@ -99,4 +110,4 @@ install: raz
 uninstall:
 	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(PREFIX)/share/man/man1/raz.1
 
-.PHONY: units tests check gdb bench stress fmt loc pdf clean install uninstall
+.PHONY: units tests check gdb bench stress fmt loc man pdf clean install uninstall
