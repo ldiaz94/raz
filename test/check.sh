@@ -94,9 +94,15 @@ for f in test/err/*.raz; do
         pass=$((pass + 1))
     fi
 done
+# RAZ_PROFILE: a profiled run says which procedure took its time
+$raz -o $out/Busy test/list/Busy.raz
+if RAZ_PROFILE=1 $out/Busy 2>&1 >/dev/null | sed -n 2p | grep -q 'Busy.spin$'; then pass=$((pass + 1))
+else echo "FAIL RAZ_PROFILE: Busy.spin isn't first"; fail=$((fail + 1)); fi
+
 # raz -S: test/list/X.raz lists as X.expect
 for f in test/list/*.raz; do
     want=test/list/$(basename $f .raz).expect
+    [ -f $want ] || continue
     if $raz -S $f 2>&1 | cmp -s $want -; then pass=$((pass + 1))
     else echo "FAIL raz -S $f"; $raz -S $f 2>&1 | diff $want - | head; fail=$((fail + 1)); fi
 done

@@ -1,0 +1,18 @@
+module Busy;
+(* Profiled by test/check.sh, with RAZ_PROFILE set: spin takes nearly
+   all its time. Not listed, having no .expect. *)
+import Out;
+
+proc spin(n: I64): I64;
+var i, s: I64;
+begin
+    for i := 1 to n do s := s + i * i mod 7; end;
+    return s;
+end;
+
+proc main*;
+begin
+    Out.int(spin(100000000)); Out.ln;
+end;
+
+end Busy.

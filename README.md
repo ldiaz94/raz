@@ -103,6 +103,10 @@ calls under way, each with its variables:
 
 `Rt.trace` says the same at any time.
 
+A program run with `RAZ_PROFILE` set in its environment is sampled
+every millisecond of its time; at its end it says which procedures, and
+which places in the source, took the most of it.
+
 `raz run Main.raz a b` compiles the same way, then runs the program
 with the arguments `a b`, writing no file: its output and exit status
 are the command's.

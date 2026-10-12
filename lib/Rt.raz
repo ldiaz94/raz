@@ -5,7 +5,9 @@
    The compiler finds fail, exit, cExit and places by these names.
    After a failed check or a signal, and on demand with trace, Rt says
    the calls under way and their variables, from the frames' chain of
-   rbp and the compiler's tables in places.
+   rbp and the compiler's tables in places. A program run with
+   RAZ_PROFILE set is sampled every millisecond of its time, and at its
+   end Rt says which procedures and places in the source took it.
    The handlers are Linux's on x86-64, set by system calls: what the
    kernel hands them is laid out as it is there. *)
 module Rt;
@@ -18,6 +20,13 @@ const
     SigSegv = 11;
     Low = 10000H;   (* no address below this is ever mapped *)
     Digits = "0123456789abcdef";
+    SigProf = 27;
+    (* SA_SIGINFO, SA_ONSTACK, SA_RESTORER and SA_RESTART, so that a
+       system call a sample interrupts goes on *)
+    ProfFlags = 4H + 8000000H + 4000000H + 10000000H;
+    MaxSamples = 100000;
+    MaxProcs = 8192;
+    MaxPlaces = 65536;
     (* SA_SIGINFO, SA_ONSTACK, SA_RESTORER and SA_RESETHAND *)
     Flags = 4H + 8000000H + 4000000H + 80000000H;
 
@@ -56,6 +65,14 @@ var
     act: Action;
     alt: Stack;
     altStack: [16384]U8;        (* where the handlers run, even when the stack is full *)
+    (* the profile: where the program was at each sample, and how many
+       samples fell in each procedure and at each place *)
+    samples: [MaxSamples]UINT;
+    numSamples: INT;
+    profiling: BOOL;
+    procCount: [MaxProcs]INT;
+    placeCount: [MaxPlaces]INT;
+    timerv: [4]INT;              (* setitimer's interval and value *)
 
 (* Registers p to run when the program ends by exit. *)
 proc atExit*(p: proc): ERROR;
@@ -65,6 +82,8 @@ begin
     INC(numAtExit);
     return nil;
 end;
+
+proc profile; forward;
 
 (* Runs the procedures registered with atExit, the last first, then
    ends the program with status: through C's exit in a program that
@@ -79,6 +98,7 @@ begin
         p := atExits[numAtExit];
         p();
     end;
+    if profiling then profile; end;
     if cExit # nil then cExit(I32(status)); end;
     Sys.exit(status);
 end;
@@ -383,10 +403,96 @@ begin
     calls(ip, bp, why # "a stack overflow");
 end;
 
+(* SIGPROF, every millisecond the program runs, in any of its threads:
+   notes where it was *)
+proc onProf(_sig: INT; _info, ctx: ^U8);
+var n: INT; q: ^UINT;
+begin
+    n := XADD(ADR(numSamples), 1);
+    q := ^UINT(ctx + 168);   (* uc_mcontext's rip *)
+    if n < MaxSamples then samples[n] := q^; end;
+end;
+
+(* The index of the place the code at address a comes from, or -1 *)
+proc placeAt(a: UINT): INT;
+var p: ^Place; i, best: INT;
+begin
+    best := -1;
+    p := ^Place(places + 5);
+    for i := 0 to places[0] - 1 do
+        if (UINT(p[i].at) <= a) and ((best < 0) or (p[i].at > p[best].at)) then best := i; end;
+    end;
+    return best;
+end;
+
+(* Says the ten that took most of count's n samples, by name *)
+proc top(count: []INT; n: INT; byPlace: BOOL);
+var i, k, best: INT; p: ^Proc; q: ^Place;
+begin
+    p := ^Proc(^U8(places + 5) + 16 * places[0]);
+    q := ^Place(places + 5);
+    for k := 1 to 10 do
+        best := 0;
+        for i := 1 to LEN(count) - 1 do
+            if count[i] > count[best] then best := i; end;
+        end;
+        if count[best] = 0 then return; end;
+        i := count[best] * 100 div n;
+        if i < 10 then put("    "); elsif i < 100 then put("   "); else put("  "); end;
+        putInt(i);
+        put("%  ");
+        if byPlace then
+            putStr(names() + INT(q[best].path));
+            put(":"); putInt(INT(q[best].line));
+            put(":"); putInt(INT(q[best].col));
+        else putStr(names() + INT(p[best].name));
+        end;
+        say;
+        count[best] := 0;
+    end;
+end;
+
+(* At the end of a profiled run: which procedures, and which places in
+   the source, took the time, as shares of the samples *)
+proc profile;
+var t: [4]INT; i, n, k: INT; p: ^Proc;
+begin
+    t := [0, 0, 0, 0];
+    SYSCALL(38, 2, ADR(t), 0);   (* setitimer(ITIMER_PROF): no more *)
+    profiling := false;
+    n := numSamples;
+    if n > MaxSamples then n := MaxSamples; end;
+    if (places = nil) or (n = 0) then return; end;
+    for i := 0 to n - 1 do
+        p := procAt(samples[i]);
+        if p # nil then
+            k := (p - ^Proc(^U8(places + 5) + 16 * places[0]));
+            if k < MaxProcs then INC(procCount[k]); end;
+        end;
+        k := placeAt(samples[i]);
+        if (k >= 0) and (k < MaxPlaces) then INC(placeCount[k]); end;
+    end;
+    put("profile: ");
+    putInt(n);
+    put(" samples of a millisecond");
+    say;
+    top(procCount[0..places[3]], n, false);
+    put("by place:");
+    say;
+    top(placeCount[0..places[0]], n, true);
+end;
+
 begin
     alt := {sp: ADR(altStack[0]), size: LEN(altStack)};
     SYSCALL(131, ADR(alt), 0);   (* sigaltstack *)
     act := {handler: onSignal, flags: Flags, restorer: sigReturn};
     SYSCALL(13, SigSegv, ADR(act), 0, 8);   (* rt_sigaction *)
     SYSCALL(13, SigFpe, ADR(act), 0, 8);
+    if LEN(Sys.env("RAZ_PROFILE")) > 0 then
+        act := {handler: onProf, flags: ProfFlags, restorer: sigReturn};
+        SYSCALL(13, SigProf, ADR(act), 0, 8);
+        timerv := [0, 1000, 0, 1000];   (* every millisecond, from one on *)
+        SYSCALL(38, 2, ADR(timerv), 0);   (* setitimer(ITIMER_PROF) *)
+        profiling := true;
+    end;
 end Rt.

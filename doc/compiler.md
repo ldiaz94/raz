@@ -504,7 +504,11 @@ entry point sets, to say where a failed check or a signal was: the
 place with the highest address up to the one it has. Then it follows
 the chain of frames, each `rbp` pointing at its caller's, and says
 each call under way and its variables (`calls`); `Rt.trace` does the
-same on demand. A thread's first frame has `rbp` zero, which ends it. Its signal
+same on demand. A thread's first frame has `rbp` zero, which ends it.
+With `RAZ_PROFILE` set, `Rt`'s body has the kernel send SIGPROF every
+millisecond of the program's time (`setitimer`); `onProf` notes the
+address it interrupted, and `exit` has `profile` say which procedures
+and places those fell in, by the same tables. Its signal
 handlers, set in its body, run on a stack of their own, so that they
 can tell a stack overflow, and leave by returning to the faulting
 instruction with the handler reset, so that the signal ends the

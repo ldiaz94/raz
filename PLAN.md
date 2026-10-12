@@ -156,7 +156,7 @@ the wishes below.
       under way, each with its variables by name and value, from
       tables the compiler writes; `Rt.trace` gives the same on
       demand.
-- [ ] 9e. A profiler in `Rt`: a program run with `RAZ_PROFILE` set
+- [x] 9e. A profiler in `Rt`: a program run with `RAZ_PROFILE` set
       samples where it is, and at its end says which procedures and
       lines took the time.
 - [ ] 10. `doc/compiler.md`, README, the report's version and the
