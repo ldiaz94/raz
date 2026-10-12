@@ -10,8 +10,11 @@ This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
 This is version 2026-10.13 of the report; section 12 says what each
-version changed. It is a thaw the owner chose, for a language anyone
-can build again, and it breaks programs written for 2026-10.10.
+version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
+for a language anyone can build again. They break programs written
+for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
+0.5.0, the last release before them; and 2026-10.12 breaks code
+procedures written for 2026-10.11.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -138,8 +141,10 @@ only its own module changes it. Outside it, the variable is a value,
 not a variable: nothing that could write it, or let something else
 write it, may name it or a field or element of it. So it can't be
 assigned, passed as a `var` argument, changed by `INC`, `DEC` or
-`NEW`, given to `ADR`, sliced, or used where a slice is expected (the
-silent conversion of an array, section 5.10); in `match`, its arms'
+`NEW`, or given to `ADR`; an array in it can't be sliced, or used
+where a slice is expected (the silent conversion of an array, section
+5.10), though a slice in it may be sliced, since that makes a new
+slice and can't change the variable; in `match`, its arms'
 names stand for the fields of a copy. It can be read, copied and
 compared, and a copy is the importer's own. What a pointer or a slice
 in it points at is another variable, and isn't held to this: with
@@ -294,7 +299,8 @@ literals, other constants, operators, conversions, `SIZE` and the `LEN`
 of arrays and strings. A constant is an integer, a real, a `BOOL`, a
 name of an enumeration, a set, a string, an array or an `ERROR`. A constant of an integer type wraps as the
 program would: `U8(250) + 10` is 4. Dividing by zero in a constant is
-an error. A string constant can be indexed and sliced as an array of
+an error, and so is dividing the smallest value of a signed type by -1,
+with `div` or `mod`, which stops a program (section 6.1). A string constant can be indexed and sliced as an array of
 `U8` is, and its `LEN` is its length in bytes. `+` joins two string
 constants into one:
 
@@ -556,8 +562,9 @@ string is a copy, the program's to change.
 Nothing else converts silently. In particular, there is no other
 conversion between integer types, between integers and reals, or
 between `F32` and `F64`, without a written conversion (section 6.7).
-Several results, and `return f(x)`, need the same types exactly: an
-`INT` result doesn't pass up as an `I64`.
+Results passed on whole need the same types exactly: in `a, b :=
+f(x)` and in `return f(x)`, an `INT` result doesn't pass up as an
+`I64`. Elsewhere, `return n, n` included, an `INT` widens as above.
 
 ## 6. Expressions
 
@@ -1208,15 +1215,114 @@ Lengths, counts, file descriptors, process ids and statuses are
 target is an `I64`: a file's size and position, a time in nanoseconds,
 and a number read from text.
 
+What follows is each module's interface, as `tools/Doc.raz` prints it
+from the module's file; `...` stands for fields that are the module's
+own. A module's `main`, where it has one, is its test, and is left
+out here.
+
+```
+module Rt;
+const Full*: ERROR = "too many procedures to run at exit";
+proc atExit*(p: proc): ERROR;   (* p run when the program ends by exit *)
+proc exit*(status: INT);        (* the atExit procedures, the last first, then the end *)
+proc stop*(msg: []U8);          (* msg on standard error, then exit with status 2 *)
+proc trace*;                    (* the calls under way, and their variables, on standard error *)
+```
+
+`Rt` also holds what the compiler's checks call when they fail, and
+the handlers of the signals that stop a program (section 10). `exit`
+takes each procedure off the list before it runs it, so it runs once
+even if it fails or calls `exit` itself; in a program that uses C, it
+ends through C's `exit`, so that C flushes its buffers too.
+
 ```
 module Mem;
 type
     Allocator* = record
-        alloc*: proc(a: ^Allocator; size, align: INT): ^U8;
+        alloc*: proc(a: ^Allocator; size, align: INT): ^U8;   (* nil if out of room *)
         free*:  proc(a: ^Allocator; p: ^U8);
     end;
-...
-end Mem.
+const Page* = 4096;
+proc pages*(size: INT): ^U8;         (* size bytes, in whole pages, zeroed; or nil *)
+proc unmap*(p: ^U8; size: INT);      (* pages given back *)
+proc alloc*(a: ^Allocator; size, align: INT): ^U8;   (* a^.alloc(a, size, align) *)
+proc free*(a: ^Allocator; p: ^U8);   (* a^.free(a, p) *)
+
+module Heap;
+var heap*: ^Mem.Allocator;
+
+module Arena;
+type Arena* = record
+    base*: Mem.Allocator;     (* first, so that ^Arena(a) finds the rest *)
+    ...
+end;
+proc init*(ar: ^Arena; size: INT): BOOL;   (* an arena of size bytes; false if the system has none *)
+proc reset*(ar: ^Arena);                   (* every allocation forgotten; the memory used again *)
+proc done*(ar: ^Arena);                    (* its memory given back *)
+```
+
+`NEW(p, a)` calls `a^.alloc`. `Heap` keeps blocks of nine sizes, from
+16 to 4096 bytes with their header, each with a list of the free ones;
+a bigger block gets pages of its own. An arena hands out memory from
+one block: its `free` does nothing, and `reset` forgets everything.
+
+```
+module Lock;
+type Lock* = record ... end;
+proc take*(l: ^Lock);
+proc give*(l: ^Lock);
+
+module Thread;
+const Failed*: ERROR = "can't start a thread";
+type
+    Thread* = record ... end;
+    Mutex* = record ... end;     (* zero is free *)
+proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);   (* p(arg) in a new thread *)
+proc join*(t: ^Thread);         (* waits for t to end, then frees its stack *)
+proc lock*(m: ^Mutex);
+proc unlock*(m: ^Mutex);
+```
+
+A `Lock` is for short sections: a thread that finds it taken tries
+again, giving up the processor now and then. A `Mutex` sleeps. Each of
+`Thread`'s threads runs on a stack of its own, with a page below it
+that can't be touched, so that running off the stack stops the program.
+A program that uses C makes its threads with C's `pthread_create`, and
+so can't use `Thread`.
+
+```
+module Out;
+proc str*(s: []U8);
+proc char*(c: U8);
+proc ln*;                        (* a line feed *)
+proc int*(n: I64);               (* n in decimal *)
+proc hex*(n: U64; digits: INT);  (* n in hexadecimal, digits digits at least *)
+proc flush*;
+```
+
+**Out and C's stdio.** `Out` keeps a buffer of `Sys.outSize` bytes,
+4 KB on Linux. It writes it out
+when it is full, at each line feed when standard output is a terminal,
+at `Out.flush`, and when the program ends by `Rt.exit`. A lock keeps
+what each call writes together when threads write at once. C's `stdio`
+keeps a buffer of its own for the same standard output. A program that
+writes with both flushes one before writing with the other, or the
+text comes out of order:
+
+```
+module Both;
+import Out, C;      (* C: printf, fflush and C's FILE *stdout *)
+
+proc main*;
+begin
+    Out.str("from raz\n");
+    Out.flush;
+    C.printf("from C\n");
+    C.fflush(C.stdout);
+    Out.str("from raz again\n");
+end;
+
+end Both.
 ```
 
 **Sys** gives every target the same procedures, so that a program
@@ -1225,6 +1331,7 @@ Linux, through the C library elsewhere. A result that can fail is a
 number, minus an errno, as on Linux; 0 is success.
 
 ```
+module Sys;
 const
     stdin* = 0; stdout* = 1; stderr* = 2;
     outSize* = 4096;    (* the bytes Out keeps; each target has its own *)
@@ -1258,10 +1365,18 @@ type
     end;
     Status* = (running, exited, killed, stopped);
 
+proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
+proc read*(fd: INT; buf: []U8): INT;    (* the bytes read; 0 at the end *)
 proc open*(path: []U8; how: Accesses): INT;   (* its fd *)
 proc openRead*(path: []U8): INT;         (* open(path, {reading}) *)
 proc create*(path: []U8): INT;           (* open(path, {writing, creating, truncating}) *)
 proc seek*(fd: INT; pos: I64; fromEnd: BOOL): I64;  (* the new position *)
+proc close*(fd: INT);
+proc isTerminal*(fd: INT): BOOL;
+proc mmap*(size: INT): ^U8;              (* size bytes of zeroed memory, in whole pages; or nil *)
+proc munmap*(p: ^U8; size: INT);
+proc yield*;                             (* the processor given to another thread *)
+proc exit*(status: INT);                 (* the program ended at once, without Rt's atExit *)
 
 proc rename*(old, new: []U8): INT;       (* replaces what new names *)
 proc remove*(path: []U8): INT;           (* a file, not a directory *)
@@ -1279,7 +1394,7 @@ proc closeDir*(d: ^Dir);
 proc rawMode*(fd: INT): BOOL;      (* the terminal on fd: no echo, no lines, no signals *)
 proc restoreMode*(fd: INT);        (* as rawMode found it *)
 proc termSize*(fd: INT): (INT, INT);   (* columns and rows; 80 and 24 if unknown *)
-proc ready*(fd: INT; ms: INT): BOOL;   (* something to read within ms, or ever if ms < 0 *)
+proc ready*(fd, ms: INT): BOOL;          (* something to read within ms, or ever if ms < 0 *)
 proc readyOf*(fds: []INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
 proc readyFor*(reads, writes: []INT; ms: INT): INT;   (* readyOf, and the first of writes with room to write *)
 proc setBlocking*(fd: INT; yes: BOOL): INT;   (* if not yes, a read or write that would wait is -11 at once *)
@@ -1329,19 +1444,6 @@ keys before the program reads them: echo, waiting for a whole line,
 Ctrl-C and Ctrl-Z as signals, Ctrl-S and Ctrl-Q as flow control, and
 CR to NL; and with output, NL to CR NL. A program that turns it on
 restores it before it ends: `Rt.atExit` is the place.
-
-`connect` is for talking to a server on the same machine, an X server
-at `/tmp/.X11-unix/X0` say; what it receives comes by `read`, what it
-sends goes by `send`, and `close` ends it. `send` is `write` for a
-socket, except when the other end has closed it: `write` would stop
-the program with the signal SIGPIPE, where `send` returns -32
-(EPIPE), so that a program learns its server has gone and can end as
-it wants. `readyOf` waits on several file
-descriptors at once, as a program does that listens to a server and a
-terminal both; a descriptor at its end, or failed, counts as ready,
-since a read of it won't wait. It looks at the first 64 of `fds`, and
-`connect` takes a path of at most 107 bytes, as `struct sockaddr_un`
-holds; a longer one is -36 (ENAMETOOLONG).
 
 **Files.** `open` gives a file for what `how` asks: `reading`,
 `writing` or both; `creating` it if it is missing, readable by all and
@@ -1442,10 +1544,15 @@ a write having written what there was room for; `readyFor` waits, as
 write on any of `writes`. A descriptor in both is given once, when it
 is ready for either; the 64 it looks at are `reads`, then `writes`.
 
-**Str, Map, Sort, Math and Fmt** gain these:
+**Strings, buffers and collections.**
 
 ```
 module Str;
+proc cmp*(a, b: []U8): INT;           (* -1, 0 or 1 as a sorts before, with or after b, byte by byte *)
+proc eq*(a, b: []U8): BOOL;
+proc hash*(s: []U8): U64;             (* FNV-1a, 64 bits *)
+proc find*(s, sub: []U8): INT;        (* where sub first starts in s, or -1 *)
+proc hasPrefix*(s, p: []U8): BOOL;
 proc encode*(c: I32): ([4]U8, INT);   (* c in UTF-8: its bytes, and how many *)
 proc decode*(s: []U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
 proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
@@ -1454,8 +1561,45 @@ proc be*(s: []U8): U64;               (* s, at most 8 bytes, the first the highe
 proc putLE*(s: []U8; v: U64);         (* v into s, the lowest byte first *)
 proc putBE*(s: []U8; v: U64);         (* v into s, the highest byte first *)
 
+module Buf;
+type Buf* = record len*: INT; ... end;
+proc init*(b: ^Buf; a: ^Mem.Allocator);
+proc room*(b: ^Buf; n: INT): BOOL;    (* room for n more bytes; false if the allocator has none *)
+proc add*(b: ^Buf; c: U8);
+proc str*(b: ^Buf; s: []U8);
+proc bytes*(b: ^Buf): []U8;           (* what it holds, until it next grows *)
+proc reset*(b: ^Buf);                 (* emptied, its memory kept *)
+proc done*(b: ^Buf);                  (* its memory given back *)
+
+module Fmt;
+type Arg* = variant
+    int(i: I64);
+    uint(u: U64);
+    hex(h: U64);
+    str(s: []U8);
+    char(c: U8);
+    bool(b: BOOL);
+    real(r: F64; places: INT);
+end;
+proc print*(f: []U8; args: []Arg);              (* to standard output *)
+proc write*(b: ^Buf.Buf; f: []U8; args: []Arg); (* added to b *)
+
+module List(T);
+type
+    Node* = record next*: ^Node; val*: T; end;
+    List* = record head*: ^Node; len*: INT; ... end;
+proc init*(l: ^List; a: ^Mem.Allocator);
+proc push*(l: ^List; v: T): BOOL;     (* v at the front; false if the allocator has no room *)
+proc pop*(l: ^List): (T, BOOL);       (* the front value, taken off; false if the list is empty *)
+proc reverse*(l: ^List);
+proc clear*(l: ^List);
+
 module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
+type Map* = record len*: INT; ... end;
+proc init*(m: ^Map; a: ^Mem.Allocator);
+proc put*(m: ^Map; k: K; v: V): BOOL;         (* k now maps to v; false if there was no room *)
 proc remove*(m: ^Map; k: K): BOOL;            (* false if k wasn't there *)
+proc get*(m: ^Map; k: K): (V, BOOL);          (* what k maps to, and whether it maps to anything *)
 proc next*(m: ^Map; i: INT): (INT, K, V);     (* the entry after i *)
 
 module Sort(T; less: proc(a, b: T): BOOL);
@@ -1465,15 +1609,18 @@ module Math;
 const pi* = 3.141592653589793;
 proc sqrt*(x: F64): F64;
 proc floor*(x: F64): F64;
-proc sin*(x: F64): F64;
-proc cos*(x: F64): F64;
-proc atan2*(y, x: F64): F64;
 proc exp*(x: F64): F64;
 proc ln*(x: F64): F64;
-
-module Fmt;
-type Arg* = variant ... real(r: F64; places: INT); end;
+proc sin*(x: F64): F64;
+proc cos*(x: F64): F64;
+proc atan2*(y, x: F64): F64;          (* the angle of (x, y) from the x axis, from -pi to pi *)
 ```
+
+A `Buf`, a `List` and a `Map` take their memory from the allocator
+`init` gives them. `Fmt`'s format takes the next argument at each
+`{}`; `{{` and `}}` stand for `{` and `}`. A `Map` hashes and
+compares its keys with the procedures it is given:
+`import Count := Map([]U8, INT, Str.hash, Str.eq);`.
 
 `Str` reads and writes UTF-8. `encode` writes a character, of at most
 10FFFFH, in one to four bytes; a number that isn't one becomes FFFDH,
@@ -1641,30 +1788,6 @@ others are an option with neither a letter nor a long name, a long
 name with `=` in it, a letter `-`, and `-h` or `--help` in the table,
 since they are `Opt`'s.
 
-**Out and C's stdio.** `Out` keeps a buffer of `Sys.outSize` bytes,
-4 KB on Linux. It writes it out
-when it is full, at each line feed when standard output is a terminal,
-at `Out.flush`, and when the program ends by `Rt.exit`. C's `stdio`
-keeps a buffer of its own for the same standard output. A program that
-writes with both flushes one before writing with the other, or the
-text comes out of order:
-
-```
-module Both;
-import Out, C;      (* C: printf, fflush and C's FILE *stdout *)
-
-proc main*;
-begin
-    Out.str("from raz\n");
-    Out.flush;
-    C.printf("from C\n");
-    C.fflush(C.stdout);
-    Out.str("from raz again\n");
-end;
-
-end Both.
-```
-
 ## 12. Versions
 
 A version of this report is named by the month it was made in and a
@@ -1731,8 +1854,8 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   Pointers, procedures, `ERROR`s, slices and variants' tags are sized
   by the address, and basic types aligned as the target's C aligns
   them (section 5). Reals are a target's to have or not (section
-  5.1). An exported variable can't be changed, passed by `var`,
-  addressed or sliced outside its module (section 3). `check off;`
+  5.1). An exported variable can't be changed, passed by `var` or
+  addressed outside its module, nor an array in it sliced (section 3). `check off;`
   leaves a module's index and slice checks out (sections 3, 6.4 and
   6.5). An index of any integer type is checked by its value (6.5). A
   shift counts modulo its operand's width, and the smallest value of
@@ -1761,9 +1884,9 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 
 Everything in this report binds every implementation of raz, except
 what follows, which each chooses for itself and documents. This
-compiler's choices are in `doc/compiler.md`. The programs in
-`conform/` are how an implementation shows that it follows this
-report: it passes them all, its reals aside where its target has none;
+compiler's choices are in `doc/compiler.md`, under "This compiler's
+choices". The programs in `conform/` are how an implementation shows
+that it follows this report: it passes them all, its reals aside where its target has none;
 `conform/check.sh` runs them.
 
 - **The target.** Which machines and systems it compiles for, and the

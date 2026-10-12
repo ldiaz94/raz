@@ -566,6 +566,69 @@ executes it through `/proc/self/fd` in raz's own place, handing it the
 rest of raz's `argv`. Nothing is left on disk, and the program's
 status is the command's.
 
+## This compiler's choices
+
+What the report's appendix A leaves to an implementation, and what
+this one does.
+
+- **The target.** x86-64 Linux, `linux-x86_64`: `INT` is 64 bits, and
+  there are reals. Every module of a program is compiled together, in
+  one run, into a static ELF executable, or a dynamic one if the
+  program uses C; no object files.
+- **Finding modules.** `raz Main.raz` looks for `X`, imported, in
+  `Main.raz`'s directory, then in each `-I dir` in the order given
+  (16 at most), then in `lib` beside the `raz` executable, following
+  a link to it (`make install` puts `raz` and `lib/` together in
+  `PREFIX/lib/raz`). In each directory it tries `X.linux-x86_64.raz`,
+  `X.linux.raz`, `X.x86_64.raz` and `X.raz`, in that order, and takes
+  the first found (`ModuleFile`, `parse.pas`).
+- **Errors.** Every error in a run is reported, up to 20 (`MaxErrors`,
+  `diag.pas`); then the compiler stops. Two errors at the same place
+  are told as one. Any error is status 1.
+- **Warnings.** Of a declaration never used, or a variable only
+  assigned (`Warn`, `parse.pas`): not of what is exported, a name that
+  starts with `_`, an enumeration's names or a generic module's
+  parameters. A procedure naming itself doesn't use it; a type named by
+  a pointer in its own declaration does. Assigning a variable whole
+  (`x :=`, `a, b :=`) doesn't read it; anything else does. Warnings
+  come only for a module with no errors, and a generic module's only
+  for its first instance. `-Werror` makes each an error.
+- **Several results** come back through a hidden pointer to the
+  caller's slots; a code procedure returns two in rax and rdx.
+- **Reals.** A real constant is held as an F64. An `F32` in a register
+  is its low 32 bits; the upper ones are left as they fall.
+- **How a failure is caught.** A division by zero, a stack overflow
+  (the guard page under the stack), a call to `nil` and a load or
+  store within 4 KB of address 0 are caught by the machine, as
+  signals; a field of a `nil` pointer further on is tested for in the
+  code. The smallest value of a signed type divided by -1 faults as the
+  machine does for 64 bits; for a narrower type the code makes it
+  fault.
+- **Run-time failures.** A failed check says on standard error what
+  failed and with what values, at the place of the offending
+  expression, then the calls under way and their variables, and ends
+  the program by `Rt.exit` with status 2; `Rt.stop` says its message
+  and ends it the same way. A signal
+  is told at the place of the statement it stopped in, or of the
+  procedure for a stack overflow in its prologue, and then ends the
+  program, so its status is the signal's. The handlers run on a stack
+  of their own: `Rt`'s for the main thread, one in each `Thread`
+  thread's mapping. C's threads have none, so a stack overflow in one
+  ends the program by the signal with no message.
+- **Locks.** `Heap` and `Out` lock with `Lock`, a spinlock that yields,
+  since they serve C's threads and `Thread`'s alike; `Thread.Mutex` is
+  a futex.
+- **C.** A program uses C if a module it uses has an `extern` or a
+  `link` of a library. C's symbols are reached through quadwords the
+  loader fills in (GLOB_DAT), with no PLT; the executable exports
+  nothing. Its entry point stores C's `exit` in `Rt.cExit` before any
+  module body runs.
+- **Frames.** A deferred statement's slots stay reserved for the rest
+  of its procedure. A generic instance first used in a procedure, or in
+  a module's body, is made before that code begins (`InstancesFor`).
+- **The executable** carries DWARF line numbers and the names of
+  procedures for gdb, and `Rt`'s own table of places (`Rt.places`).
+
 ## Where to start changing it
 
 - **A built-in procedure:** an entry in `sym.pas`'s universe, a case in
@@ -576,7 +639,7 @@ status is the command's.
 - **A machine:** a new `gen.pas`, answering the same calls, and an
   encoder and assembler for it in place of `x64.pas`.
 - **A statement:** a reserved word in `scan.pas` (in `TSym` and `Words`,
-  in the same order), a case in `Statement`, and a routine beside the
+  in the same order), a case in `OneStatement`, and a routine beside the
   others.
 - **A check that fails:** `Check` in `gen.pas`, and the message in
   `lib/Rt.raz`'s `fail`; a reason a signal gives, `onSignal` there.

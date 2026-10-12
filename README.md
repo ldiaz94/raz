@@ -24,7 +24,7 @@ end Hello.
     $ examples/Hello
     hello, world
 
-The compiler is about 6,000 lines of Free Pascal: one pass, no
+The compiler is about 7,600 lines of Free Pascal: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
 ELF executable itself, with no assembler or linker, and compiles about
 a million lines a second.
@@ -133,10 +133,10 @@ by number.
   arguments, `Map(K, V; hash, eq)`.
 - Every variable starts at zero, and behaviour is defined everywhere
   but through pointers.
-- `extern` procedures and variables from C; code procedures written as
-  bytes of machine code; `SYSCALL`.
+- `extern` procedures and variables from C; code procedures written in
+  the target's assembly language; `SYSCALL`.
 
-The report, `doc/raz.md`, says all of it in about 1,000 lines.
+The report, `doc/raz.md`, says all of it in about 2,000 lines.
 
 ## The library
 
@@ -144,7 +144,8 @@ The report, `doc/raz.md`, says all of it in about 1,000 lines.
 (buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
 `Heap`, `Arena`, `Str`, `Buf`, `Fmt`, `Math`, `Files`, `Opt` (a command
 line read through one table), `List(T)`, `Map(K, V; hash, eq)` and
-`Sort(T; less)`. `tools/Doc.raz` prints any of them:
+`Sort(T; less)`. Section 11 of the report gives each one's interface,
+and `tools/Doc.raz` prints it from the module's file:
 
     $ ./raz -o Doc tools/Doc.raz && ./Doc lib/Str.raz
 
