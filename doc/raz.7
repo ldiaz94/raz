@@ -1,0 +1,559 @@
+.\" raz(7) - the raz language at a glance
+.Dd October 12, 2026
+.Dt RAZ 7
+.Os
+.Sh NAME
+.Nm raz
+.Nd the raz programming language at a glance
+.Sh DESCRIPTION
+raz is a small systems language for x86-64 Linux, with no garbage
+collector and no hidden run time.
+This page is what a programmer looks up; the report,
+.Pa doc/raz.md
+in raz's sources, is the definition, and the numbers in brackets,
+such as [6.8], are its sections.
+.Xr raz-tutorial 7
+is a tour,
+.Xr raz-lib 3
+the library and
+.Xr raz 1
+the compiler.
+.Sh WORDS AND SYMBOLS
+[2] A program is UTF-8; everything outside strings, characters and
+comments is ASCII.
+.Bl -tag -width "Identifiers"
+.It Identifiers
+A letter or
+.Cm _ ,
+then letters, digits and
+.Cm _ ,
+up to 63 characters; case matters.
+.Cm _
+alone is the blank.
+.It Numbers
+.Cm 123 ;
+.Cm 0FFH ,
+hexadecimal, in capitals;
+.Cm 1.5
+and
+.Cm 2.0E-3 ,
+reals, with a digit on both sides of the point.
+A number is untyped until it meets a type.
+.It Characters
+.Cm 'a' ,
+the code point, an integer.
+.It Strings
+.Cm \(dqhello\en\(dq ,
+its UTF-8 bytes, ending on its line.
+.It Escapes
+.Cm \en \et \er \e0 \e\e \e' \e\(dq \eu{E9} ,
+and in strings
+.Cm \exHH ,
+any byte.
+.It Comments
+.Cm "(* ... *)" ,
+nesting.
+The comment just before a declaration, or before
+.Cm module ,
+is its documentation.
+.El
+.Pp
+The reserved words, all lowercase but
+.Cm VOLATILE :
+.Bd -literal -offset indent
+and begin break by code const defer div do else elsif end
+extern for forward if import in link match mod module not of
+or packed proc record repeat return set shl shr then to type
+until var variant VOLATILE while xor
+.Ed
+.Pp
+The basic types,
+.Cm ERROR , true , false , nil
+and the built-in procedures are predeclared, in a scope around every
+module, and may be declared again.
+.Sh THE GRAMMAR IN BRIEF
+[appendix B]
+.Cm "{ x }"
+is any number of
+.Cm x ,
+.Cm "[ x ]"
+is one or none.
+.Bd -literal -offset indent
+Module   = "module" Name [ "(" Params ")" ] ";" { Import }
+           { "link" ( String | "static" ) ";" }
+           [ "check" "off" ";" ]
+           { Decl } [ "begin" Stmts ] "end" Name "." .
+Import   = "import" Item { "," Item } ";" .
+Item     = Name [ ":=" Name [ "(" Type { "," Type } ")" ] ] .
+Decl     = "const" { Name ["*"] [ ":" Type ] "=" Expr ";" }
+         | "type" { Name ["*"] "=" Type ";" }
+         | "var" { Names ":" Type ";" }
+         | "proc" Name ["*"] Signature ";" Body ";"
+         | "extern" ( "proc" Name ["*"] Signature
+                    | "var" Name ["*"] ":" Type ) ";" .
+Body     = "forward" | { Local } "begin" Stmts "end" [ Name ]
+         | "code" { [ Label ":" ] [ Instr ] ";" } "end" [ Name ] .
+Signature = [ "(" Params ")" ] [ ":" ( Type | "(" Types ")" ) ] .
+Type     = Name | Module "." Name | "[" Expr "]" Type | "[" "]" Type
+         | "^" [ "VOLATILE" ] Type
+         | [ "packed" ] "record" Fields "end"
+         | "variant" { Case ";" } "end" | "(" Names ")"
+         | "set" "of" Type | "proc" Signature .
+Stmt     = Designator [ ":=" Expr ] | "_" ":=" Expr
+         | Target "," Target { "," Target } ":=" Expr
+         | "if" Expr "then" Stmts { "elsif" Expr "then" Stmts }
+           [ "else" Stmts ] "end"
+         | "while" Expr "do" Stmts "end"
+         | "repeat" Stmts "until" Expr
+         | "for" Name ":=" Expr "to" Expr [ "by" Expr ]
+           "do" Stmts "end"
+         | "match" Expr "of" { "|" Arm } "end"
+         | "return" [ Exprs ] | "break" | "defer" Stmt .
+Arm      = ( Case [ "(" Names ")" ] | Label { "," Label } | "else" )
+           ":" Stmts .
+Stmts    = { Stmt ";" } .
+.Ed
+.Pp
+Every statement ends in
+.Cm ";" ,
+even one that ends in
+.Cm end
+or
+.Cm until .
+A procedure without parameters leaves out the parentheses where it is
+declared and where it is called.
+A name is declared before it is used, but for a pointer's type, which
+may come later in the same
+.Cm type
+section, and a
+.Cm forward
+procedure.
+Procedures don't nest.
+.Sh MODULES
+[3] Module
+.Cm M
+lives in
+.Pa M.raz ,
+or
+.Pa M.linux-x86_64.raz
+for one target's own; it is found beside the main module, then in each
+.Fl I
+directory, then in the library.
+A program has one module of each name, and the library's names are
+kept for it.
+.Bl -bullet
+.It
+A name declared with
+.Cm *
+is exported, and used as
+.Cm M.name .
+An exported variable is read-only outside its module.
+.It
+.Cm "import O := Out;"
+renames;
+.Cm "import Ints := List(INT);"
+makes an instance of a generic module, one for each distinct list of
+arguments, its procedure arguments named after its types:
+.Cm "Map([]U8, INT, Str.hash, Str.eq)" .
+.It
+A module's body runs once, after those of the modules it imports, and
+before the main module's
+.Cm main .
+.It
+.Cm "link \(dqlibX.so.1\(dq;"
+loads a C library;
+.Cm "link static;"
+says the program must not use C.
+.Cm "check off;"
+leaves the module's index and slice checks out.
+.El
+.Sh TYPES
+[5] Sizes are x86-64's.
+.Bl -column "U8 U16 U32 U64" "n * SIZE(T)" "an enumeration, 256 names at most"
+.It Sy Type Ta Sy Size Ta Sy Values
+.It "I8 I16 I32 I64" Ta "1, 2, 4, 8" Ta "signed, two's complement"
+.It "U8 U16 U32 U64" Ta "1, 2, 4, 8" Ta "unsigned"
+.It "INT, UINT" Ta "8" Ta "as big as an address"
+.It "BOOL" Ta "1" Ta "false, true"
+.It "F32, F64" Ta "4, 8" Ta "IEEE 754"
+.It "ERROR" Ta "8" Ta "nil, or a constant's error"
+.It "^T, proc ..." Ta "8" Ta "an address, or nil"
+.It "[]T" Ta "16" Ta "a pointer and a length"
+.It "[n]T" Ta "n * SIZE(T)" Ta "n elements, copied whole"
+.It "(a, b, c)" Ta "1" Ta "an enumeration, 256 names at most"
+.It "set of E" Ta "1, 2, 4, 8" Ta "bit i for E's name i, 64 at most"
+.El
+.Pp
+.Bl -bullet
+.It
+A
+.Cm record
+is laid out as C's struct; a
+.Cm "packed record"
+has no padding, and its misaligned fields no address.
+.It
+A
+.Cm variant
+is an
+.Cm INT
+tag and the room of its largest case:
+.Cm "variant circle(r: F64); dot; end" .
+A case is built as
+.Cm circle(1.0)
+or
+.Cm dot ,
+and read only by
+.Cm match .
+.It
+.Cm "^VOLATILE T"
+points at what something else may change: each access is one access,
+of its size, in order [7.6].
+.It
+.Cm "const NotFound*: ERROR = \(dqnot found\(dq;"
+makes an error unlike every other, compared by
+.Cm =
+and
+.Cm # ;
+.Cm MSG(e)
+is its message.
+.It
+Every variable starts at zero: 0, false, nil, the empty slice, a
+variant's first case.
+.It
+Named record, variant and enumeration types are each a type of their
+own; other types built alike are the same.
+.Cm "type A = B;"
+is another name for
+.Cm B .
+.El
+.Pp
+A value goes where another type is wanted only as an integer constant
+that fits it,
+.Cm nil
+into a pointer, procedure or
+.Cm ERROR ,
+.Cm ^T
+into
+.Cm "^VOLATILE T" ,
+.Cm [n]T
+into
+.Cm []T ,
+a string into
+.Cm []U8 , ^U8
+(with a zero byte after it) or
+.Cm [n]U8 ,
+a procedure into its type, and
+.Cm INT
+into
+.Cm I64 ,
+.Cm UINT
+into
+.Cm U64
+[5.10].
+Anything else is converted by name.
+.Sh OPERATORS
+[6] From the tightest:
+.Bl -column "* / div mod & shl shr" "and, or, not: BOOL; & | xor ~: bits"
+.It Sy Operators Ta Sy Notes
+.It "not  ~" Ta "not of a BOOL; ~ of an integer's bits"
+.It "* / div mod & shl shr" Ta "/ for reals; shifts count modulo the width"
+.It "+ - | xor" Ta "a unary minus takes the first term"
+.It "= # < <= > >= in" Ta "# is different; in, for a set"
+.It "and" Ta "evaluates its right side only if needed"
+.It "or" Ta "the same"
+.El
+.Pp
+.Bl -bullet
+.It
+Both operands have one type, or one is an untyped constant that fits
+the other's: with
+.Cm "i: I64" ,
+.Cm "i < LEN(s)"
+is an error.
+Integers wrap at their width.
+.Cm div
+rounds toward zero, and
+.Cm mod
+takes the dividend's sign; dividing by zero stops the program.
+.It
+Pointers:
+.Cm p^ ,
+.Cm "p + i"
+and
+.Cm "p - i"
+in elements,
+.Cm "p - q" ,
+.Cm p[i] ,
+and
+.Cm p[lo..hi] ,
+a slice; a record's fields through it are
+.Cm p^.f .
+.It
+Arrays and slices:
+.Cm a[i] ,
+and
+.Cm a[lo..hi]
+from
+.Cm lo
+up to but not including
+.Cm hi .
+Two of integers, BOOLs, enumerations, sets or pointers compare with
+.Cm =
+and
+.Cm # .
+.It
+Sets:
+.Cm +
+union,
+.Cm *
+intersection,
+.Cm -
+difference,
+.Cm <=
+and
+.Cm >=
+subset and superset.
+.It
+Literals:
+.Cm "[1, 2, 3]" ,
+an array, and
+.Cm "{x: 1, y: 2}" ,
+a record with its other fields zero, where the type is known;
+.Cm "{red, blue}" ,
+a set.
+.El
+.Sh CONVERSIONS
+[6.7] A type's name converts:
+.Cm I32(x) , F64(n) , ^Cell(adr) , "^VOLATILE U32(0FEE00000H)" .
+.Bl -column "pointer, procedure" "pointer, procedure" "rounded toward zero"
+.It Sy From Ta Sy To Ta Sy Result
+.It "integer" Ta "integer" Ta "cut, or extended"
+.It "integer" Ta "F32, F64" Ta "the nearest"
+.It "F32, F64" Ta "integer" Ta "rounded toward zero"
+.It "F32 / F64" Ta "F64 / F32" Ta "the same, or the nearest"
+.It "enumeration, set" Ta "integer" Ta "its position, its bits"
+.It "integer" Ta "enumeration, set" Ta "checked; its low bits"
+.It "INT, UINT" Ta "pointer, procedure" Ta "the address"
+.It "pointer, procedure" Ta "INT, UINT, pointer" Ta "the address"
+.El
+.Pp
+There is no other: none between
+.Cm BOOL
+and integers, and none to records, arrays, slices, variants or
+.Cm ERROR .
+.Sh BUILT-IN PROCEDURES
+[6.8]
+.Bl -tag -width "SYSCALL(n, x1, ...)"
+.It Fn SIZE T
+The size of type
+.Ar T ,
+an untyped constant.
+.It Fn ADR x
+The address of the variable
+.Ar x .
+.It Fn LEN a
+The length of an array, a string constant or a slice.
+.It Fn NEW p a
+.Ar p
+set to a fresh, zeroed
+.Ar T
+from the allocator
+.Ar a ,
+a
+.Cm ^Mem.Allocator ,
+or to nil.
+.It Fn MSG e
+The message of an
+.Cm ERROR .
+.It Fn COPY d s
+The elements of
+.Ar s
+copied to the start of
+.Ar d ,
+as one block, even if they overlap; past
+.Fn LEN d ,
+a failed check.
+.It Fn INC v k , Fn DEC v k
+.Ar v
+plus or minus
+.Ar k ,
+or 1; it wraps.
+.It Fn CAS p old new
+If
+.Ar p Ns ^
+is
+.Ar old ,
+set it to
+.Ar new
+and return true; atomically.
+.It Fn XCHG p x , Fn XADD p x
+Set, or add to,
+.Ar p Ns ^ ,
+returning the value before; atomically.
+.It Cm FENCE
+A full memory barrier.
+.It Fn SYSCALL n x1 ...
+Linux system call
+.Ar n ,
+with up to six arguments; minus an errno on failure.
+.It Fn ARGC , Fn ARGV
+The command line: its count, and its C strings.
+.El
+.Sh STATEMENTS
+[7]
+.Bl -tag -width "repeat ... until"
+.It Cm "x := e"
+Copies; arrays, records and slices whole.
+.Cm "a, b := f(x)"
+takes several results apart, and
+.Cm "_ := f(x)"
+drops one on purpose.
+.It Cm "f(x)"
+A call; a result it drops is warned of.
+.It Cm if , while , repeat
+On a
+.Cm BOOL .
+.Cm repeat
+runs its body once at least.
+.It Cm for
+.Cm "for i := a to b by s do ... end" :
+.Cm a
+and
+.Cm b
+evaluated once,
+.Cm s
+a constant, 1 if left out; never steps past
+.Cm b ,
+and leaves
+.Cm i
+at the last value it took.
+.It Cm match
+On a variant, an arm for each case, naming its fields; on an
+enumeration, an arm for each name; on an integer, arms of constants
+and ranges,
+.Cm "| '0' .. '9':" ,
+and an
+.Cm "| else:" ,
+which any
+.Cm match
+may end with.
+.It Cm return
+With the results, several separated by commas, or
+.Cm "return f(x)" ,
+passing on
+.Cm f Ns 's;
+off the end, a procedure returns zeros.
+.It Cm break
+Out of the innermost
+.Cm while , repeat
+or
+.Cm for .
+There is no
+.Cm goto
+and no
+.Cm continue .
+.It Cm defer
+Runs its statement when the statements it stands in end, by their end,
+a
+.Cm return
+or a
+.Cm break ;
+the last first.
+.El
+.Pp
+Operands, arguments and an assignment's designators are evaluated left
+to right, the designators first [7.5].
+.Sh PROCEDURES
+[8]
+.Bl -bullet
+.It
+A parameter is a copy; a
+.Cm var
+one is the caller's variable, of the parameter's type exactly.
+.It
+.Cm "proc f(x: INT): (INT, ERROR);"
+returns several results.
+A procedure is a value of its type,
+.Cm "proc(a, b: INT): BOOL" ,
+or nil.
+.It
+A
+.Cm code
+procedure is machine code, in Intel's syntax, called by the System V
+convention:
+.Cm "rdtsc; shl rdx, 32; or rax, rdx; ret;" .
+.It
+.Cm "extern proc printf(f: ^U8; ...): I32;"
+is C's [9]: its parameters integers, reals, pointers and procedures.
+.Cm "extern var environ: ^^U8;"
+is C's variable.
+A raz procedure of those types is a C callback.
+.It
+.Cm "proc main*;"
+or
+.Cm "proc main*: INT;"
+of the main module runs after every body; its result is the exit
+status.
+.Cm Rt.exit
+ends the program after the procedures given to
+.Cm Rt.atExit
+[10].
+.El
+.Sh WHAT IS CHECKED
+[6.5, 10] Each of these stops the program with status 2, or its
+signal's, saying on standard error where, why, and the calls under way
+with their variables:
+.Bl -bullet -compact
+.It
+an index past the length, and a slice out of
+.Cm "0 <= lo <= hi <= length" ,
+unless the module has checks off;
+.It
+a slice of a pointer that runs backwards, and a number that is no
+position of the enumeration it converts to;
+.It
+a
+.Cm nil
+pointer, a
+.Cm nil
+procedure, and a stack overflow;
+.It
+a division by zero, and the smallest value of a signed type divided by
+-1.
+.El
+.Pp
+Integers wrap and reals never stop the program.
+The compiler warns of what is declared and not used, of a variable
+only assigned, and of a dropped result;
+.Fl Werror
+makes them errors.
+What isn't checked is memory reached around the checks: a stale or
+made-up pointer, indexing through a pointer, C, and code procedures.
+.Sh LIMITS
+This compiler's, beyond the report's 63 characters to a name, 256
+names to an enumeration and 64 to a set:
+.Bl -column "deferred statements in a procedure" "integers and reals."
+.It "a string literal" Ta "65,535 bytes"
+.It "a number, as written" Ta "255 characters"
+.It "elements of a literal" Ta "1,024"
+.It "names in one declaration" Ta "64"
+.It "variables in one assignment" Ta "16"
+.It "deferred statements in a procedure" Ta "64"
+.It "labels in one match" Ta "64"
+.It "arguments of a call" Ta "63"
+.It "type arguments of a generic module" Ta "8"
+.It "scopes nested" Ta "64"
+.It "parameters of a code procedure" Ta "6 integers, 8 reals"
+.It "procedures given to Rt.atExit" Ta "32"
+.It "-I directories" Ta "16"
+.It "errors told in one run" Ta "20"
+.El
+.Sh SEE ALSO
+.Xr raz 1 ,
+.Xr raz-lib 3 ,
+.Xr raz-tutorial 7 ;
+the report,
+.Pa doc/raz.md ,
+and the guide to the compiler,
+.Pa doc/compiler.md ,
+in raz's sources.

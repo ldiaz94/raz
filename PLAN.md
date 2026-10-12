@@ -39,7 +39,7 @@ before it is done.
    declarations with theirs, under a heading of its name. `make` builds
    the page from `lib/`, so it says what the library says, always.
    About 60 lines of `Doc`.
-3. **`raz(7)`, the language at a glance.** What a programmer looks up:
+3. Done: **`raz(7)`, the language at a glance.** What a programmer looks up:
    the grammar in brief, the types and their sizes, the operators and
    their order, the built-in procedures, the statements, what is
    checked, and the limits; each pointing to the report's section for
