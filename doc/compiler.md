@@ -260,7 +260,8 @@ the frame, since only single values live in registers; `movzx` then
 `movsxd` reads a byte and makes an `I32` of it in two steps where one
 would do; and the four registers are saved and restored on every call,
 though this path uses one of them. Each could go, at the cost of lines
-a reader would have to follow.
+a reader would have to follow; v0.8.0 took the first, and the last
+where the procedure calls nothing.
 
 ## Better code again, in v0.8.0
 

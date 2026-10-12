@@ -1980,7 +1980,8 @@ begin
     if leaf then begin
       o := params;
       while o <> nil do begin
-        if RegFit(o) and (weight[Candidate(o^.name)] >= 0) then KeepArrived(o);
+        k := Candidate(o^.name);
+        if (k >= 0) and (weight[k] >= 0) then KeepArrived(o);   { a candidate whose ADR isn't taken }
         o := o^.next;
       end;
     end;

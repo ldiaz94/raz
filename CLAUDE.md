@@ -89,7 +89,11 @@ stage 9, several results in place of var parameters (2026-10.8,
 steps 52-53), and v0.5.0, the library of report 2026-10.9, which the
 compiler says it follows, and v0.7.0, better code, and v0.7.1, the manual: `raz(1)`,
 `raz-tutorial(7)`, `raz(7)` and `raz-lib(3)`, made by `tools/Doc.raz`
-from `lib/`. Under way, by `PLAN.md`: better code again (v0.8.0).
+from `lib/`, and v0.8.0, better code again: slices in registers,
+parameters left in rdi and rsi, operands as the machine has them,
+`while` tested at the bottom, and one line table, DWARF's. `make
+kernels` measures `test/bench` against FPC `-O2`. Next, by `PLAN.md`:
+what the owner chooses.
 
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
@@ -113,7 +117,7 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.7.1, report 2026-10.17, the latest.
+the first; v0.8.0, report 2026-10.17, the latest.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
