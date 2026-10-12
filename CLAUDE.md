@@ -55,11 +55,15 @@ library's tests: they must have no warnings.
   `Luis <42945842+ldiaz94@users.noreply.github.com>`, unsigned
   (`--no-gpg-sign`), no attribution trailer. Push to `main`. No pull
   requests unless asked.
-- Budget: a soft limit of 8,500 lines of code (raised from 8,000 by
-  the owner's word, for register variables; blank and comment lines
-  not counted), with the compiler documented and commented throughout,
-  most of all where it is obscure or needs a compiler writer's
-  knowledge; at least 400,000 lines of raz a second.
+- Budget: a soft limit of 10,000 lines of code, never past 11,000
+  (raised from 8,500 by the owner's word, for better code; blank and
+  comment lines not counted), with the compiler documented and
+  commented throughout, most of all where it is obscure or needs a
+  compiler writer's knowledge; at least 400,000 lines of raz a second.
+- Clarity comes first, before speed and size: the compiler must be a
+  model of plain code that a beginner can follow. Every rewrite of the
+  code it makes is explained where it is done, with the code before
+  and after, and in `doc/compiler.md`.
 - Style: clarity over cleverness; each unit opens with what it is, what
   it depends on and what it leaves out; comments say why. Match the
   report's plain, short prose in documentation.
