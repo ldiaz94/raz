@@ -6,9 +6,10 @@
    before it.
 
        Doc examples report.md dir
-   writes each example of the report that is a whole module, from
-   module to end, with no ... left out, to dir/Name.raz, and prints
-   the names, one a line. *)
+       Doc examples page.7 dir
+   writes each example of the report, or of a manual page, that is a
+   whole module, from module to end, with no ... left out, to
+   dir/Name.raz, and prints the names, one a line. *)
 module Doc;
 import Out, Rt, Str, Buf, Heap, Scan, Files;
 
@@ -252,42 +253,80 @@ begin
     return line[i..j];
 end;
 
-(* The report's examples that are whole modules, each to dir. *)
+(* line, from the report or a manual page's literal block, added to b
+   as the program has it: in a page, \e is a backslash and \& is
+   nothing. *)
+proc addLine(b: ^Buf.Buf; line: []U8; page: BOOL);
+var i: INT;
+begin
+    i := 0;
+    while i < LEN(line) do
+        if page and (line[i] = '\\') and (i + 1 < LEN(line)) and (line[i + 1] = 'e') then
+            Buf.add(b, '\\');
+            INC(i);
+        elsif page and (line[i] = '\\') and (i + 1 < LEN(line)) and (line[i + 1] = '&') then
+            INC(i);
+        else Buf.add(b, line[i]);
+        end;
+        INC(i);
+    end;
+    Buf.add(b, 10);
+end;
+
+(* text written to the file dir/name and ext, its path made in out *)
+proc write(out: ^Buf.Buf; dir, name, ext, text: []U8);
+begin
+    Buf.reset(out);
+    Buf.str(out, dir); Buf.str(out, "/"); Buf.str(out, name); Buf.str(out, ext);
+    if not Files.write(Buf.bytes(out), text) then Rt.stop("Doc: can't write an example"); end;
+end;
+
+(* The examples that are whole modules, each to dir: those of the
+   report, between lines of ```, or of a manual page, between .Bd
+   -literal and .Ed. In a page, a block that starts on the line after
+   a module's is what that program prints, written to dir/Name.shown,
+   so that the page can be checked against the program. *)
 proc examples(path, dir: []U8);
 var
-    b, out: Buf.Buf; s, line, first, last, name: []U8; i, start, k, n: INT;
-    inBlock, whole: BOOL;
+    b, out, prog: Buf.Buf; s, line, first, last, name, shows: []U8;
+    i, k, n, after: INT; inBlock, whole, page, fence: BOOL;
 begin
     Buf.init(ADR(b), Heap.heap);
     Buf.init(ADR(out), Heap.heap);
-    if not Files.read(path, ADR(b)) then Rt.stop("Doc: can't read the report"); end;
+    Buf.init(ADR(prog), Heap.heap);
+    if not Files.read(path, ADR(b)) then Rt.stop("Doc: can't read the examples' file"); end;
     s := Buf.bytes(ADR(b));
+    page := (LEN(path) < 3) or (path[LEN(path) - 3..LEN(path)] # ".md");
     inBlock := false;
-    start := 0;
+    after := -1;
     i := 0;
     while i < LEN(s) do
         k := i;
         while (k < LEN(s)) and (s[k] # 10) do INC(k); end;
         line := s[i..k];
-        if trim(line) = "```" then
-            if inBlock and whole and Str.hasPrefix(first, "module ") and Str.hasPrefix(last, "end ") then
+        fence := not page and (trim(line) = "```");
+        if inBlock and (fence or page and (line = ".Ed")) then
+            if whole and Str.hasPrefix(first, "module ") and Str.hasPrefix(last, "end ") then
                 name := first[7..LEN(first)];
                 n := 0;
                 while (n < LEN(name)) and Scan.isWord(name[n]) do INC(n); end;
                 name := name[0..n];
-                Buf.reset(ADR(out));
-                Buf.str(ADR(out), dir); Buf.str(ADR(out), "/"); Buf.str(ADR(out), name);
-                Buf.str(ADR(out), ".raz");
-                if not Files.write(Buf.bytes(ADR(out)), s[start..i]) then
-                    Rt.stop("Doc: can't write an example");
-                end;
+                write(ADR(out), dir, name, ".raz", Buf.bytes(ADR(prog)));
                 Out.str(name); Out.ln;
+                after := k + 1;
+            elsif LEN(shows) > 0 then
+                write(ADR(out), dir, shows, ".shown", Buf.bytes(ADR(prog)));
             end;
-            inBlock := not inBlock;
-            start := k + 1;
+            inBlock := false;
+        elsif not inBlock and (fence or page and Str.hasPrefix(line, ".Bd -literal")) then
+            inBlock := true;
+            shows := "";
+            if page and (i = after) then shows := name; end;
+            Buf.reset(ADR(prog));
             first := ""; last := "";
             whole := true;
         elsif inBlock then
+            addLine(ADR(prog), line, page);
             if trim(line) = "..." then whole := false; end;
             if LEN(trim(line)) > 0 then
                 if LEN(first) = 0 then first := trim(line); end;
@@ -302,7 +341,7 @@ proc main*;
 begin
     if (ARGC() = 4) and (Files.arg(1) = "examples") then examples(Files.arg(2), Files.arg(3));
     elsif ARGC() = 2 then document(Files.arg(1));
-    else Rt.stop("usage: Doc Module.raz, or Doc examples report.md dir");
+    else Rt.stop("usage: Doc Module.raz, or Doc examples file dir");
     end;
 end;
 

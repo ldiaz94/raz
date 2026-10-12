@@ -19,7 +19,8 @@ disagrees, the report wins and the plan is fixed.
     make install   # raz on PATH via ~/.local (PREFIX=...); make uninstall
 
 `make check` also runs `tools/Doc.raz` and `tools/Pretty.raz`, the
-report's whole examples, each library module's own `main` (its test),
+report's whole examples, the tutorial's (`doc/raz-tutorial.7`, each
+against the output the page shows after it, its status in `test/man`), each library module's own `main` (its test),
 and the vim and emacs support headless where they are installed
 (`apt-get install -y vim emacs-nox`): each example must indent back
 exactly as written.

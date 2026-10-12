@@ -5,9 +5,9 @@ for, what is in it and when it is done; its steps are commits, each
 stopping for the owner's review. A finished milestone is cut from this
 file: git keeps the history, and the report's section 12 the language's.
 
-No milestone is under way. v0.7.0, better code, is tagged, and all
-before it is approved by the owner. Next come the manual (v0.7.1), then
-better code again (v0.8.0), each when the owner says go.
+The manual (v0.7.1) is under way, by the owner's word, and better code
+again (v0.8.0) after it. v0.7.0, better code, is tagged, and all before
+it is approved by the owner.
 
 ## Next: the manual (v0.7.1)
 
@@ -25,7 +25,7 @@ report's; `groff -mdoc -ww` and `mandoc -Tlint`, if there, say
 nothing; and each page read whole at 80 columns, as a user would,
 before it is done.
 
-1. **`raz-tutorial(7)`, a tour of the language.** Numbered sections,
+1. Done: **`raz-tutorial(7)`, a tour of the language.** Numbered sections,
    each one idea with a program to run: hello, world and modules;
    values, types and conversions; procedures and several results;
    arrays, slices and strings; records and pointers; memory and

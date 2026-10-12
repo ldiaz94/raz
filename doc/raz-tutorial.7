@@ -1,0 +1,990 @@
+.\" raz-tutorial(7) - a tour of raz
+.\" Every whole module in a literal block here is a program that make
+.\" check compiles and runs, against test/man/Name.expect; see
+.\" tools/Doc.raz.
+.Dd October 12, 2026
+.Dt RAZ-TUTORIAL 7
+.Os
+.Sh NAME
+.Nm raz-tutorial
+.Nd a tour of the raz language
+.Sh DESCRIPTION
+This tour is for someone who has programmed in Pascal or C and has
+never seen raz.
+Each section is one idea, with a program to run.
+The programs are whole: save one under its module's name and run it.
+.Pp
+The language is defined by the report,
+.Pa doc/raz.md
+in raz's sources; where this page is short, the report says it all.
+.Xr raz 7
+is the language at a glance,
+.Xr raz-lib 3
+the library, and
+.Xr raz 1
+the compiler.
+.Sh 1. HELLO, WORLD
+.Bd -literal -offset indent
+module Hello;
+import Out;
+
+proc main*;
+begin
+    Out.str("hello, world\en");
+end;
+
+end Hello.
+.Ed
+.Pp
+Saved as
+.Pa Hello.raz ,
+it is compiled and run with
+.Bd -literal -offset indent
+raz Hello.raz && ./Hello
+raz run Hello.raz
+.Ed
+.Pp
+the second without writing a file.
+A module lives in a file of its own name, and its name comes again
+after its last
+.Cm end .
+.Cm import Out
+lets it use what the module
+.Cm Out
+exports, as
+.Cm Out.str .
+The
+.Cm *
+after
+.Cm main
+exports it; the program starts at the
+.Cm main
+of the module named on the command line.
+Every statement ends in
+.Cm ";" ,
+even one that ends in
+.Cm end .
+.Sh 2. MODULES
+A program is a set of modules.
+Here is one, saved as
+.Pa Greet.raz :
+.Bd -literal -offset indent
+module Greet;
+import Out;
+
+var count*: INT;    (* the greetings so far *)
+
+proc hello*(name: []U8);
+begin
+    Out.str("hello, ");
+    Out.str(name);
+    Out.ln;
+    INC(count);
+end;
+
+begin
+    Out.str("Greet is ready\en");
+end Greet.
+.Ed
+.Pp
+and a program beside it that uses it:
+.Bd -literal -offset indent
+module Twice;
+import Out, G := Greet;
+
+proc main*;
+begin
+    G.hello("world");
+    G.hello("raz");
+    Out.int(G.count);
+    Out.str(" greetings\en");
+end;
+
+end Twice.
+.Ed
+.Bd -literal -offset indent
+Greet is ready
+hello, world
+hello, raz
+2 greetings
+.Ed
+.Pp
+A name with
+.Cm *
+is exported; any other is the module's own.
+.Cm "G := Greet"
+imports
+.Cm Greet
+under a shorter name.
+Another module may read
+.Cm G.count ,
+but only
+.Cm Greet
+may change it.
+The statements after a module's last
+.Cm begin
+are its body, which runs once, before
+.Cm main ,
+after the bodies of the modules it imports.
+.Pp
+The compiler finds
+.Cm Greet
+beside the main module, then in each directory given with
+.Fl I ,
+then in the library.
+The library's module names, such as
+.Cm Out , Str
+and
+.Cm Map ,
+are kept for it: a program doesn't name a module of its own so.
+.Sh 3. VALUES, TYPES AND CONVERSIONS
+.Bd -literal -offset indent
+module Values;
+import Fmt;
+
+const Max = 100;    (* untyped: it takes the type it meets *)
+
+proc main*;
+var n: INT; b: U8; big: I64; x: F64; c: I32; ok: BOOL;
+begin
+    n := Max * 3;
+    b := 250;
+    b := b + 10;          (* wraps, in a U8: 4 *)
+    big := n;             (* an INT goes into an I64 *)
+    x := F64(n) / 7.0;    (* nothing else converts unasked *)
+    c := '\eu{E9}';        (* a character is its code point *)
+    ok := (n > Max) and (b # 0);
+    Fmt.print("{} {} {} {} {} {}\en", [Fmt.int(n), Fmt.int(I64(b)),
+        Fmt.int(big), Fmt.real(x, 3), Fmt.int(I64(c)),
+        Fmt.bool(ok)]);
+end;
+
+end Values.
+.Ed
+.Bd -literal -offset indent
+300 4 300 42.857 233 true
+.Ed
+.Pp
+The integers are
+.Cm I8 , I16 , I32 , I64
+and
+.Cm U8 , U16 , U32 , U64 ,
+and
+.Cm INT
+and
+.Cm UINT ,
+as big as an address.
+.Cm INT
+is the everyday one: lengths, indexes and counts are
+.Cm INT Ns s .
+The reals are
+.Cm F32
+and
+.Cm F64 .
+Arithmetic wraps at the type's width, and never stops the program,
+except dividing by zero.
+.Pp
+Two types never mix: with
+.Cm "i: I64" ,
+.Cm "i < LEN(s)"
+is an error.
+A type's name converts, as
+.Cm F64(n)
+and
+.Cm I64(b)
+do above.
+The one silent conversion between numbers is an
+.Cm INT
+into an
+.Cm I64 ,
+which loses nothing.
+A number written in the program is untyped until it meets a type;
+.Cm 0FFH
+is hexadecimal, and
+.Cm 1.5
+a real, which an integer never becomes without a conversion.
+.Pp
+.Cm # ,
+not
+.Cm <> ,
+is
+.Dq different .
+.Cm and , or
+and
+.Cm not
+are for
+.Cm BOOL Ns s ,
+and bind below the relations, so
+.Cm "i < n and a[i] # 0"
+needs no parentheses;
+.Cm & , | , xor
+and
+.Cm ~
+are for the bits of integers.
+Every variable starts at zero.
+.Sh 4. PROCEDURES AND SEVERAL RESULTS
+.Bd -literal -offset indent
+module Procs;
+import Out;
+
+proc divmod(a, b: INT): (INT, INT);
+begin
+    return a div b, a mod b;
+end;
+
+proc swap(var a, b: INT);
+var t: INT;
+begin
+    t := a;
+    a := b;
+    b := t;
+end;
+
+proc square(n: INT): INT;
+begin
+    return n * n;
+end;
+
+proc twice(f: proc(n: INT): INT; n: INT): INT;
+begin
+    return f(f(n));
+end;
+
+proc main*;
+var q, r, x, y: INT;
+begin
+    q, r := divmod(17, 5);
+    x := 1;
+    y := 2;
+    swap(x, y);
+    Out.int(q); Out.char(' '); Out.int(r); Out.ln;
+    Out.int(x); Out.char(' '); Out.int(y); Out.ln;
+    Out.int(twice(square, 3)); Out.ln;
+    _, r := divmod(-7, 2);
+    Out.int(r); Out.ln;
+end;
+
+end Procs.
+.Ed
+.Bd -literal -offset indent
+3 2
+2 1
+81
+-1
+.Ed
+.Pp
+A parameter is a copy, unless it is
+.Cm var ,
+when it is the caller's variable itself.
+A procedure may return several results, which a multiple assignment
+takes apart; the blank,
+.Cm _ ,
+drops one.
+A procedure is a value too, of a procedure type, as
+.Cm f
+is in
+.Cm twice .
+A procedure without parameters leaves out the parentheses, as
+.Cm Out.ln
+does.
+Procedures don't nest, and a name is declared before it is used.
+.Pp
+A call that drops a result, as
+.Cm "Sys.write(fd, s);"
+does, is warned of;
+.Cm "_ := Sys.write(fd, s);"
+says it is meant.
+.Sh 5. ARRAYS, SLICES AND STRINGS
+.Bd -literal -offset indent
+module Slices;
+import Out, Str;
+
+proc sum(s: []INT): INT;
+var i, t: INT;
+begin
+    t := 0;
+    for i := 0 to LEN(s) - 1 do t := t + s[i]; end;
+    return t;
+end;
+
+proc main*;
+var a: [5]INT; i: INT; s: []U8; name: [8]U8;
+begin
+    for i := 0 to 4 do a[i] := i * i; end;
+    Out.int(sum(a)); Out.ln;        (* the array, as a slice *)
+    Out.int(sum(a[1..3])); Out.ln;  (* a[1] and a[2] *)
+    s := "hello, world";
+    Out.str(s[7..LEN(s)]); Out.ln;
+    if s[0..5] = "hello" then Out.str("it says hello\en"); end;
+    Out.int(Str.find(s, "world")); Out.ln;
+    name := "raz";                  (* a copy, the program's own *)
+    name[0] := 'R';
+    Out.str(name[0..3]); Out.ln;
+end;
+
+end Slices.
+.Ed
+.Bd -literal -offset indent
+30
+5
+world
+it says hello
+7
+Raz
+.Ed
+.Pp
+.Cm [5]INT
+is an array: five
+.Cm INT Ns s
+in a row, copied when it is assigned.
+.Cm []INT
+is a slice: a pointer to elements that live elsewhere, and their
+number,
+.Cm LEN(s) .
+.Cm a[lo..hi]
+is the slice of the elements from
+.Cm lo
+up to, but not including,
+.Cm hi ,
+and an array goes silently where a slice is wanted.
+.Pp
+A string is a slice of bytes,
+.Cm []U8 ,
+in UTF-8, and its bytes are constant;
+.Cm [8]U8
+made from one is a copy.
+Arrays and slices of integers compare with
+.Cm =
+and
+.Cm # ;
+.Cm Str
+has the rest: ordering, finding, hashing, UTF-8 and reading a number.
+.Pp
+A
+.Cm for
+loop takes its bounds once, and never steps past the last: with an
+empty slice,
+.Cm "0 to LEN(s) - 1"
+doesn't run at all.
+.Sh 6. RECORDS AND POINTERS
+.Bd -literal -offset indent
+module Boxes;
+import Fmt;
+
+type
+    Point = record x, y: INT; end;
+    Box = record lo, hi: Point; end;
+
+proc area(b: Box): INT;
+begin
+    return (b.hi.x - b.lo.x) * (b.hi.y - b.lo.y);
+end;
+
+proc grow(b: ^Box; n: INT);
+begin
+    DEC(b^.lo.x, n);
+    DEC(b^.lo.y, n);
+    INC(b^.hi.x, n);
+    INC(b^.hi.y, n);
+end;
+
+proc main*;
+var b: Box; p: ^Point;
+begin
+    b := {lo: {x: 1, y: 1}, hi: {x: 4, y: 3}};
+    Fmt.print("{}\en", [Fmt.int(area(b))]);
+    grow(ADR(b), 1);
+    p := ADR(b.hi);
+    p^.x := 10;
+    Fmt.print("{} {}\en", [Fmt.int(area(b)), Fmt.int(b.hi.x)]);
+end;
+
+end Boxes.
+.Ed
+.Bd -literal -offset indent
+6
+40 10
+.Ed
+.Pp
+A record is laid out as C lays out a struct.
+.Cm "{lo: ..., hi: ...}"
+builds one, naming its fields; the ones it leaves out are zero.
+.Cm ^Box
+is a pointer to a
+.Cm Box ,
+.Cm ADR(b)
+the address of
+.Cm b ,
+and
+.Cm b^
+what a pointer points at.
+A pointer is never the record:
+.Cm b^.lo ,
+never
+.Cm b.lo .
+.Sh 7. MEMORY AND ALLOCATORS
+.Bd -literal -offset indent
+module Stack;
+import Out, Mem, Heap, Arena;
+
+type Node = record next: ^Node; val: INT; end;
+
+(* a node holding v on top of top, from the allocator a;
+   nil if a has no room *)
+proc push(top: ^Node; v: INT; a: ^Mem.Allocator): ^Node;
+var n: ^Node;
+begin
+    NEW(n, a);
+    if n # nil then
+        n^.next := top;
+        n^.val := v;
+    end;
+    return n;
+end;
+
+proc main*;
+var top, n: ^Node; i: INT; ar: Arena.Arena;
+begin
+    for i := 1 to 3 do top := push(top, i, Heap.heap); end;
+    while top # nil do
+        Out.int(top^.val); Out.char(' ');
+        n := top;
+        top := top^.next;
+        Mem.free(Heap.heap, ^U8(n));
+    end;
+    Out.ln;
+    if not Arena.init(ADR(ar), 100000) then return; end;
+    for i := 1 to 1000 do top := push(top, i, ADR(ar.base)); end;
+    Out.int(top^.val); Out.ln;
+    Arena.done(ADR(ar));            (* every node at once *)
+end;
+
+end Stack.
+.Ed
+.Bd -literal -offset indent
+3 2 1
+1000
+.Ed
+.Pp
+raz has no garbage collector, and no allocator of its own: memory
+comes from an allocator, a
+.Cm Mem.Allocator ,
+which the program chooses and passes.
+.Cm "NEW(n, a)"
+sets
+.Cm n
+to a fresh, zeroed
+.Cm Node
+from
+.Cm a ,
+or to
+.Cm nil
+if
+.Cm a
+has no room.
+.Cm Heap.heap
+is the general one, which
+.Cm Mem.free
+gives memory back to.
+An
+.Cm Arena
+hands out memory from one block, and frees it all at once.
+.Cm Buf , List
+and
+.Cm Map
+take the allocator they use from
+.Cm init .
+.Sh 8. ERRORS
+.Bd -literal -offset indent
+module Errors;
+import Out, Str;
+
+const
+    Empty*: ERROR = "nothing to read";
+    TooBig*: ERROR = "not a number up to 1000";
+
+(* the number s holds, up to 1000 *)
+proc number(s: []U8): (INT, ERROR);
+var n: I64; ok: BOOL;
+begin
+    if LEN(s) = 0 then return 0, Empty; end;
+    n, ok := Str.toInt(s);
+    if not ok or (n > 1000) then return 0, TooBig; end;
+    return INT(n), nil;
+end;
+
+proc main*;
+var words: [3][]U8; i, n: INT; err: ERROR;
+begin
+    words := ["42", "", "12345"];
+    for i := 0 to 2 do
+        n, err := number(words[i]);
+        if err = nil then Out.int(n);
+        elsif err = Empty then Out.str("empty");
+        else Out.str(MSG(err));
+        end;
+        Out.ln;
+    end;
+end;
+
+end Errors.
+.Ed
+.Bd -literal -offset indent
+42
+empty
+not a number up to 1000
+.Ed
+.Pp
+A procedure that can fail returns an
+.Cm ERROR
+beside its result, and
+.Cm nil
+when it didn't.
+Each
+.Cm ERROR
+constant is an error of its own, compared with
+.Cm =
+by which declaration made it, never by its message;
+.Cm MSG(err)
+is the message.
+An exported one, as
+.Cm Empty
+is here, lets the callers tell it from the others.
+raz has no exceptions.
+.Sh 9. DEFER
+.Bd -literal -offset indent
+module Defers;
+import Out, Sys;
+
+proc step(n: INT);
+begin
+    Out.str("in "); Out.int(n); Out.ln;
+    defer Out.str("out\en");
+    if n = 2 then return; end;
+    defer Out.str("done\en");
+    Out.str("working\en");
+end;
+
+(* the lines of the file at path, or -1 if it can't be read *)
+proc lines(path: []U8): INT;
+var fd, n, i, count: INT; buf: [4096]U8;
+begin
+    fd := Sys.openRead(path);
+    if fd < 0 then return -1; end;
+    defer Sys.close(fd);
+    count := 0;
+    n := Sys.read(fd, buf);
+    while n > 0 do
+        for i := 0 to n - 1 do
+            if buf[i] = '\en' then INC(count); end;
+        end;
+        n := Sys.read(fd, buf);
+    end;
+    return count;
+end;
+
+proc main*;
+begin
+    step(1);
+    step(2);
+    Out.int(lines("/dev/null")); Out.ln;
+    Out.int(lines("/no/such/file")); Out.ln;
+end;
+
+end Defers.
+.Ed
+.Bd -literal -offset indent
+in 1
+working
+done
+out
+in 2
+out
+0
+-1
+.Ed
+.Pp
+.Cm "defer s;"
+runs
+.Cm s
+when the program leaves the statements the
+.Cm defer
+stands in: at their end, or by a
+.Cm return
+or a
+.Cm break .
+Deferred statements run the last first, and only those whose
+.Cm defer
+was reached.
+So a file is closed beside the line that opens it, however the
+procedure ends.
+.Sh 10. CHECKS, AND WHAT A FAILURE SAYS
+.Bd -literal -offset indent
+module Fail;
+import Out;
+
+proc get(a: []INT; i: INT): INT;
+begin
+    return a[i];
+end;
+
+proc main*;
+var a: [3]INT; i: INT;
+begin
+    for i := 0 to 3 do
+        Out.int(get(a, i));
+        Out.ln;
+    end;
+end;
+
+end Fail.
+.Ed
+.Bd -literal -offset indent
+0
+0
+0
+Fail.raz:6:14: index 3 is out of range for a length of 3
+  in Fail.get at Fail.raz:6:14: i = 3
+  in Fail.main at Fail.raz:13:9: i = 3
+.Ed
+.Pp
+Every index and slice is checked.
+A failed check says where it failed and with what values, then the
+calls under way with their variables, and ends the program with
+status 2.
+So do a
+.Cm nil
+pointer, a division by zero and a stack overflow.
+.Pp
+A module that is sure of its indexes may say
+.Cm "check off;"
+after its imports, for speed; an index out of range there reads or
+writes whatever it reaches.
+The program carries line numbers for
+.Xr gdb 1 ,
+and
+.Ev RAZ_PROFILE Ns =1
+in its environment has it say where its time went;
+.Xr raz 1
+says more.
+.Sh 11. ENUMERATIONS, SETS, VARIANTS AND MATCH
+.Bd -literal -offset indent
+module Shapes;
+import Out, Fmt, Math;
+
+type
+    Colour = (red, green, blue);
+    Colours = set of Colour;
+    Shape = variant
+        circle(r: F64);
+        rect(w, h: F64);
+        dot;
+    end;
+
+proc area(s: Shape): F64;
+begin
+    match s of
+    | circle(r): return Math.pi * r * r;
+    | rect(w, h): return w * h;
+    | dot: return 0.0;
+    end;
+end;
+
+proc kind(c: I32): []U8;
+begin
+    match c of
+    | ' ', '\et', '\en': return "space";
+    | '0' .. '9': return "digit";
+    | 'a' .. 'z', 'A' .. 'Z': return "letter";
+    | else: return "other";
+    end;
+end;
+
+proc main*;
+var shapes: [3]Shape; i: INT; warm: Colours; c: Colour;
+begin
+    shapes := [circle(1.0), rect(2.0, 3.5), dot];
+    for i := 0 to 2 do
+        Fmt.print("{}\en", [Fmt.real(area(shapes[i]), 2)]);
+    end;
+    Fmt.print("{} {} {}\en", [Fmt.str(kind('7')), Fmt.str(kind('x')),
+        Fmt.str(kind('+'))]);
+    warm := {red, blue} - {blue} + {green};
+    for c := red to blue do
+        if c in warm then Out.int(I64(c)); Out.ln; end;
+    end;
+end;
+
+end Shapes.
+.Ed
+.Bd -literal -offset indent
+3.14
+7.00
+0.00
+digit letter other
+0
+1
+.Ed
+.Pp
+An enumeration is a list of names, in order; a
+.Cm "set of"
+it holds any choice of them, in the bits of a word, with
+.Cm in ,
+.Cm +
+for union,
+.Cm *
+for intersection and
+.Cm -
+for difference.
+.Pp
+A variant holds one of its cases, each with fields of its own, and
+.Cm match
+is the only way to read them: it runs the arm of the case the variant
+holds, naming its fields.
+Every case has an arm, unless an
+.Cm "| else:"
+comes last.
+On an integer,
+.Cm match
+takes constants and ranges, and must have an
+.Cm "| else:" .
+.Sh 12. GENERIC MODULES
+A module may take types, and the procedures it needs on them, as
+parameters.
+.Pa Biggest.raz :
+.Bd -literal -offset indent
+module Biggest(T; less: proc(a, b: T): BOOL);
+
+(* the biggest of s, which mustn't be empty *)
+proc max*(s: []T): T;
+var i: INT; m: T;
+begin
+    m := s[0];
+    for i := 1 to LEN(s) - 1 do
+        if less(m, s[i]) then m := s[i]; end;
+    end;
+    return m;
+end;
+
+end Biggest.
+.Ed
+.Bd -literal -offset indent
+module Generics;
+import Out, Ints := Biggest(INT, before),
+    Words := Biggest([]U8, shorter), Order := Sort(INT, before);
+
+proc before(a, b: INT): BOOL;
+begin
+    return a < b;
+end;
+
+proc shorter(a, b: []U8): BOOL;
+begin
+    return LEN(a) < LEN(b);
+end;
+
+proc main*;
+var a: [5]INT; i: INT;
+begin
+    a := [3, 1, 4, 1, 5];
+    Out.int(Ints.max(a)); Out.ln;
+    Out.str(Words.max(["a", "tree", "is"])); Out.ln;
+    Order.sort(a);
+    for i := 0 to 4 do Out.int(a[i]); Out.char(' '); end;
+    Out.ln;
+end;
+
+end Generics.
+.Ed
+.Bd -literal -offset indent
+5
+tree
+1 1 3 4 5
+.Ed
+.Pp
+Each import with its own arguments makes an instance: the module
+compiled again, with
+.Cm T
+standing for the type given, and
+.Cm less
+calling the procedure given.
+The arguments may name what the importing module declares later, as
+.Cm before
+is here.
+The library's
+.Cm List , Map
+and
+.Cm Sort
+are generic modules:
+.Bd -literal -offset indent
+import Count := Map([]U8, INT, Str.hash, Str.eq);
+.Ed
+.Sh 13. TALKING TO C
+.Bd -literal -offset indent
+module Qsort;
+import Out, Fmt;
+
+link "libm.so.6";
+
+extern proc qsort(base: ^U8; n, size: UINT;
+    less: proc(a, b: ^U8): I32);
+extern proc cbrt(x: F64): F64;
+
+(* the order of two INTs, as C's qsort wants it *)
+proc order(a, b: ^U8): I32;
+var x, y: ^INT;
+begin
+    x := ^INT(a);
+    y := ^INT(b);
+    if x^ < y^ then return -1; elsif x^ > y^ then return 1; end;
+    return 0;
+end;
+
+proc main*;
+var a: [5]INT; i: INT;
+begin
+    a := [30, 10, 50, 20, 40];
+    qsort(^U8(ADR(a)), LEN(a), SIZE(INT), order);
+    for i := 0 to 4 do Out.int(a[i]); Out.char(' '); end;
+    Out.ln;
+    Fmt.print("{}\en", [Fmt.real(cbrt(27.0), 3)]);
+end;
+
+end Qsort.
+.Ed
+.Bd -literal -offset indent
+10 20 30 40 50
+3.000
+.Ed
+.Pp
+An
+.Cm extern
+procedure is found by its name in the C library, or in a library a
+.Cm link
+line names.
+Its parameters are integers, reals, pointers and procedures, as C
+declares them; a raz procedure of such types can be given to C to call
+back, as
+.Cm order
+is.
+.Cm ^INT(a)
+sees the address
+.Cm a
+as a pointer to an
+.Cm INT .
+.Pp
+A program that uses C is linked against it dynamically, and starts
+through it; one that doesn't is a static executable with nothing in it
+but its own code.
+.Cm Out
+and C's
+.Xr printf 3
+keep two buffers, so a program that writes with both flushes one
+before it writes with the other.
+.Sh 14. THREADS
+.Bd -literal -offset indent
+module Hits;
+import Out, Thread;
+
+const Workers = 4;
+
+var
+    hits: INT;      (* added to by every thread at once, by XADD *)
+    m: Thread.Mutex;
+    total: INT;     (* added to under m *)
+
+proc work(arg: ^U8);
+var i, n, sum: INT;
+begin
+    n := INT(arg);
+    sum := 0;
+    for i := 1 to n do
+        sum := sum + i;
+        _ := XADD(ADR(hits), 1);
+    end;
+    Thread.lock(ADR(m));
+    total := total + sum;
+    Thread.unlock(ADR(m));
+end;
+
+proc main*;
+var t: [Workers]^Thread.Thread; i: INT; err: ERROR;
+begin
+    for i := 0 to Workers - 1 do
+        t[i], err := Thread.spawn(work, ^U8(1000 * (i + 1)));
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to Workers - 1 do Thread.join(t[i]); end;
+    Out.int(hits); Out.char(' '); Out.int(total); Out.ln;
+end;
+
+end Hits.
+.Ed
+.Bd -literal -offset indent
+10000 15005000
+.Ed
+.Pp
+.Cm Thread.spawn
+runs a procedure in a thread of its own, with a stack of its own, and
+.Cm Thread.join
+waits for it to end.
+.Cm XADD ,
+.Cm CAS
+and
+.Cm XCHG
+change a word atomically; a
+.Cm Thread.Mutex
+keeps a longer section to one thread at a time.
+.Cm Out
+and
+.Cm Heap
+lock themselves.
+.Pp
+.Cm Thread
+makes its own threads, without C, so a program that uses it can't use
+C; one that does makes its threads with C's
+.Xr pthread_create 3
+instead.
+.Sh 15. FROM PASCAL AND C TO RAZ
+.Bl -column "for (i=0; i<n; i++)" "for i := 0 to n-1 do" "Mem.free(Heap.heap, ^U8(p))"
+.It Sy C Ta Sy Pascal Ta Sy raz
+.It "#include" Ta "uses" Ta "import Out, Str;"
+.It "static" Ta "implementation" Ta "a name without *"
+.It "int, long" Ta "integer" Ta "I32, INT, I64"
+.It "char *s" Ta "string" Ta "s: []U8"
+.It "\(dqit's\(dq" Ta "'it''s'" Ta "\(dqit's\(dq"
+.It "0xFF" Ta "$FF" Ta "0FFH"
+.It "/* ... */" Ta "{ ... }" Ta "(* ... *), nesting"
+.It "x == y" Ta "x = y" Ta "x = y"
+.It "x != y" Ta "x <> y" Ta "x # y"
+.It "a && b" Ta "a and b" Ta "a and b"
+.It "x & m" Ta "x and m" Ta "x & m"
+.It "i++" Ta "inc(i)" Ta "INC(i)"
+.It "(long)x" Ta "longint(x)" Ta "I64(x)"
+.It "if (c) {...}" Ta "if c then begin" Ta "if c then ... end;"
+.It "for (i=0; i<n; i++)" Ta "for i := 0 to n-1 do" Ta "for i := 0 to n - 1 do"
+.It "switch (c)" Ta "case c of" Ta "match c of | 1: ..."
+.It "continue, goto" Ta "goto" Ta "none: break only"
+.It "union" Ta "variant record" Ta "variant"
+.It "struct p {...}" Ta "record ... end" Ta "record ... end"
+.It "&x" Ta "@x" Ta "ADR(x)"
+.It "p->f" Ta "p^.f" Ta "p^.f"
+.It "NULL" Ta "nil" Ta "nil"
+.It "malloc(sizeof *p)" Ta "new(p)" Ta "NEW(p, Heap.heap)"
+.It "free(p)" Ta "dispose(p)" Ta "Mem.free(Heap.heap, ^U8(p))"
+.It "int f(int *out)" Ta "function f(var x)" Ta "proc f: (INT, INT);"
+.It "return -1; errno" Ta "exceptions" Ta "return 0, NotFound;"
+.It "(void)f(x);" Ta "f(x);" Ta "_ := f(x);"
+.It "goto cleanup;" Ta "try ... finally" Ta "defer close(fd);"
+.It "printf(...)" Ta "writeln(...)" Ta "Out.str(s), Fmt.print(...)"
+.El
+.Pp
+And what neither has: every index is checked, every variable starts
+at zero, and no two integer types mix in an expression.
+.Sh SEE ALSO
+.Xr raz 1 ,
+.Xr raz 7 ,
+.Xr raz-lib 3 ;
+the report,
+.Pa doc/raz.md ,
+in raz's sources.

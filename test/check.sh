@@ -15,8 +15,8 @@
 # Programs in test/err must not compile, and must print X.err; there
 # X.args holds the compiler's options. The examples, the tools and the
 # library's tests are compiled with -Werror, so warnings fail them. Then
-# the version, tools/Doc.raz, the report's examples, tools/Pretty.raz,
-# and the library's own tests.
+# the version, tools/Doc.raz, the report's examples, the tutorial's,
+# tools/Pretty.raz, and the library's own tests.
 
 raz=./raz
 out=build/check
@@ -98,12 +98,15 @@ done
 $raz -o $out/Busy test/list/Busy.raz
 if RAZ_PROFILE=1 $out/Busy 2>&1 >/dev/null | sed -n 2p | grep -q 'Busy.spin$'; then pass=$((pass + 1))
 else echo "FAIL RAZ_PROFILE: Busy.spin isn't first"; fail=$((fail + 1)); fi
-# the manual page, which groff must read without a warning
-if command -v groff > /dev/null; then
-    groff -mdoc -ww -z doc/raz.1 > $out/man.out 2>&1
+# the manual pages, which groff and mandoc, where there, must read
+# without a warning
+for f in doc/*.[1-9]; do
+    : > $out/man.out
+    command -v groff > /dev/null && groff -mdoc -ww -z $f >> $out/man.out 2>&1
+    command -v mandoc > /dev/null && mandoc -Tlint -Wwarning $f >> $out/man.out 2>&1
     if [ ! -s $out/man.out ]; then pass=$((pass + 1))
-    else echo "FAIL doc/raz.1"; head -5 $out/man.out; fail=$((fail + 1)); fi
-fi
+    else echo "FAIL $f"; head -5 $out/man.out; fail=$((fail + 1)); fi
+done
 # raz -noprofile leaves the profiler out, and raz -s the places too: a
 # failed check is told by its address, and the program is smaller
 $raz -noprofile -o $out/BusyNo test/list/Busy.raz
@@ -154,6 +157,28 @@ if ./raz -Werror -o $out/Doc tools/Doc.raz 2>$out/Doc.cerr; then
         elif grep -q '^proc main\*' $out/report/$name.raz && ! $out/report/$name > /dev/null 2>&1; then
             echo "FAIL report example $name: status $?"; fail=$((fail + 1))
         else pass=$((pass + 1)); fi
+    done
+
+    # the tutorial's programs: each with a main runs, in the directory
+    # it was written to, so that a message names it as the page does;
+    # it ends with test/man/X.status, or 0, and prints, standard output
+    # then standard error, the block the page shows after it, if any
+    rm -rf $out/man; mkdir -p $out/man
+    for name in $($out/Doc examples doc/raz-tutorial.7 $out/man); do
+        grep -q '^proc main\*' $out/man/$name.raz || continue
+        want=0
+        [ -f test/man/$name.status ] && want=$(cat test/man/$name.status)
+        if ! (cd $out/man && ../../../$raz -Werror $name.raz 2>$name.cerr); then
+            echo "FAIL tutorial example $name: $(cat $out/man/$name.cerr)"; fail=$((fail + 1))
+        else
+            status=$( { ( cd $out/man && exec ./$name ) > $out/man/$name.out 2>$out/man/$name.err; echo $?; } 2>/dev/null )
+            if [ $status != $want ]; then
+                echo "FAIL tutorial example $name: status $status, not $want"; fail=$((fail + 1))
+            elif [ -f $out/man/$name.shown ] &&
+                    ! cat $out/man/$name.out $out/man/$name.err | sed 's/ *$//' | cmp -s - $out/man/$name.shown; then
+                echo "FAIL tutorial example $name: prints other than the page shows"; fail=$((fail + 1))
+            else pass=$((pass + 1)); fi
+        fi
     done
 else
     echo "FAIL tools/Doc.raz: $(cat $out/Doc.cerr)"; fail=$((fail + 1))
