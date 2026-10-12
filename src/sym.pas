@@ -466,7 +466,19 @@ begin
         TypeName := s + ')';
       end;
     fVariant: TypeName := 'variant';
-    fProc: TypeName := 'proc';
+    fProc: begin
+        s := 'proc(';
+        f := t^.fields;
+        while f <> nil do begin
+          if f^.isVar then s := s + 'var ';
+          s := s + TypeName(f^.typ);
+          f := f^.next;
+          if f <> nil then s := s + ', ';
+        end;
+        s := s + ')';
+        if t^.base <> nil then s := s + ': ' + TypeName(t^.base);
+        TypeName := s;
+      end;
   else TypeName := '?';
   end;
 end;

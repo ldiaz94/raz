@@ -4,7 +4,7 @@ program scantest;
 uses diag, scan;
 var i: longint;
 begin
-  if not Open(ParamStr(1)) then Fatal('no file');
+  if Open(ParamStr(1)) <> '' then Fatal('no file');
   repeat
     Next;
     write(LineOf(TokPos), ':', TokPos.a, ' ', ord(tok));

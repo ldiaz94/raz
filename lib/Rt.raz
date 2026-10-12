@@ -273,37 +273,64 @@ begin
     end;
 end;
 
+(* Says that n more calls are as the one before, if there are any;
+   the lines it takes *)
+proc more(n: INT): INT;
+begin
+    if n = 0 then return 0; end;
+    put("  and ");
+    putInt(n);
+    put(" more the same");
+    say;
+    return 1;
+end;
+
 (* Says the calls under way, a line each, from the one at address ip
    whose frame is at bp: where each is, and its variables, unless vars
-   is false for the first. At most 20; a frame that isn't the
-   program's ends them. *)
+   is false for the first. At most 20 lines; a frame that isn't the
+   program's ends them. Calls of one procedure from one place, as in a
+   recursion that overflowed the stack, are told once, and counted. *)
 proc calls(ip, bp: UINT; vars: BOOL);
-var p: ^Proc; l: ^Local; i, n: INT; q: ^UINT;
+var p, last: ^Proc; l: ^Local; i, n, same: INT; q: ^UINT; lastIp: UINT;
 begin
-    for n := 1 to 20 do
+    n := 0;
+    same := 0;
+    last := nil;
+    lastIp := 0;
+    while n < 20 do
         p := procAt(ip);
-        if p = nil then return; end;
-        put("  in ");
-        putStr(names() + INT(p^.name));
-        put(" at ");
-        where(ip);
-        l := ^Local(^U8(places + 5) + 16 * places[0] + 20 * places[3]) + INT(p^.first);
-        if not vars or (p^.count = 0) then DEC(lineLen, 2); end;   (* where's ": " *)
-        for i := 0 to INT(p^.count) - 1 do
-            if vars then
-                if i > 0 then put(", "); end;
-                putStr(names() + INT(l[i].name));
-                put(" = ");
-                putValue(bp, l + i);
+        if p = nil then break; end;
+        if (p = last) and (ip = lastIp) then
+            INC(same);
+        else
+            n := n + more(same);
+            same := 0;
+            last := p;
+            lastIp := ip;
+            put("  in ");
+            putStr(names() + INT(p^.name));
+            put(" at ");
+            where(ip);
+            l := ^Local(^U8(places + 5) + 16 * places[0] + 20 * places[3]) + INT(p^.first);
+            if not vars or (p^.count = 0) then DEC(lineLen, 2); end;   (* where's ": " *)
+            for i := 0 to INT(p^.count) - 1 do
+                if vars then
+                    if i > 0 then put(", "); end;
+                    putStr(names() + INT(l[i].name));
+                    put(" = ");
+                    putValue(bp, l + i);
+                end;
             end;
+            say;
+            INC(n);
+            vars := true;
         end;
-        say;
-        vars := true;
         q := ^UINT(bp);
-        if (bp & 7 # 0) or (q[0] <= bp) then return; end;
+        if (bp & 7 # 0) or (q[0] <= bp) then break; end;
         ip := q[1] - 1;   (* the call, by its return address *)
         bp := q[0];
     end;
+    more(same);
 end;
 
 (* Says on standard error the calls under way, from the one that calls

@@ -1,18 +1,5 @@
 test/run/StackOverflow.raz:7:1: stopped by a stack overflow
   in StackOverflow.down at test/run/StackOverflow.raz:7:1
   in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 14
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 13
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 12
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 11
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 10
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 9
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 8
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 7
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 6
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 5
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 4
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 3
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 2
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 1
-  in StackOverflow.down at test/run/StackOverflow.raz:11:5: n = 0
+  and 14 more the same
   in StackOverflow.main at test/run/StackOverflow.raz:16:5

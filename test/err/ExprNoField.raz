@@ -1,0 +1,10 @@
+module ExprNoField;
+type R = record x: I64; end;
+proc main*;
+var r: R; p: ^R; s: []U8; n: I64;
+begin
+    p := ADR(r);
+    n := p.x;
+    n := s.len;
+end;
+end ExprNoField.

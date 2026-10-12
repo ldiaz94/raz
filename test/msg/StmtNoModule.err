@@ -1,4 +1,5 @@
 conform/err/StmtNoModule.raz:2:8: error: can't find module Nothing
     2 | import Nothing;
       |        ^^^^^^^
+help: looked for Nothing.raz in conform/err, conform/err/mods, lib
 raz: 1 error

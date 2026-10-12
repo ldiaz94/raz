@@ -1,0 +1,8 @@
+test/err/StmtElseIf.raz:12:5: error: main has no "end": this one closes the module
+   12 | end StmtElseIf.
+      |     ^^^^^^^^^^
+test/err/StmtElseIf.raz:6:5: note: is this statement's "end" missing? one further left closes it
+    6 |     if x > 0 then
+      |     ^^
+help: raz writes elsif: "else if" begins an if that needs its own "end"
+raz: 1 error

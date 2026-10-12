@@ -1,4 +1,4 @@
-conform/err/StmtAssignConst.raz:5:5: error: can't assign to k
+conform/err/StmtAssignConst.raz:5:5: error: k is a constant, and can't be changed
     5 |     k := 2;
       |     ^
 raz: 1 error

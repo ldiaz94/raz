@@ -1,4 +1,4 @@
-conform/err/AtPCantAssign.raz:7:8: error: can't assign to k
+conform/err/AtPCantAssign.raz:7:8: error: k is a constant, and can't be changed
     7 |     a, k := two();
       |        ^
 raz: 1 error

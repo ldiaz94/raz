@@ -87,6 +87,9 @@ var
   deferred: array[0..63] of TDeferred;
   numDeferred: longint;
   making: boolean;        { reading an instance's arguments, at its first use }
+  stray: boolean;         { an "end" in this procedure stood left of its statement's line }
+  strayAt: TPos;          { ... the first such statement }
+  elseIf: boolean;        { an "else if" in this procedure }
   useAt: TPos;            { ... which is here }
 
 procedure Expression(var x: TItem; want: PType); forward;
@@ -108,6 +111,29 @@ begin
     MarkHelp(MissingPos, 'expected ' + SymText(s) + ', found ' + Found, 'a block is written ' + SymText(s) + ' ... end');
   if tok <> s then Expected(SymText(s));
   Next;
+end;
+
+{ The end of a block statement at start, whose line is indented to
+  ind. An "end" left of that was most likely meant for a block around
+  the statement, which leaves the statement's own "end" missing: the
+  first such is kept for EndMissing. }
+procedure CloseEnd(const start: TPos; ind: longint);
+begin
+  if (tok = sEnd) and not stray and (Indent < ind) then begin
+    stray := true;
+    strayAt := start;
+  end;
+  Expect(sEnd);
+end;
+
+{ The error of a procedure or module whose own "end" isn't where it
+  should be, with what CloseEnd saw }
+procedure EndMissing(const p: TPos; const msg: shortstring);
+begin
+  Error(p, msg);
+  if stray then Note(strayAt, 'is this statement''s "end" missing? one further left closes it');
+  if elseIf then Help('raz writes elsif: "else if" begins an if that needs its own "end"');
+  Fail;
 end;
 
 function Name(const s: shortstring): longint;
@@ -305,6 +331,7 @@ begin
   Error(p, NameOf(n) + ' isn''t declared');
   if ModuleFile(n, dir, f) then Help(NameOf(n) + ' is a module: import ' + NameOf(n))
   else if (NameOf(n) = 'elif') or (NameOf(n) = 'elseif') then Help('raz writes elsif')
+  else if Reserved(Name(LowerCase(NameOf(n)))) then Help('a reserved word is written in lower case: ' + LowerCase(NameOf(n)))
   else DidYouMean(Closest(n, -1));
 end;
 
@@ -824,6 +851,20 @@ begin
   end else if f <> nil then MarkAt(at, NameOf(c^.name) + ' needs its fields');
 end;
 
+{ x, before ".", has no fields; tok is what follows. Other languages
+  write p.f through a pointer and s.len for a length. }
+procedure FieldOfWhat(const x: TItem);
+var msg, f: shortstring;
+begin
+  msg := 'expected a record, found ' + What(x);
+  if tok = sIdent then f := NameOf(id) else f := '';
+  if (x.typ^.form = fPtr) and (x.typ^.base^.form = fRecord) then
+    MarkHelp(x.pos, msg, 'through a pointer, write ' + Source(x.pos) + '^.' + f)
+  else if (x.typ^.form in [fArray, fSlice]) and ((f = 'len') or (f = 'length') or (f = 'size') or (f = 'count')) then
+    MarkHelp(x.pos, msg, 'its length is LEN(' + Source(x.pos) + ')');
+  MarkAt(x.pos, msg);
+end;
+
 { A designator, with any selectors and calls after it. called tells
   whether the last thing done was a call. }
 procedure Designator(var x: TItem; var called: boolean);
@@ -845,7 +886,7 @@ begin
     case tok of
       sPeriod: begin
         Next;
-        if (x.mode <> mVar) or (x.typ^.form <> fRecord) then MarkAt(x.pos, 'expected a record, found ' + What(x));
+        if (x.mode <> mVar) or (x.typ^.form <> fRecord) then FieldOfWhat(x);
         if tok <> sIdent then Expected('a field');
         f := FieldOf(x.typ);
         Next;
@@ -1154,7 +1195,7 @@ begin
   for i := numDefers - 1 downto base do RunDefer(defers[i]);
 end;
 
-procedure IfStatement;
+procedure IfStatement(const start: TPos; ind: longint);
 var x: TItem; L, endL: longint;
 begin
   Next;
@@ -1178,13 +1219,14 @@ begin
     Jump(endL);
     Fix(L);
     Next;
+    if tok = sIf then elseIf := true;
     Statements;
   end else Fix(L);
-  Expect(sEnd);
+  CloseEnd(start, ind);
   Fix(endL);
 end;
 
-procedure WhileStatement;
+procedure WhileStatement(const start: TPos; ind: longint);
 var x: TItem; top, L: longint; lp: TLoop; old: PLoop;
 begin
   Next;
@@ -1196,7 +1238,7 @@ begin
   Loop(lp, old);
   Statements;
   JumpBack(top);
-  Expect(sEnd);
+  CloseEnd(start, ind);
   Fix(L);
   Fix(lp.brk);
   curLoop := old;
@@ -1218,7 +1260,7 @@ begin
   Fix(lp.brk);
 end;
 
-procedure ForStatement;
+procedure ForStatement(const start: TPos; ind: longint);
 var
   o: PObj; v, a, b, s: TItem; bslot, step: int64; top, exitL: longint;
   lp: TLoop; old: PLoop;
@@ -1260,7 +1302,7 @@ begin
   Loop(lp, old);
   Statements;
   curLoop := old;
-  Expect(sEnd);
+  CloseEnd(start, ind);
   ForNext(o, bslot, step, exitL, top);
   Fix(exitL);
   Fix(lp.brk);
@@ -1319,7 +1361,7 @@ begin
   Fix(L);
 end;
 
-procedure MatchStatement;
+procedure MatchStatement(const start: TPos; ind: longint);
 var
   x: TItem; t: PType; c, f, o: PObj; p: int64; L, endL, n: longint;
   seen: array[0..255] of boolean; hasElse: boolean; endAt: TPos; ls: TLabels;
@@ -1383,7 +1425,7 @@ begin
     end;
   end;
   endAt := TokPos;
-  Expect(sEnd);
+  CloseEnd(start, ind);
   if (t^.form = fInt) and not hasElse then
     MarkHelp(endAt, 'a match on an integer needs an else arm', 'it may be empty: | else:');
   if not hasElse then begin
@@ -1409,6 +1451,8 @@ end;
   array constant, nor any part of one. }
 procedure Assignable(const x: TItem; n: longint);
 begin
+  if (x.mode = mConst) and (Subject(x, n) = NameOf(n)) then
+    MarkAt(x.pos, NameOf(n) + ' is a constant, and can''t be changed');
   if (x.mode = mVar) and (x.obj <> nil) and (x.obj^.cls = oConst) then
     MarkAt(x.pos, NameOf(x.obj^.name) + ' is a constant, and can''t be changed');
   if (x.mode <> mVar) or not x.isVar then MarkAt(x.pos, 'can''t assign to ' + Subject(x, n));
@@ -1532,11 +1576,11 @@ begin
         else MarkAt(x.pos, Subject(x, first) + ' isn''t a statement');
       end else Discard(x);
     end;
-    sIf: IfStatement;
-    sWhile: WhileStatement;
+    sIf: IfStatement(start, Indent);
+    sWhile: WhileStatement(start, Indent);
     sRepeat: RepeatStatement;
-    sFor: ForStatement;
-    sMatch: MatchStatement;
+    sFor: ForStatement(start, Indent);
+    sMatch: MatchStatement(start, Indent);
     sReturn: begin
       Next;
       if deferring then MarkAt(SpanFrom(start), 'return can''t leave a deferred statement');
@@ -1567,7 +1611,7 @@ begin
       Jump(curLoop^.brk);
     end;
     sDefer: Defer;
-  else if AtLineStart then Expected('"end"')
+  else if AtLineStart then EndMissing(MissingPos, 'expected "end", found ' + Found)
   else Expected('a statement');
   end;
   ReleaseTemps(m);
@@ -1691,6 +1735,7 @@ begin
   old := curResult;
   curResult := sig^.base;
   EnterBody(p^.chunk, line);
+  stray := false; elseIf := false;
   Statements;
   NoteLine(CurLine, CurCol);
   Expect(sEnd);
@@ -1762,7 +1807,8 @@ begin
     CodeBody(p, sig, at);
   end else if checkMode then SkipBody else Body(p, sig, line);
   if tok = sIdent then begin
-    if id <> n then Mark('expected ' + NameOf(n) + ', found ' + NameOf(id));
+    if id = curModule^.name then EndMissing(TokPos, NameOf(n) + ' has no "end": this one closes the module')
+    else if id <> n then EndMissing(TokPos, 'expected ' + NameOf(n) + ', found ' + NameOf(id));
     Next;
   end;
 end;
@@ -2188,14 +2234,15 @@ var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
   oldMod: PModule; oldCheck, oldChecks: boolean; m: PModule;
   lib: PLib; start: TPos; alias, mname, line, oldPath: longint; o: PObj; body: longint; iargs: TArgs;
-  generic: boolean; argsAt: TScanState;
+  generic: boolean; argsAt: TScanState; why: shortstring;
 begin
   SaveScan(st);
   SaveScopes(d, saved);
   oldMod := curModule; oldCheck := checkMode; oldPath := curFile; oldChecks := checks;
   checks := true;
   curFile := Name(path);
-  if not Open(path) then Fatal('can''t read ' + path);
+  why := Open(path);
+  if why <> '' then Fatal('can''t read ' + path + ': ' + why);
   New(m);
   FillChar(m^, SizeOf(TModule), 0);
   m^.name := n;
@@ -2298,13 +2345,14 @@ begin
       deferSlot := 0;
       curResult := nil;
       EnterBody(body, line);
+      stray := false; elseIf := false;
       Statements;
       NoteLine(CurLine, CurCol);
       Expect(sEnd);
       EndProc(body);
     end;
   end else Expect(sEnd);
-  if (tok <> sIdent) or (id <> n) then Expected(NameOf(n));
+  if (tok <> sIdent) or (id <> n) then EndMissing(MissingPos, 'expected ' + NameOf(n) + ', found ' + Found);
   Next;
   if tok <> sPeriod then Expected('"."');
   o := m^.first;
@@ -2445,7 +2493,13 @@ begin
   if m <> nil then exit(m);
   for i := 0 to numPending - 1 do
     if IsModule(pending[i], name, args) then MarkAt(args.at, NameOf(name) + ' imports itself');
-  if not ModuleFile(name, dir, f) then MarkAt(args.at, 'can''t find module ' + NameOf(name));
+  if not ModuleFile(name, dir, f) then begin
+    Error(args.at, 'can''t find module ' + NameOf(name));
+    dir := ShownPath(SearchDir(-1));
+    for i := 0 to numInc do dir := dir + ', ' + ShownPath(SearchDir(i));
+    Help('looked for ' + NameOf(name) + '.raz in ' + dir);
+    Fail;
+  end;
   CheckOneModule(name, dir, f, args.at);
   m := CompileFile(dir + '/' + f, name, args, false);
   CheckSiblings(dir, f, name, m, args);

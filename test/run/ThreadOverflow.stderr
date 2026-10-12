@@ -1,21 +1,6 @@
 test/run/ThreadOverflow.raz:6:1: stopped by a stack overflow
   in ThreadOverflow.down at test/run/ThreadOverflow.raz:6:1
   in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1926
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1925
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1924
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1923
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1922
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1921
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1920
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1919
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1918
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1917
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1916
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1915
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1914
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1913
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1912
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1911
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1910
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1909
-  in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1908
+  and 1926 more the same
+  in ThreadOverflow.work at test/run/ThreadOverflow.raz:15:5: _arg = nil
+  in Thread.run at lib/Thread.linux-x86_64.raz:78:5: arg = 0x?, t = 0x?

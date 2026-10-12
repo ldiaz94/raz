@@ -1,0 +1,9 @@
+module StmtEndMissing;
+import Out;
+proc main*;
+var x: I64;
+begin
+    if x > 0 then
+        Out.int(x);
+end;
+end StmtEndMissing.

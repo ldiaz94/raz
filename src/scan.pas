@@ -65,13 +65,15 @@ var
 
 function Intern(p: PChar; n: longint): longint;
 function NameOf(n: longint): shortstring;
-function Open(const path: shortstring): boolean;
+function Reserved(n: longint): boolean;
+function Open(const path: shortstring): shortstring;
 procedure Next;
 procedure Mark(const msg: shortstring);
 procedure MarkAt(const p: TPos; const msg: shortstring);
 procedure MarkHelp(const p: TPos; const msg, hint: shortstring);
 procedure Fail;
 function AtLineStart: boolean;
+function Indent: longint;
 function SymText(s: TSym): shortstring;
 function Found: shortstring;
 
@@ -334,16 +336,37 @@ begin
   AtLineStart := cur.tokPos = cur.tokLineStart;
 end;
 
+{ The column the current symbol's line is indented to }
+function Indent: longint;
+var i: longint;
+begin
+  i := cur.tokLineStart;
+  while cur.buf[i] in [' ', #9] do inc(i);
+  Indent := i - cur.tokLineStart + 1;
+end;
+
 { Files }
 
-function Open(const path: shortstring): boolean;
+{ Name n is a reserved word }
+function Reserved(n: longint): boolean;
+begin
+  Reserved := n < NumWords;
+end;
+
+{ Reads the file at path to scan it; '' if it can, else why not }
+function Open(const path: shortstring): shortstring;
 var fd: cint; st: Stat; n, got, r: longint; p: shortstring;
 begin
   p := path + #0;
   fd := FpOpen(@p[1], O_RDONLY);
-  if fd < 0 then exit(false);
-  if FpFStat(fd, st) <> 0 then begin FpClose(fd); exit(false) end;
-  if (st.st_mode and S_IFMT) <> S_IFREG then begin FpClose(fd); exit(false) end;
+  if fd < 0 then
+    case FpGetErrno of
+      ESysENOENT: exit('there is no such file');
+      ESysEACCES: exit('permission denied');
+    else exit('it can''t be opened');
+    end;
+  if FpFStat(fd, st) <> 0 then begin FpClose(fd); exit('it can''t be opened') end;
+  if (st.st_mode and S_IFMT) <> S_IFREG then begin FpClose(fd); exit('it isn''t a file') end;
   n := st.st_size;
   cur.buf := GetMem(n + 1);
   got := 0;
@@ -362,7 +385,7 @@ begin
   cur.tokLine := 1;
   cur.tokLineStart := 0;
   cur.f := AddFile(path, cur.buf, n);
-  Open := true;
+  Open := '';
 end;
 
 procedure SaveScan(var st: TScanState);
@@ -724,7 +747,7 @@ begin
 end;
 
 procedure Next;
-var c: char; start, h, v: longint;
+var c: char; start, h, v, i: longint;
 begin
   cur.prevEnd := cur.pos;
   repeat
@@ -758,7 +781,13 @@ begin
       inc(cur.pos);
       if cur.buf[cur.pos] = '''' then LexError('empty character');
       v := LitChar(false);
-      if cur.buf[cur.pos] <> '''' then LexError('character not closed');
+      if cur.buf[cur.pos] <> '''' then begin
+        { 'ab': several characters, as some languages write a string }
+        i := cur.pos;
+        while not (cur.buf[i] in ['''', #10, #0]) do inc(i);
+        if cur.buf[i] = '''' then MarkBytes(cur.tokPos, i + 1, 'a character is one character: the string is "' + Text(cur.tokPos + 1, i) + '"')
+        else LexError('character not closed');
+      end;
       inc(cur.pos);
       tok := sChar;
       ival := v;

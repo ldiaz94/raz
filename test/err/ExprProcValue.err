@@ -1,0 +1,8 @@
+test/err/ExprProcValue.raz:10:10: error: Out.ln is a procedure, and returns nothing
+   10 |     a := Out.ln;
+      |          ^^^^^^
+test/err/ExprProcValue.raz:11:10: error: can't use proc(): (I64, I64) as I64
+   11 |     a := pair;
+      |          ^^^^
+help: to call it, write pair()
+raz: 2 errors

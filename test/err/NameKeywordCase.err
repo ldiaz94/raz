@@ -1,0 +1,9 @@
+test/err/NameKeywordCase.raz:7:5: error: Begin isn't declared
+    7 |     Begin
+      |     ^^^^^
+help: a reserved word is written in lower case: begin
+test/err/NameKeywordCase.raz:9:1: error: End isn't declared
+    9 | End;
+      | ^^^
+help: a reserved word is written in lower case: end
+raz: 2 errors

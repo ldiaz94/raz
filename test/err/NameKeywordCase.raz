@@ -1,0 +1,10 @@
+module NameKeywordCase;
+import Out;
+proc main*;
+var a: I64;
+begin
+    a := 1;
+    Begin
+    Out.int(a);
+End;
+end NameKeywordCase.

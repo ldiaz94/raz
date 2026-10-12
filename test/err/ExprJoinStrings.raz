@@ -1,0 +1,9 @@
+module ExprJoinStrings;
+import Out;
+proc main*;
+var s: []U8;
+begin
+    s := "abc";
+    Out.str(s + "def");
+end;
+end ExprJoinStrings.

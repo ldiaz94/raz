@@ -168,8 +168,12 @@ end;
 { "file:line:col: kind: msg", then the line with p underlined. A tab
   before p is copied into the underline, so that the two line up
   whatever the terminal makes of tabs. }
+{ A long line is shown cut to this many bytes around the place, its
+  cut ends marked ... }
+const ShownBytes = 100;
+
 procedure Show(const p: TPos; const kind, kindColour, msg: shortstring);
-var line, start, stop, i, n: longint; buf: PChar; num, gutter: shortstring;
+var line, start, stop, lo, hi, i, n: longint; buf: PChar; num, gutter: shortstring;
 begin
   Locate(p, line, start);
   buf := files[p.f].buf;
@@ -181,14 +185,24 @@ begin
   num := IntStr(line);
   while length(num) < 5 do num := ' ' + num;
   gutter := Paint(Blue, num + ' |');
+  lo := start; hi := stop;
+  if hi - lo > ShownBytes then begin
+    if p.a - lo > ShownBytes div 2 then lo := p.a - ShownBytes div 2;
+    while (byte(buf[lo]) and $C0) = $80 do inc(lo);
+    if hi - lo > ShownBytes then hi := lo + ShownBytes;
+    while (hi < stop) and ((byte(buf[hi]) and $C0) = $80) do inc(hi);
+  end;
   write(StdErr, gutter, ' ');
-  for i := start to stop - 1 do write(StdErr, buf[i]);
+  if lo > start then write(StdErr, '...');
+  for i := lo to hi - 1 do write(StdErr, buf[i]);
+  if hi < stop then write(StdErr, '...');
   writeln(StdErr);
   write(StdErr, Paint(Blue, '      |'), ' ');
-  for i := start to p.a - 1 do
+  if lo > start then write(StdErr, '   ');
+  for i := lo to p.a - 1 do
     if buf[i] = #9 then write(StdErr, #9)
     else if (byte(buf[i]) and $C0) <> $80 then write(StdErr, ' ');
-  if p.b < stop then n := Chars(buf, p.a, p.b) else n := Chars(buf, p.a, stop);
+  if p.b < hi then n := Chars(buf, p.a, p.b) else n := Chars(buf, p.a, hi);
   if n < 1 then n := 1;
   writeln(StdErr, Paint(kindColour, StringOfChar('^', n)));
 end;

@@ -411,6 +411,20 @@ begin
   if x.ro then MarkAt(x.pos, Source(x.pos) + ' is ' + NameOf(x.obj^.module^.name) + '''s, and can''t be changed outside it');
 end;
 
+var
+  passing: PObj;     { the parameter the argument at passingAt goes to }
+  passingAt: TPos;
+
+{ An error in x's type; if x is an argument, a note at the parameter
+  it goes to. }
+procedure Mismatch(const x: TItem; const msg: shortstring);
+begin
+  Error(x.pos, msg);
+  if (passing <> nil) and (x.pos.f = passingAt.f) and (x.pos.a = passingAt.a) and (x.pos.b = passingAt.b) then
+    Note(passing^.pos, 'it goes to ' + NameOf(passing^.name) + ', declared here');
+  Fail;
+end;
+
 procedure Coerce(var x: TItem; t: PType);
 var s: PType; tmp: int64;
 begin
@@ -426,7 +440,7 @@ begin
       CopyTo(FrameAdr(tmp), x.val);
       if t^.len > x.val then ZeroVar(FrameAdr(tmp + x.val), t^.len - x.val);
       TempItem(x, t, tmp);
-    end else MarkAt(x.pos, 'can''t use a string as ' + TypeName(t));
+    end else Mismatch(x, 'can''t use a string as ' + TypeName(t));
     exit;
   end;
   if x.mode in [mType, mBuiltin, mNone, mCase] then NotValue(x);
@@ -447,8 +461,12 @@ begin
     if x.odd then MarkAt(x.pos, 'can''t make a slice of a field of a packed record');
     Address(x);
     SliceOf(x, t, s^.len);
-  end else
-    MarkAt(x.pos, 'can''t use ' + TypeName(s) + ' as ' + TypeName(t));
+  end else if (x.mode = mProc) and (t^.form <> fProc) and (s^.base = nil) then
+    MarkAt(x.pos, Source(x.pos) + ' is a procedure, and returns nothing')
+  else if (x.mode = mProc) and (t^.form <> fProc) then
+    MarkHelp(x.pos, 'can''t use ' + TypeName(s) + ' as ' + TypeName(t), 'to call it, write ' + Source(x.pos) + '()')
+  else
+    Mismatch(x, 'can''t use ' + TypeName(s) + ' as ' + TypeName(t));
 end;
 
 { Coerce where the types must be the same, as in a for loop, INC and
@@ -663,6 +681,8 @@ begin
     SeqSlice(x)
   else if (op = sPlus) and (x.mode = mStr) then
     { two string constants to be joined: nothing to compute }
+  else if (op = sPlus) and IsSeq(x.typ) then
+    MarkHelp(x.pos, '+ doesn''t join ' + What(x), 'strings are joined in a Buf: Buf.str(b, s)')
   else if x.mode in [mType, mBuiltin, mNone, mCase, mStr] then
     NotValue(x)
   else if x.mode <> mConst then
@@ -1070,11 +1090,13 @@ begin
     exit;
   end;
   c.isF[c.n] := (p^.typ^.form = fReal) and not p^.isVar;
+  passing := p;
+  passingAt := a.pos;
   if p^.isVar then begin
     NotReadOnly(a);
     if (a.mode <> mVar) or not a.isVar then MarkAt(a.pos, 'a var parameter needs a variable');
     if a.odd then MarkAt(a.pos, 'a field of a packed record can''t be a var parameter');
-    if not Same(a.typ, p^.typ) then MarkAt(a.pos, 'a var parameter needs exactly ' + TypeName(p^.typ) + ', found ' + What(a));
+    if not Same(a.typ, p^.typ) then Mismatch(a, 'a var parameter needs exactly ' + TypeName(p^.typ) + ', found ' + What(a));
     if a.vol then MarkAt(a.pos, 'can''t pass through a volatile pointer to a var parameter');
     Address(a);
     s := AllocTemp(8, 8);
