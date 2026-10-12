@@ -709,9 +709,12 @@ end;
 
 { If the last instruction made is a jmp to L, it is taken back, since L
   is to be placed just after it: a return at the end of a procedure
-  needn't jump to the code that returns. The caller must place L next,
-  before anything can have noted where the jmp ended. A jcc's field
-  follows the bytes 0F 8x, never E9. }
+  needn't jump to the code that returns. L is the place of the latest
+  jump's 4-byte field, so the last instruction is that jump when L is
+  4 bytes back and an E9 byte (jmp) is before it; a jcc's field follows
+  the bytes 0F 8x, never E9. L then becomes the next jump on the chain,
+  which the field held. The caller must place L next, before anything
+  can have noted where the jmp ended. }
 procedure DropJumpTo(var L: longint);
 begin
   if (L = NoLabel) or (L <> pc - 4) or (code^[L - 1] <> $E9) then exit;

@@ -10,12 +10,12 @@ disassembly.
 |---|---|---|---|
 | `src/diag.pas` | 316 | 233 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 643 | 527 | Types, objects, scopes, layout |
+| `src/sym.pas` | 644 | 527 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,125 | 936 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,666 | 1,291 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,536 | 1,278 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,967 | 2,612 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/x64.pas` | 1,128 | 936 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 1,768 | 1,291 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,551 | 1,278 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,975 | 2,612 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -41,18 +41,23 @@ an `F64`). `gen.pas` is the only one that knows x86-64; a port to
 another machine is a new `gen.pas`, with an encoder of its own in place
 of `x64.pas`.
 
-On x86-64 the stack lives in registers, as in Wirth's compilers: the
-value at depth `d` is in register `d`, of `r8` to `r11`, and a constant
-or an address in the frame or of a chunk is only noted, until something
-needs it in a register, so that it can be an instruction's operand. A
+On x86-64 the stack lives in registers, as in Wirth's compilers
+(Niklaus Wirth's Pascal and Oberon compilers): the value at depth `d`,
+depth 0 being the bottom, is in register `d mod 4`, of `r8` to `r11`.
+A value that needs a register a lower one holds *spills* it: stores it
+in a frame slot, to free the register. A constant or an address in the
+frame or of a chunk is only noted, until something needs it in a
+register, so that it can be an instruction's operand. A
 comparison, too, waits as a condition, so that `if` and `while` jump
 on it directly. Which register a value goes in is settled
 by its depth, so there is no register allocator for values, and every
 access the program writes is one instruction, in the order written.
 That is also why `VOLATILE` costs the compiler nothing: it never does
 anything clever to begin with. A procedure's busiest variables, up to
-five, live in the registers that calls leave alone (`rbx` and `r12` to
-`r15`), where nothing but their own assignments can change them.
+five, live in registers that calls leave alone: the callee-saved ones
+of System V, the calling convention of x86-64 Linux, which a called
+procedure must give back as it found them (`rbx` and `r12` to `r15`).
+Nothing but their own assignments can change them.
 
 The output is a set of *chunks*: one for each procedure, each module
 variable, each string. Code refers to other chunks through *fixups*,
@@ -432,23 +437,28 @@ address first, so that a variable is read or written with one
 instruction.
 
 The stack: `stack` notes where each value is, a constant (`lConst`), an
-address not yet computed (`lAdr`, `AdrMem`'s operand), in its register
-(`lReg`) or in a frame slot (`lFrame`); `owner` which
+address not yet computed (`lAdr`, `AdrMem`'s operand), a register
+variable's own register, read in place (`lHeld`), the value's own
+register (`lReg`) or a frame slot (`lFrame`); `owner` says which
 value each register holds. The value at depth `d` belongs in
 `Regs[d mod 4]`, `r8` to `r11`: `rax`, `rdx` and `rcx`, which division
 and shifts need, and `rsi` and `rdi`, which copying needs, aren't among
-them. `Claim` gives a value its register, and `Spill`s a deeper one
+them. `Claim` gives a value its register, and `Spill`s the lower one
 that holds it, when an expression is deeper than the registers;
 `Loaded` brings a value into its register, from its constant, address
-or slot; `Place` uses a noted address as the operand itself, and
-`PopVar` and `IncDec` an operand of memory and a constant, so `DEC(n)`
-is `sub qword [rbp - 8], 1`; `Top` is `Loaded` for the value on top, and `Target` the
-register a new one is computed in. Before a call every value in a
-register is spilled (`SpillBelow`), since the call may change them, and
-so are the values under a comparison that jumps out of an expression
-(`JumpOut`), which both ways to its label must find in the same place. `pushed` counts what
-is on the machine's stack, which a call must align: the return
-address, in a deferred statement. `Op` takes a
+or slot; `Place` uses a noted address as the operand itself, so that
+`PopVar`, storing a constant, and `IncDec` are one instruction on
+memory: `DEC(n)` is `sub qword [rbp - 8], 1`. `Top` is `Loaded` for the
+value on top, and `Target` the register a new one is computed in.
+`Drop` emits no code, and the dropped value's register still holds it
+until the next push, which several routines rely on. Before a call every
+value in a register is spilled (`SpillBelow`), since the call may change
+them, and so are the values under a comparison that jumps out of an
+expression (`JumpOut`), which both ways to its label must find in the
+same place. `pushed` counts the quadwords on the machine's stack. A
+call needs `rsp` a multiple of 16, so `Call` pads by one quadword when
+`pushed` plus its stack arguments is odd; in a deferred statement
+`pushed` starts at 1, for the return address. `Op` takes a
 constant on the right as it is, after moving one on the left of `+`,
 `*`, `&`, `|` or `xor` there, and a power of two on the right of `*`,
 `div` or `mod` becomes shifts (`DivPow2`), since `idiv` is slow; an
@@ -497,9 +507,12 @@ a slice or two single values that aren't reals (`InTwoRegs`, in
 `sym.pas`), comes back in rax and rdx, as System V returns a struct of
 two integers: `return` leaves both on the stack for `ReturnJump`.
 `Call` leaves two results on the stack, and stores a slice in a
-temporary of the caller's. Any other record or
-several results come back through a hidden pointer in `rdi`, as C's
-structs do (`BehindPointer`, `ResultTo`, `CopyResult`).
+temporary of the caller's. Any other record, or
+several results, come back in memory the caller provides, through a
+hidden pointer in `rdi` (`BehindPointer`, `ResultTo`, `CopyResult`). C
+returns a struct of up to 16 bytes in `rax` and `rdx`; raz sends every
+record through memory, and only a slice or two single values in
+registers.
 
 Frames: `BeginProc` gives the parameters their slots; `EnterBody`
 writes the prologue, which zeroes the locals in memory (with a few
@@ -515,8 +528,9 @@ tells gen (`UseRegs`) the registers, as bits of `VarRegs`. A variable
 in a register has no slot of its own. Gen saves the registers in slots
 a quadword each, after the locals and not zeroed, as each is written
 first. The
-prologue saves them, zeroes them, and takes a parameter's value from
-where it came; the epilogue restores them. A variable in one is an
+prologue saves them, zeroes them, and moves a parameter into its
+register from the register or stack slot it arrived in; the epilogue
+restores them. A variable in one is an
 item at `bReg`: `PushVar` notes it (`lHeld`) rather than copying it,
 `Peek` reads it in place where the value is only read, so `i < n` is
 `cmp rbx, r12`, and `PopVar` and `IncDecReg` write it. Rt finds the
@@ -708,7 +722,8 @@ variable.
 **Register variables.** One pass can't know whether a variable's
 address will be taken before its code is made, so `ChooseRegs` reads
 the body ahead, as `InstancesFor` does, and counts each variable's
-uses: 1 for each, 4 in a loop, 16 in two; one `ADR` takes is out. The
+uses: 1 for each, 4 in a loop, 16 in two, at most 64 (loops nested three
+deep or more); one `ADR` takes is out. The
 five busiest used at least three times get registers (`o^.reg`). An
 address wanted after all, by a `var` parameter, say, comes to
 `Address` (`item.pas`), which puts the variable back in memory and

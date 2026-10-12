@@ -1217,7 +1217,8 @@ begin
 end;
 
 { Whether what follows "then" is a lone "break;", with no deferred
-  statement to run on the way out of the loop }
+  statement to run on the way out of the loop: the break must be the
+  branch's last statement, so ";" and then end, elsif or else follow. }
 function LoneBreak: boolean;
 var st: TScanState;
 begin
@@ -1238,11 +1239,11 @@ end;
 procedure ThenPart(var x: TItem; var L: longint);
 begin
   Expect(sThen);
-  L := NoLabel;
+  L := NoLabel;   { stays so with a lone break: there is nothing to skip }
   if LoneBreak then begin
-    NoteLine(CurLine, CurCol);
+    NoteLine(CurLine, CurCol);   { the jump gets the break's line }
     CondJumpTrue(x, curLoop^.brk);
-    Next; Next;   { break; }
+    Next; Next;   { skip "break" and ";" }
     ends := true;
   end else begin
     CondJump(x, L);
@@ -1250,8 +1251,10 @@ begin
   end;
 end;
 
-{ A branch that ends, in return or break, needs no jump past the
-  others. }
+{ if, elsif and else: each condition's jump skips its branch to the
+  next; each branch that doesn't end jumps to the end. A branch that
+  ends, in return or break, needs no jump past the others, and all of
+  them ending is told to the caller in the global ends. }
 procedure IfStatement(const start: TPos; ind: longint);
 var x: TItem; L, endL: longint; all: boolean;
 begin
@@ -1548,7 +1551,8 @@ begin
 end;
 
 { a, b := f(x): the variables first, left to right, then the call;
-  then each result to its variable, in order. }
+  then each result to its variable, in order. x is the first variable,
+  first its name, blank whether it is _. }
 procedure MultiAssign(var x: TItem; first: longint; blank: boolean);
 var
   d: array[0..15] of TItem; dn: array[0..15] of longint; blanks: array[0..15] of boolean;
@@ -1562,7 +1566,7 @@ begin
     if not blanks[n] then begin
       NotReadOnly(d[n]);
       Assignable(d[n], dn[n]);
-      Pin(d[n]);
+      Pin(d[n]);   { works out the address now, so that the call can't change it }
     end;
     inc(n);
     if tok <> sComma then break;
@@ -1833,8 +1837,8 @@ end;
 
 { Puts the busiest variables of the procedure, whose parameters are
   params and whose locals follow before, in registers: read ahead from
-  its "begin" to its end, a use counts 1, in a loop 4, in two 16, and
-  a variable ADR is taken of can't have one. A register costs a save
+  its "begin" to its end, a use counts 1, in a loop 4, in two 16, in
+  three or more 64, and a variable ADR is taken of can't have one. A register costs a save
   and a restore, so a variable used less than three times keeps its
   place in memory. }
 procedure ChooseRegs(params, before: PObj);
@@ -1882,17 +1886,21 @@ begin
           if id = nameAdr then begin
             Next;
             if tok = sLparen then Next;
+            { a hugely negative weight bars it from a register, whatever
+              its uses add }
             if (tok = sIdent) and (Candidate(id) >= 0) then weight[Candidate(id)] := low(longint) div 2;
           end else if not afterDot and (Candidate(id) >= 0) then begin
             k := Candidate(id);
             if loops > 2 then inc(weight[k], 64) else inc(weight[k], 1 shl (2 * loops));
           end;
       end;
-      afterDot := tok = sPeriod;
+      afterDot := tok = sPeriod;   { a name after a dot is a field, not a variable }
       if (d > 0) and (tok <> sEof) then Next;
     until (d = 0) or (tok = sEof);
     RestoreScan(st);
     skipping := wasSkipping;
+    { the five heaviest, each used at least three times, take the
+      registers in turn }
     for k := 0 to 4 do begin
       best := -1;
       for i := 0 to n - 1 do

@@ -9,19 +9,30 @@
   code for those calls, and nothing above it knows the machine: a port
   is a new gen.pas, with an encoder of its own.
 
-  The stack is kept in registers, as in Wirth's compilers: the value at
-  depth d in r8 to r11, register d mod 4, a deeper one's register taken
-  by spilling the shallower value it held to the frame. A constant, or
-  an address in the frame or of a chunk, is only noted until something
-  needs it in a register, so that it can be an instruction's operand.
+  The stack is kept in registers, as in Wirth's compilers (Niklaus
+  Wirth's Pascal and Oberon compilers): the value at depth d, depth 0
+  being the bottom, is in r8 to r11, register d mod 4. A value that
+  needs a register a lower one holds spills that one: stores it in a
+  frame slot, to free the register. A constant, or an address in the
+  frame or of a chunk, is only noted until something needs it in a
+  register, so that it can be an instruction's operand.
 
-  Calls use the System V convention. Arguments are computed left to
-  right onto the stack, and moved into their registers just before the
-  call: a call in a later argument spills the earlier ones, as any call
-  spills the values under it, so that it can't disturb them. A slice goes as its two words, as System V passes a
-  16-byte struct of two integers; a record, array or variant passed by
-  value goes as the address of a copy the caller makes; one returned goes through a hidden pointer, as C's
-  structs do, and so do several results.
+  A slice is two words, a pointer and then a length.
+
+  Calls use the System V convention, which x86-64 Linux has for C:
+  arguments in rdi, rsi, rdx, rcx, r8, r9 and xmm0 to xmm7, the rest on
+  the machine's stack; rbx, rbp and r12 to r15 are callee-saved, which
+  is to say a called procedure gives them back as it found them. The
+  arguments are computed left to right onto the stack of values, and
+  moved into their registers just before the call: a call in a later
+  argument spills the earlier ones, as any call spills the values under
+  it, so that it can't disturb them. A slice goes as its two words, as
+  System V passes a 16-byte struct of two integers; a record, array or
+  variant passed by value goes as the address of a copy the caller
+  makes. A slice, or two results that are single values, come back in
+  rax and rdx (InTwoRegs); any other record, or several results, comes
+  back in memory the caller provides, through a hidden pointer
+  (BehindPointer), where C would send a small struct back in registers.
 
   A procedure's frame holds its parameters, its variables, and the
   temporaries of the statement running. The variables are zeroed on
@@ -80,7 +91,7 @@ type
 
 const
   { the registers a procedure keeps its busiest variables in: System V's
-    callee-saved ones, so they live through calls; a procedure saves
+    callee-saved ones, so they live through calls (a register variable); a procedure saves
     those it uses, and Rt finds them there for the trap report }
   VarRegs: array[0..4] of longint = (RBX, R12, R13, R14, R15);
 
@@ -174,8 +185,9 @@ implementation
 type
   { where a value on the stack is }
   TLoc = (lConst,     { not loaded: val is the value }
-          lHeld,      { not loaded: in register val, a variable's own,
-                        which nothing in an expression can change }
+          lHeld,      { not loaded: in register val, a register
+                        variable's own (see VarRegs), read in place, which
+                        nothing in an expression can change }
           lAdr,       { not loaded: the address of chunk, or of the frame
                         if chunk is -1, plus val }
           lReg,       { in its register }
@@ -183,8 +195,9 @@ type
 
   TEntry = record
     loc: TLoc;
-    val: int64;
-    chunk: longint;
+    val: int64;       { lConst: the value; lHeld: the register; lAdr: the
+                        offset; lFrame: the frame slot }
+    chunk: longint;   { lAdr: the chunk, or -1 for the frame }
     k: TKind;
   end;
 
@@ -214,7 +227,7 @@ var
   inObj: array[0..13] of PObj;
   numIn: longint;
   procParams: PObj;             { the parameters, for EnterBody }
-  regMask: longint;             { the registers of variables, as bits of VarRegs }
+  regMask: longint;             { the registers of variables: bit i is VarRegs[i] }
   saveAt: int64;                { where they are saved, a quadword each }
   frameAt: array[0..2] of int64;   { frameTop, frameMax, permTop after the declarations }
   { the checks of the procedure, whose failures EndFails makes }
@@ -234,10 +247,20 @@ begin
 end;
 
 { The stack, as in Wirth's compilers: the value at depth d is held in
-  register d, for as many registers as there are. A value deeper than
-  that, when its register is wanted, and every value in a register
-  when a call would clobber them, is spilled to a frame slot, and loaded
-  again where it is used. A constant is only noted. }
+  register d mod NumRegs. A value, when a higher one wants its register,
+  and every value in a register when a call would clobber them, is
+  spilled to a frame slot, and loaded again where it is used. A constant
+  is only noted.
+
+  Drop emits no code, and a dropped value's register still holds it
+  until the next push claims it: Place (for bStack), Operands,
+  IndexSlice and JumpCmp read a register after dropping its value.
+
+  Registers outside the stack, free within one operation: rax, rcx and
+  rdx for arithmetic; rsi and rdi for copying; and, where the stack holds
+  nothing in them, r10 for the prologue's zeroing loop and r11 for a call
+  through a procedure value. Reals are kept as their bits in the integer
+  registers, and moved to xmm0 and xmm1 for each operation (RealOp). }
 
 function RegOf(i: longint): longint;
 begin
@@ -263,7 +286,7 @@ begin
     if (owner[r] >= 0) and (owner[r] < d) then Spill(owner[r]);
 end;
 
-{ The register of value i, for it to hold: a deeper value in it is
+{ The register of value i, for it to hold: a lower value in it is
   spilled. }
 function Claim(i: longint): longint;
 var r: longint;
@@ -402,21 +425,25 @@ begin
         Drop;
         Place := Mem(ra, a.off)
       end;
-  else
+  else   { bSlot: the address is in the frame slot a.chunk }
     Load(r, Mem(RBP, a.chunk), 8, false);
     Place := Mem(r, a.off);
   end;
 end;
 
+{ The address a names, on top of the stack }
 procedure PushAdr(const a: TAdr);
 var m: TMem; r: longint;
 begin
-  if (a.base = bStack) and (a.off = 0) then exit;
+  if (a.base = bStack) and (a.off = 0) then exit;   { it is on top already }
   if a.base in [bFrame, bGlobal] then begin
     NewEntry(kWord, lAdr, a.off);
     if a.base = bGlobal then stack[depth - 1].chunk := a.chunk;
     exit;
   end;
+  { The order matters. With the address on the stack, Place pops it and
+    must come first, so that Target may reuse its register; otherwise
+    Target comes first, since Place may need r to load a slot's pointer. }
   if a.base = bStack then begin m := Place(a, -1); r := Target end
   else begin r := Target; m := Place(a, r) end;
   Lea(r, m);
@@ -430,6 +457,7 @@ begin
     NewEntry(k, lHeld, a.chunk);
     exit;
   end;
+  { in the order PushAdr explains }
   if a.base = bStack then begin m := Place(a, -1); r := Target end
   else begin r := Target; m := Place(a, r) end;
   Load(r, m, size, signed);
@@ -539,6 +567,7 @@ end;
 
 { Operations }
 
+{ n if v is 2^n, which is 0 for 1; -1 if v isn't a power of two }
 function ExactLog2(v: int64): longint;
 var n: longint;
 begin
@@ -569,11 +598,16 @@ end;
   zero, so a negative dividend first gets 2^k - 1 added (the bias). }
 procedure DivPow2(op: TSym; r, k: longint; unsign: boolean);
 begin
+  { unsigned: div shifts right; mod keeps the low k bits, by shifting
+    them up to the top and back down }
   if unsign then begin
     if op = sDiv then ShiftI(shShr, r, k)
     else begin ShiftI(shShl, r, 64 - k); ShiftI(shShr, r, 64 - k) end;
     exit;
   end;
+  { signed: sar 63 makes the sign into all ones or all zeros, and shr
+    64 - k keeps k of them, the bias 2^k - 1 or 0; with it added, sar k
+    rounds towards zero. The remainder is r less the quotient times 2^k. }
   MovRR(RCX, r);
   ShiftI(shSar, RCX, 63);
   ShiftI(shShr, RCX, 64 - k);
@@ -618,10 +652,10 @@ begin
   MovqXR(0, r);
   MovqXR(1, y);
   case op of
-    sPlus: Sse($58, 0, 1, f);
-    sMinus: Sse($5C, 0, 1, f);
-    sTimes: Sse($59, 0, 1, f);
-    sSlash: Sse($5E, 0, 1, f);
+    sPlus: Sse($58, 0, 1, f);    { addsd, or addss for an F32 }
+    sMinus: Sse($5C, 0, 1, f);   { subsd, subss }
+    sTimes: Sse($59, 0, 1, f);   { mulsd, mulss }
+    sSlash: Sse($5E, 0, 1, f);   { divsd, divss }
   end;
   MovqRX(r, 0);
 end;
@@ -672,10 +706,12 @@ begin
       sTimes: Imul(r, y);
       sDiv, sMod: begin
         MovRR(RAX, r);
-        if not signed then begin MovRI(RDX, 0); Unary(6, y) end
+        if not signed then begin MovRI(RDX, 0); Unary(6, y) end   { div }
         else begin
+          { only -1 can make the division overflow, so a constant
+            divisor other than -1 needs no check }
           if (bits < 64) and (not c or (v = -1)) then DivTrap(bits, y);
-          Cqo; Unary(7, y)
+          Cqo; Unary(7, y)   { idiv, of rdx:rax, which cqo made from rax }
         end;
         if op = sDiv then MovRR(r, RAX) else MovRR(r, RDX);
       end;
@@ -704,6 +740,12 @@ begin
     r := Operands(y);
     MovqXR(0, r);
     MovqXR(1, y);
+    { ucomis sets the flags as an unsigned comparison would, but for an
+      unordered pair (a NaN) it sets zero, parity and carry all. So only
+      "above" can be tested straight: it is false for NaN, as every
+      comparison but <> must be. a < b is made b > a. = also asks for
+      no parity, as NaN = NaN sets the zero flag, and <> asks for
+      parity as well. }
     case op of
       sEql: begin Ucomis(0, 1, f); SetCC(ccE, r); SetCC(ccNP, RCX); Alu(aluAnd, r, RCX) end;
       sNeq: begin Ucomis(0, 1, f); SetCC(ccNE, r); SetCC(ccP, RCX); Alu(aluOr, r, RCX) end;
@@ -728,7 +770,7 @@ begin
     kF32: Btc(r, 31);
     kF64: Btc(r, 63);
   else
-    Unary(3, r);
+    Unary(3, r);   { neg }
     if size < 8 then Extend(r, size, signed);
   end;
 end;
@@ -737,7 +779,7 @@ procedure Complement(size: longint; signed: boolean);
 var r: longint;
 begin
   r := Top;
-  Unary(2, r);
+  Unary(2, r);   { not }
   if size < 8 then Extend(r, size, signed);
 end;
 
@@ -775,7 +817,7 @@ begin
     AluI(aluAnd, r, 1);
     Alu(aluOr, RCX, r);
     Cvtsi2s(0, RCX, f);
-    Sse($58, 0, 0, f);
+    Sse($58, 0, 0, f);   { adds it to itself: doubles }
     FixLink(L2);
   end else Cvtsi2s(0, r, f);
   MovqRX(r, 0);
@@ -798,14 +840,15 @@ var r: longint;
 begin
   r := Top;
   MovqXR(0, r);
-  Sse($5A, 0, 0, k = kF32);
+  Sse($5A, 0, 0, k = kF32);   { cvtss2sd, or cvtsd2ss }
   MovqRX(r, 0);
   if k = kF32 then stack[depth - 1].k := kF64 else stack[depth - 1].k := kF32;
 end;
 
-{ Whether the slices in the frame at a and b are equal (or not, if not
-  eq): the lengths, then the bytes, len shl shift of them, compared
-  right where the comparison stands. }
+{ Whether the slices in the frame at a and b (the offsets of their
+  pointers, the lengths 8 bytes on) are equal (or not, if not eq): the
+  lengths, then the bytes, len shl shift of them, compared where the
+  comparison stands. }
 procedure CompareSeq(a, b: int64; shift: longint; eq: boolean);
 var differ, r: longint;
 begin
@@ -817,15 +860,18 @@ begin
   Load(RSI, Mem(RBP, b), 8, false);
   Load(RDI, Mem(RBP, a), 8, false);
   if shift > 0 then ShiftI(shShl, RCX, shift);
-  Alu(aluCmp, RCX, RCX);   { equal, if there are no bytes }
+  { repe cmpsb with rcx = 0 leaves the flags alone, so make them say
+    equal first, which is right if there are no bytes }
+  Alu(aluCmp, RCX, RCX);
   RepeCmpsb;
   FixLink(differ);
   if eq then SetCC(ccE, r) else SetCC(ccNE, r);
   Computed(kWord);
 end;
 
-{ An error is the address of its length, followed by its message: pops
-  one, and makes the slice of its message at tmp, empty for nil. }
+{ An error points at its message's length, an 8-byte word, with the
+  text after it; nil is no error. Pops one, and makes the slice of its
+  message at tmp, empty for nil. }
 procedure ErrorText(tmp: int64);
 var L: longint;
 begin
@@ -893,7 +939,7 @@ procedure Atomic(which: longint);
 var r, n: longint;
 begin
   if which = bCas then begin n := Top; Drop end;
-  PopTo(RAX);
+  PopTo(RAX);   { cmpxchg compares with rax, so CAS's old value goes there }
   r := Top;
   case which of
     bCas: begin LockCmpxchg(Mem(r, 0), n); SetCC(ccE, r) end;
@@ -903,8 +949,11 @@ begin
   stack[depth - 1].k := kWord;
 end;
 
-{ The system call and its arguments, n values on the stack; every value
-  in a register is spilled first, as the arguments go in its registers }
+{ The system call and its arguments, n values on the stack. Linux takes
+  the number in rax and the arguments in rdi, rsi, rdx, r10, r8 and r9,
+  and the syscall instruction clobbers rcx and r11. Every value in a
+  register is spilled first, as r8 to r11 are the stack's registers,
+  and the arguments are loaded from their slots. }
 procedure SysCall(n: longint);
 const SysRegs: array[0..6] of longint = (RAX, RDI, RSI, RDX, R10, R8, R9);
 var i: longint;
@@ -960,15 +1009,19 @@ end;
 
 { JumpCmp out of an expression, past code that may spill: the values
   under the two compared are spilled first, so that they are where the
-  code after the landing place expects them, whichever way it came. }
+  code after the landing place expects them, whichever way it came. In
+  v + (a < b and f(x) = 0), a call to f spills v on the way through, so
+  v must be in its slot too where a < b jumps past the call. }
 procedure JumpOut(op: TSym; signed: boolean; var L: longint);
 begin
   SpillBelow(depth - 2);
   JumpCmp(op, signed, L);
 end;
 
-{ The comparison of the two values on top, unless notOp holds, as a
-  BOOL; jumps on its false path (fj) and its true one (tj) land as well }
+{ The two values on top, compared, as a BOOL: true unless notOp, the
+  opposite comparison, holds. fj and tj are the chains of jumps, made
+  earlier by and, or and not, that are taken when the whole condition is
+  false and when it is true; they land here, on the 0 and the 1. }
 procedure CondValue(notOp: TSym; signed: boolean; fj, tj: longint);
 var r, e: longint;
 begin
@@ -984,6 +1037,10 @@ begin
   Computed(kWord);
 end;
 
+{ JumpBack, Fix, FixTo and JoinJumps are gen's names for the encoder's,
+  so that a port can place jumps its own way. Fix(L) places label L here;
+  FixTo(L, top) makes every jump on chain L go to the earlier place top;
+  JoinJumps makes one chain of two. }
 procedure JumpBack(top: longint);
 begin
   JmpBack(top);
@@ -1011,14 +1068,18 @@ const
 
 { The program goes on if the condition cc holds, and otherwise stops
   in Rt.fail(what, a, b, len, at, name), which says what failed at p,
-  found by at, the address of the call: an index a (what = 0), a slice
-  a..b (1), each for a length len, a position a of the enumeration
-  called name (2), or a slice of a pointer a..b that runs backwards
-  (3). a is in register ra, b in RDX; len is in memory at m, or n if
-  m.base is NoBase. The failing code is out of the way, at the
+  found by at, which a stub works out from where it was called; what is
+  an index a (0), a slice a..b (1), each for a length len, a position a
+  of the enumeration called name (2), a slice of a pointer a..b that
+  runs backwards (3), or a nil pointer (4). Rt.fail knows 5 and 6, a
+  division fault and a stack overflow, which this machine catches
+  itself, so no check here has them. The arguments go in rdi, rsi, rdx,
+  rcx, r8 and r9: a is in register ra, b in RDX; len is in memory at m,
+  or n if m.base is NoBase. The failing code is out of the way, at the
   procedure's end (EndFails), so that a check that holds costs a jump
-  not taken; it has p for its place, never returns, and may use any
-  register once it has read what it needs. }
+  not taken; it has p for its place (at is p's offset in the source),
+  never returns, and may use any register once it has read what it
+  needs. }
 procedure Check(cc, what: longint; const p: TPos; ra: longint; const m: TMem; n: int64; name: longint);
 begin
   if numFails > High(fails) then Mark('more than ' + IntStr(High(fails) + 1) + ' checks in one procedure');
@@ -1126,6 +1187,8 @@ begin
   m := Place(a, RDI);
   ml := m; ml.disp := ml.disp + 8;
   if checked then begin
+    { two checks, both unsigned, so that a negative bound fails too:
+      hi against the length, then lo against hi }
     if isArray then begin CmpI(RDX, n); ml := NoMem end
     else AluM(aluCmp, RDX, ml);
     Check(ccBE, 1, p, RCX, ml, n, -1);
@@ -1142,9 +1205,9 @@ begin
 end;
 
 { COPY: the elements of the slice in the frame at sOff, of size bytes
-  each, to the start of the one at dOff, which must be as long, as one
-  block; backwards when the destination is above the source, so that
-  an overlap comes out right. }
+  each, to the start of the one at dOff, which must be at least as long
+  (the source may be shorter), as one block; backwards when the
+  destination is above the source, so that an overlap comes out right. }
 procedure CopySlice(dOff, sOff, size: int64; checked: boolean; const p: TPos);
 var ml: TMem; L, E: longint;
 begin
@@ -1161,7 +1224,9 @@ begin
   Load(RDI, Mem(RBP, dOff), 8, false);
   Alu(aluCmp, RDI, RSI);
   L := NoLabel;
-  Jcc(ccBE, L);
+  Jcc(ccBE, L);   { the destination is not above: forwards, at L }
+  { backwards: std makes rep movsb run downward, so it starts at the
+    last byte of each }
   Lea(RSI, MemIdx(RSI, RCX, 1, -1));
   Lea(RDI, MemIdx(RDI, RCX, 1, -1));
   Std;
@@ -1195,9 +1260,15 @@ end;
 
 { Calls }
 
-{ The call c, its arguments already in their frame slots: they go to
-  registers or the stack, the procedure is called, and its result, if
-  any, is pushed on the value stack. }
+{ The call c, its c.n arguments the values on top of the stack, in
+  registers, noted as constants or spilled. They go to registers or the
+  machine's stack, the procedure is called, and its result, if any,
+  comes back: one value is pushed, two results are pushed as two values,
+  a slice or a record is stored in the temporary c.ret.
+
+  ni and nf count the integer and the real registers used so far, k the
+  arguments on the machine's stack, and pad is 1 when a padding quadword
+  is needed. }
 
 procedure Call(var c: TCall);
 var
@@ -1229,8 +1300,11 @@ begin
     end;
     if onStack[i] then inc(k);
   end;
-  { System V wants rsp a multiple of 16 at the call: a quadword of
-    padding makes the count pushed since the frame began even }
+  { System V wants rsp a multiple of 16 at the call. A procedure's body
+    has it so (push rbp, and a frame size that is a multiple of 16), so
+    a quadword of padding makes the count pushed since even. The stack
+    arguments go right to left, so that the first is at the lowest
+    address. }
   pad := ord(odd(pushed + k));
   if pad <> 0 then AluI(aluSub, RSP, 8);
   for i := c.n - 1 downto 0 do
@@ -1242,7 +1316,9 @@ begin
   late[4] := -1; late[5] := -1;
   if (c.ret <> 0) and BehindPointer(res) then begin Lea(RDI, Mem(RBP, c.ret)); ni := 1 end;
   { rdi, rsi, rdx, rcx and the xmm registers first; r8 and r9 last, as
-    they may hold arguments still }
+    they are stack registers and may hold arguments not yet moved: late
+    is the value for each. The fifth goes through rax, so that writing r8
+    doesn't destroy a value still wanted for r9. }
   for i := 0 to c.n - 1 do
     if not onStack[i] then
       if c.isF[i] then begin
@@ -1293,6 +1369,9 @@ end;
 
 { Frames }
 
+{ A slot of size bytes in the frame: its offset from rbp, negative, as
+  the frame grows down. A temporary is released at the end of its
+  statement (TempMark, ReleaseTemps); AllocPerm's lasts the procedure. }
 function AllocTemp(size, align: int64): int64;
 begin
   if align < 1 then align := 1;
@@ -1312,6 +1391,8 @@ begin
   TempMark := frameTop;
 end;
 
+{ The slots allocated since the mark m are free again, but those
+  AllocPerm made stay }
 procedure ReleaseTemps(m: int64);
 begin
   if m < permTop then m := permTop;
@@ -1340,7 +1421,7 @@ begin
   resType := sig^.base;
   procParams := params;
   regMask := 0;
-  ni := 0; nf := 0; stackOff := 16;
+  ni := 0; nf := 0; stackOff := 16;   { stackOff: above the saved rbp and the return address }
   if (resType <> nil) and BehindPointer(resType) then begin
     retSlot := AllocPerm(8, 8);
     inReg[0] := RDI; inSlot[0] := retSlot; inSize[0] := 8; inObj[0] := nil;
@@ -1348,7 +1429,7 @@ begin
   end;
   p := params;
   while p <> nil do begin
-    p^.ind := p^.isVar or IsAggregate(p^.typ) and (p^.typ^.form <> fSlice);
+    p^.ind := p^.isVar or (IsAggregate(p^.typ) and (p^.typ^.form <> fSlice));
     f := (p^.typ^.form = fReal) and not p^.isVar;
     if (p^.typ^.form = fSlice) and not p^.isVar then begin
       { its two words, in two registers or both on the stack }
@@ -1365,6 +1446,8 @@ begin
       end;
     end else if (f and (nf < 8)) or (not f and (ni < 6)) then begin
       p^.val := AllocPerm(8, 8);
+      { a real's register, xmm nf, is told from an integer register by
+        a negative number (EnterBody decodes it) }
       if f then begin inReg[numIn] := -1 - nf; inc(nf) end
       else begin inReg[numIn] := IntRegs[ni]; inc(ni) end;
       inSlot[numIn] := p^.val;
@@ -1434,22 +1517,25 @@ begin
   Push(RBP);
   MovRR(RBP, RSP);
   Say('sub rsp, frame');
-  Put1($48); Put1($81); Put1($EC);           { sub rsp, imm32 }
+  { sub rsp, imm32: always the form with a 32-bit field, so that EndProc
+    can patch the frame's size in }
+  Put1($48); Put1($81); Put1($EC);
   frameFix := pc; Put4(0);
   n := (AlignUp(zeroTop, 8) - paramTop) div 8;
   if n > 0 then MovRI(RAX, 0);
   if n <= 4 then
     for i := 1 to n do Store(Mem(RBP, -paramTop - 8 * i), RAX, 8)
   else begin
-    { a quadword at a time: r10 counts up to zero }
+    { a quadword at a time: r10 runs from -n up to 0, and the store's
+      address is scaled by it }
     MovRI(R10, -n);
     top := pc;
     Store(MemIdx(RBP, R10, 8, -paramTop), RAX, 8);
     AluI(aluAdd, R10, 1);
     JccBack(ccNE, top);
   end;
-  { the registers of variables: saved, as a variable starts at zero,
-    a parameter taken from where it came }
+  { each register that holds a variable is saved, for the caller, and
+    zeroed, as a variable starts at zero }
   chunks^[c].saveMask := regMask;
   chunks^[c].saveAt := saveAt;
   n := 0;
@@ -1459,12 +1545,16 @@ begin
       MovRI(VarRegs[i], 0);
       inc(n);
     end;
+  { the parameters that came in registers, to their slots or, for a
+    register variable, to its register }
   for i := 0 to numIn - 1 do
     if inReg[i] < 0 then MovsdMX(Mem(RBP, inSlot[i]), -1 - inReg[i])
     else if (inObj[i] <> nil) and (inObj[i]^.reg <> 0) then begin
       MovRR(inObj[i]^.reg, inReg[i]);
       if inSize[i] < 8 then Extend(inObj[i]^.reg, inSize[i], inObj[i]^.typ^.signed);
     end else Store(Mem(RBP, inSlot[i]), inReg[i], inSize[i]);
+  { a register variable's parameter that came on the stack, above the
+    frame (val > 0), is loaded from there }
   p := procParams;
   while p <> nil do begin
     if (p^.reg <> 0) and (p^.val > 0) then
@@ -1555,7 +1645,8 @@ begin
 end;
 
 { A deferred statement is compiled where it stands, as a subroutine of
-  its procedure that the code jumps over; DeferBegin gives its address
+  its procedure that the code jumps over, in the procedure's own frame
+  (the same rbp), so that it sees all its variables; DeferBegin gives its address
   and starts it, with the return address pushed. The stack is empty
   where it is called, and where it begins. }
 function DeferBegin(var L, saved: longint): longint;
@@ -1584,7 +1675,13 @@ end;
   main; and ends with Rt.exit, its status main's or 0. A dynamic program
   starts as C's crt1 does, through __libc_start_main(main, argc, argv,
   nil, nil, rtld_fini, stack_end), with rsp aligned; its main first
-  gives Rt C's exit, in cExit. }
+  gives Rt C's exit, in cExit.
+
+  dynamic: the program uses C. first: the first module, whose chain
+  gives the order of the bodies. main: the program's main procedure, or
+  nil. cExit, placesVar and exitProc: the chunks of Rt's cExit, places
+  and exit. places: the chunk the linker fills with the places (the
+  address of each line of code, for Rt to say where a check failed). }
 function EntryPoint(dynamic: boolean; first: PModule; main: PObj; cExit, places, placesVar, exitProc: longint): longint;
 var entry, start, i: longint; m: PModule;
 begin
@@ -1592,18 +1689,20 @@ begin
   if dynamic then begin
     start := NewChunk(secText, -1, Intern('main', 4));
     BeginChunk(entry);
-    MovRI(RBP, 0);
-    MovRR(R9, RDX);
-    Pop(RSI);
-    MovRR(RDX, RSP);
+    { at the start rdx holds rtld_fini, from the dynamic loader, and the
+      stack argc, then argv }
+    MovRI(RBP, 0);        { no frame above, where a trace stops }
+    MovRR(R9, RDX);       { rtld_fini, the sixth argument }
+    Pop(RSI);             { argc, the second }
+    MovRR(RDX, RSP);      { argv, the third }
     AluI(aluAnd, RSP, -16);
-    Push(RAX);
-    Push(RSP);
-    MovRI(R8, 0);
+    Push(RAX);            { padding, so that the next push, the seventh }
+    Push(RSP);            { argument, stack_end, leaves rsp aligned }
+    MovRI(R8, 0);         { fini and init: none }
     MovRI(RCX, 0);
-    Lea(RDI, MemRip(start, 0));
+    Lea(RDI, MemRip(start, 0));   { main, the first argument }
     CallM(MemRip(ExternChunk(Intern('__libc_start_main', 17)), 0));
-    Ud2;
+    Ud2;   { it never returns }
     EndChunk(entry);
     BeginChunk(start);
     Push(RBP);   { aligns the stack again }
@@ -1629,10 +1728,13 @@ begin
   if main <> nil then CallChunk(main^.chunk);
   if (main <> nil) and (main^.typ^.base <> nil) then MovRR(RDI, RAX) else MovRI(RDI, 0);
   CallChunk(exitProc);
-  Ud2;
+  Ud2;   { exit never returns: trap if it does }
   EndChunk(start);
   { Rt.fail, for the failures of each kind: the place is where the
-    check's call is, a byte before where it would return to }
+    check's call is. The return address is the next instruction's, which
+    may belong to another line; one byte back is inside the call, so the
+    lookup finds the call's line. rsp is aligned for the call, as the
+    check's code may have pushed an odd number of quadwords. }
   for i := 0 to High(failStubs) do
     if failStubs[i] >= 0 then begin
       BeginChunk(failStubs[i]);

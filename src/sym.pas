@@ -411,9 +411,10 @@ begin
   InTwoRegs := t^.tuple and (t^.len = 2) and OneWord(t^.fields) and OneWord(t^.fields^.next);
 end;
 
-{ Whether a procedure's result t comes back in the caller's memory, in
-  a place a hidden pointer, passed first, says: any result that is
-  neither one value, in rax or xmm0, nor two words, in rax and rdx. }
+{ Whether a procedure's result t comes back in memory the caller
+  provides, whose address the caller passes as a hidden first argument,
+  in rdi: any result that is neither one value, in rax or xmm0, nor two
+  words, in rax and rdx. }
 function BehindPointer(t: PType): boolean;
 begin
   BehindPointer := IsAggregate(t) and not InTwoRegs(t);

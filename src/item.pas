@@ -30,8 +30,10 @@ type
                           the stack, not yet made, as Wirth's compilers
                           keep a condition }
     relSigned: boolean;
-    fj, tj: longint;    { mCond: the jumps taken where it is false, and
-                          where it is true, to land past it }
+    fj, tj: longint;    { mCond: the chains of jumps already made that are
+                          taken when the whole condition is false, and when
+                          it is true, not yet given a place (and, or and
+                          not make them); see gen's JumpOut }
     val: int64;        { mConst: the value, an F64's bits; mStr: its length }
     base: TBase;       { mVar: what the address is relative to }
     chunk: longint;    { mVar with bGlobal, mStr: the chunk; bSlot: the slot }
@@ -48,7 +50,8 @@ type
   end;
 
 var
-  demoted: boolean;    { Address wanted a register variable's address }
+  demoted: boolean;    { Address wanted a register variable's address: its
+                         procedure is compiled again, the variable in memory }
   checks: boolean;     { the module's index and slice checks are made: it
                          doesn't say check off }
 
@@ -412,12 +415,14 @@ end;
 
 { Copying }
 
+{ x, copied to a temporary }
 procedure CopyToTemp(var x: TItem);
 var t: int64; f, g: PObj;
 begin
   if x.vol then MarkAt(x.pos, 'can''t copy through a volatile pointer');
   t := AllocTemp(x.typ^.size, x.typ^.align);
   if x.mode = mWords then begin
+    { the second result is on top, so it is popped first }
     f := x.typ^.fields; g := f^.next;
     PopVar(FrameAdr(t + g^.val), ScalarSize(g^.typ));
     PopVar(FrameAdr(t + f^.val), ScalarSize(f^.typ));
@@ -1157,6 +1162,8 @@ procedure PushWords(var x: TItem);
 var adr: TAdr; f: PObj;
 begin
   if x.mode = mWords then exit;   { there already }
+  { copied to a temporary unless its two words are in memory at a place
+    that a later argument can't change }
   if (x.mode <> mVar) or x.vol or not (x.base in [bFrame, bGlobal, bSlot]) then CopyToTemp(x);
   adr := AdrOf(x);
   if x.typ^.form = fSlice then begin
@@ -1223,6 +1230,9 @@ begin
   c.param := p^.next;
 end;
 
+{ The call c made, with x its result as an item: none; a temporary, for a
+  slice or a record; two results on gen's stack (mWords); else one value
+  on the stack. }
 procedure EndCall(var c: TCall; var x: TItem);
 var res: PType;
 begin
@@ -1343,15 +1353,17 @@ begin
   JumpCmp(op, o^.typ^.signed, L);
 end;
 
-{ The end of a round of a for loop, as the report has it for a positive
-  step s: if v <= b and b - v < s, the loop ends; otherwise v becomes
+{ The end of a round of a for loop, for a positive step s, as the report
+  has it: if v <= b and b - v < s, the loop ends; otherwise v becomes
   v + s and the loop goes on while v <= b. Counting the distance left,
   rather than comparing after the step, can't be fooled by v wrapping
-  around. So the loop goes on, to top, where v is stepped, if v < b for
-  a step of 1, or if v <= b and b - v >= s for another: then v + s <= b
-  needs no test. It ends if v = b, or b - v < s. Only where the body has
-  put v past b is it stepped here and tested, past. A negative step is
-  the same the other way round. }
+  around. A negative step is the same the other way round: Before, Past
+  and Within are indexed by up, whether the step is positive.
+  For a step of 1: v < b goes on to top, where v is stepped; v = b
+  ends; otherwise the body moved v past b.
+  For another step: v past b goes to past; else b - v (unsigned, as
+  v <= b) >= |step| goes on to top, and else the loop ends.
+  Past: v is stepped here and tested, going to body if within b. }
 procedure ForNext(o: PObj; const lim: TItem; step: int64; var exitL: longint; top, body: longint);
 const
   Before: array[boolean] of TSym = (sGtr, sLss);   { by a negative step, by a positive }
@@ -1385,6 +1397,8 @@ begin
   FixTo(L, body);
 end;
 
+{ Jumps to L if the condition x is false. The jumps waiting in x.fj join
+  L; those in x.tj are placed here, as x is true past this. }
 procedure CondJump(var x: TItem; var L: longint);
 begin
   if x.typ^.form <> fBool then MarkAt(x.pos, 'a condition is a BOOL, found ' + What(x));
@@ -1398,7 +1412,8 @@ begin
   JumpIf(L, false);
 end;
 
-{ As CondJump, but the jump is taken where the condition holds }
+{ As CondJump, but the jump to L is taken where the condition is true;
+  x.tj joins L and x.fj is placed here }
 procedure CondJumpTrue(var x: TItem; var L: longint);
 begin
   if x.typ^.form <> fBool then MarkAt(x.pos, 'a condition is a BOOL, found ' + What(x));
