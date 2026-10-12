@@ -30,7 +30,7 @@ one that buys less than 2% on both is reverted and noted here.
    and no register is saved for it. Most of rat's hot procedures are
    such small ones (`unsplit`, `Width.cells`), and each call now saves
    and restores what it uses.
-3. **Addresses and operands as the machine has them.** An element of a
+3. Done: **Addresses and operands as the machine has them.** An element of a
    slice in registers is `[base + i*8]`, read where it is used; a
    compare or an addition takes its right operand from memory
    (`cmp r8, [rbp - 16]`), not through a register first.

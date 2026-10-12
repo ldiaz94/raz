@@ -328,6 +328,38 @@ bought less than 2% on both was taken out again.
    kernel saved. The search 9% faster, rat 1.5%, its text 0.7%
    smaller.
 
+3. **Addresses and operands as the machine has them.** `t := t + s[i]`
+   worked out the element's address, read the element into a register,
+   and added that:
+
+   ```
+   mov r9, r12               ; i
+   shl r9, 3
+   add r9, rdi               ; s's pointer
+   mov r9, [r9]
+   mov r8, rbx               ; t
+   add r8, r9
+   ```
+
+   Now an element of a slice in registers is only noted, as the
+   operand `[rdi + r12 * 8]` (`lIdx`, made by `IndexSlice`), and a
+   variable in memory, or at an address noted, as the operand that
+   reads it (`lMem`, made by `PushVar`): each is read where it is
+   used, and `Op`, `Compare` and `JumpCmp` take an 8-byte one as their
+   right operand as it is (`TopInMem`):
+
+   ```
+   mov r8, rbx
+   add r8, [rdi + r12 * 8]
+   ```
+
+   A value noted in memory must be read before anything can change
+   it: before a call (`SpillBelow`) and an atomic built-in (`Atomic`),
+   both through `ReadMems`. The heap sort 14% faster, the search 5%;
+   rat within noise, its text 3.9% smaller. Loop tops aligned to 16
+   bytes were tried with it, and taken out: the search lost 3%, and
+   rat gained nothing.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is
@@ -505,10 +537,13 @@ address first, so that a variable is read or written with one
 instruction.
 
 The stack: `stack` notes where each value is, a constant (`lConst`), an
-address not yet computed (`lAdr`, `AdrMem`'s operand), a register
+address not yet computed (`lAdr`, `AdrMem`'s operand), an element's
+address not yet computed (`lIdx`, an operand `[base + index * size]`),
+a variable's value not yet read (`lMem`, at an operand), a register
 variable's own register, read in place (`lHeld`), the value's own
 register (`lReg`) or a frame slot (`lFrame`); `owner` says which
-value each register holds. The value at depth `d` belongs in
+value each register holds, `lIdx` and `lMem` holding theirs when it
+is their index. The value at depth `d` belongs in
 `Regs[d mod 4]`, `r8` to `r11`: `rax`, `rdx` and `rcx`, which division
 and shifts need, and `rsi` and `rdi`, which copying needs, aren't among
 them. `Claim` gives a value its register, and `Spill`s the lower one

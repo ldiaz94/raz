@@ -205,6 +205,13 @@ type
                         nothing in an expression can change }
           lAdr,       { not loaded: the address of chunk, or of the frame
                         if chunk is -1, plus val }
+          lIdx,       { not loaded: the address m, an element of a slice
+                        in registers: its pointer's register as the base,
+                        and the index in a register variable's or the
+                        value's own register (IndexSlice) }
+          lMem,       { not loaded: the value of size bytes at m, in the
+                        frame, a chunk, or at an address lAdr or lIdx
+                        noted, read where it is used (PushVar) }
           lReg,       { in its register }
           lFrame);    { spilled: in the frame slot val }
 
@@ -213,6 +220,9 @@ type
     val: int64;       { lConst: the value; lHeld: the register; lAdr: the
                         offset; lFrame: the frame slot }
     chunk: longint;   { lAdr: the chunk, or -1 for the frame }
+    m: TMem;          { lIdx, lMem }
+    size: longint;    { lMem }
+    signed: boolean;  { lMem }
     k: TKind;
   end;
 
@@ -283,10 +293,14 @@ begin
   RegOf := Regs[i mod NumRegs];
 end;
 
-{ The value i, in a register, goes to a frame slot }
+function Loaded(i: longint): longint; forward;
+
+{ The value i, in a register, goes to a frame slot; one noted that
+  holds its register, as an index, is worked out in it first }
 procedure Spill(i: longint);
 var s: int64;
 begin
+  if stack[i].loc <> lReg then Loaded(i);
   s := AllocTemp(8, 8);
   Store(Mem(RBP, s), RegOf(i), 8);
   stack[i].loc := lFrame;
@@ -294,10 +308,21 @@ begin
   owner[i mod NumRegs] := -1;
 end;
 
-{ Every value below depth d in a register, spilled }
+{ Each value below depth d read from memory now, as what comes next
+  may change it }
+procedure ReadMems(d: longint);
+var i: longint;
+begin
+  for i := 0 to d - 1 do
+    if stack[i].loc = lMem then Loaded(i);
+end;
+
+{ Every value below depth d in a register, spilled; one noted in memory
+  is read first, as a call may change it }
 procedure SpillBelow(d: longint);
 var r: longint;
 begin
+  ReadMems(d);
   for r := 0 to NumRegs - 1 do
     if (owner[r] >= 0) and (owner[r] < d) then Spill(owner[r]);
 end;
@@ -326,10 +351,14 @@ var r: longint;
 begin
   if stack[i].loc <> lReg then begin
     r := Claim(i);
-    if stack[i].loc = lConst then MovRI(r, stack[i].val)
-    else if stack[i].loc = lHeld then MovRR(r, stack[i].val)
-    else if stack[i].loc = lAdr then Lea(r, AdrMem(i, 0))
+    case stack[i].loc of
+      lConst: MovRI(r, stack[i].val);
+      lHeld: MovRR(r, stack[i].val);
+      lAdr: Lea(r, AdrMem(i, 0));
+      lIdx: Lea(r, stack[i].m);
+      lMem: Load(r, stack[i].m, stack[i].size, stack[i].signed);
     else Load(r, Mem(RBP, stack[i].val), 8, false);
+    end;
     stack[i].loc := lReg;
   end;
   Loaded := RegOf(i);
@@ -358,6 +387,18 @@ begin
   inc(depth);
 end;
 
+{ An address, lIdx, or a value at it, lMem, noted as the operand m. Its
+  index may be in the register of the value just dropped, at this
+  depth: it is the new value's own, then. }
+procedure NewMem(loc: TLoc; const m: TMem; k: TKind; size: longint; signed: boolean);
+begin
+  NewEntry(k, loc, 0);
+  stack[depth - 1].m := m;
+  stack[depth - 1].size := size;
+  stack[depth - 1].signed := signed;
+  if m.index = RegOf(depth - 1) then owner[(depth - 1) mod NumRegs] := depth - 1;
+end;
+
 { The register a new value on top is to be computed in }
 function Target: longint;
 begin
@@ -373,7 +414,7 @@ end;
 procedure Drop;
 begin
   dec(depth);
-  if stack[depth].loc = lReg then owner[depth mod NumRegs] := -1;
+  if owner[depth mod NumRegs] = depth then owner[depth mod NumRegs] := -1;
 end;
 
 { rsi and rdi are about to be used for other work, as in copying: a
@@ -393,6 +434,8 @@ begin
     lConst: MovRI(r, stack[i].val);
     lHeld: MovRR(r, stack[i].val);
     lAdr: Lea(r, AdrMem(i, 0));
+    lIdx: Lea(r, stack[i].m);
+    lMem: Load(r, stack[i].m, stack[i].size, stack[i].signed);
     lReg: if RegOf(i) <> r then MovRR(r, RegOf(i));
   else Load(r, Mem(RBP, stack[i].val), 8, false);
   end;
@@ -450,6 +493,10 @@ begin
       if stack[depth - 1].loc = lAdr then begin
         Place := AdrMem(depth - 1, a.off);
         Drop;
+      end else if stack[depth - 1].loc = lIdx then begin
+        Place := stack[depth - 1].m;
+        Place.disp := Place.disp + a.off;
+        Drop;
       end else begin
         ra := Peek(depth - 1);
         Drop;
@@ -485,6 +532,13 @@ var m: TMem; r: longint;
 begin
   if a.base = bReg then begin
     NewEntry(k, lHeld, RegAt(a));
+    exit;
+  end;
+  { a variable in the frame or a chunk, or at an address only noted, is
+    only noted too: read where it is used, as an operand if it can be }
+  if (a.base in [bFrame, bGlobal]) or (a.base = bStack) and (stack[depth - 1].loc in [lAdr, lIdx]) then begin
+    m := Place(a, -1);
+    NewMem(lMem, m, k, size, signed);
     exit;
   end;
   { in the order PushAdr explains }
@@ -529,6 +583,10 @@ procedure Swap;
 var e: TEntry; x, y: longint; rx, ry: boolean;
 begin
   x := depth - 2; y := depth - 1;
+  { a value noted at an address that uses its register is worked out,
+    so that its register moves with it }
+  if stack[x].loc in [lIdx, lMem] then Loaded(x);
+  if stack[y].loc in [lIdx, lMem] then Loaded(y);
   rx := stack[x].loc = lReg;
   ry := stack[y].loc = lReg;
   if rx and ry then begin
@@ -672,6 +730,13 @@ begin
   FixLink(L);
 end;
 
+{ Whether the value on top is a word in memory that can be the right
+  operand of an instruction as it is: add r, [m] }
+function TopInMem: boolean;
+begin
+  TopInMem := (stack[depth - 1].loc = lMem) and (stack[depth - 1].size = 8);
+end;
+
 { The right operand of the two values on top, popped, in register y:
   its own, or rcx for a constant; the left one stays, in its register,
   which is returned. }
@@ -714,7 +779,7 @@ end;
 { The two values on top, the left op the right, an integer of size
   bytes, signed or not, brought back to its width. }
 procedure Op(op: TSym; k: TKind; size: longint; signed: boolean);
-var v: int64; r, y, sh, bits: longint; c: boolean;
+var v: int64; r, y, sh, bits: longint; c: boolean; m: TMem;
 begin
   if k in [kF32, kF64] then begin RealOp(op, k); exit end;
   bits := size * 8;
@@ -738,6 +803,11 @@ begin
       sShr: if signed then ShiftI(shSar, r, v and (bits - 1)) else ShiftI(shShr, r, v and (bits - 1));
     else AluI(AluOf(op), r, v);
     end;
+  end else if TopInMem and (op in [sPlus, sMinus, sAmp, sBar, sXor]) then begin
+    m := stack[depth - 1].m;
+    Drop;
+    r := Top;
+    AluM(AluOf(op), r, m);
   end else begin
     r := Operands(y);
     case op of
@@ -772,7 +842,7 @@ procedure Compare(op: TSym; k: TKind; signed: boolean);
 const
   CcSigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccL, ccLE, ccG, ccGE);
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
-var f: boolean; r, y: longint; v: int64;
+var f: boolean; r, y: longint; v: int64; m: TMem;
 begin
   if k in [kF32, kF64] then begin
     f := k = kF32;
@@ -795,6 +865,7 @@ begin
     end;
   end else begin
     if TopConst(v) then begin Drop; r := Top; CmpI(r, v) end
+    else if TopInMem then begin m := stack[depth - 1].m; Drop; r := Top; AluM(aluCmp, r, m) end
     else begin r := Operands(y); Alu(aluCmp, r, y) end;
     if signed then SetCC(CcSigned[op], r) else SetCC(CcUnsigned[op], r);
   end;
@@ -979,6 +1050,7 @@ end;
 procedure Atomic(which: longint);
 var r, n: longint;
 begin
+  ReadMems(depth - 2 - ord(which = bCas));   { what it writes may be one }
   if which = bCas then begin n := Top; Drop end;
   PopTo(RAX);   { cmpxchg compares with rax, so CAS's old value goes there }
   r := Top;
@@ -1001,12 +1073,7 @@ var i: longint;
 begin
   ClobberArgs;
   SpillBelow(depth);
-  for i := 0 to n - 1 do
-    with stack[depth - n + i] do
-      if loc = lConst then MovRI(SysRegs[i], val)
-      else if loc = lHeld then MovRR(SysRegs[i], val)
-      else if loc = lAdr then Lea(SysRegs[i], AdrMem(depth - n + i, 0))
-      else Load(SysRegs[i], Mem(RBP, val), 8, false);
+  for i := 0 to n - 1 do ValueTo(depth - n + i, SysRegs[i]);
   for i := 1 to n do Drop;
   x64.Syscall;
   MovRR(Target, RAX);
@@ -1040,10 +1107,11 @@ procedure JumpCmp(op: TSym; signed: boolean; var L: longint);
 const
   CcSigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccL, ccLE, ccG, ccGE);
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
-var r, y: longint; v: int64;
+var r, y: longint; v: int64; m: TMem;
 begin
   { a comparison changes neither: a variable's register will do }
   if TopConst(v) then begin Drop; r := Peek(depth - 1); CmpI(r, v) end
+  else if TopInMem then begin m := stack[depth - 1].m; Drop; r := Peek(depth - 1); AluM(aluCmp, r, m) end
   else begin y := Peek(depth - 1); Drop; r := Peek(depth - 1); Alu(aluCmp, r, y) end;
   Drop;
   if signed then Jcc(CcSigned[op], L) else Jcc(CcUnsigned[op], L);
@@ -1212,10 +1280,22 @@ end;
   address; but if the slice's address is on the stack, under the
   index, the element's register is the one that holds that, still
   needed, so the work is done in rax. A slice in registers is
-  compared with and added to them. }
+  compared with and added to them; for an element of 1, 2, 4 or 8
+  bytes, its address is only noted, as the operand [pointer + index *
+  size], to be read or written where it is used (lIdx). }
 procedure IndexSlice(const a: TAdr; size: int64; checked: boolean; const p: TPos);
 var m, ml: TMem; r: longint; inRax: boolean;
 begin
+  if (a.base = bReg) and (size in [1, 2, 4, 8]) then begin
+    r := Peek(depth - 1);
+    if checked then begin
+      Alu(aluCmp, r, a.hi);
+      Check(ccB, 0, p, r, InRegister(a.hi), 0, -1);
+    end;
+    Drop;
+    NewMem(lIdx, MemIdx(a.chunk, r, size, 0), kWord, 8, false);
+    exit;
+  end;
   inRax := a.base = bStack;
   if inRax then begin r := RAX; PopTo(RAX) end
   else begin r := Top; Drop end;
