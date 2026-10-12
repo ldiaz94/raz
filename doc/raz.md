@@ -9,7 +9,7 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.11 of the report; section 12 says what each
+This is version 2026-10.12 of the report; section 12 says what each
 version changed. It is a thaw the owner chose, for a language anyone
 can build again, and it breaks programs written for 2026-10.10.
 The compiler follows version 2026-10.10 until it is brought to this
@@ -964,7 +964,7 @@ program without running the deferred statements still pending.
 ```
 ProcDeclaration   = "proc" IdentDef Signature ";"
                     ( "forward" | { LocalDeclaration } "begin" Statements "end" [ ident ]
-                    | "code" Expr { "," Expr } ) .
+                    | "code" { [ ident ":" ] [ Instruction ] ";" } "end" [ ident ] ) .
 LocalDeclaration  = "const" { ident [ ":" Type ] "=" Expr ";" }
                   | "type" { ident "=" Type ";" }
                   | "var" { ident { "," ident } ":" Type ";" } .
@@ -1017,25 +1017,34 @@ A name after a procedure's `end`, if written, is the procedure's own.
 
 Procedures don't nest.
 
-**Code procedures.** A procedure whose body is `code` and a list of
-constant bytes is machine code, written by hand:
+**Code procedures.** A procedure whose body is `code` is machine code,
+written by hand in the target's assembly language (appendix A): one
+instruction to each `;`, and labels for jumps, up to `end`:
 
 ```
 proc rdtsc*: U64;
-code 0FH, 31H,              (* rdtsc *)
-     48H, 0C1H, 0E2H, 20H,  (* shl rdx, 32 *)
-     48H, 09H, 0D0H,        (* or rax, rdx *)
-     0C3H;                  (* ret *)
+code
+    rdtsc;
+    shl rdx, 32;
+    or rax, rdx;
+    ret;
+end rdtsc;
 ```
+
+A label, `name:`, names the place of the instruction after it, within
+the procedure. A constant of the module may stand wherever a number
+does. Any bytes may be written with `db`, as in `db 0FH, 31H;`, for an
+instruction the assembler doesn't know.
 
 It is called like any procedure, with the System V convention: integer
 and pointer arguments arrive in `rdi`, `rsi`, `rdx`, `rcx`, `r8` and
 `r9`, `F32` and `F64` ones in `xmm0` to `xmm7`, and the result goes in
 `rax` (and `rdx` for a second) or `xmm0`. Its parameters and results
 are therefore of the types C can take (section 9), at most six integer
-and eight real parameters, and at most two results. The bytes are the whole
-procedure, `ret` included; they must keep `rbx`, `rbp`, `rsp` and `r12`
-to `r15` as they found them. The compiler doesn't look inside them.
+and eight real parameters, and at most two results. The instructions
+are the whole procedure, `ret` included; they must keep `rbx`, `rbp`,
+`rsp` and `r12` to `r15` as they found them. The compiler doesn't look
+past what they say.
 
 ## 9. Calling C
 
@@ -1725,6 +1734,8 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   11). An array constant has a type and is used as a variable that
   can't be changed; `+` joins string constants (section 4). `match`
   takes an integer, with constants and ranges as labels (7.4).
+- **2026-10.12.** A code procedure is written in the target's assembly
+  language, not as bytes (section 8; appendix A).
 
 ## Appendix A. What an implementation chooses
 
@@ -1753,10 +1764,17 @@ report: it passes them all, its reals aside where its target has none;
   several results, and how its frame is laid out, are the
   implementation's.
 - **What is the target's.** Code procedures (section 8) hold the
-  target's machine code, and exist only where the implementation says
-  so; `SYSCALL` exists only on Linux targets (section 6.8). A record's
+  target's machine code, written in its assembly language, and exist
+  only where the implementation says so; `SYSCALL` exists only on Linux targets (section 6.8). A record's
   layout is the target's C layout (section 5.5), and the order of a
   value's bytes is the target's (little-endian on x86-64).
+- **The assembly language.** How a code procedure's instructions are
+  written (section 8). On x86-64 it is Intel's syntax, as NASM writes
+  it: the destination first; registers by name (`rax`, `eax`, `al`,
+  `xmm0`); memory as `[base + index * scale + disp]`, with `byte`,
+  `word`, `dword` or `qword` before it where no register says the
+  size; `lock` before an instruction. Which instructions it knows is
+  the implementation's; `db` gives any others.
 - **Sizes in the library.** How many bytes `Out` keeps before it
   writes them, `Sys.outSize` (section 11): 4 KB on Linux, fewer on a
   small machine.
@@ -1866,7 +1884,7 @@ Label      = Expr [ ".." Expr ] .
 
 ProcDeclaration   = "proc" IdentDef Signature ";"
                     ( "forward" | { LocalDeclaration } "begin" Statements "end" [ ident ]
-                    | "code" Expr { "," Expr } ) .
+                    | "code" { [ ident ":" ] [ Instruction ] ";" } "end" [ ident ] ) .
 LocalDeclaration  = "const" { ident [ ":" Type ] "=" Expr ";" }
                   | "type" { ident "=" Type ";" }
                   | "var" { ident { "," ident } ":" Type ";" } .
@@ -1882,4 +1900,5 @@ ExternDeclaration = "extern" ( "proc" IdentDef Signature
 but `"` and `\`, in a character any but `'` and `\`. A procedure
 argument of a generic module (section 3) is written as a `QualIdent`,
 which is a `Type` here. `...` comes last in a `Signature`, and only in
-an `extern`.
+an `extern`. An `Instruction` is written in the target's assembly
+language (appendix A).
