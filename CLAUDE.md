@@ -86,9 +86,9 @@ for rlX11 and rat (reports 2026-10.4 and 10.7, steps 49a-c), with
 `Info`'s `file` and `symlink` for rloc (2026-10.6, step 49d), and
 stage 9, several results in place of var parameters (2026-10.8,
 steps 52-53), and v0.5.0, the library of report 2026-10.9, which the
-compiler says it follows, and v0.7.0, better code. Next, by
-`PLAN.md`: the manual (v0.7.1), then better code again (v0.8.0), each
-on the owner's go.
+compiler says it follows, and v0.7.0, better code, and v0.7.1, the manual: `raz(1)`,
+`raz-tutorial(7)`, `raz(7)` and `raz-lib(3)`, made by `tools/Doc.raz`
+from `lib/`. Under way, by `PLAN.md`: better code again (v0.8.0).
 
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
@@ -112,7 +112,7 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.7.0, report 2026-10.17, the latest.
+the first; v0.7.1, report 2026-10.17, the latest.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only

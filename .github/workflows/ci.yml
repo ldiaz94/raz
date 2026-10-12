@@ -1,6 +1,6 @@
 # Checks every push to main. A pushed tag vX.Y.Z is checked too and
-# becomes a GitHub release, with a tarball of raz and the lib/ it reads
-# beside itself. Run by hand with a tag, it releases an older tag.
+# becomes a GitHub release, with a tarball of raz, the lib/ it reads
+# beside itself, and the manual pages. Run by hand with a tag, it releases an older tag.
 name: ci
 on:
   push:
@@ -31,7 +31,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           d=raz-${TAG#v}-linux-x86_64
-          mkdir $d && cp -r raz lib LICENSE README.md $d
+          mkdir -p $d/man && cp -r raz lib LICENSE README.md $d
+          cp doc/raz.1 doc/raz.7 doc/raz-tutorial.7 build/raz-lib.3 $d/man
           tar czf $d.tar.gz $d
           gh release create "$TAG" $d.tar.gz --verify-tag \
             --title "raz ${TAG#v}" --notes "$(./raz --version)"
