@@ -548,6 +548,14 @@ begin
   Log2 := n;
 end;
 
+{ r times v, a size: by a shift where v is a power of two, as it
+  mostly is, since a shift takes one cycle and imul three }
+procedure MulI(r: longint; v: int64);
+begin
+  if Log2(v) > 0 then ShiftI(shShl, r, Log2(v))
+  else if v <> 1 then ImulI(r, v);
+end;
+
 { r compared with v, through rdx if v needs more than 32 bits; with
   zero by test, which sets the flags as cmp would and is shorter }
 procedure CmpI(r: longint; v: int64);
@@ -637,6 +645,10 @@ var v: int64; r, y, sh, bits: longint; c: boolean;
 begin
   if k in [kF32, kF64] then begin RealOp(op, k); exit end;
   bits := size * 8;
+  { a constant on the left of an operation whose order doesn't matter
+    goes right, where it can be an immediate or a shift }
+  if (op in [sPlus, sTimes, sAmp, sBar, sXor]) and (stack[depth - 2].loc = lConst)
+    and (stack[depth - 1].loc <> lConst) then Swap;
   c := TopConst(v);
   sh := -1;
   if c and (op in [sTimes, sDiv, sMod]) then sh := Log2(v);
@@ -1096,7 +1108,7 @@ begin
     AluM(aluCmp, r, ml);
     Check(ccB, 0, p, r, ml, 0, -1);
   end;
-  if size <> 1 then ImulI(r, size);
+  MulI(r, size);
   AluM(aluAdd, r, m);
   if inRax then MovRR(Target, RAX)
   else Claim(depth);   { the index's register again, now for the address }
@@ -1123,7 +1135,7 @@ begin
   MovRR(RAX, RDX);
   Alu(aluSub, RAX, RCX);
   Store(Mem(RBP, tmp + 8), RAX, 8);
-  if size <> 1 then ImulI(RCX, size);
+  MulI(RCX, size);
   if isArray then Lea(RAX, m) else Load(RAX, m, 8, false);
   Alu(aluAdd, RAX, RCX);
   Store(Mem(RBP, tmp), RAX, 8);
@@ -1144,7 +1156,7 @@ begin
     Check(ccBE, 1, p, RAX, ml, 0, -1);
   end;
   MovRR(RCX, RDX);
-  if size <> 1 then ImulI(RCX, size);
+  MulI(RCX, size);
   Load(RSI, Mem(RBP, sOff), 8, false);
   Load(RDI, Mem(RBP, dOff), 8, false);
   Alu(aluCmp, RDI, RSI);
@@ -1176,7 +1188,7 @@ begin
   MovRR(RAX, RDX);
   Alu(aluSub, RAX, RCX);
   Store(Mem(RBP, tmp + 8), RAX, 8);
-  if size <> 1 then ImulI(RCX, size);
+  MulI(RCX, size);
   Alu(aluAdd, RCX, RDI);
   Store(Mem(RBP, tmp), RCX, 8);
 end;

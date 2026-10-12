@@ -13,7 +13,7 @@ disassembly.
 | `src/sym.pas` | 643 | 527 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,125 | 936 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,653 | 1,284 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/gen.pas` | 1,665 | 1,291 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,493 | 1,247 | Items: types, constants, variables, operators, conversions, calls |
 | `src/parse.pas` | 2,957 | 2,609 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
@@ -109,11 +109,8 @@ mov    r8,QWORD PTR [rbp-0x8]         ; a, at depth 0
 mov    r9,QWORD PTR [rbp-0x10]        ; b, at depth 1; the 2 is only noted
 shl    r9,0x1                         ; times 2 is a shift
 add    r8,r9
-mov    rax,r8                         ; the result
-jmp    <leave>                        ; return
-xor    eax,eax                        ; running off the end returns zero
-movq   xmm0,rax
-leave
+mov    rax,r8                         ; return: the result
+leave                                 ; no jump to here, as it is next
 ret
 ```
 
@@ -317,8 +314,11 @@ so are the values under a comparison that jumps out of an expression
 (`JumpOut`), which both ways to its label must find in the same place. `pushed` counts what
 is on the machine's stack, which a call must align: the return
 address, in a deferred statement. `Op` takes a
-constant on the right as it is, and a power of two on the right of
-`*`, `div` or `mod` becomes shifts (`DivPow2`), since `idiv` is slow.
+constant on the right as it is, after moving one on the left of `+`,
+`*`, `&`, `|` or `xor` there, and a power of two on the right of `*`,
+`div` or `mod` becomes shifts (`DivPow2`), since `idiv` is slow; an
+element's size multiplies an index by a shift too (`MulI`), as a shift
+takes one cycle and `imul` three.
 Narrow integers are brought back to their width after each operation,
 which is how `U8` arithmetic wraps; since they are computed in 64 bits,
 a shift's count is cut to their width first, and `DivTrap` makes the
