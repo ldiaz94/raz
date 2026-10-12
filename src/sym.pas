@@ -125,7 +125,7 @@ const
   { built-in procedures }
   bSize = 0; bAdr = 1; bLen = 2; bNew = 3; bMsg = 4; bSyscall = 5;
   bFence = 6; bCas = 7; bXchg = 8; bXadd = 9; bArgc = 10; bArgv = 11;
-  bInc = 12; bDec = 13;
+  bInc = 12; bDec = 13; bCopy = 14;
 
   MaxDepth = 64;   { scopes open at once }
 
@@ -613,4 +613,5 @@ initialization
   Enter('ARGV', oBuiltin, nil, bArgv);
   Enter('INC', oBuiltin, nil, bInc);
   Enter('DEC', oBuiltin, nil, bDec);
+  Enter('COPY', oBuiltin, nil, bCopy);
 end.

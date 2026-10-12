@@ -1,0 +1,2 @@
+conform/run/Copy.raz:27:19: slice 0..3 is out of range for a length of 2
+  in Copy.main at conform/run/Copy.raz:27:19

@@ -127,10 +127,9 @@ end;
 
 (* path, a C string in buf, or false if it doesn't fit. *)
 proc cstr(path, buf: []U8): BOOL;
-var i: INT;
 begin
     if LEN(path) >= LEN(buf) then return false; end;
-    for i := 0 to LEN(path) - 1 do buf[i] := path[i]; end;
+    COPY(buf, path);
     buf[LEN(path)] := 0;
     return true;
 end;
@@ -441,11 +440,10 @@ end;
 
 (* path as a Unix socket's address in a, or false if it is too long. *)
 proc unixAddr(path: []U8; a: ^SockaddrUn): BOOL;
-var i: INT;
 begin
     if LEN(path) >= LEN(a^.path) then return false; end;
     a^.family := 1;                                     (* AF_UNIX *)
-    for i := 0 to LEN(path) - 1 do a^.path[i] := path[i]; end;
+    COPY(a^.path, path);
     return true;
 end;
 
@@ -642,9 +640,8 @@ end;
 
 (* Copies s and a zero to at: the byte after them. *)
 proc put(s: []U8; at: ^U8): ^U8;
-var i: INT;
 begin
-    for i := 0 to LEN(s) - 1 do at[i] := s[i]; end;
+    COPY(at[0..LEN(s)], s);
     at[LEN(s)] := 0;
     return at + (LEN(s) + 1);
 end;

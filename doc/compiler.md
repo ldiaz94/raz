@@ -10,12 +10,12 @@ disassembly.
 |---|---|---|---|
 | `src/diag.pas` | 310 | 229 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 616 | 511 | Types, objects, scopes, layout |
+| `src/sym.pas` | 617 | 512 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 300 | 234 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,108 | 926 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,536 | 1,203 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,412 | 1,178 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,895 | 2,566 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/x64.pas` | 1,113 | 930 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 1,570 | 1,232 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,433 | 1,194 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,904 | 2,575 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -274,7 +274,9 @@ This is the only unit that knows the machine. The calls it answers:
 - operations on the values on top: `Op`, `Compare`, `Neg`,
   `Complement`, `NotBool`, `Narrow` (to a narrow integer's width),
   the conversions between integers and reals, `CompareSeq` (of two
-  slices), and copying: `CopyBlock`, `CopyTo`, `ZeroVar`;
+  slices), and copying: `CopyBlock`, `CopyTo`, `ZeroVar`, and
+  `CopySlice` for `COPY`, a `rep movsb` that goes down when the
+  destination is above the source;
 - jumps: `Jump`, `JumpIf` (on a `BOOL`), `JumpCmp` (on two integers),
   `JumpOut` (`JumpCmp` from within an expression) and `CondValue` for
   `and` and `or`, `Fix` where the label is, and `JoinJumps`;

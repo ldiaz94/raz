@@ -147,6 +147,7 @@ procedure CheckNil(reach: int64; const p: TPos);
 procedure IndexSlice(const a: TAdr; size: int64; checked: boolean; const p: TPos);
 procedure Slice(const a: TAdr; isArray: boolean; n, size, tmp: int64; checked: boolean; const p: TPos);
 procedure SlicePtr(size, tmp: int64; checked: boolean; const p: TPos);
+procedure CopySlice(dOff, sOff, size: int64; checked: boolean; const p: TPos);
 
 procedure PopArg(var c: TCall);
 procedure Call(var c: TCall);
@@ -1083,6 +1084,39 @@ begin
   if isArray then Lea(RAX, m) else Load(RAX, m, 8, false);
   Alu(aluAdd, RAX, RCX);
   Store(Mem(RBP, tmp), RAX, 8);
+end;
+
+{ COPY: the elements of the slice in the frame at sOff, of size bytes
+  each, to the start of the one at dOff, which must be as long, as one
+  block; backwards when the destination is above the source, so that
+  an overlap comes out right. }
+procedure CopySlice(dOff, sOff, size: int64; checked: boolean; const p: TPos);
+var ml: TMem; L, E: longint;
+begin
+  Load(RDX, Mem(RBP, sOff + 8), 8, false);
+  if checked then begin
+    ml := Mem(RBP, dOff + 8);
+    MovRI(RAX, 0);
+    AluM(aluCmp, RDX, ml);
+    Check(ccBE, 1, p, RAX, ml, 0, -1);
+  end;
+  MovRR(RCX, RDX);
+  if size <> 1 then ImulI(RCX, size);
+  Load(RSI, Mem(RBP, sOff), 8, false);
+  Load(RDI, Mem(RBP, dOff), 8, false);
+  Alu(aluCmp, RDI, RSI);
+  L := NoLabel;
+  Jcc(ccBE, L);
+  Lea(RSI, MemIdx(RSI, RCX, 1, -1));
+  Lea(RDI, MemIdx(RDI, RCX, 1, -1));
+  Std;
+  RepMovsb;
+  Cld;
+  E := NoLabel;
+  Jmp(E);
+  FixLink(L);
+  RepMovsb;
+  FixLink(E);
 end;
 
 { Pops a pointer, lo and hi, and makes the slice p[lo..hi] at tmp. Its

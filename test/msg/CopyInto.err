@@ -1,0 +1,7 @@
+conform/err/CopyInto.raz:5:10: error: COPY copies into an array variable or a slice, found a string
+    5 |     COPY("abc", "x");
+      |          ^^^^^
+conform/err/CopyInto.raz:6:13: error: COPY copies elements of I64, found a string
+    6 |     COPY(a, "abc");
+      |             ^^^^^
+raz: 2 errors

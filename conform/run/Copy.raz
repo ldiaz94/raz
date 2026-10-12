@@ -1,0 +1,29 @@
+module Copy;
+import Out;
+type P = record x, y: I32; end;
+var a: [10]U8; b: []U8; ps: [4]P; qs: [2]P; big: [100]I64; i: INT;
+proc show(s: []U8);
+begin
+    Out.str(s); Out.ln;
+end;
+proc main*;
+begin
+    a := "abcdefghij";
+    COPY(a[2..10], a[0..5]);    (* overlap, up *)
+    show(a[0..10]);
+    a := "abcdefghij";
+    COPY(a, a[3..10]);          (* overlap, down *)
+    show(a[0..10]);
+    b := a[0..10];
+    COPY(b[8..10], "XY");
+    show(a[0..10]);
+    COPY(b, "");
+    qs := [{x: 1, y: 2}, {x: 3, y: 4}];
+    COPY(ps[1..4], qs);
+    Out.int(I64(ps[1].x + ps[2].y)); Out.ln;
+    for i := 0 to 99 do big[i] := i; end;
+    COPY(big[1..100], big[0..99]);
+    Out.int(big[99] + big[1] + big[0]); Out.ln;
+    COPY(a[0..2], "abc");
+end;
+end Copy.

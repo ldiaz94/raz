@@ -9,12 +9,12 @@ const least = -9223372036854775807 - 1;   (* the smallest I64 *)
 (* s's bytes, copied into memory from a, to keep after s's own are
    gone; "" and false if a has no room. *)
 proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);
-var p: ^U8; i: INT;
+var p: ^U8;
 begin
     if LEN(s) = 0 then return "", true; end;
     p := Mem.alloc(a, LEN(s), 1);
     if p = nil then return "", false; end;
-    for i := 0 to LEN(s) - 1 do p[i] := s[i]; end;
+    COPY(p[0..LEN(s)], s);
     return p[0..LEN(s)], true;
 end;
 

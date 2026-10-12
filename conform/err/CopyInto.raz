@@ -1,0 +1,8 @@
+module CopyInto;
+proc main*;
+var a: [3]I64;
+begin
+    COPY("abc", "x");
+    COPY(a, "abc");
+end;
+end CopyInto.

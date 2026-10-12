@@ -83,6 +83,8 @@ procedure Syscall;
 procedure Mfence;
 procedure Ud2;
 procedure RepMovsb;
+procedure Std;
+procedure Cld;
 procedure RepStosb;
 procedure RepeCmpsb;
 procedure LockCmpxchg(const m: TMem; r: longint);
@@ -561,6 +563,9 @@ procedure Syscall; begin Say('syscall'); Put1($0F); Put1($05) end;
 procedure Mfence; begin Say('mfence'); Put1($0F); Put1($AE); Put1($F0) end;
 procedure Ud2; begin Say('ud2'); Put1($0F); Put1($0B) end;
 procedure RepMovsb; begin Say('rep movsb'); Put1($F3); Put1($A4) end;
+{ the direction flag, which has rep movsb go down, and back up }
+procedure Std; begin Say('std'); Put1($FD) end;
+procedure Cld; begin Say('cld'); Put1($FC) end;
 procedure RepStosb; begin Say('rep stosb'); Put1($F3); Put1($AA) end;
 procedure RepeCmpsb; begin Say('repe cmpsb'); Put1($F3); Put1($A6) end;
 

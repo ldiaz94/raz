@@ -840,6 +840,15 @@ begin
       x.mode := mNone;
     end;
     bNew: New_(x);
+    bCopy: begin
+      Expression(x, nil);
+      CopyDest(x);
+      Expect(sComma);
+      Expression(y, nil);
+      CopyFrom(x, y);
+      MakeConst(x, tNone, 0);
+      x.mode := mNone;
+    end;
   end;
   Expect(sRparen);
 end;

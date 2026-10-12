@@ -112,6 +112,8 @@ procedure ReturnAll(var x: TItem);
 procedure ReturnNone;
 procedure Pin(var x: TItem);
 procedure IncDec(var v, k: TItem; dec: boolean);
+procedure CopyDest(var d: TItem);
+procedure CopyFrom(var d, s: TItem);
 procedure Msg(var x: TItem);
 function ErrorChunk(var x: TItem; module, name: longint): longint;
 
@@ -1383,6 +1385,25 @@ begin
   Value(k);
   if v.base = bReg then IncDecReg(v.chunk, ScalarSize(v.typ), v.typ^.signed, dec)
   else gen.IncDec(ScalarSize(v.typ), v.typ^.signed, dec);
+end;
+
+{ COPY(d, s): d, an array variable or a slice, as a slice in the frame,
+  before s is read }
+procedure CopyDest(var d: TItem);
+begin
+  if not IsSeq(d.typ) or (d.mode = mStr) or (d.typ^.form = fArray) and ((d.mode <> mVar) or not d.isVar) then
+    MarkAt(d.pos, 'COPY copies into an array variable or a slice, found ' + What(d));
+  if d.typ^.form = fArray then NotReadOnly(d);
+  SeqSlice(d);
+end;
+
+{ ... and the elements of s copied to its start }
+procedure CopyFrom(var d, s: TItem);
+begin
+  if not IsSeq(s.typ) or not Same(ElemOf(s.typ), d.typ^.base) then
+    MarkAt(s.pos, 'COPY copies elements of ' + TypeName(d.typ^.base) + ', found ' + What(s));
+  SeqSlice(s);
+  CopySlice(d.off, s.off, d.typ^.base^.size, checks, s.pos);
 end;
 
 { An error is the address of its length, followed by its message. }
