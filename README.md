@@ -24,7 +24,7 @@ end Hello.
     $ examples/Hello
     hello, world
 
-The compiler is about 7,600 lines of Free Pascal: one pass, no
+The compiler is about 7,800 lines of Free Pascal: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
 ELF executable itself, with no assembler or linker, and compiles about
 a million lines a second.

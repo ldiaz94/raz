@@ -1,0 +1,7 @@
+test/err/OpenEnd.raz:3:6: error: sign may reach its end without return, and then returns zero
+    3 | proc sign(n: I64): I64;
+      |      ^^^^
+test/err/OpenEnd.raz:23:6: error: brk may reach its end without return, and then returns zero
+   23 | proc brk(n: I64): I64;
+      |      ^^^
+raz: 2 errors

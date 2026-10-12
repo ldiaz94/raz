@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of Free Pascal, under 7,700 lines of code.
+The compiler is eleven files of Free Pascal, under 7,800 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -8,14 +8,14 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 296 | 218 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 855 | 722 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 602 | 497 | Types, objects, scopes, layout |
+| `src/diag.pas` | 310 | 229 | Messages: positions, source excerpts, colour, counts |
+| `src/scan.pas` | 884 | 745 | Symbols, literals, comments, positions |
+| `src/sym.pas` | 615 | 510 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 276 | 217 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,039 | 870 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/gen.pas` | 1,332 | 1,039 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,320 | 1,100 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,578 | 2,291 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/item.pas` | 1,342 | 1,118 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,653 | 2,354 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 234 | 180 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -471,6 +471,14 @@ aren't reported, since they follow from one that was. Nothing breaks
 for the half-made code: once there is an error, no executable is
 written.
 
+**Hints.** Some messages guess at the mistake from the layout. A
+block statement passes `CloseEnd` its start and how far its line is
+indented; an `end` further left was most likely meant for a block
+around it, so the first such statement is kept, and `EndMissing`
+notes it when a procedure's own `end` turns out to be missing. A type
+error in an argument goes through `Mismatch`, which notes the
+parameter it goes to (`passing`, set by `PassArg`).
+
 **Warnings.** `Declare` keeps each module's declarations in order in
 two lists, through `link`: its own and its procedures', parameters
 and a match's names for fields among them. `Named` marks an object
@@ -479,7 +487,9 @@ itself; `LeftSide` puts `read` back as it was for a variable named
 whole before `:=`, which is written, not read. At the end of a module
 with no errors, `Warnings` merges the two lists by position and `Warn`
 reports what isn't exported, doesn't start with `_`, and was never
-used, or, for a variable, only assigned. A generic module's instances
+used, or, for a variable, only assigned, and a procedure with results
+that may reach its end (`openEnd`, from `ends`, which each statement
+sets). A generic module's instances
 share its text, so only the first is warned of.
 
 The built-in procedures are in `Builtin` (and `New_`, `Atomic`): each
@@ -592,7 +602,11 @@ this one does.
   a pointer in its own declaration does. Assigning a variable whole
   (`x :=`, `a, b :=`) doesn't read it; anything else does. Warnings
   come only for a module with no errors, and a generic module's only
-  for its first instance. `-Werror` makes each an error.
+  for its first instance. A procedure with results is warned of if
+  it may reach its end without `return` (`ends`, `parse.pas`): each
+  way through its statements must end in a `return`, an `if` with an
+  `else`, a `match`, a `while true` or a `repeat ... until false`
+  with no `break`. `-Werror` makes each an error.
 - **Several results** come back through a hidden pointer to the
   caller's slots; a code procedure returns two in rax and rdx.
 - **Reals.** A real constant is held as an F64. An `F32` in a register

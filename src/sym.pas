@@ -71,6 +71,7 @@ type
     read: boolean;     { oVar: named other than as what := assigns }
     fwd: boolean;      { oProc: declared forward, no body yet }
     isCode: boolean;   { oProc: a code procedure }
+    openEnd: boolean;  { oProc: has results, and may reach its end }
     ext: boolean;      { oProc, oVar: C's, reached through its chunk, which
                          holds its address }
     fields: PObj;      { oCase: its fields }

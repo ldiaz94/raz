@@ -1,0 +1,33 @@
+module OpenEnd;
+import Out;
+proc sign(n: I64): I64;
+begin
+    if n > 0 then
+        return 1;
+    end;
+end;
+proc ok(n: I64): I64;
+begin
+    if n > 0 then
+        return 1;
+    else
+        return 0;
+    end;
+end;
+proc loop(n: I64): I64;
+begin
+    while true do
+        if n > 0 then return n; end;
+    end;
+end;
+proc brk(n: I64): I64;
+begin
+    while true do
+        if n > 0 then break; end;
+    end;
+end;
+proc main*;
+begin
+    Out.int(sign(-1) + ok(1) + loop(1) + brk(1));
+end;
+end OpenEnd.

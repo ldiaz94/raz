@@ -91,6 +91,8 @@ var
   stray: boolean;         { an "end" in this procedure stood left of its statement's line }
   strayAt: TPos;          { ... the first such statement }
   elseIf: boolean;        { an "else if" in this procedure }
+  ends: boolean;          { the statements just read never go on past
+                            their end: each way through them returns }
   useAt: TPos;            { ... which is here }
 
 procedure Expression(var x: TItem; want: PType); forward;
@@ -1197,7 +1199,7 @@ begin
 end;
 
 procedure IfStatement(const start: TPos; ind: longint);
-var x: TItem; L, endL: longint;
+var x: TItem; L, endL: longint; all: boolean;
 begin
   Next;
   Expression(x, nil);
@@ -1205,6 +1207,7 @@ begin
   L := NoLabel;
   CondJump(x, L);
   Statements;
+  all := ends;
   endL := NoLabel;
   while tok = sElsif do begin
     Jump(endL);
@@ -1215,6 +1218,7 @@ begin
     L := NoLabel;
     CondJump(x, L);
     Statements;
+    all := all and ends;
   end;
   if tok = sElse then begin
     Jump(endL);
@@ -1222,17 +1226,23 @@ begin
     Next;
     if tok = sIf then elseIf := true;
     Statements;
-  end else Fix(L);
+    all := all and ends;
+  end else begin
+    Fix(L);
+    all := false;
+  end;
   CloseEnd(start, ind);
   Fix(endL);
+  ends := all;
 end;
 
 procedure WhileStatement(const start: TPos; ind: longint);
-var x: TItem; top, L: longint; lp: TLoop; old: PLoop;
+var x: TItem; top, L: longint; lp: TLoop; old: PLoop; forever: boolean;
 begin
   Next;
   top := pc;
   Expression(x, nil);
+  forever := (x.mode = mConst) and (x.val <> 0);
   Expect(sDo);
   L := NoLabel;
   CondJump(x, L);
@@ -1240,6 +1250,7 @@ begin
   Statements;
   JumpBack(top);
   CloseEnd(start, ind);
+  ends := forever and (lp.brk = NoLabel);
   Fix(L);
   Fix(lp.brk);
   curLoop := old;
@@ -1255,6 +1266,7 @@ begin
   curLoop := old;
   Expect(sUntil);
   Expression(x, nil);
+  ends := (x.mode = mConst) and (x.val = 0) and (lp.brk = NoLabel);   { until false }
   L := NoLabel;
   CondJump(x, L);
   FixTo(L, top);
@@ -1372,7 +1384,7 @@ end;
 procedure MatchStatement(const start: TPos; ind: longint);
 var
   x: TItem; t: PType; c, f, o: PObj; p: int64; L, endL, n: longint;
-  seen: array[0..255] of boolean; hasElse: boolean; endAt: TPos; ls: TLabels;
+  seen: array[0..255] of boolean; hasElse, all: boolean; endAt: TPos; ls: TLabels;
 begin
   Next;
   Expression(x, nil);
@@ -1382,6 +1394,7 @@ begin
   Expect(sOf);
   FillChar(seen, SizeOf(seen), 0);
   hasElse := false;
+  all := true;
   endL := NoLabel;
   ls.n := 0;
   while tok = sBar do begin
@@ -1431,9 +1444,11 @@ begin
       Jump(endL);
       Fix(L);
     end;
+    all := all and ends;
   end;
   endAt := TokPos;
   CloseEnd(start, ind);
+  ends := all;
   if (t^.form = fInt) and not hasElse then
     MarkHelp(endAt, 'a match on an integer needs an else arm', 'it may be empty: | else:');
   if not hasElse then begin
@@ -1563,6 +1578,7 @@ begin
   first := id;
   NoteLine(CurLine, CurCol);
   m := TempMark;
+  ends := false;
   case tok of
     sIdent: begin
       LeftSide(x, called);
@@ -1610,6 +1626,7 @@ begin
           PushVar(FrameAdr(deferSlot), 8, false, KindOf(curResult));
         end else RunDefers(0);
         ReturnJump;
+        ends := true;
       end;
     end;
     sBreak: begin
@@ -1649,6 +1666,7 @@ begin
   base := numDefers;
   old := directDefer;
   directDefer := false;
+  ends := false;
   while not (tok in [sEnd, sElse, sElsif, sUntil, sBar, sEof]) do begin
     Statement;
     if not skipped or (tok = sSemicolon) then Expect(sSemicolon);
@@ -1745,6 +1763,7 @@ begin
   EnterBody(p^.chunk, line);
   stray := false; elseIf := false;
   Statements;
+  p^.openEnd := (curResult <> nil) and not ends;
   NoteLine(CurLine, CurCol);
   Expect(sEnd);
   EndProc(p^.chunk);
@@ -2187,6 +2206,8 @@ procedure Warn(o: PObj);
 var s: shortstring;
 begin
   s := NameOf(o^.name);
+  if (o^.cls = oProc) and o^.openEnd then
+    Warning(o^.pos, s + ' may reach its end without return, and then returns zero');
   if o^.exported or (s[1] = '_') then exit;
   if o^.used and (o^.read or (o^.cls <> oVar) or o^.isVar or o^.ext) then exit;
   case o^.cls of
