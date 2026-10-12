@@ -9,7 +9,7 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.12 of the report; section 12 says what each
+This is version 2026-10.13 of the report; section 12 says what each
 version changed. It is a thaw the owner chose, for a language anyone
 can build again, and it breaks programs written for 2026-10.10.
 
@@ -1281,6 +1281,8 @@ proc restoreMode*(fd: INT);        (* as rawMode found it *)
 proc termSize*(fd: INT): (INT, INT);   (* columns and rows; 80 and 24 if unknown *)
 proc ready*(fd: INT; ms: INT): BOOL;   (* something to read within ms, or ever if ms < 0 *)
 proc readyOf*(fds: []INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
+proc readyFor*(reads, writes: []INT; ms: INT): INT;   (* readyOf, and the first of writes with room to write *)
+proc setBlocking*(fd: INT; yes: BOOL): INT;   (* if not yes, a read or write that would wait is -11 at once *)
 
 proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
 proc workDir*: ([]U8, INT);        (* the working directory, good until the next call *)
@@ -1429,6 +1431,16 @@ or failed, counts as ready, since a read of it won't wait. It looks at
 the first 64 of `fds`, and `connect` and `listen` take a path of at
 most 107 bytes, as `struct sockaddr_un` holds; a longer one is -36
 (ENAMETOOLONG).
+
+A program that both reads from a descriptor and writes much to it, as
+a terminal writes what is pasted to its program while it reads what
+the program writes back, must not wait on either: the program may be
+waiting for its own writes to be read. `setBlocking(fd, false)` has a
+read or a write on `fd` that would wait return -11 (EAGAIN) at once,
+a write having written what there was room for; `readyFor` waits, as
+`readyOf` does, for something to read on any of `reads` or for room to
+write on any of `writes`. A descriptor in both is given once, when it
+is ready for either; the 64 it looks at are `reads`, then `writes`.
 
 **Str, Map, Sort, Math and Fmt** gain these:
 
@@ -1742,6 +1754,8 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   language, not as bytes (section 8; appendix A). A program that stops
   says the calls under way and their variables, and `Rt.trace` says
   them on demand (sections 10 and 11).
+- **2026-10.13.** `Sys` gains writing without waiting, and waiting for
+  room to write (section 11).
 
 ## Appendix A. What an implementation chooses
 

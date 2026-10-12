@@ -32,6 +32,7 @@ extern proc tcsetattr*(fd: I32; when: I32; t: ^U8): I32;
 extern proc cfmakeraw*(t: ^U8);
 extern proc ioctl*(fd: I32; request: UINT; ...): I32;
 extern proc poll*(fds: ^U8; n: UINT; ms: I32): I32;
+extern proc fcntl*(fd, cmd: I32; ...): I32;
 extern proc socket*(domain, kind, protocol: I32): I32;
 extern proc connect*(fd: I32; addr: ^U8; len: U32): I32;
 extern proc send*(fd: I32; buf: ^U8; n: UINT; flags: I32): INT;
