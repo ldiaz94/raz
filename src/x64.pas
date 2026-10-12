@@ -277,14 +277,6 @@ begin
   XN := 'xmm' + IntStr(x);
 end;
 
-function ChunkName(c: longint): shortstring;
-begin
-  with chunks^[c] do
-    if name < 0 then ChunkName := 'data' + IntStr(c)
-    else if module < 0 then ChunkName := NameOf(name)
-    else ChunkName := NameOf(module) + '.' + NameOf(name);
-end;
-
 { A memory operand, with the size of what it holds, as the assembler
   reads it }
 function MN(const m: TMem; size: longint = 0): shortstring;

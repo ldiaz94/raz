@@ -25,6 +25,7 @@ begin
         Mem.free(Heap.heap, ^U8(p));
     end;
     Out.int(sum); Out.ln;
+    p := nil;   (* its address would change from run to run *)
     i := 3;
     a[i] := 1;
     Out.str("not reached\n");

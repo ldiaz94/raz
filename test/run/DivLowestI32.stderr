@@ -1,1 +1,2 @@
 test/run/DivLowestI32.raz:11:5: stopped by a division fault
+  in DivLowestI32.main at test/run/DivLowestI32.raz:11:5: a = -2147483648

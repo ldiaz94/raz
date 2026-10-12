@@ -152,7 +152,7 @@ the wishes below.
       encoder knows and a few of the system's, bytes for the rest.
 - [x] 9c. `raz -S`: each line of source with its instructions, named
       by the encoder as it makes them, not by a disassembler.
-- [ ] 9d. The trap report: on a failed check or a trap, the calls
+- [x] 9d. The trap report: on a failed check or a trap, the calls
       under way, each with its variables by name and value, from
       tables the compiler writes; `Rt.trace` gives the same on
       demand.

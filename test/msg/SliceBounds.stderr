@@ -1,1 +1,2 @@
 conform/run/SliceBounds.raz:10:23: slice 9..6 is out of range for a length of 8
+  in SliceBounds.main at conform/run/SliceBounds.raz:10:23: lo = 9

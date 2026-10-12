@@ -1,0 +1,31 @@
+module Trace;
+(* The calls under way, with their variables: on demand with Rt.trace,
+   and after a failed check *)
+import Out, Rt;
+
+type Color = (red, green, blue);
+
+proc inner(var n: I64; f: F64; ok: BOOL; c: Color; b: U8; s: I16);
+var a: [2]I64; k: INT;
+begin
+    Rt.trace;
+    if ok and (c = blue) and (b > 0) and (s < 0) and (f < 0.0) then k := INT(n); end;
+    a[k] := 1;
+end;
+
+proc outer(n: I64);
+var x: I64; r: F32;
+begin
+    r := 0.25;
+    x := n + 1 + I64(r);
+    inner(x, -1.5, true, blue, 200, -7);
+end;
+
+proc main*;
+begin
+    Out.str("go\n");
+    Out.flush;
+    outer(4);
+end;
+
+end Trace.

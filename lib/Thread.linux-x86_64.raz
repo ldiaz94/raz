@@ -53,6 +53,7 @@ code
     jnz parent;
     pop rax;            (* fn *)
     pop rdi;            (* arg *)
+    xor ebp, ebp;       (* the first frame: Rt's report of the calls stops here *)
     call rax;
     xor edi, edi;
     mov eax, 60;        (* exit, this thread only *)

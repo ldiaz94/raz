@@ -22,7 +22,8 @@
 # What a program says on standard error, the compiler's messages
 # included, is the implementation's own (appendix A). One that keeps
 # its text may give MESSAGES, a directory of X.stderr and X.err, the
-# standard error of run/X and of compiling err/X, compared when there.
+# standard error of run/X and of compiling err/X, compared when there,
+# with each address it shows, 0x and hex digits, as 0x?.
 
 noreals=
 if [ "$1" = -noreals ]; then noreals=1; shift; fi
@@ -55,7 +56,8 @@ for f in conform/run/*.raz; do
     elif [ $status != $want ]; then
         echo "FAIL $f: status $status, not $want"
         fail=$((fail + 1))
-    elif [ -f $msg/$name.stderr ] && ! cmp -s $out/$name.err $msg/$name.stderr; then
+    elif [ -f $msg/$name.stderr ] && ! sed 's/0x[0-9a-f]*/0x?/g' $out/$name.err |
+            cmp -s - $msg/$name.stderr; then
         echo "FAIL $f: standard error differs"
         diff $out/$name.err $msg/$name.stderr | head -5
         fail=$((fail + 1))

@@ -44,6 +44,14 @@ type
     path, line, col: longint;  { the file's path, interned, the line and column }
   end;
 
+  { A variable of a procedure, for the trap report: Rt shows it, by
+    kind, from its place in the frame }
+  TVarNote = record
+    chunk, name: longint;
+    off: longint;      { from the frame pointer }
+    kind: longint;     { how Rt shows it: see link.pas }
+  end;
+
   TFixup = record
     at: longint;      { the 32-bit field, as an offset in text }
     chunk: longint;   { the chunk it refers to }
@@ -70,6 +78,8 @@ var
   numLines: longint;
   curFile: longint;   { the file being compiled, for NoteLine }
   curChunk: longint;  { the chunk of code being written }
+  varNotes: ^TVarNote;
+  numVarNotes: longint;
 
 function NewChunk(sec: TSection; module, name: longint): longint;
 procedure BeginChunk(c: longint);
@@ -79,6 +89,8 @@ procedure SetBss(c: longint; size, align: longint);
 function ExternChunk(name: longint): longint;
 procedure NoteLine(line, col: longint);
 procedure AddFixup(at, chunk, addend: longint);
+procedure NoteVar(chunk, name, off, kind: longint);
+function ChunkName(c: longint): shortstring;
 
 procedure Put1(b: longint);
 procedure Put4(v: longint);
@@ -223,6 +235,26 @@ begin
   fixups^[numFixups].chunk := chunk;
   fixups^[numFixups].addend := addend;
   inc(numFixups);
+end;
+
+procedure NoteVar(chunk, name, off, kind: longint);
+begin
+  if numVarNotes and 255 = 0 then varNotes := ReAllocMem(varNotes, (numVarNotes + 256) * SizeOf(TVarNote));
+  varNotes[numVarNotes].chunk := chunk;
+  varNotes[numVarNotes].name := name;
+  varNotes[numVarNotes].off := off;
+  varNotes[numVarNotes].kind := kind;
+  inc(numVarNotes);
+end;
+
+{ The name of chunk c: its module's and its own, or literal and its
+  number for a literal }
+function ChunkName(c: longint): shortstring;
+begin
+  with chunks^[c] do
+    if name < 0 then ChunkName := 'literal' + IntStr(c)
+    else if module < 0 then ChunkName := NameOf(name)
+    else ChunkName := NameOf(module) + '.' + NameOf(name);
 end;
 
 initialization

@@ -1,1 +1,2 @@
 test/run/DivLowest.raz:13:5: stopped by a division fault
+  in DivLowest.main at test/run/DivLowest.raz:13:5: a = -9223372036854775808, b = -1

@@ -3,6 +3,9 @@
    failures; and the handlers that say where the program was when a
    signal stops it.
    The compiler finds fail, exit, cExit and places by these names.
+   After a failed check or a signal, and on demand with trace, Rt says
+   the calls under way and their variables, from the frames' chain of
+   rbp and the compiler's tables in places.
    The handlers are Linux's on x86-64, set by system calls: what the
    kernel hands them is laid out as it is there. *)
 module Rt;
@@ -14,13 +17,22 @@ const
     SigFpe = 8;
     SigSegv = 11;
     Low = 10000H;   (* no address below this is ever mapped *)
+    Digits = "0123456789abcdef";
     (* SA_SIGINFO, SA_ONSTACK, SA_RESTORER and SA_RESETHAND *)
     Flags = 4H + 8000000H + 4000000H + 80000000H;
 
 type
     (* The code from address at on comes from line and col of the
-       file whose path is at path in the paths *)
+       file whose path is at path in the names *)
     Place = record at, line, col, path: U32; end;
+    (* A procedure, from address start to stop, called name, and its
+       count variables from first on *)
+    Proc = record start, stop, name, first, count: U32; end;
+    (* A variable of a procedure, at off from its frame, shown by kind:
+       1 a signed integer, 2 an unsigned one, 3 a BOOL, 4 an address,
+       5 a real; plus its size times 16, and 256 if the frame holds its
+       address *)
+    Local = record name: U32; off: I32; kind: U32; end;
     (* What rt_sigaction and sigaltstack take *)
     Action = record
         handler: proc(sig: INT; info, ctx: ^U8);
@@ -34,9 +46,10 @@ var
     atExits: [MaxAtExit]proc;
     numAtExit: INT;
     cExit: proc(status: I32);   (* C's exit, set first thing in a program that uses C *)
-    (* Set first thing too: the number of places, where the program's
-       code starts and stops, the places, and the paths. The linker
-       makes them. *)
+    (* Set first thing too: the numbers of places, where the program's
+       code starts and stops, the numbers of procedures and variables;
+       the places, procedures and variables, and the paths and names.
+       The linker makes them. *)
     places: ^INT;
     line: [256]U8;              (* the message being made *)
     lineLen: INT;
@@ -123,6 +136,12 @@ begin
     lineLen := 0;
 end;
 
+(* The paths and names, after the places, procedures and variables *)
+proc names: ^U8;
+begin
+    return ^U8(places + 5) + 16 * places[0] + 20 * places[3] + 12 * places[4];
+end;
+
 (* Puts where the code at address a comes from, as file:line:col: and
    a space, if a is in the program's code: the place with the highest
    address up to a. *)
@@ -131,18 +150,149 @@ var p, best: ^Place; i, n: INT;
 begin
     if (places = nil) or (a < UINT(places[1])) or (a >= UINT(places[2])) then return; end;
     n := places[0];
-    p := ^Place(places + 3);
+    p := ^Place(places + 5);
     best := nil;
     for i := 0 to n - 1 do
         if (UINT(p[i].at) <= a) and ((best = nil) or (p[i].at > best^.at)) then best := p + i; end;
     end;
     if best = nil then return; end;
-    putStr(^U8(p + n) + INT(best^.path));
+    putStr(names() + INT(best^.path));
     put(":");
     putInt(INT(best^.line));
     put(":");
     putInt(INT(best^.col));
     put(": ");
+end;
+
+(* The frame pointer of the procedure that calls it, which a code
+   procedure leaves as it is *)
+proc framePtr: UINT;
+code
+    mov rax, rbp;
+    ret;
+end framePtr;
+
+(* The frame of the procedure that called the one calling this *)
+proc callerFrame: UINT;
+var q: ^UINT;
+begin
+    q := ^UINT(framePtr());   (* callerFrame's own: its caller's frame is in it *)
+    q := ^UINT(q^);
+    return q^;
+end;
+
+(* The procedure whose code holds address a, or nil *)
+proc procAt(a: UINT): ^Proc;
+var p: ^Proc; i: INT;
+begin
+    if (places = nil) or (a < UINT(places[1])) or (a >= UINT(places[2])) then return nil; end;
+    p := ^Proc(^U8(places + 5) + 16 * places[0]);
+    for i := 0 to places[3] - 1 do
+        if (UINT(p[i].start) <= a) and (a < UINT(p[i].stop)) then return p + i; end;
+    end;
+    return nil;
+end;
+
+proc putHex(u: UINT);
+var buf: [16]U8; i: INT;
+begin
+    i := 16;
+    repeat
+        DEC(i);
+        buf[i] := Digits[INT(u & 15)];
+        u := u shr 4;
+    until u = 0;
+    put("0x");
+    put(buf[i..16]);
+end;
+
+(* x with six figures after the point, or as m e n beyond them *)
+proc putReal(x: F64);
+var e, i: INT; f: U64;
+begin
+    if x # x then put("nan"); return; end;
+    if x < 0.0 then put("-"); x := -x; end;
+    if (x > 1.0) and (x * 2.0 = x) then put("inf"); return; end;
+    e := 0;
+    while x >= 1.0E15 do x := x / 10.0; INC(e); end;
+    while (x # 0.0) and (x < 0.001) do x := x * 10.0; DEC(e); end;
+    f := U64(x * 1000000.0 + 0.5);
+    putInt(INT(f div 1000000));
+    put(".");
+    for i := 1 to 6 do
+        f := f mod 1000000 * 10;
+        put(Digits[INT(f div 1000000)..INT(f div 1000000) + 1]);
+    end;
+    if e # 0 then put("e"); putInt(e); end;
+end;
+
+(* The value of variable l of the frame at bp *)
+proc putValue(bp: UINT; l: ^Local);
+var a: ^U8; w: ^UINT; h: ^U16; s: ^U32; f: ^F32; d: ^F64; v: UINT; bits: INT;
+begin
+    a := ^U8(bp) + INT(l^.off);
+    w := ^UINT(a);
+    if l^.kind & 256 # 0 then a := ^U8(w^); w := ^UINT(a); end;
+    h := ^U16(a); s := ^U32(a); f := ^F32(a); d := ^F64(a);
+    bits := INT(l^.kind shr 4 & 15) * 8;
+    match bits of
+    | 8: v := UINT(a^);
+    | 16: v := UINT(h^);
+    | 32: v := UINT(s^);
+    | else: v := w^;
+    end;
+    match l^.kind & 15 of
+    | 1:
+        if (bits < 64) and (v shr (bits - 1) # 0) then putInt(INT(v) - INT(1) shl bits);
+        else putInt(INT(v));
+        end;
+    | 2: putInt(INT(v));
+    | 3: if v # 0 then put("true"); else put("false"); end;
+    | 4: if v = 0 then put("nil"); else putHex(v); end;
+    | else: if bits = 32 then putReal(F64(f^)); else putReal(d^); end;
+    end;
+end;
+
+(* Says the calls under way, a line each, from the one at address ip
+   whose frame is at bp: where each is, and its variables, unless vars
+   is false for the first. At most 20; a frame that isn't the
+   program's ends them. *)
+proc calls(ip, bp: UINT; vars: BOOL);
+var p: ^Proc; l: ^Local; i, n: INT; q: ^UINT;
+begin
+    for n := 1 to 20 do
+        p := procAt(ip);
+        if p = nil then return; end;
+        put("  in ");
+        putStr(names() + INT(p^.name));
+        put(" at ");
+        where(ip);
+        l := ^Local(^U8(places + 5) + 16 * places[0] + 20 * places[3]) + INT(p^.first);
+        if not vars or (p^.count = 0) then DEC(lineLen, 2); end;   (* where's ": " *)
+        for i := 0 to INT(p^.count) - 1 do
+            if vars then
+                if i > 0 then put(", "); end;
+                putStr(names() + INT(l[i].name));
+                put(" = ");
+                putValue(bp, l + i);
+            end;
+        end;
+        say;
+        vars := true;
+        q := ^UINT(bp);
+        if (bp & 7 # 0) or (q[0] <= bp) then return; end;
+        ip := q[1] - 1;   (* the call, by its return address *)
+        bp := q[0];
+    end;
+end;
+
+(* Says on standard error the calls under way, from the one that calls
+   it, each with its variables, as after a failed check. *)
+proc trace*;
+var q: ^UINT;
+begin
+    q := ^UINT(framePtr());
+    calls(q[1] - 1, q[0], true);
 end;
 
 (* A check failed in the code at address at: says where, and what
@@ -166,6 +316,7 @@ begin
         else put("a stack overflow");
         end;
         say;
+        calls(at, callerFrame(), true);
         act := {};   (* the signal's default action *)
         SYSCALL(13, sig, ADR(act), 0, 8);   (* rt_sigaction *)
         SYSCALL(62, SYSCALL(39), sig);      (* kill(getpid(), sig) *)
@@ -189,6 +340,7 @@ begin
         putInt(len);
     end;
     say;
+    calls(at, callerFrame(), true);
     exit(2);
 end;
 
@@ -205,8 +357,10 @@ end sigReturn;
    signal ends the program. info and ctx are the kernel's siginfo and
    ucontext. *)
 proc onSignal(sig: INT; info, ctx: ^U8);
-var adr, sp, ip: UINT; q: ^UINT; why: []U8;
+var adr, sp, ip, bp: UINT; q: ^UINT; why: []U8;
 begin
+    q := ^UINT(ctx + 120);     (* uc_mcontext's rbp *)
+    bp := q^;
     q := ^UINT(info + 16);   (* si_addr *)
     adr := q^;
     q := ^UINT(ctx + 160);   (* uc_mcontext's rsp, then rip *)
@@ -225,6 +379,8 @@ begin
     put("stopped by ");
     put(why);
     say;
+    (* the variables of a frame the stack overflowed in may be past it *)
+    calls(ip, bp, why # "a stack overflow");
 end;
 
 begin

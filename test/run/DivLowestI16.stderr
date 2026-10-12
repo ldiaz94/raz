@@ -1,1 +1,2 @@
 test/run/DivLowestI16.raz:12:5: stopped by a division fault
+  in DivLowestI16.main at test/run/DivLowestI16.raz:12:5: a = -32768, b = -1

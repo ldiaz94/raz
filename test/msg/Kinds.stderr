@@ -1,1 +1,2 @@
 conform/run/Kinds.raz:92:16: 5 isn't a position of Color
+  in Kinds.main at conform/run/Kinds.raz:92:16: s = 5, t = 12, c = 1, r = -1, one = 10

@@ -11,12 +11,12 @@ disassembly.
 | `src/diag.pas` | 296 | 218 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 851 | 722 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 596 | 497 | Types, objects, scopes, layout |
-| `src/chunk.pas` | 244 | 192 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,039 | 877 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/chunk.pas` | 276 | 217 | The compiled program: chunks, fixups, line notes |
+| `src/x64.pas` | 1,031 | 870 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/gen.pas` | 1,321 | 1,039 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,318 | 1,100 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,529 | 2,267 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/link.pas` | 180 | 139 | Tree shaking, layout, patching, the places |
+| `src/parse.pas` | 2,559 | 2,291 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/link.pas` | 228 | 180 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 424 | 351 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 195 | 147 | The command line |
 
@@ -496,9 +496,15 @@ target.
 
 Between placing text and placing rodata, `MakePlaces` writes the
 places, a rodata chunk: for each line note in live code, its address,
-line, column and file. `Rt` reads them, through `Rt.places`, which the
+line, column and file; and for the trap report, each live procedure's
+address range and name, and its variables, which `Body` (`parse.pas`)
+notes with `NoteVar`: each one's name, its place in the frame and how
+`Rt` shows it (`VarKind`). `Rt` reads them, through `Rt.places`, which the
 entry point sets, to say where a failed check or a signal was: the
-place with the highest address up to the one it has. Its signal
+place with the highest address up to the one it has. Then it follows
+the chain of frames, each `rbp` pointing at its caller's, and says
+each call under way and its variables (`calls`); `Rt.trace` does the
+same on demand. A thread's first frame has `rbp` zero, which ends it. Its signal
 handlers, set in its body, run on a stack of their own, so that they
 can tell a stack overflow, and leave by returning to the faulting
 instruction with the handler reset, so that the signal ends the

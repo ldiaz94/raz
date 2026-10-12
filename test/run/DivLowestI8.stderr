@@ -1,1 +1,2 @@
 test/run/DivLowestI8.raz:13:5: stopped by a division fault
+  in DivLowestI8.main at test/run/DivLowestI8.raz:13:5: a = -128, b = -1

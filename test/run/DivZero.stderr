@@ -1,1 +1,2 @@
 test/run/DivZero.raz:9:5: stopped by a division fault
+  in DivZero.main at test/run/DivZero.raz:9:5: a = 7, b = 0

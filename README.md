@@ -94,7 +94,14 @@ At run time, a failed check says where it is and what failed, as in
 `Main.raz:12:9: index 7 is out of range for a length of 5`, and ends
 the program with status 2. A program stopped by a signal says where it
 was and why first: a `nil` pointer, a `nil` procedure, a stack
-overflow, a bad address or a division fault.
+overflow, a bad address or a division fault. Either then says the
+calls under way, each with its variables:
+
+    Main.raz:12:9: index 7 is out of range for a length of 5
+      in Main.get at Main.raz:12:9: i = 7, n = 5
+      in Main.main at Main.raz:20:5: count = 3
+
+`Rt.trace` says the same at any time.
 
 `raz run Main.raz a b` compiles the same way, then runs the program
 with the arguments `a b`, writing no file: its output and exit status

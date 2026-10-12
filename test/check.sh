@@ -8,7 +8,8 @@
 #   X.args    its arguments, one per line (optional)
 #   X.status  its exit status (optional; 0 if missing), 128 and the
 #             signal's number for one stopped by a signal
-#   X.stderr  its standard error (optional; not compared if missing)
+#   X.stderr  its standard error (optional; not compared if missing),
+#             each address in it, 0x and hex digits, written 0x?
 # A program without X.expect is compiled, not run. test/libc puts
 # lib/Sys.raz, over the C library, before the system call one.
 # Programs in test/err must not compile, and must print X.err; there
@@ -54,7 +55,8 @@ run() {   # run dir name
     elif [ $status != $want ]; then
         echo "FAIL $dir/$name: status $status, not $want"
         fail=$((fail + 1))
-    elif [ -f $dir/$name.stderr ] && ! cmp -s $out/$name.err $dir/$name.stderr; then
+    elif [ -f $dir/$name.stderr ] && ! sed 's/0x[0-9a-f]*/0x?/g' $out/$name.err |
+            cmp -s - $dir/$name.stderr; then
         echo "FAIL $dir/$name: standard error differs"
         diff $out/$name.err $dir/$name.stderr | head -5
         fail=$((fail + 1))

@@ -1,1 +1,2 @@
 test/run/NilPointer.raz:13:5: stopped by a nil pointer
+  in NilPointer.main at test/run/NilPointer.raz:13:5

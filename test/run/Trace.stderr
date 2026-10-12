@@ -1,0 +1,7 @@
+  in Trace.inner at test/run/Trace.raz:11:5: n = 5, f = -1.500000, ok = true, c = 2, b = 200, s = -7, k = 0
+  in Trace.outer at test/run/Trace.raz:21:5: n = 4, x = 5, r = 0.250000
+  in Trace.main at test/run/Trace.raz:28:5
+test/run/Trace.raz:13:7: index 5 is out of range for a length of 2
+  in Trace.inner at test/run/Trace.raz:13:7: n = 5, f = -1.500000, ok = true, c = 2, b = 200, s = -7, k = 5
+  in Trace.outer at test/run/Trace.raz:21:5: n = 4, x = 5, r = 0.250000
+  in Trace.main at test/run/Trace.raz:28:5

@@ -1125,7 +1125,12 @@ program at once, and a program stopped by a signal runs none of them.
 ```
 proc atExit*(p: proc): ERROR;   (* Rt.Full if 32 are registered *)
 proc exit*(status: INT);
+proc trace*;                    (* the calls under way, on standard error *)
 ```
+
+`Rt.trace` says on standard error the calls under way, from the one
+that calls it out, each with its variables, as a program that stops
+does.
 
 Only what can be reached from `main` and the module bodies goes into
 the executable: unused procedures, variables and strings are left out.
@@ -1144,7 +1149,8 @@ by zero, calling a `nil` procedure and running out of stack stop the
 program, on every target. Before it stops, the program prints to
 standard error where it was, as file, line and column, and why, as far
 as it can tell: a `nil` pointer, a `nil` procedure, a stack overflow, a
-bad address or a division fault. Whether the machine catches these or
+bad address or a division fault; then the calls under way, each with
+its variables of a basic, enumeration, set or pointer type. Whether the machine catches these or
 the compiled code checks for them is the implementation's choice
 (appendix A); that they stop the program isn't.
 
@@ -1180,7 +1186,7 @@ Modules written in raz, in the compiler's `lib` directory:
 
 | Module | What |
 |---|---|
-| `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; what the compiler's checks call when they fail |
+| `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
 | `Sys` | system calls: `open`, `openRead`, `create`, `read`, `write`, `seek`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; and sockets. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
@@ -1735,7 +1741,9 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   can't be changed; `+` joins string constants (section 4). `match`
   takes an integer, with constants and ranges as labels (7.4).
 - **2026-10.12.** A code procedure is written in the target's assembly
-  language, not as bytes (section 8; appendix A).
+  language, not as bytes (section 8; appendix A). A program that stops
+  says the calls under way and their variables, and `Rt.trace` says
+  them on demand (sections 10 and 11).
 
 ## Appendix A. What an implementation chooses
 

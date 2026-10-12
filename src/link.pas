@@ -37,16 +37,8 @@ var
 
 procedure MarkLive(entry: longint);
 procedure LinkAll(headerSize, roExtra, dynSize: int64);
-function ChunkName(c: longint): shortstring;
 
 implementation
-
-function ChunkName(c: longint): shortstring;
-begin
-  if chunks^[c].name < 0 then exit('a literal');
-  if chunks^[c].module < 0 then exit(NameOf(chunks^[c].name));
-  ChunkName := NameOf(chunks^[c].module) + '.' + NameOf(chunks^[c].name);
-end;
 
 procedure MarkLive(entry: longint);
 var stack: PLongs; sp, c, f, t: longint;
@@ -89,16 +81,40 @@ begin
 end;
 
 { The places that Rt reads to say where a failed check or a signal
-  was: their number and where text starts and stops (I64s); for each
-  place in live code its address, line, column and the offset of its
-  file's path (U32s); then the paths, each ending in a zero byte. They
-  are in no order, since Rt looks at them only as the program stops. }
+  was, and what calls were under way: their numbers, the places', where
+  text starts and stops, the procedures' and their variables' (I64s);
+  for each place in live code its address, line, column and the offset
+  of its file's path (U32s); for each live procedure where it starts and
+  stops, the offset of its name, its first variable and how many it has
+  (U32s); for each variable the offset of its name, its place in the
+  frame and its kind, as parse.pas's VarKind (U32s); then the paths and
+  names, each ending in a zero byte. They are in no order, since Rt
+  looks at them only as the program stops. }
 procedure MakePlaces(start, stop: int64);
-var files, offs: PLongs; buf: PBytes; i, f, n, nfiles, k: longint; s: shortstring;
+var
+  files, offs, first, count: PLongs; buf: PBytes;
+  i, f, n, nfiles, k, np, nv, c, v, at, names: longint;
+
+  procedure Name(const s: shortstring);
+  begin
+    PLongint(@buf^[at])^ := names - k;
+    Move(s[1], buf^[names], length(s));
+    buf^[names + length(s)] := 0;
+    names := names + length(s) + 1;
+    at := at + 4;
+  end;
+
 begin
   files := GetMem(numLines * 4 + 4);
   offs := GetMem(numLines * 4 + 4);
-  n := 0; nfiles := 0; k := 0;
+  first := GetMem(numChunks * 4);
+  count := GetMem(numChunks * 4);
+  FillChar(count^, numChunks * 4, 0);
+  for v := numVarNotes - 1 downto 0 do begin
+    first^[varNotes[v].chunk] := v;
+    inc(count^[varNotes[v].chunk]);
+  end;
+  n := 0; nfiles := 0; k := 0; np := 0; nv := 0;
   for i := 0 to numLines - 1 do
     if chunks^[lines^[i].chunk].live then begin
       inc(n);
@@ -111,28 +127,60 @@ begin
         inc(nfiles);
       end;
     end;
-  buf := GetMem(24 + 16 * n + k);
+  for c := 0 to numChunks - 1 do
+    if chunks^[c].live and (chunks^[c].sec = secText) and (chunks^[c].module >= 0) then begin
+      inc(np);
+      k := k + length(ChunkName(c)) + 1;
+      for v := first^[c] to first^[c] + count^[c] - 1 do k := k + length(NameOf(varNotes[v].name)) + 1;
+      nv := nv + count^[c];
+    end;
+  buf := GetMem(40 + 16 * n + 20 * np + 12 * nv + k);
   PInt64(@buf^[0])^ := n;
   PInt64(@buf^[8])^ := start;
   PInt64(@buf^[16])^ := stop;
-  k := 24;
+  PInt64(@buf^[24])^ := np;
+  PInt64(@buf^[32])^ := nv;
+  at := 40;
   for i := 0 to numLines - 1 do
     if chunks^[lines^[i].chunk].live then begin
       f := 0;
       while files^[f] <> lines^[i].path do inc(f);
-      PLongint(@buf^[k])^ := chunks^[lines^[i].chunk].adr + lines^[i].at - chunks^[lines^[i].chunk].start;
-      PLongint(@buf^[k + 4])^ := lines^[i].line;
-      PLongint(@buf^[k + 8])^ := lines^[i].col;
-      PLongint(@buf^[k + 12])^ := offs^[f];
-      k := k + 16;
+      PLongint(@buf^[at])^ := chunks^[lines^[i].chunk].adr + lines^[i].at - chunks^[lines^[i].chunk].start;
+      PLongint(@buf^[at + 4])^ := lines^[i].line;
+      PLongint(@buf^[at + 8])^ := lines^[i].col;
+      PLongint(@buf^[at + 12])^ := offs^[f];
+      at := at + 16;
     end;
+  { the pool of paths and names starts at k }
+  k := 40 + 16 * n + 20 * np + 12 * nv;
+  names := k;
   for f := 0 to nfiles - 1 do begin
-    s := ShownPath(NameOf(files^[f])) + #0;
-    Move(s[1], buf^[k], length(s));
-    k := k + length(s);
+    i := at;
+    Name(ShownPath(NameOf(files^[f])));
+    at := i;
   end;
-  SetData(placesChunk, buf, k, 8);
-  FreeMem(buf); FreeMem(files); FreeMem(offs);
+  v := 0;
+  for c := 0 to numChunks - 1 do
+    if chunks^[c].live and (chunks^[c].sec = secText) and (chunks^[c].module >= 0) then begin
+      PLongint(@buf^[at])^ := chunks^[c].adr;
+      PLongint(@buf^[at + 4])^ := chunks^[c].adr + chunks^[c].size;
+      at := at + 8;
+      Name(ChunkName(c));
+      PLongint(@buf^[at])^ := v;
+      PLongint(@buf^[at + 4])^ := count^[c];
+      at := at + 8;
+      v := v + count^[c];
+    end;
+  for c := 0 to numChunks - 1 do
+    if chunks^[c].live and (chunks^[c].sec = secText) and (chunks^[c].module >= 0) then
+      for v := first^[c] to first^[c] + count^[c] - 1 do begin
+        Name(NameOf(varNotes[v].name));
+        PLongint(@buf^[at])^ := varNotes[v].off;
+        PLongint(@buf^[at + 4])^ := varNotes[v].kind;
+        at := at + 8;
+      end;
+  SetData(placesChunk, buf, names, 8);
+  FreeMem(buf); FreeMem(files); FreeMem(offs); FreeMem(first); FreeMem(count);
 end;
 
 { Places the live chunks, leaving roExtra bytes at the end of rodata

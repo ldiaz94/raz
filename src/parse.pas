@@ -1631,8 +1631,26 @@ end;
 
 procedure Declarations(top: boolean); forward;
 
+{ How Rt shows a variable of o's type in the trap report: 1 a signed
+  integer, 2 an unsigned one, 3 a BOOL, 4 an address, 5 a real; plus
+  its size times 16, and 256 if the frame holds its address; 0 if it
+  isn't shown. }
+function VarKind(o: PObj): longint;
+var k: longint;
+begin
+  case o^.typ^.form of
+    fInt: k := 2 - ord(o^.typ^.signed);
+    fEnum, fSet: k := 2;
+    fBool: k := 3;
+    fPtr, fProc, fError: k := 4;
+    fReal: k := 5;
+  else exit(0);
+  end;
+  VarKind := k + o^.typ^.size * 16 + ord(o^.ind) * 256;
+end;
+
 procedure Body(p: PObj; sig: PType; line: longint);
-var q, params, last, o: PObj; old: PType;
+var q, params, last, o, before: PObj; old: PType;
 begin
   OpenScope(NewScope);
   params := nil; last := nil;
@@ -1656,7 +1674,19 @@ begin
     o := q;
   end;
   curProc := p;
+  before := curModule^.lastLocal;
   Declarations(false);
+  { its parameters and variables, for the trap report }
+  if before = nil then o := curModule^.locals else o := before^.link;
+  q := params;
+  while q <> nil do begin
+    if VarKind(q) <> 0 then NoteVar(p^.chunk, q^.name, q^.val, VarKind(q));
+    q := q^.next;
+  end;
+  while o <> nil do begin
+    if (o^.cls = oVar) and (VarKind(o) <> 0) then NoteVar(p^.chunk, o^.name, o^.val, VarKind(o));
+    o := o^.link;
+  end;
   Expect(sBegin);
   old := curResult;
   curResult := sig^.base;
