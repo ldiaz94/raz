@@ -20,11 +20,17 @@ interface
 uses scan, diag, sym, chunk, gen;
 
 type
-  TMode = (mConst, mVar, mStack, mProc, mType, mStr, mBuiltin, mCase, mNone);
+  TMode = (mConst, mVar, mStack, mProc, mType, mStr, mBuiltin, mCase, mNone, mCond);
 
   TItem = record
     mode: TMode;
     typ: PType;
+    rel: TSym;          { mCond: the comparison of the two integers on
+                          the stack, not yet made, as Wirth's compilers
+                          keep a condition }
+    relSigned: boolean;
+    fj, tj: longint;    { mCond: the jumps taken where it is false, and
+                          where it is true, to land past it }
     val: int64;        { mConst: the value, an F64's bits; mStr: its length }
     base: TBase;       { mVar: what the address is relative to }
     chunk: longint;    { mVar with bGlobal, mStr: the chunk; bSlot: the slot }
@@ -109,6 +115,10 @@ procedure Msg(var x: TItem);
 function ErrorChunk(var x: TItem; module, name: longint): longint;
 
 implementation
+
+const
+  { the comparison that holds when op doesn't, for integers }
+  Negated: array[sEql..sGeq] of TSym = (sNeq, sEql, sGeq, sGtr, sLeq, sLss);
 
 var
   result: PType;   { the result of the procedure being compiled, or nil }
@@ -313,6 +323,12 @@ end;
 procedure Value(var x: TItem);
 var f: single;
 begin
+  if x.mode = mCond then begin
+    if (x.fj = NoLabel) and (x.tj = NoLabel) then Compare(x.rel, kWord, x.relSigned)
+    else CondValue(Negated[x.rel], x.relSigned, x.fj, x.tj);
+    x.mode := mStack;
+    exit;
+  end;
   if x.typ^.form = fReal then UsesReals(x.pos);
   NilTest(x);
   case x.mode of
@@ -350,7 +366,9 @@ end;
 
 { x isn't wanted: what it has on the stack is dropped }
 procedure Discard(const x: TItem);
+var y: TItem;
 begin
+  if x.mode = mCond then begin y := x; Value(y); Drop; exit end;
   if (x.mode = mStack) or ((x.mode = mVar) and (x.base = bStack)) then Drop;
 end;
 
@@ -428,6 +446,7 @@ end;
 procedure Coerce(var x: TItem; t: PType);
 var s: PType; tmp: int64;
 begin
+  if x.mode = mCond then Value(x);
   s := x.typ;
   if x.mode = mStr then begin
     if (t^.form = fSlice) and (t^.base = tU8) then begin
@@ -625,10 +644,15 @@ begin
 end;
 
 procedure NotOp(var x: TItem);
+var L: longint;
 begin
   if IsInt(x.typ) then MarkHelp(x.pos, '"not" needs a BOOL, found ' + What(x), 'the bits of an integer flip with ~');
   if x.typ^.form <> fBool then MarkAt(x.pos, '"not" needs a BOOL, found ' + What(x));
   if x.mode = mConst then x.val := 1 - x.val
+  else if x.mode = mCond then begin
+    x.rel := Negated[x.rel];
+    L := x.fj; x.fj := x.tj; x.tj := L;
+  end
   else begin Value(x); NotBool end;
 end;
 
@@ -668,15 +692,34 @@ begin
   end;
 end;
 
+{ x, a BOOL, as a condition: a value compared with 0 if it isn't one }
+procedure MakeCond(var x: TItem);
+begin
+  if x.mode = mCond then exit;
+  Value(x);
+  PushConst(kWord, 0);
+  x.mode := mCond;
+  x.rel := sNeq;
+  x.relSigned := false;
+  x.fj := NoLabel;
+  x.tj := NoLabel;
+end;
+
 procedure Op1(op: TSym; var x: TItem; var L: longint);
-var tmp: TItem;
 begin
   L := NoLabel;
   if (op in [sAnd, sOr]) and (x.typ^.form = fBool) then begin
-    tmp := x;
-    Value(tmp);
-    if x.mode <> mConst then x := tmp;
-    JumpKeep(L, op = sOr);
+    if x.mode = mConst then exit;    { folded by Op2 }
+    MakeCond(x);
+    if op = sAnd then begin
+      JumpOut(Negated[x.rel], x.relSigned, x.fj);
+      Fix(x.tj);
+      x.tj := NoLabel;
+    end else begin
+      JumpOut(x.rel, x.relSigned, x.tj);
+      Fix(x.fj);
+      x.fj := NoLabel;
+    end;
   end else if (op in [sEql, sNeq]) and IsSeq(x.typ) then
     SeqSlice(x)
   else if (op = sPlus) and (x.mode = mStr) then
@@ -848,13 +891,18 @@ begin
     if xt^.form <> fBool then WrongLogic(op, x);
     if yt^.form <> fBool then WrongLogic(op, y);
     if (x.mode = mConst) and (y.mode = mConst) then begin
-      Fix(L);
       if op = sAnd then x.val := x.val and y.val else x.val := x.val or y.val;
-      exit;
+    end else if x.mode = mConst then begin
+      { true and y, false or y: y; else x, y computed and dropped }
+      if (x.val = 1) = (op = sAnd) then x := y
+      else Discard(y);
+    end else begin
+      MakeCond(y);
+      if op = sAnd then begin x.fj := JoinJumps(x.fj, y.fj); x.tj := y.tj end
+      else begin x.tj := JoinJumps(x.tj, y.tj); x.fj := y.fj end;
+      x.rel := y.rel;
+      x.relSigned := y.relSigned;
     end;
-    Value(y);
-    FixKeep(L);
-    x.mode := mStack; x.typ := tBool;
     exit;
   end;
 
@@ -964,8 +1012,15 @@ begin
     if op in Rel then Compare(op, KindOf(t), false) else gen.Op(op, KindOf(t), 8, false)
   end else if t^.form = fSet then
     SetOp(op)
-  else if op in Rel then
-    Compare(op, kWord, Signed(t))
+  else if op in Rel then begin
+    x.mode := mCond;
+    x.rel := op;
+    x.relSigned := Signed(t);
+    x.fj := NoLabel;
+    x.tj := NoLabel;
+    x.typ := tBool;
+    exit;
+  end
   else if isPtr then begin
     if t <> tInt then ScaleBy(scale);
     gen.Op(op, kWord, 8, false);
@@ -1087,7 +1142,8 @@ begin
     else if IsF32(a.typ) then MarkAt(a.pos, 'an F32 goes to ... as F64(x)')
     else if not IsScalar(a.typ) then MarkAt(a.pos, 'only a single value goes to ...');
     c.isF[c.n] := a.typ^.form = fReal;
-    c.slots[c.n] := ToSlot(a);
+    Value(a);
+    PopArg(c);
     inc(c.n);
     exit;
   end;
@@ -1101,19 +1157,15 @@ begin
     if not Same(a.typ, p^.typ) then Mismatch(a, 'a var parameter needs exactly ' + TypeName(p^.typ) + ', found ' + What(a));
     if a.vol then MarkAt(a.pos, 'can''t pass through a volatile pointer to a var parameter');
     Address(a);
-    s := AllocTemp(8, 8);
-    PopVar(FrameAdr(s), 8);
   end else if IsAggregate(p^.typ) then begin
     Coerce(a, p^.typ);
     if a.isVar or a.vol or (a.base <> bFrame) then CopyToTemp(a);
     Address(a);
-    s := AllocTemp(8, 8);
-    PopVar(FrameAdr(s), 8);
   end else begin
     Coerce(a, p^.typ);
-    s := ToSlot(a);
+    Value(a);
   end;
-  c.slots[c.n] := s;
+  PopArg(c);
   inc(c.n);
   c.param := p^.next;
 end;
@@ -1241,6 +1293,12 @@ end;
 procedure CondJump(var x: TItem; var L: longint);
 begin
   if x.typ^.form <> fBool then MarkAt(x.pos, 'a condition is a BOOL, found ' + What(x));
+  if x.mode = mCond then begin
+    JumpCmp(Negated[x.rel], x.relSigned, L);
+    L := JoinJumps(L, x.fj);
+    Fix(x.tj);
+    exit;
+  end;
   Value(x);
   JumpIf(L, false);
 end;

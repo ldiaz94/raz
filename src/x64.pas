@@ -60,6 +60,8 @@ procedure Lea(r: longint; const m: TMem);
 procedure Alu(op, dst, src: longint);
 procedure AluI(op, r: longint; v: longint);
 procedure AluM(op, r: longint; const m: TMem);
+procedure AluMI(op: longint; m: TMem; v, size: longint);
+procedure StoreI(m: TMem; v, size: longint);
 procedure Imul(dst, src: longint);
 procedure ImulI(r: longint; v: longint);
 procedure Shift(op, r: longint);
@@ -103,6 +105,7 @@ procedure JmpBack(target: longint);
 procedure JccBack(cc, target: longint);
 procedure FixLink(L: longint);
 procedure FixLinkTo(L, target: longint);
+function JoinLinks(L1, L2: longint): longint;
 
 type
   TConstFn = function: int64;
@@ -195,9 +198,9 @@ begin
     Put1(reg shl 3 or 5);
     { mod 00 with r/m 101 is rip + disp32. The displacement counts
       from the end of the instruction, and the fixup takes it to end
-      with these four bytes: no rip operand has an immediate after it,
-      since only the compiler's loads, stores, lea and call make one
-      (the assembler can't name a chunk). }
+      with these four bytes: an instruction with an immediate after
+      them, AluMI's or StoreI's, takes the immediate's size off disp
+      first (the assembler can't name a chunk). }
     AddFixup(pc, m.chunk, m.disp);
     Put4(0);
     exit;
@@ -314,6 +317,44 @@ procedure MovRR(dst, src: longint);
 begin
   if listing then Say('mov ' + RN(dst) + ', ' + RN(src));
   OpR(0, true, $89, src, dst);
+end;
+
+{ The immediate of n bytes that ends an instruction }
+procedure PutImm(v, n: longint);
+begin
+  if n = 4 then Put4(v)
+  else begin
+    Put1(v and $FF);
+    if n = 2 then Put1((v shr 8) and $FF);
+  end;
+end;
+
+{ op [m], v, on size bytes; v fits in them, or in 32 bits for 8 }
+procedure AluMI(op: longint; m: TMem; v, size: longint);
+var n: longint;
+begin
+  if listing then Say(AluNames[op] + ' ' + MN(m, size) + ', ' + IntStr(v));
+  if (size = 1) or (v >= -128) and (v <= 127) then n := 1
+  else if size = 2 then n := 2
+  else n := 4;
+  if m.base = RIP then dec(m.disp, n);
+  if size = 1 then OpM(0, false, $80, op, m)
+  else if n = 1 then OpM(ord(size = 2) * $66, size = 8, $83, op, m)
+  else OpM(ord(size = 2) * $66, size = 8, $81, op, m);
+  PutImm(v, n);
+end;
+
+{ mov [m], v, of size bytes; v fits in them, or in 32 bits for 8 }
+procedure StoreI(m: TMem; v, size: longint);
+var n: longint;
+begin
+  if listing then Say('mov ' + MN(m, size) + ', ' + IntStr(v));
+  n := size;
+  if n > 4 then n := 4;
+  if m.base = RIP then dec(m.disp, n);
+  if size = 1 then OpM(0, false, $C6, 0, m)
+  else OpM(ord(size = 2) * $66, size = 8, $C7, 0, m);
+  PutImm(v, n);
 end;
 
 procedure MovRI(r: longint; v: int64);
@@ -646,6 +687,20 @@ end;
 procedure FixLink(L: longint);
 begin
   FixLinkTo(L, pc);
+end;
+
+{ The jumps of chains L1 and L2, as one chain: each jump's field holds
+  the next one's place until it is fixed, the last NoLabel }
+function JoinLinks(L1, L2: longint): longint;
+var L: longint;
+begin
+  if L2 = NoLabel then exit(L1);
+  if L1 <> NoLabel then begin
+    L := L2;
+    while Get4At(L) <> NoLabel do L := Get4At(L);
+    Put4At(L, L1);
+  end;
+  JoinLinks := L2;
 end;
 
 

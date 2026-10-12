@@ -11,12 +11,15 @@
 
   The stack is kept in registers, as in Wirth's compilers: the value at
   depth d in r8 to r11, register d mod 4, a deeper one's register taken
-  by spilling the shallower value it held to the frame. A constant is only noted until something
+  by spilling the shallower value it held to the frame. A constant, or
+  an address in the frame or of a chunk, is only noted until something
   needs it in a register, so that it can be an instruction's operand.
 
   Calls use the System V convention. Arguments are computed left to
   right into frame slots, then loaded into registers just before the
-  call, so that computing one argument can't disturb another. A record,
+  call, so that computing one argument can't disturb another; a
+  constant or an address, which nothing can disturb, goes straight to
+  its register. A record,
   array, slice or variant passed by value goes as the address of a copy
   the caller makes; one returned goes through a hidden pointer, as C's
   structs do, and so do several results.
@@ -60,12 +63,18 @@ type
     off: int64;       { added to the address }
   end;
 
+  { How an argument waits for its call: in a frame slot, or noted, as a
+    constant or as the address of the frame or a chunk plus an offset }
+  TArgHow = (argSlot, argConst, argAdr);
+
   TCall = record
     sig: PType;
     param: PObj;       { the parameter the next argument is for }
     obj: PObj;         { the procedure called, if it has a name }
     n: longint;                      { the arguments }
-    slots: array[0..63] of int64;    { each one's frame slot }
+    slots: array[0..63] of int64;    { each one's frame slot, constant or offset }
+    how: array[0..63] of TArgHow;
+    adrChunk: array[0..63] of longint;   { argAdr: the chunk, or -1 for the frame }
     isF: array[0..63] of boolean;    { ... goes in an xmm register }
     target: int64;     { the frame slot of a procedure value, if chunk < 0 }
     chunk: longint;    { else the procedure's chunk }
@@ -114,12 +123,13 @@ procedure Fence;
 
 procedure Jump(var L: longint);
 procedure JumpIf(var L: longint; when: boolean);
-procedure JumpKeep(var L: longint; when: boolean);
-procedure FixKeep(L: longint);
 procedure JumpCmp(op: TSym; signed: boolean; var L: longint);
+procedure JumpOut(op: TSym; signed: boolean; var L: longint);
+procedure CondValue(notOp: TSym; signed: boolean; fj, tj: longint);
 procedure JumpBack(top: longint);
 procedure Fix(L: longint);
 procedure FixTo(L, top: longint);
+function JoinJumps(L1, L2: longint): longint;
 
 procedure CheckIndex(n: int64; const p: TPos);
 procedure CheckEnum(n: int64; name: longint; const p: TPos);
@@ -128,6 +138,7 @@ procedure IndexSlice(const a: TAdr; size: int64; checked: boolean; const p: TPos
 procedure Slice(const a: TAdr; isArray: boolean; n, size, tmp: int64; checked: boolean; const p: TPos);
 procedure SlicePtr(size, tmp: int64; checked: boolean; const p: TPos);
 
+procedure PopArg(var c: TCall);
 procedure Call(var c: TCall);
 
 function AllocTemp(size, align: int64): int64;
@@ -154,12 +165,15 @@ implementation
 type
   { where a value on the stack is }
   TLoc = (lConst,     { not loaded: val is the value }
+          lAdr,       { not loaded: the address of chunk, or of the frame
+                        if chunk is -1, plus val }
           lReg,       { in its register }
           lFrame);    { spilled: in the frame slot val }
 
   TEntry = record
     loc: TLoc;
     val: int64;
+    chunk: longint;
     k: TKind;
   end;
 
@@ -235,6 +249,13 @@ begin
   Claim := Regs[r];
 end;
 
+{ The memory at the noted address i, plus off }
+function AdrMem(i: longint; off: int64): TMem;
+begin
+  if stack[i].chunk < 0 then AdrMem := Mem(RBP, stack[i].val + off)
+  else AdrMem := MemRip(stack[i].chunk, stack[i].val + off);
+end;
+
 { The value i, in its register }
 function Loaded(i: longint): longint;
 var r: longint;
@@ -242,6 +263,7 @@ begin
   if stack[i].loc <> lReg then begin
     r := Claim(i);
     if stack[i].loc = lConst then MovRI(r, stack[i].val)
+    else if stack[i].loc = lAdr then Lea(r, AdrMem(i, 0))
     else Load(r, Mem(RBP, stack[i].val), 8, false);
     stack[i].loc := lReg;
   end;
@@ -260,6 +282,7 @@ begin
   stack[depth].k := k;
   stack[depth].loc := loc;
   stack[depth].val := v;
+  stack[depth].chunk := -1;
   inc(depth);
 end;
 
@@ -301,6 +324,11 @@ begin
   NewEntry(k, lConst, v);
 end;
 
+function Fits32(v: int64): boolean;
+begin
+  Fits32 := (v >= low(longint)) and (v <= high(longint));
+end;
+
 { The memory a names. An address on the stack is popped, and is in its
   register still; one in a slot is loaded into r. }
 function Place(const a: TAdr; r: longint): TMem;
@@ -309,7 +337,15 @@ begin
   case a.base of
     bFrame: Place := Mem(RBP, a.off);
     bGlobal: Place := MemRip(a.chunk, a.off);
-    bStack: begin ra := Top; Drop; Place := Mem(ra, a.off) end;
+    bStack:
+      if stack[depth - 1].loc = lAdr then begin
+        Place := AdrMem(depth - 1, a.off);
+        Drop;
+      end else begin
+        ra := Top;
+        Drop;
+        Place := Mem(ra, a.off)
+      end;
   else
     Load(r, Mem(RBP, a.chunk), 8, false);
     Place := Mem(r, a.off);
@@ -320,6 +356,11 @@ procedure PushAdr(const a: TAdr);
 var m: TMem; r: longint;
 begin
   if (a.base = bStack) and (a.off = 0) then exit;
+  if a.base in [bFrame, bGlobal] then begin
+    NewEntry(kWord, lAdr, a.off);
+    if a.base = bGlobal then stack[depth - 1].chunk := a.chunk;
+    exit;
+  end;
   if a.base = bStack then begin m := Place(a, -1); r := Target end
   else begin r := Target; m := Place(a, r) end;
   Lea(r, m);
@@ -349,6 +390,11 @@ end;
 procedure PopVar(const a: TAdr; size: longint);
 var r: longint; v: int64;
 begin
+  if TopConst(v) and Fits32(v) then begin
+    Drop;
+    StoreI(Place(a, RCX), v, size);
+    exit;
+  end;
   if TopConst(v) then begin r := RAX; MovRI(RAX, v) end
   else r := Top;
   Drop;
@@ -438,11 +484,6 @@ begin
   while (v > 1) and (v and 1 = 0) do begin v := v shr 1; inc(n) end;
   if v <> 1 then n := -1;
   Log2 := n;
-end;
-
-function Fits32(v: int64): boolean;
-begin
-  Fits32 := (v >= low(longint)) and (v <= high(longint));
 end;
 
 { r compared with v, through rdx if v needs more than 32 bits }
@@ -728,8 +769,15 @@ end;
 { Pops a step and an integer variable's address, and adds the step to
   it, or takes it away. }
 procedure IncDec(size: longint; signed, dec: boolean);
-var r, y: longint;
+var r, y, op: longint; v: int64; a: TAdr;
 begin
+  if TopConst(v) and Fits32(v) then begin
+    Drop;
+    a.base := bStack; a.off := 0;
+    if dec then op := aluSub else op := aluAdd;
+    AluMI(op, Place(a, RCX), v, size);
+    exit;
+  end;
   r := Operands(y);
   Drop;
   Load(RAX, Mem(r, 0), size, signed);
@@ -779,6 +827,7 @@ begin
   for i := 0 to n - 1 do
     with stack[depth - n + i] do
       if loc = lConst then MovRI(SysRegs[i], val)
+      else if loc = lAdr then Lea(SysRegs[i], AdrMem(depth - n + i, 0))
       else Load(SysRegs[i], Mem(RBP, val), 8, false);
   for i := 1 to n do Drop;
   x64.Syscall;
@@ -808,22 +857,6 @@ begin
   if when then Jcc(ccNE, L) else Jcc(ccE, L);
 end;
 
-{ For and and or: jumps if the BOOL on top is when, keeping it, in its
-  register, for where the jump goes; drops it if not. The values under
-  it are spilled first, so that both ways find them in the same place. }
-procedure JumpKeep(var L: longint; when: boolean);
-begin
-  SpillBelow(depth - 1);
-  JumpIf(L, when);
-end;
-
-{ Where JumpKeep went: the BOOL on top is there, as it was there. }
-procedure FixKeep(L: longint);
-begin
-  Top;
-  FixLink(L);
-end;
-
 { Pops two integers, and jumps if the left op the right }
 procedure JumpCmp(op: TSym; signed: boolean; var L: longint);
 const
@@ -837,6 +870,32 @@ begin
   if signed then Jcc(CcSigned[op], L) else Jcc(CcUnsigned[op], L);
 end;
 
+{ JumpCmp out of an expression, past code that may spill: the values
+  under the two compared are spilled first, so that they are where the
+  code after the landing place expects them, whichever way it came. }
+procedure JumpOut(op: TSym; signed: boolean; var L: longint);
+begin
+  SpillBelow(depth - 2);
+  JumpCmp(op, signed, L);
+end;
+
+{ The comparison of the two values on top, unless notOp holds, as a
+  BOOL; jumps on its false path (fj) and its true one (tj) land as well }
+procedure CondValue(notOp: TSym; signed: boolean; fj, tj: longint);
+var r, e: longint;
+begin
+  JumpOut(notOp, signed, fj);
+  FixLink(tj);
+  r := Target;
+  MovRI(r, 1);
+  e := NoLabel;
+  Jmp(e);
+  FixLink(fj);
+  MovRI(r, 0);
+  FixLink(e);
+  Computed(kWord);
+end;
+
 procedure JumpBack(top: longint);
 begin
   JmpBack(top);
@@ -845,6 +904,11 @@ end;
 procedure Fix(L: longint);
 begin
   FixLink(L);
+end;
+
+function JoinJumps(L1, L2: longint): longint;
+begin
+  JoinJumps := JoinLinks(L1, L2);
 end;
 
 procedure FixTo(L, top: longint);
@@ -996,6 +1060,38 @@ end;
 { The call c, its arguments already in their frame slots: they go to
   registers or the stack, the procedure is called, and its result, if
   any, is pushed on the value stack. }
+{ The value on top is argument c.n of c, which waits for the call: a
+  constant or an address is noted, a real or anything else goes to a
+  frame slot. }
+procedure PopArg(var c: TCall);
+var i: longint;
+begin
+  i := depth - 1;
+  c.how[c.n] := argSlot;
+  if not c.isF[c.n] and (stack[i].loc = lConst) then c.how[c.n] := argConst
+  else if stack[i].loc = lAdr then c.how[c.n] := argAdr;
+  if c.how[c.n] = argSlot then begin
+    c.slots[c.n] := AllocTemp(8, 8);
+    Store(Mem(RBP, c.slots[c.n]), Top, 8);
+  end else begin
+    c.slots[c.n] := stack[i].val;
+    c.adrChunk[c.n] := stack[i].chunk;
+  end;
+  Drop;
+end;
+
+{ Argument i of c into register r }
+procedure LoadArg(const c: TCall; i, r: longint);
+begin
+  case c.how[i] of
+    argConst: MovRI(r, c.slots[i]);
+    argAdr:
+      if c.adrChunk[i] < 0 then Lea(r, Mem(RBP, c.slots[i]))
+      else Lea(r, MemRip(c.adrChunk[i], c.slots[i]));
+  else Load(r, Mem(RBP, c.slots[i]), 8, false);
+  end;
+end;
+
 procedure Call(var c: TCall);
 var
   res: PType; i, ni, nf, k, pad, r: longint;
@@ -1023,7 +1119,7 @@ begin
   if pad <> 0 then AluI(aluSub, RSP, 8);
   for i := c.n - 1 downto 0 do
     if onStack[i] then begin
-      Load(RAX, Mem(RBP, c.slots[i]), 8, false);
+      LoadArg(c, i, RAX);
       Push(RAX);
     end;
   ni := 0; nf := 0;
@@ -1031,7 +1127,7 @@ begin
   for i := 0 to c.n - 1 do
     if not onStack[i] then
       if c.isF[i] then begin MovsdXM(nf, Mem(RBP, c.slots[i])); inc(nf) end
-      else begin Load(IntRegs[ni], Mem(RBP, c.slots[i]), 8, false); inc(ni) end;
+      else begin LoadArg(c, i, IntRegs[ni]); inc(ni) end;
   { a procedure taking ... is told in al how many xmm registers it got }
   if c.sig^.variadic then MovRI(RAX, nf);
   if c.ext then CallM(MemRip(c.chunk, 0))

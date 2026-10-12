@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of Free Pascal, under 7,900 lines of code.
+The compiler is eleven files of Free Pascal, under 8,100 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -12,9 +12,9 @@ disassembly.
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 615 | 510 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 298 | 232 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,039 | 870 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,332 | 1,039 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,342 | 1,118 | Items: types, constants, variables, operators, conversions, calls |
+| `src/x64.pas` | 1,094 | 916 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 1,428 | 1,118 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,400 | 1,168 | Items: types, constants, variables, operators, conversions, calls |
 | `src/parse.pas` | 2,771 | 2,459 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 243 | 188 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
@@ -43,8 +43,10 @@ of `x64.pas`.
 
 On x86-64 the stack lives in registers, as in Wirth's compilers: the
 value at depth `d` is in register `d`, of `r8` to `r11`, and a constant
-is only noted, until something needs it in a register, so that it can
-be an instruction's operand. Which register a value goes in is settled
+or an address in the frame or of a chunk is only noted, until something
+needs it in a register, so that it can be an instruction's operand. A
+comparison, too, waits as a condition, so that `if` and `while` jump
+on it directly. Which register a value goes in is settled
 by its depth, so there is no register allocator, and every access the
 program writes is one instruction, in the order written. That is also
 why `VOLATILE` costs the compiler nothing: it never does anything
@@ -272,8 +274,8 @@ This is the only unit that knows the machine. The calls it answers:
   the conversions between integers and reals, `CompareSeq` (of two
   slices), and copying: `CopyBlock`, `CopyTo`, `ZeroVar`;
 - jumps: `Jump`, `JumpIf` (on a `BOOL`), `JumpCmp` (on two integers),
-  `JumpKeep` and `FixKeep` for `and` and `or`, `Fix` where the label
-  is;
+  `JumpOut` (`JumpCmp` from within an expression) and `CondValue` for
+  `and` and `or`, `Fix` where the label is, and `JoinJumps`;
 - checks: `CheckIndex`, `CheckEnum`, and `IndexSlice`, `Slice` and
   `SlicePtr`, which check as they make their address or slice;
 - calls (`Call`), frames (`BeginProc`, `EnterBody`, `ReturnJump`,
@@ -289,19 +291,22 @@ held in a frame slot (`bSlot`, as a `var` parameter's is); plus `off`.
 address first, so that a variable is read or written with one
 instruction.
 
-The stack: `stack` notes where each value is, a constant (`lConst`),
-in its register (`lReg`) or in a frame slot (`lFrame`); `owner` which
+The stack: `stack` notes where each value is, a constant (`lConst`), an
+address not yet computed (`lAdr`, `AdrMem`'s operand), in its register
+(`lReg`) or in a frame slot (`lFrame`); `owner` which
 value each register holds. The value at depth `d` belongs in
 `Regs[d mod 4]`, `r8` to `r11`: `rax`, `rdx` and `rcx`, which division
 and shifts need, and `rsi` and `rdi`, which copying needs, aren't among
 them. `Claim` gives a value its register, and `Spill`s a deeper one
 that holds it, when an expression is deeper than the registers;
-`Loaded` brings a value into its register, from its constant or its
-slot; `Top` is `Loaded` for the value on top, and `Target` the
+`Loaded` brings a value into its register, from its constant, address
+or slot; `Place` uses a noted address as the operand itself, and
+`PopVar` and `IncDec` an operand of memory and a constant, so `DEC(n)`
+is `sub qword [rbp - 8], 1`; `Top` is `Loaded` for the value on top, and `Target` the
 register a new one is computed in. Before a call every value in a
 register is spilled (`SpillBelow`), since the call may change them, and
-so are the values under `and`'s and `or`'s left operand, which both
-ways to its label must find in the same place. `pushed` counts what
+so are the values under a comparison that jumps out of an expression
+(`JumpOut`), which both ways to its label must find in the same place. `pushed` counts what
 is on the machine's stack, which a call must align: the return
 address, in a deferred statement. `Op` takes a
 constant on the right as it is, and a power of two on the right of
@@ -329,9 +334,11 @@ gen's `CheckNil` tests the pointer only if the use reaches past
 own `gen.pas`: `Rt.fail` stops for a nil pointer, a division by zero
 and a stack overflow as the signals would.
 
-Calls: the arguments are in frame slots by the time `Call` runs, one
-each, computed left to right; only then are they loaded into the
-registers System V wants, and the stack aligned for the call. A record
+Calls: the arguments wait for `Call`, computed left to right: a
+constant or a noted address as itself, anything else in a frame slot
+(`PopArg`), so that computing a later one can't disturb it; only then
+are they loaded into the registers System V wants (`LoadArg`), and the
+stack aligned for the call. A record
 passed by value goes as the address of a copy; one returned comes back
 through a hidden pointer in `rdi`, as C's structs do, and so do several
 results (`ResultTo`, `CopyResult`).
@@ -353,6 +360,10 @@ says what it is now:
 - `mVar`: a variable, at `base`, `chunk` and `off`, which `AdrOf`
   makes a `TAdr` for gen;
 - `mStack`: a value on gen's stack;
+- `mCond`: a condition, as Wirth's compilers keep one: two integers on
+  gen's stack, compared by `rel` once something wants the result, and
+  the jumps of `and` and `or` that land where it is false (`fj`) or
+  true (`tj`); `CondJump` makes it a jump, `Value` a `BOOL`;
 - `mProc`, `mType`, `mStr`, and a few more the parser needs.
 
 An item also carries `pos`, the stretch of source it came from, which
@@ -369,8 +380,10 @@ it is on the stack. An item nothing more is done with is given back to
 
 Expressions: `Op1` is called when the parser has seen an operator and
 its left operand, `Op2` when it has the right one. `Op1` pushes the
-left operand, unless it is a constant (or, for `and` and `or`, has gen
-jump past the right one). `Op2` checks the types, folds constants
+left operand, unless it is a constant; for `and` and `or` it makes the
+left one a condition (`MakeCond`) and jumps past the right one, which
+`Op2` joins to it: `(a < b) and (c < d)` in an `if` is two compares
+and two jumps, as `not` of a condition is the other comparison. `Op2` checks the types, folds constants
 (`FoldInt`, `FoldReal`), and otherwise pushes the right operand and has
 gen do the operation; a constant on the left goes on after the right,
 and the two `Swap`. A set's operations are operations on its bits

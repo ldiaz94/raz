@@ -31,43 +31,38 @@ Listing.main:
             11  xor eax, eax
             13  mov [rbp - 8], rax
     20      for i := 1 to 3 do
-            17  mov rax, 1
-            22  mov [rbp - 8], rax
-            26  mov rax, 3
-            31  mov [rbp - 16], rax
-            35  mov r8, [rbp - 8]
-            39  mov r9, [rbp - 16]
-            43  cmp r8, r9
-            46  jg 173
+            17  mov qword [rbp - 8], 1
+            25  mov qword [rbp - 16], 3
+            33  mov r8, [rbp - 8]
+            37  mov r9, [rbp - 16]
+            41  cmp r8, r9
+            44  jg 160
     21          if i # 2 then total := add(total, twice(i)); end;
-            52  mov r8, [rbp - 8]
-            56  cmp r8, 2
-            60  setne r8b
-            64  movzx r8d, r8b
-            68  test r8, r8
-            71  je 135
-            77  mov r8, [Listing.total]
-            84  mov [rbp - 24], r8
-            88  mov r8, [rbp - 8]
-            92  mov [rbp - 32], r8
-            96  mov rdi, [rbp - 32]
-           100  call Listing.twice
-           105  mov r8, rax
-           108  mov [rbp - 40], r8
-           112  mov rdi, [rbp - 24]
-           116  mov rsi, [rbp - 40]
-           120  call Listing.add
-           125  mov r8, rax
-           128  mov [Listing.total], r8
-           135  mov r8, [rbp - 16]
-           139  mov r9, [rbp - 8]
-           143  sub r8, r9
-           146  cmp r8, 1
-           150  jb 173
-           156  mov r8, [rbp - 8]
-           160  add r8, 1
-           164  mov [rbp - 8], r8
-           168  jmp 35
+            50  mov r8, [rbp - 8]
+            54  cmp r8, 2
+            58  je 122
+            64  mov r8, [Listing.total]
+            71  mov [rbp - 24], r8
+            75  mov r8, [rbp - 8]
+            79  mov [rbp - 32], r8
+            83  mov rdi, [rbp - 32]
+            87  call Listing.twice
+            92  mov r8, rax
+            95  mov [rbp - 40], r8
+            99  mov rdi, [rbp - 24]
+           103  mov rsi, [rbp - 40]
+           107  call Listing.add
+           112  mov r8, rax
+           115  mov [Listing.total], r8
+           122  mov r8, [rbp - 16]
+           126  mov r9, [rbp - 8]
+           130  sub r8, r9
+           133  cmp r8, 1
+           137  jb 160
+           143  mov r8, [rbp - 8]
+           147  add r8, 1
+           151  mov [rbp - 8], r8
+           155  jmp 33
     23  end main;
-           173  leave
-           174  ret
+           160  leave
+           161  ret
