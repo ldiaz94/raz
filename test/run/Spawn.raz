@@ -21,7 +21,7 @@ begin
         Thread.lock(ADR(m));
         INC(count);
         Thread.unlock(ADR(m));
-        XADD(ADR(atomic), 1);
+        _ := XADD(ADR(atomic), 1);
         NEW(p, Heap.heap);
         p^.next := list;
         list := p;

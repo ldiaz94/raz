@@ -22,7 +22,7 @@ end;
 (* Gives up l, which the caller holds. *)
 proc give*(l: ^Lock);
 begin
-    XCHG(ADR(l^.held), 0);
+    _ := XCHG(ADR(l^.held), 0);
 end;
 
 (* The module's test, in one thread: taken, given, taken again. *)

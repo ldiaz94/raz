@@ -29,6 +29,6 @@ end;
 
 begin
     Table.init(ADR(names), Heap.heap);
-    Table.put(ADR(names), "rose", red);
-    Table.put(ADR(names), "sky", blue);
+    _ := Table.put(ADR(names), "rose", red);
+    _ := Table.put(ADR(names), "sky", blue);
 end FirstUse.

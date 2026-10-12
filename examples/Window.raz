@@ -52,18 +52,18 @@ begin
     s := XDefaultScreen(d);
     w := XCreateSimpleWindow(d, XRootWindow(d, s), 0, 0, 320, 80, 1,
         XBlackPixel(d, s), XWhitePixel(d, s));
-    XStoreName(d, w, "raz");
-    XSelectInput(d, w, ExposureMask + KeyPressMask);
-    XMapWindow(d, w);
+    _ := XStoreName(d, w, "raz");
+    _ := XSelectInput(d, w, ExposureMask + KeyPressMask);
+    _ := XMapWindow(d, w);
     repeat
-        XNextEvent(d, ^U8(ADR(ev)));
+        _ := XNextEvent(d, ^U8(ADR(ev)));
         if I32(ev[0]) = Expose then
-            XDrawString(d, w, XDefaultGC(d, s), 20, 45, text, I32(LEN(text)));
+            _ := XDrawString(d, w, XDefaultGC(d, s), 20, 45, text, I32(LEN(text)));
         end;
     until I32(ev[0]) = KeyPress;
     key := ^KeyEvent(ADR(ev));
     Out.str("key "); Out.int(INT(key^.keycode)); Out.ln;
-    XCloseDisplay(d);
+    _ := XCloseDisplay(d);
     return 0;
 end;
 

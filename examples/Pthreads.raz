@@ -42,7 +42,7 @@ begin
     end;
     total := 0;
     for i := 0 to Workers - 1 do
-        C.pthread_join(t[i], nil);
+        _ := C.pthread_join(t[i], nil);
         total := total + parts[i].sum;
     end;
     Out.str("total "); Out.int(total); Out.ln;

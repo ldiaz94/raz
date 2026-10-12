@@ -107,8 +107,8 @@ end;
    with status 2, as a failed check does. *)
 proc stop*(msg: []U8);
 begin
-    Sys.write(Sys.stderr, msg);
-    Sys.write(Sys.stderr, "\n");
+    _ := Sys.write(Sys.stderr, msg);
+    _ := Sys.write(Sys.stderr, "\n");
     exit(2);
 end;
 
@@ -152,7 +152,7 @@ end;
 proc say;
 begin
     line[lineLen] := '\n';
-    Sys.write(Sys.stderr, line[0..lineLen + 1]);
+    _ := Sys.write(Sys.stderr, line[0..lineLen + 1]);
     lineLen := 0;
 end;
 
@@ -330,7 +330,7 @@ begin
         ip := q[1] - 1;   (* the call, by its return address *)
         bp := q[0];
     end;
-    more(same);
+    _ := more(same);
 end;
 
 (* Says on standard error the calls under way, from the one that calls
@@ -365,8 +365,8 @@ begin
         say;
         calls(at, callerFrame(), true);
         act := {};   (* the signal's default action *)
-        SYSCALL(13, sig, ADR(act), 0, 8);   (* rt_sigaction *)
-        SYSCALL(62, SYSCALL(39), sig);      (* kill(getpid(), sig) *)
+        _ := SYSCALL(13, sig, ADR(act), 0, 8);   (* rt_sigaction *)
+        _ := SYSCALL(62, SYSCALL(39), sig); (* kill(getpid(), sig) *)
     end;
     if what = 0 then
         put("index ");
@@ -485,7 +485,7 @@ proc profile;
 var t: [4]INT; i, n, k: INT; p: ^Proc;
 begin
     t := [0, 0, 0, 0];
-    SYSCALL(38, 2, ADR(t), 0);   (* setitimer(ITIMER_PROF): no more *)
+    _ := SYSCALL(38, 2, ADR(t), 0);   (* setitimer(ITIMER_PROF): no more *)
     profiling := false;
     n := numSamples;
     if n > MaxSamples then n := MaxSamples; end;
@@ -511,15 +511,15 @@ end;
 
 begin
     alt := {sp: ADR(altStack[0]), size: LEN(altStack)};
-    SYSCALL(131, ADR(alt), 0);   (* sigaltstack *)
+    _ := SYSCALL(131, ADR(alt), 0);   (* sigaltstack *)
     act := {handler: onSignal, flags: Flags, restorer: sigReturn};
-    SYSCALL(13, SigSegv, ADR(act), 0, 8);   (* rt_sigaction *)
-    SYSCALL(13, SigFpe, ADR(act), 0, 8);
+    _ := SYSCALL(13, SigSegv, ADR(act), 0, 8);   (* rt_sigaction *)
+    _ := SYSCALL(13, SigFpe, ADR(act), 0, 8);
     if LEN(Sys.env("RAZ_PROFILE")) > 0 then
         act := {handler: onProf, flags: ProfFlags, restorer: sigReturn};
-        SYSCALL(13, SigProf, ADR(act), 0, 8);
+        _ := SYSCALL(13, SigProf, ADR(act), 0, 8);
         timerv := [0, 1000, 0, 1000];   (* every millisecond, from one on *)
-        SYSCALL(38, 2, ADR(timerv), 0);   (* setitimer(ITIMER_PROF) *)
+        _ := SYSCALL(38, 2, ADR(timerv), 0);   (* setitimer(ITIMER_PROF) *)
         profiling := true;
     end;
 end Rt.

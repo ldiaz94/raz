@@ -1,0 +1,24 @@
+module Blank;
+import Out;
+var calls: I64;
+proc pair(a, b: I64): (I64, I64);
+begin
+    INC(calls);
+    return a, b;
+end;
+proc count: I64;
+begin
+    INC(calls);
+    return calls;
+end;
+proc main*;
+var n, k: I64;
+begin
+    _ := count();
+    n, _ := pair(1, 2);
+    _, k := pair(3, 4);
+    _, _ := pair(5, 6);
+    _ := n + k;
+    Out.int(n); Out.str(" "); Out.int(k); Out.str(" "); Out.int(calls); Out.ln;
+end;
+end Blank.

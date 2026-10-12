@@ -9,8 +9,8 @@ begin
     for i := 1 to 3 do
         Out.str("raz says "); Out.int(i); Out.ln;
         Out.flush;
-        C.printf("C says %d, %s\n", I32(i * i), "squared");
-        C.fflush(C.stdout);
+        _ := C.printf("C says %d, %s\n", I32(i * i), "squared");
+        _ := C.fflush(C.stdout);
     end;
 end;
 

@@ -17,8 +17,4 @@ the owner's review.
 ## Wishes, for a later thaw
 
 What the language or the library might have, met while writing raz;
-none is built while the freeze holds.
-
-- A warning for a call whose result is dropped. Code drops results on
-  purpose (`SYSCALL`, `Sys.write`; about 40 places in `lib/`), so it
-  needs a way to say so first, such as `_ := f(x)`.
+none is built while the freeze holds. None waits now.

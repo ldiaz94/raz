@@ -1,0 +1,7 @@
+module BlankName;
+proc main*;
+var _: I64; x: I64;
+begin
+    x := _;
+end;
+end BlankName.

@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of Free Pascal, under 7,800 lines of code.
+The compiler is eleven files of Free Pascal, under 7,900 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -9,13 +9,13 @@ disassembly.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/diag.pas` | 310 | 229 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 884 | 745 | Symbols, literals, comments, positions |
+| `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 615 | 510 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 276 | 217 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,039 | 870 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/gen.pas` | 1,332 | 1,039 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,342 | 1,118 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,653 | 2,354 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/parse.pas` | 2,712 | 2,407 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 234 | 180 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -418,7 +418,10 @@ known, so that `[1, 2, 3]`, `{x: 1}` and `{red}` know what to build.
 Then statements: `Statement` makes each one a recovery point (below)
 and `OneStatement` dispatches; `IfStatement`,
 `WhileStatement`, `ForStatement` and `MatchStatement` emit their jumps
-with gen's labels. A `match` on an integer reads each arm's
+with gen's labels. The blank is a symbol of its own, `sBlank`, so
+no declaration or expression takes it: `_ := e` loads a single value
+and drops it, and `MultiAssign` skips the results it stands for. A
+`match` on an integer reads each arm's
 labels in `IntArm`, which refuses a value in two of them, and tests them
 one after another with `MatchRange`: compares and branches, no jump
 table. `Defer` is worth reading: a deferred statement
@@ -489,7 +492,10 @@ with no errors, `Warnings` merges the two lists by position and `Warn`
 reports what isn't exported, doesn't start with `_`, and was never
 used, or, for a variable, only assigned, and a procedure with results
 that may reach its end (`openEnd`, from `ends`, which each statement
-sets). A generic module's instances
+sets). The calls that drop results are a third list, `drops`, in
+order: `CompileFile` notes where the module's own begin, since the
+instances it makes along the way add theirs and take them back. A
+generic module's instances
 share its text, so only the first is warned of.
 
 The built-in procedures are in `Builtin` (and `New_`, `Atomic`): each
@@ -606,7 +612,9 @@ this one does.
   it may reach its end without `return` (`ends`, `parse.pas`): each
   way through its statements must end in a `return`, an `if` with an
   `else`, a `match`, a `while true` or a `repeat ... until false`
-  with no `break`. `-Werror` makes each an error.
+  with no `break`. So is a call standing on its own that drops a
+  result (`drops`, kept by `OneStatement` and told by `Dropped`);
+  `_ := f(x)` drops one on purpose. `-Werror` makes each an error.
 - **Several results** come back through a hidden pointer to the
   caller's slots; a code procedure returns two in rax and rdx.
 - **Reals.** A real constant is held as an F64. An `F32` in a register

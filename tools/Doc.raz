@@ -178,7 +178,7 @@ begin
     exp := name();
     stop := toSemicolon();
     next;
-    if is("forward") then toSemicolon();
+    if is("forward") then _ := toSemicolon();
     else skipBody;
     end;
     declaration("", exp, start, ds, de, stop);
@@ -235,7 +235,7 @@ begin
         if is("const") or is("type") or is("var") then section;
         elsif is("proc") then procedure;
         elsif is("extern") then external;
-        elsif is("import") or is("link") then toSemicolon(); next;
+        elsif is("import") or is("link") then _ := toSemicolon(); next;
         else next;
         end;
     end;

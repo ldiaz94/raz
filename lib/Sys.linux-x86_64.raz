@@ -156,7 +156,7 @@ end;
 (* Closes the file descriptor fd. *)
 proc close*(fd: INT);
 begin
-    SYSCALL(3, fd);
+    _ := SYSCALL(3, fd);
 end;
 
 (* size bytes of fresh, zeroed memory from the system, a multiple of
@@ -172,7 +172,7 @@ end;
 (* Gives back to the system the size bytes at p that mmap gave. *)
 proc munmap*(p: ^U8; size: INT);
 begin
-    SYSCALL(11, p, size);
+    _ := SYSCALL(11, p, size);
 end;
 
 (* Whether the file descriptor fd is a terminal: whether it has a
@@ -302,7 +302,7 @@ end;
 (* Closes the directory d that openDir opened. *)
 proc closeDir*(d: ^Dir);
 begin
-    SYSCALL(3, d^.fd);
+    _ := SYSCALL(3, d^.fd);
 end;
 
 (* Puts the terminal on fd into raw mode: no echo, no lines, no signals,
@@ -325,7 +325,7 @@ end;
 (* The terminal on fd as rawMode found it. *)
 proc restoreMode*(fd: INT);
 begin
-    SYSCALL(16, fd, 5402H, ADR(saved));
+    _ := SYSCALL(16, fd, 5402H, ADR(saved));
 end;
 
 (* The columns and rows of the terminal on fd; 80 by 24 if it doesn't
@@ -353,7 +353,7 @@ end;
 proc clock*: I64;
 var t: Timespec;
 begin
-    SYSCALL(228, 1, ADR(t));                            (* clock_gettime: CLOCK_MONOTONIC *)
+    _ := SYSCALL(228, 1, ADR(t));                       (* clock_gettime: CLOCK_MONOTONIC *)
     return t.sec * 1000000000 + t.nsec;
 end;
 
@@ -361,7 +361,7 @@ end;
 proc now*: I64;
 var t: Timespec;
 begin
-    SYSCALL(228, 0, ADR(t));                            (* clock_gettime: CLOCK_REALTIME *)
+    _ := SYSCALL(228, 0, ADR(t));                       (* clock_gettime: CLOCK_REALTIME *)
     return t.sec * 1000000000 + t.nsec;
 end;
 
@@ -396,7 +396,7 @@ begin
     if fd < 0 then return fd; end;
     if serving then
         one := 1;                                       (* so that a server can start again at once *)
-        SYSCALL(54, fd, 1, 2, ADR(one), 4);             (* setsockopt: SOL_SOCKET, SO_REUSEADDR *)
+        _ := SYSCALL(54, fd, 1, 2, ADR(one), 4);        (* setsockopt: SOL_SOCKET, SO_REUSEADDR *)
         r := SYSCALL(49, fd, a, size);                  (* bind *)
         if r = 0 then r := SYSCALL(50, fd, 4096); end;  (* listen *)
     else
@@ -664,7 +664,7 @@ end;
 proc openPty*: INT;
 var a: [4096]U8; fd, unlock: INT;
 begin
-    cstr("/dev/ptmx", a);
+    _ := cstr("/dev/ptmx", a);
     fd := SYSCALL(2, ADR(a), 80102H);                   (* open: O_RDWR, O_NOCTTY, O_CLOEXEC *)
     if fd < 0 then return fd; end;
     unlock := 0;
@@ -803,38 +803,38 @@ begin
     end;
     if argv = nil then return -12; end;                 (* ENOMEM *)
     all := 0FFFFFFFFFFFFFFFFH;
-    SYSCALL(14, 2, ADR(all), ADR(old), 8);              (* rt_sigprocmask: SIG_SETMASK *)
+    _ := SYSCALL(14, 2, ADR(all), ADR(old), 8);         (* rt_sigprocmask: SIG_SETMASK *)
     pid := SYSCALL(57);                                 (* fork *)
     if pid = 0 then
         if p.tty # 0 then
-            SYSCALL(112);                               (* setsid *)
+            _ := SYSCALL(112);                          (* setsid *)
             fd := SYSCALL(2, ADR(name), 2);             (* open, O_RDWR *)
-            if (fd < 0) or (SYSCALL(16, fd, 540EH, 0) # 0) then SYSCALL(231, 127); end;   (* TIOCSCTTY; exit *)
-            for i := 0 to 2 do SYSCALL(33, fd, i); end; (* dup2 *)
+            if (fd < 0) or (SYSCALL(16, fd, 540EH, 0) # 0) then _ := SYSCALL(231, 127); end;   (* TIOCSCTTY; exit *)
+            for i := 0 to 2 do _ := SYSCALL(33, fd, i); end; (* dup2 *)
         else
-            if p.group = -1 then SYSCALL(109, 0, 0);   (* setpgid *)
-            elsif p.group # 0 then SYSCALL(109, 0, p.group);
+            if p.group = -1 then _ := SYSCALL(109, 0, 0);   (* setpgid *)
+            elsif p.group # 0 then _ := SYSCALL(109, 0, p.group);
             end;
-            if p.foreground then foreground(0, SYSCALL(111)); end;   (* getpgrp *)
+            if p.foreground then _ := foreground(0, SYSCALL(111)); end;   (* getpgrp *)
             for i := 0 to 2 do
-                if p.fds[i] # 0 then SYSCALL(33, p.fds[i], i); end;   (* dup2 *)
+                if p.fds[i] # 0 then _ := SYSCALL(33, p.fds[i], i); end;   (* dup2 *)
             end;
         end;
-        if (LEN(p.dir) > 0) and (SYSCALL(80, ADR(dir)) # 0) then SYSCALL(231, 127); end;   (* chdir *)
-        SYSCALL(436, 3, 0FFFFFFFFH, 0);                 (* close_range: every fd from 3 *)
-        for i := 1 to 64 do SYSCALL(13, i, ADR(dfl), 0, 8); end;   (* rt_sigaction *)
-        SYSCALL(14, 2, ADR(empty), 0, 8);               (* no signal blocked *)
-        SYSCALL(59, ADR(a), argv, argv + (LEN(p.args) + 1));   (* execve *)
-        SYSCALL(231, 127);                              (* exit *)
+        if (LEN(p.dir) > 0) and (SYSCALL(80, ADR(dir)) # 0) then _ := SYSCALL(231, 127); end;   (* chdir *)
+        _ := SYSCALL(436, 3, 0FFFFFFFFH, 0);            (* close_range: every fd from 3 *)
+        for i := 1 to 64 do _ := SYSCALL(13, i, ADR(dfl), 0, 8); end;   (* rt_sigaction *)
+        _ := SYSCALL(14, 2, ADR(empty), 0, 8);          (* no signal blocked *)
+        _ := SYSCALL(59, ADR(a), argv, argv + (LEN(p.args) + 1));   (* execve *)
+        _ := SYSCALL(231, 127);                         (* exit *)
     end;
     if (pid > 0) and (p.tty = 0) then
         (* as the program does, for whichever of the two runs first *)
         g := p.group;
         if g = -1 then g := pid; elsif g = 0 then g := SYSCALL(111); end;
-        if p.group # 0 then SYSCALL(109, pid, g); end;
-        if p.foreground then foreground(0, g); end;
+        if p.group # 0 then _ := SYSCALL(109, pid, g); end;
+        if p.foreground then _ := foreground(0, g); end;
     end;
-    SYSCALL(14, 2, ADR(old), 0, 8);
+    _ := SYSCALL(14, 2, ADR(old), 0, 8);
     munmap(^U8(argv), size);
     return pid;
 end;
@@ -879,7 +879,7 @@ begin
     end;
     fd := -1;
     if caughtSigs # 0 then fd := sigFd; end;
-    SYSCALL(14, 0, ADR(m), 0, 8);                       (* rt_sigprocmask: SIG_BLOCK *)
+    _ := SYSCALL(14, 0, ADR(m), 0, 8);                  (* rt_sigprocmask: SIG_BLOCK *)
     fd := SYSCALL(289, fd, ADR(m), 8, 80800H);          (* signalfd4: SFD_NONBLOCK, SFD_CLOEXEC *)
     if fd < 0 then return fd; end;
     caughtSigs := m;
@@ -907,13 +907,13 @@ end;
 (* Gives the processor to another thread. *)
 proc yield*;
 begin
-    SYSCALL(24);
+    _ := SYSCALL(24);
 end;
 
 (* Ends the program, at once, with status. *)
 proc exit*(status: INT);
 begin
-    SYSCALL(231, status);
+    _ := SYSCALL(231, status);
 end;
 
 (* The test of programs: one on a pseudo-terminal of 100 by 30 prints
@@ -1063,9 +1063,9 @@ begin
     if (p = nil) or (p[99] # 0) then exit(2); end;
     munmap(p, 100);
     (* files and directories *)
-    remove("/tmp/raz-sys-dir/f");
-    remove("/tmp/raz-sys-dir/g");
-    makeDir("/tmp/raz-sys-dir");
+    _ := remove("/tmp/raz-sys-dir/f");
+    _ := remove("/tmp/raz-sys-dir/g");
+    _ := makeDir("/tmp/raz-sys-dir");
     fd := create("/tmp/raz-sys-dir/f");
     if (fd < 0) or (write(fd, "abc") # 3) then exit(2); end;
     close(fd);
@@ -1076,7 +1076,7 @@ begin
     if (err # 0) or not i.dir or i.file then exit(2); end;
     i, err := info("/dev/null");
     if (err # 0) or i.dir or i.file then exit(2); end;
-    remove("/tmp/raz-sys-link");
+    _ := remove("/tmp/raz-sys-link");
     if symlink("/tmp/raz-sys-dir", "/tmp/raz-sys-link") # 0 then exit(2); end;
     i, err := info("/tmp/raz-sys-link");
     if (err # 0) or not i.dir or not i.symlink then exit(2); end;
@@ -1084,9 +1084,9 @@ begin
     if (err # 0) or (name # "/tmp/raz-sys-dir") then exit(2); end;
     name, err := readLink("/tmp/raz-sys-dir");
     if err # -22 then exit(2); end;                    (* EINVAL: not a link *)
-    remove("/tmp/raz-sys-link");
+    _ := remove("/tmp/raz-sys-link");
     (* open as asked, seek, the mode and the time *)
-    remove("/tmp/raz-sys-dir/h");
+    _ := remove("/tmp/raz-sys-dir/h");
     fd := open("/tmp/raz-sys-dir/h", {writing, creating, exclusive});
     if (fd < 0) or (write(fd, "abc") # 3) then exit(2); end;
     close(fd);
@@ -1104,7 +1104,7 @@ begin
     if chmod("/tmp/raz-sys-dir/h", 1EDH) # 0 then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/h");
     if i.mode # 1EDH then exit(2); end;
-    remove("/tmp/raz-sys-dir/h");
+    _ := remove("/tmp/raz-sys-dir/h");
     i, err := info("/no/such/file");
     if err >= 0 then exit(2); end;
     if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
@@ -1128,7 +1128,7 @@ begin
     (* a socket: nothing at a path, then a listener that a connection
        makes ready, and a byte from it to the connection *)
     if connect("/tmp/raz-no-such-socket") # -2 then exit(2); end;    (* ENOENT *)
-    remove("/tmp/raz-sys-socket");
+    _ := remove("/tmp/raz-sys-socket");
     l := listen("/tmp/raz-sys-socket");
     if (l < 0) or (listen("/tmp/raz-sys-socket") # -98) then exit(2); end;    (* EADDRINUSE: there already *)
     c := connect("/tmp/raz-sys-socket");
@@ -1143,7 +1143,7 @@ begin
     if send(c, "x") # -32 then exit(2); end;           (* EPIPE, and no SIGPIPE *)
     close(c);
     close(l);
-    remove("/tmp/raz-sys-socket");
+    _ := remove("/tmp/raz-sys-socket");
     testPrograms;
     testNet;
 end;

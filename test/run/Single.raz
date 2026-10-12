@@ -35,8 +35,8 @@ end;
 proc show(name: ^U8; x: F64);
 begin
     Out.flush;
-    C.printf("%s %.9g\n", name, x);
-    C.fflush(C.stdout);
+    _ := C.printf("%s %.9g\n", name, x);
+    _ := C.fflush(C.stdout);
 end;
 
 proc main*;
@@ -77,8 +77,8 @@ begin
     show("mix", mix(1.5, 2, 0.25, 0.125));
     for i := 0 to 3 do arr[i] := F32(i) * 0.5; end;
     show("arr", F64(arr[3]));
-    C.printf("%f %f\n", F64(arr[1]), 0.5);
-    C.fflush(C.stdout);
+    _ := C.printf("%f %f\n", F64(arr[1]), 0.5);
+    _ := C.fflush(C.stdout);
 end;
 
 end Single.

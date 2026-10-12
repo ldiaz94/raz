@@ -1,0 +1,9 @@
+test/err/Dropped.raz:9:5: error: the result of Sys.write is dropped
+    9 |     Sys.write(Sys.stdout, "a\n");
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: if that is meant, write _ := Sys.write(...)
+test/err/Dropped.raz:10:5: error: the results of pair are dropped
+   10 |     pair();
+      |     ^^^^^^
+help: if that is meant, write _, _ := pair(...)
+raz: 2 errors

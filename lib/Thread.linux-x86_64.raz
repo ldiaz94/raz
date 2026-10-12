@@ -76,7 +76,7 @@ var t: ^Thread; alt: AltStack;
 begin
     t := ^Thread(arg);
     alt := {sp: ^U8(t) - Alt, size: Alt};
-    SYSCALL(131, ADR(alt), 0);   (* sigaltstack *)
+    _ := SYSCALL(131, ADR(alt), 0);   (* sigaltstack *)
     t^.fn(t^.arg);
 end;
 
@@ -114,7 +114,7 @@ begin
     tid := ADR(t^.tid);
     v := tid^;
     while v # 0 do
-        futex(ADR(t^.tid), FutexWait, v);
+        _ := futex(ADR(t^.tid), FutexWait, v);
         v := tid^;
     end;
     base := t^.base;
@@ -129,7 +129,7 @@ begin
     if CAS(ADR(m^.state), 0, 1) then return; end;
     c := XCHG(ADR(m^.state), 2);
     while c # 0 do
-        futex(ADR(m^.state), FutexWait + Private, 2);
+        _ := futex(ADR(m^.state), FutexWait + Private, 2);
         c := XCHG(ADR(m^.state), 2);
     end;
 end;
@@ -139,8 +139,8 @@ end;
 proc unlock*(m: ^Mutex);
 begin
     if XADD(ADR(m^.state), -1) # 1 then
-        XCHG(ADR(m^.state), 0);
-        futex(ADR(m^.state), FutexWake + Private, 1);
+        _ := XCHG(ADR(m^.state), 0);
+        _ := futex(ADR(m^.state), FutexWake + Private, 1);
     end;
 end;
 

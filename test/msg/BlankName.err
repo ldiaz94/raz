@@ -1,0 +1,4 @@
+conform/err/BlankName.raz:3:5: error: _ isn't a name: it is the blank, which stands only left of :=
+    3 | var _: I64; x: I64;
+      |     ^
+raz: 1 error

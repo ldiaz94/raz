@@ -24,6 +24,7 @@ type
     sPlus, sMinus, sTimes, sSlash, sEql, sNeq, sLss, sLeq, sGtr, sGeq,
     sBecomes, sColon, sSemicolon, sComma, sPeriod, sUpto, sEllipsis,
     sLparen, sRparen, sLbrak, sRbrak, sLbrace, sRbrace, sArrow, sAmp, sTilde, sBar,
+    sBlank,
     { the reserved words, in the order of Words below }
     sAnd, sBegin, sBreak, sBy, sCode, sConst, sDefer, sDiv, sDo, sElse,
     sElsif, sEnd, sExtern, sFor, sForward, sIf, sImport, sIn, sLink,
@@ -106,10 +107,10 @@ const
     'in', 'link', 'match', 'mod', 'module', 'not', 'of', 'or', 'packed',
     'proc', 'record', 'repeat', 'return', 'set', 'shl', 'shr', 'then',
     'to', 'type', 'until', 'var', 'variant', 'VOLATILE', 'while', 'xor');
-  Ops: array[sPlus..sBar] of string[3] = (
+  Ops: array[sPlus..sBlank] of string[3] = (
     '+', '-', '*', '/', '=', '#', '<', '<=', '>', '>=',
     ':=', ':', ';', ',', '.', '..', '...',
-    '(', ')', '[', ']', '{', '}', '^', '&', '~', '|');
+    '(', ')', '[', ']', '{', '}', '^', '&', '~', '|', '_');
 
 var
   cur: TScanState;   { buf .. path; tok, ival, rval and id live above }
@@ -311,7 +312,7 @@ end;
 { How an operator or reserved word is written, quoted, for messages. }
 function SymText(s: TSym): shortstring;
 begin
-  if s in [sPlus..sBar] then SymText := '"' + Ops[s] + '"'
+  if s in [sPlus..sBlank] then SymText := '"' + Ops[s] + '"'
   else SymText := '"' + Words[ord(s) - ord(sAnd)] + '"';
 end;
 
@@ -777,7 +778,8 @@ begin
       until not (cur.buf[cur.pos] in ['A'..'Z', 'a'..'z', '0'..'9', '_']);
       if cur.pos - start > MaxIdent then LexError('a name has at most ' + IntStr(MaxIdent) + ' characters');
       h := Intern(@cur.buf[start], cur.pos - start);
-      if h < NumWords then tok := TSym(ord(sAnd) + h)
+      if (cur.pos - start = 1) and (c = '_') then tok := sBlank
+      else if h < NumWords then tok := TSym(ord(sAnd) + h)
       else begin tok := sIdent; id := h end;
     end;
     '0'..'9': Number;

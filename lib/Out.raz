@@ -101,5 +101,5 @@ end;
 
 begin
     tty := Sys.isTerminal(Sys.stdout);
-    Rt.atExit(flush);
+    _ := Rt.atExit(flush);
 end Out.

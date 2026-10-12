@@ -91,6 +91,12 @@ var
   stray: boolean;         { an "end" in this procedure stood left of its statement's line }
   strayAt: TPos;          { ... the first such statement }
   elseIf: boolean;        { an "else if" in this procedure }
+  drops: array[0..4095] of record
+    at: TPos;             { a call standing on its own that drops results }
+    n: longint;           { ... how many }
+  end;
+  numDrops: longint;      { the module being compiled has those from its
+                            first one, saved by CompileFile, to here }
   ends: boolean;          { the statements just read never go on past
                             their end: each way through them returns }
   useAt: TPos;            { ... which is here }
@@ -105,6 +111,7 @@ procedure Statement; forward;
 { A missing symbol is reported just after the one before it. }
 procedure Expected(const what: shortstring);
 begin
+  if tok = sBlank then Mark('_ isn''t a name: it is the blank, which stands only left of :=');
   MarkAt(MissingPos, 'expected ' + what + ', found ' + Found);
 end;
 
@@ -1497,22 +1504,31 @@ end;
 
 { a, b := f(x): the variables first, left to right, then the call;
   then each result to its variable, in order. }
-procedure MultiAssign(var x: TItem; first: longint);
-var d: array[0..15] of TItem; dn: array[0..15] of longint; y, z: TItem; n, i: longint; called: boolean; f: PObj;
+procedure MultiAssign(var x: TItem; first: longint; blank: boolean);
+var
+  d: array[0..15] of TItem; dn: array[0..15] of longint; blanks: array[0..15] of boolean;
+  y, z: TItem; n, i: longint; called: boolean; f: PObj;
 begin
   n := 0;
   d[0] := x;
   dn[0] := first;
+  blanks[0] := blank;
   repeat
-    NotReadOnly(d[n]);
-    Assignable(d[n], dn[n]);
-    Pin(d[n]);
+    if not blanks[n] then begin
+      NotReadOnly(d[n]);
+      Assignable(d[n], dn[n]);
+      Pin(d[n]);
+    end;
     inc(n);
     if tok <> sComma then break;
     if n > High(d) then Mark('more than ' + IntStr(High(d) + 1) + ' variables in one assignment');
     Next;
-    dn[n] := id;
-    LeftSide(d[n], called);
+    blanks[n] := tok = sBlank;
+    if blanks[n] then Next
+    else begin
+      dn[n] := id;
+      LeftSide(d[n], called);
+    end;
   until false;
   Expect(sBecomes);
   Designator(y, called);
@@ -1520,10 +1536,12 @@ begin
     MarkAt(y.pos, 'expected a call with ' + IntStr(n) + ' results');
   f := y.typ^.fields;
   for i := 0 to n - 1 do begin
-    z := y;
-    Field(z, f);
-    CoerceExact(z, d[i].typ, 'several results go to variables of just their types');
-    Assign(d[i], z);
+    if not blanks[i] then begin
+      z := y;
+      Field(z, f);
+      CoerceExact(z, d[i].typ, 'several results go to variables of just their types');
+      Assign(d[i], z);
+    end;
     f := f^.next;
   end;
 end;
@@ -1589,7 +1607,7 @@ begin
         Expression(y, x.typ);
         Assign(x, y);
       end else if tok = sComma then
-        MultiAssign(x, first)
+        MultiAssign(x, first, false)
       else if not called then begin
         if (x.mode = mProc) or ((x.mode in [mVar, mStack]) and (x.typ^.form = fProc)) then begin
           BeginCall(c, x);
@@ -1598,7 +1616,27 @@ begin
         end else if tok = sEql then
           MarkHelp(x.pos, Subject(x, first) + ' isn''t a statement', 'assignment is written :=')
         else MarkAt(x.pos, Subject(x, first) + ' isn''t a statement');
-      end else Discard(x);
+      end else begin
+        if (x.mode <> mNone) and (numDrops <= High(drops)) then begin
+          drops[numDrops].at := x.pos;
+          if x.typ^.tuple then drops[numDrops].n := x.typ^.len else drops[numDrops].n := 1;
+          inc(numDrops);
+        end;
+        Discard(x);
+      end;
+    end;
+    sBlank: begin
+      Next;
+      if tok = sComma then MultiAssign(x, 0, true)
+      else begin
+        Expect(sBecomes);
+        Expression(x, nil);
+        { evaluated and dropped: a single value is loaded, so that a
+          volatile one is read }
+        if (x.mode in [mType, mBuiltin, mNone, mCase]) or (x.mode <> mStr) and not IsAggregate(x.typ) then
+          Value(x);
+        Discard(x);
+      end;
     end;
     sIf: IfStatement(start, Indent);
     sWhile: WhileStatement(start, Indent);
@@ -2225,19 +2263,38 @@ begin
     Help('if it must be there, call it _' + NameOf(o^.name));
 end;
 
+{ Warns of the call at p, which drops its n results }
+procedure Dropped(const p: TPos; n: longint);
+var s, blanks: shortstring; i: longint;
+begin
+  s := Source(p);
+  i := Pos('(', s);
+  if i > 0 then s := copy(s, 1, i - 1);
+  blanks := '_';
+  for i := 2 to n do blanks := blanks + ', _';
+  if n = 1 then Warning(p, 'the result of ' + s + ' is dropped')
+  else Warning(p, 'the results of ' + s + ' are dropped');
+  Help('if that is meant, write ' + blanks + ' := ' + s + '(...)');
+end;
+
 { The warnings of module m, by where each declaration is: its own
-  declarations and its procedures' are two lists, each in order. The
+  declarations and its procedures' are two lists, each in order, and
+  firstDrop on are the calls that drop results. The
   instances of a generic module share its text, and so its warnings:
   only the first is warned of. }
-procedure Warnings(m: PModule);
-var a, b: PObj; n: PModule;
+procedure Warnings(m: PModule; firstDrop: longint);
+var a, b: PObj; n: PModule; i: longint;
 begin
   n := firstModule;
   while (n <> nil) and (n^.name <> m^.name) do n := n^.next;
   if n <> nil then exit;
   a := m^.first; b := m^.locals;
-  while (a <> nil) or (b <> nil) do
-    if (b = nil) or (a <> nil) and (a^.pos.a < b^.pos.a) then begin
+  i := firstDrop;
+  while (a <> nil) or (b <> nil) or (i < numDrops) do
+    if (i < numDrops) and ((a = nil) or (drops[i].at.a < a^.pos.a)) and ((b = nil) or (drops[i].at.a < b^.pos.a)) then begin
+      Dropped(drops[i].at, drops[i].n);
+      inc(i);
+    end else if (b = nil) or (a <> nil) and (a^.pos.a < b^.pos.a) then begin
       Warn(a);
       a := a^.link;
     end else begin
@@ -2268,8 +2325,9 @@ var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
   oldMod: PModule; oldCheck, oldChecks: boolean; m: PModule;
   lib: PLib; start: TPos; alias, mname, line, oldPath: longint; o: PObj; body: longint; iargs: TArgs;
-  generic: boolean; argsAt: TScanState; why: shortstring;
+  generic: boolean; argsAt: TScanState; why: shortstring; firstDrop: longint;
 begin
+  firstDrop := numDrops;
   SaveScan(st);
   SaveScopes(d, saved);
   oldMod := curModule; oldCheck := checkMode; oldPath := curFile; oldChecks := checks;
@@ -2394,7 +2452,8 @@ begin
     if (o^.cls = oProc) and o^.fwd then Error(TokPos, NameOf(o^.name) + ' is declared forward but never defined');
     o := o^.link;
   end;
-  if (errors = 0) and not checkOnly then Warnings(m);
+  if (errors = 0) and not checkOnly then Warnings(m, firstDrop);
+  numDrops := firstDrop;
   if errors > 0 then Finish;   { a module with errors stops the compiler after it }
   CloseScope;
   m^.done := true;

@@ -1,0 +1,9 @@
+module BlankValue;
+import Out;
+proc main*;
+var x: I64;
+begin
+    x := 1;
+    Out.int(_);
+end;
+end BlankValue.

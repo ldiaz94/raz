@@ -3,7 +3,7 @@ import Bare, C;
 
 proc main*;
 begin
-    C.printf("%d\n", Bare.f());
+    _ := C.printf("%d\n", Bare.f());
 end;
 
 end Static.

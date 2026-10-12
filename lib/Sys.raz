@@ -189,7 +189,7 @@ end;
 (* Closes the file descriptor fd. *)
 proc close*(fd: INT);
 begin
-    C.close(I32(fd));
+    _ := C.close(I32(fd));
 end;
 
 (* size bytes of fresh, zeroed memory from the system, a multiple of
@@ -205,7 +205,7 @@ end;
 (* Gives back to the system the size bytes at p that mmap gave. *)
 proc munmap*(p: ^U8; size: INT);
 begin
-    C.munmap(p, UINT(size));
+    _ := C.munmap(p, UINT(size));
 end;
 
 (* Renames old to new, replacing what new names: 0, or minus an errno. *)
@@ -321,7 +321,7 @@ end;
 (* Closes the directory d that openDir opened. *)
 proc closeDir*(d: ^Dir);
 begin
-    C.closedir(d^.d);
+    _ := C.closedir(d^.d);
 end;
 
 (* Puts the terminal on fd into raw mode, as cfmakeraw makes it: no
@@ -339,7 +339,7 @@ end;
 (* The terminal on fd as rawMode found it. *)
 proc restoreMode*(fd: INT);
 begin
-    C.tcsetattr(I32(fd), 0, ADR(saved[0]));
+    _ := C.tcsetattr(I32(fd), 0, ADR(saved[0]));
 end;
 
 (* The columns and rows of the terminal on fd; 80 by 24 if it doesn't
@@ -367,7 +367,7 @@ end;
 proc time(clock: I32): I64;
 var t: Timespec;
 begin
-    C.clock_gettime(clock, ^U8(ADR(t)));
+    _ := C.clock_gettime(clock, ^U8(ADR(t)));
     return t.sec * 1000000000 + t.nsec;
 end;
 
@@ -415,7 +415,7 @@ begin
     if fd < 0 then return failed(); end;
     if serving then
         one := 1;                                       (* so that a server can start again at once *)
-        C.setsockopt(fd, 1, 2, ^U8(ADR(one)), 4);       (* SOL_SOCKET, SO_REUSEADDR *)
+        _ := C.setsockopt(fd, 1, 2, ^U8(ADR(one)), 4);  (* SOL_SOCKET, SO_REUSEADDR *)
         r := C.bind(fd, a, U32(size));
         if r = 0 then r := C.listen(fd, 4096); end;
     else
@@ -423,7 +423,7 @@ begin
     end;
     if r # 0 then
         err := failed();                                (* before close can change errno *)
-        C.close(fd);
+        _ := C.close(fd);
         return err;
     end;
     return INT(fd);
@@ -614,7 +614,7 @@ begin
     if fd < 0 then return failed(); end;
     if (C.grantpt(fd) # 0) or (C.unlockpt(fd) # 0) then
         err := failed();
-        C.close(fd);
+        _ := C.close(fd);
         return err;
     end;
     return INT(fd);
@@ -745,28 +745,28 @@ begin
     end;
     if argv = nil then return -12; end;               (* ENOMEM *)
     for i := 0 to LEN(all) - 1 do all[i] := 0FFFFFFFFFFFFFFFFH; end;
-    C.sigprocmask(2, ^U8(ADR(all)), ^U8(ADR(old)));  (* SIG_SETMASK *)
+    _ := C.sigprocmask(2, ^U8(ADR(all)), ^U8(ADR(old)));  (* SIG_SETMASK *)
     pid := C.fork();
     if pid = 0 then
         if p.tty # 0 then
-            C.setsid();
+            _ := C.setsid();
             fd := C.open(ADR(name[0]), 2);            (* O_RDWR *)
             if (fd < 0) or (C.ioctl(fd, TIOCSCTTY, 0) # 0) then C._exit(127); end;
-            for i := 0 to 2 do C.dup2(fd, I32(i)); end;
+            for i := 0 to 2 do _ := C.dup2(fd, I32(i)); end;
         else
-            if p.group = -1 then C.setpgid(0, 0);
-            elsif p.group # 0 then C.setpgid(0, I32(p.group));
+            if p.group = -1 then _ := C.setpgid(0, 0);
+            elsif p.group # 0 then _ := C.setpgid(0, I32(p.group));
             end;
-            if p.foreground then C.tcsetpgrp(0, C.getpgrp()); end;
+            if p.foreground then _ := C.tcsetpgrp(0, C.getpgrp()); end;
             for i := 0 to 2 do
-                if p.fds[i] # 0 then C.dup2(I32(p.fds[i]), I32(i)); end;
+                if p.fds[i] # 0 then _ := C.dup2(I32(p.fds[i]), I32(i)); end;
             end;
         end;
         if (LEN(p.dir) > 0) and (C.chdir(ADR(dir[0])) # 0) then C._exit(127); end;
-        C.close_range(3, 0FFFFFFFFH, 0);             (* every fd from 3 *)
-        for i := 1 to 64 do C.sigaction(I32(i), ^U8(ADR(dfl)), nil); end;
-        C.sigprocmask(2, ^U8(ADR(empty)), nil);
-        C.execve(ADR(a[0]), argv, argv + (LEN(p.args) + 1));
+        _ := C.close_range(3, 0FFFFFFFFH, 0);        (* every fd from 3 *)
+        for i := 1 to 64 do _ := C.sigaction(I32(i), ^U8(ADR(dfl)), nil); end;
+        _ := C.sigprocmask(2, ^U8(ADR(empty)), nil);
+        _ := C.execve(ADR(a[0]), argv, argv + (LEN(p.args) + 1));
         C._exit(127);
     end;
     err := failed();
@@ -774,10 +774,10 @@ begin
         (* as the program does, for whichever of the two runs first *)
         g := p.group;
         if g = -1 then g := INT(pid); elsif g = 0 then g := INT(C.getpgrp()); end;
-        if p.group # 0 then C.setpgid(pid, I32(g)); end;
-        if p.foreground then C.tcsetpgrp(0, I32(g)); end;
+        if p.group # 0 then _ := C.setpgid(pid, I32(g)); end;
+        if p.foreground then _ := C.tcsetpgrp(0, I32(g)); end;
     end;
-    C.sigprocmask(2, ^U8(ADR(old)), nil);
+    _ := C.sigprocmask(2, ^U8(ADR(old)), nil);
     munmap(^U8(argv), size);
     if pid < 0 then return err; end;
     return INT(pid);
@@ -818,7 +818,7 @@ begin
     e := C.__errno_location();
     saved := e^;                                      (* as the code it stopped left it *)
     b[0] := U8(sig);
-    C.write(sigWrite, ADR(b[0]), 1);
+    _ := C.write(sigWrite, ADR(b[0]), 1);
     e^ := saved;
 end;
 
@@ -873,7 +873,7 @@ end;
 (* Gives the processor to another thread. *)
 proc yield*;
 begin
-    C.sched_yield();
+    _ := C.sched_yield();
 end;
 
 (* Ends the program, at once, with status. *)
@@ -1029,9 +1029,9 @@ begin
     if (p = nil) or (p[99] # 0) then exit(2); end;
     munmap(p, 100);
     (* files and directories *)
-    remove("/tmp/raz-sys-dir/f");
-    remove("/tmp/raz-sys-dir/g");
-    makeDir("/tmp/raz-sys-dir");
+    _ := remove("/tmp/raz-sys-dir/f");
+    _ := remove("/tmp/raz-sys-dir/g");
+    _ := makeDir("/tmp/raz-sys-dir");
     fd := create("/tmp/raz-sys-dir/f");
     if (fd < 0) or (write(fd, "abc") # 3) then exit(2); end;
     close(fd);
@@ -1042,7 +1042,7 @@ begin
     if (err # 0) or not i.dir or i.file then exit(2); end;
     i, err := info("/dev/null");
     if (err # 0) or i.dir or i.file then exit(2); end;
-    remove("/tmp/raz-sys-link");
+    _ := remove("/tmp/raz-sys-link");
     if symlink("/tmp/raz-sys-dir", "/tmp/raz-sys-link") # 0 then exit(2); end;
     i, err := info("/tmp/raz-sys-link");
     if (err # 0) or not i.dir or not i.symlink then exit(2); end;
@@ -1050,9 +1050,9 @@ begin
     if (err # 0) or (name # "/tmp/raz-sys-dir") then exit(2); end;
     name, err := readLink("/tmp/raz-sys-dir");
     if err # -22 then exit(2); end;                    (* EINVAL: not a link *)
-    remove("/tmp/raz-sys-link");
+    _ := remove("/tmp/raz-sys-link");
     (* open as asked, seek, the mode and the time *)
-    remove("/tmp/raz-sys-dir/h");
+    _ := remove("/tmp/raz-sys-dir/h");
     fd := open("/tmp/raz-sys-dir/h", {writing, creating, exclusive});
     if (fd < 0) or (write(fd, "abc") # 3) then exit(2); end;
     close(fd);
@@ -1070,7 +1070,7 @@ begin
     if chmod("/tmp/raz-sys-dir/h", 1EDH) # 0 then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/h");
     if i.mode # 1EDH then exit(2); end;
-    remove("/tmp/raz-sys-dir/h");
+    _ := remove("/tmp/raz-sys-dir/h");
     i, err := info("/no/such/file");
     if err >= 0 then exit(2); end;
     if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
@@ -1094,7 +1094,7 @@ begin
     (* a socket: nothing at a path, then a listener that a connection
        makes ready, and a byte from it to the connection *)
     if connect("/tmp/raz-no-such-socket") # -2 then exit(2); end;    (* ENOENT *)
-    remove("/tmp/raz-sys-socket");
+    _ := remove("/tmp/raz-sys-socket");
     l := listen("/tmp/raz-sys-socket");
     if (l < 0) or (listen("/tmp/raz-sys-socket") # -98) then exit(2); end;    (* EADDRINUSE: there already *)
     c := connect("/tmp/raz-sys-socket");
@@ -1109,7 +1109,7 @@ begin
     if send(c, "x") # -32 then exit(2); end;           (* EPIPE, and no SIGPIPE *)
     close(c);
     close(l);
-    remove("/tmp/raz-sys-socket");
+    _ := remove("/tmp/raz-sys-socket");
     testPrograms;
     testNet;
 end;

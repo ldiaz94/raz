@@ -29,7 +29,7 @@ begin
     state := 88172645463325252;
     for i := 0 to LEN(s) - 1 do state := state * 31 + U64(s[i]); end;
     if state = 0 then state := 1; end;
-    for i := 1 to 10 do random(2); end;
+    for i := 1 to 10 do _ := random(2); end;
 end;
 
 (* The symbols that aren't comments. *)

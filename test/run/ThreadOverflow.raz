@@ -12,7 +12,7 @@ end;
 
 proc work(_arg: ^U8);
 begin
-    down(0);
+    _ := down(0);
 end;
 
 proc main*;

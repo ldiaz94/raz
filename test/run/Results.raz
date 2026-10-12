@@ -69,7 +69,7 @@ begin
     Out.int(a[1]); Out.str(" "); Out.int(g.b); Out.ln;
     q, r := minmax(9, 3);
     Out.int(q); Out.int(r); Out.ln;
-    divmod(1, 1);
+    _, _ := divmod(1, 1);
     i, e := nothing();
     Out.int(i); if e = nil then Out.str(" zero"); end; Out.ln;
     i := 5;
