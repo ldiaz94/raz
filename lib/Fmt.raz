@@ -1,18 +1,22 @@
 (* Formatted output. Each {} in the format takes the next argument:
        Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)]);
-   {{ and }} stand for { and }. print writes to standard output,
-   write appends to a Buf. *)
+   {{ and }} stand for { and }. A {} with no argument left prints
+   nothing, and arguments left over are not printed. *)
 module Fmt;
 import Out, Buf, Arena, Rt;
 
 type
+    (* An argument, and how it is printed. A real has places digits
+       after the point, at most 9, rounded to the nearest, half away
+       from zero; from 1E15 on, it has the exponent that makes it less
+       than 10, as 1.50e17; nan and inf are spelled so. *)
     Arg* = variant
-        int(i: I64);
-        uint(u: U64);
-        hex(h: U64);
+        int(i: I64);       (* in decimal *)
+        uint(u: U64);      (* in decimal *)
+        hex(h: U64);       (* in hexadecimal, capitals, no 0x *)
         str(s: []U8);
-        char(c: U8);
-        bool(b: BOOL);
+        char(c: U8);       (* the one byte *)
+        bool(b: BOOL);     (* true or false *)
         real(r: F64; places: INT);
     end;
 
@@ -36,10 +40,8 @@ begin
     if b = nil then Out.str(s); else Buf.str(b, s); end;
 end;
 
-(* x with places digits after the point, at most 9, rounded to the
-   nearest; from 1E15 on, with the exponent that makes it less than 10,
-   as 1.50e17. The whole part and the fraction are taken apart, so that
-   each fits an I64. *)
+(* x as Arg's real says. The whole part and the fraction are taken
+   apart, so that each fits an I64: hence the exponent from 1E15. *)
 proc putReal(b: ^Buf.Buf; x: F64; places: INT);
 const zeros = "00000000";
 var d: [24]U8; at, i, e: INT; scale, whole, frac: I64;
@@ -115,11 +117,13 @@ begin
     put(b, f[start..LEN(f)]);
 end;
 
+(* Writes f to standard output, each {} replaced by the next of args. *)
 proc print*(f: []U8; args: []Arg);
 begin
     format(nil, f, args);
 end;
 
+(* Appends f to b, each {} replaced by the next of args. *)
 proc write*(b: ^Buf.Buf; f: []U8; args: []Arg);
 begin
     format(b, f, args);

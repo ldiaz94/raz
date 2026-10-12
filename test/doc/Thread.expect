@@ -5,8 +5,8 @@ module Thread;
     rather than spoiling what lies below; above it, a little stack for
     Rt's signal handlers, so that they can say so. join waits on the
     thread's id, which the kernel clears, and wakes it for, when the
-    thread ends; a Mutex sleeps on a futex. A program with C threads uses C's,
-    through pthread_create, and so can't use these.
+    thread ends; a Mutex sleeps on a futex. A program with C threads
+    uses C's, through pthread_create, and so can't use these.
 
 const Failed*: ERROR = "can't start a thread";
 
@@ -17,9 +17,11 @@ type Thread* = record
     fn: proc(arg: ^U8);   (* what it runs, and with what *)
     arg: ^U8;
 end;
+    A thread, as spawn gives it, until join.
 
 type Mutex* = record state: INT; end;
-    0 free, 1 taken, 2 taken with a thread waiting
+    A lock whose waiters sleep, free when zeroed. Its state is 0
+    free, 1 taken, 2 taken with a thread waiting.
 
 proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);
     Starts p(arg) in a new thread.
@@ -28,7 +30,10 @@ proc join*(t: ^Thread);
     Waits for t to end, then frees its stack.
 
 proc lock*(m: ^Mutex);
+    Takes m, sleeping while another thread holds it.
 
 proc unlock*(m: ^Mutex);
+    Gives up m, which the caller holds, waking a thread that waits
+    for it.
 
 proc main*;

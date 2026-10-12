@@ -253,11 +253,17 @@ begin
   TopScope := scopes[depth - 1];
 end;
 
+{ Where the search for name in scope s starts in the hash table: each
+  number is multiplied by an odd constant near 2^32 or 2^16 over the
+  golden ratio (Knuth's multiplicative hashing), which spreads the low
+  bits the mask keeps. }
 function Slot(s, name: longint): longint;
 begin
   Slot := longint((longword(s) * 2654435761 xor longword(name) * 40503) and longword(hashMask));
 end;
 
+{ Doubles the table, which Insert keeps at most half full so that the
+  linear probing stays short, and puts every entry in its new slot. }
 procedure Rehash;
 var old: PObjTab; n, i, j: longint;
 begin
@@ -489,7 +495,7 @@ end;
   declared in each file stands for the other's. }
 procedure Mix(var h: qword; v: int64);
 begin
-  h := (h xor qword(v)) * 1099511628211;
+  h := (h xor qword(v)) * 1099511628211;   { FNV-1a's 64-bit prime }
 end;
 
 procedure Shape(var h: qword; t: PType; top: boolean);
@@ -521,7 +527,7 @@ end;
 function Fingerprint(o: PObj): qword;
 var h: qword; f: PObj;
 begin
-  h := 14695981039346656037;
+  h := 14695981039346656037;   { FNV-1a's 64-bit offset basis }
   Mix(h, ord(o^.cls));
   if o^.cls = oCase then begin
     Mix(h, o^.val);

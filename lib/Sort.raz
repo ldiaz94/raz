@@ -21,7 +21,8 @@ begin
     end;
 end;
 
-(* s made a heap, then its largest taken, in turn, to the end. *)
+(* Sorts s in place, so that no element is less than the one before
+   it. Not stable. *)
 proc sort*(s: []T);
 var i: INT; t: T;
 begin

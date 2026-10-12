@@ -1,9 +1,10 @@
 (* Writing text and numbers to standard output, through a buffer of
-   4 KB. The buffer is written out when it is full, at each line feed
-   when standard output is a terminal, by flush, and when the program
-   ends by Rt.exit. C's stdio keeps a buffer of its own: a program that
-   writes with both flushes one before writing with the other. A lock
-   keeps what each call writes together when threads write at once. *)
+   Sys.outSize bytes. The buffer is written out when it is full, at
+   each line feed when standard output is a terminal, by flush, and
+   when the program ends by Rt.exit. C's stdio keeps a buffer of its
+   own: a program that writes with both flushes one before writing
+   with the other. A lock keeps what each call writes together when
+   threads write at once. *)
 module Out;
 import Rt, Sys, Lock;
 
@@ -28,6 +29,7 @@ begin
     n := 0;
 end;
 
+(* Writes out what the buffer holds. *)
 proc flush*;
 begin
     Lock.take(ADR(lock));
@@ -35,6 +37,7 @@ begin
     Lock.give(ADR(lock));
 end;
 
+(* Writes the bytes of s. *)
 proc str*(s: []U8);
 var i: INT;
 begin
@@ -48,6 +51,7 @@ begin
     Lock.give(ADR(lock));
 end;
 
+(* Writes the byte c. *)
 proc char*(c: U8);
 var b: [1]U8;
 begin
@@ -55,6 +59,7 @@ begin
     str(b);
 end;
 
+(* Writes a line feed. *)
 proc ln*;
 begin
     char('\n');

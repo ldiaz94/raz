@@ -52,7 +52,8 @@ type
     base: longint;    { the deferred statements in force outside it }
   end;
 
-  { A generic module's import whose instance isn't made yet }
+  { A generic module's import whose instance isn't made yet (deferred,
+    numDeferred); not to be confused with a defer statement (defers) }
   TDeferred = record
     o: PObj;           { the name it imports as }
     m: PModule;        { the module that imports it }
@@ -72,9 +73,9 @@ var
   curProc: PObj;          { the procedure being compiled, or nil }
   declExported: boolean;  { the export mark of the declaration being read }
   curLoop: PLoop;         { the innermost loop, or nil }
-  defers: array[0..63] of longint;   { the deferred statements in force }
+  defers: array[0..63] of longint;   { the defer statements in force, their code's addresses }
   numDefers: longint;
-  deferring: boolean;     { compiling a deferred statement }
+  deferring: boolean;     { compiling a defer statement's statement }
   directDefer: boolean;   { ... as the statement itself, not in a list }
   deferSlot: int64;       { keeps a result while deferred statements run }
   curResult: PType;       { the result type of the procedure being compiled }
@@ -84,7 +85,7 @@ var
   declaring: array[0..63] of longint;   { the names the declaration being read declares }
   numDeclaring: longint;
   skipped: boolean;       { the last statement had an error and was skipped }
-  deferred: array[0..63] of TDeferred;
+  deferred: array[0..63] of TDeferred;   { generic imports not yet made, not defer statements }
   numDeferred: longint;
   making: boolean;        { reading an instance's arguments, at its first use }
   stray: boolean;         { an "end" in this procedure stood left of its statement's line }
@@ -1260,6 +1261,13 @@ begin
   Fix(lp.brk);
 end;
 
+{ for v := a to b by s do ... end, laid out as
+        v := a; bslot := b
+  top:  if v is past bslot then goto exit
+        the statements
+        if the distance from v to bslot < |s| then goto exit (ForNext)
+        v := v + s; goto top
+  exit: }
 procedure ForStatement(const start: TPos; ind: longint);
 var
   o: PObj; v, a, b, s: TItem; bslot, step: int64; top, exitL: longint;
@@ -2229,6 +2237,11 @@ begin
   Exists := (FpStat(@p[1], st) = 0) and ((st.st_mode and S_IFMT) = S_IFREG);
 end;
 
+{ Compiles module n from path, an instance if args are given, or only
+  reads its interface if checkOnly; returns it. An import calls this in
+  the middle of reading another file, so it is re-entrant: it saves the
+  scanner's state, the open scopes, the current module and file and
+  whether checks are on, and puts them back at the end. }
 function CompileFile(const path: shortstring; n: longint; const args: TArgs; checkOnly: boolean): PModule;
 var
   st: TScanState; saved: array[0..MaxDepth - 1] of longint; d: longint;
@@ -2562,6 +2575,12 @@ begin
   i := numDeferred - 1;
   while (i >= 0) and (deferred[i].m <> curModule) do dec(i);
   if i < 0 then exit;
+  { The procedure ends at the "end" that closes its first "begin": d
+    counts the words still open that "end" or "until" closes, and begun
+    says that begin was met, so that a record's end in its declarations
+    doesn't stop it. A forward or code procedure has no raz body to
+    read, so it stops at that word. The body reads to the end of the
+    file, as wholeRest says. }
   SaveScan(st);
   d := 0; begun := false;
   repeat

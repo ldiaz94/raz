@@ -5,8 +5,10 @@
 module Lock;
 import Sys, Rt;
 
+(* A lock, free when zeroed. *)
 type Lock* = record held: INT; end;
 
+(* Takes l, waiting while another thread holds it. *)
 proc take*(l: ^Lock);
 var tries: INT;
 begin
@@ -17,6 +19,7 @@ begin
     end;
 end;
 
+(* Gives up l, which the caller holds. *)
 proc give*(l: ^Lock);
 begin
     XCHG(ADR(l^.held), 0);

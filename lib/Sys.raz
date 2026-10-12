@@ -12,9 +12,9 @@ module Sys;
 import C;
 
 const
-    stdin* = 0;
-    stdout* = 1;
-    stderr* = 2;
+    stdin* = 0;     (* standard input's file descriptor *)
+    stdout* = 1;    (* standard output's *)
+    stderr* = 2;    (* standard error's *)
     (* the bytes Out keeps before it writes them; a target with little
        memory keeps fewer *)
     outSize* = 4096;
@@ -31,7 +31,7 @@ type
     (* What open is asked for: reading, writing or both, and what else
        it does to the file. *)
     Access* = (reading, writing, creating, exclusive, truncating, appending);
-    Accesses* = set of Access;
+    Accesses* = set of Access;   (* what open is given *)
 
     (* What info says of a file. *)
     Info* = record
@@ -186,6 +186,7 @@ begin
     return r;
 end;
 
+(* Closes the file descriptor fd. *)
 proc close*(fd: INT);
 begin
     C.close(I32(fd));
@@ -201,6 +202,7 @@ begin
     return p;
 end;
 
+(* Gives back to the system the size bytes at p that mmap gave. *)
 proc munmap*(p: ^U8; size: INT);
 begin
     C.munmap(p, UINT(size));
@@ -316,6 +318,7 @@ begin
     return "", false;
 end;
 
+(* Closes the directory d that openDir opened. *)
 proc closeDir*(d: ^Dir);
 begin
     C.closedir(d^.d);
@@ -861,11 +864,13 @@ begin
     return 0;
 end;
 
+(* Whether the file descriptor fd is a terminal. *)
 proc isTerminal*(fd: INT): BOOL;
 begin
     return C.isatty(I32(fd)) = 1;
 end;
 
+(* Gives the processor to another thread. *)
 proc yield*;
 begin
     C.sched_yield();

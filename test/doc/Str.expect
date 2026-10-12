@@ -7,6 +7,7 @@ proc cmp*(a, b: []U8): INT;
     -1, 0 or 1 as a sorts before, with or after b, byte by byte.
 
 proc eq*(a, b: []U8): BOOL;
+    Whether a and b hold the same bytes: a = b, as a procedure value.
 
 proc hash*(s: []U8): U64;
     FNV-1a, 64 bits.
@@ -15,6 +16,7 @@ proc find*(s, sub: []U8): INT;
     Where sub first starts in s, or -1.
 
 proc hasPrefix*(s, p: []U8): BOOL;
+    Whether s starts with p.
 
 proc encode*(c: I32): ([4]U8, INT);
     c in UTF-8: its bytes, and how many. A number that isn't a

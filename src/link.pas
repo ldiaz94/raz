@@ -40,6 +40,7 @@ procedure LinkAll(headerSize, roExtra, dynSize: int64);
 
 implementation
 
+{ Marks live each chunk reached from entry through the fixups. }
 procedure MarkLive(entry: longint);
 var stack: PLongs; sp, c, f, t: longint;
 begin
@@ -52,6 +53,7 @@ begin
     dec(sp);
     c := stack^[sp];
     if chunks^[c].size < 0 then Fatal(ChunkName(c) + ' is declared but never defined');
+    { only code has fixups: data holds no addresses, so it uses nothing }
     if chunks^[c].sec <> secText then continue;
     for f := chunks^[c].firstFix to chunks^[c].firstFix + chunks^[c].numFix - 1 do begin
       t := fixups^[f].chunk;
@@ -154,6 +156,9 @@ begin
   { the pool of paths and names starts at k }
   k := 40 + 16 * n + 20 * np + 12 * nv;
   names := k;
+  { the paths first, at the offsets offs gave the places: Name puts
+    each in the pool, and also writes its offset at at, which a path
+    doesn't want, so at is put back for the procedures to overwrite }
   for f := 0 to nfiles - 1 do begin
     i := at;
     Name(ShownPath(NameOf(files^[f])));
@@ -188,7 +193,7 @@ end;
 procedure LinkAll(headerSize, roExtra, dynSize: int64);
 var c, f, at: longint; e, p, v: int64;
 begin
-  textOff := (headerSize + 15) div 16 * 16;
+  textOff := (headerSize + 15) div 16 * 16;   { as each code chunk is }
   e := Place(secText, Base + textOff);
   textSize := e - (Base + textOff);
   if placesChunk >= 0 then MakePlaces(Base + textOff, e);
@@ -202,6 +207,7 @@ begin
   bssSize := e - bssAdr;
 
   textImg := GetMem(textSize + 1);
+  { the gaps between code chunks are int3, a trap if ever run }
   FillChar(textImg^, textSize + 1, $CC);
   roImg := GetMem(roSize + 1);
   FillChar(roImg^, roSize + 1, 0);

@@ -42,6 +42,8 @@ begin
     ar^.used := 0;
 end;
 
+(* Gives the arena's block back to the system; what it handed out is
+   gone with it. *)
 proc done*(ar: ^Arena);
 begin
     if ar^.buf # nil then Mem.unmap(ar^.buf, ar^.cap); end;

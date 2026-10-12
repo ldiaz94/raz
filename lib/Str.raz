@@ -23,6 +23,7 @@ begin
     return 0;
 end;
 
+(* Whether a and b hold the same bytes: a = b, as a procedure value. *)
 proc eq*(a, b: []U8): BOOL;
 begin
     return a = b;
@@ -49,6 +50,7 @@ begin
     return -1;
 end;
 
+(* Whether s starts with p. *)
 proc hasPrefix*(s, p: []U8): BOOL;
 begin
     return (LEN(s) >= LEN(p)) and (s[0..LEN(p)] = p);

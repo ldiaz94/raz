@@ -10,8 +10,8 @@
   is a new gen.pas, with an encoder of its own.
 
   The stack is kept in registers, as in Wirth's compilers: the value at
-  depth d in register d, of r8 to r11, a deeper one spilled to the frame
-  while its register is wanted. A constant is only noted until something
+  depth d in r8 to r11, register d mod 4, a deeper one's register taken
+  by spilling the shallower value it held to the frame. A constant is only noted until something
   needs it in a register, so that it can be an instruction's operand.
 
   Calls use the System V convention. Arguments are computed left to
@@ -993,6 +993,9 @@ end;
 
 { Calls }
 
+{ The call c, its arguments already in their frame slots: they go to
+  registers or the stack, the procedure is called, and its result, if
+  any, is pushed on the value stack. }
 procedure Call(var c: TCall);
 var
   res: PType; i, ni, nf, k, pad, r: longint;
@@ -1014,6 +1017,8 @@ begin
     else begin onStack[i] := ni >= 6; if ni < 6 then inc(ni) end;
     if onStack[i] then inc(k);
   end;
+  { System V wants rsp a multiple of 16 at the call: a quadword of
+    padding makes the count pushed since the frame began even }
   pad := ord(odd(pushed + k));
   if pad <> 0 then AluI(aluSub, RSP, 8);
   for i := c.n - 1 downto 0 do
@@ -1032,6 +1037,8 @@ begin
   if c.ext then CallM(MemRip(c.chunk, 0))
   else if c.chunk >= 0 then CallChunk(c.chunk)
   else begin
+    { r11 is scratch: caller-saved, carrying no argument, and free,
+      as the value stack was spilled above }
     Load(R11, Mem(RBP, c.target), 8, false);
     CallR(R11);
   end;
@@ -1194,6 +1201,8 @@ begin
   Jmp(exitL);
 end;
 
+{ The end of the procedure in chunk c: the code that returns, and the
+  frame's size, known only now, patched into its prologue. }
 procedure EndProc(c: longint);
 var n: int64;
 begin
@@ -1218,6 +1227,8 @@ begin
   if n < 16 then n := 16;
   if n > high(longint) then Mark('frame too big');
   Put4At(frameFix, n);
+  { the listing's text for the sub, which starts 3 bytes (REX.W, opcode,
+    ModRM) before its immediate }
   Restate(frameFix - 3, 'sub rsp, ' + IntStr(n));
   EndChunk(c);
 end;

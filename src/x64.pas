@@ -193,16 +193,24 @@ begin
   reg := reg and 7;
   if m.base = RIP then begin
     Put1(reg shl 3 or 5);
-    { the rip-relative displacement counts from the end of the
-      instruction, which these instructions end with }
+    { mod 00 with r/m 101 is rip + disp32. The displacement counts
+      from the end of the instruction, and the fixup takes it to end
+      with these four bytes: no rip operand has an immediate after it,
+      since only the compiler's loads, stores, lea and call make one
+      (the assembler can't name a chunk). }
     AddFixup(pc, m.chunk, m.disp);
     Put4(0);
     exit;
   end;
   b := m.base and 7;
+  { mod 00 takes no displacement, but with r/m 101 (RBP or R13) it means
+    rip-relative, or disp32 under a SIB byte, so those bases take a
+    zero disp8 }
   if (m.disp = 0) and (b <> RBP) then md := 0
   else if (m.disp >= -128) and (m.disp <= 127) then md := 1
   else md := 2;
+  { r/m 100 (RSP or R12) means a SIB byte follows, so those bases need
+    one, with index 100 meaning none }
   if (m.index <> NoIndex) or (b = RSP) then begin
     Put1(md shl 6 or reg shl 3 or 4);
     case m.scale of 1: sc := 0; 2: sc := 1; 4: sc := 2; else sc := 3; end;

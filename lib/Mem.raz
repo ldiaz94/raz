@@ -9,7 +9,9 @@ type
         free*:  proc(a: ^Allocator; p: ^U8);
     end;
 
-const Page* = 4096;
+const
+    (* The size of a page of memory, in bytes. *)
+    Page* = 4096;
 
 (* size bytes, rounded up to whole pages, zeroed; or nil. *)
 proc pages*(size: INT): ^U8;
@@ -17,16 +19,21 @@ begin
     return Sys.mmap((size + Page - 1) div Page * Page);
 end;
 
+(* Gives back to the system the pages that pages gave as p, given the
+   same size. *)
 proc unmap*(p: ^U8; size: INT);
 begin
     Sys.munmap(p, (size + Page - 1) div Page * Page);
 end;
 
+(* a^.alloc(a, size, align): size bytes from a, at a multiple of
+   align; or nil. *)
 proc alloc*(a: ^Allocator; size, align: INT): ^U8;
 begin
     return a^.alloc(a, size, align);
 end;
 
+(* a^.free(a, p): gives p back to a, which gave it. *)
 proc free*(a: ^Allocator; p: ^U8);
 begin
     a^.free(a, p);

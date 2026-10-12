@@ -7,10 +7,10 @@
   Compiles the main module and every module it imports, writes the
   entry point, links what it reaches, and writes the executable: by
   default the main module's file without its .raz; with -S, it lists
-  the main module's code instead. raz run writes it
-  to a memfd instead, a file that lives only in memory, and executes
-  it in raz's place with the arguments after Main.raz, so its status
-  is the program's; its argv[0] is Main.raz.
+  the main module's code instead. raz run writes it to a memfd
+  instead, a file that lives only in memory, and executes it in raz's
+  place with the arguments after Main.raz, so its status is the
+  program's; its argv[0] is Main.raz.
 
   The program starts by saving argc and argv, runs every module's body
   (those of the modules the program imports, imported modules first),
@@ -20,7 +20,9 @@
   C up and calls this as C's main; first it gives Rt C's exit, which
   Rt.exit then ends the program with.
 
-  Depends on: everything else. }
+  Depends on: everything else.
+  Leaves out: the work itself; the other units compile, link and
+  write, and this only reads the command line and runs them in order. }
 
 program raz;
 

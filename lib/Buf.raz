@@ -9,6 +9,7 @@ type
         len*, cap: INT;
     end;
 
+(* An empty buffer, which takes its memory from a. *)
 proc init*(b: ^Buf; a: ^Mem.Allocator);
 begin
     b^ := {a: a};
@@ -31,6 +32,8 @@ begin
     return true;
 end;
 
+(* Adds the byte c at the end; if room for it can't be had, it is
+   dropped and the buffer is as it was. *)
 proc add*(b: ^Buf; c: U8);
 begin
     if room(b, 1) then
@@ -39,6 +42,8 @@ begin
     end;
 end;
 
+(* Adds the bytes of s at the end; if room for them can't be had, none
+   is added. *)
 proc str*(b: ^Buf; s: []U8);
 var i: INT;
 begin
@@ -55,11 +60,13 @@ begin
     return b^.data[0..b^.len];
 end;
 
+(* Empties the buffer, keeping its memory for what comes next. *)
 proc reset*(b: ^Buf);
 begin
     b^.len := 0;
 end;
 
+(* Gives the buffer's memory back, leaving it empty. *)
 proc done*(b: ^Buf);
 begin
     if b^.data # nil then Mem.free(b^.a, b^.data); end;

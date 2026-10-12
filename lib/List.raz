@@ -13,6 +13,7 @@ type
         a: ^Mem.Allocator;
     end;
 
+(* An empty list, its nodes from a. *)
 proc init*(l: ^List; a: ^Mem.Allocator);
 begin
     l^ := {a: a};
@@ -59,6 +60,7 @@ begin
     l^.head := q;
 end;
 
+(* Takes every value off, giving the nodes back. *)
 proc clear*(l: ^List);
 var _ok: BOOL; _v: T;
 begin

@@ -4,8 +4,8 @@
    rather than spoiling what lies below; above it, a little stack for
    Rt's signal handlers, so that they can say so. join waits on the
    thread's id, which the kernel clears, and wakes it for, when the
-   thread ends; a Mutex sleeps on a futex. A program with C threads uses C's,
-   through pthread_create, and so can't use these. *)
+   thread ends; a Mutex sleeps on a futex. A program with C threads
+   uses C's, through pthread_create, and so can't use these. *)
 module Thread;
 import Sys, Rt;
 link static;
@@ -23,6 +23,7 @@ const
     Private = 128;
 
 type
+    (* A thread, as spawn gives it, until join. *)
     Thread* = record
         tid: INT;        (* the kernel's id, until the thread ends *)
         base: ^U8;       (* its stack's mapping, the guard page first *)
@@ -32,7 +33,8 @@ type
     end;
     (* What sigaltstack takes *)
     AltStack = record sp: ^U8; flags, size: INT; end;
-    (* 0 free, 1 taken, 2 taken with a thread waiting *)
+    (* A lock whose waiters sleep, free when zeroed. Its state is 0
+       free, 1 taken, 2 taken with a thread waiting. *)
     Mutex* = record state: INT; end;
 
 (* clone(flags, stack, tid, tid), the new thread starting with fn(arg)
@@ -120,6 +122,7 @@ begin
     Sys.munmap(base, size);
 end;
 
+(* Takes m, sleeping while another thread holds it. *)
 proc lock*(m: ^Mutex);
 var c: INT;
 begin
@@ -131,6 +134,8 @@ begin
     end;
 end;
 
+(* Gives up m, which the caller holds, waking a thread that waits
+   for it. *)
 proc unlock*(m: ^Mutex);
 begin
     if XADD(ADR(m^.state), -1) # 1 then

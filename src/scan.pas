@@ -562,6 +562,10 @@ type
     n: longint;                       { words in use; 0 is zero }
     w: array[0..95] of longword;      { least significant first }
   end;
+  { 96 words, 3072 bits, are plenty: a shortstring holds at most 255
+    digits, so ReadReal's den is at most 10^(330 + 255), about 2^1944,
+    and num below 10^310; the shift that follows makes the larger one at
+    most 54 bits longer than den, about 2000 bits in all. }
 
 { a := a * m + add }
 procedure BigMul(var a: TBig; m, add: longword);

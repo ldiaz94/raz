@@ -1028,6 +1028,8 @@ begin
   end else if (s^.form = fReal) and (t^.form = fInt) then begin
     if x.mode = mConst then begin
       r := RealOf(x);
+      { NaN or out of range folds to low(int64), the "integer
+        indefinite" cvttsd2si gives at run time }
       if (r <> r) or (r >= 9.2233720368547758e18) or (r < -9.2233720368547758e18) then
         x.val := Cut(low(int64), t)
       else x.val := Cut(trunc(r), t);

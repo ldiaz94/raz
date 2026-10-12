@@ -10,7 +10,7 @@ module Math;
 import Rt;
 
 const
-    pi* = 3.141592653589793;
+    pi* = 3.141592653589793;   (* the F64 nearest to pi *)
     ln2hi = 6.93147180369123816490E-01;   (* ln 2 in two parts, whose sum is more exact than one F64 *)
     ln2lo = 1.90821492927058770002E-10;
 
@@ -35,6 +35,7 @@ begin
     return bits(x) shr 63 = 1;
 end;
 
+(* The square root of x, exact to the last bit; NaN for x below 0. *)
 proc sqrt*(x: F64): F64;
 code
     sqrtsd xmm0, xmm0;
@@ -230,6 +231,7 @@ begin
     return w + (((1.0 - w) - hz) + (z * r - x * y));
 end;
 
+(* The sine of x, in radians; NaN for an infinity or NaN. *)
 proc sin*(x: F64): F64;
 var n: INT; y, yy: F64;
 begin
@@ -244,6 +246,7 @@ begin
     return -kernelCos(y, yy);
 end;
 
+(* The cosine of x, in radians; NaN for an infinity or NaN. *)
 proc cos*(x: F64): F64;
 var n: INT; y, yy: F64;
 begin
@@ -320,6 +323,7 @@ begin
     return d <= want * 4.5E-16;
 end;
 
+(* The module's test. *)
 proc main*;
 var inf, nan, hard: F64;
 begin

@@ -14,7 +14,7 @@ module Rt;
 import Sys;
 
 const
-    Full*: ERROR = "too many procedures to run at exit";
+    Full*: ERROR = "too many procedures to run at exit";   (* from atExit *)
     MaxAtExit = 32;
     SigFpe = 8;
     SigSegv = 11;

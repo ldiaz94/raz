@@ -3,9 +3,9 @@
    ones; a block bigger than that gets pages of its own. Every block
    has a 16-byte header before it: its size class, or minus the size
    of its pages for a big one, which start less than a page before it;
-   then a marker, which says the block is out,
-   so that freeing it twice, or freeing what the heap never gave out,
-   stops the program. One lock keeps it whole across threads. *)
+   then a marker, which says the block is out, so that freeing it
+   twice, or freeing what the heap never gave out, stops the program.
+   One lock keeps it whole across threads. *)
 module Heap;
 import Mem, Lock, Rt;
 
@@ -26,6 +26,7 @@ var
     left: INT;
     lock: Lock.Lock;
     std: Mem.Allocator;
+    (* The heap, for NEW(p, Heap.heap) and Mem's procedures. *)
     heap*: ^Mem.Allocator;
 
 (* The block p, with size for its header, given out. *)

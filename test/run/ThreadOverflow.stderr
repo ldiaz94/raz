@@ -3,4 +3,4 @@ test/run/ThreadOverflow.raz:6:1: stopped by a stack overflow
   in ThreadOverflow.down at test/run/ThreadOverflow.raz:10:5: n = 1926
   and 1926 more the same
   in ThreadOverflow.work at test/run/ThreadOverflow.raz:15:5: _arg = nil
-  in Thread.run at lib/Thread.linux-x86_64.raz:78:5: arg = 0x?, t = 0x?
+  in Thread.run at lib/Thread.linux-x86_64.raz:80:5: arg = 0x?, t = 0x?

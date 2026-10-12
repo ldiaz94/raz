@@ -93,9 +93,17 @@ begin
   PutN(align, 8);
 end;
 
-procedure Shdr(name, typ: longint; flags, adr, off, size: int64; lnk, info: longint; align, entsize: int64);
+const
+  { the section names, in .shstrtab; a section header names its own }
+  ShNames = #0'.text'#0'.rodata'#0'.bss'#0'.symtab'#0'.strtab'#0'.shstrtab'#0 +
+    '.dynamic'#0'.dynstr'#0'.dynsym'#0'.debug_line'#0'.debug_info'#0'.debug_abbrev'#0;
+
+{ A section header. Its name is given as a string and stored as its
+  offset in ShNames: the #0 before it, counted from 1, is that offset
+  counted from 0; the empty name, found nowhere, is 0. }
+procedure Shdr(const name: shortstring; typ: longint; flags, adr, off, size: int64; lnk, info: longint; align, entsize: int64);
 begin
-  PutN(name, 4); PutN(typ, 4); PutN(flags, 8); PutN(adr, 8);
+  PutN(Pos(#0 + name + #0, ShNames), 4); PutN(typ, 4); PutN(flags, 8); PutN(adr, 8);
   PutN(off, 8); PutN(size, 8); PutN(lnk, 4); PutN(info, 4);
   PutN(align, 8); PutN(entsize, 8);
 end;
@@ -301,9 +309,6 @@ begin
 end;
 
 procedure WriteElf(const path: shortstring; entry: longint);
-const
-  ShNames = #0'.text'#0'.rodata'#0'.bss'#0'.symtab'#0'.strtab'#0'.shstrtab'#0 +
-    '.dynamic'#0'.dynstr'#0'.dynsym'#0'.debug_line'#0'.debug_info'#0'.debug_abbrev'#0;
 var
   nph, nsh, c, nsyms, fd: longint;
   roExtra, dynSize, symOff, strOff, shstrOff, shOff, strsLen: int64;
@@ -329,7 +334,8 @@ begin
   end;
 
   { ELF header }
-  PutN($464C457F, 4); PutN(2, 1); PutN(1, 1); PutN(1, 1); PutN(0, 9);
+  PutN($464C457F, 4);      { #127 'ELF' }
+  PutN(2, 1); PutN(1, 1); PutN(1, 1); PutN(0, 9);   { 64-bit, little-endian, version 1 }
   PutN(2, 2);              { ET_EXEC }
   PutN(62, 2);             { EM_X86_64 }
   PutN(1, 4);
@@ -340,8 +346,9 @@ begin
   nsh := 10;
   if dynamic then nsh := 13;
   PutN(64, 2); PutN(56, 2); PutN(nph, 2);
-  PutN(64, 2); PutN(nsh, 2); PutN(6, 2);
+  PutN(64, 2); PutN(nsh, 2); PutN(6, 2);   { .shstrtab is section 6 }
 
+  { flags: 4 read, 5 read and run, 6 read and write }
   if dynamic then Phdr(PtInterp, 4, extraAdr - Base, extraAdr, length(Interp) + 1, length(Interp) + 1, 1);
   { the first segment maps the headers too, so text can follow them }
   Phdr(PtLoad, 5, 0, Base, textOff + textSize, textOff + textSize, Page);
@@ -372,7 +379,7 @@ begin
       if strsLen + length(s) + 1 > MemSize(strs) then strs := ReAllocMem(strs, strsLen * 2 + 256);
       Move(s[1], strs^[strsLen], length(s));
       strs^[strsLen + length(s)] := 0;
-      case chunks^[c].sec of
+      case chunks^[c].sec of   { the section's index in the headers below }
         secText: sec := 1;
         secRodata: sec := 2;
       else sec := 3;
@@ -396,21 +403,25 @@ begin
   PadTo((len + 7) div 8 * 8);
   shOff := len;
   Patch(40, shOff, 8);
-  Shdr(0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
-  Shdr(1, 1, 6, Base + textOff, textOff, textSize, 0, 0, 16, 0);
-  Shdr(7, 1, 2, Base + roOff, roOff, roSize, 0, 0, 16, 0);
-  Shdr(15, 8, 3, bssAdr + dynSize, roOff + roSize, bssSize - dynSize, 0, 0, 16, 0);
-  Shdr(20, 2, 0, 0, symOff, nsyms * 24, 5, nsyms, 8, 24);
-  Shdr(28, 3, 0, 0, strOff, strsLen, 0, 0, 1, 0);
-  Shdr(36, 3, 0, 0, shstrOff, length(ShNames), 0, 0, 1, 0);
+  { types: 1 PROGBITS, 2 SYMTAB, 3 STRTAB, 6 DYNAMIC, 8 NOBITS, 11 DYNSYM;
+    flags: 2 ALLOC, 3 WRITE+ALLOC, 6 ALLOC+EXECINSTR. A symbol table's
+    link is its string table's index: 5 .strtab, 8 .dynstr. The order
+    here is the index the code above relies on. }
+  Shdr('', 0, 0, 0, 0, 0, 0, 0, 0, 0);
+  Shdr('.text', 1, 6, Base + textOff, textOff, textSize, 0, 0, 16, 0);
+  Shdr('.rodata', 1, 2, Base + roOff, roOff, roSize, 0, 0, 16, 0);
+  Shdr('.bss', 8, 3, bssAdr + dynSize, roOff + roSize, bssSize - dynSize, 0, 0, 16, 0);
+  Shdr('.symtab', 2, 0, 0, symOff, nsyms * 24, 5, nsyms, 8, 24);
+  Shdr('.strtab', 3, 0, 0, strOff, strsLen, 0, 0, 1, 0);
+  Shdr('.shstrtab', 3, 0, 0, shstrOff, length(ShNames), 0, 0, 1, 0);
   if dynamic then begin   { the loader's tables, for readelf and objdump }
-    Shdr(46, 6, 3, bssAdr, bssAdr - Base, dynSize, 8, 0, 8, 16);
-    Shdr(55, 3, 2, extraAdr + strAt, extraAdr + strAt - Base, strLen, 0, 0, 1, 0);
-    Shdr(63, 11, 2, extraAdr + symAt, extraAdr + symAt - Base, nsym * 24, 8, 1, 8, 24);
+    Shdr('.dynamic', 6, 3, bssAdr, bssAdr - Base, dynSize, 8, 0, 8, 16);
+    Shdr('.dynstr', 3, 2, extraAdr + strAt, extraAdr + strAt - Base, strLen, 0, 0, 1, 0);
+    Shdr('.dynsym', 11, 2, extraAdr + symAt, extraAdr + symAt - Base, nsym * 24, 8, 1, 8, 24);
   end;
-  Shdr(71, 1, 0, 0, dbgOff[0], dbgSize[0], 0, 0, 1, 0);
-  Shdr(83, 1, 0, 0, dbgOff[1], dbgSize[1], 0, 0, 1, 0);
-  Shdr(95, 1, 0, 0, dbgOff[2], dbgSize[2], 0, 0, 1, 0);
+  Shdr('.debug_line', 1, 0, 0, dbgOff[0], dbgSize[0], 0, 0, 1, 0);
+  Shdr('.debug_info', 1, 0, 0, dbgOff[1], dbgSize[1], 0, 0, 1, 0);
+  Shdr('.debug_abbrev', 1, 0, 0, dbgOff[2], dbgSize[2], 0, 0, 1, 0);
 
   p := path + #0;
   fd := FpOpen(@p[1], O_WRONLY or O_CREAT or O_TRUNC, &755);

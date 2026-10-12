@@ -9,16 +9,16 @@ disassembly.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/diag.pas` | 296 | 218 | Messages: positions, source excerpts, colour, counts |
-| `src/scan.pas` | 851 | 722 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 596 | 497 | Types, objects, scopes, layout |
+| `src/scan.pas` | 855 | 722 | Symbols, literals, comments, positions |
+| `src/sym.pas` | 602 | 497 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 276 | 217 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,031 | 870 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,321 | 1,039 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,318 | 1,100 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,559 | 2,291 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/link.pas` | 228 | 180 | Tree shaking, layout, patching, the places |
-| `src/elf.pas` | 424 | 351 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 195 | 147 | The command line |
+| `src/x64.pas` | 1,039 | 870 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 1,332 | 1,039 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,320 | 1,100 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,578 | 2,291 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/link.pas` | 234 | 180 | Tree shaking, layout, patching, the places |
+| `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
+| `src/raz.pas` | 197 | 147 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.

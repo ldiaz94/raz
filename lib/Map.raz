@@ -17,6 +17,7 @@ type
         len*: INT;
     end;
 
+(* An empty map, its memory from a. *)
 proc init*(m: ^Map; a: ^Mem.Allocator);
 begin
     m^ := {a: a};
