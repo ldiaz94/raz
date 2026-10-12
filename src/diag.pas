@@ -175,6 +175,12 @@ const ShownBytes = 100;
 procedure Show(const p: TPos; const kind, kindColour, msg: shortstring);
 var line, start, stop, lo, hi, i, n: longint; buf: PChar; num, gutter: shortstring;
 begin
+  if p.f >= numFiles then begin
+    { about no place in a file, as for Rt, which the compiler imports
+      before it reads one }
+    writeln(StdErr, Paint(Bold, 'raz:'), ' ', Paint(kindColour, kind + ':'), ' ', Paint(Bold, msg));
+    exit;
+  end;
   Locate(p, line, start);
   buf := files[p.f].buf;
   writeln(StdErr, Paint(Bold, files[p.f].path + ':' + IntStr(line) + ':'
