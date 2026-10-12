@@ -20,6 +20,25 @@ Where rat's time goes (ulam-prof): `Utf8.next` 22%, `Str.decode` 15%,
 listings show the steps below. ulam's `doc/codegen.md` measured the
 same rewrites in a compiler of the same kind; its gains are quoted.
 
+**Where it stands.** Steps 1 to 6 are done and pushed. rat takes 504
+to 512 ms against 614 to 625 for the same workload built by the
+milestone's first compiler, on a machine that drifts by 3%; pt built
+with `-O2 -Cr` takes 424 ms on the same day, so rat is at 1.19 times,
+inside the goal. Text is 1.5% smaller. Each step, with its commit:
+
+| Step | rat | Its kernel |
+|---|---|---|
+| 1. Prologue | -12% | |
+| 2. Two words in rax, rdx | noise | calls returning two results, -9% |
+| 3. Two results on the stack | -8% | |
+| 4. Conditions as jumps | noise | a search leaving by break, -28% |
+| 5. Shifts, constants right | noise | heap sort and list walk, -11% |
+| 6. for loops | noise | matrix product -14%, sum -21% |
+
+Steps that left rat's time alone stayed for their kernels, which the
+2% rule allows. Moves between registers bought size, not time: this
+machine renames them away, as ulam found.
+
 1. **A prologue that does only what it must.** A register variable
    keeps a frame slot that is zeroed for nothing, and so do the slots
    the registers are saved in: `Str.decode`, whose four variables are

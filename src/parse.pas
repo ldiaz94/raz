@@ -1332,7 +1332,7 @@ end;
   so that a round of a loop by 1 takes one compare and one jump. }
 procedure ForStatement(const start: TPos; ind: longint);
 var
-  o: PObj; v, a, b, s, lim: TItem; step: int64; top, body, bodyL, exitL: longint;
+  o: PObj; v, a, b, s: TItem; step: int64; top, body, bodyL, exitL: longint;
   lp: TLoop; old: PLoop;
 begin
   Next;
@@ -1364,12 +1364,7 @@ begin
   end;
   Expect(sDo);
   exitL := NoLabel;
-  MakeItem(v, o);
-  Value(v);
-  lim := b;
-  Value(lim);
-  if step > 0 then JumpCmp(sGtr, o^.typ^.signed, exitL)
-  else JumpCmp(sLss, o^.typ^.signed, exitL);
+  if step > 0 then ForCmp(o, b, sGtr, exitL) else ForCmp(o, b, sLss, exitL);
   bodyL := NoLabel;
   Jump(bodyL);
   top := pc;
@@ -1592,13 +1587,11 @@ begin
   if y.mode = mWords then Swap;
   f := y.typ^.fields;
   for i := 0 to n - 1 do begin
-    if y.mode = mWords then begin
-      z := y;
-      z.mode := mStack; z.typ := f^.typ;
-    end;
+    z := y;
+    if y.mode = mWords then begin z.mode := mStack; z.typ := f^.typ end
+    else Field(z, f);
     if blanks[i] then Discard(z)
     else begin
-      if y.mode <> mWords then begin z := y; Field(z, f) end;
       CoerceExact(z, d[i].typ, 'several results go to variables of just their types');
       Assign(d[i], z);
     end;
@@ -1830,6 +1823,14 @@ begin
       or (o^.typ^.form = fSet) and (o^.typ^.size <= 8));
 end;
 
+{ The first local of the procedure being compiled. Locals are chained
+  by link in the order declared, the module's own first; before is the
+  last one declared before the procedure's, or nil if there was none. }
+function FirstLocal(before: PObj): PObj;
+begin
+  if before = nil then FirstLocal := curModule^.locals else FirstLocal := before^.link;
+end;
+
 { Puts the busiest variables of the procedure, whose parameters are
   params and whose locals follow before, in registers: read ahead from
   its "begin" to its end, a use counts 1, in a loop 4, in two 16, and
@@ -1842,11 +1843,11 @@ var
   isLoop: array[0..255] of boolean;
   n, i, k, d, loops, best: longint; o: PObj; st: TScanState; afterDot, wasSkipping: boolean;
 
-  function Find(name: longint): longint;
+  function Candidate(name: longint): longint;
   var j: longint;
   begin
     for j := 0 to n - 1 do if cand[j]^.name = name then exit(j);
-    Find := -1;
+    Candidate := -1;
   end;
 
   procedure Add(o: PObj);
@@ -1858,7 +1859,7 @@ begin
   n := 0;
   o := params;
   while o <> nil do begin Add(o); o := o^.next end;
-  if before = nil then o := curModule^.locals else o := before^.link;
+  o := FirstLocal(before);
   while o <> nil do begin Add(o); o := o^.link end;
   if n > 0 then begin
     SaveScan(st);
@@ -1881,9 +1882,9 @@ begin
           if id = nameAdr then begin
             Next;
             if tok = sLparen then Next;
-            if (tok = sIdent) and (Find(id) >= 0) then weight[Find(id)] := low(longint) div 2;
-          end else if not afterDot and (Find(id) >= 0) then begin
-            k := Find(id);
+            if (tok = sIdent) and (Candidate(id) >= 0) then weight[Candidate(id)] := low(longint) div 2;
+          end else if not afterDot and (Candidate(id) >= 0) then begin
+            k := Candidate(id);
             if loops > 2 then inc(weight[k], 64) else inc(weight[k], 1 shl (2 * loops));
           end;
       end;
@@ -1913,7 +1914,7 @@ begin
     for k := 0 to 4 do if o^.reg = VarRegs[k] then m := m or (1 shl k);
     o := o^.next;
   end;
-  if before = nil then o := curModule^.locals else o := before^.link;
+  o := FirstLocal(before);
   while o <> nil do begin
     if o^.cls = oVar then
       for k := 0 to 4 do if o^.reg = VarRegs[k] then m := m or (1 shl k);
@@ -1929,8 +1930,8 @@ end;
 procedure PlaceLocals(params, before: PObj);
 var o: PObj;
 begin
-  LocalsFromScratch;
-  if before = nil then o := curModule^.locals else o := before^.link;
+  ResetLocals;
+  o := FirstLocal(before);
   while o <> nil do begin
     if (o^.cls = oVar) and (o^.reg = 0) then o^.val := AllocPerm(o^.typ^.size, o^.typ^.align);
     o := o^.link;
@@ -1991,7 +1992,7 @@ begin
   until false;
   EndProc(p^.chunk, p^.openEnd);
   { its parameters and variables, for the trap report }
-  if before = nil then o := curModule^.locals else o := before^.link;
+  o := FirstLocal(before);
   q := params;
   while q <> nil do begin
     if VarKind(q) <> 0 then NoteVar(p^.chunk, q^.name, q^.val, VarKind(q));

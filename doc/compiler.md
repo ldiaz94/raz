@@ -8,14 +8,14 @@ disassembly.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/diag.pas` | 310 | 229 | Messages: positions, source excerpts, colour, counts |
+| `src/diag.pas` | 316 | 233 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 643 | 527 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,125 | 936 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,665 | 1,291 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,535 | 1,277 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,966 | 2,615 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/gen.pas` | 1,666 | 1,291 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,536 | 1,278 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,967 | 2,612 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -119,6 +119,141 @@ are `PushVar`'s, the shift and the add `Op`'s, the result
 `ReturnJump`'s, and the frame is `EnterBody`'s and `EndProc`'s. It is
 not fast code. It is code whose every instruction you can account
 for, which is the point.
+
+## Better code, in one procedure
+
+`Str.decode` reads one UTF-8 character from a slice of bytes, and for
+plain ASCII it is done by its third line. It is called once for each
+character a program prints, so its first lines are worth looking at.
+Here is what `raz -S lib/Str.raz` says of them, before the work of
+v0.7.0:
+
+```
+   102  proc decode*(s: []U8): (I32, INT);
+             0  push rbp
+             1  mov rbp, rsp
+             4  sub rsp, 96
+            11  xor eax, eax
+            13  mov r10, -7
+            20  mov [rbp + r10 * 8 - 24], rax
+            25  add r10, 1
+            29  jne 20
+            35  mov [rbp - 80], rbx
+            39  xor ebx, ebx
+            41  mov [rbp - 72], r12
+            45  xor r12d, r12d
+            48  mov [rbp - 64], r13
+            52  xor r13d, r13d
+            55  mov [rbp - 56], r14
+            59  xor r14d, r14d
+            62  mov [rbp - 8], rdi
+            66  mov [rbp - 24], rsi
+            70  mov [rbp - 16], rdx
+   105      if LEN(s) = 0 then return 0, 0; end;
+            74  mov r8, [rbp - 16]
+            78  cmp r8, 0
+            82  jne 118
+            88  xor r8d, r8d
+            91  mov rcx, [rbp - 8]
+            95  mov [rcx], r8d
+            98  xor r8d, r8d
+           101  mov rcx, [rbp - 8]
+           105  mov [rcx + 8], r8
+           109  mov rax, [rbp - 8]
+           113  jmp 807
+   106      c := I32(s[0]);
+           118  xor r8d, r8d
+           121  mov rax, r8
+           124  cmp rax, [rbp - 16]
+           128  jae 825
+           134  add rax, [rbp - 24]
+           138  mov r8, rax
+           141  movzx r8d, byte [r8]
+           145  movsxd r8, r8d
+           148  mov rbx, r8
+   107      if c < 80H then return c, 1;
+           151  cmp rbx, 128
+           158  jge 202
+           164  mov r8, rbx
+           167  mov rcx, [rbp - 8]
+           171  mov [rcx], r8d
+           174  mov r8, 1
+           180  mov rcx, [rbp - 8]
+           184  mov [rcx + 8], r8
+           188  mov rax, [rbp - 8]
+           192  jmp 807
+           197  jmp 421
+           202  cmp rbx, 192
+           209  jge 256
+```
+
+and after:
+
+```
+   102  proc decode*(s: []U8): (I32, INT);
+             0  push rbp
+             1  mov rbp, rsp
+             4  sub rsp, 64
+            11  mov [rbp - 48], rbx
+            15  xor ebx, ebx
+            17  mov [rbp - 40], r12
+            21  xor r12d, r12d
+            24  mov [rbp - 32], r13
+            28  xor r13d, r13d
+            31  mov [rbp - 24], r14
+            35  xor r14d, r14d
+            38  mov [rbp - 16], rdi
+            42  mov [rbp - 8], rsi
+   105      if LEN(s) = 0 then return 0, 0; end;
+            46  mov r8, [rbp - 8]
+            50  test r8, r8
+            53  jne 68
+            59  xor edx, edx
+            61  xor eax, eax
+            63  jmp 595
+   106      c := I32(s[0]);
+            68  xor r8d, r8d
+            71  cmp r8, [rbp - 8]
+            75  jae 613
+            81  add r8, [rbp - 16]
+            85  movzx r8d, byte [r8]
+            89  movsxd r8, r8d
+            92  mov rbx, r8
+   107      if c < 80H then return c, 1;
+            95  cmp rbx, 128
+           102  jge 121
+           108  mov rdx, 1
+           113  mov rax, rbx
+           116  jmp 595
+           121  cmp rbx, 192
+           128  jge 149
+```
+
+What went, and the routine that took it away:
+
+1. **The loop at 11 to 29**, which zeroed seven quadwords: the frame
+   slots of the four variables, all of them in registers, and the slots
+   the registers are saved in, which are written before they are read.
+   Now a variable in a register has no slot, and only the locals in
+   memory are zeroed (`PlaceLocals`, `UseRegs`, `EnterBody`).
+2. **The hidden pointer**: the two results went through `rcx` to the
+   caller's memory. Two words come back in `rax` and `rdx` now
+   (`InTwoRegs`), so `return 0, 0` is two instructions; and the caller
+   pops them straight into its variables (`mWords`, `MultiAssign`).
+3. **`cmp r8, 0`** is `test r8, r8`, the same flags in fewer bytes
+   (`CmpI`).
+4. **Copies through `rax`**: `s[0]`'s address is worked out in the
+   register it is used from (`IndexSlice`), and a result is put in `rax`
+   from where it is (`PopTo`).
+5. **The `jmp 421` after `return`**, which nothing could reach: a branch
+   of an `if` that ends gets no jump past the others (`IfStatement`).
+
+What is left is worth knowing too. The slice's two words still go to
+the frame, since only single values live in registers; `movzx` then
+`movsxd` reads a byte and makes an `I32` of it in two steps where one
+would do; and the four registers are saved and restored on every call,
+though this path uses one of them. Each could go, at the cost of lines
+a reader would have to follow.
 
 ## diag.pas: messages
 

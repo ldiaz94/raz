@@ -153,7 +153,7 @@ procedure ReleaseTemps(m: int64);
 procedure KeepTemps;
 
 procedure BeginProc(sig: PType; params: PObj);
-procedure LocalsFromScratch;
+procedure ResetLocals;
 procedure UseRegs(mask: longint);
 procedure MarkCode(var m: TCodeMark);
 procedure Redo(const m: TCodeMark);
@@ -539,20 +539,20 @@ end;
 
 { Operations }
 
-function Log2(v: int64): longint;
+function ExactLog2(v: int64): longint;
 var n: longint;
 begin
   n := 0;
   while (v > 1) and (v and 1 = 0) do begin v := v shr 1; inc(n) end;
   if v <> 1 then n := -1;
-  Log2 := n;
+  ExactLog2 := n;
 end;
 
 { r times v, a size: by a shift where v is a power of two, as it
   mostly is, since a shift takes one cycle and imul three }
 procedure MulI(r: longint; v: int64);
 begin
-  if Log2(v) > 0 then ShiftI(shShl, r, Log2(v))
+  if ExactLog2(v) > 0 then ShiftI(shShl, r, ExactLog2(v))
   else if v <> 1 then ImulI(r, v);
 end;
 
@@ -651,7 +651,7 @@ begin
     and (stack[depth - 1].loc <> lConst) then Swap;
   c := TopConst(v);
   sh := -1;
-  if c and (op in [sTimes, sDiv, sMod]) then sh := Log2(v);
+  if c and (op in [sTimes, sDiv, sMod]) then sh := ExactLog2(v);
   if c and (sh >= 1) then begin
     Drop;
     r := Top;
@@ -1272,6 +1272,7 @@ begin
     two results on the stack, the first under the second, and a single
     value on top }
   if res = nil then
+    { nothing comes back }
   else if res^.form = fSlice then begin
     Store(Mem(RBP, c.ret), RAX, 8);
     Store(Mem(RBP, c.ret + 8), RDX, 8);
@@ -1383,7 +1384,7 @@ end;
 
 { The frame as BeginProc left it, with the parameters' slots only: the
   locals are given theirs again once their registers are chosen. }
-procedure LocalsFromScratch;
+procedure ResetLocals;
 begin
   frameTop := paramTop; frameMax := paramTop; permTop := paramTop;
 end;
@@ -1520,7 +1521,7 @@ var n: int64; i: longint;
 begin
   codeChunk := -1;
   if (depth <> 0) or (pushed <> 0) then Fatal('internal error: stack depth');
-  if open then
+  if open then begin
     if BehindPointer(resType) then begin
       Load(RDI, Mem(RBP, retSlot), 8, false);
       MovRI(RCX, resType^.size);
@@ -1531,8 +1532,8 @@ begin
       MovRI(RAX, 0);
       if InTwoRegs(resType) then MovRI(RDX, 0);
       MovqXR(0, RAX);
-    end
-  else DropJumpTo(exitL);
+    end;
+  end else DropJumpTo(exitL);
   FixLink(exitL);
   n := 0;
   for i := 0 to 4 do

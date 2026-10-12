@@ -106,6 +106,7 @@ procedure SliceOf(var x: TItem; t: PType; len: int64);
 procedure TempItem(var x: TItem; t: PType; off: int64);
 function ScalarSize(t: PType): longint;
 procedure ForStep(o: PObj; step: int64);
+procedure ForCmp(o: PObj; const lim: TItem; op: TSym; var L: longint);
 procedure ForNext(o: PObj; const lim: TItem; step: int64; var exitL: longint; top, body: longint);
 
 procedure BeginProc(sig: PType; params: PObj);
@@ -1329,7 +1330,7 @@ begin
   Assign(v, w);
 end;
 
-{ For ForNext: pushes the variable o and the limit lim, a constant or
+{ For a for loop: pushes the variable o and the limit lim, a constant or
   the slot it was put in, and jumps to L if the one is op the other, as
   the type of o compares }
 procedure ForCmp(o: PObj; const lim: TItem; op: TSym; var L: longint);

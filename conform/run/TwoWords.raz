@@ -45,6 +45,8 @@ begin
     if n > 0 then return 1, 2; end;
 end;
 
+proc three(n: INT): (INT, INT, INT); begin return n, n + 1, n + 2; end;
+
 proc main*;
 var x, y: I32; b: BOOL; v, p, q: INT; w: I64; h: proc(n: INT): (INT, INT); pv: ^INT;
 begin
@@ -59,6 +61,9 @@ begin
     (* in order: the second result is the one left *)
     v, v := nested(4); Out.int(v); Out.ln;
     pv := ADR(q); pv^, p := nested(5); Out.int(q); Out.str(" "); Out.int(p); Out.ln;
+    (* three results, which come back in memory, some dropped *)
+    _, p, q := three(1); Out.int(p); Out.str(" "); Out.int(q); Out.ln;
+    p, _, _ := three(7); Out.int(p); Out.ln;
 end;
 
 end TwoWords.
