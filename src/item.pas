@@ -105,7 +105,8 @@ procedure CondJumpTrue(var x: TItem; var L: longint);
 procedure SliceOf(var x: TItem; t: PType; len: int64);
 procedure TempItem(var x: TItem; t: PType; off: int64);
 function ScalarSize(t: PType): longint;
-procedure ForNext(o: PObj; bslot, step: int64; var exitL: longint; top: longint);
+procedure ForStep(o: PObj; step: int64);
+procedure ForNext(o: PObj; const lim: TItem; step: int64; var exitL: longint; top, body: longint);
 
 procedure BeginProc(sig: PType; params: PObj);
 procedure ReturnValue(var x: TItem);
@@ -1316,30 +1317,71 @@ begin
   JumpCmp(sLeq, false, body);
 end;
 
-{ The end of a round of a for loop: stop if the step would pass the
-  limit, else step. Counting the distance left, rather than comparing
-  after the step, can't be fooled by the variable wrapping around. }
-procedure ForNext(o: PObj; bslot, step: int64; var exitL: longint; top: longint);
+{ A for loop's variable o, stepped by step, wrapping as its type does }
+procedure ForStep(o: PObj; step: int64);
 var v, w: TItem;
 begin
-  MakeItem(w, o);
-  if step > 0 then begin
-    PushVar(FrameAdr(bslot), 8, false, kWord);
-    Value(w);
-  end else begin
-    Value(w);
-    PushVar(FrameAdr(bslot), 8, false, kWord);
-  end;
-  gen.Op(sMinus, kWord, 8, false);
-  PushConst(kWord, abs(step));
-  JumpCmp(sLss, false, exitL);
   MakeItem(v, o);
   MakeItem(w, o);
   Value(w);
   PushConst(kWord, step);
   gen.Op(sPlus, kWord, IntSize(o^.typ), Signed(o^.typ));
   Assign(v, w);
-  JumpBack(top);
+end;
+
+{ For ForNext: pushes the variable o and the limit lim, a constant or
+  the slot it was put in, and jumps to L if the one is op the other, as
+  the type of o compares }
+procedure ForCmp(o: PObj; const lim: TItem; op: TSym; var L: longint);
+var v, b: TItem;
+begin
+  MakeItem(v, o);
+  Value(v);
+  b := lim;
+  Value(b);
+  JumpCmp(op, o^.typ^.signed, L);
+end;
+
+{ The end of a round of a for loop, as the report has it for a positive
+  step s: if v <= b and b - v < s, the loop ends; otherwise v becomes
+  v + s and the loop goes on while v <= b. Counting the distance left,
+  rather than comparing after the step, can't be fooled by v wrapping
+  around. So the loop goes on, to top, where v is stepped, if v < b for
+  a step of 1, or if v <= b and b - v >= s for another: then v + s <= b
+  needs no test. It ends if v = b, or b - v < s. Only where the body has
+  put v past b is it stepped here and tested, past. A negative step is
+  the same the other way round. }
+procedure ForNext(o: PObj; const lim: TItem; step: int64; var exitL: longint; top, body: longint);
+const
+  Before: array[boolean] of TSym = (sGtr, sLss);   { by a negative step, by a positive }
+  Past: array[boolean] of TSym = (sLss, sGtr);
+  Within: array[boolean] of TSym = (sGeq, sLeq);
+var v, b: TItem; L, pastL: longint; up: boolean;
+begin
+  up := step > 0;
+  L := NoLabel;
+  pastL := NoLabel;
+  if abs(step) = 1 then begin
+    ForCmp(o, lim, Before[up], L);
+    FixTo(L, top);
+    ForCmp(o, lim, sEql, exitL);
+  end else begin
+    ForCmp(o, lim, Past[up], pastL);
+    MakeItem(v, o);
+    b := lim;
+    if up then begin Value(b); Value(v) end
+    else begin Value(v); Value(b) end;
+    gen.Op(sMinus, kWord, 8, false);
+    PushConst(kWord, abs(step));
+    JumpCmp(sGeq, false, L);
+    FixTo(L, top);
+    Jump(exitL);
+  end;
+  Fix(pastL);
+  ForStep(o, step);
+  L := NoLabel;
+  ForCmp(o, lim, Within[up], L);
+  FixTo(L, body);
 end;
 
 procedure CondJump(var x: TItem; var L: longint);

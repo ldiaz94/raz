@@ -14,8 +14,8 @@ disassembly.
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,125 | 936 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/gen.pas` | 1,665 | 1,291 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,493 | 1,247 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,957 | 2,609 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/item.pas` | 1,535 | 1,277 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,966 | 2,615 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
@@ -482,7 +482,11 @@ and `OneStatement` dispatches; `IfStatement`,
 with gen's labels. A branch of an `if` that ends, in `return` or
 `break` (`ends`), gets no jump past the others; and `if c then break;
 end` is one jump out of the loop where `c` holds (`ThenPart`,
-`LoneBreak`, `CondJumpTrue`), not a jump past a jump. The blank is a symbol of its own, `sBlank`, so
+`LoneBreak`, `CondJumpTrue`), not a jump past a jump. A `for` loop
+steps its variable at the top and tests at the bottom, so that a round
+by 1 is one compare and one jump; its rare case, a body that moves the
+variable past the limit, has code of its own after (`ForNext`, whose
+comment walks through the report's rule). The blank is a symbol of its own, `sBlank`, so
 no declaration or expression takes it: `_ := e` loads a single value
 and drops it, and `MultiAssign` skips the results it stands for. A
 `match` on an integer reads each arm's

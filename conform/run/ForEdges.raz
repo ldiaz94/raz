@@ -1,0 +1,42 @@
+module ForEdges;
+
+(* for loops at their edges: the body moving the variable past the limit
+   and back, the value left after the loop, steps that would wrap the
+   type, a limit changed in the body, and enumerations. *)
+import Out;
+
+type Day = (mon, tue, wed, thu, fri, sat, sun);
+
+proc show(n: I64); begin Out.int(n); Out.str(" "); end;
+
+proc main*;
+var i, b, n: INT; u: U8; k: I8; d: Day; w: U64;
+begin
+    for i := 1 to 10 do show(i); if i = 3 then i := 20; end; end; show(i); Out.ln;
+    for i := 1 to 10 do show(i); if i = 2 then i := 7; end; end; show(i); Out.ln;
+    for i := 1 to 10 by 4 do show(i); end; show(i); Out.ln;
+    for i := 1 to 10 by 3 do show(i); if i = 4 then i := 9; end; end; show(i); Out.ln;
+    for i := 10 to 1 by -1 do show(i); if i = 8 then i := -5; end; end; show(i); Out.ln;
+    for i := 10 to 1 by -4 do show(i); end; show(i); Out.ln;
+    for i := 5 to 1 do show(i); end; show(i); Out.ln;
+    b := 3;
+    for i := 1 to b do show(i); b := 10; end; show(i); Out.ln;
+    n := 0;
+    for u := 250 to 255 do INC(n); end; show(n); show(I64(u)); Out.ln;
+    n := 0;
+    for u := 5 to 0 by -1 do INC(n); end; show(n); show(I64(u)); Out.ln;
+    n := 0;
+    for u := 200 to 255 do INC(n); if u = 210 then u := 255; end; end; show(n); show(I64(u)); Out.ln;
+    n := 0;
+    for k := -128 to 127 by 50 do INC(n); end; show(n); show(I64(k)); Out.ln;
+    n := 0;
+    for k := 120 to 127 do INC(n); if k = 125 then k := 127; end; end; show(n); show(I64(k)); Out.ln;
+    n := 0;
+    for w := 0FFFFFFFFFFFFFFF0H to 0FFFFFFFFFFFFFFFFH by 5 do INC(n); end; show(n); Out.ln;
+    for d := mon to sun by 2 do show(I64(d)); end; show(I64(d)); Out.ln;
+    for d := sun to mon by -1 do if d = fri then d := tue; end; show(I64(d)); end; Out.ln;
+    n := 0;
+    for i := 0 to 9 do if i = 5 then break; end; INC(n); end; show(n); show(i); Out.ln;
+end;
+
+end ForEdges.

@@ -24,37 +24,40 @@ Listing.main:
     17  proc main*;
              0  push rbp
              1  mov rbp, rsp
-             4  sub rsp, 32
+             4  sub rsp, 16
             11  mov [rbp - 8], rbx
             15  xor ebx, ebx
     20      for i := 1 to 3 do
             17  mov rbx, 1
-            22  mov qword [rbp - 16], 3
-            30  mov r9, [rbp - 16]
-            34  cmp rbx, r9
-            37  jg 129
+            22  cmp rbx, 3
+            26  jg 141
+            32  jmp 47
+            37  mov r8, rbx
+            40  add r8, 1
+            44  mov rbx, r8
     21          if i # 2 then total := add(total, twice(i)); end;
-            43  cmp rbx, 2
-            47  je 97
-            53  mov r8, [Listing.total]
-            60  mov [rbp - 24], r8
-            64  mov rdi, rbx
-            67  call Listing.twice
-            72  mov r9, rax
-            75  mov rdi, [rbp - 24]
-            79  mov rsi, r9
-            82  call Listing.add
-            87  mov r8, rax
-            90  mov [Listing.total], r8
-            97  mov r8, [rbp - 16]
-           101  sub r8, rbx
-           104  cmp r8, 1
-           108  jb 129
-           114  mov r8, rbx
-           117  add r8, 1
-           121  mov rbx, r8
-           124  jmp 30
+            47  cmp rbx, 2
+            51  je 101
+            57  mov r8, [Listing.total]
+            64  mov [rbp - 16], r8
+            68  mov rdi, rbx
+            71  call Listing.twice
+            76  mov r9, rax
+            79  mov rdi, [rbp - 16]
+            83  mov rsi, r9
+            86  call Listing.add
+            91  mov r8, rax
+            94  mov [Listing.total], r8
+           101  cmp rbx, 3
+           105  jl 37
+           111  cmp rbx, 3
+           115  je 141
+           121  mov r8, rbx
+           124  add r8, 1
+           128  mov rbx, r8
+           131  cmp rbx, 3
+           135  jle 47
     23  end main;
-           129  mov rbx, [rbp - 8]
-           133  leave
-           134  ret
+           141  mov rbx, [rbp - 8]
+           145  leave
+           146  ret

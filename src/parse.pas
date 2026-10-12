@@ -1322,15 +1322,17 @@ begin
 end;
 
 { for v := a to b by s do ... end, laid out as
-        v := a; bslot := b
-  top:  if v is past bslot then goto exit
-        the statements
-        if the distance from v to bslot < |s| then goto exit (ForNext)
-        v := v + s; goto top
-  exit: }
+        v := a; the limit b, in a slot unless it is a constant
+        if v is past b then goto exit
+        goto body
+  top:  v := v + s
+  body: the statements
+        the end of a round: goto top, or exit (ForNext)
+  exit:
+  so that a round of a loop by 1 takes one compare and one jump. }
 procedure ForStatement(const start: TPos; ind: longint);
 var
-  o: PObj; v, a, b, s: TItem; bslot, step: int64; top, exitL: longint;
+  o: PObj; v, a, b, s, lim: TItem; step: int64; top, body, bodyL, exitL: longint;
   lp: TLoop; old: PLoop;
 begin
   Next;
@@ -1351,7 +1353,8 @@ begin
   Expect(sTo);
   Expression(b, o^.typ);
   CoerceExact(b, o^.typ, '');
-  bslot := ToSlot(b);
+  { the limit, evaluated once: a constant as it is, else in a slot }
+  if b.mode <> mConst then TempItem(b, b.typ, ToSlot(b));
   step := 1;
   if tok = sBy then begin
     Next;
@@ -1361,17 +1364,23 @@ begin
   end;
   Expect(sDo);
   exitL := NoLabel;
-  top := pc;
   MakeItem(v, o);
   Value(v);
-  PushVar(FrameAdr(bslot), 8, false, kWord);
+  lim := b;
+  Value(lim);
   if step > 0 then JumpCmp(sGtr, o^.typ^.signed, exitL)
   else JumpCmp(sLss, o^.typ^.signed, exitL);
+  bodyL := NoLabel;
+  Jump(bodyL);
+  top := pc;
+  ForStep(o, step);
+  Fix(bodyL);
+  body := pc;
   Loop(lp, old);
   Statements;
   curLoop := old;
   CloseEnd(start, ind);
-  ForNext(o, bslot, step, exitL, top);
+  ForNext(o, b, step, exitL, top, body);
   Fix(exitL);
   Fix(lp.brk);
 end;
