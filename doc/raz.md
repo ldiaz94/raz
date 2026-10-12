@@ -9,7 +9,7 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.16 of the report; section 12 says what each
+This is version 2026-10.17 of the report; section 12 says what each
 version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -768,6 +768,7 @@ conversion of a constant is made by the compiler, by the same rules:
 | `LEN(a)` | the number of elements of an array or a string constant (an untyped constant) or of a slice (an `INT`) |
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
 | `MSG(e)` | the message of the error `e`, a `[]U8` |
+| `COPY(d, s)` | copies the elements of `s` to the start of `d`, both arrays or slices of one type `T`; `LEN(s)` must be at most `LEN(d)` |
 | `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six arguments, each a pointer or an integer no wider than `INT`; the raw result, an `INT` (a negative number is `-errno`) |
 | `INC(v)`, `INC(v, k)` | adds 1, or `k`, to the integer variable `v`; it wraps, like `+` |
 | `DEC(v)`, `DEC(v, k)` | subtracts 1, or `k`, from `v` |
@@ -786,6 +787,12 @@ system call interface, and their modules call the C library instead
 alignment of `T`, and zeroes the bytes it gets if they aren't `nil`.
 `Mem.Allocator` (section 11) is the one type of the library the
 language names.
+
+`COPY` is a statement, as `INC` is. It copies the bytes of `LEN(s)`
+elements as one block, as an assignment of an array does, and is right
+when `d` and `s` overlap, as in `COPY(a[1..n], a[0..n - 1])`. It is
+checked as a slice is: past `LEN(d)`, it stops the program, unless the
+module says `check off;`.
 
 `INC` and `DEC` evaluate `v` once, so `INC(a[f(i)])` calls `f` once. They
 read `v` and then write it: two accesses, even through a `^VOLATILE`
@@ -1916,6 +1923,8 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.16.** Record constants, and array and record constants of
   records, strings, procedures and more (section 4); `Str` gains
   `copy` (section 11).
+- **2026-10.17.** `COPY` copies the elements of one array or slice to
+  another as a block (section 6.8).
 
 ## Appendix A. What an implementation chooses
 
