@@ -92,10 +92,12 @@ end;
   text starts and stops, the procedures' and their variables' (I64s);
   for each place in live code its address, line, column and the offset
   of its file's path (U32s); for each live procedure where it starts and
-  stops, the offset of its name, its first variable and how many it has
-  (U32s); for each variable the offset of its name, its place in the
-  frame and its kind, as parse.pas's VarKind (U32s); then the paths and
-  names, each ending in a zero byte. They are in no order, since Rt
+  stops, the offset of its name, its first variable and how many it
+  has, and the registers of variables it saves, as bits of gen's
+  VarRegs, and the frame offset they are saved at (U32s); for each
+  variable the offset of its name, its place in the frame and its
+  kind, as parse.pas's VarKind (U32s); then the paths and names, each
+  ending in a zero byte. They are in no order, since Rt
   looks at them only as the program stops. }
 procedure MakePlaces(start, stop: int64);
 var
@@ -141,7 +143,7 @@ begin
       for v := first^[c] to first^[c] + count^[c] - 1 do k := k + length(NameOf(varNotes[v].name)) + 1;
       nv := nv + count^[c];
     end;
-  buf := GetMem(40 + 16 * n + 20 * np + 12 * nv + k);
+  buf := GetMem(40 + 16 * n + 28 * np + 12 * nv + k);
   PInt64(@buf^[0])^ := n;
   PInt64(@buf^[8])^ := start;
   PInt64(@buf^[16])^ := stop;
@@ -159,7 +161,7 @@ begin
       at := at + 16;
     end;
   { the pool of paths and names starts at k }
-  k := 40 + 16 * n + 20 * np + 12 * nv;
+  k := 40 + 16 * n + 28 * np + 12 * nv;
   names := k;
   { the paths first, at the offsets offs gave the places: Name puts
     each in the pool, and also writes its offset at at, which a path
@@ -178,7 +180,9 @@ begin
       Name(ChunkName(c));
       PLongint(@buf^[at])^ := v;
       PLongint(@buf^[at + 4])^ := count^[c];
-      at := at + 8;
+      PLongint(@buf^[at + 8])^ := chunks^[c].saveMask;
+      PLongint(@buf^[at + 12])^ := chunks^[c].saveAt;
+      at := at + 16;
       v := v + count^[c];
     end;
   for c := 0 to numChunks - 1 do

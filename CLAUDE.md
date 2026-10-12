@@ -55,7 +55,8 @@ library's tests: they must have no warnings.
   `Luis <42945842+ldiaz94@users.noreply.github.com>`, unsigned
   (`--no-gpg-sign`), no attribution trailer. Push to `main`. No pull
   requests unless asked.
-- Budget: a soft limit of 8,000 lines of code (blank and comment lines
+- Budget: a soft limit of 8,500 lines of code (raised from 8,000 by
+  the owner's word, for register variables; blank and comment lines
   not counted), with the compiler documented and commented throughout,
   most of all where it is obscure or needs a compiler writer's
   knowledge; at least 400,000 lines of raz a second.

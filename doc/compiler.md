@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of Free Pascal, under 8,100 lines of code.
+The compiler is eleven files of Free Pascal, under 8,300 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -10,13 +10,13 @@ disassembly.
 |---|---|---|---|
 | `src/diag.pas` | 310 | 229 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 615 | 510 | Types, objects, scopes, layout |
-| `src/chunk.pas` | 298 | 232 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,094 | 916 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,428 | 1,118 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,400 | 1,168 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,771 | 2,459 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/link.pas` | 243 | 188 | Tree shaking, layout, patching, the places |
+| `src/sym.pas` | 616 | 511 | Types, objects, scopes, layout |
+| `src/chunk.pas` | 300 | 234 | The compiled program: chunks, fixups, line notes |
+| `src/x64.pas` | 1,108 | 926 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 1,536 | 1,203 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,412 | 1,178 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 2,895 | 2,566 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 197 | 147 | The command line |
 
@@ -47,10 +47,12 @@ or an address in the frame or of a chunk is only noted, until something
 needs it in a register, so that it can be an instruction's operand. A
 comparison, too, waits as a condition, so that `if` and `while` jump
 on it directly. Which register a value goes in is settled
-by its depth, so there is no register allocator, and every access the
-program writes is one instruction, in the order written. That is also
-why `VOLATILE` costs the compiler nothing: it never does anything
-clever to begin with.
+by its depth, so there is no register allocator for values, and every
+access the program writes is one instruction, in the order written.
+That is also why `VOLATILE` costs the compiler nothing: it never does
+anything clever to begin with. A procedure's busiest variables, up to
+five, live in the registers that calls leave alone (`rbx` and `r12` to
+`r15`), where nothing but their own assignments can change them.
 
 The output is a set of *chunks*: one for each procedure, each module
 variable, each string. Code refers to other chunks through *fixups*,
@@ -351,6 +353,17 @@ the epilogue and patches the frame's size in. Within a statement,
 scratch space comes from `AllocTemp` and is given back by
 `ReleaseTemps`; `AllocPerm` reserves space for the whole procedure.
 
+Register variables: the parser chooses them (`ChooseRegs`, below) and
+tells gen (`UseRegs`): the registers, as bits of `VarRegs`, and the
+slots they are saved in, a quadword each after the variables. The
+prologue saves them, zeroes them, and takes a parameter's value from
+where it came; the epilogue restores them. A variable in one is an
+item at `bReg`: `PushVar` notes it (`lHeld`) rather than copying it,
+`Peek` reads it in place where the value is only read, so `i < n` is
+`cmp rbx, r12`, and `PopVar` and `IncDecReg` write it. Rt finds the
+values for the trap report from the saves: each procedure's record in
+the places says which it saved, and where (`saveMask`, `saveAt`).
+
 ## item.pas: items
 
 An operand is an *item* (`TItem`), as in Wirth's compilers. Its `mode`
@@ -520,6 +533,18 @@ The built-in procedures are in `Builtin` (and `New_`, `Atomic`): each
 parses its own arguments, since `SIZE` takes a type and `INC` a
 variable.
 
+**Register variables.** One pass can't know whether a variable's
+address will be taken before its code is made, so `ChooseRegs` reads
+the body ahead, as `InstancesFor` does, and counts each variable's
+uses: 1 for each, 4 in a loop, 16 in two; one `ADR` takes is out. The
+five busiest used at least three times get registers (`o^.reg`). An
+address wanted after all, by a `var` parameter, say, comes to
+`Address` (`item.pas`), which puts the variable back in memory and
+sets `demoted`: `Body` then throws the procedure's code away
+(`MarkCode`, `Redo`) and compiles its statements again. Its notes for
+the trap report are made after, by `VarKind`, which marks a variable
+in a register with the register's number.
+
 ## link.pas: tree shaking and layout
 
 `MarkLive` starts from the entry chunk and follows fixups, marking each
@@ -634,6 +659,9 @@ this one does.
   with no `break`. So is a call standing on its own that drops a
   result (`drops`, kept by `OneStatement` and told by `Dropped`);
   `_ := f(x)` drops one on purpose. `-Werror` makes each an error.
+- **Registers for variables.** Up to five of a procedure's single
+  values, not reals, whose address is never taken, live in `rbx` and
+  `r12` to `r15`; the trap report shows them as it shows the others.
 - **Several results** come back through a hidden pointer to the
   caller's slots; a code procedure returns two in rax and rdx.
 - **Reals.** A real constant is held as an F64. An `F32` in a register

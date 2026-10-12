@@ -35,6 +35,8 @@ type
     ext: boolean;                  { bss: the address of a C symbol, its name }
     reals: boolean;                { code: computes with reals, first at realsAt }
     realsAt: TPos;
+    saveMask: longint;             { code: the registers of variables it saves, as bits of gen's VarRegs }
+    saveAt: longint;               { ... at this offset from the frame, one quadword each }
   end;
 
   { A place in the source whose code starts at a place in text: for

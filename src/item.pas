@@ -47,6 +47,7 @@ type
   end;
 
 var
+  demoted: boolean;    { Address wanted a register variable's address }
   checks: boolean;     { the module's index and slice checks are made: it
                          doesn't say check off }
 
@@ -258,6 +259,8 @@ begin
         x.base := bGlobal; x.chunk := o^.chunk
       end else if o^.ind then begin
         x.base := bSlot; x.chunk := o^.val; x.off := o^.off;
+      end else if o^.reg <> 0 then begin
+        x.base := bReg; x.chunk := o^.reg
       end else begin
         x.base := bFrame; x.off := o^.val
       end;
@@ -357,6 +360,14 @@ end;
 procedure Address(var x: TItem);
 begin
   NilTest(x);
+  if (x.mode = mVar) and (x.base = bReg) then begin
+    { its address is wanted after all: the procedure is compiled again
+      with the variable in memory; till then, this code is thrown away }
+    x.obj^.reg := 0;
+    demoted := true;
+    x.base := bFrame;
+    x.off := x.obj^.val;
+  end;
   if x.mode = mStr then PushAdr(GlobalAdr(x.chunk))
   else if x.mode = mVar then begin
     PushAdr(AdrOf(x));
@@ -1370,7 +1381,8 @@ procedure IncDec(var v, k: TItem; dec: boolean);
 begin
   CoerceExact(k, v.typ, '');
   Value(k);
-  gen.IncDec(ScalarSize(v.typ), v.typ^.signed, dec);
+  if v.base = bReg then IncDecReg(v.chunk, ScalarSize(v.typ), v.typ^.signed, dec)
+  else gen.IncDec(ScalarSize(v.typ), v.typ^.signed, dec);
 end;
 
 { An error is the address of its length, followed by its message. }

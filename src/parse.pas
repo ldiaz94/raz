@@ -81,7 +81,7 @@ var
   curResult: PType;       { the result type of the procedure being compiled }
   inExtern: boolean;      { reading an extern's signature: ... allowed }
   tArgv, tBodySig: PType;
-  nameRt, nameFail, nameMain, nameBody, nameStatic, nameCheck, nameOff: longint;
+  nameRt, nameFail, nameMain, nameBody, nameStatic, nameCheck, nameOff, nameAdr: longint;
   declaring: array[0..63] of longint;   { the names the declaration being read declares }
   numDeclaring: longint;
   skipped: boolean;       { the last statement had an error and was skipped }
@@ -830,7 +830,7 @@ begin
       NotReadOnly(x);
       if (x.mode <> mVar) or not x.isVar or (x.typ^.form <> fInt) then
         MarkAt(x.pos, IncOrDec(which) + ' needs an integer variable');
-      Address(x);
+      if x.base <> bReg then Address(x);
       if tok = sComma then begin
         Next;
         Expression(y, x.typ);
@@ -1741,10 +1741,10 @@ procedure Declarations(top: boolean); forward;
 
 { How Rt shows a variable of o's type in the trap report: 1 a signed
   integer, 2 an unsigned one, 3 a BOOL, 4 an address, 5 a real; plus
-  its size times 16, and 256 if the frame holds its address; 0 if it
-  isn't shown. }
+  its size times 16, and 256 if the frame holds its address, or 512
+  times 1 + i if it is in register VarRegs[i]; 0 if it isn't shown. }
 function VarKind(o: PObj): longint;
-var k: longint;
+var k, i: longint;
 begin
   case o^.typ^.form of
     fInt: k := 2 - ord(o^.typ^.signed);
@@ -1755,10 +1755,121 @@ begin
   else exit(0);
   end;
   VarKind := k + o^.typ^.size * 16 + ord(o^.ind) * 256;
+  for i := 0 to 4 do
+    if o^.reg = VarRegs[i] then VarKind := k + o^.typ^.size * 16 + (i + 1) * 512;
+end;
+
+{ Whether variable o could live in a register: a single value, not
+  a real, that isn't C's }
+function RegFit(o: PObj): boolean;
+begin
+  RegFit := (o^.cls = oVar) and not o^.ind and not o^.ext
+    and ((o^.typ^.form in [fInt, fBool, fEnum, fPtr, fProc, fError])
+      or (o^.typ^.form = fSet) and (o^.typ^.size <= 8));
+end;
+
+{ Puts the busiest variables of the procedure, whose parameters are
+  params and whose locals follow before, in registers: read ahead from
+  its "begin" to its end, a use counts 1, in a loop 4, in two 16, and
+  a variable ADR is taken of can't have one. A register costs a save
+  and a restore, so a variable used less than three times keeps its
+  place in memory. The registers are saved after the variables. }
+procedure ChooseRegs(params, before: PObj);
+var
+  cand: array[0..63] of PObj; weight: array[0..63] of longint;
+  isLoop: array[0..255] of boolean;
+  n, i, k, d, loops, mask, best: longint; o: PObj; st: TScanState; afterDot, wasSkipping: boolean;
+
+  function Find(name: longint): longint;
+  var j: longint;
+  begin
+    for j := 0 to n - 1 do if cand[j]^.name = name then exit(j);
+    Find := -1;
+  end;
+
+  procedure Add(o: PObj);
+  begin
+    if RegFit(o) and (n <= High(cand)) then begin cand[n] := o; weight[n] := 0; inc(n) end;
+  end;
+
+begin
+  n := 0;
+  o := params;
+  while o <> nil do begin Add(o); o := o^.next end;
+  if before = nil then o := curModule^.locals else o := before^.link;
+  while o <> nil do begin Add(o); o := o^.link end;
+  mask := 0;
+  if n > 0 then begin
+    SaveScan(st);
+    wasSkipping := skipping;
+    skipping := true;      { its slips are told when it is compiled }
+    d := 0; loops := 0; afterDot := false;
+    repeat
+      case tok of
+        sBegin, sIf, sMatch, sWhile, sFor, sRepeat:
+          if d < High(isLoop) then begin
+            inc(d);
+            isLoop[d] := tok in [sWhile, sFor, sRepeat];
+            if isLoop[d] then inc(loops);
+          end;
+        sEnd, sUntil: begin
+          if isLoop[d] then dec(loops);
+          dec(d);
+        end;
+        sIdent:
+          if id = nameAdr then begin
+            Next;
+            if tok = sLparen then Next;
+            if (tok = sIdent) and (Find(id) >= 0) then weight[Find(id)] := low(longint) div 2;
+          end else if not afterDot and (Find(id) >= 0) then begin
+            k := Find(id);
+            if loops > 2 then inc(weight[k], 64) else inc(weight[k], 1 shl (2 * loops));
+          end;
+      end;
+      afterDot := tok = sPeriod;
+      if (d > 0) and (tok <> sEof) then Next;
+    until (d = 0) or (tok = sEof);
+    RestoreScan(st);
+    skipping := wasSkipping;
+    for k := 0 to 4 do begin
+      best := -1;
+      for i := 0 to n - 1 do
+        if (cand[i]^.reg = 0) and (weight[i] >= 3) and ((best < 0) or (weight[i] > weight[best])) then best := i;
+      if best < 0 then break;
+      cand[best]^.reg := VarRegs[k];
+      mask := mask or (1 shl k);
+    end;
+  end;
+  k := 0;
+  for i := 0 to 4 do if mask and (1 shl i) <> 0 then inc(k);
+  if k = 0 then UseRegs(0, 0)
+  else UseRegs(mask, AllocPerm(8 * k, 8));
+end;
+
+{ The registers the variables of the procedure are in, as ChooseRegs's
+  mask }
+function RegsOf(params, before: PObj): longint;
+var o: PObj; m, k: longint;
+begin
+  m := 0;
+  o := params;
+  while o <> nil do begin
+    for k := 0 to 4 do if o^.reg = VarRegs[k] then m := m or (1 shl k);
+    o := o^.next;
+  end;
+  if before = nil then o := curModule^.locals else o := before^.link;
+  while o <> nil do begin
+    if o^.cls = oVar then
+      for k := 0 to 4 do if o^.reg = VarRegs[k] then m := m or (1 shl k);
+    o := o^.link;
+  end;
+  RegsOf := m;
 end;
 
 procedure Body(p: PObj; sig: PType; line: longint);
-var q, params, last, o, before: PObj; old: PType;
+var
+  q, params, last, o, before: PObj; old: PType; st: TScanState;
+  mark: TCodeMark; drops0, errs: longint;
 begin
   OpenScope(NewScope);
   params := nil; last := nil;
@@ -1784,6 +1895,28 @@ begin
   curProc := p;
   before := curModule^.lastLocal;
   Declarations(false);
+  ChooseRegs(params, before);
+  { the body, made again if a variable in a register must be in memory }
+  SaveScan(st);
+  MarkCode(mark); drops0 := numDrops; errs := errors;
+  old := curResult;
+  repeat
+    demoted := false;
+    Expect(sBegin);
+    curResult := sig^.base;
+    EnterBody(p^.chunk, line);
+    stray := false; elseIf := false; deferSlot := 0;
+    Statements;
+    p^.openEnd := (curResult <> nil) and not ends;
+    NoteLine(CurLine, CurCol);
+    Expect(sEnd);
+    if not demoted or (errors <> errs) then break;
+    numDrops := drops0;
+    Redo(mark);
+    UseRegs(RegsOf(params, before), chunks^[p^.chunk].saveAt);
+    RestoreScan(st);
+  until false;
+  EndProc(p^.chunk);
   { its parameters and variables, for the trap report }
   if before = nil then o := curModule^.locals else o := before^.link;
   q := params;
@@ -1795,16 +1928,6 @@ begin
     if (o^.cls = oVar) and (VarKind(o) <> 0) then NoteVar(p^.chunk, o^.name, o^.val, VarKind(o));
     o := o^.link;
   end;
-  Expect(sBegin);
-  old := curResult;
-  curResult := sig^.base;
-  EnterBody(p^.chunk, line);
-  stray := false; elseIf := false;
-  Statements;
-  p^.openEnd := (curResult <> nil) and not ends;
-  NoteLine(CurLine, CurCol);
-  Expect(sEnd);
-  EndProc(p^.chunk);
   curResult := old;
   curProc := nil;
   CloseScope;
@@ -2758,6 +2881,7 @@ initialization
   nameRt := Name('Rt');
   nameFail := Name('fail');
   nameMain := Name('main');
+  nameAdr := Name('ADR');
   nameBody := Name('body');
   nameStatic := Name('static');
   nameCheck := Name('check');

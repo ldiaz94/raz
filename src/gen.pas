@@ -56,16 +56,19 @@ type
 
   { Where a variable is: its address is relative to the frame, to a
     chunk, to an address on the stack, or to one held in a frame slot }
-  TBase = (bFrame, bGlobal, bStack, bSlot);
+  TBase = (bFrame, bGlobal, bStack, bSlot, bReg);
   TAdr = record
     base: TBase;
-    chunk: longint;   { bGlobal: the chunk; bSlot: the frame slot }
+    chunk: longint;   { bGlobal: the chunk; bSlot: the frame slot; bReg: the register }
     off: int64;       { added to the address }
   end;
 
   { How an argument waits for its call: in a frame slot, or noted, as a
     constant or as the address of the frame or a chunk plus an offset }
-  TArgHow = (argSlot, argConst, argAdr);
+  TArgHow = (argSlot, argConst, argAdr, argHeld);
+
+  { The code made so far, to go back to for a second try at a body }
+  TCodeMark = record pc, fixups, lines, said: longint; end;
 
   TCall = record
     sig: PType;
@@ -82,6 +85,12 @@ type
     ext: boolean;      { C's: called through the chunk holding its address }
     ret: int64;        { set by Call: the temporary an aggregate result is in }
   end;
+
+const
+  { the registers a procedure keeps its busiest variables in: System V's
+    callee-saved ones, so they live through calls; a procedure saves
+    those it uses, and Rt finds them there for the trap report }
+  VarRegs: array[0..4] of longint = (RBX, R12, R13, R14, R15);
 
 var
   rtFail, argcChunk, argvChunk: longint;
@@ -116,6 +125,7 @@ procedure RealToReal(k: TKind);
 procedure CompareSeq(a, b: int64; shift: longint; eq: boolean);
 procedure ErrorText(tmp: int64);
 procedure IncDec(size: longint; signed, dec: boolean);
+procedure IncDecReg(r, size: longint; signed, dec: boolean);
 procedure ZeroNew(size: int64);
 procedure Atomic(which: longint);
 procedure SysCall(n: longint);
@@ -148,6 +158,9 @@ procedure ReleaseTemps(m: int64);
 procedure KeepTemps;
 
 procedure BeginProc(sig: PType; params: PObj);
+procedure UseRegs(mask: longint; at: int64);
+procedure MarkCode(var m: TCodeMark);
+procedure Redo(const m: TCodeMark);
 procedure EnterBody(c, line: longint);
 procedure ResultTo(off: int64; size: longint);
 procedure CopyResult(off, size: int64);
@@ -165,6 +178,8 @@ implementation
 type
   { where a value on the stack is }
   TLoc = (lConst,     { not loaded: val is the value }
+          lHeld,      { not loaded: in register val, a variable's own,
+                        which nothing in an expression can change }
           lAdr,       { not loaded: the address of chunk, or of the frame
                         if chunk is -1, plus val }
           lReg,       { in its register }
@@ -198,7 +213,12 @@ var
   inReg: array[0..13] of longint;
   inSlot: array[0..13] of int64;
   inSize: array[0..13] of longint;
+  inObj: array[0..13] of PObj;
   numIn: longint;
+  procParams: PObj;             { the parameters, for EnterBody }
+  regMask: longint;             { the registers of variables, as bits of VarRegs }
+  saveAt: int64;                { where they are saved, a quadword each }
+  frameAt: array[0..2] of int64;   { frameTop, frameMax, permTop after the declarations }
 
 function KindOf(t: PType): TKind;
 begin
@@ -263,11 +283,19 @@ begin
   if stack[i].loc <> lReg then begin
     r := Claim(i);
     if stack[i].loc = lConst then MovRI(r, stack[i].val)
+    else if stack[i].loc = lHeld then MovRR(r, stack[i].val)
     else if stack[i].loc = lAdr then Lea(r, AdrMem(i, 0))
     else Load(r, Mem(RBP, stack[i].val), 8, false);
     stack[i].loc := lReg;
   end;
   Loaded := RegOf(i);
+end;
+
+{ The register value i is in, only to be read: a variable's own, or
+  its register }
+function Peek(i: longint): longint;
+begin
+  if stack[i].loc = lHeld then Peek := stack[i].val else Peek := Loaded(i);
 end;
 
 function Top: longint;
@@ -334,6 +362,7 @@ end;
 function Place(const a: TAdr; r: longint): TMem;
 var ra: longint;
 begin
+  if a.base = bReg then Fatal('internal error: a register has no address');
   case a.base of
     bFrame: Place := Mem(RBP, a.off);
     bGlobal: Place := MemRip(a.chunk, a.off);
@@ -342,7 +371,7 @@ begin
         Place := AdrMem(depth - 1, a.off);
         Drop;
       end else begin
-        ra := Top;
+        ra := Peek(depth - 1);
         Drop;
         Place := Mem(ra, a.off)
       end;
@@ -370,6 +399,10 @@ end;
 procedure PushVar(const a: TAdr; size: longint; signed: boolean; k: TKind);
 var m: TMem; r: longint;
 begin
+  if a.base = bReg then begin
+    NewEntry(k, lHeld, a.chunk);
+    exit;
+  end;
   if a.base = bStack then begin m := Place(a, -1); r := Target end
   else begin r := Target; m := Place(a, r) end;
   Load(r, m, size, signed);
@@ -390,13 +423,18 @@ end;
 procedure PopVar(const a: TAdr; size: longint);
 var r: longint; v: int64;
 begin
+  if a.base = bReg then begin
+    if TopConst(v) then MovRI(a.chunk, v) else MovRR(a.chunk, Peek(depth - 1));
+    Drop;
+    exit;
+  end;
   if TopConst(v) and Fits32(v) then begin
     Drop;
     StoreI(Place(a, RCX), v, size);
     exit;
   end;
   if TopConst(v) then begin r := RAX; MovRI(RAX, v) end
-  else r := Top;
+  else r := Peek(depth - 1);
   Drop;
   Store(Place(a, RCX), r, size);
 end;
@@ -533,7 +571,7 @@ end;
 function Operands(var y: longint): longint;
 var v: int64;
 begin
-  if TopConst(v) then begin MovRI(RCX, v); y := RCX end else y := Top;
+  if TopConst(v) then begin MovRI(RCX, v); y := RCX end else y := Peek(depth - 1);
   Drop;
   Operands := Top;
 end;
@@ -785,6 +823,18 @@ begin
   Store(Mem(r, 0), RAX, size);
 end;
 
+{ INC or DEC of the variable in register r, by the value on top; a
+  narrow one wraps at its width }
+procedure IncDecReg(r, size: longint; signed, dec: boolean);
+var y, op: longint; v: int64;
+begin
+  if dec then op := aluSub else op := aluAdd;
+  if TopConst(v) and Fits32(v) then AluI(op, r, v)
+  else begin y := Top; Alu(op, r, y) end;
+  Drop;
+  if size < 8 then Extend(r, size, signed);
+end;
+
 { The pointer on top, which NEW got, to size zero bytes unless nil }
 procedure ZeroNew(size: int64);
 var L, r: longint;
@@ -827,6 +877,7 @@ begin
   for i := 0 to n - 1 do
     with stack[depth - n + i] do
       if loc = lConst then MovRI(SysRegs[i], val)
+      else if loc = lHeld then MovRR(SysRegs[i], val)
       else if loc = lAdr then Lea(SysRegs[i], AdrMem(depth - n + i, 0))
       else Load(SysRegs[i], Mem(RBP, val), 8, false);
   for i := 1 to n do Drop;
@@ -864,8 +915,9 @@ const
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
 var r, y: longint; v: int64;
 begin
-  if TopConst(v) then begin Drop; r := Top; CmpI(r, v) end
-  else begin r := Operands(y); Alu(aluCmp, r, y) end;
+  { a comparison changes neither: a variable's register will do }
+  if TopConst(v) then begin Drop; r := Peek(depth - 1); CmpI(r, v) end
+  else begin y := Peek(depth - 1); Drop; r := Peek(depth - 1); Alu(aluCmp, r, y) end;
   Drop;
   if signed then Jcc(CcSigned[op], L) else Jcc(CcUnsigned[op], L);
 end;
@@ -1069,7 +1121,8 @@ begin
   i := depth - 1;
   c.how[c.n] := argSlot;
   if not c.isF[c.n] and (stack[i].loc = lConst) then c.how[c.n] := argConst
-  else if stack[i].loc = lAdr then c.how[c.n] := argAdr;
+  else if stack[i].loc = lAdr then c.how[c.n] := argAdr
+  else if stack[i].loc = lHeld then c.how[c.n] := argHeld;
   if c.how[c.n] = argSlot then begin
     c.slots[c.n] := AllocTemp(8, 8);
     Store(Mem(RBP, c.slots[c.n]), Top, 8);
@@ -1085,6 +1138,7 @@ procedure LoadArg(const c: TCall; i, r: longint);
 begin
   case c.how[i] of
     argConst: MovRI(r, c.slots[i]);
+    argHeld: MovRR(r, c.slots[i]);
     argAdr:
       if c.adrChunk[i] < 0 then Lea(r, Mem(RBP, c.slots[i]))
       else Lea(r, MemRip(c.adrChunk[i], c.slots[i]));
@@ -1202,10 +1256,12 @@ begin
   exitL := NoLabel;
   numIn := 0;
   resType := sig^.base;
+  procParams := params;
+  regMask := 0;
   ni := 0; nf := 0; stackOff := 16;
   if (resType <> nil) and IsAggregate(resType) then begin
     retSlot := AllocPerm(8, 8);
-    inReg[0] := RDI; inSlot[0] := retSlot; inSize[0] := 8;
+    inReg[0] := RDI; inSlot[0] := retSlot; inSize[0] := 8; inObj[0] := nil;
     numIn := 1; ni := 1;
   end;
   p := params;
@@ -1217,6 +1273,7 @@ begin
       if f then begin inReg[numIn] := -1 - nf; inc(nf) end
       else begin inReg[numIn] := IntRegs[ni]; inc(ni) end;
       inSlot[numIn] := p^.val;
+      inObj[numIn] := p;
       if p^.ind then inSize[numIn] := 8
       else if p^.typ^.form in [fInt, fBool, fEnum, fSet, fReal] then inSize[numIn] := p^.typ^.size
       else inSize[numIn] := 8;
@@ -1230,12 +1287,35 @@ begin
   paramTop := frameTop;
 end;
 
+{ The procedure keeps variables in the registers of mask, saved at at;
+  the frame as it stands is where a second try at its body starts. }
+procedure UseRegs(mask: longint; at: int64);
+begin
+  regMask := mask;
+  saveAt := at;
+  frameAt[0] := frameTop; frameAt[1] := frameMax; frameAt[2] := permTop;
+end;
+
+procedure MarkCode(var m: TCodeMark);
+begin
+  m.pc := pc; m.fixups := numFixups; m.lines := numLines; m.said := SaidCount;
+end;
+
+{ For a second try at the body: the code as it was at m, and the frame
+  as UseRegs found it }
+procedure Redo(const m: TCodeMark);
+begin
+  pc := m.pc; numFixups := m.fixups; numLines := m.lines; Unsay(m.said);
+  frameTop := frameAt[0]; frameMax := frameAt[1]; permTop := frameAt[2];
+  exitL := NoLabel;
+end;
+
 { The prologue, which is for the procedure's first line. Only the
   locals are zeroed: the parameters are stored over their slots next,
   and every temporary is written before it is read. The locals are all
   declared by now, below the parameters' slots. }
 procedure EnterBody(c, line: longint);
-var i, top: longint; n: int64;
+var i, top: longint; n: int64; p: PObj;
 begin
   BeginChunk(c);
   codeChunk := c;
@@ -1257,9 +1337,31 @@ begin
     AluI(aluAdd, R10, 1);
     JccBack(ccNE, top);
   end;
+  { the registers of variables: saved, as a variable starts at zero,
+    a parameter taken from where it came }
+  chunks^[c].saveMask := regMask;
+  chunks^[c].saveAt := saveAt;
+  n := 0;
+  for i := 0 to 4 do
+    if regMask and (1 shl i) <> 0 then begin
+      Store(Mem(RBP, saveAt + 8 * n), VarRegs[i], 8);
+      MovRI(VarRegs[i], 0);
+      inc(n);
+    end;
   for i := 0 to numIn - 1 do
     if inReg[i] < 0 then MovsdMX(Mem(RBP, inSlot[i]), -1 - inReg[i])
-    else Store(Mem(RBP, inSlot[i]), inReg[i], inSize[i]);
+    else if (inObj[i] <> nil) and (inObj[i]^.reg <> 0) then begin
+      MovRR(inObj[i]^.reg, inReg[i]);
+      if inSize[i] < 8 then Extend(inObj[i]^.reg, inSize[i], inObj[i]^.typ^.signed);
+    end else Store(Mem(RBP, inSlot[i]), inReg[i], inSize[i]);
+  p := procParams;
+  while p <> nil do begin
+    if (p^.reg <> 0) and (p^.val > 0) then
+      if p^.typ^.form in [fInt, fBool, fEnum, fSet] then
+        Load(p^.reg, Mem(RBP, p^.val), p^.typ^.size, p^.typ^.signed)
+      else Load(p^.reg, Mem(RBP, p^.val), 8, false);
+    p := p^.next;
+  end;
 end;
 
 { Pops one of several results, a value of size bytes, into its place
@@ -1300,7 +1402,7 @@ end;
 { The end of the procedure in chunk c: the code that returns, and the
   frame's size, known only now, patched into its prologue. }
 procedure EndProc(c: longint);
-var n: int64;
+var n: int64; i: longint;
 begin
   codeChunk := -1;
   if (depth <> 0) or (pushed <> 0) then Fatal('internal error: stack depth');
@@ -1317,6 +1419,12 @@ begin
       MovqXR(0, RAX);
     end;
   FixLink(exitL);
+  n := 0;
+  for i := 0 to 4 do
+    if regMask and (1 shl i) <> 0 then begin
+      Load(VarRegs[i], Mem(RBP, saveAt + 8 * n), 8, false);
+      inc(n);
+    end;
   Leave;
   Ret;
   n := AlignUp(frameMax, 16);
