@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of Free Pascal, some 7,000 lines of code.
+The compiler is eleven files of Free Pascal, under 7,700 lines of code.
 This guide walks through them in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
@@ -92,7 +92,8 @@ begin
 end;
 ```
 
-comes out as this (from `objdump -d -M intel`):
+comes out as this (from `objdump -d -M intel`; `raz -S` shows the same
+under each line of source, named by the compiler as it made them):
 
 ```
 push   rbp                            ; EnterBody: the frame
@@ -499,20 +500,22 @@ places, a rodata chunk: for each line note in live code, its address,
 line, column and file; and for the trap report, each live procedure's
 address range and name, and its variables, which `Body` (`parse.pas`)
 notes with `NoteVar`: each one's name, its place in the frame and how
-`Rt` shows it (`VarKind`). `Rt` reads them, through `Rt.places`, which the
-entry point sets, to say where a failed check or a signal was: the
-place with the highest address up to the one it has. Then it follows
-the chain of frames, each `rbp` pointing at its caller's, and says
-each call under way and its variables (`calls`); `Rt.trace` does the
-same on demand. A thread's first frame has `rbp` zero, which ends it.
-With `RAZ_PROFILE` set, `Rt`'s body has the kernel send SIGPROF every
-millisecond of the program's time (`setitimer`); `onProf` notes the
-address it interrupted, and `exit` has `profile` say which procedures
-and places those fell in, by the same tables. Its signal
+`Rt` shows it (`VarKind`). `Rt` reads them, through `Rt.places`, which
+the entry point sets, to say where a failed check or a signal was: the
+place with the highest address up to the one it has. Its signal
 handlers, set in its body, run on a stack of their own, so that they
 can tell a stack overflow, and leave by returning to the faulting
 instruction with the handler reset, so that the signal ends the
 program.
+
+Then `Rt` follows the chain of frames, each `rbp` pointing at its
+caller's, and says each call under way and its variables (`calls`);
+`Rt.trace` does the same on demand. A thread's first frame has `rbp`
+zero, which ends the chain. With `RAZ_PROFILE` set, `Rt`'s body has the
+kernel send SIGPROF every millisecond of the program's time
+(`setitimer`); `onProf` notes the address it interrupted, and `exit`
+has `profile` say which procedures and places those fell in, by the
+same tables.
 
 The layout is chosen so the file can be mapped as it lies: text just
 after the headers, rodata on the next page, then a writable page that
@@ -571,7 +574,7 @@ status is the command's.
 - **An instruction:** a routine in `x64.pas` built on `OpM` or `OpR`,
   and a line in `test/enctest.pas` to check its encoding.
 - **A machine:** a new `gen.pas`, answering the same calls, and an
-  encoder for it in place of `x64.pas`.
+  encoder and assembler for it in place of `x64.pas`.
 - **A statement:** a reserved word in `scan.pas` (in `TSym` and `Words`,
   in the same order), a case in `Statement`, and a routine beside the
   others.

@@ -85,9 +85,10 @@ compiler says it follows.
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes on the list in
-`PLAN.md`, for a later thaw; it isn't built. v0.6.0 is such a thaw,
-by the owner's word: report 2026-10.11, approved, which the compiler
-is being brought to follow (`PLAN.md`). Keep
+`PLAN.md`, for a later thaw; it isn't built. v0.6.0 was such a thaw,
+by the owner's word: report 2026-10.12, which the compiler follows,
+its parser reaching the machine only through `gen.pas` (`PLAN.md`;
+its steps 5 to 10 await the owner's review). Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.
 
@@ -98,7 +99,7 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.5.0, report 2026-10.9, the latest.
+the first; v0.6.0, report 2026-10.12, the latest.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only

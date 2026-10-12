@@ -64,11 +64,12 @@ Every `Sys` export is written twice, in `Sys.linux-x86_64.raz` and in
       `doc/compiler.md`'s table, the report's version and the
       compiler's; tag `v0.5.0`.
 
-## Proposed, v0.6.0: raz to be rebuilt by anyone
+## v0.6.0: raz to be rebuilt by anyone
 
-Under way: steps 1 to 4 are done, step 3 set aside since. The owner
-has agreed the rest, to step 10, to be done without stopping. The freeze
-doesn't hold for this work, by the owner's word.
+Done, and tagged `v0.6.0`: report 2026-10.12, step 3 set aside. The
+owner agreed steps 5 to 10 to be done without stopping, so they wait
+for review together. The freeze didn't hold for this work, by the
+owner's word.
 
 **For:** a language a person alone can implement again, from the
 report, on any machine, in weeks; programs that run on small machines
@@ -159,7 +160,7 @@ the wishes below.
 - [x] 9e. A profiler in `Rt`: a program run with `RAZ_PROFILE` set
       samples where it is, and at its end says which procedures and
       lines took the time.
-- [ ] 10. `doc/compiler.md`, README, the report's version and the
+- [x] 10. `doc/compiler.md`, README, the report's version and the
       compiler's; tag `v0.6.0`.
 
 The budget, by the owner's word: a soft limit of 8,000 lines of code,

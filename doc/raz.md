@@ -12,8 +12,6 @@ doesn't allow, raz doesn't have.
 This is version 2026-10.12 of the report; section 12 says what each
 version changed. It is a thaw the owner chose, for a language anyone
 can build again, and it breaks programs written for 2026-10.10.
-The compiler follows version 2026-10.10 until it is brought to this
-one.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
