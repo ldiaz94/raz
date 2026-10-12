@@ -40,7 +40,7 @@ one that buys less than 2% on both is reverted and noted here.
 4. Done: **`while` tested at the bottom**, its test moved after the body and
    jumped to first, as `for` is now. ulam found nothing in it, and lost
    3% where the test was long: measured, and kept only if it pays.
-5. **One table of lines, not two.** Rt finds a place in `.debug_line`,
+5. Done: **One table of lines, not two.** Rt finds a place in `.debug_line`,
    loaded with the program, which gdb reads already, in place of the
    places' own 16 bytes a line: about 7 KB off hello, more off a big
    program, for a decoder of DWARF's line program in Rt.

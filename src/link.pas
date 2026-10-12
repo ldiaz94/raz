@@ -36,6 +36,7 @@ var
   bssOff: int64;               { the file offset of that table }
   textImg, roImg: PBytes;
   placesChunk: longint = -1;   { the rodata chunk of the places, made here }
+  linesOff, linesSize: int64;  { the line table, in the places: .debug_line }
 
 procedure MarkLive(entry: longint);
 procedure LinkAll(headerSize, roExtra, dynSize: int64);
@@ -89,22 +90,114 @@ begin
   Place := a;
 end;
 
+{ The line table, DWARF 4's line program, which gdb reads as
+  .debug_line and Rt to say where code comes from: one sequence for
+  each live procedure with lines, a row for each place noted, its
+  address, file, line and column. A row whose address and line move a
+  little is one byte, a special opcode; the others are made of the
+  standard ones. Made in lp, lpLen bytes long. }
+const
+  LineBase = -5; LineRange = 14; OpcodeBase = 13;   { the special opcodes' }
+
+var
+  lp: PBytes;
+  lpLen, lpCap: longint;
+
+procedure PutB(v: int64);
+begin
+  if lpLen = lpCap then begin
+    lpCap := lpCap * 2 + 256;
+    lp := ReAllocMem(lp, lpCap);
+  end;
+  lp^[lpLen] := byte(v);
+  inc(lpLen);
+end;
+
+procedure PutN(v: int64; n: longint);
+var i: longint;
+begin
+  for i := 1 to n do begin PutB(v); v := v shr 8 end;
+end;
+
+{ LEB128, unsigned and signed }
+procedure PutU(v: int64);
+begin
+  while v >= $80 do begin PutB(v and $7F or $80); v := v shr 7 end;
+  PutB(v);
+end;
+
+procedure PutS(v: int64);
+begin
+  while (v < -64) or (v >= 64) do begin PutB(v and $7F or $80); v := SarInt64(v, 7) end;
+  PutB(v and $7F);
+end;
+
+{ The line program of the files paths, nfiles of them, numbered from
+  1, as they are written in the table }
+procedure MakeLines(paths: PLongs; nfiles: longint);
+var i, f, c, cf, cl, cc, op: longint; at, da, dl: int64; s: shortstring;
+begin
+  lpLen := 0;
+  PutN(0, 4);              { unit_length, patched below }
+  PutN(4, 2);              { version }
+  PutN(0, 4);              { header_length, patched below }
+  PutB(1); PutB(1);        { minimum_instruction_length, maximum_operations }
+  PutB(1);                 { default_is_stmt }
+  PutB(LineBase); PutB(LineRange); PutB(OpcodeBase);
+  for i := 1 to OpcodeBase - 1 do PutB(ord(i in [2, 3, 4, 5, 9, 12]));   { their operands }
+  PutB(0);                 { no include directories }
+  for f := 0 to nfiles - 1 do begin
+    s := ShownPath(NameOf(paths^[f]));
+    for i := 1 to length(s) do PutB(ord(s[i]));
+    PutN(0, 4);            { its end, directory, time, length }
+  end;
+  PutB(0);
+  PLongint(@lp^[6])^ := lpLen - 10;
+  i := 0;
+  while i < numLines do begin
+    c := lines^[i].chunk;
+    if not chunks^[c].live then begin inc(i); continue end;
+    PutB(0); PutU(9); PutB(2);   { DW_LNE_set_address }
+    PutN(chunks^[c].adr + lines^[i].at - chunks^[c].start, 8);
+    at := lines^[i].at; cf := 1; cl := 1; cc := 0;
+    while (i < numLines) and (lines^[i].chunk = c) do begin
+      f := 1;
+      while paths^[f - 1] <> lines^[i].path do inc(f);
+      if f <> cf then begin PutB(4); PutU(f); cf := f end;   { DW_LNS_set_file }
+      if lines^[i].col <> cc then begin PutB(5); PutU(lines^[i].col); cc := lines^[i].col end;   { DW_LNS_set_column }
+      da := lines^[i].at - at;
+      dl := lines^[i].line - cl;
+      op := (dl - LineBase) + LineRange * da + OpcodeBase;
+      if (dl >= LineBase) and (dl < LineBase + LineRange) and (op <= 255) then PutB(op)   { a special opcode: a row }
+      else begin
+        if da > 0 then begin PutB(2); PutU(da) end;   { DW_LNS_advance_pc }
+        if dl <> 0 then begin PutB(3); PutS(dl) end;  { DW_LNS_advance_line }
+        PutB(1);           { DW_LNS_copy: a row }
+      end;
+      at := lines^[i].at; cl := lines^[i].line;
+      inc(i);
+    end;
+    PutB(2); PutU(chunks^[c].start + chunks^[c].size - at);
+    PutB(0); PutU(1); PutB(1);   { DW_LNE_end_sequence }
+  end;
+  PLongint(@lp^[0])^ := lpLen - 4;
+end;
+
 { The places that Rt reads to say where a failed check or a signal
-  was, and what calls were under way: their numbers, the places', where
-  text starts and stops, the procedures' and their variables' (I64s);
-  for each place in live code its address, line, column and the offset
-  of its file's path (U32s); for each live procedure where it starts and
-  stops, the offset of its name, its first variable and how many it
-  has, and the registers of variables it saves, as bits of gen's
-  VarRegs, and the frame offset they are saved at (U32s); for each
-  variable the offset of its name, its place in the frame and its
-  kind, as parse.pas's VarKind (U32s); then the paths and names, each
-  ending in a zero byte. They are in no order, since Rt
-  looks at them only as the program stops. }
+  was, and what calls were under way: where the line table is in them,
+  where text starts and stops, the numbers of procedures and of their
+  variables (I64s); for each live procedure where it starts and stops,
+  the offset of its name, its first variable and how many it has, and
+  the registers of variables it saves, as bits of gen's VarRegs, and
+  the frame offset they are saved at (U32s); for each variable the
+  offset of its name, its place in the frame and its kind, as
+  parse.pas's VarKind (U32s); then the names, each ending in a zero
+  byte; then the line table (MakeLines), at linesOff. They are in no
+  order, since Rt looks at them only as the program stops. }
 procedure MakePlaces(start, stop: int64);
 var
-  files, offs, first, count: PLongs; buf: PBytes;
-  i, f, n, nfiles, k, np, nv, c, v, at, names: longint;
+  files, first, count: PLongs; buf: PBytes;
+  i, f, nfiles, k, np, nv, c, v, at, names: longint;
 
   procedure Name(const s: shortstring);
   begin
@@ -117,7 +210,6 @@ var
 
 begin
   files := GetMem(numLines * 4 + 4);
-  offs := GetMem(numLines * 4 + 4);
   first := GetMem(numChunks * 4);
   count := GetMem(numChunks * 4);
   FillChar(count^, numChunks * 4, 0);
@@ -125,19 +217,17 @@ begin
     first^[varNotes[v].chunk] := v;
     inc(count^[varNotes[v].chunk]);
   end;
-  n := 0; nfiles := 0; k := 0; np := 0; nv := 0;
+  nfiles := 0; k := 0; np := 0; nv := 0;
   for i := 0 to numLines - 1 do
     if chunks^[lines^[i].chunk].live then begin
-      inc(n);
       f := 0;
       while (f < nfiles) and (files^[f] <> lines^[i].path) do inc(f);
       if f = nfiles then begin
         files^[f] := lines^[i].path;
-        offs^[f] := k;
-        k := k + length(ShownPath(NameOf(files^[f]))) + 1;
         inc(nfiles);
       end;
     end;
+  MakeLines(files, nfiles);
   for c := 0 to numChunks - 1 do
     if chunks^[c].live and (chunks^[c].sec = secText) and (chunks^[c].module >= 0) then begin
       inc(np);
@@ -145,34 +235,11 @@ begin
       for v := first^[c] to first^[c] + count^[c] - 1 do k := k + length(NameOf(varNotes[v].name)) + 1;
       nv := nv + count^[c];
     end;
-  buf := GetMem(40 + 16 * n + 28 * np + 12 * nv + k);
-  PInt64(@buf^[0])^ := n;
-  PInt64(@buf^[8])^ := start;
-  PInt64(@buf^[16])^ := stop;
-  PInt64(@buf^[24])^ := np;
-  PInt64(@buf^[32])^ := nv;
-  at := 40;
-  for i := 0 to numLines - 1 do
-    if chunks^[lines^[i].chunk].live then begin
-      f := 0;
-      while files^[f] <> lines^[i].path do inc(f);
-      PLongint(@buf^[at])^ := chunks^[lines^[i].chunk].adr + lines^[i].at - chunks^[lines^[i].chunk].start;
-      PLongint(@buf^[at + 4])^ := lines^[i].line;
-      PLongint(@buf^[at + 8])^ := lines^[i].col;
-      PLongint(@buf^[at + 12])^ := offs^[f];
-      at := at + 16;
-    end;
-  { the pool of paths and names starts at k }
-  k := 40 + 16 * n + 28 * np + 12 * nv;
+  buf := GetMem(40 + 28 * np + 12 * nv + k + lpLen);
+  { the pool of names starts at k, the line table after it }
+  k := 40 + 28 * np + 12 * nv;
   names := k;
-  { the paths first, at the offsets offs gave the places: Name puts
-    each in the pool, and also writes its offset at at, which a path
-    doesn't want, so at is put back for the procedures to overwrite }
-  for f := 0 to nfiles - 1 do begin
-    i := at;
-    Name(ShownPath(NameOf(files^[f])));
-    at := i;
-  end;
+  at := 40;
   v := 0;
   for c := 0 to numChunks - 1 do
     if chunks^[c].live and (chunks^[c].sec = secText) and (chunks^[c].module >= 0) then begin
@@ -195,8 +262,16 @@ begin
         PLongint(@buf^[at + 4])^ := varNotes[v].kind;
         at := at + 8;
       end;
-  SetData(placesChunk, buf, names, 8);
-  FreeMem(buf); FreeMem(files); FreeMem(offs); FreeMem(first); FreeMem(count);
+  linesOff := names;
+  linesSize := lpLen;
+  Move(lp^, buf^[names], lpLen);
+  PInt64(@buf^[0])^ := linesOff;
+  PInt64(@buf^[8])^ := start;
+  PInt64(@buf^[16])^ := stop;
+  PInt64(@buf^[24])^ := np;
+  PInt64(@buf^[32])^ := nv;
+  SetData(placesChunk, buf, names + lpLen, 8);
+  FreeMem(buf); FreeMem(files); FreeMem(first); FreeMem(count);
 end;
 
 { Places the live chunks, leaving roExtra bytes at the end of rodata

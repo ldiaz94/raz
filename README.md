@@ -98,7 +98,7 @@ and of a variable assigned but never read, unless its name starts with
 code instead of writing it: each line of source, and under it the
 instructions made for it. `-s` strips what is there for finding faults:
 the symbols and line numbers, the places a failure is told by, and the
-profiler, so hello, world is 7 KB instead of 35; `-noprofile` leaves
+profiler, so hello, world is 7 KB instead of 28; `-noprofile` leaves
 out only the profiler.
 
 At run time, a failed check says where it is and what failed, as in

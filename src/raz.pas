@@ -115,7 +115,7 @@ var
   m, rt: PModule;
   main: PObj;
   run, noProfile: boolean;
-  links: array[0..2] of TLink;
+  links: array[0..3] of TLink;
   numLinks: longint;
 
 
@@ -204,15 +204,16 @@ begin
 
   if rt = nil then Fatal('can''t find module Rt');
   { what Rt is given: the places, which the linker makes, for Rt to say
-    where a failed check or a signal was, and the calls under way then
-    (calls); and the profiler, which needs them too. raz -s gives none,
-    -noprofile no profiler. }
+    where a failed check or a signal was (place), and the calls under
+    way then (calls); and the profiler, which needs them too. raz -s
+    gives none, -noprofile no profiler. }
   numLinks := 0;
   if not stripped then begin
     placesChunk := NewChunk(secRodata, -1, -1);
     SetData(placesChunk, nil, 0, 8);
     AddLink(placesChunk, RtObj(rt, 'places'));
     AddLink(RtObj(rt, 'calls')^.chunk, RtObj(rt, 'teller'));
+    AddLink(RtObj(rt, 'place')^.chunk, RtObj(rt, 'placer'));
     if not noProfile then AddLink(RtObj(rt, 'startProfile')^.chunk, RtObj(rt, 'profiler'));
   end;
   entry := EntryPoint(UsesC, firstModule, main, RtObj(rt, 'cExit')^.chunk,

@@ -12,15 +12,15 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/diag.pas` | 316 | 233 | Messages: positions, source excerpts, colour, counts |
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
-| `src/sym.pas` | 644 | 527 | Types, objects, scopes, layout |
+| `src/sym.pas` | 646 | 528 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,128 | 936 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,775 | 1,294 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,551 | 1,278 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 2,975 | 2,612 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/link.pas` | 259 | 195 | Tree shaking, layout, patching, the places |
-| `src/elf.pas` | 438 | 355 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 244 | 187 | The command line |
+| `src/x64.pas` | 1,146 | 951 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 2,010 | 1,462 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,574 | 1,299 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 3,078 | 2,689 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/link.pas` | 334 | 258 | Tree shaking, layout, patching, the places |
+| `src/elf.pas` | 373 | 294 | Static and dynamic ELF, symbol table, line numbers |
+| `src/raz.pas` | 245 | 188 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -416,6 +416,13 @@ bought less than 2% on both was taken out again.
    test. The heap sort 3% faster, rat 2%; the search lost 7%, all of
    it to where its loops fell: without the top aligned it lost
    nothing, and rat gained nothing either.
+
+5. **One table of lines, not two.** Rt had a table of its own in the
+   places, 16 bytes a line note, beside the DWARF line table that gdb
+   read, which wasn't loaded. Now the DWARF table, its columns added,
+   is in the places, loaded, and Rt runs it (`row`, in `Rt.raz`) where
+   it looked through its own; `.debug_line`'s section header points
+   at it in rodata. Hello is 7 KB smaller, 28 KB; rat 17%, 505 KB.
 
 ## diag.pas: messages
 
@@ -908,13 +915,17 @@ patching every fixup with the distance from the end of its field to its
 target, and every data fixup with its target's address.
 
 Between placing text and placing rodata, `MakePlaces` writes the
-places, a rodata chunk: for each line note in live code, its address,
-line, column and file; and for the trap report, each live procedure's
+places, a rodata chunk: for the trap report, each live procedure's
 address range and name, and its variables, which `Body` (`parse.pas`)
 notes with `NoteVar`: each one's name, its place in the frame and how
-`Rt` shows it (`VarKind`). `Rt` reads them, through `Rt.places`, which
-the entry point sets, to say where a failed check or a signal was: the
-place with the highest address up to the one it has. Its signal
+`Rt` shows it (`VarKind`); then the line table (`MakeLines`), DWARF
+4's line program, which gdb reads as `.debug_line`: one sequence of
+rows for each procedure, a row for each line note in live code, its
+address, file, line and column. A row that moves the address and the
+line a little is a byte, one of DWARF's special opcodes. `Rt` reads
+the places, through `Rt.places`, which the entry point sets, and runs
+the line table (`row`) to say where a failed check or a signal was:
+the row with the highest address up to the one it has. Its signal
 handlers, set in its body, run on a stack of their own, so that they
 can tell a stack overflow, and leave by returning to the faulting
 instruction with the handler reset, so that the signal ends the
@@ -931,12 +942,12 @@ own code, and `exit` has `profile` say which procedures and places
 those fell in, by the same tables: each procedure's samples in its own
 code, and its total, counting once each sample it was on the chain of.
 The entry point gives Rt what the program has (`TLink`): the places,
-`calls`, which tells the calls under way, and the profiler's start.
-What it isn't given, nothing reaches, so the linker leaves it out:
-`raz -noprofile` gives no profiler, and `raz -s` none of the three,
-whose failures say only their address (and `elf.pas` writes no symbols
-or line numbers). Hello is 35 KB, 25 KB without the profiler, and 7 KB
-stripped.
+`calls`, which tells the calls under way, `place`, which says where an
+address is, and the profiler's start. What it isn't given, nothing
+reaches, so the linker leaves it out: `raz -noprofile` gives no
+profiler, and `raz -s` none of them, whose failures say only their
+address (and `elf.pas` writes no symbols or line numbers). Hello is 28
+KB, 21 KB without the profiler, and 7 KB stripped.
 
 The layout is chosen so the file can be mapped as it lies, with no
 padding: text just after the headers, then rodata, then the dynamic
@@ -949,8 +960,9 @@ the loader's table, or begins a page of its own.
 
 `WriteElf` writes the ELF header, the program headers, the text and
 rodata images, and then what isn't loaded: section headers, a symbol
-table with every live procedure and variable by `Module.name`, and the
-line table.
+table with every live procedure and variable by `Module.name`, and
+the compile unit that names the line table. The line table is in the
+places, in rodata; `.debug_line`'s header points there.
 
 A program that uses C is linked dynamically, in the least way the
 loader accepts: an interpreter header naming the loader; a dynamic
@@ -961,10 +973,10 @@ through that quadword. There is no PLT and no lazy binding.
 `SizeTables` and `PutTables` lay these out in the room `link.pas` left
 at the end of rodata.
 
-Line numbers are DWARF 4: `PutDebug` writes a line table with one
-sequence per procedure, from the notes `NoteLine` made, and the single
-compile unit gdb needs to find it. There are no types or variables in
-it; gdb can stop at a line and show where it is, not print a variable.
+Line numbers are DWARF 4: the line table `MakeLines` made from the
+notes `NoteLine` made, and the single compile unit gdb needs to find
+it, which `PutDebug` writes. There are no types or variables in it;
+gdb can stop at a line and show where it is, not print a variable.
 
 ## raz.pas: the command line
 
@@ -1063,7 +1075,8 @@ this one does.
   of its procedure. A generic instance first used in a procedure, or in
   a module's body, is made before that code begins (`InstancesFor`).
 - **The executable** carries DWARF line numbers and the names of
-  procedures for gdb, and `Rt`'s own table of places (`Rt.places`).
+  procedures for gdb, and the places (`Rt.places`), which hold the
+  line table, DWARF's, that gdb reads and `Rt` runs.
 
 ## Where to start changing it
 

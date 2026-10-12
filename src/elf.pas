@@ -115,7 +115,7 @@ begin
   PutN(0, 1);
 end;
 
-{ LEB128, unsigned and signed }
+{ LEB128, unsigned }
 procedure PutU(v: qword);
 begin
   while v >= $80 do begin
@@ -125,79 +125,14 @@ begin
   PutN(v, 1);
 end;
 
-procedure PutS(v: int64);
-begin
-  while (v < -64) or (v >= 64) do begin
-    PutN(v and $7F or $80, 1);
-    v := SarInt64(v, 7);
-  end;
-  PutN(v and $7F, 1);
-end;
-
-{ The line table: one sequence for each live procedure with lines,
-  rows made only with the standard opcodes, no special ones. Then the
-  compile unit, which names the table, and its abbreviation. Section
+{ The compile unit, which names the line table, and its abbreviation;
+  the table itself is in the places, in rodata (link.pas). Section
   offsets go in off, sizes in size: line, info, abbrev. }
 procedure PutDebug(var off, size: array of int64);
-var
-  files: array[0..255] of longint; nfiles, i, f, c, cf, cl: longint;
-  at: int64; cwd: array[0..255] of char;
+var cwd: array[0..255] of char;
 begin
-  FillChar(files, SizeOf(files), 0);
-  nfiles := 0;
-  for i := 0 to numLines - 1 do
-    if chunks^[lines^[i].chunk].live then begin
-      f := 0;
-      while (f < nfiles) and (files[f] <> lines^[i].path) do inc(f);
-      if (f = nfiles) and (nfiles <= High(files)) then begin
-        files[f] := lines^[i].path;
-        inc(nfiles);
-      end;
-    end;
-
-  off[0] := len;
-  PutN(0, 4);              { unit_length, patched below }
-  PutN(4, 2);              { version }
-  PutN(0, 4);              { header_length, patched below }
-  PutN(1, 1); PutN(1, 1);  { minimum_instruction_length, maximum_operations }
-  PutN(1, 1);              { default_is_stmt }
-  PutN(-5 and $FF, 1); PutN(14, 1); PutN(13, 1);   { line_base, line_range, opcode_base }
-  for i := 1 to 12 do PutN(ord(i in [2, 3, 4, 5, 9, 12]), 1);   { their operands }
-  PutN(0, 1);              { no include directories }
-  for f := 0 to nfiles - 1 do begin
-    PutStr(NameOf(files[f]));
-    PutN(0, 3);            { directory, time, length }
-  end;
-  PutN(0, 1);
-  Patch(off[0] + 6, len - off[0] - 10, 4);
-  i := 0;
-  while i < numLines do begin
-    c := lines^[i].chunk;
-    if not chunks^[c].live then begin inc(i); continue end;
-    PutN(0, 1); PutU(9); PutN(2, 1);   { DW_LNE_set_address }
-    PutN(chunks^[c].adr + lines^[i].at - chunks^[c].start, 8);
-    at := lines^[i].at; cf := 1; cl := 1;
-    while (i < numLines) and (lines^[i].chunk = c) do begin
-      if lines^[i].at > at then begin
-        PutN(2, 1); PutU(lines^[i].at - at);   { DW_LNS_advance_pc }
-        at := lines^[i].at;
-      end;
-      f := 1;
-      while (f <= nfiles) and (files[f - 1] <> lines^[i].path) do inc(f);
-      if f <> cf then begin PutN(4, 1); PutU(f); cf := f end;   { DW_LNS_set_file }
-      if lines^[i].line <> cl then begin   { DW_LNS_advance_line }
-        PutN(3, 1); PutS(lines^[i].line - cl);
-        cl := lines^[i].line;
-      end;
-      PutN(1, 1);          { DW_LNS_copy: a row }
-      inc(i);
-    end;
-    PutN(2, 1); PutU(chunks^[c].start + chunks^[c].size - at);
-    PutN(0, 1); PutU(1); PutN(1, 1);   { DW_LNE_end_sequence }
-  end;
-  Patch(off[0], len - off[0] - 4, 4);
-  size[0] := len - off[0];
-
+  off[0] := chunks^[placesChunk].adr - roAdr + roOff + linesOff;
+  size[0] := linesSize;
   off[1] := len;
   PutN(0, 4); PutN(4, 2); PutN(0, 4); PutN(8, 1);   { length, version, abbrev, address size }
   PutU(1);
@@ -399,7 +334,7 @@ begin
   shstrOff := len;
   s := ShNames;
   PutBytes(@s[1], length(s));
-  if stripped then begin
+  if stripped or (placesChunk < 0) then begin
     for c := 0 to 2 do begin dbgOff[c] := len; dbgSize[c] := 0 end;
   end else PutDebug(dbgOff, dbgSize);
 
