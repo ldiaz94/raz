@@ -85,8 +85,9 @@ for rlX11 and rat (reports 2026-10.4 and 10.7, steps 49a-c), with
 `Info`'s `file` and `symlink` for rloc (2026-10.6, step 49d), and
 stage 9, several results in place of var parameters (2026-10.8,
 steps 52-53), and v0.5.0, the library of report 2026-10.9, which the
-compiler says it follows. v0.7.0, better code (`PLAN.md`), has its
-seven steps pushed and awaits the owner's review before its tag.
+compiler says it follows, and v0.7.0, better code. Next, by
+`PLAN.md`: the manual (v0.7.1), then better code again (v0.8.0), each
+on the owner's go.
 
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
@@ -99,8 +100,7 @@ whose blank, `_ := f(x)`, drops a result that is otherwise warned of
 rounding and the inverse functions, and `Sys` `space` (10.15), and
 whose constants may be records and tables of them, with `Str.copy`
 (10.16), and `COPY` (10.17), also by the owner's word. Its parser
-reaches the machine only through `gen.pas`; its steps 5 to 10 await
-the owner's review, and git has them. Keep
+reaches the machine only through `gen.pas`. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.
 
@@ -111,7 +111,7 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.6.0, report 2026-10.12, the latest.
+the first; v0.7.0, report 2026-10.17, the latest.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
