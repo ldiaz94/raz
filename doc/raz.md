@@ -9,7 +9,7 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.13 of the report; section 12 says what each
+This is version 2026-10.14 of the report; section 12 says what each
 version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -51,7 +51,8 @@ are otherwise ignored.
 
 **Identifiers** are an ASCII letter or `_` followed by letters, digits
 and `_`, up to 63 characters. Case matters: `count` and `Count` are different
-names.
+names. `_` alone isn't a name: it is the blank, which stands only to
+the left of `:=` (section 7.1).
 
 **Reserved words** are lowercase, except `VOLATILE`:
 
@@ -795,7 +796,8 @@ implementation's choice (appendix A).
 ```
 Statements = { Statement ";" } .
 Statement  = Designator [ ":=" Expr ]
-           | Designator "," Designator { "," Designator } ":=" Expr
+           | "_" ":=" Expr
+           | Target "," Target { "," Target } ":=" Expr
            | "if" Expr "then" Statements
              { "elsif" Expr "then" Statements } [ "else" Statements ] "end"
            | "while" Expr "do" Statements "end"
@@ -808,6 +810,7 @@ Statement  = Designator [ ":=" Expr ]
 Arm        = ( ident [ "(" ident { "," ident } ")" ]
              | Label { "," Label } | "else" ) ":" Statements .
 Label      = Expr [ ".." Expr ] .
+Target     = Designator | "_" .
 ```
 
 Every statement ends in `;`, including the ones that end in `end` or
@@ -821,6 +824,13 @@ it returns is dropped: `Out.ln;`, `write(fd, buf);`.
 
 `a, b := f(x);` assigns the results of a procedure that returns several
 (section 8), in order.
+
+The blank, `_`, drops what would be assigned to it: `_ := e;`
+evaluates `e` and drops it, and `n, _ := f(x);` keeps the first
+result and drops the second. What is dropped is still evaluated as
+any expression is: its calls are made, and a volatile variable in it
+is read (section 7.6). A result dropped by a call standing on its own
+is warned of (section 10); one dropped through `_` isn't.
 
 ### 7.2 Conditions and loops
 
@@ -1181,9 +1191,10 @@ stops the compile, and so does a module with errors, after it.
 The compiler also warns of what is declared and never used: an import;
 a constant, type, variable or procedure that isn't exported; a
 parameter of a procedure written in raz. It warns of a variable that is
-assigned but never read, too. A name that starts with `_` is never
-warned about. Warnings don't stop the compile; `raz -Werror` makes them
-errors.
+assigned but never read, too, and of a call standing on its own that
+drops a result, as `Sys.write(fd, s);` does: `_ := Sys.write(fd, s);`
+says it is meant. A name that starts with `_` is never warned about.
+Warnings don't stop the compile; `raz -Werror` makes them errors.
 
 ## 11. The library
 
@@ -1879,6 +1890,9 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   them on demand (sections 10 and 11).
 - **2026-10.13.** `Sys` gains writing without waiting, and waiting for
   room to write (section 11).
+- **2026-10.14.** The blank, `_`, drops a value or one of several
+  results (section 7.1); a call that drops a result is warned of
+  (section 10).
 
 ## Appendix A. What an implementation chooses
 
@@ -2011,7 +2025,8 @@ Selector   = "." ident | "^" | "[" Expr [ ".." Expr ] "]"
 
 Statements = { Statement ";" } .
 Statement  = Designator [ ":=" Expr ]
-           | Designator "," Designator { "," Designator } ":=" Expr
+           | "_" ":=" Expr
+           | Target "," Target { "," Target } ":=" Expr
            | "if" Expr "then" Statements
              { "elsif" Expr "then" Statements } [ "else" Statements ] "end"
            | "while" Expr "do" Statements "end"
@@ -2024,6 +2039,7 @@ Statement  = Designator [ ":=" Expr ]
 Arm        = ( ident [ "(" ident { "," ident } ")" ]
              | Label { "," Label } | "else" ) ":" Statements .
 Label      = Expr [ ".." Expr ] .
+Target     = Designator | "_" .
 
 ProcDeclaration   = "proc" IdentDef Signature ";"
                     ( "forward" | { LocalDeclaration } "begin" Statements "end" [ ident ]
