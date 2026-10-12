@@ -1,0 +1,75 @@
+title: Threads without C, and keeping the two apart
+part: Standing alone
+summary: link static, what a module that makes its own system calls promises, and the error when it breaks.
+---
+A program without C can do things a program with C can't. The most useful is to make threads of its own: C's thread functions rely on C's own set-up, which a program that never started C has not done. `Thread` creates threads directly with the `clone` system call and gives each a stack of its own.
+
+A module like that says so, with `link static;` after its imports. It means: "I make my own system calls or my own threads, which the C library wouldn't know about; a program that includes me must not use C." `static` isn't a reserved word; it is only meaningful after `link`.
+
+## What `Thread` does
+
+`Thread` is a module of raz, in the library, that says `link static;` and makes the `clone`, `mmap` and `futex` system calls itself. Here is its beginning, printed from the library:
+
+```sh
+$ sed -n '1,22p' $RAZLIB/Thread.linux-x86_64.raz
+```
+
+A program that imports it is therefore a static executable, and every thread it spawns is a Linux thread with a stack of its own, mapped with a page below it that can't be touched, so that running off the stack ends the program with a message and not with corruption.
+
+```raz Hello
+module Hello;
+import Out, Thread;
+
+var done: INT;
+
+proc greet(arg: ^U8);
+begin
+    Out.str("hello from thread "); Out.int(INT(arg)); Out.ln;
+    _ := XADD(ADR(done), 1);
+end;
+
+proc main*;
+var t: ^Thread.Thread; err: ERROR;
+begin
+    t, err := Thread.spawn(greet, ^U8(7));
+    if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    Thread.join(t);
+    Out.str("joined; done = "); Out.int(done); Out.ln;
+end;
+
+end Hello.
+```
+
+```sh
+$ raz Hello.raz
+$ ./Hello
+$ file Hello | sed 's/,.*statically/, statically/'
+```
+
+## When you mix them
+
+C's `pthread_create` and `Thread` can't share a process, and the compiler won't let you try. A program that imports a module that says `link static;` and another that uses C is an error, and the error names both:
+
+```raz Mixed
+module Mixed;
+import Out, Thread, C;
+
+proc main*;
+begin
+    Out.str(MSG(Thread.Failed)); Out.ln;
+    _ := C.printf("%d\n", I32(1));
+    Out.str("and Out\n");
+end;
+
+end Mixed.
+```
+
+```sh
+$ raz Mixed.raz
+```
+
+Which one you want depends on what the program is for. A program that calls a C library (a window system, a database client) uses C's threads, `C.pthread_create`, because the library may assume them. A program that talks only to the kernel uses `Thread`, and is a static executable.
+
+## The same promise for your own modules
+
+The rule isn't special to `Thread`. A module of yours that makes `SYSCALL`s directly, or relies on being the only owner of signal handlers, or sets up its own stacks, says `link static;` too, and then the compiler keeps C away from it for you. The module is documenting a fact about itself, and the compiler checks it where the program is assembled.

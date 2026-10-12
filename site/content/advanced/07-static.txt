@@ -1,0 +1,127 @@
+title: A program with no run time
+part: Standing alone
+summary: What is in an executable, what isn't, and how to see it.
+---
+Most languages arrive with a run time: a collector, a loader of libraries, start-up code you didn't write. A raz program that doesn't use C has none of that. The executable holds the code the program reaches, a few lines of start-up code, and nothing else. This part of the tour looks at what that means in practice, and what a program can do when nothing stands between it and the kernel.
+
+## The smallest program
+
+This program imports nothing. It makes the `write` system call itself, with the built-in `SYSCALL`, and returns.
+
+```raz Bare
+module Bare;
+
+const Msg = "hello from raw system calls\n";
+
+proc main*;
+begin
+    _ := SYSCALL(1, 1, ADR(Msg[0]), LEN(Msg));
+end;
+
+end Bare.
+```
+
+```sh
+$ raz Bare.raz
+$ ./Bare
+$ file Bare
+$ ldd Bare
+$ ls -l Bare | awk '{print $5, "bytes"}'
+```
+
+It is statically linked: no interpreter, no shared libraries, no `libc`. `ldd` says so.
+
+## What it does when it runs
+
+`strace` lists every system call a program makes. This is the whole of it:
+
+```sh
+$ strace ./Bare 2>&1 >/dev/null | sed -e 's/0x[0-9a-f]\{5,\}/ADDR/g' -e 's/[0-9]* vars/N vars/'
+```
+
+The start-up code does four things before `main` runs: it sets up a stack of its own for signal handlers (`sigaltstack`), and installs handlers for `SIGSEGV` and `SIGFPE`. That is what turns a `nil` pointer or a division by zero into a message that names the place, instead of a bare "Segmentation fault". Then `main` runs its single `write`, and the program ends with `exit_group`. Nothing is mapped, loaded, or looked up.
+
+## Programs that use C
+
+A program that declares an `extern` procedure, or links a library, is a different animal. It is linked dynamically and starts through the C library, so that C's own set-up and clean-up run. Compare the same kind of hello, with C's `printf`:
+
+```raz Cprint
+module Cprint;
+
+extern proc puts(s: ^U8): I32;
+
+proc main*;
+begin
+    _ := puts("hello from C");
+end;
+
+end Cprint.
+```
+
+```sh
+$ raz Cprint.raz
+$ ./Cprint
+$ file Cprint
+$ ldd Cprint | sed 's/ (0x[0-9a-f]*)//'
+```
+
+Both are fine. The point is that you choose, and the language says which you chose: a program uses C exactly when a module of it has an `extern` or a `link` of a library.
+
+## Only what is reached
+
+The compiler keeps only what can be reached from `main` and the module bodies. Unused procedures, variables and strings are left out. Here are two programs that differ by one large procedure that nothing calls.
+
+```raz Lean
+module Lean;
+import Out;
+
+proc main*;
+begin
+    Out.str("same program\n");
+end;
+
+end Lean.
+```
+
+```raz Heavy
+module Heavy;
+import Out;
+
+var table: [100000]INT;
+
+(* exported, but never called, so never in the executable *)
+proc unused*(n: INT): INT;
+var i, s: INT;
+begin
+    for i := 0 to 99999 do table[i] := n * i; s := s + table[i]; end;
+    Out.str("a long string that nobody will ever print, to give it some weight");
+    return s;
+end;
+
+proc main*;
+begin
+    Out.str("same program\n");
+end;
+
+end Heavy.
+```
+
+```sh
+$ raz Lean.raz
+$ raz Heavy.raz
+$ ls -l Lean Heavy | awk '{print $9, $5}'
+```
+
+The sizes differ by a few bytes, not by the hundreds of kilobytes that the table and the procedure would take: they are not in the executable at all. You can link in a library module without worrying what else it offers.
+
+## Stripping
+
+`-s` leaves out what is there for finding faults: the symbols and line numbers, the places a failure is told by, and the profiler. It is for the final build of a size-conscious program; the default keeps them so that gdb and failure messages work.
+
+```sh
+$ raz -s -o Lean-stripped Lean.raz
+$ ls -l Lean Lean-stripped | awk '{print $9, $5}'
+$ ./Lean-stripped
+```
+
+`raz -S Lean.raz` is the other direction: it prints the machine code the compiler made, one source line at a time. The next two parts of the tour use it.

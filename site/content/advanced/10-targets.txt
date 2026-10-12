@@ -1,0 +1,85 @@
+title: One module, one file per target
+part: Standing alone
+summary: Portable programs, the code that isn't, and how the compiler keeps them in step.
+---
+raz is first made for x86-64 Linux, but the language is written to be implemented elsewhere, and the library is arranged for it. The part of a program that depends on the system goes in a module of its own, one file per target. This is how `Sys` is made, and it is how your own code should keep its system-dependent parts apart.
+
+## The files
+
+A module `Name` lives in `Name.raz`. A module whose code depends on the system comes in one file per target, `Name.linux-x86_64.raz`, which the compiler looks for first. The library has `Sys.linux-x86_64.raz`, which makes system calls, and `Sys.raz`, which calls the C library instead, for every other system. A program that imports `Sys` doesn't know or care which it got.
+
+```sh
+$ ls $RAZLIB | grep -i "^sys\|^thread"
+$ cd $RAZLIB && grep -c SYSCALL Sys.linux-x86_64.raz Sys.raz
+```
+
+## A module of your own
+
+Here is a module with two files. `Clock.linux-x86_64.raz` is for this target; `Clock.raz` is what any other target would use. Both say what they are in `Name`, and both make `ticks`.
+
+```raz Clock.linux-x86_64
+module Clock;
+import Sys;
+
+const Name* = "the linux-x86_64 file";
+
+(* a number that only grows *)
+proc ticks*: I64;
+begin
+    return Sys.clock();
+end;
+
+end Clock.
+```
+
+```raz Clock
+module Clock;
+import Sys;
+
+const Name* = "the portable file";
+
+(* a number that only grows *)
+proc ticks*: I64;
+begin
+    return Sys.clock();
+end;
+
+end Clock.
+```
+
+A program that imports `Clock` gets the first of them here:
+
+```raz Show run
+module Show;
+import Out, Clock;
+
+proc main*;
+begin
+    Out.str("using "); Out.str(Clock.Name); Out.ln;
+    if Clock.ticks() > 0 then Out.str("and it ticks\n"); end;
+end;
+
+end Show.
+```
+
+## Held to one interface
+
+Two files can't be told apart by their callers, so the compiler holds them to the same interface. Here is the pair again with `ticks` changed in the portable file to return an `INT`:
+
+```sh
+$ mkdir drift && cp Clock*.raz Show.raz drift && cd drift
+$ sed -i 's/proc ticks\*: I64/proc ticks*: INT/; s/return Sys.clock()/return INT(Sys.clock())/' Clock.raz
+$ raz Show.raz
+```
+
+The program stops compiling on every target, including the ones that would never have used that file. A mismatch is found where it is made, not where someone first builds for a second target.
+
+## What the compiler checks
+
+When it takes one of `Name.*.raz`, it also reads the declarations of the others beside it, and of `Name.raz` if there is one, and reports an error unless they all export the same names, each the same kind of thing: a constant of the same type (its value may differ), a type of the same kind with the same exported fields, a variable of the same type, a procedure of the same signature. The code, the unexported fields, and so the size and layout, may differ.
+
+So a program written against the interface works on every target that has the module, and the places where it doesn't are the compiler's to find, not yours.
+
+## What stays the same everywhere
+
+The core of the library is what every target must have: `Rt`, `Out`, `Mem`, `Arena`, `Lock`, `Str` and `Buf`, and of `Sys` what they need. A program that keeps to the core runs on every target. `Thread`, `link` and `extern`, and most of `Sys`, are what a target may leave out when its system can't give them.

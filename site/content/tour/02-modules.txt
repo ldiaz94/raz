@@ -1,0 +1,144 @@
+title: Modules
+part: Raz
+summary: Exports, renaming, the order bodies run in, and what the compiler refuses.
+---
+A program is a set of modules, one to a file, and a module's interface is everything it marks with `*`. Everything else is private to it. Here is one, saved as `Greet.raz`:
+
+```raz Greet
+```
+
+and a program beside it that uses it:
+
+```raz Twice run
+```
+
+A name with `*` is exported; any other is the module's own. `G := Greet` imports `Greet` under a shorter name, so its exports are `G.hello` and `G.count`. Another module may read `G.count`, but only `Greet` may change it.
+
+## Where modules are found
+
+The compiler looks for `Greet.raz` in the main module's directory, then in each directory given with `-I`, then in the library. So a project is a directory of modules, and `raz Main.raz` finds all of them. The library's own names (`Out`, `Str`, `Map`, ...) are kept for it.
+
+## Bodies run first, in order
+
+The statements after a module's last `begin` are its body. It runs once, before `main`, after the bodies of the modules it imports, and once however many modules import it. This is how a module sets itself up: no `init` call to forget.
+
+```raz Base
+module Base;
+import Out;
+
+var ready*: BOOL;
+
+begin
+    Out.str("Base starts\n");
+    ready := true;
+end Base.
+```
+
+```raz Layer
+module Layer;
+import Out, Base;
+
+const Name* = "Layer";
+
+begin
+    Out.str("Layer starts, Base is ready: ");
+    if Base.ready then Out.str("yes\n"); else Out.str("no\n"); end;
+end Layer.
+```
+
+```raz Order run
+module Order;
+import Out, Layer, Base;
+
+proc main*;
+begin
+    Out.str("main, after "); Out.str(Layer.Name); Out.char(' ');
+    if Base.ready then Out.str("and Base\n"); end;
+end;
+
+end Order.
+```
+
+`Base` is imported twice, but starts once, before `Layer`, which needs it. A module with no body doesn't need a `begin` at all.
+
+## Exporting more than procedures
+
+A module exports constants, types, variables and procedures alike. A record type's exported fields are marked too; the rest are the module's own.
+
+```raz Shape
+module Shape;
+
+const Sides* = 4;
+
+type
+    Square* = record
+        side*: INT;        (* exported: a user may set it *)
+        id: INT;           (* the module's own *)
+    end;
+
+var made: INT;             (* only Shape may read or write it *)
+
+(* a square of that side, numbered in the order they are made *)
+proc make*(side: INT): Square;
+var s: Square;
+begin
+    INC(made);
+    s.side := side;
+    s.id := made;
+    return s;
+end;
+
+proc area*(s: Square): INT;
+begin
+    return s.side * s.side;
+end;
+
+proc count*: INT;
+begin
+    return made;
+end;
+
+end Shape.
+```
+
+```raz Squares run
+module Squares;
+import Out, Shape;
+
+proc main*;
+var a, b: Shape.Square;
+begin
+    a := Shape.make(3);
+    b := Shape.make(5);
+    Out.int(Shape.area(a) + Shape.area(b)); Out.ln;
+    Out.int(Shape.count()); Out.str(" made, "); Out.int(Shape.Sides);
+    Out.str(" sides each\n");
+end;
+
+end Squares.
+```
+
+## What the compiler refuses
+
+Reaching past an interface is an error, and the error says where.
+
+```raz Peek
+module Peek;
+import Shape;
+
+proc main*;
+var s: Shape.Square;
+begin
+    s := Shape.make(2);
+    s.id := 7;
+    Shape.made := 0;
+end;
+
+end Peek.
+```
+
+```sh
+$ raz Peek.raz
+```
+
+The compiler goes on to find the others, up to 20, and says what it can: where a name was declared, or a name spelled almost alike. A module with errors writes no executable.

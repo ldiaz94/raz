@@ -1,0 +1,177 @@
+title: System calls
+part: The machine
+summary: SYSCALL directly: the numbers, the arguments, negative errno, and a cat without a library.
+---
+Under `Sys` there is one built-in: `SYSCALL(n, x1, ..., x6)`. It makes Linux system call number `n` with up to six arguments, each a pointer or an integer no wider than `INT`, and gives the raw result, an `INT`. A negative result is `-errno`. That is all the interface there is; `Sys.write`, `Sys.open` and the rest of `lib/Sys.linux-x86_64.raz` are written with it, in raz, in a few lines each.
+
+`SYSCALL` exists only on Linux targets. Other systems have no stable system call interface, which is why their `Sys` calls the C library instead.
+
+## The shape of a call
+
+`write(fd, buf, count)` is call number 1. The arguments are the descriptor, a pointer to the bytes, and how many.
+
+```raz Raw
+module Raw;
+
+const Msg = "straight to the kernel\n";
+
+proc main*;
+var n: INT;
+begin
+    n := SYSCALL(1, 1, ADR(Msg[0]), LEN(Msg));
+    if n # LEN(Msg) then _ := SYSCALL(60, 1); end;      (* exit(1), if it came up short *)
+end;
+
+end Raw.
+```
+
+```sh
+$ raz -Werror Raw.raz
+$ ./Raw
+```
+
+That program has no `Out`, no `Sys`, and no output buffer. What it needs of the library is `Rt`'s start-up, which the compiler links in anyway.
+
+## Reading the result
+
+A result that is negative is a failure, and its negation is the `errno`. `open` is call 2 and wants a C string: the path's bytes followed by a zero. A `[N]U8` made from a string literal is zero-filled past its length, so there is always a terminator.
+
+```raz Open run
+module Open;
+import Out;
+
+proc main*;
+var path: [32]U8; fd: INT;
+begin
+    path := "/no/such/file";
+    fd := SYSCALL(2, ADR(path[0]), 0, 0);        (* open(path, O_RDONLY) *)
+    Out.str("open gave "); Out.int(fd); Out.ln;   (* -2: ENOENT *)
+    path := "/dev/null";
+    fd := SYSCALL(2, ADR(path[0]), 0, 0);
+    if fd >= 0 then
+        Out.str("opened /dev/null\n");
+        _ := SYSCALL(3, fd);                      (* close *)
+    end;
+end;
+
+end Open.
+```
+
+The library's `Sys.openRead` does exactly this, and `Sys.close` too. Reading `lib/Sys.linux-x86_64.raz` is the best reference there is for what each call wants.
+
+## A call that fills a structure
+
+`uname` (call 63) fills a structure of six 65-byte fields: the system name, node name, release, version, machine and domain. It is not a type raz knows; it is an array of bytes, with a `ADR` of it given to the kernel.
+
+```raz Who run
+module Who;
+import Out;
+
+(* the length of the zero-ended string at the start of s *)
+proc cstr(s: []U8): INT;
+var n: INT;
+begin
+    n := 0;
+    while (n < LEN(s)) and (s[n] # 0) do INC(n); end;
+    return n;
+end;
+
+proc main*;
+var u: [390]U8;
+begin
+    if SYSCALL(63, ADR(u[0])) = 0 then
+        Out.str("system: "); Out.str(u[0..cstr(u[0..65])]); Out.ln;
+        Out.str("machine: "); Out.str(u[260..260 + cstr(u[260..325])]); Out.ln;
+    end;
+end;
+
+end Who.
+```
+
+## Memory straight from the kernel
+
+`mmap` is call 9: six arguments, the most one call can take. This asks for a page of anonymous, zeroed memory, writes in it, and gives it back with `munmap` (call 11). It is what `Mem.pages` does, and so what every allocator is ultimately made of.
+
+```raz Pages run
+module Pages;
+import Out;
+
+proc main*;
+var p: ^U8; i: INT; total: INT;
+begin
+    (* length 4096; PROT_READ|WRITE = 3; MAP_PRIVATE|ANONYMOUS = 22H; no fd *)
+    p := ^U8(SYSCALL(9, 0, 4096, 3, 22H, -1, 0));
+    if INT(p) < 0 then Out.str("no memory\n"); return; end;
+    Out.int(INT(p[0]) + INT(p[4095])); Out.str(" (zero, as promised)\n");
+    for i := 0 to 4095 do p[i] := U8(i); end;
+    for i := 0 to 4095 do INC(total, INT(p[i])); end;
+    Out.int(total); Out.ln;
+    _ := SYSCALL(11, p, 4096);
+end;
+
+end Pages.
+```
+
+## A cat with no library
+
+Reading and writing in a loop is all `cat` does. With system calls, it is one procedure. Call 0 is `read` and call 1 is `write`; 0 and 1 are standard input and output.
+
+```raz Cat
+module Cat;
+
+proc main*: INT;
+var buf: [4096]U8; n, wrote, at: INT;
+begin
+    n := SYSCALL(0, 0, ADR(buf[0]), LEN(buf));
+    while n > 0 do
+        at := 0;
+        while at < n do                   (* a write may be partial *)
+            wrote := SYSCALL(1, 1, ADR(buf[at]), n - at);
+            if wrote < 0 then return 1; end;
+            INC(at, wrote);
+        end;
+        n := SYSCALL(0, 0, ADR(buf[0]), LEN(buf));
+    end;
+    if n < 0 then return 1; end;
+    return 0;
+end;
+
+end Cat.
+```
+
+```sh
+$ raz Cat.raz
+$ echo "through the pipe" | ./Cat
+$ ./Cat < /dev/null; echo "status $?"
+$ echo "see the calls" | strace -e trace=read,write ./Cat 2>&1 >/dev/null | grep -v '^+++'
+```
+
+The partial-write loop is the kind of detail `Sys.write` leaves to the caller on purpose: it returns the bytes written, and the program decides what to do about the rest.
+
+## In a code procedure
+
+A system call is also an instruction. `syscall` takes its number in `rax` and its arguments in `rdi`, `rsi`, `rdx`, `r10`, `r8` and `r9`, which is not quite the order a procedure's arguments arrive in, since `r10` takes the place of `rcx`, and `syscall` itself clobbers `rcx` and `r11`.
+
+```raz Ppid run
+module Ppid;
+import Out;
+
+(* getppid, call 110: no arguments *)
+proc getppid: INT;
+code
+    mov eax, 110;
+    syscall;
+    ret;
+end getppid;
+
+proc main*;
+begin
+    if (getppid() > 0) and (SYSCALL(110) = getppid()) then
+        Out.str("two ways to ask, one answer\n");
+    end;
+end;
+
+end Ppid.
+```
+
+`SYSCALL` is the right tool nearly always: the compiler puts the arguments where they belong, and the result is checked in the open. A code procedure is for the rare call you want to make from inside another piece of assembly.

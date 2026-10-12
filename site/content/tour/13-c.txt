@@ -1,0 +1,89 @@
+title: Talking to C
+part: Go
+summary: Call a C library, be called back, share variables, and mind the two buffers.
+---
+```raz Qsort run
+```
+
+An `extern` procedure is found by its name in the C library, or in a library a `link` line names. Its parameters are integers, reals, pointers and procedures, as C declares them; a raz procedure of such types can be given to C to call back, as `order` is. A record goes to C by pointer, never by value.
+
+## What using C costs
+
+A program that uses C is linked against it dynamically and starts through it, so that C's own set-up and clean-up run; one that doesn't is a static executable with nothing in it but its own code. A program uses C if any module it uses has an `extern` or a `link` of a library.
+
+## Varargs
+
+`...` after an `extern`'s parameters takes any number of further arguments, as `printf` wants. A string literal goes as a C string, an integer constant as an `INT`, a real constant as an `F64`. An `F32` is an error there, since C promotes it; write `F64(x)`.
+
+```raz Say run
+module Say;
+import Out;
+
+extern proc printf(format: ^U8; ...): I32;
+extern proc fflush(f: ^U8): I32;
+extern proc puts(s: ^U8): I32;
+
+proc main*;
+var n: INT; x: F32;
+begin
+    n := 42;
+    x := 2.5;
+    Out.str("raz first\n");
+    Out.flush;                         (* Out has a buffer; so does C *)
+    _ := printf("C says %ld and %.2f and %s\n", n, F64(x), "hello");
+    _ := puts("and puts");
+    _ := fflush(nil);                  (* nil: every C stream *)
+    Out.str("raz again\n");
+end;
+
+end Say.
+```
+
+`Out` and C's `printf` keep two buffers, so a program that writes with both flushes one before it writes with the other, or the text comes out of order.
+
+## Libraries, and C's variables
+
+`link "libm.so.6";` names a shared library to load at run time. An `extern var` is C's variable itself: reading it reads C's, assigning it writes C's.
+
+```raz Env run
+module Env;
+import Out;
+
+extern var environ: ^^U8;
+extern proc strlen(s: ^U8): UINT;
+extern proc getenv(name: ^U8): ^U8;
+
+proc main*;
+var p: ^U8; n: INT;
+begin
+    n := 0;
+    while environ[n] # nil do INC(n); end;
+    if n > 0 then Out.str("the environment is not empty\n"); end;
+    p := getenv("RAZ_NO_SUCH_VARIABLE");
+    if p = nil then Out.str("not set\n"); end;
+    Out.int(INT(strlen("six"))); Out.ln;
+end;
+
+end Env.
+```
+
+## Callbacks
+
+Every raz procedure uses the System V calling convention, so any with parameters and a result of C's types may be given to C to call, as `qsort` is given `order` above. The procedure may not be a closure: it has only its arguments, so state travels through the pointer C hands back or a module variable.
+
+```raz Roots run
+module Roots;
+import Fmt;
+
+link "libm.so.6";
+
+extern proc cbrt(x: F64): F64;
+extern proc hypot(x, y: F64): F64;
+
+proc main*;
+begin
+    Fmt.print("{} {}\n", [Fmt.real(cbrt(27.0), 3), Fmt.real(hypot(3.0, 4.0), 3)]);
+end;
+
+end Roots.
+```

@@ -1,0 +1,165 @@
+title: Enumerations, sets, variants and match
+part: Set
+summary: Names in order, sets as bits, and cases the compiler makes you handle.
+---
+```raz Shapes run
+```
+
+## Enumerations
+
+An enumeration is a list of names, in order. They convert to their position and back, and a `for` loop can run over them. An integer that has no name at its position is a failed check, never a silent wrong value.
+
+```raz Days run
+module Days;
+import Out;
+
+type Day = (mon, tue, wed, thu, fri, sat, sun);
+
+proc name(d: Day): []U8;
+begin
+    match d of
+    | mon: return "Monday";
+    | tue: return "Tuesday";
+    | wed: return "Wednesday";
+    | thu: return "Thursday";
+    | fri: return "Friday";
+    | sat: return "Saturday";
+    | sun: return "Sunday";
+    end;
+end;
+
+proc main*;
+var d: Day;
+begin
+    for d := mon to sun do
+        Out.int(I64(d)); Out.str(" "); Out.str(name(d));
+        if d >= sat then Out.str(" (weekend)"); end;
+        Out.ln;
+    end;
+    d := Day(4);
+    Out.str(name(d)); Out.ln;
+end;
+
+end Days.
+```
+
+## Sets
+
+A `set of` an enumeration holds any choice of its names, in the bits of a word. `in` tests membership; `+` is union, `*` intersection and `-` difference; `{}` is the empty set. Sets are how Unix permissions, option flags and key modifiers are best written.
+
+```raz Perms run
+module Perms;
+import Out;
+
+type
+    Perm = (x, w, r);               (* bits 0, 1, 2, as chmod has them *)
+    Perms = set of Perm;
+
+proc show(p: Perms);
+begin
+    if r in p then Out.char('r'); else Out.char('-'); end;
+    if w in p then Out.char('w'); else Out.char('-'); end;
+    if x in p then Out.char('x'); else Out.char('-'); end;
+end;
+
+proc main*;
+var user, group, mine: Perms;
+begin
+    user := {r, w, x};
+    group := {r, x};
+    show(user); Out.char(' '); show(group); Out.ln;
+    show(user * group); Out.char(' ');      (* both: r-x *)
+    show(user - group); Out.char(' ');      (* only user: -w- *)
+    show(user - {w}); Out.ln;        (* r-x *)
+    mine := group;
+    if mine = {r, x} then Out.str("same as group\n"); end;
+    Out.int(I64(U8(user))); Out.ln;         (* 7: a set is its bits *)
+end;
+
+end Perms.
+```
+
+## Variants
+
+A variant holds one of its cases, each with fields of its own, and `match` is the only way to read them: it runs the arm of the case the variant holds, naming its fields. Every case has an arm, unless an `| else:` comes last, so adding a case to the type makes every `match` that forgot it a compile error.
+
+```raz Tokens run
+module Tokens;
+import Out;
+
+type
+    Token = variant
+        number(n: INT);
+        plus;
+        times;
+        word(s: []U8);
+    end;
+
+proc describe(t: Token);
+begin
+    match t of
+    | number(n): Out.str("number "); Out.int(n);
+    | plus: Out.str("plus");
+    | times: Out.str("times");
+    | word(s): Out.str("word '"); Out.str(s); Out.char('\'');
+    end;
+    Out.ln;
+end;
+
+(* evaluates tokens in reverse Polish; assumes the input is well formed *)
+proc eval(ts: []Token): INT;
+var stack: [16]INT; top, i, b: INT;
+begin
+    top := 0;
+    for i := 0 to LEN(ts) - 1 do
+        match ts[i] of
+        | number(n): stack[top] := n; INC(top);
+        | plus: b := stack[top - 1]; DEC(top); stack[top - 1] := stack[top - 1] + b;
+        | times: b := stack[top - 1]; DEC(top); stack[top - 1] := stack[top - 1] * b;
+        | else:
+        end;
+    end;
+    return stack[0];
+end;
+
+proc main*;
+var ts: [5]Token; i: INT;
+begin
+    ts := [number(3), number(4), plus, number(5), times];   (* (3 + 4) * 5 *)
+    for i := 0 to 4 do describe(ts[i]); end;
+    Out.int(eval(ts)); Out.ln;
+    describe(word("hello"));
+end;
+
+end Tokens.
+```
+
+## Matching integers
+
+On an integer, `match` takes constants and ranges, and must have an `| else:`. Characters are integers, so it is also how a scanner is written.
+
+```raz Classify run
+module Classify;
+import Out;
+
+proc kind(c: I32): []U8;
+begin
+    match c of
+    | ' ', '\t', '\n': return "space";
+    | '0' .. '9': return "digit";
+    | 'a' .. 'z', 'A' .. 'Z', '_': return "letter";
+    | else: return "other";
+    end;
+end;
+
+proc main*;
+var s: []U8; i: INT;
+begin
+    s := "x1 + _y";
+    for i := 0 to LEN(s) - 1 do
+        Out.char(s[i]); Out.str(" is "); Out.str(kind(I32(s[i]))); Out.ln;
+    end;
+end;
+
+end Classify.
+```

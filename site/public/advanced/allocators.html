@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writing an allocator - Beyond Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Beyond Go</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html">Output and formatting</a></li>
+<li><a href="bytes.html">Strings and bytes</a></li>
+<li><a href="collections.html">Lists, maps and sorting</a></li>
+<li><a href="files.html">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html" aria-current="page">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html">System calls</a></li>
+<li><a href="listing.html">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">The library &middot; lesson 6 of 18</p><h1>Writing an allocator</h1>
+<p>An allocator is a record of two procedures, and that is all <code>Mem.Allocator</code> is:</p>
+<pre class="code"><code>type Allocator* = record
+    alloc*: proc(a: ^Allocator; size, align: INT): ^U8;   (* nil if out of room *)
+    free*:  proc(a: ^Allocator; p: ^U8);
+end;</code></pre>
+<p><code>NEW(p, a)</code> calls <code>a^.alloc(a, SIZE(T), alignment)</code> and zeroes what it gets. <code>Buf</code>, <code>List</code> and <code>Map</code> call the same procedures. So anything that fills in these two fields is an allocator, and everything in the library works with it.</p>
+<h2>An allocator over a fixed array</h2>
+<p>Here is one that needs no system calls at all: it hands out memory from an array in the program, a bump allocator. This is the kind a program with no operating system, or no room for a heap, uses. <code>free</code> has nothing to do; <code>reset</code> forgets everything.</p>
+<p>The trick that lets one procedure find its state is the same one <code>Arena</code> uses: the record puts <code>base: Mem.Allocator</code> first, so a <code>^Mem.Allocator</code> and a <code>^Bump</code> are the same address, and the procedure converts one to the other.</p>
+<div class="file"><span>Bump.raz</span></div><pre class="code"><code><span class="kw">module</span> Bump;
+<span class="kw">import</span> Mem;
+
+<span class="kw">type</span>
+    Bump* = <span class="kw">record</span>
+        base*: Mem.Allocator;       <span class="comment">(* first, so that ^Bump(a) finds the rest *)</span>
+        mem: ^<span class="ty">U8</span>;
+        size, used*: <span class="ty">INT</span>;
+    <span class="kw">end</span>;
+
+<span class="kw">proc</span> alloc(a: ^Mem.Allocator; size, align: <span class="ty">INT</span>): ^<span class="ty">U8</span>;
+<span class="kw">var</span> b: ^Bump; at: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    b := ^Bump(a);
+    at := (b^.used + align - <span class="number">1</span>) <span class="kw">div</span> align * align;      <span class="comment">(* round up to align *)</span>
+    <span class="kw">if</span> (size &lt; <span class="number">0</span>) <span class="kw">or</span> (at + size &gt; b^.size) <span class="kw">then</span> <span class="kw">return</span> <span class="ty">nil</span>; <span class="kw">end</span>;
+    b^.used := at + size;
+    <span class="kw">return</span> b^.mem + at;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> free(_a: ^Mem.Allocator; _p: ^<span class="ty">U8</span>);
+<span class="kw">begin</span>
+<span class="kw">end</span>;
+
+<span class="comment">(* a bump allocator over the size bytes at mem *)</span>
+<span class="kw">proc</span> init*(b: ^Bump; mem: ^<span class="ty">U8</span>; size: <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    b^.base := {alloc: alloc, free: free};
+    b^.mem := mem;
+    b^.size := size;
+    b^.used := <span class="number">0</span>;
+<span class="kw">end</span>;
+
+<span class="comment">(* everything forgotten, the memory used again *)</span>
+<span class="kw">proc</span> reset*(b: ^Bump);
+<span class="kw">begin</span>
+    b^.used := <span class="number">0</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Bump.</code></pre>
+<div class="file"><span>Bumping.raz</span></div><pre class="code"><code><span class="kw">module</span> Bumping;
+<span class="kw">import</span> Out, Bump;
+
+<span class="kw">type</span> Point = <span class="kw">record</span> x, y: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="kw">var</span> arena: [<span class="number">256</span>]<span class="ty">U8</span>;           <span class="comment">(* the allocator&#x27;s whole world *)</span>
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> b: Bump.Bump; p, q: ^Point; many: <span class="ty">INT</span>; r: ^Point;
+<span class="kw">begin</span>
+    Bump.init(<span class="ty">ADR</span>(b), <span class="ty">ADR</span>(arena[<span class="number">0</span>]), <span class="number">256</span>);
+    <span class="ty">NEW</span>(p, <span class="ty">ADR</span>(b.base));
+    <span class="ty">NEW</span>(q, <span class="ty">ADR</span>(b.base));
+    p^.x := <span class="number">1</span>; q^.y := <span class="number">2</span>;
+    Out.int(b.used); Out.str(<span class="string">&quot; bytes used by two points\n&quot;</span>);
+    many := <span class="number">2</span>;
+    <span class="kw">repeat</span>
+        <span class="ty">NEW</span>(r, <span class="ty">ADR</span>(b.base));
+        <span class="kw">if</span> r # <span class="ty">nil</span> <span class="kw">then</span> <span class="ty">INC</span>(many); <span class="kw">end</span>;
+    <span class="kw">until</span> r = <span class="ty">nil</span>;
+    Out.int(many); Out.str(<span class="string">&quot; points fit in 256 bytes\n&quot;</span>);
+    Bump.reset(<span class="ty">ADR</span>(b));
+    <span class="ty">NEW</span>(r, <span class="ty">ADR</span>(b.base));
+    <span class="kw">if</span> r # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="string">&quot;room again after a reset\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Bumping.</code></pre>
+<pre class="output"><code>32 bytes used by two points
+16 points fit in 256 bytes
+room again after a reset
+</code></pre>
+<p>An allocator that runs out says so with <code>nil</code>, and the caller decides what that means. Nothing else in the program is touched.</p>
+<h2>An allocator that counts</h2>
+<p>An allocator can wrap another. This one forwards to whatever it is given and keeps count, which is how to find out what a piece of code allocates, or to prove that a path allocates nothing.</p>
+<div class="file"><span>Counted.raz</span></div><pre class="code"><code><span class="kw">module</span> Counted;
+<span class="kw">import</span> Mem;
+
+<span class="kw">type</span>
+    Counted* = <span class="kw">record</span>
+        base*: Mem.Allocator;       <span class="comment">(* first *)</span>
+        inner: ^Mem.Allocator;
+        allocs*, frees*, bytes*: <span class="ty">INT</span>;
+    <span class="kw">end</span>;
+
+<span class="kw">proc</span> alloc(a: ^Mem.Allocator; size, align: <span class="ty">INT</span>): ^<span class="ty">U8</span>;
+<span class="kw">var</span> c: ^Counted; p: ^<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    c := ^Counted(a);
+    p := Mem.alloc(c^.inner, size, align);
+    <span class="kw">if</span> p # <span class="ty">nil</span> <span class="kw">then</span> <span class="ty">INC</span>(c^.allocs); <span class="ty">INC</span>(c^.bytes, size); <span class="kw">end</span>;
+    <span class="kw">return</span> p;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> free(a: ^Mem.Allocator; p: ^<span class="ty">U8</span>);
+<span class="kw">var</span> c: ^Counted;
+<span class="kw">begin</span>
+    c := ^Counted(a);
+    <span class="ty">INC</span>(c^.frees);
+    Mem.free(c^.inner, p);
+<span class="kw">end</span>;
+
+<span class="comment">(* a counting allocator in front of inner *)</span>
+<span class="kw">proc</span> init*(c: ^Counted; inner: ^Mem.Allocator);
+<span class="kw">begin</span>
+    c^.base := {alloc: alloc, free: free};
+    c^.inner := inner;
+    c^.allocs := <span class="number">0</span>;
+    c^.frees := <span class="number">0</span>;
+    c^.bytes := <span class="number">0</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Counted.</code></pre>
+<div class="file"><span>Audit.raz</span></div><pre class="code"><code><span class="kw">module</span> Audit;
+<span class="kw">import</span> Fmt, Heap, Mem, Buf, Counted, Names := List([]<span class="ty">U8</span>);
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> c: Counted.Counted; b: Buf.Buf; l: Names.List; i: <span class="ty">INT</span>; p: ^<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    Counted.init(<span class="ty">ADR</span>(c), Heap.heap);
+    Buf.init(<span class="ty">ADR</span>(b), <span class="ty">ADR</span>(c.base));
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">200</span> <span class="kw">do</span> Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;0123456789&quot;</span>); <span class="kw">end</span>;
+    Fmt.print(<span class="string">&quot;a buffer of {} bytes took {} allocations\n&quot;</span>,
+        [Fmt.int(b.len), Fmt.int(c.allocs)]);
+    Buf.done(<span class="ty">ADR</span>(b));
+
+    Names.init(<span class="ty">ADR</span>(l), <span class="ty">ADR</span>(c.base));
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">10</span> <span class="kw">do</span> _ := Names.push(<span class="ty">ADR</span>(l), <span class="string">&quot;x&quot;</span>); <span class="kw">end</span>;
+    Fmt.print(<span class="string">&quot;{} allocations in all, {} frees so far\n&quot;</span>, [Fmt.int(c.allocs), Fmt.int(c.frees)]);
+    Names.clear(<span class="ty">ADR</span>(l));
+    Fmt.print(<span class="string">&quot;{} frees after clear\n&quot;</span>, [Fmt.int(c.frees)]);
+
+    p := Mem.alloc(<span class="ty">ADR</span>(c.base), <span class="number">64</span>, <span class="number">8</span>);
+    Mem.free(<span class="ty">ADR</span>(c.base), p);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Audit.</code></pre>
+<pre class="output"><code>a buffer of 2000 bytes took 6 allocations
+16 allocations in all, 6 frees so far
+16 frees after clear
+</code></pre>
+<p>A <code>Buf</code> grows by doubling, so two thousand bytes took a handful of allocations and not two hundred. That is the sort of thing a counting allocator is for.</p>
+<h2>What to take from this</h2>
+<ul><li>An allocator is a value, so it is passed, wrapped, swapped in a test and replaced by a bump allocator in a program with no heap.</li><li>A library function that needs memory takes the allocator as a parameter, so its caller owns the policy.</li><li>An allocator can use the record-first trick to carry any state it needs, because converting a pointer to a record's first field and back is the same address.</li></ul><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="processes.html">&larr; Time, randomness and other programs</a><a href="index.html">Contents</a><a class="next" href="static.html">A program with no run time &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

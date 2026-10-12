@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A ring buffer between threads - Beyond Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Beyond Go</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html">Output and formatting</a></li>
+<li><a href="bytes.html">Strings and bytes</a></li>
+<li><a href="collections.html">Lists, maps and sorting</a></li>
+<li><a href="files.html">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html">System calls</a></li>
+<li><a href="listing.html">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html" aria-current="page">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">Shared memory &middot; lesson 18 of 18</p><h1>A ring buffer between threads</h1>
+<p>To finish, here is a small piece of real concurrent code that uses nearly everything in this part of the tour: a queue through which one thread sends numbers to another, with no lock and no allocation.</p>
+<h2>The design</h2>
+<p>The queue is a fixed array of slots, used as a circle, and two counters that only ever grow: <code>tail</code>, the number of items the producer has put in, and <code>head</code>, the number the consumer has taken out. The item <code>n</code> lives in slot <code>n mod Size</code>. The queue is empty when the two are equal, and full when they differ by <code>Size</code>.</p>
+<p>The design rule is that <strong>each counter has exactly one writer</strong>. Only the producer changes <code>tail</code>; only the consumer changes <code>head</code>. Each thread reads its own counter with an ordinary read, since nobody else changes it, and the other thread's with an atomic one. No <code>CAS</code> is needed, because there is never a race to resolve: only a handoff.</p>
+<p>The handoff is the publish pattern of the ordering lesson. The producer writes the slot, then publishes it with an atomic store of <code>tail</code>; the consumer sees the new <code>tail</code> with an atomic load and only then reads the slot. In the other direction, the consumer frees a slot by storing <code>head</code>, and the producer only reuses it after loading <code>head</code> and seeing that.</p>
+<h2>The module</h2>
+<div class="file"><span>Ring.raz</span></div><pre class="code"><code><span class="kw">module</span> Ring;
+<span class="kw">import</span> Sys;
+
+<span class="kw">const</span> Size* = <span class="number">64</span>;
+
+<span class="kw">type</span>
+    Ring* = <span class="kw">record</span>
+        slots: [Size]<span class="ty">INT</span>;
+        head, tail: <span class="ty">INT</span>;      <span class="comment">(* items taken, items put; each has one writer *)</span>
+    <span class="kw">end</span>;
+
+<span class="comment">(* v into the ring, waiting while it is full *)</span>
+<span class="kw">proc</span> put*(r: ^Ring; v: <span class="ty">INT</span>);
+<span class="kw">var</span> t: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    t := r^.tail;                                    <span class="comment">(* mine: an ordinary read *)</span>
+    <span class="kw">while</span> t - <span class="ty">XADD</span>(<span class="ty">ADR</span>(r^.head), <span class="number">0</span>) = Size <span class="kw">do</span> Sys.yield; <span class="kw">end</span>;   <span class="comment">(* full *)</span>
+    r^.slots[t <span class="kw">mod</span> Size] := v;
+    _ := <span class="ty">XCHG</span>(<span class="ty">ADR</span>(r^.tail), t + <span class="number">1</span>);                  <span class="comment">(* publish the slot *)</span>
+<span class="kw">end</span>;
+
+<span class="comment">(* the next value, waiting while the ring is empty *)</span>
+<span class="kw">proc</span> take*(r: ^Ring): <span class="ty">INT</span>;
+<span class="kw">var</span> h, v: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    h := r^.head;                                    <span class="comment">(* mine *)</span>
+    <span class="kw">while</span> <span class="ty">XADD</span>(<span class="ty">ADR</span>(r^.tail), <span class="number">0</span>) = h <span class="kw">do</span> Sys.yield; <span class="kw">end</span>;          <span class="comment">(* empty *)</span>
+    v := r^.slots[h <span class="kw">mod</span> Size];
+    _ := <span class="ty">XCHG</span>(<span class="ty">ADR</span>(r^.head), h + <span class="number">1</span>);                  <span class="comment">(* give the slot back *)</span>
+    <span class="kw">return</span> v;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Ring.</code></pre>
+<h2>Using it</h2>
+<p>One thread sends the numbers 1 to 100000 through a ring of 64 slots, so it is stopped by a full ring many times over and has to wait for the consumer. The consumer checks each number arrives in order, and adds them.</p>
+<div class="file"><span>Pipe.raz</span></div><pre class="code"><code><span class="kw">module</span> Pipe;
+<span class="kw">import</span> Out, Fmt, Ring, Thread;
+
+<span class="kw">const</span> Count = <span class="number">100000</span>;
+
+<span class="kw">var</span>
+    ring: Ring.Ring;
+    sum, outOfOrder: <span class="ty">INT</span>;
+
+<span class="kw">proc</span> producer(_arg: ^<span class="ty">U8</span>);
+<span class="kw">var</span> i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> Count <span class="kw">do</span> Ring.put(<span class="ty">ADR</span>(ring), i); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> consumer(_arg: ^<span class="ty">U8</span>);
+<span class="kw">var</span> i, v: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> Count <span class="kw">do</span>
+        v := Ring.take(<span class="ty">ADR</span>(ring));
+        <span class="kw">if</span> v # i <span class="kw">then</span> <span class="ty">INC</span>(outOfOrder); <span class="kw">end</span>;
+        sum := sum + v;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> p, c: ^Thread.Thread; err: <span class="ty">ERROR</span>;
+<span class="kw">begin</span>
+    p, err := Thread.spawn(producer, <span class="ty">nil</span>);
+    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">return</span>; <span class="kw">end</span>;
+    c, err := Thread.spawn(consumer, <span class="ty">nil</span>);
+    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">return</span>; <span class="kw">end</span>;
+    Thread.join(p);
+    Thread.join(c);
+    Fmt.print(<span class="string">&quot;{} items, sum {}, {} out of order\n&quot;</span>,
+        [Fmt.int(Count), Fmt.int(sum), Fmt.int(outOfOrder)]);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Pipe.</code></pre>
+<pre class="output"><code>100000 items, sum 5000050000, 0 out of order
+</code></pre>
+<p>The sum of 1 to 100000 is 5000050000, and nothing arrives out of order. <code>sum</code> and <code>outOfOrder</code> are written only by the consumer thread and read by <code>main</code> after <code>Thread.join</code>, which is the synchronization that makes them visible: a join is the thread's end, observed.</p>
+<h2>What it used</h2>
+<ul><li><strong>Modules</strong> (<code>Ring</code>, with its record's own fields unexported).</li><li><strong>Atomics</strong> for the handoff, and an ordering argument for why a slot is complete when its counter moves.</li><li><strong>Threads</strong> from <code>Thread</code>, with no C in the program.</li><li><strong>The checks</strong>, which stay on: <code>slots[t mod Size]</code> is an indexed array access that can't leave the array, whatever the counters do.</li></ul>
+<p>It is not a finished library: it is one producer and one consumer, and a second of either breaks the one-writer rule. That is the sort of statement a comment above <code>put</code> and <code>take</code> should make, and the sort a reader should demand.</p>
+<h2>Where next</h2>
+<p>That is the end of the tour. A few places to continue:</p>
+<ul><li><strong><a href="../spec.html">The report</a></strong> defines the language, and is short enough to read through.</li><li><strong><code>doc/compiler.md</code></strong> in the sources is a guide to reading the compiler, file by file; it is a model of the style the project is written in.</li><li><strong><code>lib/</code></strong> is the library, in raz. Each module's own <code>main</code> is its test. Reading <code>Heap</code>, <code>Map</code>, <code>Opt</code> and <code>Thread</code> is the best remaining education.</li><li><strong><code>tools/Doc.raz</code></strong> prints what a module exports with its comments: <code>raz -o Doc tools/Doc.raz &amp;&amp; ./Doc lib/Str.raz</code>.</li><li><strong><code>examples/</code></strong> holds small programs with the output each should give, and <code>conform/</code> holds what any implementation must do.</li></ul><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="lockfree.html">&larr; A lock-free stack</a><a href="index.html">Contents</a><a class="next" href="../spec.html">The report &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

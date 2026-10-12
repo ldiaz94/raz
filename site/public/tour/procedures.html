@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
-<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
 <li><a href="modules.html">Modules</a></li>
 <li><a href="values.html">Values and conversions</a></li>
@@ -76,7 +76,151 @@
 -1
 </code></pre>
 <p>A parameter is a copy, unless it is <code>var</code>, when it is the caller's variable itself. A procedure may return several results, which a multiple assignment takes apart; the blank, <code>_</code>, drops one.</p>
-<p>A procedure is a value too, of a procedure type, as <code>f</code> is in <code>twice</code>. A procedure without parameters leaves out the parentheses, as <code>Out.ln</code> does. Procedures don't nest, and a name is declared before it is used.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="values.html">&larr; Values and conversions</a><a href="index.html">Contents</a><a class="next" href="slices.html">Arrays, slices and strings &rarr;</a></div></article></div>
+<h2>Value and <code>var</code> parameters</h2>
+<p>A value parameter is the procedure's own: it may change it, and the caller's variable stays as it was. A <code>var</code> parameter is the caller's variable, and its argument must be a variable of exactly that type.</p>
+<div class="file"><span>Params.raz</span></div><pre class="code"><code><span class="kw">module</span> Params;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> bump(n: <span class="ty">INT</span>);            <span class="comment">(* changes its own copy *)</span>
+<span class="kw">begin</span>
+    n := n + <span class="number">1</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> bumpIn(<span class="kw">var</span> n: <span class="ty">INT</span>);      <span class="comment">(* changes the caller&#x27;s *)</span>
+<span class="kw">begin</span>
+    n := n + <span class="number">1</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> fill(<span class="kw">var</span> a: [<span class="number">4</span>]<span class="ty">INT</span>; v: <span class="ty">INT</span>);   <span class="comment">(* an array is copied unless var *)</span>
+<span class="kw">var</span> i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span> a[i] := v; <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> x: <span class="ty">INT</span>; a: [<span class="number">4</span>]<span class="ty">INT</span>;
+<span class="kw">begin</span>
+    x := <span class="number">10</span>;
+    bump(x);
+    Out.int(x); Out.ln;       <span class="comment">(* 10 *)</span>
+    bumpIn(x);
+    Out.int(x); Out.ln;       <span class="comment">(* 11 *)</span>
+    fill(a, <span class="number">7</span>);
+    Out.int(a[<span class="number">0</span>] + a[<span class="number">3</span>]); Out.ln;   <span class="comment">(* 14 *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Params.</code></pre>
+<pre class="output"><code>10
+11
+14
+</code></pre>
+<h2>Several results</h2>
+<p>Instead of an output parameter, a procedure says what it returns: <code>(INT, INT)</code>, or any list of types. The caller takes them apart with a multiple assignment. A call that returns several values may stand on the right of one, alone as a statement, or alone after <code>return</code>, which passes them on as they are.</p>
+<div class="file"><span>Several.raz</span></div><pre class="code"><code><span class="kw">module</span> Several;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> divmod(a, b: <span class="ty">INT</span>): (<span class="ty">INT</span>, <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    <span class="kw">return</span> a <span class="kw">div</span> b, a <span class="kw">mod</span> b;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> minmax(a, b: <span class="ty">INT</span>): (<span class="ty">INT</span>, <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    <span class="kw">if</span> a &lt; b <span class="kw">then</span> <span class="kw">return</span> a, b; <span class="kw">end</span>;
+    <span class="kw">return</span> b, a;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> spread(a, b: <span class="ty">INT</span>): (<span class="ty">INT</span>, <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    <span class="kw">return</span> minmax(a, b);        <span class="comment">(* passes both results on *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> q, r, lo, hi: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    q, r := divmod(<span class="number">100</span>, <span class="number">7</span>);
+    Out.int(q); Out.str(<span class="string">&quot; rest &quot;</span>); Out.int(r); Out.ln;
+    lo, hi := spread(<span class="number">9</span>, <span class="number">4</span>);
+    Out.int(lo); Out.str(<span class="string">&quot; .. &quot;</span>); Out.int(hi); Out.ln;
+    _, r := divmod(-<span class="number">7</span>, <span class="number">2</span>);      <span class="comment">(* drop the quotient *)</span>
+    Out.int(r); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Several.</code></pre>
+<pre class="output"><code>14 rest 2
+4 .. 9
+-1
+</code></pre>
+<h2>Recursion, and <code>forward</code></h2>
+<p>A name is declared before it is used, and procedures don't nest. When two procedures need each other, <code>forward</code> declares the first so that its body can come later.</p>
+<div class="file"><span>Recur.raz</span></div><pre class="code"><code><span class="kw">module</span> Recur;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> gcd(a, b: <span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">if</span> b = <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> a; <span class="kw">end</span>;
+    <span class="kw">return</span> gcd(b, a <span class="kw">mod</span> b);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> isOdd(n: <span class="ty">INT</span>): <span class="ty">BOOL</span>; <span class="kw">forward</span>;
+
+<span class="kw">proc</span> isEven(n: <span class="ty">INT</span>): <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    <span class="kw">if</span> n = <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> <span class="ty">true</span>; <span class="kw">end</span>;
+    <span class="kw">return</span> isOdd(n - <span class="number">1</span>);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> isOdd(n: <span class="ty">INT</span>): <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    <span class="kw">if</span> n = <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> <span class="ty">false</span>; <span class="kw">end</span>;
+    <span class="kw">return</span> isEven(n - <span class="number">1</span>);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.int(gcd(<span class="number">84</span>, <span class="number">36</span>)); Out.ln;
+    <span class="kw">if</span> isEven(<span class="number">10</span>) <span class="kw">and</span> isOdd(<span class="number">7</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;parity works\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Recur.</code></pre>
+<pre class="output"><code>12
+parity works
+</code></pre>
+<h2>Procedures are values</h2>
+<p>A procedure used without parentheses is a procedure value, of a procedure type such as <code>proc(a, b: INT): INT</code>. It can be passed, stored in a variable or a record, and called. This is raz's only dynamic dispatch, and it is as plain as it looks.</p>
+<div class="file"><span>Table.raz</span></div><pre class="code"><code><span class="kw">module</span> Table;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Op = <span class="kw">proc</span>(a, b: <span class="ty">INT</span>): <span class="ty">INT</span>;
+
+<span class="kw">proc</span> add(a, b: <span class="ty">INT</span>): <span class="ty">INT</span>; <span class="kw">begin</span> <span class="kw">return</span> a + b; <span class="kw">end</span>;
+<span class="kw">proc</span> sub(a, b: <span class="ty">INT</span>): <span class="ty">INT</span>; <span class="kw">begin</span> <span class="kw">return</span> a - b; <span class="kw">end</span>;
+<span class="kw">proc</span> mul(a, b: <span class="ty">INT</span>): <span class="ty">INT</span>; <span class="kw">begin</span> <span class="kw">return</span> a * b; <span class="kw">end</span>;
+
+<span class="kw">proc</span> apply(f: Op; a, b: <span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> f(a, b);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> ops: [<span class="number">3</span>]Op; names: [<span class="number">3</span>][]<span class="ty">U8</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    ops := [add, sub, mul];
+    names := [<span class="string">&quot;add&quot;</span>, <span class="string">&quot;sub&quot;</span>, <span class="string">&quot;mul&quot;</span>];
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">2</span> <span class="kw">do</span>
+        Out.str(names[i]); Out.str(<span class="string">&quot;: &quot;</span>);
+        Out.int(apply(ops[i], <span class="number">12</span>, <span class="number">5</span>)); Out.ln;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Table.</code></pre>
+<pre class="output"><code>add: 17
+sub: 7
+mul: 60
+</code></pre>
+<p>A procedure without parameters leaves out the parentheses where it is called, as <code>Out.ln</code> does. That means <code>f</code> alone is the procedure and <code>f()</code> would not be a call, so be careful when passing one around.</p>
+<h2>Dropped results</h2>
+<p>A call that drops a result, as <code>Sys.write(fd, s);</code> does, is warned of; <code>_ := Sys.write(fd, s);</code> says it is meant. The compiler also warns of a variable that is assigned and never read, and of a name declared and never used, unless it starts with <code>_</code>.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="values.html">&larr; Values and conversions</a><a href="index.html">Contents</a><a class="next" href="slices.html">Arrays, slices and strings &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>

@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
-<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html" aria-current="page">Hello, world</a></li>
 <li><a href="modules.html">Modules</a></li>
 <li><a href="values.html">Values and conversions</a></li>
@@ -41,9 +41,94 @@
 <span class="kw">end</span> Hello.</code></pre>
 <pre class="output"><code>hello, world
 </code></pre>
-<p>A module lives in a file of its own name, <code>Hello.raz</code>, and its name comes again after its last <code>end</code>. <code>import Out</code> lets it use what the module <code>Out</code> exports, as <code>Out.str</code>.</p>
-<p>The <code>*</code> after <code>main</code> exports it; the program starts at the <code>main</code> of the module named on the command line. Every statement ends in <code>;</code>, even one that ends in <code>end</code>.</p>
-<p>Compile it and run it with <code>raz Hello.raz &amp;&amp; ./Hello</code>, or with <code>raz run Hello.raz</code>, which writes no file.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="index.html">Contents</a><a class="next" href="modules.html">Modules &rarr;</a></div></article></div>
+<p>A module lives in a file of its own name, <code>Hello.raz</code>, and its name comes again after its last <code>end</code>, so a stray <code>end</code> is caught early. <code>import Out</code> lets it use what the module <code>Out</code> exports, as <code>Out.str</code>. The <code>*</code> after <code>main</code> exports it; the program starts at the <code>main</code> of the module named on the command line. Every statement ends in <code>;</code>, even one that ends in <code>end</code>.</p>
+<h2>Compiling and running</h2>
+<p><code>raz Hello.raz</code> compiles the module and everything it imports, and writes the executable <code>Hello</code> beside it. <code>raz run</code> does the same without writing a file, and runs it at once.</p>
+<div class="file"><span>Quiet.raz</span></div><pre class="code"><code><span class="comment">(* The same program, with a comment: (* ... *)</span> nests, <span class="kw">and</span> may stand anywhere. *)
+<span class="kw">module</span> Quiet;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;hello, again\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Quiet.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Quiet.raz</span>
+<span class="cmd">$ ./Quiet</span>
+hello, again
+<span class="cmd">$ raz run Quiet.raz</span>
+hello, again
+<span class="cmd">$ ls -l Quiet | awk &#x27;{print $5, &quot;bytes&quot;}&#x27;</span>
+28480 bytes</code></pre>
+<p>The program is a static executable with no run time besides the code it uses, so it is a few kilobytes, and runs without any library installed.</p>
+<h2>What <code>Out</code> can write</h2>
+<p><code>Out</code> is the library's buffered output. It writes strings, single characters, numbers in decimal or hexadecimal, and a line feed. A string is written as it is, with <code>\n</code> for a line feed, <code>\t</code> for a tab, <code>\"</code> and <code>\\</code>.</p>
+<div class="file"><span>Numbers.raz</span></div><pre class="code"><code><span class="kw">module</span> Numbers;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;seven is &quot;</span>); Out.int(<span class="number">7</span>); Out.ln;
+    Out.str(<span class="string">&quot;minus one is &quot;</span>); Out.int(-<span class="number">1</span>); Out.ln;
+    Out.str(<span class="string">&quot;255 is 0x&quot;</span>); Out.hex(<span class="number">255</span>, <span class="number">4</span>); Out.ln;
+    Out.char(<span class="string">&#x27;R&#x27;</span>); Out.char(<span class="string">&#x27;a&#x27;</span>); Out.char(<span class="string">&#x27;z&#x27;</span>); Out.ln;
+    Out.str(<span class="string">&quot;a tab:\t|\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Numbers.</code></pre>
+<pre class="output"><code>seven is 7
+minus one is -1
+255 is 0x00FF
+Raz
+a tab:	|
+</code></pre>
+<p><code>Out.hex(n, 4)</code> writes at least four digits. <code>Out.int</code> takes an <code>I64</code> and <code>Out.hex</code> a <code>U64</code>. An <code>INT</code> goes into an <code>I64</code> as it is; any other integer is converted where it is written, as <code>Out.int(I64(b))</code>, because raz never converts a number unasked.</p>
+<h2>Ending, and the status</h2>
+<p><code>main</code> may return an <code>INT</code>, which is the program's exit status; a plain <code>proc main*;</code> ends with 0. A shell sees the status as <code>$?</code>.</p>
+<div class="file"><span>Status.raz</span></div><pre class="code"><code><span class="kw">module</span> Status;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;exiting with 3\n&quot;</span>);
+    <span class="kw">return</span> <span class="number">3</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Status.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz run Status.raz; echo &quot;status $?&quot;</span>
+exiting with 3
+status 3</code></pre>
+<h2>Arguments</h2>
+<p><code>ARGC()</code> is the number of command line arguments, with the program's own name first, and <code>ARGV()</code> the arguments, as C strings. Most programs read them through <code>Files.arg</code> and <code>Opt</code>, which the advanced tour shows; here is the raw form.</p>
+<div class="file"><span>Args.raz</span></div><pre class="code"><code><span class="kw">module</span> Args;
+<span class="kw">import</span> Out;
+
+<span class="comment">(* The length of a C string. *)</span>
+<span class="kw">proc</span> len(s: ^<span class="ty">U8</span>): <span class="ty">INT</span>;
+<span class="kw">var</span> n: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    n := <span class="number">0</span>;
+    <span class="kw">while</span> s[n] # <span class="number">0</span> <span class="kw">do</span> n := n + <span class="number">1</span>; <span class="kw">end</span>;
+    <span class="kw">return</span> n;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*: <span class="ty">INT</span>;
+<span class="kw">var</span> i: <span class="ty">INT</span>; s: ^<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> ARGC() - <span class="number">1</span> <span class="kw">do</span>
+        s := ARGV()[i];
+        Out.str(s[<span class="number">0</span>..len(s)]);
+        Out.ln;
+    <span class="kw">end</span>;
+    <span class="kw">return</span> ARGC() - <span class="number">1</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Args.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz run Args.raz one &quot;two words&quot;; echo &quot;status $?&quot;</span>
+one
+two words
+status 2</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="index.html">Contents</a><a class="next" href="modules.html">Modules &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>

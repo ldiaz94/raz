@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What the compiler makes - Beyond Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Beyond Go</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html">Output and formatting</a></li>
+<li><a href="bytes.html">Strings and bytes</a></li>
+<li><a href="collections.html">Lists, maps and sorting</a></li>
+<li><a href="files.html">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html">System calls</a></li>
+<li><a href="listing.html" aria-current="page">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">The machine &middot; lesson 13 of 18</p><h1>What the compiler makes</h1>
+<p>The compiler has no optimizer and no intermediate form. It reads the source once and writes x86-64 machine code as it goes, so the code is what the source says, in the order it says it. That makes the output readable, and there is a switch for reading it: <code>raz -S Main.raz</code> prints the main module's code instead of writing it, each line of source and under it the instructions made for it, at their offsets in the procedure.</p>
+<h2>A small procedure</h2>
+<div class="file"><span>Add.raz</span></div><pre class="code"><code><span class="kw">module</span> Add;
+
+<span class="kw">proc</span> add*(a, b: <span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> a + b;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    _ := add(<span class="number">1</span>, <span class="number">2</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Add.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz -S Add.raz</span>
+
+Add.add:
+     3  proc add*(a, b: INT): INT;
+             0  push rbp
+             1  mov rbp, rsp
+             4  sub rsp, 16
+     5      return a + b;
+            11  mov r8, rdi
+            14  add r8, rsi
+            17  mov rax, r8
+     6  end;
+            20  leave
+            21  ret
+
+Add.main:
+     8  proc main*;
+             0  push rbp
+             1  mov rbp, rsp
+             4  sub rsp, 16
+    10      _ := add(1, 2);
+            11  mov rdi, 1
+            16  mov rsi, 2
+            21  call Add.add
+            26  mov r8, rax
+    11  end;
+            29  leave
+            30  ret</code></pre>
+<p>Every procedure starts by saving the caller's frame pointer and making its own (<code>push rbp; mov rbp, rsp</code>) and reserves room for what it needs. The arguments arrive in <code>rdi</code> and <code>rsi</code>, as the convention says, and the result leaves in <code>rax</code>. A call is <code>mov rdi, 1; mov rsi, 2; call Add.add</code>. Nothing is hidden: the frame pointer chain is what lets a failure show the calls under way with their variables.</p>
+<h2>A loop with its checks</h2>
+<p>This is the dot product of two slices. A slice is a pointer and a length, and it travels in two registers:</p>
+<div class="file"><span>Dot.raz</span></div><pre class="code"><code><span class="kw">module</span> Dot;
+
+<span class="comment">(* the dot product of two slices of equal length *)</span>
+<span class="kw">proc</span> dot*(a, b: []<span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="kw">var</span> i, sum: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(a) - <span class="number">1</span> <span class="kw">do</span>
+        sum := sum + a[i] * b[i];
+    <span class="kw">end</span>;
+    <span class="kw">return</span> sum;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> x, y: [<span class="number">3</span>]<span class="ty">INT</span>;
+<span class="kw">begin</span>
+    x := [<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>];
+    y := [<span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>];
+    _ := dot(x, y);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Dot.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz -S Dot.raz | sed -n &#x27;/^Dot.dot:/,/^$/p&#x27;</span>
+Dot.dot:
+     4  proc dot*(a, b: []INT): INT;
+             0  push rbp
+             1  mov rbp, rsp
+             4  sub rsp, 64
+            11  mov [rbp - 48], rbx
+            15  xor ebx, ebx
+            17  mov [rbp - 40], r12
+            21  xor r12d, r12d
+            24  mov [rbp - 32], rdx
+            28  mov [rbp - 24], rcx
+     7      for i := 0 to LEN(a) - 1 do
+            32  xor ebx, ebx
+            34  mov r8, rsi
+            37  sub r8, 1
+            41  mov [rbp - 56], r8
+            45  cmp rbx, [rbp - 56]
+            49  jg 146
+            55  jmp 68
+            60  nop
+            64  add rbx, 1
+     8          sum := sum + a[i] * b[i];
+            68  cmp rbx, rsi
+            71  jae 159
+            77  mov r10, rbx
+            80  cmp r10, [rbp - 24]
+            84  jae 170
+            90  shl r10, 3
+            94  add r10, [rbp - 32]
+            98  mov r10, [r10]
+           101  mov r9, [rdi + rbx * 8]
+           105  imul r9, r10
+           109  add r12, r9
+           112  cmp rbx, [rbp - 56]
+           116  jl 64
+           122  cmp rbx, [rbp - 56]
+           126  je 146
+           132  add rbx, 1
+           136  cmp rbx, [rbp - 56]
+           140  jle 68
+    10      return sum;
+           146  mov rax, r12
+    11  end;
+           149  mov rbx, [rbp - 48]
+           153  mov r12, [rbp - 40]
+           157  leave
+           158  ret
+     8          sum := sum + a[i] * b[i];
+           159  mov rax, rbx
+           162  mov rcx, rsi
+           165  call Rt.check0
+           170  mov rax, r10
+           173  mov rcx, [rbp - 24]
+           177  call Rt.check0</code></pre>
+<p>Read it from the top. <code>a</code> arrives in <code>rdi</code> and <code>rsi</code>, pointer and length; <code>b</code> in <code>rdx</code> and <code>rcx</code>, which the procedure saves in its frame. <code>i</code> and <code>sum</code> live in <code>rbx</code> and <code>r12</code>, which the procedure saves and restores because the convention says they belong to the caller. The loop's test is at the bottom, and its limit, <code>LEN(a) - 1</code>, is taken once.</p>
+<p>In the body, each index has a check: <code>cmp rbx, rsi; jae</code> compares <code>i</code> with <code>a</code>'s length in a single instruction and jumps to a stub at the end of the procedure, which calls <code>Rt.check0</code> with the values it needs to say what failed. When the index is in range, which is nearly always, the cost is one compare and a branch that isn't taken.</p>
+<h2>Taking the checks out</h2>
+<p><code>check off;</code> after the imports leaves out the module's own checks of indexes and slice bounds. Here is the same procedure with it:</p>
+<div class="file"><span>Dot2.raz</span></div><pre class="code"><code><span class="kw">module</span> Dot2;
+check off;
+
+<span class="kw">proc</span> dot*(a, b: []<span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="kw">var</span> i, sum: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(a) - <span class="number">1</span> <span class="kw">do</span>
+        sum := sum + a[i] * b[i];
+    <span class="kw">end</span>;
+    <span class="kw">return</span> sum;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> x, y: [<span class="number">3</span>]<span class="ty">INT</span>;
+<span class="kw">begin</span>
+    x := [<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>];
+    y := [<span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>];
+    _ := dot(x, y);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Dot2.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz -S Dot2.raz | sed -n &#x27;/^Dot2.dot:/,/^$/p&#x27;</span>
+Dot2.dot:
+     4  proc dot*(a, b: []INT): INT;
+             0  push rbp
+             1  mov rbp, rsp
+             4  sub rsp, 64
+            11  mov [rbp - 48], rbx
+            15  xor ebx, ebx
+            17  mov [rbp - 40], r12
+            21  xor r12d, r12d
+            24  mov [rbp - 32], rdx
+            28  mov [rbp - 24], rcx
+     7      for i := 0 to LEN(a) - 1 do
+            32  xor ebx, ebx
+            34  mov r8, rsi
+            37  sub r8, 1
+            41  mov [rbp - 56], r8
+            45  cmp rbx, [rbp - 56]
+            49  jg 127
+            55  jmp 68
+            60  nop
+            64  add rbx, 1
+     8          sum := sum + a[i] * b[i];
+            68  mov r10, rbx
+            71  shl r10, 3
+            75  add r10, [rbp - 32]
+            79  mov r10, [r10]
+            82  mov r9, [rdi + rbx * 8]
+            86  imul r9, r10
+            90  add r12, r9
+            93  cmp rbx, [rbp - 56]
+            97  jl 64
+           103  cmp rbx, [rbp - 56]
+           107  je 127
+           113  add rbx, 1
+           117  cmp rbx, [rbp - 56]
+           121  jle 68
+    10      return sum;
+           127  mov rax, r12
+    11  end;
+           130  mov rbx, [rbp - 48]
+           134  mov r12, [rbp - 40]
+           138  leave
+           139  ret
+<span class="cmd">$ raz -S Dot.raz | sed -n &#x27;/^Dot.dot:/,/^$/p&#x27; | wc -l</span>
+55
+<span class="cmd">$ raz -S Dot2.raz | sed -n &#x27;/^Dot2.dot:/,/^$/p&#x27; | wc -l</span>
+44</code></pre>
+<p>The compares, the branches and the stubs are gone. It is faster, and it is no longer safe: an index out of range reads or writes whatever memory it reaches, and what follows isn't defined. A program turns checks off where it has measured and is sure, and says so at the top of the module, where a reader can see it.</p>
+<h2>Comparing with C</h2>
+<p><code>make kernels</code> in the compiler's sources measures <code>test/bench</code>'s kernels against the same kernels written in Pascal and compiled by Free Pascal at <code>-O2</code>. The compiler's own guide, <code>doc/compiler.md</code>, gives the numbers and says what the compiler does and doesn't do. It is not the fastest code: it is code whose every instruction you can account for.</p>
+<h2>Tools that read what it made</h2>
+<ul><li><code>gdb</code> finds procedures by name and lines by number, since the executable carries them: <code>break Dot.dot</code> and <code>list</code> work, and so does stepping a line at a time.</li><li><code>RAZ_PROFILE=1</code> samples the program every millisecond and says which procedures and lines took the time.</li><li><code>objdump -d</code> disassembles what is really in the file, if you want to see the bytes behind a listing.</li></ul>
+<pre class="output term"><code><span class="cmd">$ raz -o Dot Dot.raz</span>
+<span class="cmd">$ objdump -d -M intel --no-show-raw-insn Dot | sed -n &#x27;/&lt;Dot.dot&gt;:/,/ret/p&#x27; | head -12</span>
+0000000000403b80 &lt;Dot.dot&gt;:
+  403b80:	push   rbp
+  403b81:	mov    rbp,rsp
+  403b84:	sub    rsp,0x40
+  403b8b:	mov    QWORD PTR [rbp-0x30],rbx
+  403b8f:	xor    ebx,ebx
+  403b91:	mov    QWORD PTR [rbp-0x28],r12
+  403b95:	xor    r12d,r12d
+  403b98:	mov    QWORD PTR [rbp-0x20],rdx
+  403b9c:	mov    QWORD PTR [rbp-0x18],rcx
+  403ba0:	xor    ebx,ebx
+  403ba2:	mov    r8,rsi</code></pre>
+<p>The listing is what the encoder meant; <code>objdump</code> is what the processor will read. They tell the same story.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="syscalls.html">&larr; System calls</a><a href="index.html">Contents</a><a class="next" href="volatile.html">Volatile &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

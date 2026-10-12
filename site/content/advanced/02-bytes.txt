@@ -1,0 +1,166 @@
+title: Strings and bytes
+part: The library
+summary: Copying, hashing and ordering strings, and reading and writing binary formats.
+---
+A `[]U8` is both a string and a block of bytes. `Str` has what is done with them: comparing, finding, hashing, copying into memory of your own, UTF-8, numbers, and the fixed byte orders of file formats and network protocols.
+
+## Ordering and hashing
+
+`Str.cmp` gives -1, 0 or 1, byte by byte, so it orders UTF-8 text by code point. `Str.eq` is equality. `Str.hash` is FNV-1a, 64 bits; it is what a `Map` of strings uses.
+
+```raz Order run
+module Order;
+import Out, Str, Fmt;
+
+proc main*;
+var names: [4][]U8; i, j: INT; t: []U8;
+begin
+    names := ["pear", "Apple", "fig", "apple"];
+    (* a small insertion sort, with Str.cmp *)
+    for i := 1 to 3 do
+        t := names[i];
+        j := i - 1;
+        while (j >= 0) and (Str.cmp(names[j], t) > 0) do
+            names[j + 1] := names[j];
+            DEC(j);
+        end;
+        names[j + 1] := t;
+    end;
+    for i := 0 to 3 do Out.str(names[i]); Out.char(' '); end;
+    Out.ln;
+    Fmt.print("{}\n", [Fmt.hex(Str.hash("raz"))]);
+    if Str.hash("raz") = Str.hash("raz") then Out.str("stable\n"); end;
+end;
+
+end Order.
+```
+
+Upper case sorts before lower, since 'A' is 65 and 'a' is 97: `Str.cmp` doesn't pretend to know a language's alphabet.
+
+## Keeping a string
+
+A slice of a string constant lives forever, but a slice of a buffer lives only as long as the buffer. To keep one past that, `Str.copy` takes memory from an allocator and says whether it got any.
+
+```raz Keep run
+module Keep;
+import Out, Str, Heap, Mem;
+
+type Entry = record name: []U8; n: INT; end;
+
+var entries: [3]Entry;
+
+(* remembers a name that the caller will overwrite *)
+proc remember(slot: INT; name: []U8);
+var copy: []U8; ok: BOOL;
+begin
+    copy, ok := Str.copy(Heap.heap, name);
+    if ok then entries[slot].name := copy; entries[slot].n := slot; end;
+end;
+
+proc main*;
+var scratch: [16]U8; i: INT;
+begin
+    for i := 0 to 2 do
+        scratch := "name-";
+        scratch[5] := U8('0' + i);
+        remember(i, scratch[0..6]);
+        scratch := "overwritten!";
+    end;
+    for i := 0 to 2 do
+        Out.str(entries[i].name); Out.char(' ');
+        Mem.free(Heap.heap, ^U8(ADR(entries[i].name[0])));
+    end;
+    Out.ln;
+end;
+
+end Keep.
+```
+
+## Binary formats
+
+A file format or a network protocol has a byte order of its own, not the machine's. `Str.le` and `Str.be` read an unsigned number of up to 8 bytes in a fixed order (little- or big-endian) and `Str.putLE` and `Str.putBE` write one. They work on any slice, so a header is read where it lies, with no struct to overlay and no byte swapping to forget.
+
+Here is a small record format: a 4-byte tag, a 2-byte big-endian length, a 4-byte little-endian checksum, then the data.
+
+```raz Frame run
+module Frame;
+import Out, Fmt, Str;
+
+const HeaderSize = 10;
+
+(* the sum of the bytes of data, all mod 2^32 *)
+proc checksum(data: []U8): U32;
+var i: INT; sum: U32;
+begin
+    for i := 0 to LEN(data) - 1 do sum := sum + U32(data[i]); end;
+    return sum;
+end;
+
+(* writes a frame to out, which must have room; its length *)
+proc pack(out: []U8; tag, data: []U8): INT;
+begin
+    COPY(out[0..4], tag);
+    Str.putBE(out[4..6], U64(LEN(data)));
+    Str.putLE(out[6..10], U64(checksum(data)));
+    COPY(out[HeaderSize..HeaderSize + LEN(data)], data);
+    return HeaderSize + LEN(data);
+end;
+
+proc main*;
+var buf: [64]U8; n, len: INT; sum: U32; i: INT;
+begin
+    n := pack(buf, "DATA", "hello");
+    for i := 0 to n - 1 do
+        Out.hex(U64(buf[i]), 2); Out.char(' ');
+    end;
+    Out.ln;
+    (* and back *)
+    len := INT(Str.be(buf[4..6]));
+    sum := U32(Str.le(buf[6..10]));
+    Fmt.print("tag {}, {} bytes, checksum {}, ", [Fmt.str(buf[0..4]), Fmt.int(len), Fmt.hex(U64(sum))]);
+    if sum = checksum(buf[HeaderSize..HeaderSize + len]) then
+        Out.str("valid: "); Out.str(buf[HeaderSize..HeaderSize + len]);
+    else
+        Out.str("corrupt");
+    end;
+    Out.ln;
+end;
+
+end Frame.
+```
+
+The output is the same on a little-endian and a big-endian machine, because the bytes are written one at a time in the order the format says.
+
+## Numbers and text
+
+`Str.toInt` reads a decimal number with an optional sign and nothing else, and says whether it was one. `Fmt` goes the other way. `Str.encode` and `Str.decode` move between characters and UTF-8, as the first tour showed.
+
+```raz Numbers run
+module Numbers;
+import Out, Str;
+
+(* the sum of the numbers in a comma separated list, or -1 if any isn't *)
+proc total(s: []U8): I64;
+var start, i: INT; sum, n: I64; ok: BOOL;
+begin
+    start := 0;
+    for i := 0 to LEN(s) do
+        if (i = LEN(s)) or (s[i] = ',') then
+            n, ok := Str.toInt(s[start..i]);
+            if not ok then return -1; end;
+            sum := sum + n;
+            start := i + 1;
+        end;
+    end;
+    return sum;
+end;
+
+proc main*;
+begin
+    Out.int(total("10,20,-5,+7")); Out.ln;
+    Out.int(total("10,x,20")); Out.ln;
+    Out.int(total("10,,20")); Out.ln;
+end;
+
+end Numbers.
+```

@@ -1,0 +1,107 @@
+title: Defer
+part: Go
+summary: Clean up beside the line that needs it, in the right order, on every way out.
+---
+```raz Defers run
+```
+
+`defer s;` runs `s` when the program leaves the statements the `defer` stands in: at their end, or by a `return` or a `break`. Deferred statements run the last first, and only those whose `defer` was reached. So a file is closed beside the line that opens it, however the procedure ends.
+
+## The order, and a `return` value
+
+A `return e;` evaluates `e` before the deferred statements run, so the value is what it was at the return.
+
+```raz Order run
+module Order;
+import Out;
+
+var counter: INT;
+
+proc next(): INT;
+begin
+    defer INC(counter);
+    return counter;          (* the old value is returned; then counter grows *)
+end;
+
+proc nest;
+begin
+    defer Out.str("1 ");
+    defer Out.str("2 ");
+    defer Out.str("3 ");
+    Out.str("body: ");
+end;
+
+proc main*;
+var a, b: INT;
+begin
+    a := next();
+    b := next();
+    Out.int(a); Out.char(' '); Out.int(b); Out.char(' '); Out.int(counter); Out.ln;
+    nest;
+    Out.ln;
+end;
+
+end Order.
+```
+
+## In a loop
+
+A `defer` stands in the statement list that holds it, so in a loop body it runs at the end of each pass, and on a `break`.
+
+```raz Passes run
+module Passes;
+import Out;
+
+proc main*;
+var i: INT;
+begin
+    for i := 1 to 4 do
+        Out.str("pass "); Out.int(i);
+        defer Out.str(" done\n");
+        if i = 3 then break; end;
+        Out.str(" ...");
+    end;
+end;
+
+end Passes.
+```
+
+## Giving back what was taken
+
+The point is that acquiring and releasing sit next to each other, so a new early `return` added later can't leak. Here an arena and a buffer are both released on every path.
+
+```raz Report run
+module Report;
+import Out, Buf, Heap;
+
+(* a line, built in a buffer; false (nothing written) if n is negative *)
+proc line(n: INT): BOOL;
+var b: Buf.Buf;
+begin
+    if n < 0 then return false; end;
+    Buf.init(ADR(b), Heap.heap);
+    defer Buf.done(ADR(b));            (* freed on every way out below *)
+    Buf.str(ADR(b), "n is ");
+    if n > 9 then
+        Buf.str(ADR(b), "large");
+        Out.str(Buf.bytes(ADR(b))); Out.ln;
+        return true;
+    end;
+    Buf.str(ADR(b), "small");
+    Out.str(Buf.bytes(ADR(b))); Out.ln;
+    return true;
+end;
+
+proc main*;
+begin
+    _ := line(3);
+    _ := line(30);
+    if not line(-1) then Out.str("rejected\n"); end;
+end;
+
+end Report.
+```
+
+## What defer does not do
+
+A deferred statement can't contain a `return`, `break` or `defer` that would leave it. A failed check, `Rt.exit` and `Sys.exit` end the program without running the deferred statements still pending, so deferred cleanup is for the program's resources, not for what must happen at exit; that is what `Rt.atExit` is for.

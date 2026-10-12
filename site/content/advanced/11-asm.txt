@@ -1,0 +1,203 @@
+title: Procedures in assembly
+part: The machine
+summary: code procedures: the convention, registers, labels, db for what the assembler doesn't know.
+---
+Sometimes a program needs an instruction the language has no word for: reading the cycle counter, asking the CPU what it is, counting bits in one instruction, a square root in the hardware. A procedure whose body is `code` is machine code, written by hand in the target's assembly language, one instruction to each `;`, up to `end`.
+
+The compiler doesn't look past what the instructions say. It trusts you, and you owe it a few rules.
+
+## A first one
+
+This reads the processor's time stamp counter. The result of a procedure goes in `rax`; `rdtsc` leaves the counter in `edx:eax`, so the two halves are joined first.
+
+```raz Cycles run
+module Cycles;
+import Out;
+
+proc rdtsc*: U64;
+code
+    rdtsc;
+    shl rdx, 32;
+    or rax, rdx;
+    ret;
+end rdtsc;
+
+proc main*;
+var a, b: U64;
+begin
+    a := rdtsc();
+    b := rdtsc();
+    if b > a then Out.str("the counter moves forward\n"); end;
+end;
+
+end Cycles.
+```
+
+A code procedure is called like any procedure. Everything in it is yours, `ret` included.
+
+## The convention
+
+A code procedure follows the System V convention, as every raz procedure does:
+
+- Integer and pointer arguments arrive in `rdi`, `rsi`, `rdx`, `rcx`, `r8` and `r9`; `F32` and `F64` ones in `xmm0` to `xmm7`.
+- The result goes in `rax` (and `rdx` for a second) or `xmm0`.
+- It must keep `rbx`, `rbp`, `rsp` and `r12` to `r15` as it found them. `rax`, `rcx`, `rdx`, `rsi`, `rdi` and `r8` to `r11` are free to change.
+- Its parameters and results are therefore of the types C can take, at most six integer and eight real parameters and two results.
+
+That is why the next one is so short: the argument is already in `rdi`.
+
+```raz Bits run
+module Bits;
+import Out;
+
+(* the bytes of x in the opposite order: bswap rax, which the assembler
+   doesn't know, written as its bytes *)
+proc swap64(x: U64): U64;
+code
+    mov rax, rdi;
+    db 48H, 0FH, 0C8H;
+    ret;
+end swap64;
+
+(* the number of bits set in x: popcnt rax, rdi *)
+proc ones(x: U64): INT;
+code
+    db 0F3H, 48H, 0FH, 0B8H, 0C7H;
+    ret;
+end ones;
+
+proc main*;
+begin
+    Out.str("0x"); Out.hex(swap64(0102030405060708H), 16); Out.ln;
+    Out.int(ones(0FFH)); Out.char(' ');
+    Out.int(ones(0)); Out.char(' ');
+    Out.int(ones(0FFFFFFFFFFFFFFFFH)); Out.ln;
+end;
+
+end Bits.
+```
+
+`db` writes any bytes, for an instruction the assembler doesn't know. Which instructions it knows is the implementation's business; `db` keeps you from waiting for it to learn one. (The two instructions above are from the processor manuals: `bswap r64` is `REX.W 0F C8+r`, `popcnt r64, r/m64` is `F3 REX.W 0F B8 /r`.)
+
+## Labels and loops
+
+A label, `name:`, names the place of the instruction after it, within the procedure. Jumps go to labels, and a constant of the module may stand wherever a number does. This sums an array of `INT`s, which a pointer and a length describe:
+
+```raz Sum run
+module Sum;
+import Out;
+
+(* the sum of the n INTs at p *)
+proc sum(p: ^INT; n: INT): INT;
+code
+    xor eax, eax;
+    test rsi, rsi;
+    jle done;
+again:
+    add rax, [rdi];
+    add rdi, 8;
+    dec rsi;
+    jnz again;
+done:
+    ret;
+end sum;
+
+(* the same in raz, to check it against *)
+proc sumRaz(a: []INT): INT;
+var i, t: INT;
+begin
+    for i := 0 to LEN(a) - 1 do t := t + a[i]; end;
+    return t;
+end;
+
+proc main*;
+var a: [6]INT; i: INT;
+begin
+    for i := 0 to 5 do a[i] := (i + 1) * 100; end;
+    Out.int(sum(ADR(a[0]), 6)); Out.char(' ');
+    Out.int(sumRaz(a)); Out.char(' ');
+    Out.int(sum(ADR(a[0]), 0)); Out.ln;
+end;
+
+end Sum.
+```
+
+A procedure may have up to 64 labels. The check against the raz version is the habit worth keeping: write the procedure in raz first, then in assembly, and compare their results on awkward inputs.
+
+## Two results, and reals
+
+A second result goes in `rdx`. That is exactly where `idiv` leaves the remainder, so `divmod` is four instructions. Reals travel in the `xmm` registers.
+
+```raz Divmod run
+module Divmod;
+import Out, Fmt;
+
+(* quotient and remainder, as idiv gives them: rax and rdx *)
+proc divmod(a, b: INT): (INT, INT);
+code
+    mov rax, rdi;
+    cqo;
+    idiv rsi;
+    ret;
+end divmod;
+
+(* a * x + b, on F64s in xmm0 to xmm2 *)
+proc fma(a, x, b: F64): F64;
+code
+    mulsd xmm0, xmm1;
+    addsd xmm0, xmm2;
+    ret;
+end fma;
+
+proc main*;
+var q, r: INT;
+begin
+    q, r := divmod(-17, 5);
+    Out.int(q); Out.char(' '); Out.int(r); Out.ln;
+    Fmt.print("{}\n", [Fmt.real(fma(2.0, 3.5, 0.25), 2)]);
+end;
+
+end Divmod.
+```
+
+`idiv` by zero stops the program with the machine's own division fault. It isn't a check the compiler added, since the compiler doesn't look inside a code procedure.
+
+## Keeping what isn't yours
+
+A procedure that uses `rbx` must put it back. `cpuid` clobbers `rbx`, so the vendor-string example saves it with `push` and restores it with `pop`, and keeps the buffer's address in `r8` while it works:
+
+```raz Vendor run
+module Vendor;
+import Out;
+
+(* the 12 bytes of the processor vendor, in buf (rdi) *)
+proc vendor(buf: ^U8);
+code
+    push rbx;
+    mov r8, rdi;
+    xor eax, eax;
+    cpuid;
+    mov [r8], ebx;
+    mov [r8 + 4], edx;
+    mov [r8 + 8], ecx;
+    pop rbx;
+    ret;
+end vendor;
+
+proc main*;
+var buf: [12]U8; i: INT; ok: BOOL;
+begin
+    vendor(ADR(buf[0]));
+    ok := true;
+    for i := 0 to 11 do
+        if (buf[i] < ' ') or (buf[i] > '~') then ok := false; end;
+    end;
+    if ok then Out.str("the vendor is 12 printable bytes\n"); end;
+end;
+
+end Vendor.
+```
+
+## What goes wrong
+
+A code procedure that breaks its rules breaks the program, and what follows isn't defined. Writing through a wrong pointer, a changed `rbx`, a missing `ret`, a stack left unbalanced: the language can't help, because it doesn't see inside. Keep them short, give each a comment that says what it expects in which register, test each against a raz twin, and use them for what only the machine can do.

@@ -1,0 +1,140 @@
+title: Errors
+part: Go
+summary: A second result, compared by identity; passing errors up; and no exceptions.
+---
+```raz Errors run
+```
+
+A procedure that can fail returns an `ERROR` beside its result, and `nil` when it didn't. Each `ERROR` constant is an error of its own, compared with `=` by which declaration made it, never by its message; `MSG(err)` is the message. An exported one, as `Empty` is here, lets the callers tell it from the others. raz has no exceptions, so every failure is visible in the signature and handled where the call is written.
+
+## Handling them by kind
+
+Because an error is compared by identity, a caller can handle the cases it knows and pass on the rest.
+
+```raz Parse run
+module Parse;
+import Out, Str;
+
+const
+    Empty*: ERROR = "nothing to read";
+    Bad*: ERROR = "not a number";
+    Range*: ERROR = "out of range";
+
+(* a percentage, 0 to 100 *)
+proc percent(s: []U8): (INT, ERROR);
+var n: I64; ok: BOOL;
+begin
+    if LEN(s) = 0 then return 0, Empty; end;
+    n, ok := Str.toInt(s);
+    if not ok then return 0, Bad; end;
+    if (n < 0) or (n > 100) then return 0, Range; end;
+    return INT(n), nil;
+end;
+
+proc main*;
+var inputs: [4][]U8; i, n: INT; err: ERROR;
+begin
+    inputs := ["42", "", "forty", "140"];
+    for i := 0 to 3 do
+        n, err := percent(inputs[i]);
+        if err = nil then
+            Out.int(n); Out.str("%");
+        elsif err = Empty then
+            Out.str("(skipped)");
+        else
+            Out.str("error: "); Out.str(MSG(err));
+        end;
+        Out.ln;
+    end;
+end;
+
+end Parse.
+```
+
+## Passing errors up
+
+When a procedure can't do anything useful with an error, it returns it, so the first caller that can decide gets it. There is no hidden unwinding: the `return` is right there.
+
+```raz Layers run
+module Layers;
+import Out, Str;
+
+const Missing*: ERROR = "key missing";
+
+(* the number after "n=" in a line like "n=17" *)
+proc value(line: []U8): (INT, ERROR);
+var n: I64; ok: BOOL;
+begin
+    if not Str.hasPrefix(line, "n=") then return 0, Missing; end;
+    n, ok := Str.toInt(line[2..LEN(line)]);
+    if not ok then return 0, Missing; end;
+    return INT(n), nil;
+end;
+
+(* the sum of the values of two lines *)
+proc sum(a, b: []U8): (INT, ERROR);
+var x, y: INT; err: ERROR;
+begin
+    x, err := value(a);
+    if err # nil then return 0, err; end;      (* passed up *)
+    y, err := value(b);
+    if err # nil then return 0, err; end;
+    return x + y, nil;
+end;
+
+proc main*;
+var n: INT; err: ERROR;
+begin
+    n, err := sum("n=40", "n=2");
+    if err = nil then Out.int(n); Out.ln; end;
+    n, err := sum("n=40", "x=2");
+    if err # nil then Out.str("sum failed: "); Out.str(MSG(err)); Out.ln; end;
+end;
+
+end Layers.
+```
+
+## When the library reports errors
+
+Library procedures that can fail say so in the same way: `Thread.spawn` returns an `ERROR`; `Sys` calls return a negative `errno` as an `INT`, with `0` or a positive count for success; `Files.read` returns a `BOOL`. The first is the language's way; the others are the system's, left as they are.
+
+```raz Probe run
+module Probe;
+import Out, Sys;
+
+proc main*;
+var fd: INT;
+begin
+    fd := Sys.openRead("/no/such/file");
+    if fd < 0 then
+        Out.str("open failed, errno "); Out.int(-fd); Out.ln;     (* 2: ENOENT *)
+    end;
+    fd := Sys.openRead("/dev/null");
+    if fd >= 0 then
+        Out.str("open worked\n");
+        Sys.close(fd);
+    end;
+end;
+
+end Probe.
+```
+
+## When there is nothing to do but stop
+
+A program that has found a state it can't carry on from, such as a broken invariant, says so and ends with `Rt.stop`: the message goes to standard error and the status is 2, the same as a failed check.
+
+```raz Giveup
+module Giveup;
+import Rt;
+
+proc main*;
+begin
+    Rt.stop("the table is corrupt");
+end;
+
+end Giveup.
+```
+
+```sh
+$ raz run Giveup.raz; echo "status $?"
+```

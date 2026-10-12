@@ -1,0 +1,161 @@
+title: Procedures and several results
+part: Raz
+summary: Value and var parameters, several results, forward, and procedures as values.
+---
+```raz Procs run
+```
+
+A parameter is a copy, unless it is `var`, when it is the caller's variable itself. A procedure may return several results, which a multiple assignment takes apart; the blank, `_`, drops one.
+
+## Value and `var` parameters
+
+A value parameter is the procedure's own: it may change it, and the caller's variable stays as it was. A `var` parameter is the caller's variable, and its argument must be a variable of exactly that type.
+
+```raz Params run
+module Params;
+import Out;
+
+proc bump(n: INT);            (* changes its own copy *)
+begin
+    n := n + 1;
+end;
+
+proc bumpIn(var n: INT);      (* changes the caller's *)
+begin
+    n := n + 1;
+end;
+
+proc fill(var a: [4]INT; v: INT);   (* an array is copied unless var *)
+var i: INT;
+begin
+    for i := 0 to 3 do a[i] := v; end;
+end;
+
+proc main*;
+var x: INT; a: [4]INT;
+begin
+    x := 10;
+    bump(x);
+    Out.int(x); Out.ln;       (* 10 *)
+    bumpIn(x);
+    Out.int(x); Out.ln;       (* 11 *)
+    fill(a, 7);
+    Out.int(a[0] + a[3]); Out.ln;   (* 14 *)
+end;
+
+end Params.
+```
+
+## Several results
+
+Instead of an output parameter, a procedure says what it returns: `(INT, INT)`, or any list of types. The caller takes them apart with a multiple assignment. A call that returns several values may stand on the right of one, alone as a statement, or alone after `return`, which passes them on as they are.
+
+```raz Several run
+module Several;
+import Out;
+
+proc divmod(a, b: INT): (INT, INT);
+begin
+    return a div b, a mod b;
+end;
+
+proc minmax(a, b: INT): (INT, INT);
+begin
+    if a < b then return a, b; end;
+    return b, a;
+end;
+
+proc spread(a, b: INT): (INT, INT);
+begin
+    return minmax(a, b);        (* passes both results on *)
+end;
+
+proc main*;
+var q, r, lo, hi: INT;
+begin
+    q, r := divmod(100, 7);
+    Out.int(q); Out.str(" rest "); Out.int(r); Out.ln;
+    lo, hi := spread(9, 4);
+    Out.int(lo); Out.str(" .. "); Out.int(hi); Out.ln;
+    _, r := divmod(-7, 2);      (* drop the quotient *)
+    Out.int(r); Out.ln;
+end;
+
+end Several.
+```
+
+## Recursion, and `forward`
+
+A name is declared before it is used, and procedures don't nest. When two procedures need each other, `forward` declares the first so that its body can come later.
+
+```raz Recur run
+module Recur;
+import Out;
+
+proc gcd(a, b: INT): INT;
+begin
+    if b = 0 then return a; end;
+    return gcd(b, a mod b);
+end;
+
+proc isOdd(n: INT): BOOL; forward;
+
+proc isEven(n: INT): BOOL;
+begin
+    if n = 0 then return true; end;
+    return isOdd(n - 1);
+end;
+
+proc isOdd(n: INT): BOOL;
+begin
+    if n = 0 then return false; end;
+    return isEven(n - 1);
+end;
+
+proc main*;
+begin
+    Out.int(gcd(84, 36)); Out.ln;
+    if isEven(10) and isOdd(7) then Out.str("parity works\n"); end;
+end;
+
+end Recur.
+```
+
+## Procedures are values
+
+A procedure used without parentheses is a procedure value, of a procedure type such as `proc(a, b: INT): INT`. It can be passed, stored in a variable or a record, and called. This is raz's only dynamic dispatch, and it is as plain as it looks.
+
+```raz Table run
+module Table;
+import Out;
+
+type Op = proc(a, b: INT): INT;
+
+proc add(a, b: INT): INT; begin return a + b; end;
+proc sub(a, b: INT): INT; begin return a - b; end;
+proc mul(a, b: INT): INT; begin return a * b; end;
+
+proc apply(f: Op; a, b: INT): INT;
+begin
+    return f(a, b);
+end;
+
+proc main*;
+var ops: [3]Op; names: [3][]U8; i: INT;
+begin
+    ops := [add, sub, mul];
+    names := ["add", "sub", "mul"];
+    for i := 0 to 2 do
+        Out.str(names[i]); Out.str(": ");
+        Out.int(apply(ops[i], 12, 5)); Out.ln;
+    end;
+end;
+
+end Table.
+```
+
+A procedure without parameters leaves out the parentheses where it is called, as `Out.ln` does. That means `f` alone is the procedure and `f()` would not be a call, so be careful when passing one around.
+
+## Dropped results
+
+A call that drops a result, as `Sys.write(fd, s);` does, is warned of; `_ := Sys.write(fd, s);` says it is meant. The compiler also warns of a variable that is assigned and never read, and of a name declared and never used, unless it starts with `_`.

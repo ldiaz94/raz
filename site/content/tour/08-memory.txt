@@ -1,0 +1,119 @@
+title: Memory and allocators
+part: Set
+summary: No garbage collector; you choose where memory comes from, and what happens when it runs out.
+---
+```raz Stack run
+```
+
+raz has no garbage collector, and no allocator of its own: memory comes from an allocator, a `Mem.Allocator`, which the program chooses and passes. `NEW(n, a)` sets `n` to a fresh, zeroed `Node` from `a`, or to `nil` if `a` has no room. `Heap.heap` is the general one, which `Mem.free` gives memory back to. An `Arena` hands out memory from one block and frees it all at once, as the last lines above do.
+
+## Why an allocator is a parameter
+
+A procedure that allocates takes the allocator it uses, so its caller decides where the memory comes from and when it goes: the heap for something that lives long, an arena for everything one request needs. Nothing in the library allocates behind your back.
+
+```raz Pool run
+module Pool;
+import Out, Mem, Arena;
+
+type Item = record id: INT; next: ^Item; end;
+
+(* n items, linked; or nil if the allocator ran dry (what came is lost with it) *)
+proc make(n: INT; a: ^Mem.Allocator): ^Item;
+var head, it: ^Item; i: INT;
+begin
+    head := nil;
+    for i := 1 to n do
+        NEW(it, a);
+        if it = nil then return nil; end;
+        it^.id := i;
+        it^.next := head;
+        head := it;
+    end;
+    return head;
+end;
+
+proc count(it: ^Item): INT;
+var n: INT;
+begin
+    n := 0;
+    while it # nil do INC(n); it := it^.next; end;
+    return n;
+end;
+
+proc main*;
+var ar: Arena.Arena; small: Arena.Arena; list: ^Item;
+begin
+    if not Arena.init(ADR(ar), 1000000) then return; end;
+    list := make(1000, ADR(ar.base));
+    Out.int(count(list)); Out.str(" items from a big arena\n");
+    Arena.reset(ADR(ar));              (* every allocation forgotten *)
+    list := make(10, ADR(ar.base));
+    Out.int(count(list)); Out.str(" after a reset\n");
+    Arena.done(ADR(ar));
+
+    if not Arena.init(ADR(small), 4096) then return; end;
+    list := make(1000, ADR(small.base));
+    if list = nil then Out.str("a small arena ran out, and said so\n"); end;
+    Arena.done(ADR(small));
+end;
+
+end Pool.
+```
+
+The run-out case is an ordinary `nil` to test, not an exception that unwinds past your code.
+
+## The heap
+
+`Heap.heap` serves any size and takes memory back with `Mem.free`. Freeing a block twice, or one that was never given out, stops the program with a message instead of corrupting the heap. It is safe to call from several threads.
+
+```raz Free run
+module Free;
+import Out, Mem, Heap;
+
+type Cell = record val: INT; end;
+
+proc main*;
+var a, b: ^Cell; i, total: INT;
+begin
+    for i := 1 to 5 do
+        NEW(a, Heap.heap);
+        a^.val := i * i;
+        total := total + a^.val;
+        Mem.free(Heap.heap, ^U8(a));     (* freed at once: its block is reused *)
+    end;
+    NEW(b, Heap.heap);
+    Out.int(total); Out.char(' '); Out.int(b^.val); Out.ln;   (* a new block is zeroed *)
+    Mem.free(Heap.heap, ^U8(b));
+end;
+
+end Free.
+```
+
+## Buffers that grow
+
+`Buf` is a growable byte buffer; like everything else it takes the allocator it grows from. It is what the program uses to build a string of unknown length.
+
+```raz Build run
+module Build;
+import Out, Buf, Heap;
+
+proc main*;
+var b: Buf.Buf; i: INT;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    defer Buf.done(ADR(b));
+    for i := 1 to 5 do
+        Buf.str(ADR(b), "item ");
+        Buf.add(ADR(b), U8('0' + i));
+        Buf.add(ADR(b), ',');
+    end;
+    Out.str(Buf.bytes(ADR(b))); Out.ln;
+    Out.int(b.len); Out.str(" bytes\n");
+end;
+
+end Build.
+```
+
+## Pages
+
+Under the allocators are pages from the system: `Mem.pages(size)` gives zeroed memory in whole pages, or `nil`, and `Mem.unmap` gives it back. Most programs never need to call it directly.

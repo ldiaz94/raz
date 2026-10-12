@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Output and formatting - Beyond Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Beyond Go</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html" aria-current="page">Output and formatting</a></li>
+<li><a href="bytes.html">Strings and bytes</a></li>
+<li><a href="collections.html">Lists, maps and sorting</a></li>
+<li><a href="files.html">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html">System calls</a></li>
+<li><a href="listing.html">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">The library &middot; lesson 1 of 18</p><h1>Output and formatting</h1>
+<p>The first tour used <code>Out</code> for everything it printed. Two modules do the work: <code>Out</code>, which owns standard output and its buffer, and <code>Fmt</code>, which turns values into text.</p>
+<h2>What <code>Out</code> does with its buffer</h2>
+<p><code>Out</code> keeps a buffer of 4 KB. It writes it out when it is full, at each line feed when standard output is a terminal, at <code>Out.flush</code>, and when the program ends by <code>Rt.exit</code> (which a normal end and a failed check both are). A lock keeps what each call writes together when threads write at once.</p>
+<p>You can see the effect with <code>strace</code>, which lists the system calls a program makes. A program that prints three lines to a file makes one <code>write</code>:</p>
+<div class="file"><span>Three.raz</span></div><pre class="code"><code><span class="kw">module</span> Three;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;one\n&quot;</span>);
+    Out.str(<span class="string">&quot;two\n&quot;</span>);
+    Out.str(<span class="string">&quot;three\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Three.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Three.raz</span>
+<span class="cmd">$ strace -e trace=write ./Three &gt; /dev/null</span>
+write(1, &quot;one\ntwo\nthree\n&quot;, 14)       = 14
++++ exited with 0 +++</code></pre>
+<p>Three lines, one system call. That is why <code>Out</code> is cheap, and why a program that mixes it with C's <code>printf</code>, which keeps a buffer of its own, must flush one before the other.</p>
+<h2><code>Fmt.print</code></h2>
+<p><code>Fmt.print(format, args)</code> writes to standard output. Each <code>{}</code> in the format takes the next argument, and <code>{{</code> and <code>}}</code> stand for the braces. The arguments are a slice of <code>Fmt.Arg</code>, a variant, so each is built with the constructor for its kind: <code>int</code>, <code>uint</code>, <code>hex</code>, <code>str</code>, <code>char</code>, <code>bool</code> and <code>real</code>, which takes the number of digits after the point.</p>
+<div class="file"><span>Kinds.raz</span></div><pre class="code"><code><span class="kw">module</span> Kinds;
+<span class="kw">import</span> Fmt;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> big: <span class="ty">U64</span>; small: <span class="ty">I8</span>;
+<span class="kw">begin</span>
+    big := <span class="number">0FFFFFFFFFFFFFFFFH</span>;
+    small := -<span class="number">5</span>;
+    Fmt.print(<span class="string">&quot;int {}, uint {}, hex {}\n&quot;</span>,
+        [Fmt.int(-<span class="number">42</span>), Fmt.uint(big), Fmt.hex(<span class="number">255</span>)]);
+    Fmt.print(<span class="string">&quot;str {}, char {}, bool {}\n&quot;</span>,
+        [Fmt.str(<span class="string">&quot;hi&quot;</span>), Fmt.char(<span class="string">&#x27;x&#x27;</span>), Fmt.bool(<span class="number">1</span> &lt; <span class="number">2</span>)]);
+    Fmt.print(<span class="string">&quot;real {} and {} and {}\n&quot;</span>,
+        [Fmt.real(<span class="number">3.14159</span>, <span class="number">2</span>), Fmt.real(<span class="number">2.5</span>, <span class="number">0</span>), Fmt.real(<span class="number">1.0</span> / <span class="number">3.0</span>, <span class="number">9</span>)]);
+    Fmt.print(<span class="string">&quot;an I8: {}; braces: {{ and }}\n&quot;</span>, [Fmt.int(<span class="ty">I64</span>(small))]);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Kinds.</code></pre>
+<pre class="output"><code>int -42, uint 18446744073709551615, hex FF
+str hi, char x, bool true
+real 3.14 and 3 and 0.333333333
+an I8: -5; braces: { and }
+</code></pre>
+<p>An argument whose type is wrong doesn't compile: there is no <code>%d</code> that disagrees with its argument. A <code>{}</code> with no argument left prints nothing, and arguments left over are not printed, so a mismatch shows up as missing text, never as a crash or as memory read by mistake.</p>
+<h2>Into a buffer</h2>
+<p><code>Fmt.write(b, format, args)</code> does the same into a <code>Buf</code> instead of standard output. That is how a message is built to send somewhere else: a file, a socket, a window, a string kept for later.</p>
+<div class="file"><span>Message.raz</span></div><pre class="code"><code><span class="kw">module</span> Message;
+<span class="kw">import</span> Out, Buf, Fmt, Heap;
+
+<span class="comment">(* &quot;name (age n)&quot;, built in a Buf the caller owns *)</span>
+<span class="kw">proc</span> describe(b: ^Buf.Buf; name: []<span class="ty">U8</span>; age: <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    Fmt.write(b, <span class="string">&quot;{} (age {})&quot;</span>, [Fmt.str(name), Fmt.int(age)]);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> b: Buf.Buf;
+<span class="kw">begin</span>
+    Buf.init(<span class="ty">ADR</span>(b), Heap.heap);
+    <span class="kw">defer</span> Buf.done(<span class="ty">ADR</span>(b));
+    describe(<span class="ty">ADR</span>(b), <span class="string">&quot;Ada&quot;</span>, <span class="number">36</span>);
+    Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;; &quot;</span>);
+    describe(<span class="ty">ADR</span>(b), <span class="string">&quot;Grace&quot;</span>, <span class="number">45</span>);
+    Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
+    Out.int(b.len); Out.str(<span class="string">&quot; bytes\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Message.</code></pre>
+<pre class="output"><code>Ada (age 36); Grace (age 45)
+28 bytes
+</code></pre>
+<h2>Columns</h2>
+<p><code>Fmt</code> writes values as they are, with no widths. A program that wants columns pads in one small procedure and uses it everywhere, which is easier to read than a format language.</p>
+<div class="file"><span>Table.raz</span></div><pre class="code"><code><span class="kw">module</span> Table;
+<span class="kw">import</span> Out;
+
+<span class="comment">(* s, then spaces up to width *)</span>
+<span class="kw">proc</span> left(s: []<span class="ty">U8</span>; width: <span class="ty">INT</span>);
+<span class="kw">var</span> i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Out.str(s);
+    <span class="kw">for</span> i := <span class="ty">LEN</span>(s) <span class="kw">to</span> width - <span class="number">1</span> <span class="kw">do</span> Out.char(<span class="string">&#x27; &#x27;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="comment">(* n, right aligned in width *)</span>
+<span class="kw">proc</span> right(n: <span class="ty">INT</span>; width: <span class="ty">INT</span>);
+<span class="kw">var</span> digits: <span class="ty">INT</span>; v: <span class="ty">INT</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    digits := <span class="number">1</span>;
+    v := n;
+    <span class="kw">if</span> v &lt; <span class="number">0</span> <span class="kw">then</span> <span class="ty">INC</span>(digits); v := -v; <span class="kw">end</span>;
+    <span class="kw">while</span> v &gt;= <span class="number">10</span> <span class="kw">do</span> <span class="ty">INC</span>(digits); v := v <span class="kw">div</span> <span class="number">10</span>; <span class="kw">end</span>;
+    <span class="kw">for</span> i := digits <span class="kw">to</span> width - <span class="number">1</span> <span class="kw">do</span> Out.char(<span class="string">&#x27; &#x27;</span>); <span class="kw">end</span>;
+    Out.int(n);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> row(name: []<span class="ty">U8</span>; qty, price: <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    left(name, <span class="number">10</span>);
+    right(qty, <span class="number">5</span>);
+    right(price, <span class="number">8</span>);
+    right(qty * price, <span class="number">9</span>);
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;item        qty   price    total\n&quot;</span>);
+    row(<span class="string">&quot;bolts&quot;</span>, <span class="number">120</span>, <span class="number">3</span>);
+    row(<span class="string">&quot;washers&quot;</span>, <span class="number">1000</span>, <span class="number">1</span>);
+    row(<span class="string">&quot;gears&quot;</span>, <span class="number">8</span>, <span class="number">250</span>);
+    row(<span class="string">&quot;shims&quot;</span>, <span class="number">12</span>, -<span class="number">4</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Table.</code></pre>
+<pre class="output"><code>item        qty   price    total
+bolts       120       3      360
+washers    1000       1     1000
+gears         8     250     2000
+shims        12      -4      -48
+</code></pre>
+<h2>Writing numbers in other bases</h2>
+<p><code>Out.hex(n, digits)</code> writes <code>n</code> in hexadecimal, padded with zeros to <code>digits</code>. A binary dump is a <code>for</code> loop over a slice, one <code>Out.hex(U64(b), 2)</code> to a byte.</p>
+<div class="file"><span>Dump.raz</span></div><pre class="code"><code><span class="kw">module</span> Dump;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> dump(data: []<span class="ty">U8</span>);
+<span class="kw">var</span> i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(data) - <span class="number">1</span> <span class="kw">do</span>
+        <span class="kw">if</span> i &gt; <span class="number">0</span> <span class="kw">then</span> Out.char(<span class="string">&#x27; &#x27;</span>); <span class="kw">end</span>;
+        Out.hex(<span class="ty">U64</span>(data[i]), <span class="number">2</span>);
+    <span class="kw">end</span>;
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    dump(<span class="string">&quot;raz\n&quot;</span>);
+    dump(<span class="string">&quot;\u{3BB}&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Dump.</code></pre>
+<pre class="output"><code>72 61 7A 0A
+CE BB
+</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="index.html">Contents</a><a class="next" href="bytes.html">Strings and bytes &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

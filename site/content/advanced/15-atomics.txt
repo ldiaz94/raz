@@ -1,0 +1,168 @@
+title: Atomics
+part: Shared memory
+summary: XADD, XCHG and CAS; a compare-and-swap loop; a lock built from them.
+---
+A volatile access is one access. An atomic is one *indivisible* step: nothing can happen between its read and its write, so two threads using it can't lose each other's work. There are three, built into the language as procedures, and they are sequentially consistent on every target:
+
+| Call | Does |
+|---|---|
+| `XADD(p, x)` | adds `x` to `p^` and returns the value before |
+| `XCHG(p, x)` | sets `p^ := x` and returns the value before |
+| `CAS(p, old, new)` | if `p^ = old`, sets `p^ := new` and returns `true`; otherwise `false` |
+
+`p` is a `^T` or `^VOLATILE T` where `T` is `INT`, `UINT` or a pointer type (`INT` or `UINT` for `XADD`). They compile to single x86-64 instructions: `lock xadd`, `xchg` (which is always locked when it touches memory) and `lock cmpxchg`:
+
+```raz Ops
+module Ops;
+
+var counter: INT;
+
+proc main*;
+begin
+    _ := XADD(ADR(counter), 5);
+    _ := XCHG(ADR(counter), 100);
+    _ := CAS(ADR(counter), 100, 7);
+end;
+
+end Ops.
+```
+
+```sh
+$ raz -S Ops.raz | grep -i "lock\|xchg"
+```
+
+## What each one gives you
+
+`XADD` is a counter, or a ticket dispenser: every caller gets a different number. `XCHG` takes the old value and leaves a new one, which is a flag, a swap, or the release of a lock. `CAS` is the general one: "if nobody changed it since I looked, change it". Most lock-free code is a loop around it.
+
+```raz Tickets run
+module Tickets;
+import Out, Thread;
+
+var
+    next: INT;                  (* the next ticket to give out *)
+    seen: [4000]U8;             (* which tickets were taken, one byte each *)
+
+proc work(_arg: ^U8);
+var i, t: INT;
+begin
+    for i := 1 to 1000 do
+        t := XADD(ADR(next), 1);      (* a ticket no other thread gets *)
+        seen[t] := 1;
+    end;
+end;
+
+proc main*;
+var th: [4]^Thread.Thread; i, taken: INT; err: ERROR;
+begin
+    for i := 0 to 3 do
+        th[i], err := Thread.spawn(work, nil);
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to 3 do Thread.join(th[i]); end;
+    for i := 0 to 3999 do taken := taken + INT(seen[i]); end;
+    Out.int(next); Out.char(' '); Out.int(taken); Out.ln;
+end;
+
+end Tickets.
+```
+
+Four thousand tickets, four thousand different numbers, no two threads with the same one. Each thread writes into its own bytes of `seen`, so no plain write is shared.
+
+## A compare-and-swap loop
+
+Anything that can be computed from the old value can be made atomic with a loop around `CAS`: read the value, compute the new one, and try to swap it in; if someone got there first, read again. Here is an atomic maximum, which no single instruction does.
+
+```raz Peak run
+module Peak;
+import Out, Thread;
+
+var peak: INT;
+
+(* raises peak to v if v is bigger, however many threads call it *)
+proc raise(v: INT);
+var seen: INT;
+begin
+    seen := peak;
+    while seen < v do
+        if CAS(ADR(peak), seen, v) then return; end;
+        seen := peak;                  (* someone changed it: look again *)
+    end;
+end;
+
+proc work(arg: ^U8);
+var i, base: INT;
+begin
+    base := INT(arg);
+    for i := 0 to 999 do raise(base + i * 7 mod 1001); end;
+end;
+
+proc main*;
+var th: [4]^Thread.Thread; i: INT; err: ERROR;
+begin
+    for i := 0 to 3 do
+        th[i], err := Thread.spawn(work, ^U8(i * 1000));
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to 3 do Thread.join(th[i]); end;
+    Out.int(peak); Out.ln;
+end;
+
+end Peak.
+```
+
+The result doesn't depend on how the threads interleave: it is the largest value any of them offered. That is the test of a correct atomic algorithm, and why this kind of code is written once, carefully, and used everywhere.
+
+## A lock, from first principles
+
+A lock is a word that is 0 when free and 1 when held. To take it, `CAS` it from 0 to 1; if that fails, someone holds it, so try again. To give it up, `XCHG` it back to 0. This is exactly the library's `Lock`, printed from `lib/Lock.raz`:
+
+```sh
+$ sed -n '/^type Lock/,/^proc main/p' $RAZLIB/Lock.raz | head -n -2
+```
+
+And here is a use of it: a structure with two fields that must stay in step, which no single atomic can protect.
+
+```raz Account run
+module Account;
+import Out, Lock, Thread;
+
+var
+    lock: Lock.Lock;
+    deposits, balance: INT;      (* balance = 3 * deposits, always, under lock *)
+
+proc work(_arg: ^U8);
+var i: INT;
+begin
+    for i := 1 to 20000 do
+        Lock.take(ADR(lock));
+        INC(deposits);
+        INC(balance, 3);
+        Lock.give(ADR(lock));
+    end;
+end;
+
+proc main*;
+var th: [4]^Thread.Thread; i: INT; err: ERROR;
+begin
+    for i := 0 to 3 do
+        th[i], err := Thread.spawn(work, nil);
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to 3 do Thread.join(th[i]); end;
+    Out.int(deposits); Out.char(' '); Out.int(balance); Out.ln;
+    if balance = 3 * deposits then Out.str("in step\n"); end;
+end;
+
+end Account.
+```
+
+A `Lock` spins, giving up the processor now and then, so it is for sections of a few instructions. `Thread.Mutex` sleeps on a futex, so it is for longer ones. A spinning lock held for a long time, or by a thread that was descheduled, burns processors; that is the price of its speed when contention is short.
+
+## Choosing
+
+- A counter, a ticket, a flag: `XADD` or `XCHG`.
+- A value computed from the old one: a `CAS` loop.
+- Several variables that must change together: a `Lock` or a `Mutex`. Don't try to be clever with several atomics; the one invariant spanning them is the thing that breaks.
+
+All three act on a word. For anything bigger, the thing you swap is a pointer to the bigger thing: the next lessons do exactly that.

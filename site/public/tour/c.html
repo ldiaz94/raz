@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
-<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
 <li><a href="modules.html">Modules</a></li>
 <li><a href="values.html">Values and conversions</a></li>
@@ -62,8 +62,81 @@
 <pre class="output"><code>10 20 30 40 50 
 3.000
 </code></pre>
-<p>An <code>extern</code> procedure is found by its name in the C library, or in a library a <code>link</code> line names. Its parameters are integers, reals, pointers and procedures, as C declares them; a raz procedure of such types can be given to C to call back, as <code>order</code> is.</p>
-<p>A program that uses C is linked against it dynamically and starts through it; one that doesn't is a static executable with nothing in it but its own code.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="generics.html">&larr; Generic modules</a><a href="index.html">Contents</a><a class="next" href="threads.html">Threads &rarr;</a></div></article></div>
+<p>An <code>extern</code> procedure is found by its name in the C library, or in a library a <code>link</code> line names. Its parameters are integers, reals, pointers and procedures, as C declares them; a raz procedure of such types can be given to C to call back, as <code>order</code> is. A record goes to C by pointer, never by value.</p>
+<h2>What using C costs</h2>
+<p>A program that uses C is linked against it dynamically and starts through it, so that C's own set-up and clean-up run; one that doesn't is a static executable with nothing in it but its own code. A program uses C if any module it uses has an <code>extern</code> or a <code>link</code> of a library.</p>
+<h2>Varargs</h2>
+<p><code>...</code> after an <code>extern</code>'s parameters takes any number of further arguments, as <code>printf</code> wants. A string literal goes as a C string, an integer constant as an <code>INT</code>, a real constant as an <code>F64</code>. An <code>F32</code> is an error there, since C promotes it; write <code>F64(x)</code>.</p>
+<div class="file"><span>Say.raz</span></div><pre class="code"><code><span class="kw">module</span> Say;
+<span class="kw">import</span> Out;
+
+<span class="kw">extern</span> <span class="kw">proc</span> printf(format: ^<span class="ty">U8</span>; ...): <span class="ty">I32</span>;
+<span class="kw">extern</span> <span class="kw">proc</span> fflush(f: ^<span class="ty">U8</span>): <span class="ty">I32</span>;
+<span class="kw">extern</span> <span class="kw">proc</span> puts(s: ^<span class="ty">U8</span>): <span class="ty">I32</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> n: <span class="ty">INT</span>; x: <span class="ty">F32</span>;
+<span class="kw">begin</span>
+    n := <span class="number">42</span>;
+    x := <span class="number">2.5</span>;
+    Out.str(<span class="string">&quot;raz first\n&quot;</span>);
+    Out.flush;                         <span class="comment">(* Out has a buffer; so does C *)</span>
+    _ := printf(<span class="string">&quot;C says %ld and %.2f and %s\n&quot;</span>, n, <span class="ty">F64</span>(x), <span class="string">&quot;hello&quot;</span>);
+    _ := puts(<span class="string">&quot;and puts&quot;</span>);
+    _ := fflush(<span class="ty">nil</span>);                  <span class="comment">(* nil: every C stream *)</span>
+    Out.str(<span class="string">&quot;raz again\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Say.</code></pre>
+<pre class="output"><code>raz first
+C says 42 and 2.50 and hello
+and puts
+raz again
+</code></pre>
+<p><code>Out</code> and C's <code>printf</code> keep two buffers, so a program that writes with both flushes one before it writes with the other, or the text comes out of order.</p>
+<h2>Libraries, and C's variables</h2>
+<p><code>link "libm.so.6";</code> names a shared library to load at run time. An <code>extern var</code> is C's variable itself: reading it reads C's, assigning it writes C's.</p>
+<div class="file"><span>Env.raz</span></div><pre class="code"><code><span class="kw">module</span> Env;
+<span class="kw">import</span> Out;
+
+<span class="kw">extern</span> <span class="kw">var</span> environ: ^^<span class="ty">U8</span>;
+<span class="kw">extern</span> <span class="kw">proc</span> strlen(s: ^<span class="ty">U8</span>): <span class="ty">UINT</span>;
+<span class="kw">extern</span> <span class="kw">proc</span> getenv(name: ^<span class="ty">U8</span>): ^<span class="ty">U8</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> p: ^<span class="ty">U8</span>; n: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    n := <span class="number">0</span>;
+    <span class="kw">while</span> environ[n] # <span class="ty">nil</span> <span class="kw">do</span> <span class="ty">INC</span>(n); <span class="kw">end</span>;
+    <span class="kw">if</span> n &gt; <span class="number">0</span> <span class="kw">then</span> Out.str(<span class="string">&quot;the environment is not empty\n&quot;</span>); <span class="kw">end</span>;
+    p := getenv(<span class="string">&quot;RAZ_NO_SUCH_VARIABLE&quot;</span>);
+    <span class="kw">if</span> p = <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="string">&quot;not set\n&quot;</span>); <span class="kw">end</span>;
+    Out.int(<span class="ty">INT</span>(strlen(<span class="string">&quot;six&quot;</span>))); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Env.</code></pre>
+<pre class="output"><code>the environment is not empty
+not set
+3
+</code></pre>
+<h2>Callbacks</h2>
+<p>Every raz procedure uses the System V calling convention, so any with parameters and a result of C's types may be given to C to call, as <code>qsort</code> is given <code>order</code> above. The procedure may not be a closure: it has only its arguments, so state travels through the pointer C hands back or a module variable.</p>
+<div class="file"><span>Roots.raz</span></div><pre class="code"><code><span class="kw">module</span> Roots;
+<span class="kw">import</span> Fmt;
+
+<span class="kw">link</span> <span class="string">&quot;libm.so.6&quot;</span>;
+
+<span class="kw">extern</span> <span class="kw">proc</span> cbrt(x: <span class="ty">F64</span>): <span class="ty">F64</span>;
+<span class="kw">extern</span> <span class="kw">proc</span> hypot(x, y: <span class="ty">F64</span>): <span class="ty">F64</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Fmt.print(<span class="string">&quot;{} {}\n&quot;</span>, [Fmt.real(cbrt(<span class="number">27.0</span>), <span class="number">3</span>), Fmt.real(hypot(<span class="number">3.0</span>, <span class="number">4.0</span>), <span class="number">3</span>)]);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Roots.</code></pre>
+<pre class="output"><code>3.000 5.000
+</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="generics.html">&larr; Generic modules</a><a href="index.html">Contents</a><a class="next" href="threads.html">Threads &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>

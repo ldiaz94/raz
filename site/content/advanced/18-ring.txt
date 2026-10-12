@@ -1,0 +1,118 @@
+title: A ring buffer between threads
+part: Shared memory
+summary: A single-producer, single-consumer queue, put together from what the tour has covered.
+---
+To finish, here is a small piece of real concurrent code that uses nearly everything in this part of the tour: a queue through which one thread sends numbers to another, with no lock and no allocation.
+
+## The design
+
+The queue is a fixed array of slots, used as a circle, and two counters that only ever grow: `tail`, the number of items the producer has put in, and `head`, the number the consumer has taken out. The item `n` lives in slot `n mod Size`. The queue is empty when the two are equal, and full when they differ by `Size`.
+
+The design rule is that **each counter has exactly one writer**. Only the producer changes `tail`; only the consumer changes `head`. Each thread reads its own counter with an ordinary read, since nobody else changes it, and the other thread's with an atomic one. No `CAS` is needed, because there is never a race to resolve: only a handoff.
+
+The handoff is the publish pattern of the ordering lesson. The producer writes the slot, then publishes it with an atomic store of `tail`; the consumer sees the new `tail` with an atomic load and only then reads the slot. In the other direction, the consumer frees a slot by storing `head`, and the producer only reuses it after loading `head` and seeing that.
+
+## The module
+
+```raz Ring
+module Ring;
+import Sys;
+
+const Size* = 64;
+
+type
+    Ring* = record
+        slots: [Size]INT;
+        head, tail: INT;      (* items taken, items put; each has one writer *)
+    end;
+
+(* v into the ring, waiting while it is full *)
+proc put*(r: ^Ring; v: INT);
+var t: INT;
+begin
+    t := r^.tail;                                    (* mine: an ordinary read *)
+    while t - XADD(ADR(r^.head), 0) = Size do Sys.yield; end;   (* full *)
+    r^.slots[t mod Size] := v;
+    _ := XCHG(ADR(r^.tail), t + 1);                  (* publish the slot *)
+end;
+
+(* the next value, waiting while the ring is empty *)
+proc take*(r: ^Ring): INT;
+var h, v: INT;
+begin
+    h := r^.head;                                    (* mine *)
+    while XADD(ADR(r^.tail), 0) = h do Sys.yield; end;          (* empty *)
+    v := r^.slots[h mod Size];
+    _ := XCHG(ADR(r^.head), h + 1);                  (* give the slot back *)
+    return v;
+end;
+
+end Ring.
+```
+
+## Using it
+
+One thread sends the numbers 1 to 100000 through a ring of 64 slots, so it is stopped by a full ring many times over and has to wait for the consumer. The consumer checks each number arrives in order, and adds them.
+
+```raz Pipe run
+module Pipe;
+import Out, Fmt, Ring, Thread;
+
+const Count = 100000;
+
+var
+    ring: Ring.Ring;
+    sum, outOfOrder: INT;
+
+proc producer(_arg: ^U8);
+var i: INT;
+begin
+    for i := 1 to Count do Ring.put(ADR(ring), i); end;
+end;
+
+proc consumer(_arg: ^U8);
+var i, v: INT;
+begin
+    for i := 1 to Count do
+        v := Ring.take(ADR(ring));
+        if v # i then INC(outOfOrder); end;
+        sum := sum + v;
+    end;
+end;
+
+proc main*;
+var p, c: ^Thread.Thread; err: ERROR;
+begin
+    p, err := Thread.spawn(producer, nil);
+    if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    c, err := Thread.spawn(consumer, nil);
+    if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    Thread.join(p);
+    Thread.join(c);
+    Fmt.print("{} items, sum {}, {} out of order\n",
+        [Fmt.int(Count), Fmt.int(sum), Fmt.int(outOfOrder)]);
+end;
+
+end Pipe.
+```
+
+The sum of 1 to 100000 is 5000050000, and nothing arrives out of order. `sum` and `outOfOrder` are written only by the consumer thread and read by `main` after `Thread.join`, which is the synchronization that makes them visible: a join is the thread's end, observed.
+
+## What it used
+
+- **Modules** (`Ring`, with its record's own fields unexported).
+- **Atomics** for the handoff, and an ordering argument for why a slot is complete when its counter moves.
+- **Threads** from `Thread`, with no C in the program.
+- **The checks**, which stay on: `slots[t mod Size]` is an indexed array access that can't leave the array, whatever the counters do.
+
+It is not a finished library: it is one producer and one consumer, and a second of either breaks the one-writer rule. That is the sort of statement a comment above `put` and `take` should make, and the sort a reader should demand.
+
+## Where next
+
+That is the end of the tour. A few places to continue:
+
+- **[The report](../spec.html)** defines the language, and is short enough to read through.
+- **`doc/compiler.md`** in the sources is a guide to reading the compiler, file by file; it is a model of the style the project is written in.
+- **`lib/`** is the library, in raz. Each module's own `main` is its test. Reading `Heap`, `Map`, `Opt` and `Thread` is the best remaining education.
+- **`tools/Doc.raz`** prints what a module exports with its comments: `raz -o Doc tools/Doc.raz && ./Doc lib/Str.raz`.
+- **`examples/`** holds small programs with the output each should give, and `conform/` holds what any implementation must do.

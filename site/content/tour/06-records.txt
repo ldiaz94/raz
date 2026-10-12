@@ -1,0 +1,138 @@
+title: Records and pointers
+part: Set
+summary: Laid out as C lays out a struct, packed records, pointers and nil.
+---
+```raz Boxes run
+```
+
+A record is laid out as C lays out a struct. `{lo: ..., hi: ...}` builds one, naming its fields; the ones it leaves out are zero. `^Box` is a pointer to a `Box`, `ADR(b)` the address of `b`, and `b^` what a pointer points at. A pointer is never the record: it is `b^.lo`, never `b.lo`, so you always see where the memory is reached through an address.
+
+## Copies and literals
+
+Assigning a record copies it whole, as with an array. A record is compared field by field by writing the comparison, not by `=`.
+
+```raz Points run
+module Points;
+import Out;
+
+type Point = record x, y: INT; end;
+
+proc show(p: Point);
+begin
+    Out.char('('); Out.int(p.x); Out.str(", "); Out.int(p.y); Out.char(')');
+end;
+
+proc mirror(p: Point): Point;
+begin
+    return {x: p.y, y: p.x};
+end;
+
+proc main*;
+var a, b: Point;
+begin
+    a := {x: 3, y: 4};
+    b := a;                  (* a copy *)
+    b.x := 30;
+    show(a); show(b); show(mirror(a)); Out.ln;
+    a := {y: 9};             (* x is zero *)
+    show(a); Out.ln;
+end;
+
+end Points.
+```
+
+## Layout
+
+A record's layout is C's: each field at the next multiple of its own alignment, and the whole padded to a multiple of its largest alignment. `SIZE(T)` says how many bytes. A `packed record` has no padding, which is what a file format or a wire protocol wants.
+
+```raz Layout run
+module Layout;
+import Out;
+
+type
+    Loose = record a: U8; b: U32; c: U8; end;
+    Tight = packed record a: U8; b: U32; c: U8; end;
+
+proc main*;
+begin
+    Out.str("loose: "); Out.int(SIZE(Loose)); Out.ln;     (* 12 *)
+    Out.str("tight: "); Out.int(SIZE(Tight)); Out.ln;     (* 6 *)
+    Out.str("INT:   "); Out.int(SIZE(INT)); Out.ln;
+    Out.str("[5]I16: "); Out.int(SIZE([5]I16)); Out.ln;
+end;
+
+end Layout.
+```
+
+A field of a packed record may sit at any address, and is read and written like any other; but it has no address of its own to take with `ADR`.
+
+## Pointers
+
+`ADR(x)` takes the address of a variable, `^T` is a pointer to a `T`, and `p^` is what it points at. A pointer that points nowhere is `nil`, and following it stops the program with a message that names the place, so a forgotten check is found at once instead of corrupting memory.
+
+```raz Pointers run
+module Pointers;
+import Out;
+
+type Counter = record hits: INT; name: []U8; end;
+
+proc hit(c: ^Counter);
+begin
+    if c = nil then return; end;
+    INC(c^.hits);
+end;
+
+proc swap(a, b: ^INT);
+var t: INT;
+begin
+    t := a^;
+    a^ := b^;
+    b^ := t;
+end;
+
+proc main*;
+var c: Counter; x, y: INT; p: ^INT;
+begin
+    c.name := "front door";
+    hit(ADR(c)); hit(ADR(c)); hit(nil);
+    Out.str(c.name); Out.str(": "); Out.int(c.hits); Out.ln;
+    x := 1; y := 2;
+    swap(ADR(x), ADR(y));
+    Out.int(x); Out.char(' '); Out.int(y); Out.ln;
+    p := ADR(x);
+    p^ := p^ + 40;
+    Out.int(x); Out.ln;
+end;
+
+end Pointers.
+```
+
+## Pointers that link
+
+A record may hold a pointer to its own type, which is how lists and trees are made. Memory for them comes from an allocator, which is the next lesson; here the nodes simply live in an array.
+
+```raz Chain run
+module Chain;
+import Out;
+
+type Node = record next: ^Node; val: INT; end;
+
+proc main*;
+var nodes: [4]Node; head, n: ^Node; i: INT;
+begin
+    head := nil;
+    for i := 0 to 3 do
+        nodes[i].val := (i + 1) * 10;
+        nodes[i].next := head;       (* each new one in front *)
+        head := ADR(nodes[i]);
+    end;
+    n := head;
+    while n # nil do
+        Out.int(n^.val); Out.char(' ');
+        n := n^.next;
+    end;
+    Out.ln;
+end;
+
+end Chain.
+```

@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
-<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
 <li><a href="modules.html">Modules</a></li>
 <li><a href="values.html">Values and conversions</a></li>
@@ -83,8 +83,175 @@ digit letter other
 0
 1
 </code></pre>
-<p>An enumeration is a list of names, in order; a <code>set of</code> it holds any choice of them, in the bits of a word, with <code>in</code>, <code>+</code> for union, <code>*</code> for intersection and <code>-</code> for difference.</p>
-<p>A variant holds one of its cases, each with fields of its own, and <code>match</code> is the only way to read them: it runs the arm of the case the variant holds, naming its fields. Every case has an arm, unless an <code>| else:</code> comes last. On an integer, <code>match</code> takes constants and ranges, and must have an <code>| else:</code>.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="records.html">&larr; Records and pointers</a><a href="index.html">Contents</a><a class="next" href="memory.html">Memory and allocators &rarr;</a></div></article></div>
+<h2>Enumerations</h2>
+<p>An enumeration is a list of names, in order. They convert to their position and back, and a <code>for</code> loop can run over them. An integer that has no name at its position is a failed check, never a silent wrong value.</p>
+<div class="file"><span>Days.raz</span></div><pre class="code"><code><span class="kw">module</span> Days;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Day = (mon, tue, wed, thu, fri, sat, sun);
+
+<span class="kw">proc</span> name(d: Day): []<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">match</span> d <span class="kw">of</span>
+    | mon: <span class="kw">return</span> <span class="string">&quot;Monday&quot;</span>;
+    | tue: <span class="kw">return</span> <span class="string">&quot;Tuesday&quot;</span>;
+    | wed: <span class="kw">return</span> <span class="string">&quot;Wednesday&quot;</span>;
+    | thu: <span class="kw">return</span> <span class="string">&quot;Thursday&quot;</span>;
+    | fri: <span class="kw">return</span> <span class="string">&quot;Friday&quot;</span>;
+    | sat: <span class="kw">return</span> <span class="string">&quot;Saturday&quot;</span>;
+    | sun: <span class="kw">return</span> <span class="string">&quot;Sunday&quot;</span>;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> d: Day;
+<span class="kw">begin</span>
+    <span class="kw">for</span> d := mon <span class="kw">to</span> sun <span class="kw">do</span>
+        Out.int(<span class="ty">I64</span>(d)); Out.str(<span class="string">&quot; &quot;</span>); Out.str(name(d));
+        <span class="kw">if</span> d &gt;= sat <span class="kw">then</span> Out.str(<span class="string">&quot; (weekend)&quot;</span>); <span class="kw">end</span>;
+        Out.ln;
+    <span class="kw">end</span>;
+    d := Day(<span class="number">4</span>);
+    Out.str(name(d)); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Days.</code></pre>
+<pre class="output"><code>0 Monday
+1 Tuesday
+2 Wednesday
+3 Thursday
+4 Friday
+5 Saturday (weekend)
+6 Sunday (weekend)
+Friday
+</code></pre>
+<h2>Sets</h2>
+<p>A <code>set of</code> an enumeration holds any choice of its names, in the bits of a word. <code>in</code> tests membership; <code>+</code> is union, <code>*</code> intersection and <code>-</code> difference; <code>{}</code> is the empty set. Sets are how Unix permissions, option flags and key modifiers are best written.</p>
+<div class="file"><span>Perms.raz</span></div><pre class="code"><code><span class="kw">module</span> Perms;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span>
+    Perm = (x, w, r);               <span class="comment">(* bits 0, 1, 2, as chmod has them *)</span>
+    Perms = <span class="kw">set</span> <span class="kw">of</span> Perm;
+
+<span class="kw">proc</span> show(p: Perms);
+<span class="kw">begin</span>
+    <span class="kw">if</span> r <span class="kw">in</span> p <span class="kw">then</span> Out.char(<span class="string">&#x27;r&#x27;</span>); <span class="kw">else</span> Out.char(<span class="string">&#x27;-&#x27;</span>); <span class="kw">end</span>;
+    <span class="kw">if</span> w <span class="kw">in</span> p <span class="kw">then</span> Out.char(<span class="string">&#x27;w&#x27;</span>); <span class="kw">else</span> Out.char(<span class="string">&#x27;-&#x27;</span>); <span class="kw">end</span>;
+    <span class="kw">if</span> x <span class="kw">in</span> p <span class="kw">then</span> Out.char(<span class="string">&#x27;x&#x27;</span>); <span class="kw">else</span> Out.char(<span class="string">&#x27;-&#x27;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> user, group, mine: Perms;
+<span class="kw">begin</span>
+    user := {r, w, x};
+    group := {r, x};
+    show(user); Out.char(<span class="string">&#x27; &#x27;</span>); show(group); Out.ln;
+    show(user * group); Out.char(<span class="string">&#x27; &#x27;</span>);      <span class="comment">(* both: r-x *)</span>
+    show(user - group); Out.char(<span class="string">&#x27; &#x27;</span>);      <span class="comment">(* only user: -w- *)</span>
+    show(user - {w}); Out.ln;        <span class="comment">(* r-x *)</span>
+    mine := group;
+    <span class="kw">if</span> mine = {r, x} <span class="kw">then</span> Out.str(<span class="string">&quot;same as group\n&quot;</span>); <span class="kw">end</span>;
+    Out.int(<span class="ty">I64</span>(<span class="ty">U8</span>(user))); Out.ln;         <span class="comment">(* 7: a set is its bits *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Perms.</code></pre>
+<pre class="output"><code>rwx r-x
+r-x -w- r-x
+same as group
+7
+</code></pre>
+<h2>Variants</h2>
+<p>A variant holds one of its cases, each with fields of its own, and <code>match</code> is the only way to read them: it runs the arm of the case the variant holds, naming its fields. Every case has an arm, unless an <code>| else:</code> comes last, so adding a case to the type makes every <code>match</code> that forgot it a compile error.</p>
+<div class="file"><span>Tokens.raz</span></div><pre class="code"><code><span class="kw">module</span> Tokens;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span>
+    Token = <span class="kw">variant</span>
+        number(n: <span class="ty">INT</span>);
+        plus;
+        times;
+        word(s: []<span class="ty">U8</span>);
+    <span class="kw">end</span>;
+
+<span class="kw">proc</span> describe(t: Token);
+<span class="kw">begin</span>
+    <span class="kw">match</span> t <span class="kw">of</span>
+    | number(n): Out.str(<span class="string">&quot;number &quot;</span>); Out.int(n);
+    | plus: Out.str(<span class="string">&quot;plus&quot;</span>);
+    | times: Out.str(<span class="string">&quot;times&quot;</span>);
+    | word(s): Out.str(<span class="string">&quot;word &#x27;&quot;</span>); Out.str(s); Out.char(<span class="string">&#x27;\&#x27;&#x27;</span>);
+    <span class="kw">end</span>;
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="comment">(* evaluates tokens in reverse Polish; assumes the input is well formed *)</span>
+<span class="kw">proc</span> eval(ts: []Token): <span class="ty">INT</span>;
+<span class="kw">var</span> stack: [<span class="number">16</span>]<span class="ty">INT</span>; top, i, b: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    top := <span class="number">0</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(ts) - <span class="number">1</span> <span class="kw">do</span>
+        <span class="kw">match</span> ts[i] <span class="kw">of</span>
+        | number(n): stack[top] := n; <span class="ty">INC</span>(top);
+        | plus: b := stack[top - <span class="number">1</span>]; <span class="ty">DEC</span>(top); stack[top - <span class="number">1</span>] := stack[top - <span class="number">1</span>] + b;
+        | times: b := stack[top - <span class="number">1</span>]; <span class="ty">DEC</span>(top); stack[top - <span class="number">1</span>] := stack[top - <span class="number">1</span>] * b;
+        | <span class="kw">else</span>:
+        <span class="kw">end</span>;
+    <span class="kw">end</span>;
+    <span class="kw">return</span> stack[<span class="number">0</span>];
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> ts: [<span class="number">5</span>]Token; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    ts := [number(<span class="number">3</span>), number(<span class="number">4</span>), plus, number(<span class="number">5</span>), times];   <span class="comment">(* (3 + 4) * 5 *)</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4</span> <span class="kw">do</span> describe(ts[i]); <span class="kw">end</span>;
+    Out.int(eval(ts)); Out.ln;
+    describe(word(<span class="string">&quot;hello&quot;</span>));
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Tokens.</code></pre>
+<pre class="output"><code>number 3
+number 4
+plus
+number 5
+times
+35
+word &#x27;hello&#x27;
+</code></pre>
+<h2>Matching integers</h2>
+<p>On an integer, <code>match</code> takes constants and ranges, and must have an <code>| else:</code>. Characters are integers, so it is also how a scanner is written.</p>
+<div class="file"><span>Classify.raz</span></div><pre class="code"><code><span class="kw">module</span> Classify;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> kind(c: <span class="ty">I32</span>): []<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">match</span> c <span class="kw">of</span>
+    | <span class="string">&#x27; &#x27;</span>, <span class="string">&#x27;\t&#x27;</span>, <span class="string">&#x27;\n&#x27;</span>: <span class="kw">return</span> <span class="string">&quot;space&quot;</span>;
+    | <span class="string">&#x27;0&#x27;</span> .. <span class="string">&#x27;9&#x27;</span>: <span class="kw">return</span> <span class="string">&quot;digit&quot;</span>;
+    | <span class="string">&#x27;a&#x27;</span> .. <span class="string">&#x27;z&#x27;</span>, <span class="string">&#x27;A&#x27;</span> .. <span class="string">&#x27;Z&#x27;</span>, <span class="string">&#x27;_&#x27;</span>: <span class="kw">return</span> <span class="string">&quot;letter&quot;</span>;
+    | <span class="kw">else</span>: <span class="kw">return</span> <span class="string">&quot;other&quot;</span>;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> s: []<span class="ty">U8</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    s := <span class="string">&quot;x1 + _y&quot;</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(s) - <span class="number">1</span> <span class="kw">do</span>
+        Out.char(s[i]); Out.str(<span class="string">&quot; is &quot;</span>); Out.str(kind(<span class="ty">I32</span>(s[i]))); Out.ln;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Classify.</code></pre>
+<pre class="output"><code>x is letter
+1 is digit
+  is space
++ is other
+  is space
+_ is letter
+y is letter
+</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="records.html">&larr; Records and pointers</a><a href="index.html">Contents</a><a class="next" href="memory.html">Memory and allocators &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>

@@ -1,0 +1,118 @@
+title: What the compiler makes
+part: The machine
+summary: raz -S, reading a listing, what a check costs and what check off removes.
+---
+The compiler has no optimizer and no intermediate form. It reads the source once and writes x86-64 machine code as it goes, so the code is what the source says, in the order it says it. That makes the output readable, and there is a switch for reading it: `raz -S Main.raz` prints the main module's code instead of writing it, each line of source and under it the instructions made for it, at their offsets in the procedure.
+
+## A small procedure
+
+```raz Add
+module Add;
+
+proc add*(a, b: INT): INT;
+begin
+    return a + b;
+end;
+
+proc main*;
+begin
+    _ := add(1, 2);
+end;
+
+end Add.
+```
+
+```sh
+$ raz -S Add.raz
+```
+
+Every procedure starts by saving the caller's frame pointer and making its own (`push rbp; mov rbp, rsp`) and reserves room for what it needs. The arguments arrive in `rdi` and `rsi`, as the convention says, and the result leaves in `rax`. A call is `mov rdi, 1; mov rsi, 2; call Add.add`. Nothing is hidden: the frame pointer chain is what lets a failure show the calls under way with their variables.
+
+## A loop with its checks
+
+This is the dot product of two slices. A slice is a pointer and a length, and it travels in two registers:
+
+```raz Dot
+module Dot;
+
+(* the dot product of two slices of equal length *)
+proc dot*(a, b: []INT): INT;
+var i, sum: INT;
+begin
+    for i := 0 to LEN(a) - 1 do
+        sum := sum + a[i] * b[i];
+    end;
+    return sum;
+end;
+
+proc main*;
+var x, y: [3]INT;
+begin
+    x := [1, 2, 3];
+    y := [4, 5, 6];
+    _ := dot(x, y);
+end;
+
+end Dot.
+```
+
+```sh
+$ raz -S Dot.raz | sed -n '/^Dot.dot:/,/^$/p'
+```
+
+Read it from the top. `a` arrives in `rdi` and `rsi`, pointer and length; `b` in `rdx` and `rcx`, which the procedure saves in its frame. `i` and `sum` live in `rbx` and `r12`, which the procedure saves and restores because the convention says they belong to the caller. The loop's test is at the bottom, and its limit, `LEN(a) - 1`, is taken once.
+
+In the body, each index has a check: `cmp rbx, rsi; jae` compares `i` with `a`'s length in a single instruction and jumps to a stub at the end of the procedure, which calls `Rt.check0` with the values it needs to say what failed. When the index is in range, which is nearly always, the cost is one compare and a branch that isn't taken.
+
+## Taking the checks out
+
+`check off;` after the imports leaves out the module's own checks of indexes and slice bounds. Here is the same procedure with it:
+
+```raz Dot2
+module Dot2;
+check off;
+
+proc dot*(a, b: []INT): INT;
+var i, sum: INT;
+begin
+    for i := 0 to LEN(a) - 1 do
+        sum := sum + a[i] * b[i];
+    end;
+    return sum;
+end;
+
+proc main*;
+var x, y: [3]INT;
+begin
+    x := [1, 2, 3];
+    y := [4, 5, 6];
+    _ := dot(x, y);
+end;
+
+end Dot2.
+```
+
+```sh
+$ raz -S Dot2.raz | sed -n '/^Dot2.dot:/,/^$/p'
+$ raz -S Dot.raz | sed -n '/^Dot.dot:/,/^$/p' | wc -l
+$ raz -S Dot2.raz | sed -n '/^Dot2.dot:/,/^$/p' | wc -l
+```
+
+The compares, the branches and the stubs are gone. It is faster, and it is no longer safe: an index out of range reads or writes whatever memory it reaches, and what follows isn't defined. A program turns checks off where it has measured and is sure, and says so at the top of the module, where a reader can see it.
+
+## Comparing with C
+
+`make kernels` in the compiler's sources measures `test/bench`'s kernels against the same kernels written in Pascal and compiled by Free Pascal at `-O2`. The compiler's own guide, `doc/compiler.md`, gives the numbers and says what the compiler does and doesn't do. It is not the fastest code: it is code whose every instruction you can account for.
+
+## Tools that read what it made
+
+- `gdb` finds procedures by name and lines by number, since the executable carries them: `break Dot.dot` and `list` work, and so does stepping a line at a time.
+- `RAZ_PROFILE=1` samples the program every millisecond and says which procedures and lines took the time.
+- `objdump -d` disassembles what is really in the file, if you want to see the bytes behind a listing.
+
+```sh
+$ raz -o Dot Dot.raz
+$ objdump -d -M intel --no-show-raw-insn Dot | sed -n '/<Dot.dot>:/,/ret/p' | head -12
+```
+
+The listing is what the encoder meant; `objdump` is what the processor will read. They tell the same story.

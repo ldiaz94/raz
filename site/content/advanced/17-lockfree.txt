@@ -1,0 +1,135 @@
+title: A lock-free stack
+part: Shared memory
+summary: CAS on pointers, a push loop that never blocks, and the ABA problem that makes pop harder.
+---
+`CAS` works on pointers as well as integers, and a pointer is how a bigger thing is swapped in atomically: build the new structure privately, then make it visible by changing one word. The classic example is a stack as a linked list whose head is that word.
+
+## Push
+
+To push a node: point its `next` at the current head, then `CAS` the head from what you saw to the new node. If another thread pushed first, the `CAS` fails, because the head is no longer what you saw, so look again and retry. No thread ever waits for another, and none can stop the others by being slow.
+
+```raz Treiber run
+module Treiber;
+import Out, Thread;
+
+type Node = record next: ^Node; val: INT; end;
+
+const Threads = 4; Each = 5000;
+
+var
+    top: ^Node;                          (* the head, changed only by CAS *)
+    nodes: [Threads * Each]Node;         (* every node a thread will push *)
+
+(* n onto the stack, without a lock *)
+proc push(n: ^Node);
+var old: ^Node;
+begin
+    old := top;
+    n^.next := old;
+    while not CAS(ADR(top), old, n) do
+        old := top;                      (* lost the race: look again *)
+        n^.next := old;
+    end;
+end;
+
+proc work(arg: ^U8);
+var first, i: INT;
+begin
+    first := INT(arg) * Each;
+    for i := 0 to Each - 1 do
+        nodes[first + i].val := first + i;
+        push(ADR(nodes[first + i]));
+    end;
+end;
+
+proc main*;
+var th: [Threads]^Thread.Thread; i, count, sum: INT; err: ERROR; n: ^Node;
+begin
+    for i := 0 to Threads - 1 do
+        th[i], err := Thread.spawn(work, ^U8(i));
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to Threads - 1 do Thread.join(th[i]); end;
+    n := top;
+    while n # nil do
+        INC(count);
+        sum := sum + n^.val;
+        n := n^.next;
+    end;
+    Out.int(count); Out.char(' '); Out.int(sum); Out.ln;
+    Out.int(Threads * Each * (Threads * Each - 1) div 2); Out.ln;
+end;
+
+end Treiber.
+```
+
+Twenty thousand nodes pushed by four threads at once; every one is on the stack exactly once, and the sum of their values is the sum of 0 to 19999. Nothing was lost, and there is no lock anywhere in the program.
+
+The loop in `push` is the shape of every lock-free algorithm: read, compute, `CAS`, and read again on failure. The `CAS` is sequentially consistent, so the node's `val` and `next`, written before it with ordinary stores, are visible to a thread that finds the node through `top`.
+
+## Pop, and the ABA problem
+
+Pop takes the head off: read `top`, read its `next`, `CAS` the head from `top` to `next`. It looks as easy as push, and it isn't. Between the two reads and the `CAS`, other threads may pop that node, pop others, and push the same node back, now with a different `next`. The head is the same pointer again, so the `CAS` succeeds, and installs a `next` that is stale: nodes disappear, or the stack points into freed memory. This is the **ABA problem**: the word changed from A to B and back to A, and the `CAS` can't tell.
+
+There are three common ways out, and each has a cost:
+
+- **Never reuse a node while anyone might hold it.** Nodes from an arena that is reset only when all threads are done, as the nodes above come from a fixed array, can't come back as a different node.
+- **Add a counter to the head**, so that A-B-A is A1-B2-A3. That is a word and a counter swapped together, and raz's `CAS` is for one word, so a program packs a small index and a counter into one `UINT`.
+- **Don't pop concurrently.** Many threads push and one thread, at the end, takes everything with a single `XCHG(ADR(top), nil)` and walks the list in peace. A stack used this way for work lists and logs needs no more.
+
+```raz Drain run
+module Drain;
+import Out, Thread;
+
+type Node = record next: ^Node; val: INT; end;
+
+const Threads = 3; Each = 1000;
+
+var
+    top: ^Node;
+    nodes: [Threads * Each]Node;
+
+proc push(n: ^Node);
+var old: ^Node;
+begin
+    old := top;
+    n^.next := old;
+    while not CAS(ADR(top), old, n) do
+        old := top;
+        n^.next := old;
+    end;
+end;
+
+proc work(arg: ^U8);
+var first, i: INT;
+begin
+    first := INT(arg) * Each;
+    for i := 0 to Each - 1 do
+        nodes[first + i].val := 1;
+        push(ADR(nodes[first + i]));
+    end;
+end;
+
+proc main*;
+var th: [Threads]^Thread.Thread; i, count: INT; err: ERROR; all, n: ^Node;
+begin
+    for i := 0 to Threads - 1 do
+        th[i], err := Thread.spawn(work, ^U8(i));
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to Threads - 1 do Thread.join(th[i]); end;
+    all := XCHG(ADR(top), nil);          (* take the whole stack, atomically *)
+    n := all;
+    while n # nil do INC(count); n := n^.next; end;
+    Out.int(count); Out.str(" taken at once, "); 
+    if top = nil then Out.str("none left\n"); end;
+end;
+
+end Drain.
+```
+
+The atomic exchange takes everything pushed so far in one step, so the walk that follows races with nobody.
+
+## When to use it
+
+A lock-free structure is worth it when a lock would be held by a thread that can be descheduled, when the critical section is a single pointer, or when a signal handler or an interrupt must share data with the code it interrupts. Everywhere else a `Mutex` is shorter, easier to check, and fast enough. The advantage of knowing how to write the other kind is that you understand what the lock is doing for you.

@@ -69,7 +69,7 @@ pre .err { color: #ff9a85; }
 .tour aside { font-family: system-ui, sans-serif; font-size: 14px; }
 .tour aside h3 { margin: 1em 0 .2em; font-size: 12px; text-transform: uppercase;
   letter-spacing: .08em; color: var(--muted); }
-.tour aside ol { margin: 0; padding-left: 1.5em; } .tour aside a { color: var(--fg); text-decoration: none; }
+.tour aside ol { margin: 0; padding-left: 1.9em; } .tour aside a { color: var(--fg); text-decoration: none; }
 .tour aside a[aria-current] { color: var(--accent); font-weight: 700; }
 @media (max-width: 55.99rem) { .tour aside { order: 2; border-top: 1px solid var(--line); } }
 .tour article { min-width: 0; }
@@ -86,3 +86,7 @@ pre .err { color: #ff9a85; }
 .spec table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 15px; }
 .spec td, .spec th { border-bottom: 1px solid var(--line); padding: 3px 10px; text-align: left; }
 .spec nav#TOC ul { list-style: none; padding-left: 1em; }
+
+/* a shell session */
+pre.term::before { content: "terminal"; }
+pre .cmd { color: #8fd18f; }

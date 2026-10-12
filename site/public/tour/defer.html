@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
-<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
 <li><a href="modules.html">Modules</a></li>
 <li><a href="values.html">Values and conversions</a></li>
@@ -77,8 +77,100 @@ out
 0
 -1
 </code></pre>
-<p><code>defer s;</code> runs <code>s</code> when the program leaves the statements the <code>defer</code> stands in: at their end, or by a <code>return</code> or a <code>break</code>. Deferred statements run the last first, and only those whose <code>defer</code> was reached.</p>
-<p>So a file is closed beside the line that opens it, however the procedure ends.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="errors.html">&larr; Errors</a><a href="index.html">Contents</a><a class="next" href="checks.html">When it goes wrong &rarr;</a></div></article></div>
+<p><code>defer s;</code> runs <code>s</code> when the program leaves the statements the <code>defer</code> stands in: at their end, or by a <code>return</code> or a <code>break</code>. Deferred statements run the last first, and only those whose <code>defer</code> was reached. So a file is closed beside the line that opens it, however the procedure ends.</p>
+<h2>The order, and a <code>return</code> value</h2>
+<p>A <code>return e;</code> evaluates <code>e</code> before the deferred statements run, so the value is what it was at the return.</p>
+<div class="file"><span>Order.raz</span></div><pre class="code"><code><span class="kw">module</span> Order;
+<span class="kw">import</span> Out;
+
+<span class="kw">var</span> counter: <span class="ty">INT</span>;
+
+<span class="kw">proc</span> next(): <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">defer</span> <span class="ty">INC</span>(counter);
+    <span class="kw">return</span> counter;          <span class="comment">(* the old value is returned; then counter grows *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> nest;
+<span class="kw">begin</span>
+    <span class="kw">defer</span> Out.str(<span class="string">&quot;1 &quot;</span>);
+    <span class="kw">defer</span> Out.str(<span class="string">&quot;2 &quot;</span>);
+    <span class="kw">defer</span> Out.str(<span class="string">&quot;3 &quot;</span>);
+    Out.str(<span class="string">&quot;body: &quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a, b: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    a := next();
+    b := next();
+    Out.int(a); Out.char(<span class="string">&#x27; &#x27;</span>); Out.int(b); Out.char(<span class="string">&#x27; &#x27;</span>); Out.int(counter); Out.ln;
+    nest;
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Order.</code></pre>
+<pre class="output"><code>0 1 2
+body: 3 2 1 
+</code></pre>
+<h2>In a loop</h2>
+<p>A <code>defer</code> stands in the statement list that holds it, so in a loop body it runs at the end of each pass, and on a <code>break</code>.</p>
+<div class="file"><span>Passes.raz</span></div><pre class="code"><code><span class="kw">module</span> Passes;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">4</span> <span class="kw">do</span>
+        Out.str(<span class="string">&quot;pass &quot;</span>); Out.int(i);
+        <span class="kw">defer</span> Out.str(<span class="string">&quot; done\n&quot;</span>);
+        <span class="kw">if</span> i = <span class="number">3</span> <span class="kw">then</span> <span class="kw">break</span>; <span class="kw">end</span>;
+        Out.str(<span class="string">&quot; ...&quot;</span>);
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Passes.</code></pre>
+<pre class="output"><code>pass 1 ... done
+pass 2 ... done
+pass 3 done
+</code></pre>
+<h2>Giving back what was taken</h2>
+<p>The point is that acquiring and releasing sit next to each other, so a new early <code>return</code> added later can't leak. Here an arena and a buffer are both released on every path.</p>
+<div class="file"><span>Report.raz</span></div><pre class="code"><code><span class="kw">module</span> Report;
+<span class="kw">import</span> Out, Buf, Heap;
+
+<span class="comment">(* a line, built in a buffer; false (nothing written) if n is negative *)</span>
+<span class="kw">proc</span> line(n: <span class="ty">INT</span>): <span class="ty">BOOL</span>;
+<span class="kw">var</span> b: Buf.Buf;
+<span class="kw">begin</span>
+    <span class="kw">if</span> n &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> <span class="ty">false</span>; <span class="kw">end</span>;
+    Buf.init(<span class="ty">ADR</span>(b), Heap.heap);
+    <span class="kw">defer</span> Buf.done(<span class="ty">ADR</span>(b));            <span class="comment">(* freed on every way out below *)</span>
+    Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;n is &quot;</span>);
+    <span class="kw">if</span> n &gt; <span class="number">9</span> <span class="kw">then</span>
+        Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;large&quot;</span>);
+        Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
+        <span class="kw">return</span> <span class="ty">true</span>;
+    <span class="kw">end</span>;
+    Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;small&quot;</span>);
+    Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
+    <span class="kw">return</span> <span class="ty">true</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    _ := line(<span class="number">3</span>);
+    _ := line(<span class="number">30</span>);
+    <span class="kw">if</span> <span class="kw">not</span> line(-<span class="number">1</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;rejected\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Report.</code></pre>
+<pre class="output"><code>n is small
+n is large
+rejected
+</code></pre>
+<h2>What defer does not do</h2>
+<p>A deferred statement can't contain a <code>return</code>, <code>break</code> or <code>defer</code> that would leave it. A failed check, <code>Rt.exit</code> and <code>Sys.exit</code> end the program without running the deferred statements still pending, so deferred cleanup is for the program's resources, not for what must happen at exit; that is what <code>Rt.atExit</code> is for.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="errors.html">&larr; Errors</a><a href="index.html">Contents</a><a class="next" href="checks.html">When it goes wrong &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>

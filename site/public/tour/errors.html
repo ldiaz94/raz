@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
-<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
 <li><a href="modules.html">Modules</a></li>
 <li><a href="values.html">Values and conversions</a></li>
@@ -65,8 +65,129 @@
 empty
 not a number up to 1000
 </code></pre>
-<p>A procedure that can fail returns an <code>ERROR</code> beside its result, and <code>nil</code> when it didn't. Each <code>ERROR</code> constant is an error of its own, compared with <code>=</code> by which declaration made it, never by its message; <code>MSG(err)</code> is the message.</p>
-<p>An exported one, as <code>Empty</code> is here, lets the callers tell it from the others. raz has no exceptions.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="memory.html">&larr; Memory and allocators</a><a href="index.html">Contents</a><a class="next" href="defer.html">Defer &rarr;</a></div></article></div>
+<p>A procedure that can fail returns an <code>ERROR</code> beside its result, and <code>nil</code> when it didn't. Each <code>ERROR</code> constant is an error of its own, compared with <code>=</code> by which declaration made it, never by its message; <code>MSG(err)</code> is the message. An exported one, as <code>Empty</code> is here, lets the callers tell it from the others. raz has no exceptions, so every failure is visible in the signature and handled where the call is written.</p>
+<h2>Handling them by kind</h2>
+<p>Because an error is compared by identity, a caller can handle the cases it knows and pass on the rest.</p>
+<div class="file"><span>Parse.raz</span></div><pre class="code"><code><span class="kw">module</span> Parse;
+<span class="kw">import</span> Out, Str;
+
+<span class="kw">const</span>
+    Empty*: <span class="ty">ERROR</span> = <span class="string">&quot;nothing to read&quot;</span>;
+    Bad*: <span class="ty">ERROR</span> = <span class="string">&quot;not a number&quot;</span>;
+    Range*: <span class="ty">ERROR</span> = <span class="string">&quot;out of range&quot;</span>;
+
+<span class="comment">(* a percentage, 0 to 100 *)</span>
+<span class="kw">proc</span> percent(s: []<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
+<span class="kw">var</span> n: <span class="ty">I64</span>; ok: <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    <span class="kw">if</span> <span class="ty">LEN</span>(s) = <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, Empty; <span class="kw">end</span>;
+    n, ok := Str.toInt(s);
+    <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, Bad; <span class="kw">end</span>;
+    <span class="kw">if</span> (n &lt; <span class="number">0</span>) <span class="kw">or</span> (n &gt; <span class="number">100</span>) <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, Range; <span class="kw">end</span>;
+    <span class="kw">return</span> <span class="ty">INT</span>(n), <span class="ty">nil</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> inputs: [<span class="number">4</span>][]<span class="ty">U8</span>; i, n: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
+<span class="kw">begin</span>
+    inputs := [<span class="string">&quot;42&quot;</span>, <span class="string">&quot;&quot;</span>, <span class="string">&quot;forty&quot;</span>, <span class="string">&quot;140&quot;</span>];
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span>
+        n, err := percent(inputs[i]);
+        <span class="kw">if</span> err = <span class="ty">nil</span> <span class="kw">then</span>
+            Out.int(n); Out.str(<span class="string">&quot;%&quot;</span>);
+        <span class="kw">elsif</span> err = Empty <span class="kw">then</span>
+            Out.str(<span class="string">&quot;(skipped)&quot;</span>);
+        <span class="kw">else</span>
+            Out.str(<span class="string">&quot;error: &quot;</span>); Out.str(<span class="ty">MSG</span>(err));
+        <span class="kw">end</span>;
+        Out.ln;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Parse.</code></pre>
+<pre class="output"><code>42%
+(skipped)
+error: not a number
+error: out of range
+</code></pre>
+<h2>Passing errors up</h2>
+<p>When a procedure can't do anything useful with an error, it returns it, so the first caller that can decide gets it. There is no hidden unwinding: the <code>return</code> is right there.</p>
+<div class="file"><span>Layers.raz</span></div><pre class="code"><code><span class="kw">module</span> Layers;
+<span class="kw">import</span> Out, Str;
+
+<span class="kw">const</span> Missing*: <span class="ty">ERROR</span> = <span class="string">&quot;key missing&quot;</span>;
+
+<span class="comment">(* the number after &quot;n=&quot; in a line like &quot;n=17&quot; *)</span>
+<span class="kw">proc</span> value(line: []<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
+<span class="kw">var</span> n: <span class="ty">I64</span>; ok: <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    <span class="kw">if</span> <span class="kw">not</span> Str.hasPrefix(line, <span class="string">&quot;n=&quot;</span>) <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, Missing; <span class="kw">end</span>;
+    n, ok := Str.toInt(line[<span class="number">2</span>..<span class="ty">LEN</span>(line)]);
+    <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, Missing; <span class="kw">end</span>;
+    <span class="kw">return</span> <span class="ty">INT</span>(n), <span class="ty">nil</span>;
+<span class="kw">end</span>;
+
+<span class="comment">(* the sum of the values of two lines *)</span>
+<span class="kw">proc</span> sum(a, b: []<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
+<span class="kw">var</span> x, y: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
+<span class="kw">begin</span>
+    x, err := value(a);
+    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, err; <span class="kw">end</span>;      <span class="comment">(* passed up *)</span>
+    y, err := value(b);
+    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, err; <span class="kw">end</span>;
+    <span class="kw">return</span> x + y, <span class="ty">nil</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> n: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
+<span class="kw">begin</span>
+    n, err := sum(<span class="string">&quot;n=40&quot;</span>, <span class="string">&quot;n=2&quot;</span>);
+    <span class="kw">if</span> err = <span class="ty">nil</span> <span class="kw">then</span> Out.int(n); Out.ln; <span class="kw">end</span>;
+    n, err := sum(<span class="string">&quot;n=40&quot;</span>, <span class="string">&quot;x=2&quot;</span>);
+    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="string">&quot;sum failed: &quot;</span>); Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Layers.</code></pre>
+<pre class="output"><code>42
+sum failed: key missing
+</code></pre>
+<h2>When the library reports errors</h2>
+<p>Library procedures that can fail say so in the same way: <code>Thread.spawn</code> returns an <code>ERROR</code>; <code>Sys</code> calls return a negative <code>errno</code> as an <code>INT</code>, with <code>0</code> or a positive count for success; <code>Files.read</code> returns a <code>BOOL</code>. The first is the language's way; the others are the system's, left as they are.</p>
+<div class="file"><span>Probe.raz</span></div><pre class="code"><code><span class="kw">module</span> Probe;
+<span class="kw">import</span> Out, Sys;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> fd: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    fd := Sys.openRead(<span class="string">&quot;/no/such/file&quot;</span>);
+    <span class="kw">if</span> fd &lt; <span class="number">0</span> <span class="kw">then</span>
+        Out.str(<span class="string">&quot;open failed, errno &quot;</span>); Out.int(-fd); Out.ln;     <span class="comment">(* 2: ENOENT *)</span>
+    <span class="kw">end</span>;
+    fd := Sys.openRead(<span class="string">&quot;/dev/null&quot;</span>);
+    <span class="kw">if</span> fd &gt;= <span class="number">0</span> <span class="kw">then</span>
+        Out.str(<span class="string">&quot;open worked\n&quot;</span>);
+        Sys.close(fd);
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Probe.</code></pre>
+<pre class="output"><code>open failed, errno 2
+open worked
+</code></pre>
+<h2>When there is nothing to do but stop</h2>
+<p>A program that has found a state it can't carry on from, such as a broken invariant, says so and ends with <code>Rt.stop</code>: the message goes to standard error and the status is 2, the same as a failed check.</p>
+<div class="file"><span>Giveup.raz</span></div><pre class="code"><code><span class="kw">module</span> Giveup;
+<span class="kw">import</span> Rt;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Rt.stop(<span class="string">&quot;the table is corrupt&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Giveup.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz run Giveup.raz; echo &quot;status $?&quot;</span>
+the table is corrupt
+status 2</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="memory.html">&larr; Memory and allocators</a><a href="index.html">Contents</a><a class="next" href="defer.html">Defer &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>

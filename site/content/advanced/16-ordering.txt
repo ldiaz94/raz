@@ -1,0 +1,105 @@
+title: Ordering and publication
+part: Shared memory
+summary: Why a flag isn't enough, what FENCE and the atomics order, and the pattern that works.
+---
+Atomics make one word safe. The harder question is about the *other* words: if one thread writes a value and then raises a flag, can another thread that sees the flag be sure it sees the value?
+
+The report is careful. Only volatile accesses, `CAS`, `XCHG`, `XADD` and `FENCE` are exact. Any other access is ordinary: an implementation may keep a variable in a register, leave out a write that nothing reads, and change the order of ordinary accesses, as long as each thread, on its own, does what the report says. A variable that one thread writes while another reads or writes it, unless both use volatile accesses or the atomic built-ins, or a `FENCE` orders them, holds no particular value then: a read of it gives a value it had or was given, or a mixture of their bytes. Nothing else of the program becomes undefined by it.
+
+In plain words: two threads that share an ordinary variable with no atomic, volatile or fence between them get no guarantee about what each sees.
+
+## The pattern that is guaranteed: publish through an atomic
+
+The simplest correct way to hand a value to another thread: write it with ordinary stores, then store a flag with an atomic. The reader loops on the flag with an atomic read, and then reads the data. `XCHG` is the store; `XADD(p, 0)` is the load, which adds nothing and returns the value. Both are sequentially consistent, so everything written before the flag is visible after it is seen.
+
+```raz Publish run
+module Publish;
+import Out, Sys, Thread;
+
+type Message = record id: INT; text: [32]U8; len: INT; end;
+
+var
+    msg: Message;          (* ordinary memory, written once, then published *)
+    ready: INT;            (* the flag: only touched by atomics *)
+
+proc producer(_arg: ^U8);
+begin
+    Sys.sleep(10);
+    msg.id := 7;
+    msg.text := "built before the flag";
+    msg.len := 21;
+    _ := XCHG(ADR(ready), 1);               (* publish *)
+end;
+
+proc main*;
+var t: ^Thread.Thread; err: ERROR;
+begin
+    t, err := Thread.spawn(producer, nil);
+    if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    while XADD(ADR(ready), 0) = 0 do Sys.yield; end;     (* wait for it *)
+    Out.int(msg.id); Out.char(' '); Out.str(msg.text[0..msg.len]); Out.ln;
+    Thread.join(t);
+end;
+
+end Publish.
+```
+
+The reader's loop makes no ordinary read of `ready`: it can't be kept in a register and read once, which is the danger of `while ready = 0 do end`. And the write of `msg` can't be delayed past the `XCHG`.
+
+## The same with a fence
+
+`FENCE` is a full memory barrier: it orders the program's ordinary accesses against those of other processors and devices. With volatile accesses for the flag and a fence between the data and the flag, the same handoff works. This is the form device code takes, as in the last lesson.
+
+```raz Fenced run
+module Fenced;
+import Out, Sys, Thread;
+
+var
+    data: INT;                   (* ordinary *)
+    flag: INT;                   (* only reached through a volatile pointer *)
+
+proc producer(_arg: ^U8);
+var f: ^VOLATILE INT;
+begin
+    f := ^VOLATILE INT(ADR(flag));
+    Sys.sleep(10);
+    data := 1234;
+    FENCE;                       (* data is written before the flag is *)
+    f^ := 1;
+end;
+
+proc main*;
+var t: ^Thread.Thread; err: ERROR; f: ^VOLATILE INT;
+begin
+    f := ^VOLATILE INT(ADR(flag));
+    t, err := Thread.spawn(producer, nil);
+    if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    while f^ = 0 do Sys.yield; end;
+    FENCE;                       (* and read after the flag is seen *)
+    Out.int(data); Out.ln;
+    Thread.join(t);
+end;
+
+end Fenced.
+```
+
+Both sides need a fence. A fence on the writer only says the data is written first; the reader must not read `data` before it has seen the flag.
+
+## The version that is not guaranteed
+
+This is what *not* to write, and it is the most common bug in this area:
+
+```text
+var data, ready: INT;
+
+(* thread A *)  data := 42;  ready := 1;
+(* thread B *)  while ready = 0 do end;  use(data);
+```
+
+Both threads use ordinary accesses to shared variables. B's loop may read `ready` once into a register and spin forever; A's two writes may reach memory in either order; B may read `data` before the flag, or an old copy. On a particular machine with a particular compiler it may well work, until it is changed. The language says it holds no particular value, and it means it.
+
+## The lesson of the three versions
+
+- Shared and written by someone: reach it through an atomic, a volatile pointer or a fence, every time, on both sides.
+- To hand over a bundle, publish a single atomic word *after* writing the bundle, and read the bundle only *after* seeing the word.
+- Everything under a `Lock` or a `Mutex` is ordered by the lock itself, so the data it guards can be ordinary variables. That is the simplest discipline, and the one to prefer until it is measured to be too slow.

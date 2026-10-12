@@ -1,0 +1,104 @@
+title: Generic modules
+part: Go
+summary: A module that takes types and procedures; the library's List, Map and Sort.
+---
+A module may take types, and the procedures it needs on them, as parameters. `Biggest.raz`:
+
+```raz Biggest
+```
+
+and a program that uses it:
+
+```raz Generics run
+```
+
+Each import with its own arguments makes an instance: the module compiled again, with `T` standing for the type given, and `less` calling the procedure given. The arguments may name what the importing module declares later, as `before` is here. There is no run-time cost for being generic, and no boxing: `Ints.max` is exactly the code you would write by hand for `INT`.
+
+## Writing your own
+
+A generic module is an ordinary module with parameters in its header. Here is a stack of anything, which takes the allocator it grows from.
+
+```raz Stk
+module Stk(T);
+import Mem;
+
+type
+    Stack* = record
+        items: ^T;         (* an array of cap Ts *)
+        cap*, len*: INT;
+        a: ^Mem.Allocator;
+    end;
+
+proc init*(s: ^Stack; a: ^Mem.Allocator);
+begin
+    s^.a := a;
+    s^.items := nil;
+    s^.cap := 0;
+    s^.len := 0;
+end;
+
+(* v on top; false if the allocator has no room *)
+proc push*(s: ^Stack; v: T): BOOL;
+var bigger: ^T; i, cap: INT; src, dst: ^T;
+begin
+    if s^.len = s^.cap then
+        if s^.cap = 0 then cap := 4; else cap := s^.cap * 2; end;
+        bigger := ^T(Mem.alloc(s^.a, cap * SIZE(T), 8));
+        if bigger = nil then return false; end;
+        for i := 0 to s^.len - 1 do
+            src := ^T(INT(s^.items) + i * SIZE(T));
+            dst := ^T(INT(bigger) + i * SIZE(T));
+            dst^ := src^;
+        end;
+        if s^.items # nil then Mem.free(s^.a, ^U8(s^.items)); end;
+        s^.items := bigger;
+        s^.cap := cap;
+    end;
+    dst := ^T(INT(s^.items) + s^.len * SIZE(T));
+    dst^ := v;
+    INC(s^.len);
+    return true;
+end;
+
+(* the top value, taken off; false if empty *)
+proc pop*(s: ^Stack): (T, BOOL);
+var z: T; p: ^T;
+begin
+    if s^.len = 0 then return z, false; end;
+    DEC(s^.len);
+    p := ^T(INT(s^.items) + s^.len * SIZE(T));
+    return p^, true;
+end;
+
+end Stk.
+```
+
+```raz Uses run
+module Uses;
+import Out, Heap, Nums := Stk(INT), Pairs := Stk(Pair);
+
+type Pair = record a, b: INT; end;
+
+proc main*;
+var n: Nums.Stack; p: Pairs.Stack; i, v: INT; ok: BOOL; pr: Pair;
+begin
+    Nums.init(ADR(n), Heap.heap);
+    Pairs.init(ADR(p), Heap.heap);
+    for i := 1 to 10 do _ := Nums.push(ADR(n), i * i); end;
+    _ := Pairs.push(ADR(p), {a: 3, b: 4});
+    v, ok := Nums.pop(ADR(n));
+    Out.int(v); Out.str(" of "); Out.int(n.len + 1); Out.ln;
+    pr, ok := Pairs.pop(ADR(p));
+    Out.int(pr.a * pr.b); Out.ln;
+    _, ok := Pairs.pop(ADR(p));
+    if not ok then Out.str("empty\n"); end;
+end;
+
+end Uses.
+```
+
+Two instances (`Nums` and `Pairs`) are two separate modules, compiled with their own `T`. Its pointer arithmetic is the one place where the program does what C does and leaves the checks behind; a library would keep that inside, as this does.
+
+## The library's generics
+
+The library's `List`, `Map` and `Sort` are generic modules. A `Map` takes its key hash and equality as procedure arguments: `import Count := Map([]U8, INT, Str.hash, Str.eq);`. The advanced tour uses each of them in a real program.

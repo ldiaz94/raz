@@ -1,0 +1,120 @@
+title: Threads
+part: Go
+summary: Native threads without C, atomics, a mutex, and why the counter needs both.
+---
+```raz Hits run
+```
+
+`Thread.spawn` runs a procedure in a thread of its own, with a stack of its own, and `Thread.join` waits for it to end. `XADD`, `CAS` and `XCHG` change a word atomically; a `Thread.Mutex` keeps a longer section to one thread at a time. `Out` and `Heap` lock themselves.
+
+## What goes wrong without them
+
+Two threads that each read a variable, add one and write it back can lose one of the additions. A plain `INC` on a variable shared by threads has no particular value afterwards; the report says so. `XADD` is the atomic add: it returns the old value and adds in one indivisible step.
+
+```raz Race run
+module Race;
+import Out, Thread;
+
+var
+    safe: INT;       (* added to by XADD *)
+    plain: INT;      (* added to by INC: unsafe, never printed *)
+
+proc work(_arg: ^U8);
+var i: INT;
+begin
+    for i := 1 to 100000 do
+        _ := XADD(ADR(safe), 1);
+        INC(plain);              (* unsafe: lost additions *)
+    end;
+end;
+
+proc main*;
+var t: [4]^Thread.Thread; i: INT; err: ERROR;
+begin
+    for i := 0 to 3 do
+        t[i], err := Thread.spawn(work, nil);
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to 3 do Thread.join(t[i]); end;
+    Out.str("safe  "); Out.int(safe); Out.ln;
+end;
+
+end Race.
+```
+
+The atomic count is always 400000. The plain one is usually lower, and different from run to run, which is why this page doesn't print it.
+
+## A mutex for longer sections
+
+An atomic is one word. When several variables must change together, take a `Thread.Mutex`; it sleeps while it waits, so it suits sections that take a while. Declare it as a module variable, since zero is free.
+
+```raz Bank run
+module Bank;
+import Out, Thread;
+
+var
+    m: Thread.Mutex;
+    balance, deposits: INT;     (* kept in step, under m *)
+
+proc deposit(_arg: ^U8);
+var i: INT;
+begin
+    for i := 1 to 10000 do
+        Thread.lock(ADR(m));
+        balance := balance + 5;
+        INC(deposits);
+        Thread.unlock(ADR(m));
+    end;
+end;
+
+proc main*;
+var t: [3]^Thread.Thread; i: INT; err: ERROR;
+begin
+    for i := 0 to 2 do
+        t[i], err := Thread.spawn(deposit, nil);
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to 2 do Thread.join(t[i]); end;
+    Out.int(deposits); Out.char(' '); Out.int(balance); Out.ln;
+end;
+
+end Bank.
+```
+
+## Handing work out
+
+A thread's procedure takes one pointer argument. Pass a record's address to give each thread its own job and its own place to put the answer; then no one shares anything.
+
+```raz Jobs run
+module Jobs;
+import Out, Thread;
+
+type Job = record lo, hi: INT; sum: INT; end;
+
+proc work(arg: ^U8);
+var j: ^Job; i: INT;
+begin
+    j := ^Job(arg);
+    for i := j^.lo to j^.hi - 1 do j^.sum := j^.sum + i; end;
+end;
+
+proc main*;
+var jobs: [4]Job; t: [4]^Thread.Thread; i, total: INT; err: ERROR;
+begin
+    for i := 0 to 3 do
+        jobs[i].lo := i * 250000;
+        jobs[i].hi := (i + 1) * 250000;
+        t[i], err := Thread.spawn(work, ^U8(ADR(jobs[i])));
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to 3 do
+        Thread.join(t[i]);
+        total := total + jobs[i].sum;
+    end;
+    Out.int(total); Out.ln;
+end;
+
+end Jobs.
+```
+
+`Thread` makes its own threads, without C, so a program that uses it can't use C; one that does makes its threads with C's `pthread_create` instead. The advanced tour goes further into atomics, memory ordering and lock-free code.

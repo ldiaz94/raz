@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
-<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
 <li><a href="modules.html">Modules</a></li>
 <li><a href="values.html">Values and conversions</a></li>
@@ -64,8 +64,130 @@
 <pre class="output"><code>6
 40 10
 </code></pre>
-<p>A record is laid out as C lays out a struct. <code>{lo: ..., hi: ...}</code> builds one, naming its fields; the ones it leaves out are zero.</p>
-<p><code>^Box</code> is a pointer to a <code>Box</code>, <code>ADR(b)</code> the address of <code>b</code>, and <code>b^</code> what a pointer points at. A pointer is never the record: it is <code>b^.lo</code>, never <code>b.lo</code>.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="slices.html">&larr; Arrays, slices and strings</a><a href="index.html">Contents</a><a class="next" href="variants.html">Enumerations, sets, variants and match &rarr;</a></div></article></div>
+<p>A record is laid out as C lays out a struct. <code>{lo: ..., hi: ...}</code> builds one, naming its fields; the ones it leaves out are zero. <code>^Box</code> is a pointer to a <code>Box</code>, <code>ADR(b)</code> the address of <code>b</code>, and <code>b^</code> what a pointer points at. A pointer is never the record: it is <code>b^.lo</code>, never <code>b.lo</code>, so you always see where the memory is reached through an address.</p>
+<h2>Copies and literals</h2>
+<p>Assigning a record copies it whole, as with an array. A record is compared field by field by writing the comparison, not by <code>=</code>.</p>
+<div class="file"><span>Points.raz</span></div><pre class="code"><code><span class="kw">module</span> Points;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Point = <span class="kw">record</span> x, y: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="kw">proc</span> show(p: Point);
+<span class="kw">begin</span>
+    Out.char(<span class="string">&#x27;(&#x27;</span>); Out.int(p.x); Out.str(<span class="string">&quot;, &quot;</span>); Out.int(p.y); Out.char(<span class="string">&#x27;)&#x27;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> mirror(p: Point): Point;
+<span class="kw">begin</span>
+    <span class="kw">return</span> {x: p.y, y: p.x};
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a, b: Point;
+<span class="kw">begin</span>
+    a := {x: <span class="number">3</span>, y: <span class="number">4</span>};
+    b := a;                  <span class="comment">(* a copy *)</span>
+    b.x := <span class="number">30</span>;
+    show(a); show(b); show(mirror(a)); Out.ln;
+    a := {y: <span class="number">9</span>};             <span class="comment">(* x is zero *)</span>
+    show(a); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Points.</code></pre>
+<pre class="output"><code>(3, 4)(30, 4)(4, 3)
+(0, 9)
+</code></pre>
+<h2>Layout</h2>
+<p>A record's layout is C's: each field at the next multiple of its own alignment, and the whole padded to a multiple of its largest alignment. <code>SIZE(T)</code> says how many bytes. A <code>packed record</code> has no padding, which is what a file format or a wire protocol wants.</p>
+<div class="file"><span>Layout.raz</span></div><pre class="code"><code><span class="kw">module</span> Layout;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span>
+    Loose = <span class="kw">record</span> a: <span class="ty">U8</span>; b: <span class="ty">U32</span>; c: <span class="ty">U8</span>; <span class="kw">end</span>;
+    Tight = <span class="kw">packed</span> <span class="kw">record</span> a: <span class="ty">U8</span>; b: <span class="ty">U32</span>; c: <span class="ty">U8</span>; <span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;loose: &quot;</span>); Out.int(<span class="ty">SIZE</span>(Loose)); Out.ln;     <span class="comment">(* 12 *)</span>
+    Out.str(<span class="string">&quot;tight: &quot;</span>); Out.int(<span class="ty">SIZE</span>(Tight)); Out.ln;     <span class="comment">(* 6 *)</span>
+    Out.str(<span class="string">&quot;INT:   &quot;</span>); Out.int(<span class="ty">SIZE</span>(<span class="ty">INT</span>)); Out.ln;
+    Out.str(<span class="string">&quot;[5]I16: &quot;</span>); Out.int(<span class="ty">SIZE</span>([<span class="number">5</span>]<span class="ty">I16</span>)); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Layout.</code></pre>
+<pre class="output"><code>loose: 12
+tight: 6
+INT:   8
+[5]I16: 10
+</code></pre>
+<p>A field of a packed record may sit at any address, and is read and written like any other; but it has no address of its own to take with <code>ADR</code>.</p>
+<h2>Pointers</h2>
+<p><code>ADR(x)</code> takes the address of a variable, <code>^T</code> is a pointer to a <code>T</code>, and <code>p^</code> is what it points at. A pointer that points nowhere is <code>nil</code>, and following it stops the program with a message that names the place, so a forgotten check is found at once instead of corrupting memory.</p>
+<div class="file"><span>Pointers.raz</span></div><pre class="code"><code><span class="kw">module</span> Pointers;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Counter = <span class="kw">record</span> hits: <span class="ty">INT</span>; name: []<span class="ty">U8</span>; <span class="kw">end</span>;
+
+<span class="kw">proc</span> hit(c: ^Counter);
+<span class="kw">begin</span>
+    <span class="kw">if</span> c = <span class="ty">nil</span> <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="ty">INC</span>(c^.hits);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> swap(a, b: ^<span class="ty">INT</span>);
+<span class="kw">var</span> t: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    t := a^;
+    a^ := b^;
+    b^ := t;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> c: Counter; x, y: <span class="ty">INT</span>; p: ^<span class="ty">INT</span>;
+<span class="kw">begin</span>
+    c.name := <span class="string">&quot;front door&quot;</span>;
+    hit(<span class="ty">ADR</span>(c)); hit(<span class="ty">ADR</span>(c)); hit(<span class="ty">nil</span>);
+    Out.str(c.name); Out.str(<span class="string">&quot;: &quot;</span>); Out.int(c.hits); Out.ln;
+    x := <span class="number">1</span>; y := <span class="number">2</span>;
+    swap(<span class="ty">ADR</span>(x), <span class="ty">ADR</span>(y));
+    Out.int(x); Out.char(<span class="string">&#x27; &#x27;</span>); Out.int(y); Out.ln;
+    p := <span class="ty">ADR</span>(x);
+    p^ := p^ + <span class="number">40</span>;
+    Out.int(x); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Pointers.</code></pre>
+<pre class="output"><code>front door: 2
+2 1
+42
+</code></pre>
+<h2>Pointers that link</h2>
+<p>A record may hold a pointer to its own type, which is how lists and trees are made. Memory for them comes from an allocator, which is the next lesson; here the nodes simply live in an array.</p>
+<div class="file"><span>Chain.raz</span></div><pre class="code"><code><span class="kw">module</span> Chain;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Node = <span class="kw">record</span> next: ^Node; val: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> nodes: [<span class="number">4</span>]Node; head, n: ^Node; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    head := <span class="ty">nil</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span>
+        nodes[i].val := (i + <span class="number">1</span>) * <span class="number">10</span>;
+        nodes[i].next := head;       <span class="comment">(* each new one in front *)</span>
+        head := <span class="ty">ADR</span>(nodes[i]);
+    <span class="kw">end</span>;
+    n := head;
+    <span class="kw">while</span> n # <span class="ty">nil</span> <span class="kw">do</span>
+        Out.int(n^.val); Out.char(<span class="string">&#x27; &#x27;</span>);
+        n := n^.next;
+    <span class="kw">end</span>;
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Chain.</code></pre>
+<pre class="output"><code>40 30 20 10 
+</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="slices.html">&larr; Arrays, slices and strings</a><a href="index.html">Contents</a><a class="next" href="variants.html">Enumerations, sets, variants and match &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>

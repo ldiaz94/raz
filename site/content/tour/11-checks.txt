@@ -1,0 +1,130 @@
+title: When it goes wrong
+part: Go
+summary: Every index is checked, a failure says where and with what values, and how to read it.
+---
+```raz Fail fail
+```
+
+Every index and slice is checked. A failed check says where it failed and with what values, then the calls under way with their variables, and ends the program with status 2. The three `0`s are what it printed before the fourth pass went one past the end.
+
+## Reading the message
+
+The first line is the place of the offending expression: file, line and column, then what failed and the numbers involved. Each `in` line after it is a call still under way, innermost first, with the basic-typed variables it held. That is usually enough to see the bug without a debugger.
+
+## Other failures
+
+The same shape of message tells of a `nil` pointer, a division by zero, a bad slice and a stack overflow. Each of them stops the program with status 2, or by the signal if the machine caught it, and never runs on with a wrong value.
+
+```raz Nilp fail
+module Nilp;
+import Out;
+
+type Node = record val: INT; next: ^Node; end;
+
+proc last(n: ^Node): INT;
+begin
+    while n^.next # nil do n := n^.next; end;
+    return n^.val;
+end;
+
+proc main*;
+var a, b: Node;
+begin
+    a.val := 1; b.val := 2;
+    a.next := ADR(b);
+    Out.int(last(ADR(a))); Out.ln;
+    Out.int(last(nil)); Out.ln;
+end;
+
+end Nilp.
+```
+
+```raz Zero fail
+module Zero;
+import Out;
+
+proc ratio(a, b: INT): INT;
+begin
+    return a div b;
+end;
+
+proc main*;
+var n: INT;
+begin
+    Out.int(ratio(10, 3)); Out.ln;
+    Out.int(ratio(10, n)); Out.ln;       (* n is zero: every variable starts at zero *)
+end;
+
+end Zero.
+```
+
+```raz Slicing fail
+module Slicing;
+import Out;
+
+proc main*;
+var a: [5]INT; s: []INT; hi: INT;
+begin
+    hi := 7;
+    s := a[2..5];
+    Out.int(LEN(s)); Out.ln;
+    s := a[2..hi];                       (* past the end *)
+    Out.int(LEN(s)); Out.ln;
+end;
+
+end Slicing.
+```
+
+In every case the output before the failure was written first. `Out`'s buffer is flushed by the failure, so what the program printed is never lost to the crash.
+
+## A constant can fail at compile time
+
+A division by a zero constant, or a constant index out of range, is not a run-time failure at all; the compiler says it at the line, so you never ship it.
+
+```raz Early
+module Early;
+import Out;
+
+proc main*;
+var a: [3]INT;
+begin
+    a[3] := 1;
+    Out.int(10 div 0); Out.ln;
+end;
+
+end Early.
+```
+
+```sh
+$ raz Early.raz
+```
+
+## Looking at where you are
+
+`Rt.trace` prints the calls under way, as a failure does, whenever you ask. It writes to standard error and the program goes on. It is the cheapest debugging tool there is.
+
+```raz Where run
+module Where;
+import Rt;
+
+proc inner(depth: INT);
+begin
+    if depth = 0 then Rt.trace; return; end;
+    inner(depth - 1);
+end;
+
+proc main*;
+begin
+    inner(2);
+end;
+
+end Where.
+```
+
+## Leaving the checks out
+
+A module that is sure of its indexes may say `check off;` after its imports and links, for speed. The module's own indexing and slicing is then unchecked, so an index out of range reads or writes whatever it reaches. Every other check stays (`nil` and division), and callers of the module keep theirs. Use it for a measured inner loop, never as a first step.
+
+## For gdb and the profiler
+
+The program carries names and line numbers, so `gdb` can break at `Fail.raz:6` and show raz source. `RAZ_PROFILE=1` in the environment makes a program sample itself every millisecond and say at the end where its time went, by procedure and by line.

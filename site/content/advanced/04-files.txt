@@ -1,0 +1,187 @@
+title: Files and the command line
+part: The library
+summary: Whole files with Files, descriptors and directories with Sys, and options with Opt.
+---
+`Files` is for the common case: a whole file read or written in one call. `Sys` is the system underneath, for everything else. `Opt` reads a command line from a table, so that the help and the error messages can't drift from the code.
+
+## A whole file
+
+`Files.write(path, data)` makes the file hold `data`, and `Files.read(path, b)` adds the whole file to a `Buf`. Both say whether they worked.
+
+```raz Notes run
+module Notes;
+import Out, Files, Buf, Heap;
+
+proc main*;
+var b: Buf.Buf; ok: BOOL;
+begin
+    ok := Files.write("notes.txt", "first line\nsecond line\n");
+    if not ok then Out.str("can't write\n"); return; end;
+    Buf.init(ADR(b), Heap.heap);
+    defer Buf.done(ADR(b));
+    ok := Files.read("notes.txt", ADR(b));
+    if ok then
+        Out.int(b.len); Out.str(" bytes: "); Out.str(Buf.bytes(ADR(b)));
+    end;
+    ok := Files.read("missing.txt", ADR(b));
+    if not ok then Out.str("missing.txt: not there\n"); end;
+end;
+
+end Notes.
+```
+
+## Descriptors
+
+Underneath, a file is a descriptor, an `INT`. `Sys.open` takes the path and the way to open it as a set; `read`, `write`, `seek` and `close` do what they say. A result that can fail is a number, and minus an errno if it failed, as on Linux itself. Reading in a loop is the pattern for anything too big to hold at once.
+
+```raz Count run
+module Count;
+import Out, Sys;
+
+(* the lines of the file at path, or minus an errno *)
+proc lines(path: []U8): INT;
+var fd, n, i, count: INT; buf: [4096]U8;
+begin
+    fd := Sys.openRead(path);
+    if fd < 0 then return fd; end;
+    defer Sys.close(fd);
+    n := Sys.read(fd, buf);
+    while n > 0 do
+        for i := 0 to n - 1 do
+            if buf[i] = '\n' then INC(count); end;
+        end;
+        n := Sys.read(fd, buf);
+    end;
+    if n < 0 then return n; end;
+    return count;
+end;
+
+proc main*;
+var fd: INT; pos: I64;
+begin
+    fd := Sys.create("log.txt");
+    _ := Sys.write(fd, "a\nb\nc\n");
+    pos := Sys.seek(fd, 2, false);              (* from the start *)
+    Out.int(pos); Out.ln;
+    Sys.close(fd);
+    Out.int(lines("log.txt")); Out.str(" lines\n");
+    Out.int(lines("/no/such/file")); Out.ln;     (* -2: ENOENT *)
+    fd := Sys.open("log.txt", {Sys.writing, Sys.appending});
+    _ := Sys.write(fd, "d\n");
+    Sys.close(fd);
+    Out.int(lines("log.txt")); Out.str(" lines now\n");
+end;
+
+end Count.
+```
+
+## Looking at a file, and a directory
+
+`Sys.info` says a file's size, modification time, permissions, and whether it is a directory, a regular file or a link. `Sys.openDir` and `nextEntry` list a directory, in no particular order, so a program that prints one sorts it first. A name from `nextEntry` is good only until the next call, so the program keeps a copy.
+
+```raz Tree run
+module Tree;
+import Out, Sys, Str, Heap, Mem, Buf, Order := Sort([]U8, before);
+
+proc before(a, b: []U8): BOOL;
+begin
+    return Str.cmp(a, b) < 0;
+end;
+
+(* a file made to hold text *)
+proc put(path, text: []U8);
+var fd: INT;
+begin
+    fd := Sys.create(path);
+    _ := Sys.write(fd, text);
+    Sys.close(fd);
+end;
+
+proc main*;
+var
+    d: Sys.Dir; name, copy: []U8; more, ok: BOOL; i, n: INT;
+    info: Sys.Info; err: INT; names: [16][]U8; path: Buf.Buf;
+begin
+    _ := Sys.makeDir("proj");
+    _ := Sys.makeDir("proj/src");
+    put("proj/b.txt", "bb");
+    put("proj/a.txt", "a");
+    if Sys.openDir(ADR(d), "proj") < 0 then return; end;
+    n := 0;
+    name, more := Sys.nextEntry(ADR(d));
+    while more do
+        copy, ok := Str.copy(Heap.heap, name);
+        if ok and (n < 16) then names[n] := copy; INC(n); end;
+        name, more := Sys.nextEntry(ADR(d));
+    end;
+    Sys.closeDir(ADR(d));
+    Order.sort(names[0..n]);
+    Buf.init(ADR(path), Heap.heap);
+    for i := 0 to n - 1 do
+        Buf.reset(ADR(path));
+        Buf.str(ADR(path), "proj/");
+        Buf.str(ADR(path), names[i]);
+        info, err := Sys.info(Buf.bytes(ADR(path)));
+        Out.str(names[i]);
+        if err < 0 then Out.str(" ?");
+        elsif info.dir then Out.str("/");
+        else Out.str(", "); Out.int(info.size); Out.str(" bytes");
+        end;
+        Out.ln;
+        Mem.free(Heap.heap, ^U8(ADR(names[i][0])));
+    end;
+    Buf.done(ADR(path));
+end;
+
+end Tree.
+```
+
+## A command line, from a table
+
+A program describes its options once, in a table of `Opt.Row`s: its synopsis lines, its subcommands and its options. The help and the error messages are made from the table. The parser reads by the rules of the C library's `getopt` with GNU's long options, so `-vn3`, `-n 3`, `--count=3` and `--count 3` all work, and `--` ends the options.
+
+```raz Tool
+module Tool;
+import Out, Fmt, Opt;
+
+const count = 1;                   (* the key of --count, which has no letter *)
+
+proc main*;
+var p: Opt.Parser; verbose: BOOL; n, i: INT; w: []U8; ok: BOOL;
+begin
+    n := 1;
+    Opt.init(ADR(p), "tool", [
+        Opt.usage("", "tool [-v] [--count n] word ..."),
+        Opt.option("", 'v', "verbose", "", "say more"),
+        Opt.option("", count, "count", "n", "repeat each word n times")]);
+    while Opt.next(ADR(p)) do
+        if p.letter = 'v' then verbose := true;
+        elsif p.letter = count then n := INT(Opt.number(ADR(p), 1, 5));
+        end;
+    end;
+    w, ok := Opt.operand(ADR(p));
+    if not ok then Opt.fail(ADR(p), "no words; see tool -h"); end;
+    while ok do
+        for i := 1 to n do
+            if verbose then Out.str("word: "); end;
+            Fmt.print("{}\n", [Fmt.str(w)]);
+        end;
+        w, ok := Opt.operand(ADR(p));
+    end;
+end;
+
+end Tool.
+```
+
+```sh
+$ raz Tool.raz
+$ ./Tool -h
+$ ./Tool -v hello world
+$ ./Tool --count 9 hello; echo "status $?"
+$ ./Tool -x; echo "status $?"
+$ ./Tool; echo "status $?"
+```
+
+`-h` and `--help` are `Opt`'s: the program never sees them. A mistake on the command line is a sentence on standard error with the program's name first, then the synopsis, and status 2. Nothing in `Tool` wrote any of that.
+
+A mistake in the table itself, such as an option given twice, is the program's, and `init` says so and ends with status 1 before it reads a word.

@@ -1,0 +1,114 @@
+title: Hello, world
+part: Raz
+summary: A module, an import, a procedure; running, printing, exit status and arguments.
+---
+Every raz program is a module with a `main` procedure. This is the smallest one that does something.
+
+```raz Hello run
+```
+
+A module lives in a file of its own name, `Hello.raz`, and its name comes again after its last `end`, so a stray `end` is caught early. `import Out` lets it use what the module `Out` exports, as `Out.str`. The `*` after `main` exports it; the program starts at the `main` of the module named on the command line. Every statement ends in `;`, even one that ends in `end`.
+
+## Compiling and running
+
+`raz Hello.raz` compiles the module and everything it imports, and writes the executable `Hello` beside it. `raz run` does the same without writing a file, and runs it at once.
+
+```raz Quiet
+(* The same program, with a comment: (* ... *) nests, and may stand anywhere. *)
+module Quiet;
+import Out;
+
+proc main*;
+begin
+    Out.str("hello, again\n");
+end;
+
+end Quiet.
+```
+
+```sh
+$ raz Quiet.raz
+$ ./Quiet
+$ raz run Quiet.raz
+$ ls -l Quiet | awk '{print $5, "bytes"}'
+```
+
+The program is a static executable with no run time besides the code it uses, so it is a few kilobytes, and runs without any library installed.
+
+## What `Out` can write
+
+`Out` is the library's buffered output. It writes strings, single characters, numbers in decimal or hexadecimal, and a line feed. A string is written as it is, with `\n` for a line feed, `\t` for a tab, `\"` and `\\`.
+
+```raz Numbers run
+module Numbers;
+import Out;
+
+proc main*;
+begin
+    Out.str("seven is "); Out.int(7); Out.ln;
+    Out.str("minus one is "); Out.int(-1); Out.ln;
+    Out.str("255 is 0x"); Out.hex(255, 4); Out.ln;
+    Out.char('R'); Out.char('a'); Out.char('z'); Out.ln;
+    Out.str("a tab:\t|\n");
+end;
+
+end Numbers.
+```
+
+`Out.hex(n, 4)` writes at least four digits. `Out.int` takes an `I64` and `Out.hex` a `U64`. An `INT` goes into an `I64` as it is; any other integer is converted where it is written, as `Out.int(I64(b))`, because raz never converts a number unasked.
+
+## Ending, and the status
+
+`main` may return an `INT`, which is the program's exit status; a plain `proc main*;` ends with 0. A shell sees the status as `$?`.
+
+```raz Status
+module Status;
+import Out;
+
+proc main*: INT;
+begin
+    Out.str("exiting with 3\n");
+    return 3;
+end;
+
+end Status.
+```
+
+```sh
+$ raz run Status.raz; echo "status $?"
+```
+
+## Arguments
+
+`ARGC()` is the number of command line arguments, with the program's own name first, and `ARGV()` the arguments, as C strings. Most programs read them through `Files.arg` and `Opt`, which the advanced tour shows; here is the raw form.
+
+```raz Args
+module Args;
+import Out;
+
+(* The length of a C string. *)
+proc len(s: ^U8): INT;
+var n: INT;
+begin
+    n := 0;
+    while s[n] # 0 do n := n + 1; end;
+    return n;
+end;
+
+proc main*: INT;
+var i: INT; s: ^U8;
+begin
+    for i := 1 to ARGC() - 1 do
+        s := ARGV()[i];
+        Out.str(s[0..len(s)]);
+        Out.ln;
+    end;
+    return ARGC() - 1;
+end;
+
+end Args.
+```
+
+```sh
+$ raz run Args.raz one "two words"; echo "status $?"
+```

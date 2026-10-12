@@ -1,0 +1,156 @@
+title: Time, randomness and other programs
+part: The library
+summary: Clocks, sleeping, random bytes, and running a program with its output piped back.
+---
+Everything here is in `Sys`, and is the same procedures on every target raz supports: through system calls on Linux, through the C library elsewhere.
+
+## Clocks and sleeping
+
+`Sys.clock` is a clock that only goes forward, in nanoseconds: the one to measure a duration with. `Sys.now` is the wall clock, in nanoseconds since 1970 UTC, which can be set backwards, so it is for dates, not durations. `Sys.sleep` waits some milliseconds.
+
+```raz Timing run
+module Timing;
+import Out, Sys;
+
+proc main*;
+var t0, t1, elapsed: I64; wall: I64;
+begin
+    t0 := Sys.clock();
+    Sys.sleep(25);
+    t1 := Sys.clock();
+    elapsed := (t1 - t0) div 1000000;        (* milliseconds *)
+    if (elapsed >= 25) and (elapsed < 1000) then
+        Out.str("slept about 25 ms\n");
+    end;
+    wall := Sys.now();
+    if wall > 1700000000000000000 then Out.str("after 2023\n"); end;
+end;
+
+end Timing.
+```
+
+Every duration is an `I64` of nanoseconds, because a 32-bit `INT` would hold only a couple of seconds of them. The library's rule is that what may overflow a small target's `INT` is an `I64`.
+
+## Random bytes
+
+`Sys.random` fills a slice with random bytes from the system. Anything else is made from that: a number in a range, a shuffle.
+
+```raz Dice run
+module Dice;
+import Out, Sys, Str;
+
+(* a number from 0 up to n, without bias *)
+proc below(n: INT): INT;
+var b: [8]U8; x, limit: U64;
+begin
+    limit := 0FFFFFFFFFFFFFFFFH - (0FFFFFFFFFFFFFFFFH mod U64(n)) - 1;
+    Sys.random(b);
+    x := Str.le(b);
+    while x > limit do
+        Sys.random(b);
+        x := Str.le(b);
+    end;
+    return INT(x mod U64(n));
+end;
+
+proc main*;
+var counts: [6]INT; i: INT; ok: BOOL;
+begin
+    for i := 1 to 6000 do INC(counts[below(6)]); end;
+    ok := true;
+    for i := 0 to 5 do
+        if (counts[i] < 800) or (counts[i] > 1200) then ok := false; end;
+    end;
+    if ok then Out.str("all six faces came up about a thousand times\n"); end;
+end;
+
+end Dice.
+```
+
+## Running a program
+
+`Sys.spawn` starts the program at a path with its arguments, environment, working directory and standard streams in a `Sys.Program` record. A zero field means this program's own. `Sys.wait` waits for it to end and says how: `exited` with its status, `killed` by a signal, or `stopped`.
+
+```raz Run run
+module Run;
+import Out, Sys;
+
+proc main*;
+var p: Sys.Program; pid, status: INT; how: Sys.Status;
+begin
+    p := {path: "/bin/echo", args: ["echo", "hello from a child"]};
+    pid := Sys.spawn(p);
+    if pid < 0 then Out.str("can't start\n"); return; end;
+    Out.flush;                      (* so that our text isn't behind the child's *)
+    _, how, status := Sys.wait(pid, true);
+    if how = Sys.exited then
+        Out.str("it exited with "); Out.int(status); Out.ln;
+    end;
+end;
+
+end Run.
+```
+
+## Capturing its output
+
+A program's standard output can be a pipe. `Sys.pipe` gives the descriptor to read and the one to write; give the write end to the child as `fds[1]`, close it here, and read until the end. This is how a program drives another: `ls`, a compiler, a script.
+
+```raz Capture run
+module Capture;
+import Out, Sys, Buf, Heap;
+
+proc main*;
+var
+    p: Sys.Program; pid, rd, wr, n, status: INT; how: Sys.Status;
+    chunk: [256]U8; b: Buf.Buf;
+begin
+    rd, wr := Sys.pipe();
+    p := {path: "/bin/sh", args: ["sh", "-c", "echo one; echo two; exit 7"]};
+    p.fds[1] := wr;
+    pid := Sys.spawn(p);
+    Sys.close(wr);                      (* only the child writes now *)
+    Buf.init(ADR(b), Heap.heap);
+    defer Buf.done(ADR(b));
+    n := Sys.read(rd, chunk);
+    while n > 0 do
+        Buf.str(ADR(b), chunk[0..n]);
+        n := Sys.read(rd, chunk);
+    end;
+    Sys.close(rd);
+    _, how, status := Sys.wait(pid, true);
+    Out.str("captured: "); Out.str(Buf.bytes(ADR(b)));
+    Out.str("status "); Out.int(status); Out.ln;
+    if how = Sys.exited then Out.str("(a normal exit)\n"); end;
+end;
+
+end Capture.
+```
+
+Closing the write end in the parent matters: the read ends only when every holder of the write end has closed it.
+
+## Environment and working directory
+
+`Sys.env("HOME")` is an environment variable's value, or an empty string if it is unset. `Sys.workDir` and `Sys.setWorkDir` read and change the directory. The `Sys.Program` record's `env`, `onlyEnv` and `dir` give a child its own.
+
+```raz Where run
+module Where;
+import Out, Sys;
+
+proc main*;
+var p: Sys.Program; pid, rd, wr, n: INT; chunk: [64]U8;
+begin
+    if Sys.env("RAZ_SURELY_UNSET") = "" then Out.str("unset reads as empty\n"); end;
+    rd, wr := Sys.pipe();
+    p := {path: "/bin/sh", args: ["sh", "-c", "echo $GREETING from $(pwd)"],
+          env: ["GREETING=hello"], dir: "/tmp"};
+    p.fds[1] := wr;
+    pid := Sys.spawn(p);
+    Sys.close(wr);
+    n := Sys.read(rd, chunk);
+    Out.str(chunk[0..n]);
+    Sys.close(rd);
+    _, _, _ := Sys.wait(pid, true);
+end;
+
+end Where.
+```

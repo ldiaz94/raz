@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strings and bytes - Beyond Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Beyond Go</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html">Output and formatting</a></li>
+<li><a href="bytes.html" aria-current="page">Strings and bytes</a></li>
+<li><a href="collections.html">Lists, maps and sorting</a></li>
+<li><a href="files.html">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html">System calls</a></li>
+<li><a href="listing.html">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">The library &middot; lesson 2 of 18</p><h1>Strings and bytes</h1>
+<p>A <code>[]U8</code> is both a string and a block of bytes. <code>Str</code> has what is done with them: comparing, finding, hashing, copying into memory of your own, UTF-8, numbers, and the fixed byte orders of file formats and network protocols.</p>
+<h2>Ordering and hashing</h2>
+<p><code>Str.cmp</code> gives -1, 0 or 1, byte by byte, so it orders UTF-8 text by code point. <code>Str.eq</code> is equality. <code>Str.hash</code> is FNV-1a, 64 bits; it is what a <code>Map</code> of strings uses.</p>
+<div class="file"><span>Order.raz</span></div><pre class="code"><code><span class="kw">module</span> Order;
+<span class="kw">import</span> Out, Str, Fmt;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> names: [<span class="number">4</span>][]<span class="ty">U8</span>; i, j: <span class="ty">INT</span>; t: []<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    names := [<span class="string">&quot;pear&quot;</span>, <span class="string">&quot;Apple&quot;</span>, <span class="string">&quot;fig&quot;</span>, <span class="string">&quot;apple&quot;</span>];
+    <span class="comment">(* a small insertion sort, with Str.cmp *)</span>
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span>
+        t := names[i];
+        j := i - <span class="number">1</span>;
+        <span class="kw">while</span> (j &gt;= <span class="number">0</span>) <span class="kw">and</span> (Str.cmp(names[j], t) &gt; <span class="number">0</span>) <span class="kw">do</span>
+            names[j + <span class="number">1</span>] := names[j];
+            <span class="ty">DEC</span>(j);
+        <span class="kw">end</span>;
+        names[j + <span class="number">1</span>] := t;
+    <span class="kw">end</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span> Out.str(names[i]); Out.char(<span class="string">&#x27; &#x27;</span>); <span class="kw">end</span>;
+    Out.ln;
+    Fmt.print(<span class="string">&quot;{}\n&quot;</span>, [Fmt.hex(Str.hash(<span class="string">&quot;raz&quot;</span>))]);
+    <span class="kw">if</span> Str.hash(<span class="string">&quot;raz&quot;</span>) = Str.hash(<span class="string">&quot;raz&quot;</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;stable\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Order.</code></pre>
+<pre class="output"><code>Apple apple fig pear 
+89F6BC1960FF4912
+stable
+</code></pre>
+<p>Upper case sorts before lower, since 'A' is 65 and 'a' is 97: <code>Str.cmp</code> doesn't pretend to know a language's alphabet.</p>
+<h2>Keeping a string</h2>
+<p>A slice of a string constant lives forever, but a slice of a buffer lives only as long as the buffer. To keep one past that, <code>Str.copy</code> takes memory from an allocator and says whether it got any.</p>
+<div class="file"><span>Keep.raz</span></div><pre class="code"><code><span class="kw">module</span> Keep;
+<span class="kw">import</span> Out, Str, Heap, Mem;
+
+<span class="kw">type</span> Entry = <span class="kw">record</span> name: []<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="kw">var</span> entries: [<span class="number">3</span>]Entry;
+
+<span class="comment">(* remembers a name that the caller will overwrite *)</span>
+<span class="kw">proc</span> remember(slot: <span class="ty">INT</span>; name: []<span class="ty">U8</span>);
+<span class="kw">var</span> copy: []<span class="ty">U8</span>; ok: <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    copy, ok := Str.copy(Heap.heap, name);
+    <span class="kw">if</span> ok <span class="kw">then</span> entries[slot].name := copy; entries[slot].n := slot; <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> scratch: [<span class="number">16</span>]<span class="ty">U8</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">2</span> <span class="kw">do</span>
+        scratch := <span class="string">&quot;name-&quot;</span>;
+        scratch[<span class="number">5</span>] := <span class="ty">U8</span>(<span class="string">&#x27;0&#x27;</span> + i);
+        remember(i, scratch[<span class="number">0</span>..<span class="number">6</span>]);
+        scratch := <span class="string">&quot;overwritten!&quot;</span>;
+    <span class="kw">end</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">2</span> <span class="kw">do</span>
+        Out.str(entries[i].name); Out.char(<span class="string">&#x27; &#x27;</span>);
+        Mem.free(Heap.heap, ^<span class="ty">U8</span>(<span class="ty">ADR</span>(entries[i].name[<span class="number">0</span>])));
+    <span class="kw">end</span>;
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Keep.</code></pre>
+<pre class="output"><code>name-0 name-1 name-2 
+</code></pre>
+<h2>Binary formats</h2>
+<p>A file format or a network protocol has a byte order of its own, not the machine's. <code>Str.le</code> and <code>Str.be</code> read an unsigned number of up to 8 bytes in a fixed order (little- or big-endian) and <code>Str.putLE</code> and <code>Str.putBE</code> write one. They work on any slice, so a header is read where it lies, with no struct to overlay and no byte swapping to forget.</p>
+<p>Here is a small record format: a 4-byte tag, a 2-byte big-endian length, a 4-byte little-endian checksum, then the data.</p>
+<div class="file"><span>Frame.raz</span></div><pre class="code"><code><span class="kw">module</span> Frame;
+<span class="kw">import</span> Out, Fmt, Str;
+
+<span class="kw">const</span> HeaderSize = <span class="number">10</span>;
+
+<span class="comment">(* the sum of the bytes of data, all mod 2^32 *)</span>
+<span class="kw">proc</span> checksum(data: []<span class="ty">U8</span>): <span class="ty">U32</span>;
+<span class="kw">var</span> i: <span class="ty">INT</span>; sum: <span class="ty">U32</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(data) - <span class="number">1</span> <span class="kw">do</span> sum := sum + <span class="ty">U32</span>(data[i]); <span class="kw">end</span>;
+    <span class="kw">return</span> sum;
+<span class="kw">end</span>;
+
+<span class="comment">(* writes a frame to out, which must have room; its length *)</span>
+<span class="kw">proc</span> pack(out: []<span class="ty">U8</span>; tag, data: []<span class="ty">U8</span>): <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    COPY(out[<span class="number">0</span>..<span class="number">4</span>], tag);
+    Str.putBE(out[<span class="number">4</span>..<span class="number">6</span>], <span class="ty">U64</span>(<span class="ty">LEN</span>(data)));
+    Str.putLE(out[<span class="number">6</span>..<span class="number">10</span>], <span class="ty">U64</span>(checksum(data)));
+    COPY(out[HeaderSize..HeaderSize + <span class="ty">LEN</span>(data)], data);
+    <span class="kw">return</span> HeaderSize + <span class="ty">LEN</span>(data);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> buf: [<span class="number">64</span>]<span class="ty">U8</span>; n, len: <span class="ty">INT</span>; sum: <span class="ty">U32</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    n := pack(buf, <span class="string">&quot;DATA&quot;</span>, <span class="string">&quot;hello&quot;</span>);
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> n - <span class="number">1</span> <span class="kw">do</span>
+        Out.hex(<span class="ty">U64</span>(buf[i]), <span class="number">2</span>); Out.char(<span class="string">&#x27; &#x27;</span>);
+    <span class="kw">end</span>;
+    Out.ln;
+    <span class="comment">(* and back *)</span>
+    len := <span class="ty">INT</span>(Str.be(buf[<span class="number">4</span>..<span class="number">6</span>]));
+    sum := <span class="ty">U32</span>(Str.le(buf[<span class="number">6</span>..<span class="number">10</span>]));
+    Fmt.print(<span class="string">&quot;tag {}, {} bytes, checksum {}, &quot;</span>, [Fmt.str(buf[<span class="number">0</span>..<span class="number">4</span>]), Fmt.int(len), Fmt.hex(<span class="ty">U64</span>(sum))]);
+    <span class="kw">if</span> sum = checksum(buf[HeaderSize..HeaderSize + len]) <span class="kw">then</span>
+        Out.str(<span class="string">&quot;valid: &quot;</span>); Out.str(buf[HeaderSize..HeaderSize + len]);
+    <span class="kw">else</span>
+        Out.str(<span class="string">&quot;corrupt&quot;</span>);
+    <span class="kw">end</span>;
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Frame.</code></pre>
+<pre class="output"><code>44 41 54 41 00 05 14 02 00 00 68 65 6C 6C 6F 
+tag DATA, 5 bytes, checksum 214, valid: hello
+</code></pre>
+<p>The output is the same on a little-endian and a big-endian machine, because the bytes are written one at a time in the order the format says.</p>
+<h2>Numbers and text</h2>
+<p><code>Str.toInt</code> reads a decimal number with an optional sign and nothing else, and says whether it was one. <code>Fmt</code> goes the other way. <code>Str.encode</code> and <code>Str.decode</code> move between characters and UTF-8, as the first tour showed.</p>
+<div class="file"><span>Numbers.raz</span></div><pre class="code"><code><span class="kw">module</span> Numbers;
+<span class="kw">import</span> Out, Str;
+
+<span class="comment">(* the sum of the numbers in a comma separated list, or -1 if any isn&#x27;t *)</span>
+<span class="kw">proc</span> total(s: []<span class="ty">U8</span>): <span class="ty">I64</span>;
+<span class="kw">var</span> start, i: <span class="ty">INT</span>; sum, n: <span class="ty">I64</span>; ok: <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    start := <span class="number">0</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(s) <span class="kw">do</span>
+        <span class="kw">if</span> (i = <span class="ty">LEN</span>(s)) <span class="kw">or</span> (s[i] = <span class="string">&#x27;,&#x27;</span>) <span class="kw">then</span>
+            n, ok := Str.toInt(s[start..i]);
+            <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> <span class="kw">return</span> -<span class="number">1</span>; <span class="kw">end</span>;
+            sum := sum + n;
+            start := i + <span class="number">1</span>;
+        <span class="kw">end</span>;
+    <span class="kw">end</span>;
+    <span class="kw">return</span> sum;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.int(total(<span class="string">&quot;10,20,-5,+7&quot;</span>)); Out.ln;
+    Out.int(total(<span class="string">&quot;10,x,20&quot;</span>)); Out.ln;
+    Out.int(total(<span class="string">&quot;10,,20&quot;</span>)); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Numbers.</code></pre>
+<pre class="output"><code>32
+-1
+-1
+</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="fmt.html">&larr; Output and formatting</a><a href="index.html">Contents</a><a class="next" href="collections.html">Lists, maps and sorting &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

@@ -1,0 +1,164 @@
+title: Output and formatting
+part: The library
+summary: Out's buffer, Fmt's arguments, formatting into a Buf, and laying out columns.
+---
+The first tour used `Out` for everything it printed. Two modules do the work: `Out`, which owns standard output and its buffer, and `Fmt`, which turns values into text.
+
+## What `Out` does with its buffer
+
+`Out` keeps a buffer of 4 KB. It writes it out when it is full, at each line feed when standard output is a terminal, at `Out.flush`, and when the program ends by `Rt.exit` (which a normal end and a failed check both are). A lock keeps what each call writes together when threads write at once.
+
+You can see the effect with `strace`, which lists the system calls a program makes. A program that prints three lines to a file makes one `write`:
+
+```raz Three
+module Three;
+import Out;
+
+proc main*;
+begin
+    Out.str("one\n");
+    Out.str("two\n");
+    Out.str("three\n");
+end;
+
+end Three.
+```
+
+```sh
+$ raz Three.raz
+$ strace -e trace=write ./Three > /dev/null
+```
+
+Three lines, one system call. That is why `Out` is cheap, and why a program that mixes it with C's `printf`, which keeps a buffer of its own, must flush one before the other.
+
+## `Fmt.print`
+
+`Fmt.print(format, args)` writes to standard output. Each `{}` in the format takes the next argument, and `{{` and `}}` stand for the braces. The arguments are a slice of `Fmt.Arg`, a variant, so each is built with the constructor for its kind: `int`, `uint`, `hex`, `str`, `char`, `bool` and `real`, which takes the number of digits after the point.
+
+```raz Kinds run
+module Kinds;
+import Fmt;
+
+proc main*;
+var big: U64; small: I8;
+begin
+    big := 0FFFFFFFFFFFFFFFFH;
+    small := -5;
+    Fmt.print("int {}, uint {}, hex {}\n",
+        [Fmt.int(-42), Fmt.uint(big), Fmt.hex(255)]);
+    Fmt.print("str {}, char {}, bool {}\n",
+        [Fmt.str("hi"), Fmt.char('x'), Fmt.bool(1 < 2)]);
+    Fmt.print("real {} and {} and {}\n",
+        [Fmt.real(3.14159, 2), Fmt.real(2.5, 0), Fmt.real(1.0 / 3.0, 9)]);
+    Fmt.print("an I8: {}; braces: {{ and }}\n", [Fmt.int(I64(small))]);
+end;
+
+end Kinds.
+```
+
+An argument whose type is wrong doesn't compile: there is no `%d` that disagrees with its argument. A `{}` with no argument left prints nothing, and arguments left over are not printed, so a mismatch shows up as missing text, never as a crash or as memory read by mistake.
+
+## Into a buffer
+
+`Fmt.write(b, format, args)` does the same into a `Buf` instead of standard output. That is how a message is built to send somewhere else: a file, a socket, a window, a string kept for later.
+
+```raz Message run
+module Message;
+import Out, Buf, Fmt, Heap;
+
+(* "name (age n)", built in a Buf the caller owns *)
+proc describe(b: ^Buf.Buf; name: []U8; age: INT);
+begin
+    Fmt.write(b, "{} (age {})", [Fmt.str(name), Fmt.int(age)]);
+end;
+
+proc main*;
+var b: Buf.Buf;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    defer Buf.done(ADR(b));
+    describe(ADR(b), "Ada", 36);
+    Buf.str(ADR(b), "; ");
+    describe(ADR(b), "Grace", 45);
+    Out.str(Buf.bytes(ADR(b))); Out.ln;
+    Out.int(b.len); Out.str(" bytes\n");
+end;
+
+end Message.
+```
+
+## Columns
+
+`Fmt` writes values as they are, with no widths. A program that wants columns pads in one small procedure and uses it everywhere, which is easier to read than a format language.
+
+```raz Table run
+module Table;
+import Out;
+
+(* s, then spaces up to width *)
+proc left(s: []U8; width: INT);
+var i: INT;
+begin
+    Out.str(s);
+    for i := LEN(s) to width - 1 do Out.char(' '); end;
+end;
+
+(* n, right aligned in width *)
+proc right(n: INT; width: INT);
+var digits: INT; v: INT; i: INT;
+begin
+    digits := 1;
+    v := n;
+    if v < 0 then INC(digits); v := -v; end;
+    while v >= 10 do INC(digits); v := v div 10; end;
+    for i := digits to width - 1 do Out.char(' '); end;
+    Out.int(n);
+end;
+
+proc row(name: []U8; qty, price: INT);
+begin
+    left(name, 10);
+    right(qty, 5);
+    right(price, 8);
+    right(qty * price, 9);
+    Out.ln;
+end;
+
+proc main*;
+begin
+    Out.str("item        qty   price    total\n");
+    row("bolts", 120, 3);
+    row("washers", 1000, 1);
+    row("gears", 8, 250);
+    row("shims", 12, -4);
+end;
+
+end Table.
+```
+
+## Writing numbers in other bases
+
+`Out.hex(n, digits)` writes `n` in hexadecimal, padded with zeros to `digits`. A binary dump is a `for` loop over a slice, one `Out.hex(U64(b), 2)` to a byte.
+
+```raz Dump run
+module Dump;
+import Out;
+
+proc dump(data: []U8);
+var i: INT;
+begin
+    for i := 0 to LEN(data) - 1 do
+        if i > 0 then Out.char(' '); end;
+        Out.hex(U64(data[i]), 2);
+    end;
+    Out.ln;
+end;
+
+proc main*;
+begin
+    dump("raz\n");
+    dump("\u{3BB}");
+end;
+
+end Dump.
+```

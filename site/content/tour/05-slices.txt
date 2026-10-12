@@ -1,0 +1,181 @@
+title: Arrays, slices and strings
+part: Set
+summary: Five in a row, a window onto them, bytes in UTF-8, and checks on every index.
+---
+```raz Slices run
+```
+
+## Arrays
+
+`[5]INT` is an array: five `INT`s in a row, copied when it is assigned or passed. Its length is part of its type, so `[5]INT` and `[6]INT` are different types, and `LEN(a)` of an array is a constant. Array literals are written in brackets, and need a type from the place they are used.
+
+```raz Arrays run
+module Arrays;
+import Out;
+
+proc main*;
+var a, b: [4]INT; grid: [3][3]INT; i, j: INT;
+begin
+    a := [1, 2, 3, 4];
+    b := a;                         (* a copy *)
+    b[0] := 99;
+    Out.int(a[0]); Out.char(' '); Out.int(b[0]); Out.ln;
+    if a # b then Out.str("they differ now\n"); end;
+
+    for i := 0 to 2 do
+        for j := 0 to 2 do grid[i][j] := i * 3 + j; end;
+    end;
+    Out.int(grid[2][1]); Out.ln;    (* 7 *)
+    Out.int(LEN(grid)); Out.char('x'); Out.int(LEN(grid[0])); Out.ln;
+end;
+
+end Arrays.
+```
+
+## Slices
+
+`[]INT` is a slice: a pointer to elements that live elsewhere, and their number, `LEN(s)`. `a[lo..hi]` is the slice of the elements from `lo` up to, but not including, `hi`, and an array goes silently where a slice is wanted. A slice doesn't copy anything: changing an element of it changes the array it looks at.
+
+```raz Windows run
+module Windows;
+import Out;
+
+proc zero(s: []INT);
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do s[i] := 0; end;
+end;
+
+proc show(s: []INT);
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do Out.int(s[i]); Out.char(' '); end;
+    Out.ln;
+end;
+
+proc main*;
+var a: [8]INT; i: INT;
+begin
+    for i := 0 to 7 do a[i] := i + 1; end;
+    zero(a[2..5]);                  (* a window onto a *)
+    show(a);                        (* 1 2 0 0 0 6 7 8 *)
+    show(a[6..8]);
+    show(a[3..3]);                  (* empty: prints just a line feed *)
+end;
+
+end Windows.
+```
+
+Every index and every slice bound is checked, so a slice can never reach past what it was made from; the lesson on failures shows what that looks like.
+
+## `COPY`
+
+`COPY(d, s)` copies the elements of `s` to the start of `d`, as one block, and is right when they overlap. `LEN(s)` must be at most `LEN(d)`.
+
+```raz Moves run
+module Moves;
+import Out;
+
+proc main*;
+var a: [6]INT; i: INT;
+begin
+    a := [1, 2, 3, 4, 5, 0];
+    COPY(a[1..6], a[0..5]);         (* shift everything one place up *)
+    for i := 0 to 5 do Out.int(a[i]); Out.char(' '); end;
+    Out.ln;
+end;
+
+end Moves.
+```
+
+## Strings
+
+A string is a slice of bytes, `[]U8`, in UTF-8, and a string constant's bytes are constant. A `[8]U8` made from one is a copy you can change. Arrays and slices of integers compare with `=` and `#`, so strings do too. `Str` has the rest: ordering, finding, hashing, prefixes, UTF-8 and reading a number.
+
+```raz Words run
+module Words;
+import Out, Str;
+
+proc main*;
+var s: []U8; n: I64; ok: BOOL; name: [8]U8;
+begin
+    s := "hello, world";
+    Out.str(s[7..LEN(s)]); Out.ln;
+    if s[0..5] = "hello" then Out.str("it says hello\n"); end;
+    Out.int(Str.find(s, "world")); Out.ln;          (* 7 *)
+    Out.int(Str.find(s, "xyz")); Out.ln;            (* -1 *)
+    if Str.hasPrefix(s, "hell") then Out.str("prefix\n"); end;
+    Out.int(Str.cmp("apple", "banana")); Out.ln;    (* -1 *)
+
+    n, ok := Str.toInt("-1234");
+    if ok then Out.int(n + 1); Out.ln; end;
+    n, ok := Str.toInt("12x");
+    if not ok then Out.str("not a number\n"); end;
+
+    name := "raz";                  (* a copy, the program's own *)
+    name[0] := 'R';
+    Out.str(name[0..3]); Out.ln;
+end;
+
+end Words.
+```
+
+## UTF-8
+
+A character is an `I32`, its code point. `Str.decode` reads the first character of a string and says how many bytes it took; `Str.encode` goes the other way. Byte length and character count are different things, and the program is the one that says which it wants.
+
+```raz Runes run
+module Runes;
+import Out, Str;
+
+(* the characters of s, not its bytes *)
+proc chars(s: []U8): INT;
+var i, n, size: INT;
+begin
+    i := 0;
+    n := 0;
+    while i < LEN(s) do
+        _, size := Str.decode(s[i..LEN(s)]);
+        INC(i, size);
+        INC(n);
+    end;
+    return n;
+end;
+
+proc main*;
+var s: []U8; c: I32; size: INT; bytes: [4]U8; k: INT;
+begin
+    s := "caf\u{E9} \u{3BB}";
+    Out.int(LEN(s)); Out.str(" bytes, ");
+    Out.int(chars(s)); Out.str(" characters\n");
+    c, size := Str.decode(s[3..LEN(s)]);
+    Out.int(I64(c)); Out.str(" took "); Out.int(size); Out.str(" bytes\n");
+    bytes, k := Str.encode(955);
+    Out.str(bytes[0..k]); Out.ln;
+end;
+
+end Runes.
+```
+
+## Loops over lengths
+
+A `for` loop takes its bounds once, and never steps past the last: with an empty slice, `0 to LEN(s) - 1` doesn't run at all, and the variable can't wrap. `for` takes a constant step with `by`, and `while` and `repeat ... until` do the rest.
+
+```raz Loops run
+module Loops;
+import Out;
+
+proc main*;
+var i: INT;
+begin
+    for i := 10 to 0 by -5 do Out.int(i); Out.char(' '); end;
+    Out.ln;
+    i := 1;
+    while i < 100 do i := i * 3; end;
+    Out.int(i); Out.ln;
+    repeat DEC(i, 30); until i < 0;
+    Out.int(i); Out.ln;
+end;
+
+end Loops.
+```

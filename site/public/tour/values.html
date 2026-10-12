@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
-<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
 <li><a href="modules.html">Modules</a></li>
 <li><a href="values.html" aria-current="page">Values and conversions</a></li>
@@ -52,10 +52,104 @@
 <span class="kw">end</span> Values.</code></pre>
 <pre class="output"><code>300 4 300 42.857 233 true
 </code></pre>
-<p>The integers are <code>I8</code>, <code>I16</code>, <code>I32</code>, <code>I64</code> and <code>U8</code>, <code>U16</code>, <code>U32</code>, <code>U64</code>, and <code>INT</code> and <code>UINT</code>, as big as an address. <code>INT</code> is the everyday one: lengths, indexes and counts are <code>INT</code>s. The reals are <code>F32</code> and <code>F64</code>.</p>
-<p>Arithmetic wraps at the type's width and never stops the program, except dividing by zero. That is why <code>250 + 10</code> in a <code>U8</code> is 4.</p>
-<p>Two types never mix: with <code>i: I64</code>, <code>i &lt; LEN(s)</code> is an error. A type's name converts, as <code>F64(n)</code> and <code>I64(b)</code> do above. The one silent conversion between numbers is an <code>INT</code> into an <code>I64</code>, which loses nothing.</p>
-<p><code>#</code>, not <code>&lt;&gt;</code>, is "different". <code>and</code>, <code>or</code> and <code>not</code> are for <code>BOOL</code>s; <code>&amp;</code>, <code>|</code>, <code>xor</code> and <code>~</code> are for the bits of integers. Every variable starts at zero.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="modules.html">&larr; Modules</a><a href="index.html">Contents</a><a class="next" href="procedures.html">Procedures and several results &rarr;</a></div></article></div>
+<h2>Integers</h2>
+<p>The integers are <code>I8</code>, <code>I16</code>, <code>I32</code>, <code>I64</code> and <code>U8</code>, <code>U16</code>, <code>U32</code>, <code>U64</code>, and <code>INT</code> and <code>UINT</code>, as big as an address. <code>INT</code> is the everyday one: lengths, indexes and counts are <code>INT</code>s.</p>
+<p>Arithmetic wraps at the type's width and never stops the program, except dividing by zero. That is why <code>250 + 10</code> in a <code>U8</code> is 4. <code>div</code> divides toward zero, and <code>mod</code> has the sign of its left side.</p>
+<div class="file"><span>Wrap.raz</span></div><pre class="code"><code><span class="kw">module</span> Wrap;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a: <span class="ty">U8</span>; b: <span class="ty">I8</span>; c: <span class="ty">U32</span>; d: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    a := <span class="number">250</span>;  a := a + <span class="number">10</span>;
+    Out.int(<span class="ty">I64</span>(a)); Out.ln;           <span class="comment">(* 4 *)</span>
+    b := <span class="number">127</span>;  b := b + <span class="number">1</span>;
+    Out.int(<span class="ty">I64</span>(b)); Out.ln;           <span class="comment">(* -128 *)</span>
+    c := <span class="number">0</span>;    c := c - <span class="number">1</span>;
+    Out.int(<span class="ty">I64</span>(c)); Out.ln;           <span class="comment">(* 4294967295 *)</span>
+    d := -<span class="number">7</span>;
+    Out.int(d <span class="kw">div</span> <span class="number">2</span>); Out.str(<span class="string">&quot; &quot;</span>);    <span class="comment">(* -3 *)</span>
+    Out.int(d <span class="kw">mod</span> <span class="number">2</span>); Out.ln;          <span class="comment">(* -1 *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Wrap.</code></pre>
+<pre class="output"><code>4
+-128
+4294967295
+-3 -1
+</code></pre>
+<h2>Conversions are written</h2>
+<p>Two types never mix: with <code>i: I64</code> and a slice <code>s</code>, <code>i &lt; LEN(s)</code> is an error. A type's name converts: <code>F64(n)</code>, <code>I64(b)</code>, <code>U8(x)</code>. Converting to a narrower integer cuts it; to a wider one extends it by its sign (signed) or with zeros (unsigned). The one silent conversion between numbers is an <code>INT</code> into an <code>I64</code>, which loses nothing.</p>
+<p>A number written in the program is untyped until it meets a type; <code>0FFH</code> is hexadecimal, and <code>1.5</code> is a real, which an integer never becomes without a conversion.</p>
+<div class="file"><span>Mix.raz</span></div><pre class="code"><code><span class="kw">module</span> Mix;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> i: <span class="ty">I64</span>; s: []<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    s := <span class="string">&quot;four&quot;</span>;
+    i := <span class="number">3</span>;
+    <span class="kw">if</span> i &lt; <span class="ty">LEN</span>(s) <span class="kw">then</span> Out.str(<span class="string">&quot;smaller\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Mix.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Mix.raz</span>
+Mix.raz:9:8: error: I64 and INT are different types
+    9 |     if i &lt; LEN(s) then Out.str(&quot;smaller\n&quot;); end;
+      |        ^^^^^^^^^^
+help: convert one to the other&#x27;s type, as in I64(LEN(s))
+raz: 1 error</code></pre>
+<p>The fix is the conversion, written where it happens: <code>if i &lt; I64(LEN(s))</code>. It costs nothing at run time and says what is meant.</p>
+<h2>Bits and booleans</h2>
+<p><code>#</code>, not <code>&lt;&gt;</code>, is "different". <code>and</code>, <code>or</code> and <code>not</code> are for <code>BOOL</code>s, and bind below the relations, so <code>i &lt; n and a[i] # 0</code> needs no parentheses. <code>&amp;</code>, <code>|</code>, <code>xor</code>, <code>~</code>, <code>shl</code> and <code>shr</code> are for the bits of integers. There is no conversion between <code>BOOL</code> and an integer: say what you mean with <code>if</code>.</p>
+<div class="file"><span>Bits.raz</span></div><pre class="code"><code><span class="kw">module</span> Bits;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> flags, mask: <span class="ty">U8</span>;
+<span class="kw">begin</span>
+    flags := <span class="number">0</span>;
+    flags := flags | <span class="number">1</span>;               <span class="comment">(* set bit 0 *)</span>
+    flags := flags | (<span class="number">1</span> <span class="kw">shl</span> <span class="number">3</span>);       <span class="comment">(* set bit 3 *)</span>
+    mask := <span class="number">0FH</span>;
+    Out.str(<span class="string">&quot;flags 0x&quot;</span>); Out.hex(<span class="ty">U64</span>(flags), <span class="number">2</span>); Out.ln;
+    Out.str(<span class="string">&quot;and   0x&quot;</span>); Out.hex(<span class="ty">U64</span>(flags &amp; mask), <span class="number">2</span>); Out.ln;
+    Out.str(<span class="string">&quot;xor   0x&quot;</span>); Out.hex(<span class="ty">U64</span>(flags <span class="kw">xor</span> <span class="number">0FFH</span>), <span class="number">2</span>); Out.ln;
+    Out.str(<span class="string">&quot;not   0x&quot;</span>); Out.hex(<span class="ty">U64</span>(~flags), <span class="number">2</span>); Out.ln;
+    <span class="kw">if</span> (flags &amp; <span class="number">8</span>) # <span class="number">0</span> <span class="kw">then</span> Out.str(<span class="string">&quot;bit 3 is set\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Bits.</code></pre>
+<pre class="output"><code>flags 0x09
+and   0x09
+xor   0xF6
+not   0xF6
+bit 3 is set
+</code></pre>
+<h2>Reals</h2>
+<p><code>F32</code> and <code>F64</code> are the reals. A real constant is written with a point, <code>1.5</code> or <code>2.0E-3</code>. <code>Fmt.real(x, places)</code> writes one with that many digits after the point, and <code>Math</code> has the functions.</p>
+<div class="file"><span>Reals.raz</span></div><pre class="code"><code><span class="kw">module</span> Reals;
+<span class="kw">import</span> Fmt, Math;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> n: <span class="ty">INT</span>; x: <span class="ty">F64</span>; y: <span class="ty">F32</span>;
+<span class="kw">begin</span>
+    n := <span class="number">22</span>;
+    x := <span class="ty">F64</span>(n) / <span class="number">7.0</span>;
+    y := <span class="ty">F32</span>(x);
+    Fmt.print(<span class="string">&quot;22/7 = {}\n&quot;</span>, [Fmt.real(x, <span class="number">6</span>)]);
+    Fmt.print(<span class="string">&quot;as F32 = {}\n&quot;</span>, [Fmt.real(<span class="ty">F64</span>(y), <span class="number">6</span>)]);
+    Fmt.print(<span class="string">&quot;sqrt 2 = {}, pi = {}\n&quot;</span>, [Fmt.real(Math.sqrt(<span class="number">2.0</span>), <span class="number">5</span>), Fmt.real(Math.pi, <span class="number">5</span>)]);
+    Fmt.print(<span class="string">&quot;truncated: {} {}\n&quot;</span>, [Fmt.int(<span class="ty">I64</span>(<span class="number">2.9</span>)), Fmt.int(<span class="ty">I64</span>(-<span class="number">2.9</span>))]);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Reals.</code></pre>
+<pre class="output"><code>22/7 = 3.142857
+as F32 = 3.142857
+sqrt 2 = 1.41421, pi = 3.14159
+truncated: 2 -2
+</code></pre>
+<p>A real converts to an integer by rounding toward zero. Every variable starts at zero, a real's <code>0.0</code> and a <code>BOOL</code>'s <code>false</code> included, so there is no uninitialised value to be surprised by.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="modules.html">&larr; Modules</a><a href="index.html">Contents</a><a class="next" href="procedures.html">Procedures and several results &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>

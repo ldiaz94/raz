@@ -1,0 +1,129 @@
+title: Lists, maps and sorting
+part: The library
+summary: List(T), Map(K, V) and Sort(T), put together in a word-frequency program.
+---
+The three generic modules are instantiated like any other generic module, with the types and procedures they need. All three take their memory from an allocator you give them; none of them allocates anything you didn't ask for.
+
+## `List(T)`
+
+A singly linked list with `push` at the front, `pop` from the front, and the nodes exported, so a program walks it itself. Both can fail if the allocator is out of room, and say so.
+
+```raz Pile run
+module Pile;
+import Out, Heap, Ints := List(INT);
+
+proc main*;
+var l: Ints.List; n: ^Ints.Node; v: INT;
+begin
+    Ints.init(ADR(l), Heap.heap);
+    defer Ints.clear(ADR(l));
+    for v := 1 to 5 do _ := Ints.push(ADR(l), v * v); end;
+    Ints.reverse(ADR(l));                    (* oldest first *)
+    n := l.head;
+    while n # nil do Out.int(n^.val); Out.char(' '); n := n^.next; end;
+    Out.ln;
+    v, _ := Ints.pop(ADR(l));
+    Out.int(v); Out.str(" popped, "); Out.int(l.len); Out.str(" left\n");
+end;
+
+end Pile.
+```
+
+## `Map(K, V; hash, eq)`
+
+A hash map. Its key's hash and equality are procedure arguments, so any type can be a key. `put` replaces what a key maps to; `get` says what it maps to and whether it maps to anything; `remove` says whether the key was there. `next` walks the map: from 0, it gives the next entry and the number to pass for the one after, and -1 when there are no more.
+
+```raz Ages run
+module Ages;
+import Out, Fmt, Str, Heap, Book := Map([]U8, INT, Str.hash, Str.eq);
+
+proc main*;
+var m: Book.Map; age: INT; found, ok: BOOL; i: INT; v: INT;
+begin
+    Book.init(ADR(m), Heap.heap);
+    _ := Book.put(ADR(m), "ada", 36);
+    _ := Book.put(ADR(m), "grace", 45);
+    _ := Book.put(ADR(m), "alan", 41);
+    _ := Book.put(ADR(m), "ada", 37);                (* replaces *)
+    age, found := Book.get(ADR(m), "ada");
+    Fmt.print("ada: {} ({})\n", [Fmt.int(age), Fmt.bool(found)]);
+    age, found := Book.get(ADR(m), "linus");
+    Fmt.print("linus: {} ({})\n", [Fmt.int(age), Fmt.bool(found)]);
+    ok := Book.remove(ADR(m), "alan");
+    Fmt.print("{} entries, removed {}\n", [Fmt.int(m.len), Fmt.bool(ok)]);
+    v := 0;
+    i, _, age := Book.next(ADR(m), 0);
+    while i >= 0 do
+        INC(v, age);
+        i, _, age := Book.next(ADR(m), i);
+    end;
+    Out.int(v); Out.str(" years in all\n");
+end;
+
+end Ages.
+```
+
+A map's order is its own, so a program that wants an order collects the entries and sorts them, as the next section does.
+
+## `Sort(T; less)`
+
+An in-place sort of a slice, by a `less` procedure, in `n log n` at most and with no memory of its own. Elements equal by `less` may change places.
+
+## Putting them together
+
+Counting words, then listing them by count and then alphabetically: a `Map` for the counts, an array of records to sort, and `Sort` with a two-level `less`.
+
+```raz Freq run
+module Freq;
+import Fmt, Str, Heap,
+    Count := Map([]U8, INT, Str.hash, Str.eq),
+    Rank := Sort(Entry, before);
+
+type Entry = record word: []U8; n: INT; end;
+
+const Text = "the cat and the hat and the bat sat on the mat and the cat sat";
+
+(* more first; equal counts alphabetically *)
+proc before(a, b: Entry): BOOL;
+begin
+    if a.n # b.n then return a.n > b.n; end;
+    return Str.cmp(a.word, b.word) < 0;
+end;
+
+proc main*;
+var
+    m: Count.Map; entries: [32]Entry; i, start, k, n, found: INT;
+    w: []U8; key: []U8; v: INT;
+begin
+    Count.init(ADR(m), Heap.heap);
+    start := 0;
+    for i := 0 to LEN(Text) do
+        if (i = LEN(Text)) or (Text[i] = ' ') then
+            w := Text[start..i];
+            k, _ := Count.get(ADR(m), w);
+            _ := Count.put(ADR(m), w, k + 1);
+            start := i + 1;
+        end;
+    end;
+    n := 0;
+    found, key, v := Count.next(ADR(m), 0);
+    while found >= 0 do
+        entries[n].word := key;
+        entries[n].n := v;
+        INC(n);
+        found, key, v := Count.next(ADR(m), found);
+    end;
+    Rank.sort(entries[0..n]);
+    for i := 0 to n - 1 do
+        Fmt.print("{} {}\n", [Fmt.int(entries[i].n), Fmt.str(entries[i].word)]);
+    end;
+end;
+
+end Freq.
+```
+
+The keys here are slices of the constant text, so they outlive the map; a program whose keys come from a buffer it will reuse copies them first with `Str.copy`.
+
+## Choosing
+
+Use a `List` when you push and pop at one end and walk it in order. Use a `Map` when you look things up by key. Use an array and `Sort` when you know the size and want an order. When none of them fits, they are each under a hundred lines of raz in `lib/`, and the advanced tour's allocator lesson shows what is underneath.

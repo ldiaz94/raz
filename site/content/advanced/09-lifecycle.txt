@@ -1,0 +1,134 @@
+title: Starting, ending, and signals
+part: Standing alone
+summary: What runs before main, what runs after, and how to wait for a signal.
+---
+With no run time, the life of a program is short enough to say in a few lines. What happens, in order:
+
+1. The entry code sets up a stack for signal handlers and installs the handlers for `SIGSEGV` and `SIGFPE`. A program that uses C starts through C instead, so that C's own set-up runs.
+2. The bodies of the modules run, each once, imported modules first.
+3. The main module's `main` runs.
+4. `Rt.exit` runs the procedures registered with `Rt.atExit`, the last registered first, and ends the program with `main`'s status.
+
+## Bodies, then main
+
+The first tour showed bodies running before `main`. They are the place to set a module up, and they can end early with `return;`.
+
+```raz Order run
+module Order;
+import Out;
+
+var steps*: INT;
+
+proc note(what: []U8);
+begin
+    INC(steps);
+    Out.int(steps); Out.str(". "); Out.str(what); Out.ln;
+end;
+
+begin
+    note("the body runs before main");
+    if steps > 5 then return; end;
+    note("and carries on if it isn't ended early");
+end Order.
+```
+
+That file is a module with a body and no `main`: it can be imported, or its body run as a program. Add the `main` and see both:
+
+```raz Both run
+module Both;
+import Out, Order;
+
+proc main*;
+begin
+    Out.str("main: "); Out.int(Order.steps); Out.str(" steps happened first\n");
+end;
+
+end Both.
+```
+
+## Things to do at the end
+
+`Rt.atExit(p)` registers a procedure with no parameters to run when the program ends by `Rt.exit`: at the end of `main`, by a call to `Rt.exit`, or by a failed check, after its message. It is where a program restores a terminal or removes a lock file. At most 32 are registered, and each runs at most once. Out's buffer is flushed this way, which is why a program that ends in a failure still shows what it printed.
+
+```raz Cleanup run
+module Cleanup;
+import Out, Rt;
+
+proc first;
+begin
+    Out.str("registered first, runs last\n");
+end;
+
+proc second;
+begin
+    Out.str("registered second, runs first\n");
+end;
+
+proc main*;
+begin
+    _ := Rt.atExit(first);
+    _ := Rt.atExit(second);
+    Out.str("main is done\n");
+end;
+
+end Cleanup.
+```
+
+## Two ways to leave in a hurry
+
+`Rt.exit(status)` ends the program after the `atExit` procedures. `Sys.exit(status)` ends it at once, without them. A failed check and `Rt.exit` also skip the `defer` statements still pending in the calls under way. `Sys.exit` is for a child process that must not run what it inherited, and for nothing else.
+
+```raz Hurry
+module Hurry;
+import Out, Rt, Sys;
+
+proc bye;
+begin
+    Out.str("atExit ran\n");
+end;
+
+proc main*;
+begin
+    _ := Rt.atExit(bye);
+    defer Out.str("a deferred statement ran\n");
+    Out.str("leaving\n");
+    Out.flush;
+    Sys.exit(3);
+end;
+
+end Hurry.
+```
+
+```sh
+$ raz Hurry.raz
+$ ./Hurry; echo "status $?"
+```
+
+Neither the deferred statement nor `bye` ran. That's the rule, and the reason to keep cleanup that matters (a terminal, a lock file) in `atExit` and use `Rt.exit` for ending.
+
+## Signals
+
+A program is stopped by a signal it doesn't catch, with a message that names the place for `SIGSEGV` and `SIGFPE`, and without one for the others. A program that wants to handle one, say `SIGTERM` for a clean shutdown, doesn't write a handler that runs at an arbitrary moment. It asks for the signals to arrive as data: `Sys.catch` takes a list of signals and gives a descriptor that is ready to read when one comes, and `Sys.caught` says which. So the program waits for signals the way it waits for input.
+
+```raz Terms run
+module Terms;
+import Out, Sys;
+
+proc main*;
+var fd, sig: INT;
+begin
+    fd := Sys.catch([Sys.sigTerm, Sys.sigWinch]);
+    Out.str("asking myself to stop\n");
+    _ := Sys.kill(Sys.pid(), Sys.sigTerm);
+    if Sys.ready(fd, 1000) then
+        sig := Sys.caught(fd);
+        if sig = Sys.sigTerm then Out.str("caught SIGTERM, stopping cleanly\n"); end;
+    end;
+    sig := Sys.caught(fd);
+    Out.int(sig); Out.str(" waiting after that\n");     (* 0: none *)
+end;
+
+end Terms.
+```
+
+`Sys.ready(fd, ms)` waits up to `ms` milliseconds for something to read; with `Sys.readyOf` it waits on several descriptors, so one loop serves a socket, a terminal and a stop signal together. `Sys.ignore(sig, true)` makes a signal do nothing, as a shell ignores `SIGTTOU`.

@@ -7,9 +7,9 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
 <main>
-<div class="tour"><aside><h3>Raz</h3><ol start='1'>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
 <li><a href="modules.html" aria-current="page">Modules</a></li>
 <li><a href="values.html">Values and conversions</a></li>
@@ -29,7 +29,7 @@
 <li><a href="c.html">Talking to C</a></li>
 <li><a href="threads.html">Threads</a></li>
 </ol></aside><article><p class="kicker">Raz &middot; lesson 2 of 14</p><h1>Modules</h1>
-<p>A program is a set of modules. Here is one, saved as <code>Greet.raz</code>:</p>
+<p>A program is a set of modules, one to a file, and a module's interface is everything it marks with <code>*</code>. Everything else is private to it. Here is one, saved as <code>Greet.raz</code>:</p>
 <div class="file"><span>Greet.raz</span></div><pre class="code"><code><span class="kw">module</span> Greet;
 <span class="kw">import</span> Out;
 
@@ -64,8 +64,125 @@ hello, world
 hello, raz
 2 greetings
 </code></pre>
-<p>A name with <code>*</code> is exported; any other is the module's own. <code>G := Greet</code> imports <code>Greet</code> under a shorter name. Another module may read <code>G.count</code>, but only <code>Greet</code> may change it.</p>
-<p>The statements after a module's last <code>begin</code> are its body. It runs once, before <code>main</code>, which is why "Greet is ready" comes first.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="hello.html">&larr; Hello, world</a><a href="index.html">Contents</a><a class="next" href="values.html">Values and conversions &rarr;</a></div></article></div>
+<p>A name with <code>*</code> is exported; any other is the module's own. <code>G := Greet</code> imports <code>Greet</code> under a shorter name, so its exports are <code>G.hello</code> and <code>G.count</code>. Another module may read <code>G.count</code>, but only <code>Greet</code> may change it.</p>
+<h2>Where modules are found</h2>
+<p>The compiler looks for <code>Greet.raz</code> in the main module's directory, then in each directory given with <code>-I</code>, then in the library. So a project is a directory of modules, and <code>raz Main.raz</code> finds all of them. The library's own names (<code>Out</code>, <code>Str</code>, <code>Map</code>, ...) are kept for it.</p>
+<h2>Bodies run first, in order</h2>
+<p>The statements after a module's last <code>begin</code> are its body. It runs once, before <code>main</code>, after the bodies of the modules it imports, and once however many modules import it. This is how a module sets itself up: no <code>init</code> call to forget.</p>
+<div class="file"><span>Base.raz</span></div><pre class="code"><code><span class="kw">module</span> Base;
+<span class="kw">import</span> Out;
+
+<span class="kw">var</span> ready*: <span class="ty">BOOL</span>;
+
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;Base starts\n&quot;</span>);
+    ready := <span class="ty">true</span>;
+<span class="kw">end</span> Base.</code></pre>
+<div class="file"><span>Layer.raz</span></div><pre class="code"><code><span class="kw">module</span> Layer;
+<span class="kw">import</span> Out, Base;
+
+<span class="kw">const</span> Name* = <span class="string">&quot;Layer&quot;</span>;
+
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;Layer starts, Base is ready: &quot;</span>);
+    <span class="kw">if</span> Base.ready <span class="kw">then</span> Out.str(<span class="string">&quot;yes\n&quot;</span>); <span class="kw">else</span> Out.str(<span class="string">&quot;no\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span> Layer.</code></pre>
+<div class="file"><span>Order.raz</span></div><pre class="code"><code><span class="kw">module</span> Order;
+<span class="kw">import</span> Out, Layer, Base;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;main, after &quot;</span>); Out.str(Layer.Name); Out.char(<span class="string">&#x27; &#x27;</span>);
+    <span class="kw">if</span> Base.ready <span class="kw">then</span> Out.str(<span class="string">&quot;and Base\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Order.</code></pre>
+<pre class="output"><code>Base starts
+Layer starts, Base is ready: yes
+main, after Layer and Base
+</code></pre>
+<p><code>Base</code> is imported twice, but starts once, before <code>Layer</code>, which needs it. A module with no body doesn't need a <code>begin</code> at all.</p>
+<h2>Exporting more than procedures</h2>
+<p>A module exports constants, types, variables and procedures alike. A record type's exported fields are marked too; the rest are the module's own.</p>
+<div class="file"><span>Shape.raz</span></div><pre class="code"><code><span class="kw">module</span> Shape;
+
+<span class="kw">const</span> Sides* = <span class="number">4</span>;
+
+<span class="kw">type</span>
+    Square* = <span class="kw">record</span>
+        side*: <span class="ty">INT</span>;        <span class="comment">(* exported: a user may set it *)</span>
+        id: <span class="ty">INT</span>;           <span class="comment">(* the module&#x27;s own *)</span>
+    <span class="kw">end</span>;
+
+<span class="kw">var</span> made: <span class="ty">INT</span>;             <span class="comment">(* only Shape may read or write it *)</span>
+
+<span class="comment">(* a square of that side, numbered in the order they are made *)</span>
+<span class="kw">proc</span> make*(side: <span class="ty">INT</span>): Square;
+<span class="kw">var</span> s: Square;
+<span class="kw">begin</span>
+    <span class="ty">INC</span>(made);
+    s.side := side;
+    s.id := made;
+    <span class="kw">return</span> s;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> area*(s: Square): <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> s.side * s.side;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> count*: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> made;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Shape.</code></pre>
+<div class="file"><span>Squares.raz</span></div><pre class="code"><code><span class="kw">module</span> Squares;
+<span class="kw">import</span> Out, Shape;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a, b: Shape.Square;
+<span class="kw">begin</span>
+    a := Shape.make(<span class="number">3</span>);
+    b := Shape.make(<span class="number">5</span>);
+    Out.int(Shape.area(a) + Shape.area(b)); Out.ln;
+    Out.int(Shape.count()); Out.str(<span class="string">&quot; made, &quot;</span>); Out.int(Shape.Sides);
+    Out.str(<span class="string">&quot; sides each\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Squares.</code></pre>
+<pre class="output"><code>34
+2 made, 4 sides each
+</code></pre>
+<h2>What the compiler refuses</h2>
+<p>Reaching past an interface is an error, and the error says where.</p>
+<div class="file"><span>Peek.raz</span></div><pre class="code"><code><span class="kw">module</span> Peek;
+<span class="kw">import</span> Shape;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> s: Shape.Square;
+<span class="kw">begin</span>
+    s := Shape.make(<span class="number">2</span>);
+    s.id := <span class="number">7</span>;
+    Shape.made := <span class="number">0</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Peek.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Peek.raz</span>
+Peek.raz:8:7: error: field id of Shape.Square isn&#x27;t exported
+    8 |     s.id := 7;
+      |       ^^
+./Shape.raz:8:9: note: id is declared here, without a *
+    8 |         id: INT;           (* the module&#x27;s own *)
+      |         ^^
+Peek.raz:9:11: error: made isn&#x27;t exported by Shape
+    9 |     Shape.made := 0;
+      |           ^^^^
+./Shape.raz:11:5: note: made is declared here, without a *
+   11 | var made: INT;             (* only Shape may read or write it *)
+      |     ^^^^
+raz: 2 errors</code></pre>
+<p>The compiler goes on to find the others, up to 20, and says what it can: where a name was declared, or a name spelled almost alike. A module with errors writes no executable.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="hello.html">&larr; Hello, world</a><a href="index.html">Contents</a><a class="next" href="values.html">Values and conversions &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
 </body>

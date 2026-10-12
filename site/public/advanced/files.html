@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Files and the command line - Beyond Go</title>
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a href="../index.html">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">Beyond Go</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Beyond Go</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html">Output and formatting</a></li>
+<li><a href="bytes.html">Strings and bytes</a></li>
+<li><a href="collections.html">Lists, maps and sorting</a></li>
+<li><a href="files.html" aria-current="page">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html">System calls</a></li>
+<li><a href="listing.html">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">The library &middot; lesson 4 of 18</p><h1>Files and the command line</h1>
+<p><code>Files</code> is for the common case: a whole file read or written in one call. <code>Sys</code> is the system underneath, for everything else. <code>Opt</code> reads a command line from a table, so that the help and the error messages can't drift from the code.</p>
+<h2>A whole file</h2>
+<p><code>Files.write(path, data)</code> makes the file hold <code>data</code>, and <code>Files.read(path, b)</code> adds the whole file to a <code>Buf</code>. Both say whether they worked.</p>
+<div class="file"><span>Notes.raz</span></div><pre class="code"><code><span class="kw">module</span> Notes;
+<span class="kw">import</span> Out, Files, Buf, Heap;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> b: Buf.Buf; ok: <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    ok := Files.write(<span class="string">&quot;notes.txt&quot;</span>, <span class="string">&quot;first line\nsecond line\n&quot;</span>);
+    <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> Out.str(<span class="string">&quot;can&#x27;t write\n&quot;</span>); <span class="kw">return</span>; <span class="kw">end</span>;
+    Buf.init(<span class="ty">ADR</span>(b), Heap.heap);
+    <span class="kw">defer</span> Buf.done(<span class="ty">ADR</span>(b));
+    ok := Files.read(<span class="string">&quot;notes.txt&quot;</span>, <span class="ty">ADR</span>(b));
+    <span class="kw">if</span> ok <span class="kw">then</span>
+        Out.int(b.len); Out.str(<span class="string">&quot; bytes: &quot;</span>); Out.str(Buf.bytes(<span class="ty">ADR</span>(b)));
+    <span class="kw">end</span>;
+    ok := Files.read(<span class="string">&quot;missing.txt&quot;</span>, <span class="ty">ADR</span>(b));
+    <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> Out.str(<span class="string">&quot;missing.txt: not there\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Notes.</code></pre>
+<pre class="output"><code>23 bytes: first line
+second line
+missing.txt: not there
+</code></pre>
+<h2>Descriptors</h2>
+<p>Underneath, a file is a descriptor, an <code>INT</code>. <code>Sys.open</code> takes the path and the way to open it as a set; <code>read</code>, <code>write</code>, <code>seek</code> and <code>close</code> do what they say. A result that can fail is a number, and minus an errno if it failed, as on Linux itself. Reading in a loop is the pattern for anything too big to hold at once.</p>
+<div class="file"><span>Count.raz</span></div><pre class="code"><code><span class="kw">module</span> Count;
+<span class="kw">import</span> Out, Sys;
+
+<span class="comment">(* the lines of the file at path, or minus an errno *)</span>
+<span class="kw">proc</span> lines(path: []<span class="ty">U8</span>): <span class="ty">INT</span>;
+<span class="kw">var</span> fd, n, i, count: <span class="ty">INT</span>; buf: [<span class="number">4096</span>]<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    fd := Sys.openRead(path);
+    <span class="kw">if</span> fd &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> fd; <span class="kw">end</span>;
+    <span class="kw">defer</span> Sys.close(fd);
+    n := Sys.read(fd, buf);
+    <span class="kw">while</span> n &gt; <span class="number">0</span> <span class="kw">do</span>
+        <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> n - <span class="number">1</span> <span class="kw">do</span>
+            <span class="kw">if</span> buf[i] = <span class="string">&#x27;\n&#x27;</span> <span class="kw">then</span> <span class="ty">INC</span>(count); <span class="kw">end</span>;
+        <span class="kw">end</span>;
+        n := Sys.read(fd, buf);
+    <span class="kw">end</span>;
+    <span class="kw">if</span> n &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> n; <span class="kw">end</span>;
+    <span class="kw">return</span> count;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> fd: <span class="ty">INT</span>; pos: <span class="ty">I64</span>;
+<span class="kw">begin</span>
+    fd := Sys.create(<span class="string">&quot;log.txt&quot;</span>);
+    _ := Sys.write(fd, <span class="string">&quot;a\nb\nc\n&quot;</span>);
+    pos := Sys.seek(fd, <span class="number">2</span>, <span class="ty">false</span>);              <span class="comment">(* from the start *)</span>
+    Out.int(pos); Out.ln;
+    Sys.close(fd);
+    Out.int(lines(<span class="string">&quot;log.txt&quot;</span>)); Out.str(<span class="string">&quot; lines\n&quot;</span>);
+    Out.int(lines(<span class="string">&quot;/no/such/file&quot;</span>)); Out.ln;     <span class="comment">(* -2: ENOENT *)</span>
+    fd := Sys.open(<span class="string">&quot;log.txt&quot;</span>, {Sys.writing, Sys.appending});
+    _ := Sys.write(fd, <span class="string">&quot;d\n&quot;</span>);
+    Sys.close(fd);
+    Out.int(lines(<span class="string">&quot;log.txt&quot;</span>)); Out.str(<span class="string">&quot; lines now\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Count.</code></pre>
+<pre class="output"><code>2
+3 lines
+-2
+4 lines now
+</code></pre>
+<h2>Looking at a file, and a directory</h2>
+<p><code>Sys.info</code> says a file's size, modification time, permissions, and whether it is a directory, a regular file or a link. <code>Sys.openDir</code> and <code>nextEntry</code> list a directory, in no particular order, so a program that prints one sorts it first. A name from <code>nextEntry</code> is good only until the next call, so the program keeps a copy.</p>
+<div class="file"><span>Tree.raz</span></div><pre class="code"><code><span class="kw">module</span> Tree;
+<span class="kw">import</span> Out, Sys, Str, Heap, Mem, Buf, Order := Sort([]<span class="ty">U8</span>, before);
+
+<span class="kw">proc</span> before(a, b: []<span class="ty">U8</span>): <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> Str.cmp(a, b) &lt; <span class="number">0</span>;
+<span class="kw">end</span>;
+
+<span class="comment">(* a file made to hold text *)</span>
+<span class="kw">proc</span> put(path, text: []<span class="ty">U8</span>);
+<span class="kw">var</span> fd: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    fd := Sys.create(path);
+    _ := Sys.write(fd, text);
+    Sys.close(fd);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span>
+    d: Sys.Dir; name, copy: []<span class="ty">U8</span>; more, ok: <span class="ty">BOOL</span>; i, n: <span class="ty">INT</span>;
+    info: Sys.Info; err: <span class="ty">INT</span>; names: [<span class="number">16</span>][]<span class="ty">U8</span>; path: Buf.Buf;
+<span class="kw">begin</span>
+    _ := Sys.makeDir(<span class="string">&quot;proj&quot;</span>);
+    _ := Sys.makeDir(<span class="string">&quot;proj/src&quot;</span>);
+    put(<span class="string">&quot;proj/b.txt&quot;</span>, <span class="string">&quot;bb&quot;</span>);
+    put(<span class="string">&quot;proj/a.txt&quot;</span>, <span class="string">&quot;a&quot;</span>);
+    <span class="kw">if</span> Sys.openDir(<span class="ty">ADR</span>(d), <span class="string">&quot;proj&quot;</span>) &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    n := <span class="number">0</span>;
+    name, more := Sys.nextEntry(<span class="ty">ADR</span>(d));
+    <span class="kw">while</span> more <span class="kw">do</span>
+        copy, ok := Str.copy(Heap.heap, name);
+        <span class="kw">if</span> ok <span class="kw">and</span> (n &lt; <span class="number">16</span>) <span class="kw">then</span> names[n] := copy; <span class="ty">INC</span>(n); <span class="kw">end</span>;
+        name, more := Sys.nextEntry(<span class="ty">ADR</span>(d));
+    <span class="kw">end</span>;
+    Sys.closeDir(<span class="ty">ADR</span>(d));
+    Order.sort(names[<span class="number">0</span>..n]);
+    Buf.init(<span class="ty">ADR</span>(path), Heap.heap);
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> n - <span class="number">1</span> <span class="kw">do</span>
+        Buf.reset(<span class="ty">ADR</span>(path));
+        Buf.str(<span class="ty">ADR</span>(path), <span class="string">&quot;proj/&quot;</span>);
+        Buf.str(<span class="ty">ADR</span>(path), names[i]);
+        info, err := Sys.info(Buf.bytes(<span class="ty">ADR</span>(path)));
+        Out.str(names[i]);
+        <span class="kw">if</span> err &lt; <span class="number">0</span> <span class="kw">then</span> Out.str(<span class="string">&quot; ?&quot;</span>);
+        <span class="kw">elsif</span> info.dir <span class="kw">then</span> Out.str(<span class="string">&quot;/&quot;</span>);
+        <span class="kw">else</span> Out.str(<span class="string">&quot;, &quot;</span>); Out.int(info.size); Out.str(<span class="string">&quot; bytes&quot;</span>);
+        <span class="kw">end</span>;
+        Out.ln;
+        Mem.free(Heap.heap, ^<span class="ty">U8</span>(<span class="ty">ADR</span>(names[i][<span class="number">0</span>])));
+    <span class="kw">end</span>;
+    Buf.done(<span class="ty">ADR</span>(path));
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Tree.</code></pre>
+<pre class="output"><code>a.txt, 1 bytes
+b.txt, 2 bytes
+src/
+</code></pre>
+<h2>A command line, from a table</h2>
+<p>A program describes its options once, in a table of <code>Opt.Row</code>s: its synopsis lines, its subcommands and its options. The help and the error messages are made from the table. The parser reads by the rules of the C library's <code>getopt</code> with GNU's long options, so <code>-vn3</code>, <code>-n 3</code>, <code>--count=3</code> and <code>--count 3</code> all work, and <code>--</code> ends the options.</p>
+<div class="file"><span>Tool.raz</span></div><pre class="code"><code><span class="kw">module</span> Tool;
+<span class="kw">import</span> Out, Fmt, Opt;
+
+<span class="kw">const</span> count = <span class="number">1</span>;                   <span class="comment">(* the key of --count, which has no letter *)</span>
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> p: Opt.Parser; verbose: <span class="ty">BOOL</span>; n, i: <span class="ty">INT</span>; w: []<span class="ty">U8</span>; ok: <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    n := <span class="number">1</span>;
+    Opt.init(<span class="ty">ADR</span>(p), <span class="string">&quot;tool&quot;</span>, [
+        Opt.usage(<span class="string">&quot;&quot;</span>, <span class="string">&quot;tool [-v] [--count n] word ...&quot;</span>),
+        Opt.option(<span class="string">&quot;&quot;</span>, <span class="string">&#x27;v&#x27;</span>, <span class="string">&quot;verbose&quot;</span>, <span class="string">&quot;&quot;</span>, <span class="string">&quot;say more&quot;</span>),
+        Opt.option(<span class="string">&quot;&quot;</span>, count, <span class="string">&quot;count&quot;</span>, <span class="string">&quot;n&quot;</span>, <span class="string">&quot;repeat each word n times&quot;</span>)]);
+    <span class="kw">while</span> Opt.next(<span class="ty">ADR</span>(p)) <span class="kw">do</span>
+        <span class="kw">if</span> p.letter = <span class="string">&#x27;v&#x27;</span> <span class="kw">then</span> verbose := <span class="ty">true</span>;
+        <span class="kw">elsif</span> p.letter = count <span class="kw">then</span> n := <span class="ty">INT</span>(Opt.number(<span class="ty">ADR</span>(p), <span class="number">1</span>, <span class="number">5</span>));
+        <span class="kw">end</span>;
+    <span class="kw">end</span>;
+    w, ok := Opt.operand(<span class="ty">ADR</span>(p));
+    <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> Opt.fail(<span class="ty">ADR</span>(p), <span class="string">&quot;no words; see tool -h&quot;</span>); <span class="kw">end</span>;
+    <span class="kw">while</span> ok <span class="kw">do</span>
+        <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> n <span class="kw">do</span>
+            <span class="kw">if</span> verbose <span class="kw">then</span> Out.str(<span class="string">&quot;word: &quot;</span>); <span class="kw">end</span>;
+            Fmt.print(<span class="string">&quot;{}\n&quot;</span>, [Fmt.str(w)]);
+        <span class="kw">end</span>;
+        w, ok := Opt.operand(<span class="ty">ADR</span>(p));
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Tool.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Tool.raz</span>
+<span class="cmd">$ ./Tool -h</span>
+usage: tool [-v] [--count n] word ...
+
+  -v, --verbose   say more
+      --count n   repeat each word n times
+  -h, --help      print this and exit
+<span class="cmd">$ ./Tool -v hello world</span>
+word: hello
+word: world
+<span class="cmd">$ ./Tool --count 9 hello; echo &quot;status $?&quot;</span>
+tool: --count wants a number from 1 to 5, not &#x27;9&#x27;
+usage: tool [-v] [--count n] word ...
+status 2
+<span class="cmd">$ ./Tool -x; echo &quot;status $?&quot;</span>
+tool: unknown option -x
+usage: tool [-v] [--count n] word ...
+status 2
+<span class="cmd">$ ./Tool; echo &quot;status $?&quot;</span>
+tool: no words; see tool -h
+status 2</code></pre>
+<p><code>-h</code> and <code>--help</code> are <code>Opt</code>'s: the program never sees them. A mistake on the command line is a sentence on standard error with the program's name first, then the synopsis, and status 2. Nothing in <code>Tool</code> wrote any of that.</p>
+<p>A mistake in the table itself, such as an option given twice, is the program's, and <code>init</code> says so and ends with status 1 before it reads a word.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="collections.html">&larr; Lists, maps and sorting</a><a href="index.html">Contents</a><a class="next" href="processes.html">Time, randomness and other programs &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+</body>
+</html>

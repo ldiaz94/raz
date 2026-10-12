@@ -1,0 +1,175 @@
+title: Writing an allocator
+part: The library
+summary: Mem.Allocator is two procedures; make one over a fixed array, and one that counts.
+---
+An allocator is a record of two procedures, and that is all `Mem.Allocator` is:
+
+```text
+type Allocator* = record
+    alloc*: proc(a: ^Allocator; size, align: INT): ^U8;   (* nil if out of room *)
+    free*:  proc(a: ^Allocator; p: ^U8);
+end;
+```
+
+`NEW(p, a)` calls `a^.alloc(a, SIZE(T), alignment)` and zeroes what it gets. `Buf`, `List` and `Map` call the same procedures. So anything that fills in these two fields is an allocator, and everything in the library works with it.
+
+## An allocator over a fixed array
+
+Here is one that needs no system calls at all: it hands out memory from an array in the program, a bump allocator. This is the kind a program with no operating system, or no room for a heap, uses. `free` has nothing to do; `reset` forgets everything.
+
+The trick that lets one procedure find its state is the same one `Arena` uses: the record puts `base: Mem.Allocator` first, so a `^Mem.Allocator` and a `^Bump` are the same address, and the procedure converts one to the other.
+
+```raz Bump
+module Bump;
+import Mem;
+
+type
+    Bump* = record
+        base*: Mem.Allocator;       (* first, so that ^Bump(a) finds the rest *)
+        mem: ^U8;
+        size, used*: INT;
+    end;
+
+proc alloc(a: ^Mem.Allocator; size, align: INT): ^U8;
+var b: ^Bump; at: INT;
+begin
+    b := ^Bump(a);
+    at := (b^.used + align - 1) div align * align;      (* round up to align *)
+    if (size < 0) or (at + size > b^.size) then return nil; end;
+    b^.used := at + size;
+    return b^.mem + at;
+end;
+
+proc free(_a: ^Mem.Allocator; _p: ^U8);
+begin
+end;
+
+(* a bump allocator over the size bytes at mem *)
+proc init*(b: ^Bump; mem: ^U8; size: INT);
+begin
+    b^.base := {alloc: alloc, free: free};
+    b^.mem := mem;
+    b^.size := size;
+    b^.used := 0;
+end;
+
+(* everything forgotten, the memory used again *)
+proc reset*(b: ^Bump);
+begin
+    b^.used := 0;
+end;
+
+end Bump.
+```
+
+```raz Bumping run
+module Bumping;
+import Out, Bump;
+
+type Point = record x, y: INT; end;
+
+var arena: [256]U8;           (* the allocator's whole world *)
+
+proc main*;
+var b: Bump.Bump; p, q: ^Point; many: INT; r: ^Point;
+begin
+    Bump.init(ADR(b), ADR(arena[0]), 256);
+    NEW(p, ADR(b.base));
+    NEW(q, ADR(b.base));
+    p^.x := 1; q^.y := 2;
+    Out.int(b.used); Out.str(" bytes used by two points\n");
+    many := 2;
+    repeat
+        NEW(r, ADR(b.base));
+        if r # nil then INC(many); end;
+    until r = nil;
+    Out.int(many); Out.str(" points fit in 256 bytes\n");
+    Bump.reset(ADR(b));
+    NEW(r, ADR(b.base));
+    if r # nil then Out.str("room again after a reset\n"); end;
+end;
+
+end Bumping.
+```
+
+An allocator that runs out says so with `nil`, and the caller decides what that means. Nothing else in the program is touched.
+
+## An allocator that counts
+
+An allocator can wrap another. This one forwards to whatever it is given and keeps count, which is how to find out what a piece of code allocates, or to prove that a path allocates nothing.
+
+```raz Counted
+module Counted;
+import Mem;
+
+type
+    Counted* = record
+        base*: Mem.Allocator;       (* first *)
+        inner: ^Mem.Allocator;
+        allocs*, frees*, bytes*: INT;
+    end;
+
+proc alloc(a: ^Mem.Allocator; size, align: INT): ^U8;
+var c: ^Counted; p: ^U8;
+begin
+    c := ^Counted(a);
+    p := Mem.alloc(c^.inner, size, align);
+    if p # nil then INC(c^.allocs); INC(c^.bytes, size); end;
+    return p;
+end;
+
+proc free(a: ^Mem.Allocator; p: ^U8);
+var c: ^Counted;
+begin
+    c := ^Counted(a);
+    INC(c^.frees);
+    Mem.free(c^.inner, p);
+end;
+
+(* a counting allocator in front of inner *)
+proc init*(c: ^Counted; inner: ^Mem.Allocator);
+begin
+    c^.base := {alloc: alloc, free: free};
+    c^.inner := inner;
+    c^.allocs := 0;
+    c^.frees := 0;
+    c^.bytes := 0;
+end;
+
+end Counted.
+```
+
+```raz Audit run
+module Audit;
+import Fmt, Heap, Mem, Buf, Counted, Names := List([]U8);
+
+proc main*;
+var c: Counted.Counted; b: Buf.Buf; l: Names.List; i: INT; p: ^U8;
+begin
+    Counted.init(ADR(c), Heap.heap);
+    Buf.init(ADR(b), ADR(c.base));
+    for i := 1 to 200 do Buf.str(ADR(b), "0123456789"); end;
+    Fmt.print("a buffer of {} bytes took {} allocations\n",
+        [Fmt.int(b.len), Fmt.int(c.allocs)]);
+    Buf.done(ADR(b));
+
+    Names.init(ADR(l), ADR(c.base));
+    for i := 1 to 10 do _ := Names.push(ADR(l), "x"); end;
+    Fmt.print("{} allocations in all, {} frees so far\n", [Fmt.int(c.allocs), Fmt.int(c.frees)]);
+    Names.clear(ADR(l));
+    Fmt.print("{} frees after clear\n", [Fmt.int(c.frees)]);
+
+    p := Mem.alloc(ADR(c.base), 64, 8);
+    Mem.free(ADR(c.base), p);
+end;
+
+end Audit.
+```
+
+A `Buf` grows by doubling, so two thousand bytes took a handful of allocations and not two hundred. That is the sort of thing a counting allocator is for.
+
+## What to take from this
+
+- An allocator is a value, so it is passed, wrapped, swapped in a test and replaced by a bump allocator in a program with no heap.
+- A library function that needs memory takes the allocator as a parameter, so its caller owns the policy.
+- An allocator can use the record-first trick to carry any state it needs, because converting a pointer to a record's first field and back is the same address.

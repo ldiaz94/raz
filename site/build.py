@@ -8,7 +8,8 @@ any web server. Nothing runs in the reader's browser; the code on the
 tour's pages is run here, by ./raz, and the output shown is what it
 printed, so a lesson that stops working fails the build.
 
-Lessons are site/content/NN-name.txt:
+Lessons are site/content/<tour>/NN-name.txt, one folder to a tour (see
+TOURS below):
 
     title: Hello, world          (the first lines are "key: value")
     part: Raz                    (the lessons are grouped in parts)
@@ -25,6 +26,10 @@ of its own for the lesson.  "run" has the build run it and show what it
 printed; "fail" runs it and shows the failure it ends in.  A block with
 nothing in it is taken from doc/raz-tutorial.7, whose programs make
 check already runs, by the module's name.
+
+Two other blocks: "```text" is shown as written, and "```sh" is a shell
+session: each line that starts with "$ " is run in the lesson's folder,
+with raz on the path, and shown with what it printed.
 """
 import html, os, re, shutil, subprocess, sys, tempfile
 
@@ -33,6 +38,12 @@ ROOT = os.path.dirname(HERE)
 OUT = os.path.join(HERE, "public")
 RAZ = os.path.join(ROOT, "raz")
 REPO = "https://github.com/ldiaz94/raz"
+
+# folder in content/, folder in public/, name, the sentence under the name
+TOURS = [
+    ("tour", "tour", "Raz, Set, Go", "tour-intro.html"),
+    ("advanced", "advanced", "Beyond Go", "advanced-intro.html"),
+]
 
 KEYWORDS = set("""and begin break by code const defer div do else elsif end
 extern for forward if import in link match mod module not of or packed proc
@@ -94,9 +105,31 @@ def tutorial_module(name):
 
 def run(directory, name):
     """(stdout, stderr, status) of the module name, compiled and run."""
-    p = subprocess.run([RAZ, "run", name + ".raz"], cwd=directory,
+    p = subprocess.run([RAZ, "run", "-Werror", name + ".raz"], cwd=directory,
                        capture_output=True, text=True, timeout=60)
     return p.stdout, p.stderr, p.returncode
+
+def shell_html(directory, script):
+    """A session: each "$ command" line run in directory, with its output."""
+    bin = os.path.join(directory, ".bin")
+    os.makedirs(bin, exist_ok=True)
+    if not os.path.exists(os.path.join(bin, "raz")):
+        os.symlink(RAZ, os.path.join(bin, "raz"))   # raz finds lib/ by its real path
+    env = dict(os.environ, PATH=bin + ":" + os.environ["PATH"],
+               RAZLIB=os.path.join(ROOT, "lib"))
+    out = []
+    for line in script.rstrip("\n").split("\n"):
+        if not line.startswith("$ "):
+            out.append(html.escape(line))
+            continue
+        out.append('<span class="cmd">%s</span>' % html.escape(line))
+        p = subprocess.run(line[2:], shell=True, cwd=directory, env=env,
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                           text=True, timeout=60)
+        text = p.stdout.rstrip("\n")
+        if text:
+            out.append(html.escape(text))
+    return '<pre class="output term"><code>%s</code></pre>' % "\n".join(out)
 
 def output_html(stdout, stderr):
     out = html.escape(stdout)
@@ -117,7 +150,9 @@ def prose(text):
     out = []
     for para in re.split(r"\n\s*\n", text.strip()):
         lines = para.split("\n")
-        if all(l.startswith("- ") for l in lines):
+        if para.startswith("## "):
+            out.append("<h2>%s</h2>" % inline(para[3:]))
+        elif all(l.startswith("- ") for l in lines):
             out.append("<ul>%s</ul>" % "".join(
                 "<li>%s</li>" % inline(l[2:]) for l in lines))
         else:
@@ -137,7 +172,7 @@ def lesson_body(lesson):
     """The lesson's page content; runs its programs."""
     parts, tmp = [], tempfile.mkdtemp()
     try:
-        chunks = re.split(r"^```raz ([^\n]*)\n(.*?)^```$", lesson["body"],
+        chunks = re.split(r"^```(raz [^\n]*|text|sh)\n(.*?)^```$", lesson["body"],
                           flags=re.M | re.S)
         # chunks: text, info, code, text, info, code, ..., text
         for i in range(0, len(chunks), 3):
@@ -145,7 +180,15 @@ def lesson_body(lesson):
                 parts.append(prose(chunks[i]))
             if i + 1 >= len(chunks):
                 break
-            info, code = chunks[i + 1].split(), chunks[i + 2]
+            kind, code = chunks[i + 1], chunks[i + 2]
+            if kind == "text":
+                parts.append('<pre class="code"><code>%s</code></pre>'
+                             % html.escape(code.rstrip("\n")))
+                continue
+            if kind == "sh":
+                parts.append(shell_html(tmp, code))
+                continue
+            info = kind.split()[1:]
             name, flags = info[0], info[1:]
             if not code.strip():
                 code = tutorial_module(name)
@@ -173,6 +216,7 @@ def page(title, body, depth=0, current=""):
         for key, href, label in [
             ("home", "index.html", "raz"),
             ("tour", "tour/index.html", "Raz, Set, Go"),
+            ("advanced", "advanced/index.html", "Beyond Go"),
             ("spec", "spec.html", "Report"),
             ("get", "index.html#download", "Download")])
     return """<!doctype html>
@@ -199,16 +243,19 @@ def write(path, text):
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
 
-def build_tour(lessons):
+def build_tour(tour, lessons, next_page):
+    """One tour's pages: a contents page and a page to each lesson.
+    next_page is (href, label) for what follows its last lesson."""
+    folder, outdir, name, intro_file = tour
     parts = []
     for l in lessons:
         if l["part"] not in parts:
             parts.append(l["part"])
+    first = lambda p: 1 + next(i for i, x in enumerate(lessons) if x["part"] == p)
     for n, l in enumerate(lessons):
         toc = []
         for p in parts:
-            toc.append("<h3>%s</h3><ol start='%d'>" % (
-                p, 1 + next(i for i, x in enumerate(lessons) if x["part"] == p)))
+            toc.append("<h3>%s</h3><ol start='%d'>" % (p, first(p)))
             for i, x in enumerate(lessons):
                 if x["part"] == p:
                     cur = ' aria-current="page"' if i == n else ""
@@ -223,29 +270,27 @@ def build_tour(lessons):
             pager += '<a class="next" href="%s.html">%s &rarr;</a>' % (
                 lessons[n + 1]["slug"], html.escape(lessons[n + 1]["title"]))
         else:
-            pager += '<a class="next" href="../spec.html">The report &rarr;</a>'
-        body = ('<div class="tour"><aside>%s</aside><article>'
+            pager += '<a class="next" href="%s">%s &rarr;</a>' % next_page
+        body = ('<div class="tour"><aside><h2>%s</h2>%s</aside><article>'
                 '<p class="kicker">%s &middot; lesson %d of %d</p><h1>%s</h1>\n%s'
                 '<p class="tryit">Save a program under its module&rsquo;s name and run '
                 'it with <code>raz run Name.raz</code>.</p>'
                 '<div class="pager">%s</div></article></div>') % (
-            "\n".join(toc), l["part"], n + 1, len(lessons),
+            name, "\n".join(toc), l["part"], n + 1, len(lessons),
             html.escape(l["title"]), lesson_body(l), pager)
-        write("tour/%s.html" % l["slug"], page(
-            "%s - Raz, Set, Go" % l["title"], body, 1, "tour"))
+        write("%s/%s.html" % (outdir, l["slug"]), page(
+            "%s - %s" % (l["title"], name), body, 1, folder))
     cards = []
     for p in parts:
-        cards.append("<h2>%s</h2><ol start='%d'>" % (
-            p, 1 + next(i for i, x in enumerate(lessons) if x["part"] == p)))
+        cards.append("<h2>%s</h2><ol start='%d'>" % (p, first(p)))
         for x in lessons:
             if x["part"] == p:
                 cards.append('<li><a href="%s.html">%s</a> <span>%s</span></li>' % (
                     x["slug"], html.escape(x["title"]), html.escape(x["summary"])))
         cards.append("</ol>")
-    intro = open(os.path.join(HERE, "content", "tour-intro.html"),
-                 encoding="utf-8").read()
-    write("tour/index.html", page("Raz, Set, Go: a tour of raz",
-          '<div class="contents">%s%s</div>' % (intro, "\n".join(cards)), 1, "tour"))
+    intro = open(os.path.join(HERE, "content", intro_file), encoding="utf-8").read()
+    write("%s/index.html" % outdir, page(name,
+          '<div class="contents">%s%s</div>' % (intro, "\n".join(cards)), 1, folder))
 
 def build_spec():
     if not shutil.which("pandoc"):
@@ -282,10 +327,19 @@ def main():
     shutil.copy(os.path.join(HERE, "style.css"), OUT)
     names = sorted(f for f in os.listdir(os.path.join(HERE, "content"))
                    if re.match(r"\d+-.*\.txt$", f))
-    lessons = [read_lesson(os.path.join(HERE, "content", f)) for f in names]
-    build_tour(lessons)
+    counts = []
+    for i, tour in enumerate(TOURS):
+        folder = os.path.join(HERE, "content", tour[0])
+        lessons = [read_lesson(os.path.join(folder, f))
+                   for f in sorted(os.listdir(folder)) if re.match(r"\d+-.*\.txt$", f)]
+        if i + 1 < len(TOURS):
+            nxt = ("../%s/index.html" % TOURS[i + 1][1], TOURS[i + 1][2])
+        else:
+            nxt = ("../spec.html", "The report")
+        build_tour(tour, lessons, nxt)
+        counts.append(len(lessons))
     build_spec()
     build_home()
-    print("site/public: %d lessons" % len(lessons))
+    print("site/public: %s lessons" % " + ".join(map(str, counts)))
 
 main()

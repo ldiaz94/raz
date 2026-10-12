@@ -1,0 +1,124 @@
+title: Volatile
+part: Shared memory
+summary: ^VOLATILE T: memory that something else may change, laid over with a record.
+---
+Most memory is the program's own: only it reads and writes it, so the compiler may keep a variable in a register, leave out a write that nothing reads, and change the order of accesses, as long as the program does what the report says. Some memory is not: a device's registers, memory another processor or thread is changing, a page the kernel fills. There, each access matters, and its order.
+
+A variable reached through a `^VOLATILE T` is volatile, and so is any field or element of it. Each read or write of one of a basic, enumeration, set or pointer type is exactly one memory access, of exactly its size, and volatile accesses happen in the order the program writes them.
+
+## A device laid over memory
+
+The classic use is a device's registers: a record that says what is at which offset, laid over the address the hardware answers at. The record's layout is C's, so it is the same as the datasheet's struct. Here a page of the program's own stands in for the device.
+
+```raz Uart run
+module Uart;
+import Out;
+
+type
+    Regs = record
+        data: U32;       (* offset 0 *)
+        status: U32;     (* offset 4 *)
+        control: U8;     (* offset 8 *)
+    end;
+
+var page: [64]U8;        (* where the device would be *)
+
+proc main*;
+var dev: ^VOLATILE Regs; i: INT;
+begin
+    dev := ^VOLATILE Regs(ADR(page));      (* the conversion is written *)
+    dev^.control := 1;
+    dev^.status := 0FFH;
+    for i := 0 to 2 do
+        dev^.data := U32('a' + i);
+        Out.char(U8(dev^.data));
+    end;
+    Out.ln;
+    FENCE;
+    Out.int(INT(page[8])); Out.char(' '); Out.int(INT(dev^.status)); Out.ln;
+end;
+
+end Uart.
+```
+
+On real hardware the address would be a constant, `^VOLATILE Regs(0FEC00000H)`, which is a legal conversion since an integer constant converts to a pointer. The program is otherwise unchanged.
+
+## What each access is
+
+The listing shows what the guarantee means: each field access is one instruction of the field's size, and so is a write to a field that is never read afterwards, which an optimizer would be allowed to drop from an ordinary variable.
+
+```sh
+$ raz -S Uart.raz | grep -n "dword\|byte" | head -2
+```
+
+The `U8` control byte is written with a `byte` store, and the `U32` status with a `dword` one. Never a wider access that touches the neighbour, never two narrower ones.
+
+## Waiting for something else to change
+
+Where a program waits for another thread or a device to change a value, the loop must read the value each time. A volatile read does. This "device" is a thread that sets a bit in a status word after a delay; the main thread polls.
+
+```raz Poll run
+module Poll;
+import Out, Sys, Thread;
+
+type Dev = record status: INT; data: INT; end;
+
+var dev: Dev;
+
+proc device(_arg: ^U8);
+var d: ^VOLATILE Dev;
+begin
+    d := ^VOLATILE Dev(ADR(dev));
+    Sys.sleep(20);
+    d^.data := 42;
+    FENCE;                          (* data before the flag that announces it *)
+    d^.status := 1;
+end;
+
+proc main*;
+var t: ^Thread.Thread; err: ERROR; d: ^VOLATILE Dev; spins: INT;
+begin
+    d := ^VOLATILE Dev(ADR(dev));
+    t, err := Thread.spawn(device, nil);
+    if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    while d^.status = 0 do INC(spins); Sys.yield; end;
+    Out.int(d^.data); Out.ln;
+    if spins > 0 then Out.str("it waited for the device\n"); end;
+    Thread.join(t);
+end;
+
+end Poll.
+```
+
+The `FENCE` between the two writes matters. It is a full memory barrier, ordering the program's ordinary accesses against those of other processors and devices. Without it, volatile accesses are ordered among themselves, but nothing says another processor sees `data` before `status`. The next lessons are about this.
+
+## What volatile is not
+
+- **Not atomic across a read-modify-write.** `INC(d^.count)` reads and then writes: two accesses, even through a volatile pointer. `XADD` is the atomic one.
+- **Not a lock.** It says each access happens as written; it says nothing about what happens between them.
+- **Not for whole records or arrays.** Copying a whole record through a volatile pointer isn't allowed, since it can't be one access. A field of a packed record can't be reached volatilely at all, since a misaligned access can't be promised as one.
+- **Not silently dropped.** A `^VOLATILE T` doesn't convert to a `^T` without a written conversion, so the volatile can't be lost by accident.
+
+The compiler holds the line on each of them:
+
+```raz Wrong
+module Wrong;
+
+type Pair = record a, b: U32; end;
+
+var cell: Pair;
+
+proc main*;
+var v: ^VOLATILE Pair; p: ^Pair; copy: Pair;
+begin
+    v := ^VOLATILE Pair(ADR(cell));
+    p := v;
+    copy := v^;
+end;
+
+end Wrong.
+```
+
+```sh
+$ raz Wrong.raz
+```
