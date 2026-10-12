@@ -85,16 +85,18 @@ build/raz.pdf: doc/raz.md doc/report.css | build
 	chromium --headless --no-pdf-header-footer --print-to-pdf=$@ build/raz.html 2>/dev/null
 
 # raz and its library go together under $(PREFIX)/lib/raz; the link
-# on PATH works since raz finds lib/ beside its real path.
+# on PATH works since raz finds lib/ beside its real path. The manual
+# page goes where man looks, beside bin.
 PREFIX = $(HOME)/.local
 
 install: raz
 	rm -rf $(PREFIX)/lib/raz
-	mkdir -p $(PREFIX)/lib/raz $(PREFIX)/bin
+	mkdir -p $(PREFIX)/lib/raz $(PREFIX)/bin $(PREFIX)/share/man/man1
 	cp -r raz lib $(PREFIX)/lib/raz
 	ln -sf $(PREFIX)/lib/raz/raz $(PREFIX)/bin/raz
+	cp doc/raz.1 $(PREFIX)/share/man/man1/raz.1
 
 uninstall:
-	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz
+	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(PREFIX)/share/man/man1/raz.1
 
 .PHONY: units tests check gdb bench stress fmt loc pdf clean install uninstall

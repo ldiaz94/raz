@@ -1,0 +1,14 @@
+module Index;
+
+(* For raz -s: an index out of range, told by its address alone. *)
+import Out;
+
+proc main*;
+var a: [3]INT; i: INT;
+begin
+    Out.str("hello\n");
+    i := 5;
+    a[i] := 1;
+end;
+
+end Index.

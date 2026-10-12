@@ -76,6 +76,10 @@ type
   { The code made so far, to go back to for a second try at a body }
   TCodeMark = record pc, fixups, lines, said: longint; end;
 
+  { For EntryPoint: the address of chunk, put in the variable whose
+    chunk is into before the program starts }
+  TLink = record chunk, into: longint; end;
+
   TCall = record
     sig: PType;
     param: PObj;       { the parameter the next argument is for }
@@ -177,7 +181,7 @@ function DeferBegin(var L, saved: longint): longint;
 procedure DeferEnd(L, saved: longint);
 procedure RunDefer(at: longint);
 
-function EntryPoint(dynamic: boolean; first: PModule; main: PObj; cExit, places, placesVar, exitProc: longint): longint;
+function EntryPoint(dynamic: boolean; first: PModule; main: PObj; cExit, exitProc: longint; const links: array of TLink; numLinks: longint): longint;
 procedure CodeProc(c: longint; constExpr: TConstFn);
 
 implementation
@@ -1679,10 +1683,11 @@ end;
 
   dynamic: the program uses C. first: the first module, whose chain
   gives the order of the bodies. main: the program's main procedure, or
-  nil. cExit, placesVar and exitProc: the chunks of Rt's cExit, places
-  and exit. places: the chunk the linker fills with the places (the
-  address of each line of code, for Rt to say where a check failed). }
-function EntryPoint(dynamic: boolean; first: PModule; main: PObj; cExit, places, placesVar, exitProc: longint): longint;
+  nil. cExit and exitProc: the chunks of Rt's cExit and exit. The
+  first numLinks of links: the addresses Rt is given, of what the program has: the places, and
+  the profiler and calls; what it isn't given, nothing reaches, and the
+  linker leaves out. }
+function EntryPoint(dynamic: boolean; first: PModule; main: PObj; cExit, exitProc: longint; const links: array of TLink; numLinks: longint): longint;
 var entry, start, i: longint; m: PModule;
 begin
   entry := NewChunk(secText, -1, Intern('_start', 6));
@@ -1718,8 +1723,10 @@ begin
     Lea(RAX, Mem(RSP, 8));
     Store(MemRip(argvChunk, 0), RAX, 8);
   end;
-  Lea(RAX, MemRip(places, 0));
-  Store(MemRip(placesVar, 0), RAX, 8);
+  for i := 0 to numLinks - 1 do begin
+    Lea(RAX, MemRip(links[i].chunk, 0));
+    Store(MemRip(links[i].into, 0), RAX, 8);
+  end;
   m := first;
   while m <> nil do begin
     if m^.used and (m^.body >= 0) then CallChunk(m^.body);

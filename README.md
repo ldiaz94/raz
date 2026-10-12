@@ -51,7 +51,8 @@ The compiler needs Free Pascal 3.2.2 (`apt-get install fp-compiler`)
 and builds into the repository's root:
 
     make            # ./raz
-    make install    # ~/.local/bin/raz, its library in ~/.local/lib/raz
+    make install    # ~/.local/bin/raz, its library in ~/.local/lib/raz,
+                    # and its manual page, raz(1)
     make uninstall  # removes them again
 
 Both take `PREFIX=/usr/local` (or another place) instead of `~/.local`.
@@ -70,9 +71,12 @@ emacs is installed.
 
 ## Using it
 
-    raz [-I dir]... [-o file] [-Werror] [-S] Main.raz
-    raz run [-I dir]... [-Werror] Main.raz [arg]...
+    raz [-I dir]... [-o file] [-Werror] [-S] [-s] [-noprofile] Main.raz
+    raz run [option]... Main.raz [arg]...
+    raz -h
     raz --version
+
+`raz -h` says the options, and `man raz` says more.
 
 `raz Main.raz` compiles module `Main` and every module it imports, and
 writes the executable `Main`. A module `Name` lives in `Name.raz`, found
@@ -88,7 +92,10 @@ the others, up to 20. It warns of what is declared and never used,
 and of a variable assigned but never read, unless its name starts with
 `_`; `-Werror` makes warnings errors. `-S` prints the main module's
 code instead of writing it: each line of source, and under it the
-instructions made for it.
+instructions made for it. `-s` strips what is there for finding faults:
+the symbols and line numbers, the places a failure is told by, and the
+profiler, so hello, world is 7 KB instead of 35; `-noprofile` leaves
+out only the profiler.
 
 At run time, a failed check says where it is and what failed, as in
 `Main.raz:12:9: index 7 is out of range for a length of 5`, and ends

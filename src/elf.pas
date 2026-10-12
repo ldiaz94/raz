@@ -30,6 +30,7 @@ var
   needed: array[0..31] of longint;   { the libraries to load, names interned }
   numNeeded: longint;                { none: a static program }
   mainPath: shortstring;             { the main module's file, for gdb }
+  stripped: boolean;   { -s: no symbols and no line numbers; the sections are there, empty }
 
 procedure WriteElf(const path: shortstring; entry: longint);
 
@@ -259,9 +260,9 @@ end;
 procedure PutTables;
 var c, k, i, at, name: longint;
 begin
-  len := extraAdr - Base;
+  len := extraAdr - roAdr + roOff;
   PutStr(Interp);
-  PadTo(extraAdr - Base + symAt);
+  PadTo(extraAdr - roAdr + roOff + symAt);
   PutN(0, 24);
   name := strLen;
   for c := numChunks - 1 downto 0 do   { names go last in the string table }
@@ -290,7 +291,7 @@ begin
   len := roOff + roSize;
 
   { the dynamic table, at the start of the writable segment }
-  PadTo(bssAdr - Base);
+  PadTo(bssOff);
   at := 1;
   for i := 0 to numNeeded - 1 do begin
     PutN(1, 8); PutN(at, 8);   { DT_NEEDED }
@@ -349,13 +350,13 @@ begin
   PutN(64, 2); PutN(nsh, 2); PutN(6, 2);   { .shstrtab is section 6 }
 
   { flags: 4 read, 5 read and run, 6 read and write }
-  if dynamic then Phdr(PtInterp, 4, extraAdr - Base, extraAdr, length(Interp) + 1, length(Interp) + 1, 1);
+  if dynamic then Phdr(PtInterp, 4, extraAdr - roAdr + roOff, extraAdr, length(Interp) + 1, length(Interp) + 1, 1);
   { the first segment maps the headers too, so text can follow them }
   Phdr(PtLoad, 5, 0, Base, textOff + textSize, textOff + textSize, Page);
-  if roSize > 0 then Phdr(PtLoad, 4, roOff, Base + roOff, roSize, roSize, Page);
+  if roSize > 0 then Phdr(PtLoad, 4, roOff, roAdr, roSize, roSize, Page);
   if dynamic then begin
-    Phdr(PtLoad, 6, bssAdr - Base, bssAdr, dynSize, bssSize, Page);
-    Phdr(PtDynamic, 6, bssAdr - Base, bssAdr, dynSize, dynSize, 8);
+    Phdr(PtLoad, 6, bssOff, bssAdr, dynSize, bssSize, Page);
+    Phdr(PtDynamic, 6, bssOff, bssAdr, dynSize, dynSize, 8);
   end else if bssSize > 0 then Phdr(PtLoad, 6, 0, bssAdr, 0, bssSize, Page);
   Phdr(PtGnuStack, 6, 0, 0, 0, 0, 16);   { a stack that can't run code }
 
@@ -374,7 +375,7 @@ begin
   PutN(0, 24);
   nsyms := 1;
   for c := 0 to numChunks - 1 do
-    if chunks^[c].live and (chunks^[c].name >= 0) and not chunks^[c].ext then begin
+    if not stripped and chunks^[c].live and (chunks^[c].name >= 0) and not chunks^[c].ext then begin
       s := ChunkName(c);
       if strsLen + length(s) + 1 > MemSize(strs) then strs := ReAllocMem(strs, strsLen * 2 + 256);
       Move(s[1], strs^[strsLen], length(s));
@@ -398,7 +399,9 @@ begin
   shstrOff := len;
   s := ShNames;
   PutBytes(@s[1], length(s));
-  PutDebug(dbgOff, dbgSize);
+  if stripped then begin
+    for c := 0 to 2 do begin dbgOff[c] := len; dbgSize[c] := 0 end;
+  end else PutDebug(dbgOff, dbgSize);
 
   PadTo((len + 7) div 8 * 8);
   shOff := len;
@@ -409,15 +412,15 @@ begin
     here is the index the code above relies on. }
   Shdr('', 0, 0, 0, 0, 0, 0, 0, 0, 0);
   Shdr('.text', 1, 6, Base + textOff, textOff, textSize, 0, 0, 16, 0);
-  Shdr('.rodata', 1, 2, Base + roOff, roOff, roSize, 0, 0, 16, 0);
+  Shdr('.rodata', 1, 2, roAdr, roOff, roSize, 0, 0, 16, 0);
   Shdr('.bss', 8, 3, bssAdr + dynSize, roOff + roSize, bssSize - dynSize, 0, 0, 16, 0);
   Shdr('.symtab', 2, 0, 0, symOff, nsyms * 24, 5, nsyms, 8, 24);
   Shdr('.strtab', 3, 0, 0, strOff, strsLen, 0, 0, 1, 0);
   Shdr('.shstrtab', 3, 0, 0, shstrOff, length(ShNames), 0, 0, 1, 0);
   if dynamic then begin   { the loader's tables, for readelf and objdump }
-    Shdr('.dynamic', 6, 3, bssAdr, bssAdr - Base, dynSize, 8, 0, 8, 16);
-    Shdr('.dynstr', 3, 2, extraAdr + strAt, extraAdr + strAt - Base, strLen, 0, 0, 1, 0);
-    Shdr('.dynsym', 11, 2, extraAdr + symAt, extraAdr + symAt - Base, nsym * 24, 8, 1, 8, 24);
+    Shdr('.dynamic', 6, 3, bssAdr, bssOff, dynSize, 8, 0, 8, 16);
+    Shdr('.dynstr', 3, 2, extraAdr + strAt, extraAdr + strAt - roAdr + roOff, strLen, 0, 0, 1, 0);
+    Shdr('.dynsym', 11, 2, extraAdr + symAt, extraAdr + symAt - roAdr + roOff, nsym * 24, 8, 1, 8, 24);
   end;
   Shdr('.debug_line', 1, 0, 0, dbgOff[0], dbgSize[0], 0, 0, 1, 0);
   Shdr('.debug_info', 1, 0, 0, dbgOff[1], dbgSize[1], 0, 0, 1, 0);

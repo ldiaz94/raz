@@ -1,0 +1,156 @@
+.\" raz(1) - the raz compiler
+.Dd October 12, 2026
+.Dt RAZ 1
+.Os
+.Sh NAME
+.Nm raz
+.Nd compile a raz program to a Linux executable
+.Sh SYNOPSIS
+.Nm
+.Op Ar option ...
+.Ar Main.raz
+.Nm
+.Cm run
+.Op Ar option ...
+.Ar Main.raz
+.Op Ar arg ...
+.Sh DESCRIPTION
+.Nm
+compiles the module in
+.Ar Main.raz ,
+and every module it imports, to an executable for x86-64 Linux, with
+no assembler, linker or C library in between.
+A program that names a C library in a
+.Ic link
+line, or declares an
+.Ic extern
+procedure, is linked against C dynamically; any other is static.
+.Pp
+A module
+.Ar Name
+is found as
+.Ar Name Ns .linux-x86_64.raz
+or
+.Ar Name Ns .raz
+in the directory of
+.Ar Main.raz ,
+then in each
+.Fl I
+directory in turn, then in the library,
+.Pa lib/
+beside the
+.Nm
+executable.
+A program has one module of each name: a module found in two of these
+places is an error, unless one of the files is a symbolic link to the
+other, which chooses it.
+.Pp
+.Nm
+.Cm run
+compiles the same way, then runs the program with the
+.Ar arg Ns s ,
+writing no file: its output and exit status are those of the command.
+.Pp
+Every array index and slice is checked, unless the module says
+.Ic check off ;
+a failed check, a nil pointer, a division by zero or a stack overflow
+ends the program with status 2, and says on standard error where it
+was, the calls under way, and their variables:
+.Bd -literal -offset indent
+Bad.raz:6:7: index 5 is out of range for a length of 3
+  in Bad.main at Bad.raz:6:7: i = 5
+.Ed
+.Pp
+The executable has a symbol table and line numbers for
+.Xr gdb 1 ,
+.Xr nm 1
+and
+.Xr perf 1 ,
+unless built with
+.Fl s .
+.Sh OPTIONS
+.Bl -tag -width "-noprofile"
+.It Fl o Ar file
+Write the executable to
+.Ar file .
+Left out, it is
+.Ar Main.raz
+without
+.Pa .raz .
+.Cm run
+takes no
+.Fl o .
+.It Fl I Ar dir
+Look for imported modules in
+.Ar dir
+too, after the main module's own directory and before the library.
+It may be given up to 16 times.
+.It Fl Werror
+A warning counts as an error.
+.It Fl S
+List the main module's machine code, each instruction under the line
+of source it was made for, on standard output, and write no
+executable.
+.It Fl s
+Strip the program of what is there for finding faults: its symbol
+table, its line numbers, the places a failure is told by, and the
+profiler.
+A failure then says only its address, and the program is much
+smaller: hello, world is 7 KB, against 35 KB.
+.It Fl noprofile
+Leave out the profiler, which
+.Ev RAZ_PROFILE
+turns on, but keep the rest.
+.It Fl h , Fl \-help
+Say the options.
+.It Fl \-version
+Say the version of
+.Nm ,
+and the version of the report it follows.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width "RAZ_PROFILE"
+.It Ev RAZ_PROFILE
+Set to anything, in the environment of a program built without
+.Fl s
+or
+.Fl noprofile ,
+it has the program sample itself every millisecond of its time, and
+say at its end, on standard error, which procedures took the most of
+it, each with its share in its own code and its share in all, with the
+procedures it called, and which places in the source:
+.Bd -literal -offset indent
+profile: 521 samples of a millisecond; each procedure's own, then with its calls'
+   16%     27%  Screen.put
+    9%     93%  Parser.feed
+by place:
+    8%  src/Screen.raz:275:5
+.Ed
+.El
+.Sh EXIT STATUS
+.Nm
+exits 0 if it wrote the program, and 1 if it found an error, which it
+says on standard error, with the line of source and a mark under the
+place.
+.Nm
+.Cm run
+exits as the program does.
+.Sh EXAMPLES
+Compile and run hello, world:
+.Bd -literal -offset indent
+raz Hello.raz && ./Hello
+raz run Hello.raz
+.Ed
+.Pp
+Build a small program for shipping, then see where its time goes:
+.Bd -literal -offset indent
+raz -s -o hello Hello.raz
+raz -o prog Prog.raz && RAZ_PROFILE=1 ./prog
+.Ed
+.Sh SEE ALSO
+.Xr gdb 1 ;
+the language,
+.Pa doc/raz.md ,
+and the guide to the compiler,
+.Pa doc/compiler.md ,
+in raz's sources.

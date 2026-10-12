@@ -83,6 +83,24 @@ begin
   UsesC := c <> nil;
 end;
 
+{ What raz -h says }
+procedure Usage;
+begin
+  writeln('usage: raz [option]... Main.raz       compiles Main.raz and the modules it imports');
+  writeln('       raz run [option]... Main.raz [arg]...   compiles it and runs it, with the args');
+  writeln('options:');
+  writeln('  -o file      the program''s file, Main without .raz if left out');
+  writeln('  -I dir       looks for imported modules in dir too, after Main.raz''s own');
+  writeln('  -Werror      a warning counts as an error');
+  writeln('  -S           lists the main module''s code, under each line of source');
+  writeln('  -s           strips symbols, line numbers, the places a failure is told');
+  writeln('               by and the profiler: a failure says only its address');
+  writeln('  -noprofile   leaves out the profiler, which RAZ_PROFILE turns on');
+  writeln('  -h, --help   says this');
+  writeln('  --version    says the version, and the report it follows');
+  writeln('see raz(1), and the report, doc/raz.md');
+end;
+
 function RtObj(rt: PModule; const n: shortstring): PObj;
 var o: PObj;
 begin
@@ -96,7 +114,18 @@ var
   i, first, entry, fd: longint;
   m, rt: PModule;
   main: PObj;
-  run: boolean;
+  run, noProfile: boolean;
+  links: array[0..2] of TLink;
+  numLinks: longint;
+
+
+{ Rt is given the address of chunk, in its variable v }
+procedure AddLink(chunk: longint; v: PObj);
+begin
+  links[numLinks].chunk := chunk;
+  links[numLinks].into := v^.chunk;
+  inc(numLinks);
+end;
 
 begin
   { constants fold as the machine computes: NaN and infinities, no traps }
@@ -104,6 +133,7 @@ begin
   path := '';
   outPath := '';
   numInc := 0;
+  noProfile := false;
   run := (ParamCount >= 1) and (ParamStr(1) = 'run');
   i := 1 + ord(run);
   while i <= ParamCount do begin
@@ -120,7 +150,14 @@ begin
       werror := true
     else if s = '-S' then
       listing := true
-    else if s = '--version' then begin
+    else if s = '-s' then
+      stripped := true
+    else if s = '-noprofile' then
+      noProfile := true
+    else if (s = '-h') or (s = '--help') then begin
+      Usage;
+      Halt(0);
+    end else if s = '--version' then begin
       writeln('raz ', Version, ', report ', Report);
       Halt(0);
     end else if (s <> '') and (s[1] = '-') then
@@ -132,8 +169,10 @@ begin
     end;
     inc(i);
   end;
-  if path = '' then
-    Fatal('usage: raz [-I dir]... [-o file] [-Werror] [-S] Main.raz, or raz run [options] Main.raz [arg]...');
+  if path = '' then begin
+    Usage;
+    Halt(1);
+  end;
   if run and (outPath <> '') then Fatal('raz run takes no -o');
   dir := ParamStr(0);
   i := length(dir);
@@ -164,12 +203,20 @@ begin
   Finish;
 
   if rt = nil then Fatal('can''t find module Rt');
-  { the places, which the linker makes, for Rt to say where a failed
-    check or a signal was }
-  placesChunk := NewChunk(secRodata, -1, -1);
-  SetData(placesChunk, nil, 0, 8);
-  entry := EntryPoint(UsesC, firstModule, main, RtObj(rt, 'cExit')^.chunk, placesChunk,
-    RtObj(rt, 'places')^.chunk, RtObj(rt, 'exit')^.chunk);
+  { what Rt is given: the places, which the linker makes, for Rt to say
+    where a failed check or a signal was, and the calls under way then
+    (calls); and the profiler, which needs them too. raz -s gives none,
+    -noprofile no profiler. }
+  numLinks := 0;
+  if not stripped then begin
+    placesChunk := NewChunk(secRodata, -1, -1);
+    SetData(placesChunk, nil, 0, 8);
+    AddLink(placesChunk, RtObj(rt, 'places'));
+    AddLink(RtObj(rt, 'calls')^.chunk, RtObj(rt, 'teller'));
+    if not noProfile then AddLink(RtObj(rt, 'startProfile')^.chunk, RtObj(rt, 'profiler'));
+  end;
+  entry := EntryPoint(UsesC, firstModule, main, RtObj(rt, 'cExit')^.chunk,
+    RtObj(rt, 'exit')^.chunk, links, numLinks);
 
   MarkLive(entry);
   if not HasReals then

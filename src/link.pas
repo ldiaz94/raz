@@ -28,10 +28,12 @@ const
   Page = 4096;
 
 var
-  textOff, textSize: int64;    { file offset and size of text }
+  textOff, textSize: int64;    { file offset and size of text, at Base + textOff }
   roOff, roSize: int64;        { rodata, the room for the loader's tables included }
+  roAdr: int64;                { where rodata is loaded }
   extraAdr: int64;             { that room }
   bssAdr, bssSize: int64;      { the writable segment, the loader's table first }
+  bssOff: int64;               { the file offset of that table }
   textImg, roImg: PBytes;
   placesChunk: longint = -1;   { the rodata chunk of the places, made here }
 
@@ -198,7 +200,14 @@ begin
 end;
 
 { Places the live chunks, leaving roExtra bytes at the end of rodata
-  and dynSize at the start of the writable segment. }
+  and dynSize at the start of the writable segment. The segments follow
+  each other in the file with no padding, and each is loaded a page
+  further from its file offset than the one before: rodata at Base +
+  Page + roOff, the writable segment at Base + 2 * Page + bssOff. So an
+  address and its offset agree within a page, as the loader needs, and
+  no two segments, with their different permissions, share a page.
+  The bss of a program without the loader's table has no bytes in the
+  file, and starts on a page of its own. }
 procedure LinkAll(headerSize, roExtra, dynSize: int64);
 var c, f, at: longint; e, p, v: int64;
 begin
@@ -206,12 +215,15 @@ begin
   e := Place(secText, Base + textOff);
   textSize := e - (Base + textOff);
   if placesChunk >= 0 then MakePlaces(Base + textOff, e);
-  roOff := (textOff + textSize + Page - 1) div Page * Page;
-  e := Place(secRodata, Base + roOff);
+  roOff := (textOff + textSize + 31) div 32 * 32;
+  roAdr := Base + Page + roOff;
+  e := Place(secRodata, roAdr);
   extraAdr := (e + 7) div 8 * 8;
   if roExtra > 0 then e := extraAdr + roExtra;
-  roSize := e - (Base + roOff);
-  bssAdr := (Base + roOff + roSize + Page - 1) div Page * Page;
+  roSize := e - roAdr;
+  bssOff := (roOff + roSize + 31) div 32 * 32;
+  if dynSize > 0 then bssAdr := Base + 2 * Page + bssOff
+  else bssAdr := (roAdr + roSize + Page - 1) div Page * Page;
   e := Place(secBss, bssAdr + dynSize);
   bssSize := e - bssAdr;
 
@@ -235,7 +247,7 @@ begin
           end;
         end;
         secRodata: begin
-          p := chunks^[c].adr - (Base + roOff);
+          p := chunks^[c].adr - roAdr;
           Move(rodata^[chunks^[c].start], roImg^[p], chunks^[c].size);
           for f := chunks^[c].firstFix to chunks^[c].firstFix + chunks^[c].numFix - 1 do
             PInt64(@roImg^[p + dataFixups^[f].at])^ :=

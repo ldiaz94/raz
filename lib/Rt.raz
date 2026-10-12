@@ -2,14 +2,20 @@
    calls, fail when a check fails; stop, for the library's own
    failures; and the handlers that say where the program was when a
    signal stops it.
-   The compiler finds fail, exit, cExit and places by these names.
+   The compiler finds fail, exit, cExit, places, profiler,
+   startProfile, teller and calls by these names.
    After a failed check or a signal, and on demand with trace, Rt says
    the calls under way and their variables, from the frames' chain of
    rbp and the compiler's tables in places. A program run with
    RAZ_PROFILE set is sampled every millisecond of its time, and at its
    end Rt says which procedures and places in the source took it: each
    procedure's samples in its own code, and in all, with those in the
-   procedures it was calling.
+   procedures it was calling. A program built with raz -s or
+   -noprofile has no profiler: the entry point leaves profiler nil,
+   nothing reaches startProfile, and the linker leaves it out with all
+   it uses. Built with -s it has no places either, and no teller: a
+   failure is told by its address, and calls, which would need the
+   places, is left out the same way.
    The handlers are Linux's on x86-64, set by system calls: what the
    kernel hands them is laid out as it is there. *)
 module Rt;
@@ -79,7 +85,10 @@ var
        Depth for each, a short one ended by 0; mapped when profiling *)
     chains: ^UINT;
     numSamples: INT;
-    profiling: BOOL;
+    profiler: proc;   (* startProfile, put here by the entry point, or nil *)
+    (* calls, put here by the entry point, or nil: a failure in a program
+       built with raz -s, which has no places, tells no calls *)
+    teller: proc(ip, bp: UINT; vars: BOOL);
     procCount: [MaxProcs]INT;
     procTotal: [MaxProcs]INT;    (* the samples each procedure was on the chain of *)
     placeCount: [MaxPlaces]INT;
@@ -109,7 +118,6 @@ begin
         p := atExits[numAtExit];
         p();
     end;
-    if profiling then profile; end;
     if cExit # nil then cExit(I32(status)); end;
     Sys.exit(status);
 end;
@@ -173,13 +181,33 @@ begin
     return ^U8(places + 5) + 16 * places[0] + 28 * places[3] + 12 * places[4];
 end;
 
+proc putHex(u: UINT);
+var buf: [16]U8; i: INT;
+begin
+    i := 16;
+    repeat
+        DEC(i);
+        buf[i] := Digits[INT(u & 15)];
+        u := u shr 4;
+    until u = 0;
+    put("0x");
+    put(buf[i..16]);
+end;
+
 (* Puts where the code at address a comes from, as file:line:col: and
    a space, if a is in the program's code: the place with the highest
    address up to a. *)
 proc where(a: UINT);
 var p, best: ^Place; i, n: INT;
 begin
-    if (places = nil) or (a < UINT(places[1])) or (a >= UINT(places[2])) then return; end;
+    if places = nil then
+        (* built with raz -s, which keeps no places: the address *)
+        put("at ");
+        putHex(a);
+        put(": ");
+        return;
+    end;
+    if (a < UINT(places[1])) or (a >= UINT(places[2])) then return; end;
     n := places[0];
     p := ^Place(places + 5);
     best := nil;
@@ -222,19 +250,6 @@ begin
         if (UINT(p[i].start) <= a) and (a < UINT(p[i].stop)) then return p + i; end;
     end;
     return nil;
-end;
-
-proc putHex(u: UINT);
-var buf: [16]U8; i: INT;
-begin
-    i := 16;
-    repeat
-        DEC(i);
-        buf[i] := Digits[INT(u & 15)];
-        u := u shr 4;
-    until u = 0;
-    put("0x");
-    put(buf[i..16]);
 end;
 
 (* x with six figures after the point, or as m e n beyond them *)
@@ -423,7 +438,7 @@ begin
         else put("a stack overflow");
         end;
         say;
-        calls(at, callerFrame(), true);
+        if teller # nil then teller(at, callerFrame(), true); end;
         act := {};   (* the signal's default action *)
         _ := SYSCALL(13, sig, ADR(act), 0, 8);   (* rt_sigaction *)
         _ := SYSCALL(62, SYSCALL(39), sig); (* kill(getpid(), sig) *)
@@ -447,7 +462,7 @@ begin
         putInt(len);
     end;
     say;
-    calls(at, callerFrame(), true);
+    if teller # nil then teller(at, callerFrame(), true); end;
     exit(2);
 end;
 
@@ -487,7 +502,7 @@ begin
     put(why);
     say;
     (* the variables of a frame the stack overflowed in may be past it *)
-    calls(ip, bp, why # "a stack overflow");
+    if teller # nil then teller(ip, bp, why # "a stack overflow"); end;
 end;
 
 (* Whether a is in the program's own code, not C's *)
@@ -583,6 +598,21 @@ begin
     end;
 end;
 
+(* The compiler's, as fail is: if RAZ_PROFILE is set, samples the
+   program every millisecond of its time, and says at its end what took
+   it (profile) *)
+proc startProfile*;
+begin
+    if LEN(Sys.env("RAZ_PROFILE")) = 0 then return; end;
+    chains := ^UINT(Sys.mmap(MaxSamples * Depth * SIZE(UINT)));
+    if chains = nil then return; end;
+    act := {handler: onProf, flags: ProfFlags, restorer: sigReturn};
+    _ := SYSCALL(13, SigProf, ADR(act), 0, 8);
+    timerv := [0, 1000, 0, 1000];   (* every millisecond, from one on *)
+    _ := SYSCALL(38, 2, ADR(timerv), 0);   (* setitimer(ITIMER_PROF) *)
+    _ := atExit(profile);
+end;
+
 (* At the end of a profiled run: which procedures, and which places in
    the source, took the time, as shares of the samples *)
 proc profile;
@@ -590,7 +620,6 @@ var t: [4]INT; i, n, k, j, m, s: INT; seen: [Depth + 1]INT; row: ^UINT;
 begin
     t := [0, 0, 0, 0];
     _ := SYSCALL(38, 2, ADR(t), 0);   (* setitimer(ITIMER_PROF): no more *)
-    profiling := false;
     n := numSamples;
     if n > MaxSamples then n := MaxSamples; end;
     if (places = nil) or (n = 0) then return; end;
@@ -631,14 +660,5 @@ begin
     act := {handler: onSignal, flags: Flags, restorer: sigReturn};
     _ := SYSCALL(13, SigSegv, ADR(act), 0, 8);   (* rt_sigaction *)
     _ := SYSCALL(13, SigFpe, ADR(act), 0, 8);
-    if LEN(Sys.env("RAZ_PROFILE")) > 0 then
-        chains := ^UINT(Sys.mmap(MaxSamples * Depth * SIZE(UINT)));
-    end;
-    if chains # nil then
-        act := {handler: onProf, flags: ProfFlags, restorer: sigReturn};
-        _ := SYSCALL(13, SigProf, ADR(act), 0, 8);
-        timerv := [0, 1000, 0, 1000];   (* every millisecond, from one on *)
-        _ := SYSCALL(38, 2, ADR(timerv), 0);   (* setitimer(ITIMER_PROF) *)
-        profiling := true;
-    end;
+    if profiler # nil then profiler(); end;
 end Rt.

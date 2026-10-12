@@ -13,12 +13,12 @@ disassembly.
 | `src/sym.pas` | 644 | 527 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,128 | 936 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,768 | 1,291 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/gen.pas` | 1,775 | 1,294 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,551 | 1,278 | Items: types, constants, variables, operators, conversions, calls |
 | `src/parse.pas` | 2,975 | 2,612 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
-| `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
-| `src/raz.pas` | 197 | 147 | The command line |
+| `src/link.pas` | 259 | 195 | Tree shaking, layout, patching, the places |
+| `src/elf.pas` | 438 | 355 | Static and dynamic ELF, symbol table, line numbers |
+| `src/raz.pas` | 244 | 187 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -766,11 +766,20 @@ calls under way, up the chain of frames while it stays in the program's
 own code, and `exit` has `profile` say which procedures and places
 those fell in, by the same tables: each procedure's samples in its own
 code, and its total, counting once each sample it was on the chain of.
+The entry point gives Rt what the program has (`TLink`): the places,
+`calls`, which tells the calls under way, and the profiler's start.
+What it isn't given, nothing reaches, so the linker leaves it out:
+`raz -noprofile` gives no profiler, and `raz -s` none of the three,
+whose failures say only their address (and `elf.pas` writes no symbols
+or line numbers). Hello is 35 KB, 25 KB without the profiler, and 7 KB
+stripped.
 
-The layout is chosen so the file can be mapped as it lies: text just
-after the headers, rodata on the next page, then a writable page that
-begins with the dynamic loader's table (in a program that uses C) and
-goes on as bss.
+The layout is chosen so the file can be mapped as it lies, with no
+padding: text just after the headers, then rodata, then the dynamic
+loader's table (in a program that uses C), each loaded a page further
+from its place in the file than the one before, so that no two
+segments, with their different permissions, share a page. bss follows
+the loader's table, or begins a page of its own.
 
 ## elf.pas: the executable
 

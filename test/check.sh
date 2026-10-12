@@ -98,6 +98,23 @@ done
 $raz -o $out/Busy test/list/Busy.raz
 if RAZ_PROFILE=1 $out/Busy 2>&1 >/dev/null | sed -n 2p | grep -q 'Busy.spin$'; then pass=$((pass + 1))
 else echo "FAIL RAZ_PROFILE: Busy.spin isn't first"; fail=$((fail + 1)); fi
+# the manual page, which groff must read without a warning
+if command -v groff > /dev/null; then
+    groff -mdoc -ww -z doc/raz.1 > $out/man.out 2>&1
+    if [ ! -s $out/man.out ]; then pass=$((pass + 1))
+    else echo "FAIL doc/raz.1"; head -5 $out/man.out; fail=$((fail + 1)); fi
+fi
+# raz -noprofile leaves the profiler out, and raz -s the places too: a
+# failed check is told by its address, and the program is smaller
+$raz -noprofile -o $out/BusyNo test/list/Busy.raz
+if [ -z "$(RAZ_PROFILE=1 $out/BusyNo 2>&1 >/dev/null)" ]; then pass=$((pass + 1))
+else echo "FAIL raz -noprofile: a profile"; fail=$((fail + 1)); fi
+$raz -o $out/Index test/strip/Index.raz
+$raz -s -o $out/IndexS test/strip/Index.raz
+$out/IndexS > $out/IndexS.out 2>&1
+if [ $? = 2 ] && grep -q '^hello$' $out/IndexS.out && grep -q '^at 0x[0-9a-f]*: index 5 is out of range' $out/IndexS.out \
+    && [ $(wc -c < $out/IndexS) -lt $(wc -c < $out/Index) ]; then pass=$((pass + 1))
+else echo "FAIL raz -s:"; cat $out/IndexS.out; fail=$((fail + 1)); fi
 
 # raz -S: test/list/X.raz lists as X.expect
 for f in test/list/*.raz; do
