@@ -52,6 +52,11 @@ bench: raz | build
 	echo "$$lines lines in $$((best / 1000000)) ms: $$rate lines a second"; \
 	test $$rate -ge 400000
 
+# the code's speed: the kernels of test/bench, which say check off,
+# against their twins in Pascal built by FPC -O2
+kernels: raz
+	test/bench/run.sh
+
 # native threads under load: 40,000 spawned and joined, 200 alive at a
 # time, all waiting on one Mutex; then, with little memory, spawn must
 # fail with Thread.Failed. make check runs a small version.
@@ -114,4 +119,4 @@ uninstall:
 	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(MAN)/man1/raz.1 $(MAN)/man3/raz-lib.3 \
 	    $(MAN)/man7/raz.7 $(MAN)/man7/raz-tutorial.7
 
-.PHONY: units tests check gdb bench stress fmt loc man pdf clean install uninstall
+.PHONY: units tests check gdb bench kernels stress fmt loc man pdf clean install uninstall

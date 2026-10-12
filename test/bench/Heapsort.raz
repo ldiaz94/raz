@@ -1,0 +1,61 @@
+(* A heap sort of pseudo-random numbers. *)
+module Heapsort;
+import Out;
+check off;
+
+const
+    N = 200000;
+    Rounds = 8;
+
+var a: [N]INT;
+
+(* s[lo] sifted down the heap of s[0..hi] *)
+proc sift(s: []INT; lo, hi: INT);
+var root, child, t: INT;
+begin
+    root := lo;
+    child := 2 * root + 1;
+    while child < hi do
+        if (child + 1 < hi) and (s[child] < s[child + 1]) then INC(child); end;
+        if s[root] >= s[child] then return; end;
+        t := s[root];
+        s[root] := s[child];
+        s[child] := t;
+        root := child;
+        child := 2 * root + 1;
+    end;
+end;
+
+proc sort(s: []INT);
+var i, t: INT;
+begin
+    for i := LEN(s) div 2 - 1 to 0 by -1 do sift(s, i, LEN(s)); end;
+    for i := LEN(s) - 1 to 1 by -1 do
+        t := s[0];
+        s[0] := s[i];
+        s[i] := t;
+        sift(s, 0, i);
+    end;
+end;
+
+proc main*;
+var i, r, x, total: INT;
+begin
+    x := 1;
+    total := 0;
+    for r := 1 to Rounds do
+        for i := 0 to N - 1 do
+            x := (x * 1103515245 + 12345) & 7FFFFFFFH;
+            a[i] := x;
+        end;
+        sort(a);
+        for i := 1 to N - 1 do
+            if a[i - 1] > a[i] then Out.str("not sorted\n"); end;
+        end;
+        total := total + a[N div 2];
+    end;
+    Out.int(total);
+    Out.ln;
+end;
+
+end Heapsort.

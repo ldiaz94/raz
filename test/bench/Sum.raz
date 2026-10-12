@@ -1,0 +1,30 @@
+(* A sum over a slice: the loop of a procedure that takes one. *)
+module Sum;
+import Out;
+check off;
+
+const
+    N = 1000000;
+    Rounds = 300;
+
+var a: [N]INT;
+
+proc sum(s: []INT): INT;
+var i, t: INT;
+begin
+    t := 0;
+    for i := 0 to LEN(s) - 1 do t := t + s[i]; end;
+    return t;
+end;
+
+proc main*;
+var i, r, total: INT;
+begin
+    for i := 0 to N - 1 do a[i] := i; end;
+    total := 0;
+    for r := 1 to Rounds do total := total + sum(a); end;
+    Out.int(total);
+    Out.ln;
+end;
+
+end Sum.

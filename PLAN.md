@@ -11,10 +11,10 @@ the manual, is tagged, and all before v0.7.1 is approved by the owner.
 ## Now: better code again (v0.8.0)
 
 For: on the same program, raz within 1.3 times the time of FPC `-O2`
-with `check off;` (today 1.3 on a heap sort, 1.7 on a sum over a slice,
-1.8 on a search: these kernels go in
-`test/bench` first, with their Pascal twins, so anyone can measure
-them), and every default program smaller; the compiler as clear as
+with `check off;` (on `test/bench`'s kernels, which `make kernels`
+measures against their Pascal twins: today 1.34 on a heap sort, 1.75
+on a sum over a slice, 1.2 on a search for a word in a text), and
+every default program smaller; the compiler as clear as
 v0.7.0 left it, and under 10,000 lines. No change to the language.
 Each step is measured as v0.7.0's were, on rat and on its kernel, and
 one that buys less than 2% on both is reverted and noted here.
