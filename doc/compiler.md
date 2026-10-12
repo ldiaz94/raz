@@ -13,8 +13,8 @@ disassembly.
 | `src/sym.pas` | 617 | 512 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 302 | 234 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,113 | 930 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 1,611 | 1,263 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,433 | 1,194 | Items: types, constants, variables, operators, conversions, calls |
+| `src/gen.pas` | 1,616 | 1,270 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,444 | 1,204 | Items: types, constants, variables, operators, conversions, calls |
 | `src/parse.pas` | 2,904 | 2,575 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 247 | 190 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 435 | 352 | Static and dynamic ELF, symbol table, line numbers |
@@ -344,11 +344,15 @@ gen's `CheckNil` tests the pointer only if the use reaches past
 own `gen.pas`: `Rt.fail` stops for a nil pointer, a division by zero
 and a stack overflow as the signals would.
 
-Calls: the arguments wait for `Call`, computed left to right: a
-constant or a noted address as itself, anything else in a frame slot
-(`PopArg`), so that computing a later one can't disturb it; only then
-are they loaded into the registers System V wants (`LoadArg`), and the
-stack aligned for the call. A record
+Calls: the arguments are computed left to right onto the stack, where
+they wait for `Call`, as any values do: a constant, an address or a
+variable in a register only noted, the rest in registers, or spilled
+by a call in a later argument, so that it can't disturb them. `Call`
+spills what is under them, moves each into the register System V
+wants (`ArgTo`), `r8` and `r9` last since they may hold others, and
+aligns the stack. A slice goes as its two words, in two registers or
+both on the stack, as System V passes a struct of two integers, and
+the procedure keeps them in its frame. A record
 passed by value goes as the address of a copy; one returned comes back
 through a hidden pointer in `rdi`, as C's structs do, and so do several
 results (`ResultTo`, `CopyResult`).

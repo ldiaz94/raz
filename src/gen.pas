@@ -16,12 +16,11 @@
   needs it in a register, so that it can be an instruction's operand.
 
   Calls use the System V convention. Arguments are computed left to
-  right into frame slots, then loaded into registers just before the
-  call, so that computing one argument can't disturb another; a
-  constant or an address, which nothing can disturb, goes straight to
-  its register. A record,
-  array, slice or variant passed by value goes as the address of a copy
-  the caller makes; one returned goes through a hidden pointer, as C's
+  right onto the stack, and moved into their registers just before the
+  call: a call in a later argument spills the earlier ones, as any call
+  spills the values under it, so that it can't disturb them. A slice goes as its two words, as System V passes a
+  16-byte struct of two integers; a record, array or variant passed by
+  value goes as the address of a copy the caller makes; one returned goes through a hidden pointer, as C's
   structs do, and so do several results.
 
   A procedure's frame holds its parameters, its variables, and the
@@ -63,10 +62,6 @@ type
     off: int64;       { added to the address }
   end;
 
-  { How an argument waits for its call: in a frame slot, or noted, as a
-    constant or as the address of the frame or a chunk plus an offset }
-  TArgHow = (argSlot, argConst, argAdr, argHeld);
-
   { The code made so far, to go back to for a second try at a body }
   TCodeMark = record pc, fixups, lines, said: longint; end;
 
@@ -75,10 +70,8 @@ type
     param: PObj;       { the parameter the next argument is for }
     obj: PObj;         { the procedure called, if it has a name }
     n: longint;                      { the arguments }
-    slots: array[0..63] of int64;    { each one's frame slot, constant or offset }
-    how: array[0..63] of TArgHow;
-    adrChunk: array[0..63] of longint;   { argAdr: the chunk, or -1 for the frame }
     isF: array[0..63] of boolean;    { ... goes in an xmm register }
+    pair: array[0..63] of boolean;   { ... is a slice's first word, the next its second }
     target: int64;     { the frame slot of a procedure value, if chunk < 0 }
     chunk: longint;    { else the procedure's chunk }
     code: boolean;     { a code procedure: two results come in rax and rdx }
@@ -152,7 +145,6 @@ procedure Slice(const a: TAdr; isArray: boolean; n, size, tmp: int64; checked: b
 procedure SlicePtr(size, tmp: int64; checked: boolean; const p: TPos);
 procedure CopySlice(dOff, sOff, size: int64; checked: boolean; const p: TPos);
 
-procedure PopArg(var c: TCall);
 procedure Call(var c: TCall);
 
 function AllocTemp(size, align: int64): int64;
@@ -1172,46 +1164,27 @@ end;
 { The call c, its arguments already in their frame slots: they go to
   registers or the stack, the procedure is called, and its result, if
   any, is pushed on the value stack. }
-{ The value on top is argument c.n of c, which waits for the call: a
-  constant or an address is noted, a real or anything else goes to a
-  frame slot. }
-procedure PopArg(var c: TCall);
-var i: longint;
+{ Argument value i, as it is on the stack, into register r }
+procedure ArgTo(i, r: longint);
 begin
-  i := depth - 1;
-  c.how[c.n] := argSlot;
-  if not c.isF[c.n] and (stack[i].loc = lConst) then c.how[c.n] := argConst
-  else if stack[i].loc = lAdr then c.how[c.n] := argAdr
-  else if stack[i].loc = lHeld then c.how[c.n] := argHeld;
-  if c.how[c.n] = argSlot then begin
-    c.slots[c.n] := AllocTemp(8, 8);
-    Store(Mem(RBP, c.slots[c.n]), Top, 8);
-  end else begin
-    c.slots[c.n] := stack[i].val;
-    c.adrChunk[c.n] := stack[i].chunk;
-  end;
-  Drop;
-end;
-
-{ Argument i of c into register r }
-procedure LoadArg(const c: TCall; i, r: longint);
-begin
-  case c.how[i] of
-    argConst: MovRI(r, c.slots[i]);
-    argHeld: MovRR(r, c.slots[i]);
-    argAdr:
-      if c.adrChunk[i] < 0 then Lea(r, Mem(RBP, c.slots[i]))
-      else Lea(r, MemRip(c.adrChunk[i], c.slots[i]));
-  else Load(r, Mem(RBP, c.slots[i]), 8, false);
+  case stack[i].loc of
+    lConst: MovRI(r, stack[i].val);
+    lHeld: MovRR(r, stack[i].val);
+    lAdr: Lea(r, AdrMem(i, 0));
+    lReg: if RegOf(i) <> r then MovRR(r, RegOf(i));
+  else Load(r, Mem(RBP, stack[i].val), 8, false);
   end;
 end;
 
 procedure Call(var c: TCall);
 var
-  res: PType; i, ni, nf, k, pad, r: longint;
-  onStack: array[0..63] of boolean;
+  res: PType; i, ni, nf, k, pad, r, first: longint;
+  onStack: array[0..63] of boolean; late: array[4..5] of longint;
 begin
-  SpillBelow(depth);   { the registers in use, saved around the call }
+  { the arguments are the c.n values on top, where computing them left
+    them; the registers in use under them are saved around the call }
+  first := depth - c.n;
+  SpillBelow(first);
   res := c.sig^.base;
   c.ret := 0;
   ni := 0; nf := 0;
@@ -1224,7 +1197,13 @@ begin
   k := 0;
   for i := 0 to c.n - 1 do begin
     if c.isF[i] then begin onStack[i] := nf >= 8; if nf < 8 then inc(nf) end
-    else begin onStack[i] := ni >= 6; if ni < 6 then inc(ni) end;
+    else begin
+      { a slice's words both go in registers, or both on the stack }
+      if (i > 0) and c.pair[i - 1] then onStack[i] := onStack[i - 1]
+      else if c.pair[i] then onStack[i] := ni > 4
+      else onStack[i] := ni >= 6;
+      if not onStack[i] then inc(ni);
+    end;
     if onStack[i] then inc(k);
   end;
   { System V wants rsp a multiple of 16 at the call: a quadword of
@@ -1233,15 +1212,28 @@ begin
   if pad <> 0 then AluI(aluSub, RSP, 8);
   for i := c.n - 1 downto 0 do
     if onStack[i] then begin
-      LoadArg(c, i, RAX);
+      ArgTo(first + i, RAX);
       Push(RAX);
     end;
   ni := 0; nf := 0;
+  late[4] := -1; late[5] := -1;
   if (c.ret <> 0) and not c.code then begin Lea(RDI, Mem(RBP, c.ret)); ni := 1 end;
+  { rdi, rsi, rdx, rcx and the xmm registers first; r8 and r9 last, as
+    they may hold arguments still }
   for i := 0 to c.n - 1 do
     if not onStack[i] then
-      if c.isF[i] then begin MovsdXM(nf, Mem(RBP, c.slots[i])); inc(nf) end
-      else begin LoadArg(c, i, IntRegs[ni]); inc(ni) end;
+      if c.isF[i] then begin
+        if stack[first + i].loc = lFrame then MovsdXM(nf, Mem(RBP, stack[first + i].val))
+        else begin ArgTo(first + i, RAX); MovqXR(nf, RAX) end;
+        inc(nf);
+      end else begin
+        if ni < 4 then ArgTo(first + i, IntRegs[ni]) else late[ni] := first + i;
+        inc(ni);
+      end;
+  if late[4] >= 0 then ArgTo(late[4], RAX);
+  if late[5] >= 0 then ArgTo(late[5], R9);
+  if late[4] >= 0 then MovRR(R8, RAX);
+  for i := 1 to c.n do Drop;
   { a procedure taking ... is told in al how many xmm registers it got }
   if c.sig^.variadic then MovRI(RAX, nf);
   if c.ext then CallM(MemRip(c.chunk, 0))
@@ -1309,7 +1301,7 @@ end;
   pushed it. A var parameter, and a record or array passed by value,
   holds an address (ind). }
 procedure BeginProc(sig: PType; params: PObj);
-var p: PObj; ni, nf: longint; stackOff: int64; f: boolean;
+var p: PObj; ni, nf, k: longint; stackOff: int64; f: boolean;
 begin
   frameTop := 0; frameMax := 0; permTop := 0;
   ResetStack(0, 0);
@@ -1326,9 +1318,22 @@ begin
   end;
   p := params;
   while p <> nil do begin
-    p^.ind := p^.isVar or IsAggregate(p^.typ);
+    p^.ind := p^.isVar or IsAggregate(p^.typ) and (p^.typ^.form <> fSlice);
     f := (p^.typ^.form = fReal) and not p^.isVar;
-    if (f and (nf < 8)) or (not f and (ni < 6)) then begin
+    if (p^.typ^.form = fSlice) and not p^.isVar then begin
+      { its two words, in two registers or both on the stack }
+      if ni <= 4 then begin
+        p^.val := AllocPerm(16, 8);
+        for k := 0 to 1 do begin
+          inReg[numIn] := IntRegs[ni]; inSlot[numIn] := p^.val + 8 * k;
+          inSize[numIn] := 8; inObj[numIn] := nil;
+          inc(numIn); inc(ni);
+        end;
+      end else begin
+        p^.val := stackOff;
+        inc(stackOff, 16);
+      end;
+    end else if (f and (nf < 8)) or (not f and (ni < 6)) then begin
       p^.val := AllocPerm(8, 8);
       if f then begin inReg[numIn] := -1 - nf; inc(nf) end
       else begin inReg[numIn] := IntRegs[ni]; inc(ni) end;

@@ -1140,10 +1140,10 @@ begin
 end;
 
 procedure PassArg(var c: TCall; var a: TItem);
-var p: PObj; s: int64;
+var p: PObj; adr: TAdr; s: int64;
 begin
   p := c.param;
-  if c.n > High(c.slots) then MarkAt(a.pos, 'too many arguments');
+  if c.n >= High(c.isF) then MarkAt(a.pos, 'too many arguments');
   if p = nil then begin
     { past the parameters of a C procedure that ends in ...: a string
       goes as a C string, an integer constant as an INT, a real
@@ -1155,8 +1155,8 @@ begin
     else if IsF32(a.typ) then MarkAt(a.pos, 'an F32 goes to ... as F64(x)')
     else if not IsScalar(a.typ) then MarkAt(a.pos, 'only a single value goes to ...');
     c.isF[c.n] := a.typ^.form = fReal;
+    c.pair[c.n] := false;
     Value(a);
-    PopArg(c);
     inc(c.n);
     exit;
   end;
@@ -1170,6 +1170,17 @@ begin
     if not Same(a.typ, p^.typ) then Mismatch(a, 'a var parameter needs exactly ' + TypeName(p^.typ) + ', found ' + What(a));
     if a.vol then MarkAt(a.pos, 'can''t pass through a volatile pointer to a var parameter');
     Address(a);
+  end else if p^.typ^.form = fSlice then begin
+    { its two words, read now, so that a later argument can't change them }
+    Coerce(a, p^.typ);
+    if (a.mode <> mVar) or a.vol or not (a.base in [bFrame, bGlobal, bSlot]) then CopyToTemp(a);
+    adr := AdrOf(a);
+    PushVar(adr, 8, false, kWord);
+    c.pair[c.n] := true;
+    inc(c.n);
+    c.isF[c.n] := false;
+    inc(adr.off, 8);
+    PushVar(adr, 8, false, kWord);
   end else if IsAggregate(p^.typ) then begin
     Coerce(a, p^.typ);
     if a.isVar or a.vol or (a.base <> bFrame) then CopyToTemp(a);
@@ -1178,7 +1189,7 @@ begin
     Coerce(a, p^.typ);
     Value(a);
   end;
-  PopArg(c);
+  c.pair[c.n] := false;
   inc(c.n);
   c.param := p^.next;
 end;

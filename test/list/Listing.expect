@@ -27,7 +27,7 @@ Listing.main:
     17  proc main*;
              0  push rbp
              1  mov rbp, rsp
-             4  sub rsp, 48
+             4  sub rsp, 32
             11  xor eax, eax
             13  mov [rbp - 8], rax
             17  mov [rbp - 16], rax
@@ -38,30 +38,29 @@ Listing.main:
             32  mov qword [rbp - 24], 3
             40  mov r9, [rbp - 24]
             44  cmp rbx, r9
-            47  jg 144
+            47  jg 139
     21          if i # 2 then total := add(total, twice(i)); end;
             53  cmp rbx, 2
-            57  je 112
+            57  je 107
             63  mov r8, [Listing.total]
             70  mov [rbp - 32], r8
             74  mov rdi, rbx
             77  call Listing.twice
-            82  mov r8, rax
-            85  mov [rbp - 40], r8
-            89  mov rdi, [rbp - 32]
-            93  mov rsi, [rbp - 40]
-            97  call Listing.add
-           102  mov r8, rax
-           105  mov [Listing.total], r8
-           112  mov r8, [rbp - 24]
-           116  sub r8, rbx
-           119  cmp r8, 1
-           123  jb 144
-           129  mov r8, rbx
-           132  add r8, 1
-           136  mov rbx, r8
-           139  jmp 40
+            82  mov r9, rax
+            85  mov rdi, [rbp - 32]
+            89  mov rsi, r9
+            92  call Listing.add
+            97  mov r8, rax
+           100  mov [Listing.total], r8
+           107  mov r8, [rbp - 24]
+           111  sub r8, rbx
+           114  cmp r8, 1
+           118  jb 139
+           124  mov r8, rbx
+           127  add r8, 1
+           131  mov rbx, r8
+           134  jmp 40
     23  end main;
-           144  mov rbx, [rbp - 16]
-           148  leave
-           149  ret
+           139  mov rbx, [rbp - 16]
+           143  leave
+           144  ret
