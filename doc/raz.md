@@ -9,7 +9,7 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.14 of the report; section 12 says what each
+This is version 2026-10.15 of the report; section 12 says what each
 version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -1217,7 +1217,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `List` | a generic singly linked list, `List(T)` |
 | `Map` | a generic hash map, `Map(K, V; hash, eq)` |
 | `Sort` | sorting a slice in place, `Sort(T; less)` |
-| `Math` | `sqrt`, `floor`, `sin`, `cos`, `atan2`, `exp`, `ln` and `pi`, for `F64` |
+| `Math` | roots, powers, logarithms, rounding and trigonometry, and `pi`, for `F64` |
 | `Files` | an argument as a string, and a whole file read or written |
 | `Opt` | a command line read through one table, by `getopt`'s rules with long options; its help and its mistakes |
 
@@ -1397,6 +1397,7 @@ proc chmod*(path: []U8; mode: INT): INT;
 proc symlink*(target, path: []U8): INT;  (* path made a link to target *)
 proc readLink*(path: []U8): ([]U8, INT); (* what the link names, good until the next call *)
 proc info*(path: []U8): (Info, INT);     (* following a symbolic link *)
+proc space*(path: []U8): (I64, I64, INT);   (* the bytes free and in all on path's file system *)
 
 proc openDir*(d: ^Dir; path: []U8): INT;
 proc nextEntry*(d: ^Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
@@ -1619,11 +1620,20 @@ proc sort*(s: []T);
 module Math;
 const pi* = 3.141592653589793;
 proc sqrt*(x: F64): F64;
+proc pow*(x, y: F64): F64;            (* x to the power y *)
 proc floor*(x: F64): F64;
+proc ceil*(x: F64): F64;
+proc round*(x: F64): F64;             (* to the nearest whole number; a half away from 0 *)
 proc exp*(x: F64): F64;
 proc ln*(x: F64): F64;
+proc log2*(x: F64): F64;
+proc log10*(x: F64): F64;
 proc sin*(x: F64): F64;
 proc cos*(x: F64): F64;
+proc tan*(x: F64): F64;
+proc asin*(x: F64): F64;              (* from -pi/2 to pi/2 *)
+proc acos*(x: F64): F64;              (* from 0 to pi *)
+proc atan*(x: F64): F64;              (* from -pi/2 to pi/2 *)
 proc atan2*(y, x: F64): F64;          (* the angle of (x, y) from the x axis, from -pi to pi *)
 ```
 
@@ -1893,6 +1903,9 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.14.** The blank, `_`, drops a value or one of several
   results (section 7.1); a call that drops a result is warned of
   (section 10).
+- **2026-10.15.** `Math` gains `pow`, `ceil`, `round`, `log2`,
+  `log10`, `tan`, `asin`, `acos` and `atan`; `Sys` gains `space`
+  (section 11).
 
 ## Appendix A. What an implementation chooses
 
