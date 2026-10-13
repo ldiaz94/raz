@@ -2123,6 +2123,18 @@ begin
   CloseScope;
 end;
 
+{ An integer constant in a code procedure, for the assembler: a whole
+  expression, or a single factor where an expression would read on
+  too far }
+function AsmConst(whole: boolean): int64;
+var x: TItem;
+begin
+  if whole then exit(ConstExpr);
+  Factor(x, nil);
+  if not IsInt(x.typ) then MarkAt(x.pos, 'expected an integer constant, found ' + What(x));
+  AsmConst := ConstValue(x);
+end;
+
 procedure CodeBody(p: PObj; sig: PType; const at: TPos);
 var q: PObj; ni, nf: longint;
 begin
@@ -2143,7 +2155,7 @@ begin
         or (q^.typ^.form = fReal) or (q^.next^.typ^.form = fReal) then
         MarkAt(at, 'a code procedure returns two results only in rax and rdx');
     end else if not IsScalar(sig^.base) then MarkAt(at, 'a code procedure returns a single value');
-  CodeProc(p^.chunk, @ConstExpr);
+  CodeProc(p^.chunk, @AsmConst);
   Expect(sEnd);
 end;
 

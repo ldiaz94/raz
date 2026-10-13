@@ -111,7 +111,9 @@ procedure FixLinkTo(L, target: longint);
 function JoinLinks(L1, L2: longint): longint;
 
 type
-  TConstFn = function: int64;
+  { The parser's reader of an integer constant in a code procedure: a
+    whole expression, or, when whole is false, a single factor }
+  TConstFn = function(whole: boolean): int64;
 
 const
   RegNames: array[0..3, 0..15] of string[5] = (
@@ -846,10 +848,17 @@ begin
     repeat
       if IsReg(AsmWord, r, size) and (size = 8) then begin
         Next;
-        if tok = sTimes then begin Next; o.m.index := r; o.m.scale := constExpr() end
+        { the scale is a single number or constant: a whole expression
+          would take in the displacement after it, as 4 + 16 in
+          [rdi + rsi * 4 + 16] }
+        if tok = sTimes then begin
+          Next;
+          o.m.index := r;
+          o.m.scale := constExpr(false);
+        end
         else if o.m.base = NoBase then o.m.base := r
         else begin o.m.index := r; o.m.scale := 1 end;
-      end else o.m.disp := o.m.disp + constExpr();
+      end else o.m.disp := o.m.disp + constExpr(true);
       if not (tok in [sPlus, sMinus]) then break;
       SaveScan(st);
       Next;
@@ -863,7 +872,7 @@ begin
     Next;
   end else begin
     o.kind := oImm;
-    o.v := constExpr();
+    o.v := constExpr(true);
   end;
 end;
 
@@ -976,7 +985,7 @@ begin
     if w = 'db' then
       repeat
         start := TokPos;
-        v := constExpr();
+        v := constExpr(true);
         if (v < -128) or (v > 255) then MarkAt(SpanFrom(start), 'expected a byte from 0 to 255, found ' + IntStr(v));
         Put1(v);
         if tok <> sComma then break;

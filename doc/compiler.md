@@ -552,7 +552,9 @@ the address of the code being written, as an operand.
 The assembler, `Assemble`, reads a code procedure's instructions with
 the scanner, Intel's syntax as NASM writes it, and encodes them with
 `OpM` and `OpR`: `Operand` reads a register, a memory operand or a
-constant (by the parser's `ConstExpr`, handed in), and a few tables
+constant (by the parser's `AsmConst`, handed in: a whole expression,
+or for a scale a single factor, so that `[rdi + rsi * 4 + 16]` doesn't
+read `4 + 16` as the scale), and a few tables
 give the operations of a kind their opcodes (`Alus`, `Unaries`,
 `Shifts`, `SseOps`, `Plain`; `PackedOps` the SSE2 integer operations
 on 16 bytes at a time, with `movdqu`, `movdqa` and `pmovmskb` beside
