@@ -91,8 +91,8 @@ compiler says it follows, and v0.7.0, better code, and v0.7.1, the manual: `raz(
 `raz-tutorial(7)`, `raz(7)` and `raz-lib(3)`, made by `tools/Doc.raz`
 from `lib/`, and v0.8.0, better code again: slices in registers,
 parameters left in rdi and rsi, operands as the machine has them,
-`while` tested at the bottom, and one line table, DWARF's, and,
-not yet tagged, better code for reals: reals on the stack and the
+`while` tested at the bottom, and one line table, DWARF's, and
+v0.9.0, better code for reals: reals on the stack and the
 busiest real variables in xmm registers, and an array's element and a
 constant offset as operands, measured on two kernels of reals,
 `Jacobi` and `NBody`. `make kernels` measures `test/bench` against
@@ -122,7 +122,7 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.8.0, report 2026-10.17, the latest.
+the first; v0.9.0, report 2026-10.19, the latest.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only

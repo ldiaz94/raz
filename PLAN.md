@@ -5,10 +5,11 @@ for, what is in it and when it is done; its steps are commits, each
 stopping for the owner's review. A finished milestone is cut from this
 file: git keeps the history, and the report's section 12 the language's.
 
-Better code for reals, begun by the owner's word, is done and waits for the
-owner's review; it isn't tagged. v0.7.1, the manual, and v0.8.0,
-better code again, are tagged; all before v0.7.1 is approved by the
-owner, and v0.7.1 and v0.8.0 wait for the owner's review.
+v0.9.0, better code for reals, with `Bytes` and slices in code
+procedures (reports 2026-10.18 and 10.19), is tagged by the owner's
+word. All before v0.7.1 is approved by the owner; v0.7.1, the
+manual, v0.8.0, better code again, and v0.9.0 wait for the owner's
+review.
 
 ## Done: better code for reals
 
