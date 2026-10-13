@@ -99,13 +99,14 @@ what the owner chooses.
 defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes on the list in
 `PLAN.md`, for a later thaw; it isn't built. v0.6.0 was such a thaw,
-by the owner's word: report 2026-10.12; the compiler follows 2026-10.17,
+by the owner's word: report 2026-10.12; the compiler follows 2026-10.18,
 whose `Sys` writes without waiting, for rat's pastes (10.13), and
 whose blank, `_ := f(x)`, drops a result that is otherwise warned of
 (10.14), and whose `Math` has `pow`, the logarithms to 2 and 10,
 rounding and the inverse functions, and `Sys` `space` (10.15), and
 whose constants may be records and tables of them, with `Str.copy`
-(10.16), and `COPY` (10.17), also by the owner's word. Its parser
+(10.16), and `COPY` (10.17), also by the owner's word, and whose code
+procedures take and return slices (10.18). Its parser
 reaches the machine only through `gen.pas`. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.

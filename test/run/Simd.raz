@@ -3,8 +3,8 @@ module Simd;
    at a time, and the counts of bits *)
 import Out;
 
-(* the first place of b in the n bytes at p, or -1: p in rdi, n in rsi, b in dl *)
-proc index(p: ^U8; n: INT; b: U8): INT;
+(* the first place of b in s, or -1: its address in rdi, its length in rsi, b in dl *)
+proc index(s: []U8; b: U8): INT;
 code
     movd xmm1, edx;
     punpcklbw xmm1, xmm1;       (* b in the low two bytes... *)
@@ -63,12 +63,12 @@ var buf: [40]U8; i: INT;
 begin
     for i := 0 to 39 do buf[i] := 'a'; end;
     buf[37] := 'x'; buf[20] := 'y'; buf[5] := 'z';
-    Out.int(index(ADR(buf[0]), 40, 'z')); Out.str(" ");
-    Out.int(index(ADR(buf[0]), 40, 'y')); Out.str(" ");
-    Out.int(index(ADR(buf[0]), 40, 'x')); Out.str(" ");
-    Out.int(index(ADR(buf[0]), 40, 'q')); Out.str(" ");
-    Out.int(index(ADR(buf[0]), 0, 'a')); Out.str(" ");
-    Out.int(index(ADR(buf[6]), 15, 'y')); Out.ln;
+    Out.int(index(buf[0..40], 'z')); Out.str(" ");
+    Out.int(index(buf[0..40], 'y')); Out.str(" ");
+    Out.int(index(buf[0..40], 'x')); Out.str(" ");
+    Out.int(index(buf[0..40], 'q')); Out.str(" ");
+    Out.int(index(buf[0..0], 'a')); Out.str(" ");
+    Out.int(index(buf[6..21], 'y')); Out.ln;
     Out.int(bits(0B0A0H)); Out.ln;
 end;
 

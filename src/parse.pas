@@ -2141,9 +2141,12 @@ begin
   ni := 0; nf := 0;
   q := sig^.fields;
   while q <> nil do begin
-    if not q^.isVar and not IsScalar(q^.typ) then
-      MarkAt(at, 'a code procedure takes integers, BOOL, reals, pointers and procedures');
-    if (q^.typ^.form = fReal) and not q^.isVar then inc(nf) else inc(ni);
+    if not q^.isVar and (q^.typ^.form = fSlice) then inc(ni, 2)  { address, then length }
+    else begin
+      if not q^.isVar and not IsScalar(q^.typ) then
+        MarkAt(at, 'a code procedure takes integers, BOOL, reals, pointers, procedures and slices');
+      if (q^.typ^.form = fReal) and not q^.isVar then inc(nf) else inc(ni);
+    end;
     q := q^.next;
   end;
   if (ni > 6) or (nf > 8) or sig^.variadic then MarkAt(at, 'too many parameters for a code procedure');
@@ -2154,7 +2157,8 @@ begin
         or not IsScalar(q^.typ) or not IsScalar(q^.next^.typ)
         or (q^.typ^.form = fReal) or (q^.next^.typ^.form = fReal) then
         MarkAt(at, 'a code procedure returns two results only in rax and rdx');
-    end else if not IsScalar(sig^.base) then MarkAt(at, 'a code procedure returns a single value');
+    end else if not IsScalar(sig^.base) and (sig^.base^.form <> fSlice) then
+      MarkAt(at, 'a code procedure returns a single value');
   CodeProc(p^.chunk, @AsmConst);
   Expect(sEnd);
 end;

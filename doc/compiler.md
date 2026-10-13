@@ -832,7 +832,9 @@ meanwhile, so that gen's stack is empty when they run.
 Then declarations: `Declarations` reads `const`, `type`, `var`, `proc`
 and `extern`, each one through `Declaration`, a recovery point, which
 calls `ConstDecl`, `TypeDecl`, `VarDecl`, `ProcDecl` or `ExternDecl`. `ProcDecl` handles forward declarations, code procedures
-(`CodeBody`, which checks the signature and has gen's `CodeProc` run
+(`CodeBody`, which checks the signature, a slice parameter counting as
+two of the six integer registers and a slice result going in rax and
+rdx, and has gen's `CodeProc` run
 the target's assembler) and bodies (`Body`).
 `ParseType` and its helpers (`RecordType`, `VariantType`, `Signature`,
 `EnumType`) build `TType`s.

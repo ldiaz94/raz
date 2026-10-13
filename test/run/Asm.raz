@@ -120,8 +120,31 @@ code
     db 0C3H;
 end answer;
 
+(* s without its first k bytes: s in rdi and rsi, k in rdx, the slice back in rax and rdx *)
+proc tail(s: []U8; k: INT): []U8;
+code
+    add rdi, rdx;
+    sub rsi, rdx;
+    mov rax, rdi;
+    mov rdx, rsi;
+    ret;
+end tail;
+
+(* the byte of s at x, or -1; the slice is not the first parameter:
+   x in rdi, the address of s in rsi, its length in rdx *)
+proc pick(x: INT; s: []U8): INT;
+code
+    cmp rdi, rdx;
+    jae none;
+    movzx eax, byte [rsi + rdi];
+    ret;
+    none:
+    mov rax, -1;
+    ret;
+end pick;
+
 proc main*;
-var a: [4]I64; s: [3]U8; q, r: U64; c: INT;
+var a: [4]I64; s: [3]U8; t: [6]U8; q, r: U64; c: INT;
 begin
     Out.int(tens(4, 2)); Out.ln;
     a := [1, 20, 300, 4000];
@@ -139,6 +162,9 @@ begin
     c := 40;
     Out.int(fetchAdd(ADR(c), 2)); Out.str(" "); Out.int(c); Out.ln;
     Out.int(I64(two() * 21.0)); Out.str(" "); Out.int(answer()); Out.ln;
+    t := "abcdef";
+    Out.str(tail(t[0..6], 2)); Out.str(" "); Out.int(LEN(tail(t[0..6], 6))); Out.ln;
+    Out.int(pick(3, t[0..6])); Out.str(" "); Out.int(pick(9, t[0..6])); Out.ln;
 end;
 
 end Asm.
