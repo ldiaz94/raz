@@ -32,4 +32,4 @@ test $bad = 0
 ./raz -Werror -I self -o $b/recover self/test/Recover.raz
 printf 'a bad b bad bad c\nd bad\n' >$b/rec.raz
 r=$($b/recover $b/rec.raz 2>/dev/null) || test $? = 1
-test "$r" = "8 names, 4 jumps, 4 errors" && echo "recover ok"
+test "$r" = "8 names, 4 failed, 4 errors" && echo "recover ok"

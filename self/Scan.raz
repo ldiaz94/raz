@@ -6,13 +6,13 @@
    compares names as small integers. The scanner also says where the
    current symbol is, for messages.
 
-   Depends on: Sys, to read files; Diag, to report errors; Jump, to go
-   on after the parser's errors.
+   Depends on: Sys, to read files; Diag, to report errors.
    Leaves out: recovery from errors in the text itself, such as a string
    not closed: the first such error stops the compiler. The parser goes
-   on after its own errors, through recovery below. *)
+   on after its own errors: mark and the others report one and give
+   back Failed, which it passes up with try to where it can read on. *)
 module Scan;
-import Sys, Heap, Mem, Fmt, Str, Diag, Jump;
+import Sys, Heap, Mem, Fmt, Str, Diag;
 
 type
     NamePtr = ^U8;
@@ -45,6 +45,7 @@ type
     end;
 
 const
+    Failed*: ERROR = "reported";    (* an error has been shown: the parser returns it *)
     MaxIdent* = 63;
     MaxStr* = 65536;
     NumWords = 43;
@@ -73,9 +74,6 @@ var
     slen*: INT;         (* sString: how many bytes *)
     sbuf: [MaxStr + 1]U8;   (* sString: its bytes, then a zero *)
 
-    (* Where the parser goes on after an error: the innermost statement or
-       declaration being read. nil stops the compiler at the first error. *)
-    recovery: ^Jump.Env;
     (* The parser is skipping what it has read once already, after an
        error, so slips in it aren't reported again. *)
     skipping: BOOL;
@@ -102,11 +100,6 @@ var
     tableMask: INT;
 
 (* Exported variables can't be set from outside, so these do it. *)
-proc setRecovery*(r: ^Jump.Env);
-begin
-    recovery := r;
-end;
-
 proc setSkipping*(yes: BOOL);
 begin
     skipping := yes;
@@ -290,33 +283,25 @@ begin
     return col;
 end;
 
-(* After an error in the parser's construct, reported with its notes
-   and help: the parser goes on from the recovery point. *)
-proc fail*;
-begin
-    if recovery = nil then Diag.finish; end;
-    Jump.jump(recovery);
-end;
-
-(* An error at p: reported, then the parser goes on from its recovery
-   point. *)
-proc markAt*(p: Diag.Pos; msg: []U8);
+(* An error at p, shown: the parser returns Failed, which try passes up
+   to where it goes on. *)
+proc markAt*(p: Diag.Pos; msg: []U8): ERROR;
 begin
     Diag.error(p, msg);
-    fail;
+    return Failed;
 end;
 
-proc mark*(msg: []U8);
+proc mark*(msg: []U8): ERROR;
 begin
-    markAt(tokPos(), msg);
+    return markAt(tokPos(), msg);
 end;
 
 (* markAt, with a line of help after the message. *)
-proc markHelp*(p: Diag.Pos; msg, hint: []U8);
+proc markHelp*(p: Diag.Pos; msg, hint: []U8): ERROR;
 begin
     Diag.error(p, msg);
     Diag.help(hint);
-    fail;
+    return Failed;
 end;
 
 (* An error in the text at bytes a to b of the file being read, which

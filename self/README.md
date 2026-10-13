@@ -25,12 +25,12 @@ Not the seed's to mend; for the owner to choose.
   what the parser sets in the seed's `diag` and `scan` (`quiet`,
   `werror`, `recovery`, `skipping`) have setters. The `sbuf` array,
   which can't be sliced outside, is `strBytes`.
-- **Going on after an error.** raz has no `setjmp`: `Jump.raz` is the
-  two in assembly. The parser's 200 or so error sites are deep in its
-  recursion and all end in a jump back to the statement or declaration
-  being read, which is how the seed reports up to 20 errors in a run
-  (15 of the 267 tests of messages show more than one). The assembler
-  has no `jmp reg`, so `jump` is `push rcx; ret`.
+- **Going on after an error.** raz has no `setjmp`, and the seed's parser
+  ends its errors in a jump back to the statement or declaration being
+  read, which is how it reports up to 20 errors in a run. The language
+  gained `try` (report 2026-10.20) for this: `Scan.mark` and the others
+  show the error and return `Scan.Failed`, which the parser passes up
+  with `try` to where it reads on. `test/Recover.raz` is the pattern.
 - **`NO_COLOR` set to nothing.** `Sys.env` gives "" for a variable that
   is unset and for one that is empty, so the port reads the second as
   the first. no-color.org says a variable that is empty doesn't turn

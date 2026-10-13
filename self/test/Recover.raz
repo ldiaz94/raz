@@ -1,36 +1,38 @@
-(* Tests Jump through Scan.fail: a driver reads a file's symbols and
-   reports each name `bad` as an error, which jumps back to where it
-   saved its place and goes on, as the parser does after an error. The
-   count lives in a module variable, which a jump leaves as it was. *)
+(* Tests going on after an error, as the parser does with try: a driver
+   reads a file's symbols and reports each name `bad` as an error,
+   several calls deep; the error comes back up through them, and the
+   driver reads on from the next symbol. *)
 module Recover;
-import Out, Files, Diag, Scan, Jump;
+import Out, Files, Diag, Scan;
 
-var
-    env: Jump.Env;
-    jumps, names: INT;
+var failed, names: INT;
 
-proc deep(n: INT);
+proc deep(n: INT): ERROR;
 begin
-    if n > 0 then deep(n - 1); else Scan.mark("a bad name"); end;
+    if n > 0 then
+        try deep(n - 1);
+        return nil;
+    end;
+    return Scan.mark("a bad name");
 end;
 
 proc main*;
+var err: ERROR;
 begin
     if LEN(Scan.open(Files.arg(1))) # 0 then Diag.fatal("no file"); end;
-    Scan.setRecovery(ADR(env));
-    if Jump.save(ADR(env)) # 0 then INC(jumps); end;
     while Scan.tok # Scan.sEof do
         Scan.next;
         if Scan.tok = Scan.sIdent then
             INC(names);
-            if Scan.nameOf(Scan.id) = "bad" then deep(5); end;
+            if Scan.nameOf(Scan.id) = "bad" then
+                err := deep(5);
+                if err # nil then INC(failed); end;
+            end;
         end;
     end;
-    Out.int(names); Out.str(" names, "); Out.int(jumps); Out.str(" jumps, ");
+    Out.int(names); Out.str(" names, "); Out.int(failed); Out.str(" failed, ");
     Out.int(Diag.errors); Out.str(" errors\n");
-    Scan.setRecovery(nil);
-    Scan.mark("last");
-    Out.str("not reached\n");
+    Diag.finish;
 end;
 
 end Recover.
