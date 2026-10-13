@@ -112,7 +112,7 @@ begin
 end;
 
 (* Memory, or the end of the compile when there is none *)
-proc grab(size: INT): ^U8;
+proc grab*(size: INT): ^U8;
 var p: ^U8;
 begin
     p := Mem.alloc(Heap.heap, size, 8);

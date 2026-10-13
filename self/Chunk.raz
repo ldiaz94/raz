@@ -1,0 +1,364 @@
+(* Chunk: the compiled program, before it is linked.
+
+   The code of a program is a set of chunks: one per procedure, module
+   variable and string. A chunk's bytes go in one of three sections:
+   text (code), rodata (strings and other constants), bss (variables,
+   which are all zero). A reference from code to another chunk (a call,
+   or an address) is a fixup, patched once the linker has placed every
+   chunk. Line notes say which place in the source the code from each
+   point on is for.
+
+   Nothing here depends on the machine: text is bytes, written by the
+   encoder for the target (X64).
+
+   Depends on: Scan, for names and memory; Diag, for positions.
+   Leaves out: the instructions; that is X64.
+
+   Exported variables can't be set from outside, so the setters at the
+   end do what the seed's other units do to these. *)
+module Chunk;
+import Mem, Heap, Fmt, Diag, Scan;
+
+type
+    Section* = (secText, secRodata, secBss);
+
+    Chunk* = record
+        sec*: Section;
+        start*, size*, align*: INT;   (* in its section's buffer *)
+        firstFix*, numFix*: INT;      (* its fixups: text's in fixups, rodata's in dataFixups *)
+        home*, name*: INT;            (* its module and its name, for the symbol table; -1 if none *)
+        adr*: I64;                    (* its address, set by the linker *)
+        live*: BOOL;                  (* reached from the entry point *)
+        ext*: BOOL;                   (* bss: the address of a C symbol, its name *)
+        reals*: BOOL;                 (* code: computes with reals, first at realsAt *)
+        realsAt*: Diag.Pos;
+        saveMask*: INT;               (* code: the registers of variables it saves, as bits of Gen's VarRegs *)
+        saveAt*: INT;                 (* ... at this offset from the frame, one quadword each *)
+    end;
+
+    (* A place in the source whose code starts at a place in text: for
+       gdb, and for Rt to say where a failed check or a signal was *)
+    Line* = record
+        at*, chunk*: INT;             (* the place in text, and its chunk *)
+        path*, line*, col*: INT;      (* the file's path, interned, the line and column *)
+    end;
+
+    (* A variable of a procedure, for the trap report: Rt shows it, by
+       kind, from its place in the frame *)
+    VarNote* = record
+        chunk*, name*: INT;
+        off*: INT;                    (* from the frame pointer *)
+        kind*: INT;                   (* how Rt shows it: see Link *)
+    end;
+
+    Fixup* = record
+        at*: INT;                     (* the 32-bit field, as an offset in text; in
+                                         dataFixups, the 64-bit one, from its chunk's start *)
+        chunk*: INT;                  (* the chunk it refers to *)
+        addend*: INT;                 (* added to the chunk's address *)
+    end;
+
+var
+    text*: ^U8;        (* text *)
+    pc*: INT;          (* its length *)
+    rodata*: ^U8;
+    rolen*: INT;
+    chunks*: ^Chunk;
+    numChunks*: INT;
+    fixups*: ^Fixup;
+    numFixups*: INT;
+    (* Addresses in read-only data, as in an array constant of strings:
+       each 8 bytes, the chunk's absolute address, since the executable
+       is loaded where the linker placed it *)
+    dataFixups*: ^Fixup;
+    numDataFixups*: INT;
+    lines*: ^Line;
+    numLines*: INT;
+    curFile: INT;      (* the file being compiled, for noteLine *)
+    curChunk*: INT;    (* the chunk of code being written *)
+    varNotes*: ^VarNote;
+    numVarNotes*: INT;
+
+    codeCap, roCap, chunkCap, fixCap, dataFixCap, lineCap, noteCap: INT;
+
+(* p, which holds used bytes, moved to a block of size bytes *)
+proc grown(p: ^U8; used, size: INT): ^U8;
+var q: ^U8;
+begin
+    q := Scan.grab(size);
+    COPY(q[0..used], p[0..used]);
+    Mem.free(Heap.heap, p);
+    return q;
+end;
+
+(* Room for n more bytes of code *)
+proc room(n: INT);
+begin
+    if pc + n > codeCap then
+        text := grown(text, pc, codeCap * 2 + n);
+        codeCap := codeCap * 2 + n;
+    end;
+end;
+
+proc put1*(b: INT);
+begin
+    if pc + 16 > codeCap then room(16); end;
+    text[pc] := U8(b & 0FFH);
+    INC(pc);
+end;
+
+(* The low 32 bits of v, least significant byte first *)
+proc put4*(v: INT);
+var i: INT;
+begin
+    if pc + 16 > codeCap then room(16); end;
+    for i := 0 to 3 do text[pc + i] := U8((v shr (8 * i)) & 0FFH); end;
+    INC(pc, 4);
+end;
+
+proc put4At*(at, v: INT);
+var i: INT;
+begin
+    for i := 0 to 3 do text[at + i] := U8((v shr (8 * i)) & 0FFH); end;
+end;
+
+(* The 32 bits at at, as a signed number *)
+proc get4At*(at: INT): INT;
+var u, i: INT;
+begin
+    u := 0;
+    for i := 0 to 3 do u := u * 256 + INT(text[at + 3 - i]); end;
+    if u >= 80000000H then u := u - 100000000H; end;
+    return u;
+end;
+
+(* The last n bytes of code taken back. A line noted past the new end
+   now starts there, in place of one noted there before, as noteLine
+   would have it. *)
+proc takeBack*(n: INT);
+begin
+    DEC(pc, n);
+    if (numLines > 0) and (lines[numLines - 1].at > pc) then
+        lines[numLines - 1].at := pc;
+        if (numLines > 1) and (lines[numLines - 2].at = pc) then
+            lines[numLines - 2] := lines[numLines - 1];
+            DEC(numLines);
+        end;
+    end;
+end;
+
+proc put8*(v: I64);
+begin
+    put4(INT(v & 0FFFFFFFFH));
+    put4(INT((v shr 32) & 0FFFFFFFFH));
+end;
+
+proc newChunk*(sec: Section; home, name: INT): INT;
+var c: ^Chunk;
+begin
+    if numChunks = chunkCap then
+        chunks := ^Chunk(grown(^U8(chunks), numChunks * SIZE(Chunk), chunkCap * 2 * SIZE(Chunk)));
+        chunkCap := chunkCap * 2;
+    end;
+    c := ADR(chunks[numChunks]);
+    c^ := {};
+    c^.sec := sec;
+    c^.home := home;
+    c^.name := name;
+    c^.align := 1;
+    c^.size := -1;   (* not yet defined *)
+    INC(numChunks);
+    return numChunks - 1;
+end;
+
+proc beginChunk*(c: INT);
+begin
+    (* code is aligned to 32 bytes, the windows in which x86 fetches and
+       caches it, so that a procedure's loops sit in them the same way
+       whatever comes before: rat ran 5% slower at 16, by where its loops
+       fell. Padded with CC, x86's int3: a trap if it were ever run *)
+    while pc & 31 # 0 do put1(0CCH); end;
+    curChunk := c;
+    chunks[c].start := pc;
+    chunks[c].align := 32;
+    chunks[c].firstFix := numFixups;
+end;
+
+proc endChunk*(c: INT);
+begin
+    chunks[c].size := pc - chunks[c].start;
+    chunks[c].numFix := numFixups - chunks[c].firstFix;
+end;
+
+(* The n bytes at p are the data of rodata chunk c *)
+proc setData*(c: INT; p: ^U8; n, align: INT);
+begin
+    if rolen + n > roCap then
+        rodata := grown(rodata, rolen, roCap * 2 + n);
+        roCap := roCap * 2 + n;
+    end;
+    COPY(rodata[rolen..rolen + n], p[0..n]);
+    chunks[c].firstFix := numDataFixups;
+    chunks[c].numFix := 0;
+    chunks[c].start := rolen;
+    chunks[c].size := n;
+    chunks[c].align := align;
+    INC(rolen, n);
+end;
+
+proc setBss*(c: INT; size, align: INT);
+begin
+    chunks[c].size := size;
+    chunks[c].align := align;
+end;
+
+(* The code from here on is for line and column of the current file. A
+   place with no code of its own gives way to the next. *)
+proc noteLine*(line, col: INT);
+begin
+    if (numLines > 0) and (lines[numLines - 1].at = pc) then DEC(numLines); end;
+    if (numLines > 0) and (lines[numLines - 1].chunk = curChunk) and (lines[numLines - 1].line = line)
+        and (lines[numLines - 1].col = col) and (lines[numLines - 1].path = curFile) then
+        return;
+    end;
+    if numLines = lineCap then
+        lines := ^Line(grown(^U8(lines), numLines * SIZE(Line), lineCap * 2 * SIZE(Line)));
+        lineCap := lineCap * 2;
+    end;
+    lines[numLines].at := pc;
+    lines[numLines].chunk := curChunk;
+    lines[numLines].path := curFile;
+    lines[numLines].line := line;
+    lines[numLines].col := col;
+    INC(numLines);
+end;
+
+(* The quadword that holds the address of C's symbol name, filled in
+   when the program starts; one for each name. *)
+proc externChunk*(name: INT): INT;
+var c: INT;
+begin
+    for c := 0 to numChunks - 1 do
+        if chunks[c].ext and (chunks[c].name = name) then return c; end;
+    end;
+    c := newChunk(secBss, -1, name);
+    setBss(c, 8, 8);
+    chunks[c].ext := true;
+    return c;
+end;
+
+proc addFixup*(at, chunk, addend: INT);
+begin
+    if numFixups = fixCap then
+        fixups := ^Fixup(grown(^U8(fixups), numFixups * SIZE(Fixup), fixCap * 2 * SIZE(Fixup)));
+        fixCap := fixCap * 2;
+    end;
+    fixups[numFixups].at := at;
+    fixups[numFixups].chunk := chunk;
+    fixups[numFixups].addend := addend;
+    INC(numFixups);
+end;
+
+(* The address of chunk, plus addend, at offset at of rodata chunk c,
+   whose data is set: its fixups follow one another. *)
+proc addDataFixup*(c, at, chunk, addend: INT);
+begin
+    if numDataFixups = dataFixCap then
+        dataFixups := ^Fixup(grown(^U8(dataFixups), numDataFixups * SIZE(Fixup), dataFixCap * 2 * SIZE(Fixup)));
+        dataFixCap := dataFixCap * 2;
+    end;
+    dataFixups[numDataFixups].at := at;
+    dataFixups[numDataFixups].chunk := chunk;
+    dataFixups[numDataFixups].addend := addend;
+    INC(numDataFixups);
+    INC(chunks[c].numFix);
+end;
+
+proc noteVar*(chunk, name, off, kind: INT);
+begin
+    if numVarNotes = noteCap then
+        varNotes := ^VarNote(grown(^U8(varNotes), numVarNotes * SIZE(VarNote), noteCap * 2 * SIZE(VarNote)));
+        noteCap := noteCap * 2;
+    end;
+    varNotes[numVarNotes].chunk := chunk;
+    varNotes[numVarNotes].name := name;
+    varNotes[numVarNotes].off := off;
+    varNotes[numVarNotes].kind := kind;
+    INC(numVarNotes);
+end;
+
+(* The name of chunk c: its module's and its own, or literal and its
+   number for a literal *)
+proc chunkName*(c: INT): []U8;
+begin
+    if chunks[c].name < 0 then return Diag.say("literal{}", [Fmt.int(c)]); end;
+    if chunks[c].home < 0 then return Scan.nameOf(chunks[c].name); end;
+    return Diag.say("{}.{}", [Fmt.str(Scan.nameOf(chunks[c].home)), Fmt.str(Scan.nameOf(chunks[c].name))]);
+end;
+
+(* What Gen's Redo and Rewind put back: the code, fixups and lines made
+   since are forgotten *)
+proc rewindTo*(atPc, atFixups, atLines: INT);
+begin
+    pc := atPc;
+    numFixups := atFixups;
+    numLines := atLines;
+end;
+
+(* The file the code is being made from, as its path interned *)
+proc setCurFile*(path: INT);
+begin
+    curFile := path;
+end;
+
+proc curFilePath*: INT;
+begin
+    return curFile;
+end;
+
+proc setLive*(c: INT);
+begin
+    chunks[c].live := true;
+end;
+
+proc setAdr*(c: INT; a: I64);
+begin
+    chunks[c].adr := a;
+end;
+
+(* Chunk c computes with reals, the first of them at p *)
+proc setReals*(c: INT; p: Diag.Pos);
+begin
+    chunks[c].reals := true;
+    chunks[c].realsAt := p;
+end;
+
+proc setSaves*(c, mask, at: INT);
+begin
+    chunks[c].saveMask := mask;
+    chunks[c].saveAt := at;
+end;
+
+begin
+    codeCap := 1 shl 20;
+    text := Scan.grab(codeCap);
+    pc := 0;
+    roCap := 1 shl 16;
+    rodata := Scan.grab(roCap);
+    rolen := 0;
+    chunkCap := 1 shl 10;
+    chunks := ^Chunk(Scan.grab(chunkCap * SIZE(Chunk)));
+    numChunks := 0;
+    fixCap := 1 shl 12;
+    fixups := ^Fixup(Scan.grab(fixCap * SIZE(Fixup)));
+    numFixups := 0;
+    dataFixCap := 1 shl 8;
+    dataFixups := ^Fixup(Scan.grab(dataFixCap * SIZE(Fixup)));
+    numDataFixups := 0;
+    lineCap := 1 shl 12;
+    lines := ^Line(Scan.grab(lineCap * SIZE(Line)));
+    numLines := 0;
+    noteCap := 1 shl 8;
+    varNotes := ^VarNote(Scan.grab(noteCap * SIZE(VarNote)));
+    numVarNotes := 0;
+end Chunk.

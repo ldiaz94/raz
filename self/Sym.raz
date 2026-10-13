@@ -1,0 +1,684 @@
+(* Sym: types, objects and scopes.
+
+   Every name the program declares becomes an object (Obj): a constant,
+   type, variable, procedure, module, record field, variant case or
+   built-in. Every type is a Type. Objects are found through one hash
+   table keyed by scope and name, so a lookup costs the same however
+   big a module grows. A scope is just a number: the universe is 0,
+   and each module, procedure, record and match arm gets a fresh one.
+
+   Depends on: Scan, for names and errors; Diag, for positions.
+   Leaves out: code. Where a variable lives is decided here (frame
+   offsets, chunk numbers), but nothing is emitted.
+
+   Exported variables can't be set from outside, so setCurModule is
+   how the parser says which module it is in. A name that holds a
+   reserved word of raz is spelled otherwise: a record's `module` is
+   its `home`, an object's `link` its `chain`. *)
+module Sym;
+import Mem, Heap, Buf, Fmt, Diag, Scan;
+
+type
+    Form* = (fNone, fBool, fInt, fReal, fConst, fNil, fStr, fPtr, fArray,
+        fSlice, fRecord, fVariant, fProc, fEnum, fSet, fError);
+    (* fConst is the type of an untyped integer constant; fStr of a string
+       literal, whose length the literal carries. F32 and F64 are fReal,
+       told apart by size, and so is tRConst, an untyped real constant. *)
+
+    Class* = (oConst, oType, oVar, oProc, oModule, oField, oCase, oBuiltin);
+
+    Type* = record
+        form*: Form;
+        size*, align*: I64;
+        signed*: BOOL;     (* fInt *)
+        vol*: BOOL;        (* fPtr: ^VOLATILE *)
+        packd*: BOOL;      (* fRecord *)
+        variadic*: BOOL;   (* fProc: ends in ... *)
+        tuple*: BOOL;      (* fRecord: the results of a procedure that has several *)
+        base*: ^Type;      (* fPtr, fArray, fSlice: what it holds; fProc: result *)
+        len*: I64;         (* fArray: elements; fProc: parameters; fVariant: cases; a tuple: results *)
+        fields*: ^Obj;     (* fRecord: fields; fVariant: cases; fProc: parameters *)
+        scope*: INT;       (* fRecord: the scope of its fields *)
+        fwd*: INT;         (* fPtr whose base isn't declared yet: its name, else -1 *)
+        obj*: ^Obj;        (* the declaration that names it, or nil *)
+        home*: ^Module;    (* the module that built it *)
+    end;
+
+    Obj* = record
+        cls*: Class;
+        name*: INT;
+        exported*: BOOL;
+        typ*: ^Type;
+        next*: ^Obj;       (* the next in its list: scope, fields, parameters *)
+        scope*: INT;       (* where it is declared *)
+        pos*: Diag.Pos;    (* where its name is declared, for messages *)
+        val*: I64;         (* oConst: value; oBuiltin: which; oCase: tag;
+                              oField: offset; oVar: frame offset *)
+        chunk*: INT;       (* global oVar, oProc, string oConst: its chunk *)
+        lev*: INT;         (* oVar: 0 for a module variable, 1 for a local *)
+        ind*: BOOL;        (* oVar: the frame slot holds the variable's address *)
+        off*: I64;         (* oVar with ind: added to that address *)
+        isVar*: BOOL;      (* a var parameter *)
+        param*: BOOL;      (* oVar: a parameter *)
+        used*: BOOL;       (* named somewhere but in its own body *)
+        read*: BOOL;       (* oVar: named other than as what := assigns *)
+        fwd*: BOOL;        (* oProc: declared forward, no body yet *)
+        isCode*: BOOL;     (* oProc: a code procedure *)
+        openEnd*: BOOL;    (* oProc: has results, and may reach its end *)
+        reg*: INT;         (* oVar: the register it lives in, or 0 if in memory;
+                              for a slice, the one its pointer is in *)
+        reg2*: INT;        (* oVar: a slice in registers: the one its length is in *)
+        ext*: BOOL;        (* oProc, oVar: C's, reached through its chunk, which
+                              holds its address *)
+        fields*: ^Obj;     (* oCase: its fields *)
+        home*: ^Module;    (* oModule: the module; others: where declared *)
+        chain*: ^Obj;      (* the next declaration of its module, top-level or
+                              local *)
+    end;
+
+    (* The arguments of a generic module's instance: a type, or a
+       procedure (o) and its type. *)
+    Args* = record
+        n*: INT;
+        t*: [8]^Type;
+        o*: [8]^Obj;
+        pos*: [8]Diag.Pos;  (* where each argument is, for messages *)
+        at*: Diag.Pos;      (* where the import is *)
+    end;
+
+    Import* = record
+        home*: ^Module;
+        next*: ^Import;
+    end;
+
+    (* A library a module links, by its name, as interned *)
+    Lib* = record
+        name*: INT;
+        next*: ^Lib;
+    end;
+
+    Module* = record
+        name*: INT;
+        sname*: INT;         (* the name of its symbols: List(I64) for an instance *)
+        args*: Args;
+        scope*: INT;
+        path*: []U8;
+        first*, last*: ^Obj;           (* its top-level declarations, in order *)
+        locals*, lastLocal*: ^Obj;     (* its procedures' declarations, in order *)
+        imports*: ^Import;
+        body*: INT;          (* the chunk of its body, or -1 *)
+        done*: BOOL;         (* compiled to the end *)
+        checkOnly*: BOOL;    (* read only to check another file's interface *)
+        used*: BOOL;         (* imported, through others, by the main module *)
+        usesC*: BOOL;        (* has an extern, or links a library *)
+        linkStatic*: BOOL;   (* says link static *)
+        libs*: ^Lib;         (* the libraries it links *)
+        next*: ^Module;      (* modules in the order they were finished *)
+    end;
+
+const
+    (* built-in procedures *)
+    bSize* = 0; bAdr* = 1; bLen* = 2; bNew* = 3; bMsg* = 4; bSyscall* = 5;
+    bFence* = 6; bCas* = 7; bXchg* = 8; bXadd* = 9; bArgc* = 10; bArgv* = 11;
+    bInc* = 12; bDec* = 13; bCopy* = 14;
+
+    MaxDepth* = 64;   (* scopes open at once *)
+
+var
+    tI8*, tI16*, tI32*, tI64*, tU8*, tU16*, tU32*, tU64*: ^Type;
+    tInt*, tUInt*: ^Type;   (* INT and UINT, as big as an address: 8 bytes here *)
+    tBool*, tF32*, tReal*, tRConst*, tError*, tConst*, tNil*, tStr*, tNone*, tPtrU8*, tBytes*: ^Type;
+    tPoison*: ^Type;   (* of a name reported as not declared *)
+    curModule*: ^Module;
+
+    scopes: [MaxDepth]INT;
+    depth: INT;
+    nextScope: INT;
+    hashTab: ^^Obj;
+    hashMask, hashCount: INT;
+
+proc setCurModule*(m: ^Module);
+begin
+    curModule := m;
+end;
+
+proc newType*(form: Form; size, align: I64): ^Type;
+var t: ^Type;
+begin
+    NEW(t, Heap.heap);
+    if t = nil then Diag.fatal("out of memory"); end;
+    t^.form := form;
+    t^.size := size;
+    t^.align := align;
+    t^.fwd := -1;
+    t^.home := curModule;
+    return t;
+end;
+
+proc newObj*(cls: Class; name: INT; typ: ^Type): ^Obj;
+var o: ^Obj;
+begin
+    NEW(o, Heap.heap);
+    if o = nil then Diag.fatal("out of memory"); end;
+    o^.cls := cls;
+    o^.name := name;
+    o^.typ := typ;
+    o^.chunk := -1;
+    o^.home := curModule;
+    o^.pos := Scan.tokPos();
+    return o;
+end;
+
+(* Scopes *)
+
+proc newScope*: INT;
+begin
+    INC(nextScope);
+    return nextScope;
+end;
+
+proc openScope*(s: INT): ERROR;
+begin
+    if depth = MaxDepth then
+        return Scan.mark(Diag.say("scopes nested more than {} deep", [Fmt.int(MaxDepth)]));
+    end;
+    scopes[depth] := s;
+    INC(depth);
+    return nil;
+end;
+
+proc closeScope*;
+begin
+    DEC(depth);
+end;
+
+(* An imported module is compiled in the middle of another, and must
+   see only the universe and itself. The scopes open are kept in saved,
+   and their number is the result. *)
+proc saveScopes*(saved: []INT): INT;
+var i, d: INT;
+begin
+    d := depth;
+    for i := 0 to depth - 1 do saved[i] := scopes[i]; end;
+    depth := 1;
+    return d;
+end;
+
+proc restoreScopes*(d: INT; saved: []INT);
+var i: INT;
+begin
+    depth := d;
+    for i := 0 to depth - 1 do scopes[i] := saved[i]; end;
+end;
+
+proc scopeDepth*: INT;
+begin
+    return depth;
+end;
+
+(* Closes the scopes opened since there were d, after an error *)
+proc cutScopes*(d: INT);
+begin
+    depth := d;
+end;
+
+proc topScope*: INT;
+begin
+    return scopes[depth - 1];
+end;
+
+(* Where the search for name in scope s starts in the hash table: each
+   number is multiplied by an odd constant near 2^32 or 2^16 over the
+   golden ratio (Knuth's multiplicative hashing), which spreads the low
+   bits the mask keeps. *)
+proc slot(s, name: INT): INT;
+begin
+    return INT(((U32(s & 0FFFFFFFFH) * 2654435761) xor (U32(name & 0FFFFFFFFH) * 40503)) & U32(hashMask));
+end;
+
+(* A table of n slots, all empty *)
+proc emptyTable(n: INT): ^^Obj;
+var t: ^^Obj; i: INT;
+begin
+    t := ^^Obj(Scan.grab(n * SIZE(^Obj)));
+    for i := 0 to n - 1 do t[i] := nil; end;
+    return t;
+end;
+
+(* Doubles the table, which insert keeps at most half full so that the
+   linear probing stays short, and puts every entry in its new slot. *)
+proc rehash;
+var old: ^^Obj; n, i, j: INT;
+begin
+    old := hashTab;
+    n := hashMask + 1;
+    hashMask := n * 2 - 1;
+    hashTab := emptyTable(n * 2);
+    for i := 0 to n - 1 do
+        if old[i] # nil then
+            j := slot(old[i]^.scope, old[i]^.name);
+            while hashTab[j] # nil do j := (j + 1) & hashMask; end;
+            hashTab[j] := old[i];
+        end;
+    end;
+    Mem.free(Heap.heap, ^U8(old));
+end;
+
+proc insert*(obj: ^Obj; s: INT): ERROR;
+var i: INT; o: ^Obj;
+begin
+    i := slot(s, obj^.name);
+    o := hashTab[i];
+    while o # nil do
+        if (o^.scope = s) and (o^.name = obj^.name) then
+            Diag.error(obj^.pos, Diag.say("{} is declared twice", [Fmt.str(Scan.nameOf(obj^.name))]));
+            Diag.note(o^.pos, "the first one is here");
+            return Scan.Failed;
+        end;
+        i := (i + 1) & hashMask;
+        o := hashTab[i];
+    end;
+    obj^.scope := s;
+    hashTab[i] := obj;
+    INC(hashCount);
+    if hashCount * 2 > hashMask then rehash; end;
+    return nil;
+end;
+
+proc find*(s, name: INT): ^Obj;
+var i: INT; o: ^Obj;
+begin
+    i := slot(s, name);
+    o := hashTab[i];
+    while o # nil do
+        if (o^.scope = s) and (o^.name = name) then return o; end;
+        i := (i + 1) & hashMask;
+        o := hashTab[i];
+    end;
+    return nil;
+end;
+
+proc lookup*(name: INT): ^Obj;
+var i: INT; o: ^Obj;
+begin
+    for i := depth - 1 to 0 by -1 do
+        o := find(scopes[i], name);
+        if o # nil then return o; end;
+    end;
+    return nil;
+end;
+
+proc min(a, b: INT): INT;
+begin
+    if a < b then return a; end;
+    return b;
+end;
+
+(* c, in capitals if it is a letter *)
+proc up(c: U8): U8;
+begin
+    if (c >= 97) and (c <= 122) then return c - 32; end;
+    return c;
+end;
+
+(* How far apart two names are: the edits, a character put in, taken out,
+   changed or swapped with the next, that make one the other, ignoring
+   case. *)
+proc distance(a, b: []U8): INT;
+var d: [Scan.MaxIdent + 2][Scan.MaxIdent + 2]INT; i, j, c: INT;
+begin
+    for i := 0 to LEN(a) do d[i][0] := i; end;
+    for j := 0 to LEN(b) do d[0][j] := j; end;
+    for i := 1 to LEN(a) do
+        for j := 1 to LEN(b) do
+            c := 1;
+            if up(a[i - 1]) = up(b[j - 1]) then c := 0; end;
+            d[i][j] := min(min(d[i - 1][j] + 1, d[i][j - 1] + 1), d[i - 1][j - 1] + c);
+            if (i > 1) and (j > 1) and (up(a[i - 1]) = up(b[j - 2]))
+                and (up(a[i - 2]) = up(b[j - 1])) then
+                d[i][j] := min(d[i][j], d[i - 2][j - 2] + 1);
+            end;
+        end;
+    end;
+    return d[LEN(a)][LEN(b)];
+end;
+
+(* The name spelled most like name, for "did you mean": in scope s, if
+   it can be reached from here, or in the scopes in reach if s < 0; nil
+   if none is within an edit for every three characters. Only after an
+   error, so it looks at every object. *)
+proc closest*(name, s: INT): ^Obj;
+var i, j, d, best: INT; o, found: ^Obj; n: []U8; reach: BOOL;
+begin
+    n := Scan.nameOf(name);
+    best := LEN(n) div 3 + 1;
+    found := nil;
+    for i := 0 to hashMask do
+        o := hashTab[i];
+        if (o = nil) or (o^.name = name) or (o^.name < 0) or (o^.typ = tPoison) then
+            reach := false;
+        elsif s >= 0 then
+            reach := (o^.scope = s) and (o^.exported or (o^.home = curModule));
+        else
+            reach := false;
+            for j := 0 to depth - 1 do reach := reach or (o^.scope = scopes[j]); end;
+        end;
+        if reach then
+            d := distance(n, Scan.nameOf(o^.name));
+            if d < best then best := d; found := o; end;
+        end;
+    end;
+    return found;
+end;
+
+(* Types *)
+
+proc alignUp*(x, a: I64): I64;
+begin
+    return (x + a - 1) div a * a;
+end;
+
+proc isInt*(t: ^Type): BOOL;
+begin
+    return t^.form in {fInt, fConst};
+end;
+
+proc isScalar*(t: ^Type): BOOL;
+begin
+    return t^.form in {fBool, fInt, fReal, fConst, fNil, fPtr, fProc, fEnum, fSet, fError};
+end;
+
+proc isAggregate*(t: ^Type): BOOL;
+begin
+    return t^.form in {fArray, fSlice, fRecord, fVariant};
+end;
+
+(* Whether a result field f is a single value of at most a word, not a real *)
+proc oneWord(f: ^Obj): BOOL;
+begin
+    return isScalar(f^.typ) and (f^.typ^.form # fReal) and (f^.typ^.size <= 8);
+end;
+
+(* Whether a procedure's result t is two words, which come back in rax
+   and rdx, as System V returns a struct of two integers: a slice (its
+   pointer, then its length), or two results that are each a single
+   value of 8 bytes at most and not a real. *)
+proc inTwoRegs*(t: ^Type): BOOL;
+begin
+    if t^.form = fSlice then return true; end;
+    return t^.tuple and (t^.len = 2) and oneWord(t^.fields) and oneWord(t^.fields^.next);
+end;
+
+(* Whether a procedure's result t comes back in memory the caller
+   provides, whose address the caller passes as a hidden first argument,
+   in rdi: any result that is neither one value, in rax or xmm0, nor two
+   words, in rax and rdx. *)
+proc behindPointer*(t: ^Type): BOOL;
+begin
+    return isAggregate(t) and not inTwoRegs(t);
+end;
+
+proc fits*(v: I64; t: ^Type): BOOL;
+begin
+    if t^.form # fInt then return t^.form = fConst; end;
+    match t^.size of
+    | 1:
+        if t^.signed then return (v >= -128) and (v <= 127); end;
+        return (v >= 0) and (v <= 255);
+    | 2:
+        if t^.signed then return (v >= -32768) and (v <= 32767); end;
+        return (v >= 0) and (v <= 65535);
+    | 4:
+        if t^.signed then return (v >= -2147483648) and (v <= 2147483647); end;
+        return (v >= 0) and (v <= 4294967295);
+    | else: return t^.signed or (v >= 0);
+    end;
+end;
+
+proc same*(a, b: ^Type): BOOL; forward;
+
+(* Whether two procedure types, or two tuples, are alike: the same
+   results and parameters, in the same modes *)
+proc alikeShape(a, b: ^Type): BOOL;
+var p, q: ^Obj;
+begin
+    (* a record is the same only as itself, but for several results *)
+    if (a^.form = fRecord) and not (a^.tuple and b^.tuple) then return false; end;
+    if (a^.len # b^.len) or (a^.variadic # b^.variadic) then return false; end;
+    if (a^.base = nil) # (b^.base = nil) then return false; end;
+    if (a^.base # nil) and not same(a^.base, b^.base) then return false; end;
+    p := a^.fields; q := b^.fields;
+    while p # nil do
+        if (p^.isVar # q^.isVar) or not same(p^.typ, q^.typ) then return false; end;
+        p := p^.next; q := q^.next;
+    end;
+    return true;
+end;
+
+(* Structural sameness of two types. Named types are the same only if
+   they are one declaration; a type with no name is the same as another
+   built alike. *)
+proc alike(a, b: ^Type): BOOL;
+begin
+    if a = b then return true; end;
+    if a^.form # b^.form then return false; end;
+    match a^.form of
+    | fPtr: return (a^.vol = b^.vol) and same(a^.base, b^.base);
+    | fArray: return (a^.len = b^.len) and same(a^.base, b^.base);
+    | fSlice: return same(a^.base, b^.base);
+    | fSet: return same(a^.base, b^.base);
+    | fProc: return alikeShape(a, b);
+    | fRecord: return alikeShape(a, b);
+    | else: return false;
+    end;
+end;
+
+proc same*(a, b: ^Type): BOOL;
+begin
+    if a = b then return true; end;
+    if (a = nil) or (b = nil) then return false; end;
+    if (a^.obj # nil) and (b^.obj # nil) then return false; end;
+    return alike(a, b);
+end;
+
+(* What a type is called, added to b: the names a program gives it, else
+   what it is made of *)
+proc typeText(b: ^Buf.Buf; t: ^Type);
+var f: ^Obj;
+begin
+    if t = nil then Buf.str(b, "nothing"); return; end;
+    if t^.obj # nil then
+        if (t^.obj^.home # nil) and (t^.obj^.home # curModule) then
+            Buf.str(b, Scan.nameOf(t^.obj^.home^.sname));
+            Buf.str(b, ".");
+        end;
+        Buf.str(b, Scan.nameOf(t^.obj^.name));
+        return;
+    end;
+    match t^.form of
+    | fConst: Buf.str(b, "an integer constant");
+    | fReal: Buf.str(b, "a real constant");
+    | fNil: Buf.str(b, "nil");
+    | fStr: Buf.str(b, "a string");
+    | fPtr:
+        if t^.vol then Buf.str(b, "^VOLATILE "); else Buf.str(b, "^"); end;
+        typeText(b, t^.base);
+    | fArray:
+        Fmt.write(b, "[{}]", [Fmt.int(t^.len)]);
+        typeText(b, t^.base);
+    | fSlice:
+        Buf.str(b, "[]");
+        typeText(b, t^.base);
+    | fRecord:
+        if not t^.tuple then
+            Buf.str(b, "record");
+        else
+            Buf.str(b, "(");
+            f := t^.fields;
+            while f # nil do
+                typeText(b, f^.typ);
+                f := f^.next;
+                if f # nil then Buf.str(b, ", "); end;
+            end;
+            Buf.str(b, ")");
+        end;
+    | fVariant: Buf.str(b, "variant");
+    | fProc:
+        Buf.str(b, "proc(");
+        f := t^.fields;
+        while f # nil do
+            if f^.isVar then Buf.str(b, "var "); end;
+            typeText(b, f^.typ);
+            f := f^.next;
+            if f # nil then Buf.str(b, ", "); end;
+        end;
+        Buf.str(b, ")");
+        if t^.base # nil then
+            Buf.str(b, ": ");
+            typeText(b, t^.base);
+        end;
+    | else: Buf.str(b, "?");
+    end;
+end;
+
+(* A name for t, kept for good, as every message is *)
+proc typeName*(t: ^Type): []U8;
+var b: ^Buf.Buf;
+begin
+    b := ^Buf.Buf(Scan.grab(SIZE(Buf.Buf)));
+    Buf.init(b, Heap.heap);
+    typeText(b, t);
+    return Buf.bytes(b);
+end;
+
+(* A fingerprint of what a declaration exports, for the interface
+   check: two files of one module export the same thing when their
+   fingerprints agree. A named type counts by its name, so that a type
+   declared in each file stands for the other's. *)
+proc mix(var h: U64; v: I64);
+begin
+    h := (h xor U64(v)) * 1099511628211;   (* FNV-1a's 64-bit prime *)
+end;
+
+proc bit(f: BOOL): INT;
+begin
+    if f then return 1; end;
+    return 0;
+end;
+
+proc shape(var h: U64; t: ^Type; top: BOOL);
+var f, g: ^Obj;
+begin
+    if t = nil then mix(h, -1); return; end;
+    if (t^.obj # nil) and not top then
+        mix(h, t^.obj^.name);
+        if t^.obj^.home # nil then mix(h, t^.obj^.home^.sname); end;
+        return;
+    end;
+    mix(h, INT(t^.form));
+    mix(h, bit(t^.vol) + 2 * bit(t^.variadic));
+    mix(h, t^.len);
+    if t^.form in {fPtr, fArray, fSlice, fProc, fSet} then shape(h, t^.base, false); end;
+    f := t^.fields;
+    while f # nil do
+        if (t^.form # fRecord) or f^.exported then
+            mix(h, f^.name);
+            mix(h, bit(f^.isVar));
+            shape(h, f^.typ, false);
+            g := f^.fields;
+            while g # nil do shape(h, g^.typ, false); g := g^.next; end;
+        end;
+        f := f^.next;
+    end;
+end;
+
+proc fingerprint*(o: ^Obj): U64;
+var h: U64; f: ^Obj;
+begin
+    h := 0CBF29CE484222325H;   (* FNV-1a's 64-bit offset basis *)
+    mix(h, INT(o^.cls));
+    if o^.cls = oCase then
+        mix(h, o^.val);
+        f := o^.fields;
+        while f # nil do shape(h, f^.typ, false); f := f^.next; end;
+    else
+        shape(h, o^.typ, o^.cls = oType);
+    end;
+    return h;
+end;
+
+(* The universe *)
+
+proc basic(name: []U8; form: Form; size: I64; signed: BOOL): ^Type;
+var t: ^Type; o: ^Obj;
+begin
+    t := newType(form, size, size);
+    t^.signed := signed;
+    o := newObj(oType, Scan.intern(ADR(name[0]), LEN(name)), t);
+    o^.exported := true;
+    t^.obj := o;
+    _ := insert(o, 0);
+    return t;
+end;
+
+proc enter(name: []U8; cls: Class; t: ^Type; v: I64);
+var o: ^Obj;
+begin
+    o := newObj(cls, Scan.intern(ADR(name[0]), LEN(name)), t);
+    o^.val := v;
+    o^.exported := true;
+    _ := insert(o, 0);
+end;
+
+begin
+    hashMask := (1 shl 14) - 1;
+    hashTab := emptyTable(hashMask + 1);
+    depth := 1;
+    scopes[0] := 0;
+    nextScope := 0;
+    curModule := nil;
+    tI8 := basic("I8", fInt, 1, true);
+    tI16 := basic("I16", fInt, 2, true);
+    tI32 := basic("I32", fInt, 4, true);
+    tI64 := basic("I64", fInt, 8, true);
+    tU8 := basic("U8", fInt, 1, false);
+    tU16 := basic("U16", fInt, 2, false);
+    tU32 := basic("U32", fInt, 4, false);
+    tU64 := basic("U64", fInt, 8, false);
+    tInt := basic("INT", fInt, 8, true);
+    tUInt := basic("UINT", fInt, 8, false);
+    tBool := basic("BOOL", fBool, 1, false);
+    tF32 := basic("F32", fReal, 4, false);
+    tReal := basic("F64", fReal, 8, false);
+    tRConst := newType(fReal, 8, 8);
+    tError := basic("ERROR", fError, 8, false);
+    tConst := newType(fConst, 8, 8);
+    tConst^.signed := true;
+    tNil := newType(fNil, 8, 8);
+    tStr := newType(fStr, 0, 1);
+    tNone := newType(fNone, 0, 1);
+    tPtrU8 := newType(fPtr, 8, 8);
+    tPtrU8^.base := tU8;
+    tBytes := newType(fSlice, 16, 8);
+    tBytes^.base := tU8;
+    tPoison := newType(fInt, 8, 8);
+    tPoison^.signed := true;
+    enter("true", oConst, tBool, 1);
+    enter("false", oConst, tBool, 0);
+    enter("nil", oConst, tNil, 0);
+    enter("SIZE", oBuiltin, nil, bSize);
+    enter("ADR", oBuiltin, nil, bAdr);
+    enter("LEN", oBuiltin, nil, bLen);
+    enter("NEW", oBuiltin, nil, bNew);
+    enter("MSG", oBuiltin, nil, bMsg);
+    enter("SYSCALL", oBuiltin, nil, bSyscall);
+    enter("FENCE", oBuiltin, nil, bFence);
+    enter("CAS", oBuiltin, nil, bCas);
+    enter("XCHG", oBuiltin, nil, bXchg);
+    enter("XADD", oBuiltin, nil, bXadd);
+    enter("ARGC", oBuiltin, nil, bArgc);
+    enter("ARGV", oBuiltin, nil, bArgv);
+    enter("INC", oBuiltin, nil, bInc);
+    enter("DEC", oBuiltin, nil, bDec);
+    enter("COPY", oBuiltin, nil, bCopy);
+end Sym.

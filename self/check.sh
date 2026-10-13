@@ -33,3 +33,24 @@ test $bad = 0
 printf 'a bad b bad bad c\nd bad\n' >$b/rec.raz
 r=$($b/recover $b/rec.raz 2>/dev/null) || test $? = 1
 test "$r" = "8 names, 4 failed, 4 errors" && echo "recover ok"
+
+# Chunk and Sym: a fixed pseudo-random script each, run by both sides,
+# which print all they have made or answered; Sym also ends, as the
+# argument says, in an error, whose message and status must agree
+for u in Chunk Sym; do
+    l=$(echo $u | tr A-Z a-z)
+    fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fusrc -o$b/${l}dump.seed self/test/${u}Dump.pas >/dev/null
+    ./raz -Werror -I self -o $b/${l}dump.self self/test/${u}Dump.raz
+done
+for a in "" dup deep; do
+    for s in seed self; do
+        t=0; $b/chunkdump.$s >$b/chunk.$s 2>/dev/null || t=$?
+        t2=0; $b/symdump.$s $a >$b/sym.$s.out 2>$b/sym.$s.err || t2=$?
+        echo "$t $t2" >$b/status.$s
+    done
+    cmp $b/status.seed $b/status.self
+    cmp $b/chunk.seed $b/chunk.self
+    cmp $b/sym.seed.out $b/sym.self.out
+    cmp $b/sym.seed.err $b/sym.self.err
+done
+echo "chunk and sym ok"

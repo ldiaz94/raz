@@ -10,6 +10,13 @@ depends on and what it leaves out. The seed is never edited from here.
     make self        # each unit against the seed's, on the same files
     make self-bench  # the scanner's speed against the seed's
 
+`Chunk` and `Sym` have no input files to read, so each has a dumper
+pair, `test/ChunkDump` and `test/SymDump`, that runs one fixed
+pseudo-random script of calls on its side and prints all it made or
+answered (`Sym` also ends, as an argument says, in the error of a name
+declared twice or of too many scopes): the output, the messages and
+the status must be the same.
+
 `check.sh` builds a dumper for each side, `test/ScanDump.pas` over the
 seed's units and `test/ScanDump.raz` over these, and has both read the
 library, the examples, every test of the compiler and a file for each
@@ -40,6 +47,18 @@ Not the seed's to mend; for the owner to choose.
   which keeps what it makes: messages are made only to be shown. A name
   from `nameOf` stays valid, since names are kept in chunks that are
   never moved; the seed's was a copy.
+- **Reserved words as names.** The seed's `code` (the text buffer of
+  `Chunk`) is `text`; `module` (a record's, an import's) is `home`; an
+  object's `link` is `chain`. A seed type `TName` is `Name`, and the
+  procedures begin in lower case, as `Scan`'s do.
+- **Errors in `Sym`.** `insert` (a name declared twice) and `openScope`
+  (too many scopes) show the error and return `Scan.Failed`, as `mark`
+  does, for the parser to pass up with `try`. `saveScopes` returns what
+  the seed's `var d` gave.
+- **Setters.** What other units set in `Chunk` has one each (`setLive`,
+  `setAdr`, `setReals`, `setSaves`, `setCurFile`, and `rewindTo` for
+  gen's `Redo` and `Rewind`), and `Sym` has `setCurModule`. `Scan.grab`
+  is exported for the memory they all take.
 - **No bit cast.** A real's bits and back go through a pointer.
 - **Speed.** On the 348,025 lines of `test/genbench.py`, 7.6 MB, the
   seed's scanner takes 75 ms and this one 74. It took 121 at first.
