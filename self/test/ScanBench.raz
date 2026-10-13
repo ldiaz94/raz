@@ -1,0 +1,15 @@
+(* Counts the symbols of a file and nothing else, for timing Scan.raz
+   against the seed's scan.pas (ScanBench.pas). *)
+module ScanBench;
+import Out, Files, Diag, Scan;
+
+proc main*;
+var n: INT;
+begin
+    if LEN(Scan.open(Files.arg(1))) # 0 then Diag.fatal("no file"); end;
+    n := 0;
+    repeat Scan.next; INC(n); until Scan.tok = Scan.sEof;
+    Out.int(n); Out.str(" symbols\n");
+end;
+
+end ScanBench.

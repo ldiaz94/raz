@@ -24,7 +24,7 @@ on the wish list, a defect is mended.
 
 Steps:
 
-1. `diag` and `scan`: the trial. Measure `scan`'s speed against the
+1. `diag` and `scan` (done): the trial. Measure `scan`'s speed against the
    seed's and list what `Sys` and the library lacked. Stop for review:
    if the cost is too high, mend the code generator first.
 2. `chunk`, `sym`, `link`, `elf`, `x64`.

@@ -1,0 +1,36 @@
+(* Tests Jump through Scan.fail: a driver reads a file's symbols and
+   reports each name `bad` as an error, which jumps back to where it
+   saved its place and goes on, as the parser does after an error. The
+   count lives in a module variable, which a jump leaves as it was. *)
+module Recover;
+import Out, Files, Diag, Scan, Jump;
+
+var
+    env: Jump.Env;
+    jumps, names: INT;
+
+proc deep(n: INT);
+begin
+    if n > 0 then deep(n - 1); else Scan.mark("a bad name"); end;
+end;
+
+proc main*;
+begin
+    if LEN(Scan.open(Files.arg(1))) # 0 then Diag.fatal("no file"); end;
+    Scan.setRecovery(ADR(env));
+    if Jump.save(ADR(env)) # 0 then INC(jumps); end;
+    while Scan.tok # Scan.sEof do
+        Scan.next;
+        if Scan.tok = Scan.sIdent then
+            INC(names);
+            if Scan.nameOf(Scan.id) = "bad" then deep(5); end;
+        end;
+    end;
+    Out.int(names); Out.str(" names, "); Out.int(jumps); Out.str(" jumps, ");
+    Out.int(Diag.errors); Out.str(" errors\n");
+    Scan.setRecovery(nil);
+    Scan.mark("last");
+    Out.str("not reached\n");
+end;
+
+end Recover.

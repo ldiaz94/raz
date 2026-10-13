@@ -1,0 +1,55 @@
+(* Jump: setjmp and longjmp, for a compiler that goes on after an error.
+   The parser reads on from the statement or declaration after one it
+   found wrong; raz has no exceptions, so the scanner's Fail, which the
+   parser's errors end in, jumps back to where the parser saved its
+   place. Written in assembly, since no raz code can return twice.
+
+   Depends on: nothing.
+   Leaves out: saving anything but what System V says a procedure must
+   keep (rbx, rbp, rsp, r12 to r15) and the place to go on at. A
+   variable changed between save and jump may be held in a register
+   that jump restores, so a variable that is read after the jump is
+   written before save, or lives in memory the compiler can't reach
+   (a field of a record by pointer, a module's variable). *)
+module Jump;
+
+type
+    Env* = record
+        rbx, rbp, rsp, r12, r13, r14, r15, rip: INT;
+    end;
+
+(* Saves the place after the call in e, and returns 0. When jump(e) is
+   called later, from any procedure that save's caller is still under,
+   save returns again, with 1. *)
+proc save*(e: ^Env): INT;
+code
+    mov rax, [rsp];
+    lea rcx, [rsp + 8];
+    mov [rdi], rbx;
+    mov [rdi + 8], rbp;
+    mov [rdi + 16], rcx;
+    mov [rdi + 24], r12;
+    mov [rdi + 32], r13;
+    mov [rdi + 40], r14;
+    mov [rdi + 48], r15;
+    mov [rdi + 56], rax;
+    xor eax, eax;
+    ret;
+end save;
+
+(* Goes back to the save that filled e, which returns 1. *)
+proc jump*(e: ^Env);
+code
+    mov rbx, [rdi];
+    mov rbp, [rdi + 8];
+    mov rsp, [rdi + 16];
+    mov r12, [rdi + 24];
+    mov r13, [rdi + 32];
+    mov r14, [rdi + 40];
+    mov r15, [rdi + 48];
+    mov rcx, [rdi + 56];
+    mov eax, 1;
+    db 0FFH, 0E1H;          (* jmp rcx, which the assembler has no form for *)
+end jump;
+
+end Jump.

@@ -35,6 +35,13 @@ clean:
 check: raz build/raz-lib.3
 	test/check.sh
 
+# the raz compiler in raz, self/, tested against the seed's units
+self: raz | build
+	self/check.sh
+
+self-bench: raz | build
+	self/bench.sh
+
 # line numbers: gdb stops at a line and names it
 gdb: raz
 	test/gdb.sh
@@ -69,7 +76,7 @@ stress: raz | build
 # formatted already
 fmt: raz | build
 	./raz -o build/Pretty tools/Pretty.raz
-	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz; do \
+	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz self/*.raz self/test/*.raz; do \
 	    build/Pretty $$f | cmp -s - $$f || { echo "not formatted: $$f"; fail=1; }; \
 	done; test $$fail = 0
 
@@ -149,4 +156,4 @@ dist:
 site: raz
 	python3 site/build.py
 
-.PHONY: units tests check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall
+.PHONY: units tests self self-bench check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall

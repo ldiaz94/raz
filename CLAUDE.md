@@ -129,6 +129,13 @@ the first; v0.9.1, report 2026-10.19, the latest: v0.9.0 with
 a link in its `mods`. A test or example without `.expect` is only
 compiled (`examples/Window.raz` needs a display).
 
+## The seed and self
+
+`src/`, the Free Pascal compiler, is the **seed**. `self/` is its port
+to raz (`PLAN.md`, "Self"): one module to a seed unit, the same names.
+Never edit the seed to suit the port; a difference found goes on the
+plan, for the owner.
+
 ## Readings of the report already taken
 
 These are how the compiler behaves; keep them unless the owner says

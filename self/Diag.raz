@@ -1,0 +1,410 @@
+(* Diag: messages.
+
+   The one place the compiler's messages are made. A message is an
+   error or a warning at a position, which it shows as the file, line
+   and column, then the line of source with the position underlined;
+   notes, each at a position of its own, and help, a line of advice,
+   may follow it. Colour is used when standard error is a terminal and
+   NO_COLOR isn't set. Diag keeps every source file it is given, so
+   that a note can show a line of a module compiled earlier.
+
+   Depends on: Sys, to write and to ask about the terminal; Buf and Fmt,
+   to build what it writes.
+   Leaves out: wording. The callers say what is wrong, with say; a
+   message is at most 255 characters, which every message so far keeps
+   well within. A message made by say is kept for good, since it is
+   made only where it is about to be shown. *)
+module Diag;
+import Sys, Rt, Heap, Mem, Buf, Fmt, Str;
+
+type
+    (* A stretch of a source file: bytes a up to but not including b.
+       a = b marks the place between two characters. *)
+    Pos* = record f*, a*, b*: INT; end;
+
+    File = record
+        path: []U8;
+        buf: ^U8;
+        len: INT;
+    end;
+
+const
+    MaxErrors* = 20;
+    Bold = "\x1B[1m"; Red = "\x1B[1;31m"; Yellow = "\x1B[1;33m";
+    Cyan = "\x1B[1;36m"; Green = "\x1B[1;32m"; Blue = "\x1B[1;34m";
+    Plain = "\x1B[0m";
+    (* A long line is shown cut to this many bytes around the place, its
+       cut ends marked ... *)
+    ShownBytes = 100;
+
+var
+    errors*, warnings*: INT;
+    werror*: BOOL;       (* -Werror: a warning counts as an error *)
+    (* The construct being read uses a name already reported as not
+       declared: its errors follow from that one, and aren't shown. *)
+    quiet*: BOOL;
+
+    files: ^File;        (* numFiles of them, in room for cap *)
+    numFiles, cap: INT;
+    colour, colourKnown, cwdKnown: BOOL;
+    cwd: Buf.Buf;        (* the working directory and a /, or empty if unknown *)
+    out: Buf.Buf;        (* the message being made *)
+    lastError: Pos;      (* where the last error was *)
+    shown: BOOL;         (* whether it was shown: its notes and help are only then *)
+
+(* Exported variables can't be set from outside, so these do it. *)
+proc setWerror*(yes: BOOL);
+begin
+    werror := yes;
+end;
+
+proc setQuiet*(yes: BOOL);
+begin
+    quiet := yes;
+end;
+
+(* Paths are shown from the working directory where they are under it,
+   so messages read the same wherever the compiler or its library is. *)
+proc shownPath*(path: []U8): []U8;
+var d: []U8; err: INT; c: []U8;
+begin
+    if not cwdKnown then
+        d, err := Sys.workDir();
+        if err = 0 then
+            Buf.str(ADR(cwd), d);
+            Buf.add(ADR(cwd), '/');
+        end;
+        cwdKnown := true;
+    end;
+    c := Buf.bytes(ADR(cwd));
+    if (LEN(c) > 0) and Str.hasPrefix(path, c) then return path[LEN(c)..LEN(path)]; end;
+    return path;
+end;
+
+proc fatal*(msg: []U8); forward;
+
+(* Memory, or the end of the compile when there is none *)
+proc grab(size: INT): ^U8;
+var p: ^U8;
+begin
+    p := Mem.alloc(Heap.heap, size, 8);
+    if p = nil then fatal("out of memory"); end;
+    return p;
+end;
+
+(* Keeps buf, len bytes of a file, under a number, which it gives back;
+   buf stays as it is, and its path is copied. *)
+proc addFile*(path: []U8; buf: ^U8; len: INT): INT;
+var more: ^File; i: INT; p: []U8; ok: BOOL;
+begin
+    if numFiles = cap then
+        more := ^File(grab((2 * cap + 8) * SIZE(File)));
+        for i := 0 to numFiles - 1 do more[i] := files[i]; end;
+        if files # nil then Mem.free(Heap.heap, ^U8(files)); end;
+        files := more;
+        cap := 2 * cap + 8;
+    end;
+    p, ok := Str.copy(Heap.heap, shownPath(path));
+    if not ok then fatal("out of memory"); end;
+    files[numFiles] := {path: p, buf: buf, len: len};
+    INC(numFiles);
+    return numFiles - 1;
+end;
+
+proc pathOf*(f: INT): []U8;
+begin
+    return files[f].path;
+end;
+
+(* Writing *)
+
+(* Whether NO_COLOR is set. The library can't tell it set to nothing
+   from not set, so that counts as not set, as no-color.org has it. *)
+proc noColour: BOOL;
+begin
+    return LEN(Sys.env("NO_COLOR")) > 0;
+end;
+
+proc put(s: []U8);
+begin
+    Buf.str(ADR(out), s);
+end;
+
+proc putc(c: U8);
+begin
+    Buf.add(ADR(out), c);
+end;
+
+proc putNum(n: INT);
+begin
+    Fmt.write(ADR(out), "{}", [Fmt.int(n)]);
+end;
+
+(* The text of a number *)
+proc say*(f: []U8; args: []Fmt.Arg): []U8;
+var b: ^Buf.Buf;
+begin
+    b := ^Buf.Buf(grab(SIZE(Buf.Buf)));
+    Buf.init(b, Heap.heap);
+    Fmt.write(b, f, args);
+    return Buf.bytes(b);
+end;
+
+(* c, when colour is on *)
+proc paintOn(c: []U8);
+begin
+    if not colourKnown then
+        colour := Sys.isTerminal(2) and not noColour();
+        colourKnown := true;
+    end;
+    if colour then put(c); end;
+end;
+
+(* s in colour c, when colour is on *)
+proc paint(c, s: []U8);
+begin
+    paintOn(c);
+    put(s);
+    paintOn(Plain);
+end;
+
+(* What has been made, written to standard error *)
+proc flush;
+var s: []U8; n: INT;
+begin
+    s := Buf.bytes(ADR(out));
+    while LEN(s) > 0 do
+        n := Sys.write(Sys.stderr, s);
+        if n <= 0 then break; end;
+        s := s[n..LEN(s)];
+    end;
+    Buf.reset(ADR(out));
+end;
+
+(* Positions *)
+
+(* The line of p, and the byte where it starts. Lines are counted from
+   the start of the file, which is slow only next to compiling it. *)
+proc locate(p: Pos): (INT, INT);
+var i, line, start: INT; buf: ^U8;
+begin
+    buf := files[p.f].buf;
+    line := 1;
+    start := 0;
+    for i := 0 to p.a - 1 do
+        if buf[i] = 10 then INC(line); start := i + 1; end;
+    end;
+    return line, start;
+end;
+
+proc lineOf*(p: Pos): INT;
+var line: INT;
+begin
+    line, _ := locate(p);
+    return line;
+end;
+
+(* A byte that starts a character: every one but a UTF-8 continuation *)
+proc starts(c: U8): BOOL;
+begin
+    return (c & 0C0H) # 80H;
+end;
+
+(* Characters from byte i to byte j of buf *)
+proc chars(buf: ^U8; i, j: INT): INT;
+var n: INT;
+begin
+    n := 0;
+    while i < j do
+        if starts(buf[i]) then INC(n); end;
+        INC(i);
+    end;
+    return n;
+end;
+
+(* "file:line:col: kind: msg", then the line with p underlined. A tab
+   before p is copied into the underline, so that the two line up
+   whatever the terminal makes of tabs. *)
+proc show(p: Pos; kind, kindColour, msg: []U8);
+var line, start, stop, lo, hi, i, n: INT; buf: ^U8; f: ^File; digits: []U8;
+begin
+    if p.f >= numFiles then
+        (* about no place in a file, as for Rt, which the compiler
+           imports before it reads one *)
+        paint(Bold, "raz:");
+        put(" ");
+        paintOn(kindColour); put(kind); put(":"); paintOn(Plain);
+        put(" ");
+        paint(Bold, msg);
+        putc('\n');
+        flush;
+        return;
+    end;
+    line, start := locate(p);
+    f := ADR(files[p.f]);
+    buf := f^.buf;
+    paintOn(Bold);
+    put(f^.path); put(":"); putNum(line); put(":"); putNum(chars(buf, start, p.a) + 1); put(":");
+    paintOn(Plain);
+    put(" ");
+    paintOn(kindColour); put(kind); put(":"); paintOn(Plain);
+    put(" ");
+    paint(Bold, msg);
+    putc('\n');
+    stop := start;
+    while (stop < f^.len) and (buf[stop] # 10) do INC(stop); end;
+    lo := start;
+    hi := stop;
+    if hi - lo > ShownBytes then
+        if p.a - lo > ShownBytes div 2 then lo := p.a - ShownBytes div 2; end;
+        while not starts(buf[lo]) do INC(lo); end;
+        if hi - lo > ShownBytes then hi := lo + ShownBytes; end;
+        while (hi < stop) and not starts(buf[hi]) do INC(hi); end;
+    end;
+    paintOn(Blue);
+    digits := say("{}", [Fmt.int(line)]);
+    for i := LEN(digits) to 4 do put(" "); end;
+    put(digits); put(" |");
+    paintOn(Plain);
+    put(" ");
+    if lo > start then put("..."); end;
+    put(buf[lo..hi]);
+    if hi < stop then put("..."); end;
+    putc('\n');
+    paint(Blue, "      |");
+    put(" ");
+    if lo > start then put("   "); end;
+    for i := lo to p.a - 1 do
+        if buf[i] = '\t' then putc('\t'); elsif starts(buf[i]) then putc(' '); end;
+    end;
+    if p.b < hi then n := chars(buf, p.a, p.b); else n := chars(buf, p.a, hi); end;
+    if n < 1 then n := 1; end;
+    paintOn(kindColour);
+    for i := 1 to n do putc('^'); end;
+    paintOn(Plain);
+    putc('\n');
+    flush;
+end;
+
+(* From the start of p to the end of q *)
+proc join*(p, q: Pos): Pos;
+begin
+    p.b := q.b;
+    return p;
+end;
+
+(* The text at p, at most the 255 bytes a message can hold *)
+proc source*(p: Pos): []U8;
+var n: INT;
+begin
+    n := p.b - p.a;
+    if n > 255 then n := 255; end;
+    return files[p.f].buf[p.a..p.a + n];
+end;
+
+(* Messages *)
+
+(* Line line of the file at path, as written, to at most 255 bytes *)
+proc lineText*(path: []U8; line: INT): []U8;
+var i, k, n, j: INT; f: ^File; want: []U8;
+begin
+    want := shownPath(path);
+    for i := 0 to numFiles - 1 do
+        f := ADR(files[i]);
+        if f^.path = want then
+            k := 0;
+            n := 1;
+            while (n < line) and (k < f^.len) do
+                if f^.buf[k] = 10 then INC(n); end;
+                INC(k);
+            end;
+            j := k;
+            while (j < f^.len) and (f^.buf[j] # 10) and (j - k < 255) do INC(j); end;
+            return f^.buf[k..j];
+        end;
+    end;
+    return "";
+end;
+
+proc error*(p: Pos; msg: []U8);
+begin
+    (* a second error at one place follows from the first: when a symbol
+       ends a construct with an error, the one around it may stop there too *)
+    shown := not quiet and not ((errors > 0) and (p.f = lastError.f) and (p.a = lastError.a));
+    if not shown then return; end;
+    lastError := p;
+    show(p, "error", Red, msg);
+    INC(errors);
+    if errors >= MaxErrors then
+        put("raz: stopping after ");
+        putNum(MaxErrors);
+        put(" errors\n");
+        flush;
+        Rt.exit(1);
+    end;
+end;
+
+proc warning*(p: Pos; msg: []U8);
+begin
+    if werror then
+        error(p, msg);
+    else
+        show(p, "warning", Yellow, msg);
+        shown := true;
+        INC(warnings);
+    end;
+end;
+
+(* Notes and help follow an error or a warning, and are shown with it *)
+proc note*(p: Pos; msg: []U8);
+begin
+    if shown then show(p, "note", Cyan, msg); end;
+end;
+
+proc help*(msg: []U8);
+begin
+    if shown then
+        paint(Green, "help:");
+        put(" ");
+        put(msg);
+        putc('\n');
+        flush;
+    end;
+end;
+
+(* An error with no place in the source, such as a file that can't be
+   read: it stops the compiler at once. *)
+proc fatal*(msg: []U8);
+begin
+    put("raz: ");
+    put(msg);
+    putc('\n');
+    flush;
+    Rt.exit(1);
+end;
+
+proc count(n: INT; what: []U8): []U8;
+begin
+    if n = 1 then return say("1 {}", [Fmt.str(what)]); end;
+    return say("{} {}s", [Fmt.int(n), Fmt.str(what)]);
+end;
+
+(* Says how many errors and warnings there were, and stops the compiler
+   if there were errors. *)
+proc finish*;
+begin
+    if (errors > 0) and (warnings > 0) then
+        put("raz: "); put(count(errors, "error")); put(", "); put(count(warnings, "warning")); putc('\n');
+    elsif errors > 0 then
+        put("raz: "); put(count(errors, "error")); putc('\n');
+    elsif warnings > 0 then
+        put("raz: "); put(count(warnings, "warning")); putc('\n');
+    end;
+    flush;
+    if errors > 0 then Rt.exit(1); end;
+end;
+
+begin
+    Buf.init(ADR(cwd), Heap.heap);
+    Buf.init(ADR(out), Heap.heap);
+end Diag.

@@ -1,0 +1,998 @@
+(* Scan: the scanner.
+
+   Reads a raz source file and hands the parser one symbol at a time:
+   reserved words, identifiers, numbers, characters, strings and
+   operators. Identifiers are interned, so that the rest of the compiler
+   compares names as small integers. The scanner also says where the
+   current symbol is, for messages.
+
+   Depends on: Sys, to read files; Diag, to report errors; Jump, to go
+   on after the parser's errors.
+   Leaves out: recovery from errors in the text itself, such as a string
+   not closed: the first such error stops the compiler. The parser goes
+   on after its own errors, through recovery below. *)
+module Scan;
+import Sys, Heap, Mem, Fmt, Diag, Jump;
+
+type
+    NamePtr = ^U8;
+
+    Sym* = (sNull, sIdent, sInt, sReal, sChar, sString,
+        sPlus, sMinus, sTimes, sSlash, sEql, sNeq, sLss, sLeq, sGtr, sGeq,
+        sBecomes, sColon, sSemicolon, sComma, sPeriod, sUpto, sEllipsis,
+        sLparen, sRparen, sLbrak, sRbrak, sLbrace, sRbrace, sArrow, sAmp, sTilde, sBar,
+        sBlank,
+        (* the reserved words, in the order of words below *)
+        sAnd, sBegin, sBreak, sBy, sCode, sConst, sDefer, sDiv, sDo, sElse,
+        sElsif, sEnd, sExtern, sFor, sForward, sIf, sImport, sIn, sLink,
+        sMatch, sMod, sModule, sNot, sOf, sOr, sPacked, sProc, sRecord,
+        sRepeat, sReturn, sSet, sShl, sShr, sThen, sTo, sType, sUntil, sVar,
+        sVariant, sVolatile, sWhile, sXor,
+        sEof);
+
+    (* Where the scanner is. Importing a module compiles it in the middle
+       of another, so the parser saves this and restores it afterwards. *)
+    State* = record
+        buf: ^U8;
+        len, pos, line, lineStart: INT;
+        tokPos, tokLine, tokLineStart: INT;
+        prevEnd: INT;      (* where the symbol before this one ends *)
+        tok: Sym;
+        ival: I64;
+        rval: F64;
+        id: INT;
+        f: INT;            (* the file, as Diag knows it *)
+    end;
+
+const
+    MaxIdent* = 63;
+    MaxStr* = 65536;
+    NumWords = 42;
+    NumOps = 28;
+    words: [NumWords][]U8 = [
+        "and", "begin", "break", "by", "code", "const", "defer", "div", "do",
+        "else", "elsif", "end", "extern", "for", "forward", "if", "import",
+        "in", "link", "match", "mod", "module", "not", "of", "or", "packed",
+        "proc", "record", "repeat", "return", "set", "shl", "shr", "then",
+        "to", "type", "until", "var", "variant", "VOLATILE", "while", "xor"];
+    (* sPlus to sBlank *)
+    ops: [NumOps][]U8 = [
+        "+", "-", "*", "/", "=", "#", "<", "<=", ">", ">=",
+        ":=", ":", ";", ",", ".", "..", "...",
+        "(", ")", "[", "]", "{", "}", "^", "&", "~", "|", "_"];
+    PoolChunk = 65536;
+
+var
+    tok*: Sym;          (* the current symbol *)
+    ival*: I64;         (* sInt, sChar: its value *)
+    rval*: F64;         (* sReal: its value *)
+    id*: INT;           (* sIdent: its name *)
+    slen*: INT;         (* sString: how many bytes *)
+    sbuf: [MaxStr + 1]U8;   (* sString: its bytes, then a zero *)
+
+    (* Where the parser goes on after an error: the innermost statement or
+       declaration being read. nil stops the compiler at the first error. *)
+    recovery: ^Jump.Env;
+    (* The parser is skipping what it has read once already, after an
+       error, so slips in it aren't reported again. *)
+    skipping: BOOL;
+
+    (* Whether a byte may be in a name: a letter, a digit or _. A table,
+       since the loop that reads a name asks it of every byte. *)
+    nameChar: [256]BOOL;
+
+    cur: State;         (* buf .. f; tok, ival, rval and id live above *)
+
+    (* The name table: every distinct identifier once, found through an
+       open-addressed hash table. A name's bytes are in a chunk of memory
+       that is never moved, so that nameOf can hand out a slice of them. *)
+    chunk: ^U8;         (* where names are put; chunkLeft bytes are left *)
+    chunkLeft: INT;
+    namePtr: ^NamePtr;
+    nameLen, nameHash: ^INT;
+    numNames, nameCap: INT;
+    table: ^INT;        (* name + 1, or 0 for an empty slot *)
+    tableMask: INT;
+
+(* Exported variables can't be set from outside, so these do it. *)
+proc setRecovery*(r: ^Jump.Env);
+begin
+    recovery := r;
+end;
+
+proc setSkipping*(yes: BOOL);
+begin
+    skipping := yes;
+end;
+
+(* The bytes of the string just read, without the zero after them *)
+proc strBytes*: []U8;
+begin
+    return sbuf[0..slen];
+end;
+
+(* Memory, or the end of the compile when there is none *)
+proc grab(size: INT): ^U8;
+var p: ^U8;
+begin
+    p := Mem.alloc(Heap.heap, size, 8);
+    if p = nil then Diag.fatal("out of memory"); end;
+    return p;
+end;
+
+(* n zeroed words *)
+proc words64(n: INT): ^INT;
+var p: ^INT; i: INT;
+begin
+    p := ^INT(grab(n * SIZE(INT)));
+    for i := 0 to n - 1 do p[i] := 0; end;
+    return p;
+end;
+
+(* Names *)
+
+proc hash(p: ^U8; n: INT): INT;
+var h: U32; i: INT;
+begin
+    h := 2166136261;
+    for i := 0 to n - 1 do h := (h xor U32(p[i])) * 16777619; end;
+    return INT(h & 7FFFFFFFH);
+end;
+
+(* A table twice the size, and room for twice the names *)
+proc grow;
+var i, n, j: INT; ptrs: ^NamePtr; lens, hashes: ^INT;
+begin
+    Mem.free(Heap.heap, ^U8(table));
+    tableMask := tableMask * 2 + 1;
+    table := words64(tableMask + 1);
+    for n := 0 to numNames - 1 do
+        i := nameHash[n] & tableMask;
+        while table[i] # 0 do i := (i + 1) & tableMask; end;
+        table[i] := n + 1;
+    end;
+    j := nameCap * 2;
+    ptrs := ^NamePtr(grab(j * SIZE(NamePtr)));
+    lens := ^INT(grab(j * SIZE(INT)));
+    hashes := ^INT(grab(j * SIZE(INT)));
+    for n := 0 to numNames - 1 do
+        ptrs[n] := namePtr[n];
+        lens[n] := nameLen[n];
+        hashes[n] := nameHash[n];
+    end;
+    Mem.free(Heap.heap, ^U8(namePtr));
+    Mem.free(Heap.heap, ^U8(nameLen));
+    Mem.free(Heap.heap, ^U8(nameHash));
+    namePtr := ptrs;
+    nameLen := lens;
+    nameHash := hashes;
+    nameCap := j;
+end;
+
+(* Whether the n bytes at p and at q are the same *)
+proc same(p, q: ^U8; n: INT): BOOL;
+var i: INT;
+begin
+    for i := 0 to n - 1 do
+        if p[i] # q[i] then return false; end;
+    end;
+    return true;
+end;
+
+(* The number of the name of the n bytes at p; a new name gets the next *)
+proc intern*(p: ^U8; n: INT): INT;
+var h, i, k: INT;
+begin
+    h := hash(p, n);
+    i := h & tableMask;
+    while table[i] # 0 do
+        k := table[i] - 1;
+        if (nameHash[k] = h) and (nameLen[k] = n) and same(namePtr[k], p, n) then
+            return k;
+        end;
+        i := (i + 1) & tableMask;
+    end;
+    if n > chunkLeft then
+        chunk := grab(PoolChunk);
+        chunkLeft := PoolChunk;
+    end;
+    COPY(chunk[0..n], p[0..n]);
+    k := numNames;
+    namePtr[k] := chunk;
+    nameLen[k] := n;
+    nameHash[k] := h;
+    chunk := chunk + n;
+    chunkLeft := chunkLeft - n;
+    INC(numNames);
+    table[i] := k + 1;
+    if numNames * 2 > tableMask then grow; end;
+    return k;
+end;
+
+(* The name n, which stays as it is *)
+proc nameOf*(n: INT): []U8;
+begin
+    return namePtr[n][0..nameLen[n]];
+end;
+
+(* Errors *)
+
+(* The current symbol *)
+proc tokPos*: Diag.Pos;
+begin
+    return {f: cur.f, a: cur.tokPos, b: cur.pos};
+end;
+
+(* The place just after the symbol before the current one, where a
+   missing symbol belongs *)
+proc afterPrev*: Diag.Pos;
+begin
+    return {f: cur.f, a: cur.prevEnd, b: cur.prevEnd};
+end;
+
+(* Where to say a symbol is missing: at the current symbol, unless it
+   starts a later line than the symbol before it, which is more likely
+   where the missing one belongs *)
+proc missingPos*: Diag.Pos;
+var i: INT; p: Diag.Pos;
+begin
+    p := tokPos();
+    for i := cur.prevEnd to cur.tokPos - 1 do
+        if cur.buf[i] = '\n' then p := afterPrev(); end;
+    end;
+    return p;
+end;
+
+(* From the start of p to the end of the symbol before the current one:
+   the whole of a construct that has just been read *)
+proc spanFrom*(p: Diag.Pos): Diag.Pos;
+begin
+    p.b := cur.prevEnd;
+    return p;
+end;
+
+proc curLine*: INT;
+begin
+    return cur.tokLine;
+end;
+
+(* The line and column of byte a of the file, at or before the current
+   symbol: counted back from the symbol's line, so that it costs only
+   the distance. A column counts characters, as Diag's do. *)
+proc lineCol*(a: INT): (INT, INT);
+var i, line, start, col: INT;
+begin
+    line := cur.tokLine;
+    start := cur.tokLineStart;
+    while a < start do
+        DEC(line);
+        DEC(start);
+        while (start > 0) and (cur.buf[start - 1] # '\n') do DEC(start); end;
+    end;
+    col := 1;
+    for i := start to a - 1 do
+        if (cur.buf[i] & 0C0H) # 80H then INC(col); end;
+    end;
+    return line, col;
+end;
+
+proc curCol*: INT;
+var col: INT;
+begin
+    _, col := lineCol(cur.tokPos);
+    return col;
+end;
+
+(* After an error in the parser's construct, reported with its notes
+   and help: the parser goes on from the recovery point. *)
+proc fail*;
+begin
+    if recovery = nil then Diag.finish; end;
+    Jump.jump(recovery);
+end;
+
+(* An error at p: reported, then the parser goes on from its recovery
+   point. *)
+proc markAt*(p: Diag.Pos; msg: []U8);
+begin
+    Diag.error(p, msg);
+    fail;
+end;
+
+proc mark*(msg: []U8);
+begin
+    markAt(tokPos(), msg);
+end;
+
+(* markAt, with a line of help after the message. *)
+proc markHelp*(p: Diag.Pos; msg, hint: []U8);
+begin
+    Diag.error(p, msg);
+    Diag.help(hint);
+    fail;
+end;
+
+(* An error in the text at bytes a to b of the file being read, which
+   stops the compiler: past it, the symbols can't be trusted. *)
+proc markBytes(a, b: INT; msg: []U8);
+begin
+    Diag.setQuiet(false);
+    Diag.error({f: cur.f, a: a, b: b}, msg);
+    Diag.finish;
+end;
+
+proc lexError(msg: []U8);
+begin
+    markBytes(cur.tokPos, cur.pos, msg);
+end;
+
+(* The n characters at the scanner are how another language writes t:
+   an error, but reading goes on as if t were written. *)
+proc slip(n: INT; t: Sym; msg: []U8);
+begin
+    if not skipping then Diag.error({f: cur.f, a: cur.pos, b: cur.pos + n}, msg); end;
+    INC(cur.pos, n);
+    tok := t;
+end;
+
+(* How an operator or reserved word is written, quoted, for messages. *)
+proc symText*(s: Sym): []U8;
+begin
+    if (s >= sPlus) and (s <= sBlank) then
+        return Diag.say("\"{}\"", [Fmt.str(ops[INT(s) - INT(sPlus)])]);
+    end;
+    return Diag.say("\"{}\"", [Fmt.str(words[INT(s) - INT(sAnd)])]);
+end;
+
+(* The current symbol, for "expected ..., found ...": a name as it is,
+   a literal by its kind, an operator or reserved word quoted. *)
+proc found*: []U8;
+begin
+    match tok of
+    | sIdent: return nameOf(id);
+    | sInt: return "a number";
+    | sReal: return "a number";
+    | sChar: return "a character";
+    | sString: return "a string";
+    | sEof: return "the end of the file";
+    | else: return symText(tok);
+    end;
+end;
+
+(* The current symbol is the first on its line: at the top level of a
+   module, by the usual layout, so where reading can start again. *)
+proc atLineStart*: BOOL;
+begin
+    return cur.tokPos = cur.tokLineStart;
+end;
+
+(* The column the current symbol's line is indented to *)
+proc indent*: INT;
+var i: INT;
+begin
+    i := cur.tokLineStart;
+    while (cur.buf[i] = ' ') or (cur.buf[i] = '\t') do INC(i); end;
+    return i - cur.tokLineStart + 1;
+end;
+
+(* Files *)
+
+(* Name n is a reserved word *)
+proc reserved*(n: INT): BOOL;
+begin
+    return n < NumWords;
+end;
+
+(* Reads the file at path to scan it; "" if it can, else why not *)
+proc open*(path: []U8): []U8;
+var fd, n, got, r, err: INT; info: Sys.Info;
+begin
+    info, err := Sys.info(path);
+    if err = -2 then return "there is no such file"; end;
+    if err = -13 then return "permission denied"; end;
+    if err < 0 then return "it can't be opened"; end;
+    if not info.file then return "it isn't a file"; end;
+    fd := Sys.openRead(path);
+    if fd = -2 then return "there is no such file"; end;
+    if fd = -13 then return "permission denied"; end;
+    if fd < 0 then return "it can't be opened"; end;
+    n := INT(info.size);
+    cur.buf := grab(n + 1);
+    got := 0;
+    while got < n do
+        r := Sys.read(fd, cur.buf[got..n]);
+        if r <= 0 then Diag.fatal(Diag.say("can't read {}", [Fmt.str(path)])); end;
+        got := got + r;
+    end;
+    Sys.close(fd);
+    cur.buf[n] := 0;    (* the sentinel that ends every scan *)
+    cur.len := n;
+    cur.pos := 0;
+    cur.line := 1;
+    cur.lineStart := 0;
+    cur.tokPos := 0;
+    cur.tokLine := 1;
+    cur.tokLineStart := 0;
+    cur.f := Diag.addFile(path, cur.buf, n);
+    return "";
+end;
+
+proc saveScan*(var st: State);
+begin
+    st := cur;
+    st.tok := tok;
+    st.ival := ival;
+    st.rval := rval;
+    st.id := id;
+end;
+
+proc restoreScan*(st: State);
+begin
+    cur := st;
+    tok := st.tok;
+    ival := st.ival;
+    rval := st.rval;
+    id := st.id;
+end;
+
+(* UTF-8 *)
+
+(* Decodes the character at buf[pos], which is not ASCII, checking that
+   it is well formed; returns its code point and moves pos past it. *)
+proc utf8(var pos: INT): INT;
+var b0, b1, n, i, cp: INT; lo, hi: INT;
+begin
+    b0 := INT(cur.buf[pos]);
+    lo := 80H;
+    hi := 0BFH;
+    n := 0;
+    cp := 0;
+    match b0 of
+    | 0C2H..0DFH: n := 1; cp := b0 & 1FH;
+    | 0E0H: n := 2; lo := 0A0H;
+    | 0E1H..0ECH, 0EEH, 0EFH: n := 2; cp := b0 & 0FH;
+    | 0EDH: n := 2; cp := 0DH; hi := 9FH;      (* no surrogates *)
+    | 0F0H: n := 3; lo := 90H;
+    | 0F1H..0F3H: n := 3; cp := b0 & 7;
+    | 0F4H: n := 3; cp := 4; hi := 8FH;        (* up to 10FFFFH *)
+    | else:
+        cur.tokPos := pos;
+        lexError("invalid UTF-8");
+    end;
+    for i := 1 to n do
+        b1 := INT(cur.buf[pos + i]);
+        if (b1 < lo) or (b1 > hi) or (pos + i >= cur.len) then
+            cur.tokPos := pos;
+            lexError("bad UTF-8");
+        end;
+        cp := cp shl 6 | (b1 & 3FH);
+        lo := 80H;
+        hi := 0BFH;
+    end;
+    pos := pos + n + 1;
+    return cp;
+end;
+
+proc put(b: INT);
+begin
+    if slen >= MaxStr then
+        lexError(Diag.say("a string holds at most {} bytes", [Fmt.int(MaxStr)]));
+    end;
+    sbuf[slen] := U8(b);
+    INC(slen);
+end;
+
+proc putUtf8(cp: INT);
+begin
+    if cp < 80H then
+        put(cp);
+    elsif cp < 800H then
+        put(0C0H | cp shr 6); put(80H | cp & 3FH);
+    elsif cp < 10000H then
+        put(0E0H | cp shr 12); put(80H | cp shr 6 & 3FH); put(80H | cp & 3FH);
+    else
+        put(0F0H | cp shr 18); put(80H | cp shr 12 & 3FH);
+        put(80H | cp shr 6 & 3FH); put(80H | cp & 3FH);
+    end;
+end;
+
+proc isDigit(c: U8): BOOL;
+begin
+    return (c >= '0') and (c <= '9');
+end;
+
+proc isLetter(c: U8): BOOL;
+begin
+    return (c >= 'a') and (c <= 'z') or (c >= 'A') and (c <= 'Z') or (c = '_');
+end;
+
+proc hexVal(c: U8): INT;
+begin
+    if isDigit(c) then return INT(c) - '0';
+    elsif (c >= 'A') and (c <= 'F') then return INT(c) - 'A' + 10;
+    elsif (c >= 'a') and (c <= 'f') then return INT(c) - 'a' + 10;
+    end;
+    return -1;
+end;
+
+(* The text of the file from byte a up to but not including b *)
+proc text(a, b: INT): []U8;
+begin
+    return Diag.source({f: cur.f, a: a, b: b});
+end;
+
+(* One character of a character or string literal, at buf[pos]: its code
+   point, or for \xHH, minus one minus the byte. *)
+proc litChar(inString: BOOL): INT;
+var c: U8; v, d, n, esc, digits: INT;
+begin
+    c := cur.buf[cur.pos];
+    esc := cur.pos;
+    v := 0;
+    if c = '\\' then
+        INC(cur.pos);
+        c := cur.buf[cur.pos];
+        INC(cur.pos);
+        match c of
+        | 'n': v := 10;
+        | 't': v := 9;
+        | 'r': v := 13;
+        | '0': v := 0;
+        | '\\', '\'', '"': v := INT(c);
+        | 'x':
+            if not inString then markBytes(esc, cur.pos, "\\x is only for strings"); end;
+            d := hexVal(cur.buf[cur.pos]);
+            n := hexVal(cur.buf[cur.pos + 1]);
+            if (d < 0) or (n < 0) then markBytes(esc, cur.pos + 2, "\\x needs two hex digits"); end;
+            INC(cur.pos, 2);
+            v := -1 - (d * 16 + n);
+        | 'u':
+            if cur.buf[cur.pos] # '{' then markBytes(esc, cur.pos, "expected \"{\" after \\u"); end;
+            INC(cur.pos);
+            digits := cur.pos;
+            v := 0;
+            n := 0;
+            while hexVal(cur.buf[cur.pos]) >= 0 do
+                v := v * 16 + hexVal(cur.buf[cur.pos]);
+                INC(n);
+                INC(cur.pos);
+                if n > 6 then markBytes(esc, cur.pos, "a code point has at most 6 hex digits"); end;
+            end;
+            if (n = 0) or (cur.buf[cur.pos] # '}') then
+                markBytes(esc, cur.pos, "expected hex digits and \"}\" after \\u{");
+            end;
+            INC(cur.pos);
+            if (v > 10FFFFH) or (v >= 0D800H) and (v <= 0DFFFH) then
+                markBytes(esc, cur.pos, Diag.say("{} isn't a code point", [Fmt.str(text(digits, cur.pos - 1))]));
+            end;
+        | else:
+            markBytes(esc, cur.pos, Diag.say("unknown escape \\{}", [Fmt.char(c)]));
+        end;
+    elsif c >= 80H then
+        v := utf8(cur.pos);
+    elsif (c < ' ') or (c = 127) then
+        if inString then lexError("string not closed"); else lexError("character not closed"); end;
+    else
+        v := INT(c);
+        INC(cur.pos);
+    end;
+    return v;
+end;
+
+(* Symbols *)
+
+proc comment;
+var depth, open: INT; c: U8;
+begin
+    depth := 1;
+    open := cur.pos;
+    INC(cur.pos, 2);
+    repeat
+        c := cur.buf[cur.pos];
+        if c = 0 then
+            if cur.pos >= cur.len then markBytes(open, open + 2, "comment not closed"); end;
+            INC(cur.pos);
+        elsif (c = '(') and (cur.buf[cur.pos + 1] = '*') then
+            INC(depth);
+            INC(cur.pos, 2);
+        elsif (c = '*') and (cur.buf[cur.pos + 1] = ')') then
+            DEC(depth);
+            INC(cur.pos, 2);
+        elsif c = '\n' then
+            INC(cur.pos);
+            INC(cur.line);
+            cur.lineStart := cur.pos;
+        elsif c >= 80H then
+            _ := utf8(cur.pos);
+        else
+            INC(cur.pos);
+        end;
+    until depth = 0;
+end;
+
+(* Reading a decimal real exactly: the F64 nearest to digits times 10 to
+   an exponent, ties to the even one, which a library's reader doesn't
+   promise. The number is a fraction of two big integers, num / den,
+   scaled by 2^e until its whole part has 53 or 54 bits; that part and
+   the remainder give the bits and the rounding. *)
+type
+    Big = record
+        n: INT;                 (* words in use; 0 is zero *)
+        w: [96]U32;             (* least significant first *)
+    end;
+(* 96 words, 3072 bits, are plenty: a string holds at most 255
+   digits, so readReal's den is at most 10^(330 + 255), about 2^1944,
+   and num below 10^310; the shift that follows makes the larger one at
+   most 54 bits longer than den, about 2000 bits in all. *)
+
+(* a := a * m + add *)
+proc bigMul(var a: Big; m, add: U32);
+var i: INT; c: U64;
+begin
+    c := U64(add);
+    for i := 0 to a.n - 1 do
+        c := U64(a.w[i]) * U64(m) + c;
+        a.w[i] := U32(c);
+        c := c shr 32;
+    end;
+    if c # 0 then
+        a.w[a.n] := U32(c);
+        INC(a.n);
+    end;
+end;
+
+proc bigShl(var a: Big; k: INT);
+var i, ws, bits: INT;
+begin
+    if a.n = 0 then return; end;
+    ws := k div 32;
+    bits := k mod 32;
+    a.w[a.n + ws] := 0;
+    for i := a.n - 1 to 0 by -1 do
+        if bits > 0 then a.w[i + ws + 1] := a.w[i + ws + 1] | (a.w[i] shr (32 - bits)); end;
+        a.w[i + ws] := a.w[i] shl bits;
+    end;
+    for i := 0 to ws - 1 do a.w[i] := 0; end;
+    INC(a.n, ws + 1);
+    while (a.n > 0) and (a.w[a.n - 1] = 0) do DEC(a.n); end;
+end;
+
+proc bigShr1(var a: Big);
+var i: INT;
+begin
+    for i := 0 to a.n - 1 do
+        a.w[i] := a.w[i] shr 1;
+        if i + 1 < a.n then a.w[i] := a.w[i] | (a.w[i + 1] shl 31); end;
+    end;
+    while (a.n > 0) and (a.w[a.n - 1] = 0) do DEC(a.n); end;
+end;
+
+(* -1, 0 or 1 as a is below, equal to or above b *)
+proc bigCmp(a, b: Big): INT;
+var i: INT;
+begin
+    if a.n # b.n then
+        if a.n > b.n then return 1; end;
+        return -1;
+    end;
+    for i := a.n - 1 to 0 by -1 do
+        if a.w[i] # b.w[i] then
+            if a.w[i] > b.w[i] then return 1; end;
+            return -1;
+        end;
+    end;
+    return 0;
+end;
+
+(* a := a - b, b not above a *)
+proc bigSub(var a: Big; b: Big);
+var i: INT; d: I64;
+begin
+    d := 0;
+    for i := 0 to a.n - 1 do
+        d := d + I64(a.w[i]);
+        if i < b.n then d := d - I64(b.w[i]); end;
+        a.w[i] := U32(d);
+        if d < 0 then d := -1; else d := 0; end;    (* a borrow *)
+    end;
+    while (a.n > 0) and (a.w[a.n - 1] = 0) do DEC(a.n); end;
+end;
+
+proc bigBits(a: Big): INT;
+var t: U32; bits: INT;
+begin
+    if a.n = 0 then return 0; end;
+    bits := (a.n - 1) * 32;
+    t := a.w[a.n - 1];
+    while t # 0 do
+        INC(bits);
+        t := t shr 1;
+    end;
+    return bits;
+end;
+
+(* s is digits, a point, digits, and maybe E, a sign and digits. False if
+   the value is past the largest F64; one below the smallest is 0. *)
+proc readReal(s: []U8): (F64, BOOL);
+var
+    num, den, d: Big; i, digits, e, ex: INT; neg, half, sticky: BOOL;
+    q, b: U64; x: F64; bits: ^F64;
+begin
+    num.n := 0;
+    den.n := 1;
+    den.w[0] := 1;
+    digits := 0;
+    e := 0;
+    i := 0;
+    while (i < LEN(s)) and (s[i] # 'E') do
+        if s[i] = '.' then
+            e := 1;
+        else
+            bigMul(num, 10, U32(INT(s[i]) - '0'));
+            if num.n > 0 then INC(digits); end;     (* counted from the first that isn't 0 *)
+            if e > 0 then INC(e); end;
+        end;
+        INC(i);
+    end;
+    if e > 0 then e := 1 - e; end;                  (* minus the digits after the point *)
+    ex := 0;
+    neg := false;
+    if i < LEN(s) then
+        INC(i);
+        neg := s[i] = '-';
+        if (s[i] = '+') or (s[i] = '-') then INC(i); end;
+        while i < LEN(s) do
+            if ex < 100000 then ex := ex * 10 + INT(s[i]) - '0'; end;
+            INC(i);
+        end;
+    end;
+    if neg then ex := -ex; end;
+    INC(e, ex);
+    x := 0.0;
+    if num.n = 0 then return x, true; end;
+    if digits + e > 310 then return x, false; end;  (* 10^310 is past every F64 *)
+    if digits + e < -330 then return x, true; end;  (* and 10^-330 below half the least *)
+    for i := 1 to e do bigMul(num, 10, 0); end;
+    for i := 1 to -e do bigMul(den, 10, 0); end;
+    (* num / den 2^-e from 2^52 to 2^54, but not past the least exponent *)
+    e := bigBits(num) - bigBits(den) - 53;
+    if e < -1074 then e := -1074; end;
+    if e < 0 then bigShl(num, -e); else bigShl(den, e); end;
+    (* q, its whole part, by long division; num is left the remainder *)
+    d := den;
+    bigShl(d, 53);
+    q := 0;
+    for i := 53 to 0 by -1 do
+        if bigCmp(num, d) >= 0 then
+            bigSub(num, d);
+            q := q | (U64(1) shl i);
+        end;
+        bigShr1(d);
+    end;
+    if q >= U64(1) shl 53 then                      (* a bit too many: it rounds *)
+        half := (q & 1) # 0;
+        sticky := num.n > 0;
+        q := q shr 1;
+        INC(e);
+    else                                            (* the remainder against half of den *)
+        bigShl(num, 1);
+        i := bigCmp(num, den);
+        half := i >= 0;
+        sticky := i > 0;
+    end;
+    if half and (sticky or ((q & 1) # 0)) then
+        INC(q);
+        if q = U64(1) shl 53 then
+            q := q shr 1;
+            INC(e);
+        end;
+    end;
+    if e > 971 then return x, false; end;
+    if q >= U64(1) shl 52 then
+        b := U64(e + 1075) shl 52 | (q & (U64(1) shl 52 - 1));
+    else
+        b := q;                                     (* below the least normal, e is -1074 *)
+    end;
+    bits := ^F64(ADR(b));
+    return bits^, true;
+end;
+
+proc number;
+var start, i, d: INT; allDec, ok: BOOL; v: U64;
+begin
+    start := cur.pos;
+    allDec := true;
+    while isDigit(cur.buf[cur.pos]) or (cur.buf[cur.pos] >= 'A') and (cur.buf[cur.pos] <= 'F') do
+        if cur.buf[cur.pos] > '9' then allDec := false; end;
+        INC(cur.pos);
+    end;
+    if cur.buf[cur.pos] = 'H' then
+        v := 0;
+        for i := start to cur.pos - 1 do
+            if v shr 60 # 0 then lexError(Diag.say("{} is too big for U64", [Fmt.str(text(start, cur.pos))])); end;
+            v := v * 16 + U64(hexVal(cur.buf[i]));
+        end;
+        INC(cur.pos);
+        tok := sInt;
+        ival := I64(v);     (* 16 digits are the bits of a 64-bit word *)
+    elsif (cur.buf[cur.pos] = '.') and isDigit(cur.buf[cur.pos + 1]) then
+        if not allDec then lexError("a decimal number has only the digits 0 to 9"); end;
+        INC(cur.pos);
+        while isDigit(cur.buf[cur.pos]) do INC(cur.pos); end;
+        if cur.buf[cur.pos] = 'E' then
+            INC(cur.pos);
+            if (cur.buf[cur.pos] = '+') or (cur.buf[cur.pos] = '-') then INC(cur.pos); end;
+            if not isDigit(cur.buf[cur.pos]) then lexError("expected a digit in the exponent"); end;
+            while isDigit(cur.buf[cur.pos]) do INC(cur.pos); end;
+        end;
+        if cur.pos - start > 255 then lexError("a number has at most 255 characters"); end;
+        rval, ok := readReal(cur.buf[start..cur.pos]);
+        if not ok then lexError(Diag.say("{} is out of the range of F64", [Fmt.str(text(start, cur.pos))])); end;
+        tok := sReal;
+    else
+        if not allDec then lexError("a hex number ends with H"); end;
+        v := 0;
+        for i := start to cur.pos - 1 do
+            d := INT(cur.buf[i]) - '0';
+            if v > (U64(9223372036854775807) - U64(d)) div 10 then
+                lexError(Diag.say("{} is too big for I64", [Fmt.str(text(start, cur.pos))]));
+            end;
+            v := v * 10 + U64(d);
+        end;
+        tok := sInt;
+        ival := I64(v);
+    end;
+    if nameChar[cur.buf[cur.pos]] then
+        lexError("a name can't start with a digit");
+    end;
+end;
+
+(* Reads the next symbol *)
+proc next*;
+var c: U8; start, h, v, i: INT;
+begin
+    cur.prevEnd := cur.pos;
+    repeat
+        c := cur.buf[cur.pos];
+        while (c = ' ') or (c = '\t') or (c = '\r') or (c = '\n') do
+            if c = '\n' then
+                INC(cur.line);
+                cur.lineStart := cur.pos + 1;
+            end;
+            INC(cur.pos);
+            c := cur.buf[cur.pos];
+        end;
+        if (c = '(') and (cur.buf[cur.pos + 1] = '*') then
+            comment;
+            c := ' ';
+        end;
+    until c # ' ';
+    cur.tokPos := cur.pos;
+    cur.tokLine := cur.line;
+    cur.tokLineStart := cur.lineStart;
+    match c of
+    | 'A'..'Z', 'a'..'z', '_':
+        start := cur.pos;
+        repeat INC(cur.pos); until not nameChar[cur.buf[cur.pos]];
+        if cur.pos - start > MaxIdent then
+            lexError(Diag.say("a name has at most {} characters", [Fmt.int(MaxIdent)]));
+        end;
+        h := intern(cur.buf + start, cur.pos - start);
+        if (cur.pos - start = 1) and (c = '_') then
+            tok := sBlank;
+        elsif h < NumWords then
+            tok := Sym(INT(sAnd) + h);
+        else
+            tok := sIdent;
+            id := h;
+        end;
+    | '0'..'9': number;
+    | '\'':
+        INC(cur.pos);
+        if cur.buf[cur.pos] = '\'' then lexError("empty character"); end;
+        v := litChar(false);
+        if cur.buf[cur.pos] # '\'' then
+            (* 'ab': several characters, as some languages write a string *)
+            i := cur.pos;
+            while (cur.buf[i] # '\'') and (cur.buf[i] # '\n') and (cur.buf[i] # 0) do INC(i); end;
+            if cur.buf[i] = '\'' then
+                markBytes(cur.tokPos, i + 1,
+                    Diag.say("a character is one character: the string is \"{}\"", [Fmt.str(text(cur.tokPos + 1, i))]));
+            else
+                lexError("character not closed");
+            end;
+        end;
+        INC(cur.pos);
+        tok := sChar;
+        ival := I64(v);
+    | '"':
+        INC(cur.pos);
+        slen := 0;
+        while cur.buf[cur.pos] # '"' do
+            v := litChar(true);
+            if v < 0 then put(-1 - v); else putUtf8(v); end;
+        end;
+        INC(cur.pos);
+        sbuf[slen] := 0;
+        tok := sString;
+    | '+': INC(cur.pos); tok := sPlus;
+    | '-': INC(cur.pos); tok := sMinus;
+    | '*': INC(cur.pos); tok := sTimes;
+    | '/': INC(cur.pos); tok := sSlash;
+    | '=':
+        if cur.buf[cur.pos + 1] = '=' then
+            slip(2, sEql, "comparing is written =, not ==");
+        else
+            INC(cur.pos);
+            tok := sEql;
+        end;
+    | '&':
+        if cur.buf[cur.pos + 1] = '&' then
+            slip(2, sAnd, "\"and\" is written and, not &&");
+        else
+            INC(cur.pos);
+            tok := sAmp;
+        end;
+    | '#': INC(cur.pos); tok := sNeq;
+    | '<':
+        INC(cur.pos);
+        if cur.buf[cur.pos] = '=' then INC(cur.pos); tok := sLeq; else tok := sLss; end;
+    | '>':
+        INC(cur.pos);
+        if cur.buf[cur.pos] = '=' then INC(cur.pos); tok := sGeq; else tok := sGtr; end;
+    | ':':
+        INC(cur.pos);
+        if cur.buf[cur.pos] = '=' then INC(cur.pos); tok := sBecomes; else tok := sColon; end;
+    | ';': INC(cur.pos); tok := sSemicolon;
+    | ',': INC(cur.pos); tok := sComma;
+    | '.':
+        INC(cur.pos);
+        if cur.buf[cur.pos] = '.' then
+            INC(cur.pos);
+            if cur.buf[cur.pos] = '.' then INC(cur.pos); tok := sEllipsis; else tok := sUpto; end;
+        else
+            tok := sPeriod;
+        end;
+    | '(': INC(cur.pos); tok := sLparen;
+    | ')': INC(cur.pos); tok := sRparen;
+    | '[': INC(cur.pos); tok := sLbrak;
+    | ']': INC(cur.pos); tok := sRbrak;
+    | '{': INC(cur.pos); tok := sLbrace;
+    | '}': INC(cur.pos); tok := sRbrace;
+    | '^': INC(cur.pos); tok := sArrow;
+    | '|':
+        if cur.buf[cur.pos + 1] = '|' then
+            slip(2, sOr, "\"or\" is written or, not ||");
+        else
+            INC(cur.pos);
+            tok := sBar;
+        end;
+    | '~': INC(cur.pos); tok := sTilde;
+    | '!':
+        if cur.buf[cur.pos + 1] = '=' then
+            slip(2, sNeq, "\"not equal\" is written #, not !=");
+        else
+            slip(1, sNot, "\"not\" is written not, not !");
+        end;
+    | 0:
+        if cur.pos < cur.len then markBytes(cur.pos, cur.pos + 1, "NUL byte in the text"); end;
+        tok := sEof;
+    | else:
+        if c >= 80H then lexError("only ASCII outside strings, characters and comments"); end;
+        markBytes(cur.pos, cur.pos + 1, Diag.say("unexpected character \"{}\"", [Fmt.char(c)]));
+    end;
+end;
+
+var i: INT;
+
+begin
+    for i := 0 to 255 do nameChar[i] := isLetter(U8(i)) or isDigit(U8(i)); end;
+    chunkLeft := 0;
+    nameCap := 1 shl 12;
+    namePtr := ^NamePtr(grab(nameCap * SIZE(NamePtr)));
+    nameLen := ^INT(grab(nameCap * SIZE(INT)));
+    nameHash := ^INT(grab(nameCap * SIZE(INT)));
+    tableMask := 2 * nameCap - 1;
+    table := words64(tableMask + 1);
+    for i := 0 to NumWords - 1 do _ := intern(ADR(words[i][0]), LEN(words[i])); end;
+end Scan.
