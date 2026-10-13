@@ -30,9 +30,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          d=raz-${TAG#v}-linux-x86_64
-          mkdir -p $d/man && cp -r raz lib LICENSE README.md $d
-          cp doc/raz.1 doc/raz.7 doc/raz-tutorial.7 build/raz-lib.3 $d/man
-          tar czf $d.tar.gz $d
-          gh release create "$TAG" $d.tar.gz --verify-tag \
+          make dist
+          gh release create "$TAG" build/raz-${TAG#v}-linux-x86_64.tar.gz --verify-tag \
             --title "raz ${TAG#v}" --notes "$(./raz --version)"

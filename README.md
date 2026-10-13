@@ -41,7 +41,7 @@ a million lines a second.
 | `examples/` | Small programs, each with the output it should give |
 | `tools/Doc.raz` | Prints what a module exports, with its comments |
 | `tools/Pretty.raz` | The formatter: fixes indentation and spacing |
-| `site/` | The website: home page, the tour "Raz, Set, Go" and the report, as plain files in `site/public/`; `make site` rebuilds them |
+| `site/` | The website: home page, the tours "Raz, Set, Go" and "More Raz", the report and the latest release's tarball, as plain files in `site/public/`; `make site` rebuilds them |
 | `editor/` | Support for vim and emacs |
 | `conform/` | The conformance suite: what every implementation must do |
 | `test/` | This compiler's own tests, and the scripts that run them |
@@ -71,6 +71,7 @@ emacs is installed.
     make loc        # the compiler's lines
     make tests      # tests of the scanner, encoder and linker on their own
     make pdf        # build/raz.pdf, the report, by pandoc and Chromium
+    make dist       # build/raz-V-linux-x86_64.tar.gz, the release's tarball
     make site       # site/public/, the website, by pandoc and python3
 
 ## Using it
@@ -202,8 +203,11 @@ To release, check `main` and tag it; the tag's message is what
     $ git push origin v0.9.1
 
 GitHub then builds and checks the tag, and makes a release of it with
-a tarball of `raz`, its `lib/` and its manual pages. A tag pushed before the workflow
-existed is released from the Actions tab: run "ci" with its name.
+a tarball of `raz`, its `lib/` and its manual pages, made by `make
+dist`. A tag pushed before the workflow existed is released from the
+Actions tab: run "ci" with its name. Then `make site` puts the new
+tag's tarball on the website (it builds it from the tag, apart from
+the tree at hand); commit `site/public/` and push to publish it.
 
 A version of the report is named by its month and a count; the report's
 last section says what each version changed.

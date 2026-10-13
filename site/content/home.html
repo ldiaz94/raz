@@ -15,15 +15,15 @@ write memory exactly as written, take part in lock-free algorithms, make
 system calls and call C libraries. It has no garbage collector and no hidden
 run time: what the program does is what its text says.</p>
 
-<p>The compiler is one Free Pascal program of about 7,800 lines. It makes
+<p>The compiler is one Free Pascal program of about 9,100 lines. It makes
 x86-64 machine code and the ELF file itself, with no assembler or linker, in
-one pass, at about a million lines a second.</p>
+one pass, at about 900,000 lines a second.</p>
 
 <div class="facts">
-  <span><b>~7,800</b> lines of compiler</span>
-  <span><b>~1M</b> lines compiled a second</span>
+  <span><b>~9,100</b> lines of compiler</span>
+  <span><b>~900K</b> lines compiled a second</span>
   <span><b>static</b> executables, no run time to install</span>
-  <span><b>1</b> report, <b>~2,000</b> lines</span>
+  <span><b>1</b> report, <b>~2,100</b> lines</span>
 </div>
 
 <div class="cols">
@@ -45,7 +45,7 @@ one pass, at about a million lines a second.</p>
       <li>Modules with bodies, and generic modules: <code>Map(K, V; hash, eq)</code>.</li>
       <li><code>^VOLATILE T</code> and the atomics <code>CAS</code>, <code>XCHG</code>, <code>XADD</code>, <code>FENCE</code>, for devices and lock-free code.</li>
       <li><code>extern</code> procedures and variables from C, code procedures in assembly, and <code>SYSCALL</code>.</li>
-      <li>Threads without C, a library of <code>Out</code>, <code>Str</code>, <code>Fmt</code>, <code>Map</code>, <code>Sort</code> and more, and gdb that knows your lines.</li>
+      <li>Threads without C, a library of <code>Out</code>, <code>Str</code>, <code>Bytes</code>, <code>Fmt</code>, <code>Map</code>, <code>Sort</code> and more, and gdb that knows your lines.</li>
       <li>A formatter, a documentation tool, and editor support for vim and emacs.</li>
     </ul>
   </div>
@@ -60,21 +60,20 @@ volatile accesses, atomics and lock-free code, in 18 more.</p>
 
 <h2>The language, in writing</h2>
 <p>The language is defined by <a href="spec.html">the report</a>, which is
-short on purpose: whatever it doesn&rsquo;t allow, raz doesn&rsquo;t have. There
-is also a <a href="https://github.com/ldiaz94/raz/blob/main/doc/compiler.md">guide to reading the
-compiler</a>, file by file.</p>
+short on purpose: whatever it doesn&rsquo;t allow, raz doesn&rsquo;t have.</p>
 
 <h2 id="download">Download</h2>
-<p>Each release is a tarball with the compiler, <code>raz</code>, and its
-library, <code>lib/</code>, which it finds beside itself.</p>
+<p>raz @VERSION@ is a tarball for x86-64 Linux with the compiler, <code>raz</code>,
+its library, <code>lib/</code>, which it finds beside itself, and the manual
+pages. It needs nothing else installed.</p>
 <div class="cta">
-  <a class="btn primary" href="https://github.com/ldiaz94/raz/releases/latest">Latest release</a>
-  <a class="btn" href="https://github.com/ldiaz94/raz">Source on GitHub</a>
+  <a class="btn primary" href="download/@TARBALL@">Download raz @VERSION@</a>
+  <a class="btn" href="download/@TARBALL@.sha256">SHA-256</a>
 </div>
-<pre class="code"><code>$ tar xzf raz-*.tar.gz
-$ ./raz run examples/Hello.raz
-hello, world</code></pre>
-<p>To build it yourself you need Free Pascal 3.2.2:</p>
-<pre class="code"><code>$ apt-get install fp-compiler
-$ git clone https://github.com/ldiaz94/raz
-$ cd raz &amp;&amp; make &amp;&amp; make install    # ~/.local, or PREFIX=/usr/local</code></pre>
+<pre class="code"><code>$ tar xzf @TARBALL@
+$ ln -s $PWD/@DIR@/raz ~/.local/bin/raz
+$ raz run Hello.raz</code></pre>
+<p>The link works since raz finds <code>lib/</code> beside its real path. The
+manual pages are in <code>man/</code>: <code>man ./man/raz-tutorial.7</code>.
+The address <code>download/latest</code> always leads to the newest release.</p>
+<p class="sha">SHA-256 <code>@SHA256@</code></p>

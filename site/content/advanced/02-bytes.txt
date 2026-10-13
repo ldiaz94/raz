@@ -1,8 +1,8 @@
 title: Strings and bytes
 part: The library
-summary: Copying, hashing and ordering strings, and reading and writing binary formats.
+summary: Copying, hashing and ordering strings, searching bytes many at a time, and reading and writing binary formats.
 ---
-A `[]U8` is both a string and a block of bytes. `Str` has what is done with them: comparing, finding, hashing, copying into memory of your own, UTF-8, numbers, and the fixed byte orders of file formats and network protocols.
+A `[]U8` is both a string and a block of bytes. `Str` has what is done with them: comparing, finding, hashing, copying into memory of your own, UTF-8, numbers, and the fixed byte orders of file formats and network protocols. `Bytes` has the searches, made fast.
 
 ## Ordering and hashing
 
@@ -75,6 +75,44 @@ end;
 
 end Keep.
 ```
+
+## Searching
+
+`Bytes` finds bytes many at a time: `Bytes.index` and `Bytes.last` give the first and the last place of a byte in a `[]U8`, or -1, `Bytes.count` how many places it has, and `Bytes.find` where one `[]U8` first starts in another (`Str.find` is the same). Each is what a loop over the bytes would give, only faster: the library's own body compares eight bytes at once in a `U64`, and on x86-64 a file of its own, `Bytes.x86_64.raz`, compares sixteen with SSE2, in code procedures.
+
+```raz Paths run
+module Paths;
+import Out, Fmt, Bytes;
+
+(* the last part of a path: what follows its last slash *)
+proc base(path: []U8): []U8;
+begin
+    return path[Bytes.last(path, '/') + 1..LEN(path)];
+end;
+
+proc main*;
+var text: []U8; at, n, line: INT;
+begin
+    Out.str(base("/usr/local/lib/raz/Bytes.raz")); Out.char(' ');
+    Out.str(base("Out.raz")); Out.ln;
+
+    text := "one line\nanother line\nthe line with raz in it\nthe last\n";
+    Fmt.print("{} lines\n", [Fmt.int(Bytes.count(text, 10))]);
+    at := Bytes.find(text, "raz");
+    if at >= 0 then
+        (* the line it is on: the newlines before it, plus one *)
+        line := Bytes.count(text[0..at], 10) + 1;
+        n := Bytes.index(text[at..LEN(text)], 10);
+        Fmt.print("raz on line {}, at {}, and the line goes on {} more\n",
+            [Fmt.int(line), Fmt.int(at), Fmt.int(n)]);
+    end;
+    Fmt.print("{} {}\n", [Fmt.int(Bytes.find(text, "zzz")), Fmt.int(Bytes.find(text, ""))]);
+end;
+
+end Paths.
+```
+
+When the byte isn't there, `Bytes.last` gives -1, so `base` of a name with no slash is the whole name. A search of a slice gives places in the slice, counted from its own start: add the place the slice starts at to get one in the whole.
 
 ## Binary formats
 

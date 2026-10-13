@@ -6,7 +6,8 @@
 The site is plain files: open public/index.html, or put the folder on
 any web server. Nothing runs in the reader's browser; the code on the
 tour's pages is run here, by ./raz, and the output shown is what it
-printed, so a lesson that stops working fails the build.
+printed, so a lesson that stops working fails the build. The home page
+offers the latest release's tarball, made by make dist from the tag.
 
 Lessons are site/content/<tour>/NN-name.txt, one folder to a tour (see
 TOURS below):
@@ -31,13 +32,12 @@ Two other blocks: "```text" is shown as written, and "```sh" is a shell
 session: each line that starts with "$ " is run in the lesson's folder,
 with raz on the path, and shown with what it printed.
 """
-import html, os, re, shutil, subprocess, sys, tempfile
+import hashlib, html, os, re, shutil, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 OUT = os.path.join(HERE, "public")
 RAZ = os.path.join(ROOT, "raz")
-REPO = "https://github.com/ldiaz94/raz"
 SITE = "https://raz.lucelad.workers.dev"   # where the pages live, for the preview image
 
 # folder in content/, folder in public/, name, the sentence under the name
@@ -237,14 +237,14 @@ def page(title, body, depth=0, current=""):
 <link rel="stylesheet" href="%sstyle.css">
 </head>
 <body>
-<header><nav><a class="mark" href="%sindex.html"><img src="%slogo.svg" width="26" height="26" alt="">raz</a>%s<a class="repo" href="%s">GitHub</a></nav></header>
+<header><nav><a class="mark" href="%sindex.html"><img src="%slogo.svg" width="26" height="26" alt="">raz</a>%s</nav></header>
 <main>
 %s
 </main>
-<footer>raz is under the ISC license. <a href="%s">Source</a>.</footer>
+<footer>raz is under the ISC license.</footer>
 </body>
 </html>
-""" % (html.escape(title), html.escape(title), SITE, up, up, up, up, up, up, nav, REPO, body, REPO)
+""" % (html.escape(title), html.escape(title), SITE, up, up, up, up, up, up, nav, body)
 
 def write(path, text):
     path = os.path.join(OUT, path)
@@ -307,12 +307,41 @@ def build_spec():
     p = subprocess.run(
         ["pandoc", os.path.join(ROOT, "doc", "raz.md"), "-s", "--template",
          os.path.join(HERE, "content", "spec.tmpl"), "--toc", "--toc-depth=1",
-         "--shift-heading-level-by=-1", "--no-highlight", "-t", "html"],
+         "--shift-heading-level-by=-1", "--no-highlight", "-t", "html",
+         # wide enough that no row of a table is "long": pandoc would
+         # otherwise give each column an equal share of the width
+         "--columns=10000"],
         capture_output=True, text=True, check=True)
     body = '<div class="spec">%s</div>' % p.stdout
     write("spec.html", page("The raz report", body, 0, "spec"))
 
-def build_home():
+def build_download():
+    """The latest release's tarball, in public/download/ with its SHA-256
+    and /download/latest leading to it; (version, file name, SHA-256).
+    It is made of the tag's own checkout, not of the tree at hand, and
+    kept in build/ to be made once."""
+    git = lambda *a: subprocess.run(("git", "-C", ROOT) + a, capture_output=True,
+                                    text=True, check=True).stdout.strip()
+    tag = git("describe", "--tags", "--abbrev=0", "--match", "v*")
+    name = "raz-%s-linux-x86_64.tar.gz" % tag[1:]
+    made = os.path.join(ROOT, "build", name)
+    if not os.path.exists(made):
+        tree = tempfile.mkdtemp()
+        try:
+            git("worktree", "add", "--detach", tree, tag)
+            subprocess.run(["make", "-s", "-C", ROOT, "dist", "TREE=" + tree],
+                           stdout=subprocess.DEVNULL, check=True)
+        finally:
+            git("worktree", "remove", "--force", tree)
+    digest = hashlib.sha256(open(made, "rb").read()).hexdigest()
+    os.makedirs(os.path.join(OUT, "download"))
+    shutil.copy(made, os.path.join(OUT, "download"))
+    write("download/%s.sha256" % name, "%s  %s\n" % (digest, name))
+    # Cloudflare reads _redirects from the root of what it serves
+    write("_redirects", "/download/latest /download/%s 302\n" % name)
+    return tag[1:], name, digest
+
+def build_home(release):
     snippet = open(os.path.join(HERE, "content", "home.raz"), encoding="utf-8").read()
     tmp = tempfile.mkdtemp()
     try:
@@ -326,6 +355,9 @@ def build_home():
     text = open(os.path.join(HERE, "content", "home.html"), encoding="utf-8").read()
     text = text.replace("@SNIPPET@", highlight(snippet.rstrip("\n")))
     text = text.replace("@OUTPUT@", html.escape(stdout.rstrip("\n")))
+    version, name, digest = release
+    text = text.replace("@VERSION@", version).replace("@TARBALL@", name)
+    text = text.replace("@DIR@", name[:-len(".tar.gz")]).replace("@SHA256@", digest)
     write("index.html", page("raz: a small systems language", text, 0, "home"))
 
 def main():
@@ -351,7 +383,7 @@ def main():
         build_tour(tour, lessons, nxt)
         counts.append(len(lessons))
     build_spec()
-    build_home()
+    build_home(build_download())
     print("site/public: %s lessons" % " + ".join(map(str, counts)))
 
 main()

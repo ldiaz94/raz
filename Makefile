@@ -119,10 +119,29 @@ uninstall:
 	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(MAN)/man1/raz.1 $(MAN)/man3/raz-lib.3 \
 	    $(MAN)/man7/raz.7 $(MAN)/man7/raz-tutorial.7
 
+# A release's tarball, build/raz-V-linux-x86_64.tar.gz: raz, the lib/
+# it reads beside itself, and the manual pages, V being what raz
+# --version says. It is made of the checkout in TREE, this one unless
+# given: CI packs the tag it checked out, and site/build.py the latest
+# tag, which it checks out apart.
+TREE = .
+
+dist:
+	$(MAKE) -C $(TREE) raz man
+	v=$$($(TREE)/raz --version | sed 's/^raz \([^,]*\),.*/\1/'); \
+	d=raz-$$v-linux-x86_64; \
+	rm -rf build/$$d && mkdir -p build/$$d/man && \
+	cp -r $(TREE)/raz $(TREE)/lib $(TREE)/LICENSE $(TREE)/README.md build/$$d && \
+	cp $(TREE)/doc/raz.1 $(TREE)/doc/raz.7 $(TREE)/doc/raz-tutorial.7 \
+	    $(TREE)/build/raz-lib.3 build/$$d/man && \
+	tar czf build/$$d.tar.gz -C build $$d && rm -rf build/$$d && \
+	echo build/$$d.tar.gz
+
 # The website, plain files in site/public/: its home page, the tour
 # "Raz, Set, Go" (whose programs are run here, so the output shown is
-# real) and the report. site/build.py says how; it needs ./raz and pandoc.
+# real), the report and the latest release's tarball. site/build.py
+# says how; it needs ./raz and pandoc.
 site: raz
 	python3 site/build.py
 
-.PHONY: units tests check gdb bench kernels stress fmt loc man pdf site clean install uninstall
+.PHONY: units tests check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall

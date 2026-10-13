@@ -41,6 +41,37 @@ end;
 end Points.
 ```
 
+## Tables of constants
+
+A constant may be a record, or an array of them: a table the program reads but can't change. Its fields are integers, reals, `BOOL`s, strings, procedures and the like, and arrays and records of these.
+
+```raz Planets run
+module Planets;
+import Fmt;
+
+type Planet = record name: []U8; moons: INT; water: BOOL; end;
+
+const Inner: [4]Planet = [
+    {name: "Mercury"},
+    {name: "Venus"},
+    {name: "Earth", moons: 1, water: true},
+    {name: "Mars", moons: 2}];
+
+proc main*;
+var i, total: INT;
+begin
+    for i := 0 to LEN(Inner) - 1 do
+        total := total + Inner[i].moons;
+        if Inner[i].moons = 0 then Fmt.print("{} has no moon\n", [Fmt.str(Inner[i].name)]); end;
+    end;
+    Fmt.print("{} moons in all\n", [Fmt.int(total)]);
+end;
+
+end Planets.
+```
+
+Fields left out are zero, as in any literal: Mercury's `moons` is 0 and its `water` is `false`.
+
 ## Layout
 
 A record's layout is C's: each field at the next multiple of its own alignment, and the whole padded to a multiple of its largest alignment. `SIZE(T)` says how many bytes. A `packed record` has no padding, which is what a file format or a wire protocol wants.

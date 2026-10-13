@@ -90,6 +90,8 @@ begin
     Fmt.print("22/7 = {}\n", [Fmt.real(x, 6)]);
     Fmt.print("as F32 = {}\n", [Fmt.real(F64(y), 6)]);
     Fmt.print("sqrt 2 = {}, pi = {}\n", [Fmt.real(Math.sqrt(2.0), 5), Fmt.real(Math.pi, 5)]);
+    Fmt.print("2^10 = {}, log2 of that = {}\n", [Fmt.real(Math.pow(2.0, 10.0), 1), Fmt.real(Math.log2(1024.0), 1)]);
+    Fmt.print("rounded: {} {}\n", [Fmt.real(Math.round(2.5), 1), Fmt.real(Math.round(-2.5), 1)]);
     Fmt.print("truncated: {} {}\n", [Fmt.int(I64(2.9)), Fmt.int(I64(-2.9))]);
 end;
 

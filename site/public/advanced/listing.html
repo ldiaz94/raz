@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
 <li><a href="fmt.html">Output and formatting</a></li>
@@ -126,7 +126,7 @@ Dot.dot:
      7      for i := 0 to LEN(a) - 1 do
             32  xor ebx, ebx
             34  mov r8, rsi
-            37  sub r8, 1
+            37  lea r8, [r8 - 1]
             41  mov [rbp - 56], r8
             45  cmp rbx, [rbp - 56]
             49  jg 146
@@ -206,7 +206,7 @@ Dot2.dot:
      7      for i := 0 to LEN(a) - 1 do
             32  xor ebx, ebx
             34  mov r8, rsi
-            37  sub r8, 1
+            37  lea r8, [r8 - 1]
             41  mov [rbp - 56], r8
             45  cmp rbx, [rbp - 56]
             49  jg 127
@@ -246,20 +246,20 @@ Dot2.dot:
 <ul><li><code>gdb</code> finds procedures by name and lines by number, since the executable carries them: <code>break Dot.dot</code> and <code>list</code> work, and so does stepping a line at a time.</li><li><code>RAZ_PROFILE=1</code> samples the program every millisecond and says which procedures and lines took the time.</li><li><code>objdump -d</code> disassembles what is really in the file, if you want to see the bytes behind a listing.</li></ul>
 <pre class="output term"><code><span class="cmd">$ raz -o Dot Dot.raz</span>
 <span class="cmd">$ objdump -d -M intel --no-show-raw-insn Dot | sed -n &#x27;/&lt;Dot.dot&gt;:/,/ret/p&#x27; | head -12</span>
-0000000000403b80 &lt;Dot.dot&gt;:
-  403b80:	push   rbp
-  403b81:	mov    rbp,rsp
-  403b84:	sub    rsp,0x40
-  403b8b:	mov    QWORD PTR [rbp-0x30],rbx
-  403b8f:	xor    ebx,ebx
-  403b91:	mov    QWORD PTR [rbp-0x28],r12
-  403b95:	xor    r12d,r12d
-  403b98:	mov    QWORD PTR [rbp-0x20],rdx
-  403b9c:	mov    QWORD PTR [rbp-0x18],rcx
-  403ba0:	xor    ebx,ebx
-  403ba2:	mov    r8,rsi</code></pre>
+0000000000403ac0 &lt;Dot.dot&gt;:
+  403ac0:	push   rbp
+  403ac1:	mov    rbp,rsp
+  403ac4:	sub    rsp,0x40
+  403acb:	mov    QWORD PTR [rbp-0x30],rbx
+  403acf:	xor    ebx,ebx
+  403ad1:	mov    QWORD PTR [rbp-0x28],r12
+  403ad5:	xor    r12d,r12d
+  403ad8:	mov    QWORD PTR [rbp-0x20],rdx
+  403adc:	mov    QWORD PTR [rbp-0x18],rcx
+  403ae0:	xor    ebx,ebx
+  403ae2:	mov    r8,rsi</code></pre>
 <p>The listing is what the encoder meant; <code>objdump</code> is what the processor will read. They tell the same story.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="syscalls.html">&larr; System calls</a><a href="index.html">Contents</a><a class="next" href="volatile.html">Volatile &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+<footer>raz is under the ISC license.</footer>
 </body>
 </html>

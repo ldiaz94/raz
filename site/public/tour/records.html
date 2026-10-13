@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
@@ -107,6 +107,35 @@
 <pre class="output"><code>(3, 4)(30, 4)(4, 3)
 (0, 9)
 </code></pre>
+<h2>Tables of constants</h2>
+<p>A constant may be a record, or an array of them: a table the program reads but can't change. Its fields are integers, reals, <code>BOOL</code>s, strings, procedures and the like, and arrays and records of these.</p>
+<div class="file"><span>Planets.raz</span></div><pre class="code"><code><span class="kw">module</span> Planets;
+<span class="kw">import</span> Fmt;
+
+<span class="kw">type</span> Planet = <span class="kw">record</span> name: []<span class="ty">U8</span>; moons: <span class="ty">INT</span>; water: <span class="ty">BOOL</span>; <span class="kw">end</span>;
+
+<span class="kw">const</span> Inner: [<span class="number">4</span>]Planet = [
+    {name: <span class="string">&quot;Mercury&quot;</span>},
+    {name: <span class="string">&quot;Venus&quot;</span>},
+    {name: <span class="string">&quot;Earth&quot;</span>, moons: <span class="number">1</span>, water: <span class="ty">true</span>},
+    {name: <span class="string">&quot;Mars&quot;</span>, moons: <span class="number">2</span>}];
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> i, total: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(Inner) - <span class="number">1</span> <span class="kw">do</span>
+        total := total + Inner[i].moons;
+        <span class="kw">if</span> Inner[i].moons = <span class="number">0</span> <span class="kw">then</span> Fmt.print(<span class="string">&quot;{} has no moon\n&quot;</span>, [Fmt.str(Inner[i].name)]); <span class="kw">end</span>;
+    <span class="kw">end</span>;
+    Fmt.print(<span class="string">&quot;{} moons in all\n&quot;</span>, [Fmt.int(total)]);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Planets.</code></pre>
+<pre class="output"><code>Mercury has no moon
+Venus has no moon
+3 moons in all
+</code></pre>
+<p>Fields left out are zero, as in any literal: Mercury's <code>moons</code> is 0 and its <code>water</code> is <code>false</code>.</p>
 <h2>Layout</h2>
 <p>A record's layout is C's: each field at the next multiple of its own alignment, and the whole padded to a multiple of its largest alignment. <code>SIZE(T)</code> says how many bytes. A <code>packed record</code> has no padding, which is what a file format or a wire protocol wants.</p>
 <div class="file"><span>Layout.raz</span></div><pre class="code"><code><span class="kw">module</span> Layout;
@@ -199,6 +228,6 @@ INT:   8
 <pre class="output"><code>40 30 20 10 
 </code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="slices.html">&larr; Arrays, slices and strings</a><a href="index.html">Contents</a><a class="next" href="variants.html">Enumerations, sets, variants and match &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+<footer>raz is under the ISC license.</footer>
 </body>
 </html>

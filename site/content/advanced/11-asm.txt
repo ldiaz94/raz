@@ -42,7 +42,8 @@ A code procedure follows the System V convention, as every raz procedure does:
 - Integer and pointer arguments arrive in `rdi`, `rsi`, `rdx`, `rcx`, `r8` and `r9`; `F32` and `F64` ones in `xmm0` to `xmm7`.
 - The result goes in `rax` (and `rdx` for a second) or `xmm0`.
 - It must keep `rbx`, `rbp`, `rsp` and `r12` to `r15` as it found them. `rax`, `rcx`, `rdx`, `rsi`, `rdi` and `r8` to `r11` are free to change.
-- Its parameters and results are therefore of the types C can take, at most six integer and eight real parameters and two results.
+- A slice is two integers, its address and its length, as System V passes a struct of two. As a parameter it takes two registers in a row; as the result its address goes in `rax` and its length in `rdx`.
+- Its parameters and results are therefore of the types C can take, or slices: at most six integer and eight real parameters, and two results, a slice being the only one.
 
 That is why the next one is so short: the argument is already in `rdi`.
 
@@ -59,10 +60,10 @@ code
     ret;
 end swap64;
 
-(* the number of bits set in x: popcnt rax, rdi *)
+(* the number of bits set in x *)
 proc ones(x: U64): INT;
 code
-    db 0F3H, 48H, 0FH, 0B8H, 0C7H;
+    popcnt rax, rdi;
     ret;
 end ones;
 
@@ -77,18 +78,18 @@ end;
 end Bits.
 ```
 
-`db` writes any bytes, for an instruction the assembler doesn't know. Which instructions it knows is the implementation's business; `db` keeps you from waiting for it to learn one. (The two instructions above are from the processor manuals: `bswap r64` is `REX.W 0F C8+r`, `popcnt r64, r/m64` is `F3 REX.W 0F B8 /r`.)
+`db` writes any bytes, for an instruction the assembler doesn't know. Which instructions it knows is the implementation's business: this one knows `popcnt` but not `bswap`, and `db` keeps you from waiting for it to learn one. (`bswap r64` is `REX.W 0F C8+r` in the processor manuals.)
 
 ## Labels and loops
 
-A label, `name:`, names the place of the instruction after it, within the procedure. Jumps go to labels, and a constant of the module may stand wherever a number does. This sums an array of `INT`s, which a pointer and a length describe:
+A label, `name:`, names the place of the instruction after it, within the procedure. Jumps go to labels, and a constant of the module may stand wherever a number does. This sums a slice of `INT`s, whose address arrives in `rdi` and its length in `rsi`:
 
 ```raz Sum run
 module Sum;
 import Out;
 
-(* the sum of the n INTs at p *)
-proc sum(p: ^INT; n: INT): INT;
+(* the sum of the INTs of a *)
+proc sum(a: []INT): INT;
 code
     xor eax, eax;
     test rsi, rsi;
@@ -114,12 +115,48 @@ proc main*;
 var a: [6]INT; i: INT;
 begin
     for i := 0 to 5 do a[i] := (i + 1) * 100; end;
-    Out.int(sum(ADR(a[0]), 6)); Out.char(' ');
+    Out.int(sum(a)); Out.char(' ');
     Out.int(sumRaz(a)); Out.char(' ');
-    Out.int(sum(ADR(a[0]), 0)); Out.ln;
+    Out.int(sum(a[2..4])); Out.char(' ');
+    Out.int(sum(a[0..0])); Out.ln;
 end;
 
 end Sum.
+```
+
+The procedure trusts the length it is given, as it must: the checks of the language end where its code begins.
+
+A slice comes back the same way, its address in `rax` and its length in `rdx`. This one returns what is left of a string past its leading blanks:
+
+```raz Trim run
+module Trim;
+import Out;
+
+(* s past its leading blanks *)
+proc trim(s: []U8): []U8;
+code
+    mov rax, rdi;
+    mov rdx, rsi;
+again:
+    test rdx, rdx;
+    jz done;
+    cmp byte [rax], 32;
+    jne done;
+    inc rax;
+    dec rdx;
+    jmp again;
+done:
+    ret;
+end trim;
+
+proc main*;
+begin
+    Out.char('['); Out.str(trim("   raz")); Out.str("]\n");
+    Out.char('['); Out.str(trim("raz")); Out.str("]\n");
+    Out.char('['); Out.str(trim("    ")); Out.str("]\n");
+end;
+
+end Trim.
 ```
 
 A procedure may have up to 64 labels. The check against the raz version is the habit worth keeping: write the procedure in raz first, then in assembly, and compare their results on awkward inputs.

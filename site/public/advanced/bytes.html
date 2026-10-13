@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
 <li><a href="fmt.html">Output and formatting</a></li>
@@ -44,7 +44,7 @@
 <li><a href="lockfree.html">A lock-free stack</a></li>
 <li><a href="ring.html">A ring buffer between threads</a></li>
 </ol></aside><article><p class="kicker">The library &middot; lesson 2 of 18</p><h1>Strings and bytes</h1>
-<p>A <code>[]U8</code> is both a string and a block of bytes. <code>Str</code> has what is done with them: comparing, finding, hashing, copying into memory of your own, UTF-8, numbers, and the fixed byte orders of file formats and network protocols.</p>
+<p>A <code>[]U8</code> is both a string and a block of bytes. <code>Str</code> has what is done with them: comparing, finding, hashing, copying into memory of your own, UTF-8, numbers, and the fixed byte orders of file formats and network protocols. <code>Bytes</code> has the searches, made fast.</p>
 <h2>Ordering and hashing</h2>
 <p><code>Str.cmp</code> gives -1, 0 or 1, byte by byte, so it orders UTF-8 text by code point. <code>Str.eq</code> is equality. <code>Str.hash</code> is FNV-1a, 64 bits; it is what a <code>Map</code> of strings uses.</p>
 <div class="file"><span>Order.raz</span></div><pre class="code"><code><span class="kw">module</span> Order;
@@ -112,6 +112,43 @@ stable
 <span class="kw">end</span> Keep.</code></pre>
 <pre class="output"><code>name-0 name-1 name-2 
 </code></pre>
+<h2>Searching</h2>
+<p><code>Bytes</code> finds bytes many at a time: <code>Bytes.index</code> and <code>Bytes.last</code> give the first and the last place of a byte in a <code>[]U8</code>, or -1, <code>Bytes.count</code> how many places it has, and <code>Bytes.find</code> where one <code>[]U8</code> first starts in another (<code>Str.find</code> is the same). Each is what a loop over the bytes would give, only faster: the library's own body compares eight bytes at once in a <code>U64</code>, and on x86-64 a file of its own, <code>Bytes.x86_64.raz</code>, compares sixteen with SSE2, in code procedures.</p>
+<div class="file"><span>Paths.raz</span></div><pre class="code"><code><span class="kw">module</span> Paths;
+<span class="kw">import</span> Out, Fmt, Bytes;
+
+<span class="comment">(* the last part of a path: what follows its last slash *)</span>
+<span class="kw">proc</span> base(path: []<span class="ty">U8</span>): []<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> path[Bytes.last(path, <span class="string">&#x27;/&#x27;</span>) + <span class="number">1</span>..<span class="ty">LEN</span>(path)];
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> text: []<span class="ty">U8</span>; at, n, line: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Out.str(base(<span class="string">&quot;/usr/local/lib/raz/Bytes.raz&quot;</span>)); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.str(base(<span class="string">&quot;Out.raz&quot;</span>)); Out.ln;
+
+    text := <span class="string">&quot;one line\nanother line\nthe line with raz in it\nthe last\n&quot;</span>;
+    Fmt.print(<span class="string">&quot;{} lines\n&quot;</span>, [Fmt.int(Bytes.count(text, <span class="number">10</span>))]);
+    at := Bytes.find(text, <span class="string">&quot;raz&quot;</span>);
+    <span class="kw">if</span> at &gt;= <span class="number">0</span> <span class="kw">then</span>
+        <span class="comment">(* the line it is on: the newlines before it, plus one *)</span>
+        line := Bytes.count(text[<span class="number">0</span>..at], <span class="number">10</span>) + <span class="number">1</span>;
+        n := Bytes.index(text[at..<span class="ty">LEN</span>(text)], <span class="number">10</span>);
+        Fmt.print(<span class="string">&quot;raz on line {}, at {}, and the line goes on {} more\n&quot;</span>,
+            [Fmt.int(line), Fmt.int(at), Fmt.int(n)]);
+    <span class="kw">end</span>;
+    Fmt.print(<span class="string">&quot;{} {}\n&quot;</span>, [Fmt.int(Bytes.find(text, <span class="string">&quot;zzz&quot;</span>)), Fmt.int(Bytes.find(text, <span class="string">&quot;&quot;</span>))]);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Paths.</code></pre>
+<pre class="output"><code>Bytes.raz Out.raz
+4 lines
+raz on line 3, at 36, and the line goes on 9 more
+-1 0
+</code></pre>
+<p>When the byte isn't there, <code>Bytes.last</code> gives -1, so <code>base</code> of a name with no slash is the whole name. A search of a slice gives places in the slice, counted from its own start: add the place the slice starts at to get one in the whole.</p>
 <h2>Binary formats</h2>
 <p>A file format or a network protocol has a byte order of its own, not the machine's. <code>Str.le</code> and <code>Str.be</code> read an unsigned number of up to 8 bytes in a fixed order (little- or big-endian) and <code>Str.putLE</code> and <code>Str.putBE</code> write one. They work on any slice, so a header is read where it lies, with no struct to overlay and no byte swapping to forget.</p>
 <p>Here is a small record format: a 4-byte tag, a 2-byte big-endian length, a 4-byte little-endian checksum, then the data.</p>
@@ -197,6 +234,6 @@ tag DATA, 5 bytes, checksum 214, valid: hello
 -1
 </code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="fmt.html">&larr; Output and formatting</a><a href="index.html">Contents</a><a class="next" href="collections.html">Lists, maps and sorting &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+<footer>raz is under the ISC license.</footer>
 </body>
 </html>

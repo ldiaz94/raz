@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
 <li><a href="fmt.html">Output and formatting</a></li>
@@ -73,7 +73,7 @@
 <p>A code procedure is called like any procedure. Everything in it is yours, <code>ret</code> included.</p>
 <h2>The convention</h2>
 <p>A code procedure follows the System V convention, as every raz procedure does:</p>
-<ul><li>Integer and pointer arguments arrive in <code>rdi</code>, <code>rsi</code>, <code>rdx</code>, <code>rcx</code>, <code>r8</code> and <code>r9</code>; <code>F32</code> and <code>F64</code> ones in <code>xmm0</code> to <code>xmm7</code>.</li><li>The result goes in <code>rax</code> (and <code>rdx</code> for a second) or <code>xmm0</code>.</li><li>It must keep <code>rbx</code>, <code>rbp</code>, <code>rsp</code> and <code>r12</code> to <code>r15</code> as it found them. <code>rax</code>, <code>rcx</code>, <code>rdx</code>, <code>rsi</code>, <code>rdi</code> and <code>r8</code> to <code>r11</code> are free to change.</li><li>Its parameters and results are therefore of the types C can take, at most six integer and eight real parameters and two results.</li></ul>
+<ul><li>Integer and pointer arguments arrive in <code>rdi</code>, <code>rsi</code>, <code>rdx</code>, <code>rcx</code>, <code>r8</code> and <code>r9</code>; <code>F32</code> and <code>F64</code> ones in <code>xmm0</code> to <code>xmm7</code>.</li><li>The result goes in <code>rax</code> (and <code>rdx</code> for a second) or <code>xmm0</code>.</li><li>It must keep <code>rbx</code>, <code>rbp</code>, <code>rsp</code> and <code>r12</code> to <code>r15</code> as it found them. <code>rax</code>, <code>rcx</code>, <code>rdx</code>, <code>rsi</code>, <code>rdi</code> and <code>r8</code> to <code>r11</code> are free to change.</li><li>A slice is two integers, its address and its length, as System V passes a struct of two. As a parameter it takes two registers in a row; as the result its address goes in <code>rax</code> and its length in <code>rdx</code>.</li><li>Its parameters and results are therefore of the types C can take, or slices: at most six integer and eight real parameters, and two results, a slice being the only one.</li></ul>
 <p>That is why the next one is so short: the argument is already in <code>rdi</code>.</p>
 <div class="file"><span>Bits.raz</span></div><pre class="code"><code><span class="kw">module</span> Bits;
 <span class="kw">import</span> Out;
@@ -87,10 +87,10 @@
     ret;
 <span class="kw">end</span> swap64;
 
-<span class="comment">(* the number of bits set in x: popcnt rax, rdi *)</span>
+<span class="comment">(* the number of bits set in x *)</span>
 <span class="kw">proc</span> ones(x: <span class="ty">U64</span>): <span class="ty">INT</span>;
 <span class="kw">code</span>
-    db <span class="number">0F3H</span>, <span class="number">48H</span>, <span class="number">0FH</span>, <span class="number">0B8H</span>, <span class="number">0C7H</span>;
+    popcnt rax, rdi;
     ret;
 <span class="kw">end</span> ones;
 
@@ -106,14 +106,14 @@
 <pre class="output"><code>0x0807060504030201
 8 0 64
 </code></pre>
-<p><code>db</code> writes any bytes, for an instruction the assembler doesn't know. Which instructions it knows is the implementation's business; <code>db</code> keeps you from waiting for it to learn one. (The two instructions above are from the processor manuals: <code>bswap r64</code> is <code>REX.W 0F C8+r</code>, <code>popcnt r64, r/m64</code> is <code>F3 REX.W 0F B8 /r</code>.)</p>
+<p><code>db</code> writes any bytes, for an instruction the assembler doesn't know. Which instructions it knows is the implementation's business: this one knows <code>popcnt</code> but not <code>bswap</code>, and <code>db</code> keeps you from waiting for it to learn one. (<code>bswap r64</code> is <code>REX.W 0F C8+r</code> in the processor manuals.)</p>
 <h2>Labels and loops</h2>
-<p>A label, <code>name:</code>, names the place of the instruction after it, within the procedure. Jumps go to labels, and a constant of the module may stand wherever a number does. This sums an array of <code>INT</code>s, which a pointer and a length describe:</p>
+<p>A label, <code>name:</code>, names the place of the instruction after it, within the procedure. Jumps go to labels, and a constant of the module may stand wherever a number does. This sums a slice of <code>INT</code>s, whose address arrives in <code>rdi</code> and its length in <code>rsi</code>:</p>
 <div class="file"><span>Sum.raz</span></div><pre class="code"><code><span class="kw">module</span> Sum;
 <span class="kw">import</span> Out;
 
-<span class="comment">(* the sum of the n INTs at p *)</span>
-<span class="kw">proc</span> sum(p: ^<span class="ty">INT</span>; n: <span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="comment">(* the sum of the INTs of a *)</span>
+<span class="kw">proc</span> sum(a: []<span class="ty">INT</span>): <span class="ty">INT</span>;
 <span class="kw">code</span>
     <span class="kw">xor</span> eax, eax;
     test rsi, rsi;
@@ -139,13 +139,48 @@ done:
 <span class="kw">var</span> a: [<span class="number">6</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">5</span> <span class="kw">do</span> a[i] := (i + <span class="number">1</span>) * <span class="number">100</span>; <span class="kw">end</span>;
-    Out.int(sum(<span class="ty">ADR</span>(a[<span class="number">0</span>]), <span class="number">6</span>)); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.int(sum(a)); Out.char(<span class="string">&#x27; &#x27;</span>);
     Out.int(sumRaz(a)); Out.char(<span class="string">&#x27; &#x27;</span>);
-    Out.int(sum(<span class="ty">ADR</span>(a[<span class="number">0</span>]), <span class="number">0</span>)); Out.ln;
+    Out.int(sum(a[<span class="number">2</span>..<span class="number">4</span>])); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.int(sum(a[<span class="number">0</span>..<span class="number">0</span>])); Out.ln;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Sum.</code></pre>
-<pre class="output"><code>2100 2100 0
+<pre class="output"><code>2100 2100 700 0
+</code></pre>
+<p>The procedure trusts the length it is given, as it must: the checks of the language end where its code begins.</p>
+<p>A slice comes back the same way, its address in <code>rax</code> and its length in <code>rdx</code>. This one returns what is left of a string past its leading blanks:</p>
+<div class="file"><span>Trim.raz</span></div><pre class="code"><code><span class="kw">module</span> Trim;
+<span class="kw">import</span> Out;
+
+<span class="comment">(* s past its leading blanks *)</span>
+<span class="kw">proc</span> trim(s: []<span class="ty">U8</span>): []<span class="ty">U8</span>;
+<span class="kw">code</span>
+    mov rax, rdi;
+    mov rdx, rsi;
+again:
+    test rdx, rdx;
+    jz done;
+    cmp byte [rax], <span class="number">32</span>;
+    jne done;
+    inc rax;
+    dec rdx;
+    jmp again;
+done:
+    ret;
+<span class="kw">end</span> trim;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.char(<span class="string">&#x27;[&#x27;</span>); Out.str(trim(<span class="string">&quot;   raz&quot;</span>)); Out.str(<span class="string">&quot;]\n&quot;</span>);
+    Out.char(<span class="string">&#x27;[&#x27;</span>); Out.str(trim(<span class="string">&quot;raz&quot;</span>)); Out.str(<span class="string">&quot;]\n&quot;</span>);
+    Out.char(<span class="string">&#x27;[&#x27;</span>); Out.str(trim(<span class="string">&quot;    &quot;</span>)); Out.str(<span class="string">&quot;]\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Trim.</code></pre>
+<pre class="output"><code>[raz]
+[raz]
+[]
 </code></pre>
 <p>A procedure may have up to 64 labels. The check against the raz version is the habit worth keeping: write the procedure in raz first, then in assembly, and compare their results on awkward inputs.</p>
 <h2>Two results, and reals</h2>
@@ -219,6 +254,6 @@ done:
 <h2>What goes wrong</h2>
 <p>A code procedure that breaks its rules breaks the program, and what follows isn't defined. Writing through a wrong pointer, a changed <code>rbx</code>, a missing <code>ret</code>, a stack left unbalanced: the language can't help, because it doesn't see inside. Keep them short, give each a comment that says what it expects in which register, test each against a raz twin, and use them for what only the machine can do.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="targets.html">&larr; One module, one file per target</a><a href="index.html">Contents</a><a class="next" href="syscalls.html">System calls &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+<footer>raz is under the ISC license.</footer>
 </body>
 </html>

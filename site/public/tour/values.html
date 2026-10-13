@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a><a class="repo" href="https://github.com/ldiaz94/raz">GitHub</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
@@ -126,6 +126,8 @@ true and true
     Fmt.print(<span class="string">&quot;22/7 = {}\n&quot;</span>, [Fmt.real(x, <span class="number">6</span>)]);
     Fmt.print(<span class="string">&quot;as F32 = {}\n&quot;</span>, [Fmt.real(<span class="ty">F64</span>(y), <span class="number">6</span>)]);
     Fmt.print(<span class="string">&quot;sqrt 2 = {}, pi = {}\n&quot;</span>, [Fmt.real(Math.sqrt(<span class="number">2.0</span>), <span class="number">5</span>), Fmt.real(Math.pi, <span class="number">5</span>)]);
+    Fmt.print(<span class="string">&quot;2^10 = {}, log2 of that = {}\n&quot;</span>, [Fmt.real(Math.pow(<span class="number">2.0</span>, <span class="number">10.0</span>), <span class="number">1</span>), Fmt.real(Math.log2(<span class="number">1024.0</span>), <span class="number">1</span>)]);
+    Fmt.print(<span class="string">&quot;rounded: {} {}\n&quot;</span>, [Fmt.real(Math.round(<span class="number">2.5</span>), <span class="number">1</span>), Fmt.real(Math.round(-<span class="number">2.5</span>), <span class="number">1</span>)]);
     Fmt.print(<span class="string">&quot;truncated: {} {}\n&quot;</span>, [Fmt.int(<span class="ty">I64</span>(<span class="number">2.9</span>)), Fmt.int(<span class="ty">I64</span>(-<span class="number">2.9</span>))]);
 <span class="kw">end</span>;
 
@@ -133,10 +135,12 @@ true and true
 <pre class="output"><code>22/7 = 3.142857
 as F32 = 3.142857
 sqrt 2 = 1.41421, pi = 3.14159
+2^10 = 1024.0, log2 of that = 10.0
+rounded: 3.0 -3.0
 truncated: 2 -2
 </code></pre>
 <p>A real converts to an integer by rounding toward zero. Every variable starts at zero, a real's <code>0.0</code> and a <code>BOOL</code>'s <code>false</code> included, so there is no uninitialised value to be surprised by.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="integers.html">&larr; Integers</a><a href="index.html">Contents</a><a class="next" href="procedures.html">Procedures and several results &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license. <a href="https://github.com/ldiaz94/raz">Source</a>.</footer>
+<footer>raz is under the ISC license.</footer>
 </body>
 </html>

@@ -26,7 +26,6 @@ header nav .mark { display: flex; align-items: center; gap: 8px; margin-right: 8
   font: 700 20px ui-monospace, monospace; color: var(--accent); }
 header nav .mark img { display: block; }
 header nav a[aria-current] { border-bottom: 2px solid var(--accent); }
-header nav .repo { margin-left: auto; color: var(--muted); }
 main { padding-top: 28px; padding-bottom: 48px; }
 footer { color: var(--muted); font-size: 14px; padding-bottom: 32px; font-family: system-ui, sans-serif; }
 h1 { overflow-wrap: anywhere; font-size: 2.1rem; line-height: 1.2; margin: .2em 0 .5em; }
@@ -51,7 +50,7 @@ pre .err { color: #ff9a85; }
 .hero { padding: 24px 0 8px; }
 .hero h1 { font-size: 3.4rem; font-family: ui-monospace, monospace; color: var(--accent); margin: 0; }
 .hero .tag { font-size: 1.35rem; margin: .2em 0 1em; }
-.hero .cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 1em 0; font-family: system-ui, sans-serif; }
+.cta { display: flex; flex-wrap: wrap; gap: 10px; margin: 1em 0; font-family: system-ui, sans-serif; }
 .btn { display: inline-block; padding: 9px 18px; border-radius: 6px; text-decoration: none;
   border: 1px solid var(--accent); color: var(--accent); font-weight: 600; font-size: 15px; }
 .btn.primary { background: var(--accent); color: var(--bg); }
@@ -85,10 +84,14 @@ pre .err { color: #ff9a85; }
 /* the report */
 .spec { max-width: 46rem; }
 .spec pre { background: var(--code-bg); border-left: 2px solid var(--line); white-space: pre-wrap; }
-.spec table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 15px; }
-.spec td, .spec th { border-bottom: 1px solid var(--line); padding: 3px 10px; text-align: left; }
+.spec table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 1em 0; }
+.spec td, .spec th { border-bottom: 1px solid var(--line); padding: 5px 10px 5px 0;
+  text-align: left; vertical-align: top; }
+.spec th { border-bottom-width: 2px; }
+@media (min-width: 40rem) { .spec td:first-child { white-space: nowrap; } }
 .spec nav#TOC ul { list-style: none; padding-left: 1em; }
 
 /* a shell session */
 pre.term::before { content: "terminal"; }
 pre .cmd { color: #8fd18f; }
+.sha code { font-size: 13px; word-break: break-all; }
