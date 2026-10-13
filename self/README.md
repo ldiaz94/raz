@@ -15,7 +15,13 @@ pair, `test/ChunkDump` and `test/SymDump`, that runs one fixed
 pseudo-random script of calls on its side and prints all it made or
 answered (`Sym` also ends, as an argument says, in the error of a name
 declared twice or of too many scopes): the output, the messages and
-the status must be the same.
+the status must be the same. `Link` and `Elf` are tested by
+`test/LinkDump`, which makes a program of chunks by a script and writes
+it as a static, a dynamic and a stripped executable, which must be the
+same file; `X64` by `test/X64Dump`, every encoder with operands from a
+script, bytes, fixups and listing, and by `test/AsmDump` on the files
+`test/genasm.py` makes: a long run of every instruction the assembler
+knows, and a file for each of its errors.
 
 `check.sh` builds a dumper for each side, `test/ScanDump.pas` over the
 seed's units and `test/ScanDump.raz` over these, and has both read the
@@ -59,6 +65,21 @@ Not the seed's to mend; for the owner to choose.
   `setAdr`, `setReals`, `setSaves`, `setCurFile`, and `rewindTo` for
   gen's `Redo` and `Rewind`), and `Sym` has `setCurModule`. `Scan.grab`
   is exported for the memory they all take.
+- **No `continue`.** The seed's loops that skip to the next round
+  (`MarkLive`, the line program, the assembler's statements) have the
+  rest of the body in an `else`, or in a procedure of its own.
+- **`X64`.** `code` of `Chunk` being reserved, its text is `Chunk.text`;
+  `Say` and the rest of the encoder keep their names, in lower case.
+  `ConstFn`, the parser's reader of a constant, returns an `ERROR` too,
+  and `assemble` returns what it passes up. `mem` marks an offset beyond
+  32 bits and goes on, since an operand has nowhere to return an error
+  to; the compile ends with the message shown. The listing's text is
+  made by `Diag.say`, which keeps it, and only when `-S` asks for it.
+- **`Link` and `Elf`.** What `raz.pas` set there has a setter each:
+  `Link.setPlaces`, `Elf.needLib`, `noLibs`, `setMainPath`,
+  `setStripped` and `X64.setListing`. The file is written by
+  `Files.write` and made executable by `Sys.chmod`, in place of one
+  `open` with mode 755 (which the umask would trim).
 - **No bit cast.** A real's bits and back go through a pointer.
 - **Speed.** On the 348,025 lines of `test/genbench.py`, 7.6 MB, the
   seed's scanner takes 75 ms and this one 74. It took 121 at first.

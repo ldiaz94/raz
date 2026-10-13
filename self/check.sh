@@ -54,3 +54,40 @@ for a in "" dup deep; do
     cmp $b/sym.seed.err $b/sym.self.err
 done
 echo "chunk and sym ok"
+
+# Link and Elf: a program of chunks made by a script, linked and written
+# as a static, a dynamic and a stripped executable, which must be the
+# same file from both sides
+fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fusrc -o$b/linkdump.seed self/test/LinkDump.pas >/dev/null
+./raz -Werror -I self -o $b/linkdump.self self/test/LinkDump.raz
+for m in 0 1 2; do
+    $b/linkdump.seed $m $b/link.seed
+    $b/linkdump.self $m $b/link.self
+    cmp $b/link.seed $b/link.self
+done
+echo "link and elf ok"
+
+# X64: every encoder, then the assembler on a long run of instructions
+# of every kind and a file for each error it makes; the bytes and the
+# listing, or the message and status, must be the same
+fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fusrc -o$b/x64dump.seed self/test/X64Dump.pas >/dev/null
+./raz -Werror -I self -o $b/x64dump.self self/test/X64Dump.raz
+$b/x64dump.seed >$b/x64.seed
+$b/x64dump.self >$b/x64.self
+cmp $b/x64.seed $b/x64.self
+fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fusrc -o$b/asmdump.seed self/test/AsmDump.pas >/dev/null
+./raz -Werror -I self -o $b/asmdump.self self/test/AsmDump.raz
+mkdir -p $b/asm
+python3 self/test/genasm.py $b/asm
+n=0; bad=0
+for f in $b/asm/*.raz; do
+    s1=0; s2=0
+    $b/asmdump.seed $f >$b/seed.out 2>$b/seed.err || s1=$?
+    $b/asmdump.self $f >$b/self.out 2>$b/self.err || s2=$?
+    n=$((n + 1))
+    if [ $s1 != $s2 ] || ! cmp -s $b/seed.out $b/self.out || ! cmp -s $b/seed.err $b/self.err; then
+        echo "differs: $f (status $s1 and $s2)"; bad=$((bad + 1))
+    fi
+done
+echo "x64: $n assembler files, $bad differ"
+test $bad = 0

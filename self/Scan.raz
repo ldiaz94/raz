@@ -120,6 +120,16 @@ begin
     return p;
 end;
 
+(* p, which holds used bytes, moved to a block of size bytes *)
+proc regrab*(p: ^U8; used, size: INT): ^U8;
+var q: ^U8;
+begin
+    q := grab(size);
+    COPY(q[0..used], p[0..used]);
+    Mem.free(Heap.heap, p);
+    return q;
+end;
+
 (* n zeroed words *)
 proc words64(n: INT): ^INT;
 var p: ^INT; i: INT;

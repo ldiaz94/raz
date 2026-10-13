@@ -1,0 +1,1472 @@
+(* X64: machine code for x86-64.
+
+   The encoder writes the instructions the code generator needs, and
+   no others, into the text of Chunk. Registers are numbered as the
+   hardware numbers them. Jumps within a procedure are patched here, as
+   soon as their target is known.
+
+   Depends on: Scan, for errors and the assembler's symbols; Diag, for
+   positions; Chunk for the code buffer and fixups.
+   Leaves out: choosing instructions; that is Gen.
+
+   The seed's `Mem` that is too large an offset is marked and the code
+   goes on, since a function that makes an operand has no place to give
+   an error back from; the compile ends with the error shown. *)
+module X64;
+import Out, Fmt, Heap, Buf, Str, Diag, Scan, Chunk;
+
+const
+    RAX* = 0; RCX* = 1; RDX* = 2; RBX* = 3; RSP* = 4; RBP* = 5; RSI* = 6; RDI* = 7;
+    R8* = 8; R9* = 9; R10* = 10; R11* = 11; R12* = 12; R13* = 13; R14* = 14; R15* = 15;
+    RIP* = -1;      (* a base meaning rip-relative, to a chunk *)
+    NoIndex* = -1;
+
+    (* condition codes *)
+    ccB* = 2; ccAE* = 3; ccE* = 4; ccNE* = 5; ccBE* = 6; ccA* = 7; ccS* = 8;
+    ccP* = 10; ccNP* = 11; ccL* = 12; ccGE* = 13; ccLE* = 14; ccG* = 15;
+
+    (* group 1 operations, the /digit of 81 and 83 *)
+    aluAdd* = 0; aluOr* = 1; aluAnd* = 4; aluSub* = 5; aluXor* = 6; aluCmp* = 7;
+
+    (* the /digit of D3 and C1 *)
+    shShl* = 4; shShr* = 5; shSar* = 7;
+
+    NoLabel* = -1;
+
+type
+    Mem* = record
+        base*: INT;     (* a register, or RIP *)
+        index*: INT;    (* a register, or NoIndex *)
+        scale*: INT;    (* 1, 2, 4 or 8 *)
+        disp*: INT;
+        chunk*: INT;    (* with RIP: the chunk addressed *)
+    end;
+
+    (* The parser's reader of an integer constant in a code procedure: a
+       whole expression, or, when whole is false, a single factor *)
+    ConstFn* = proc(whole: BOOL): (I64, ERROR);
+
+    (* The text of the instruction that starts at at, for the listing *)
+    Said = record
+        at: INT;
+        text: []U8;
+    end;
+
+var
+    listing*: BOOL;      (* -S: each instruction's text is kept, for list *)
+    said: ^Said;
+    numSaid, saidCap: INT;
+
+proc setListing*(yes: BOOL);
+begin
+    listing := yes;
+end;
+
+(* Operands *)
+
+proc mem*(base: INT; disp: I64): Mem;
+var m: Mem;
+begin
+    if (disp < -2147483648) or (disp > 2147483647) then
+        _ := Scan.mark("an offset beyond 32 bits");
+    end;
+    m.base := base; m.index := NoIndex; m.scale := 1;
+    m.disp := INT(disp); m.chunk := -1;
+    return m;
+end;
+
+proc memRip*(chunk: INT; disp: INT): Mem;
+var m: Mem;
+begin
+    m.base := RIP; m.index := NoIndex; m.scale := 1;
+    m.disp := disp; m.chunk := chunk;
+    return m;
+end;
+
+proc memIdx*(base, index, scale: INT; disp: I64): Mem;
+var m: Mem;
+begin
+    m := mem(base, disp);
+    m.index := index;
+    m.scale := scale;
+    return m;
+end;
+
+(* The address of the code about to be written, as an operand *)
+proc here*: Mem;
+begin
+    return memRip(Chunk.curChunk, Chunk.pc - Chunk.chunks[Chunk.curChunk].start);
+end;
+
+(* Encoding. An instruction is: a legacy prefix, REX, the opcode, ModRM,
+   SIB and displacement. Opcodes of more than one byte are given with
+   their first byte in the low eight bits. *)
+
+proc opcode(op: INT);
+begin
+    repeat
+        Chunk.put1(op & 0FFH);
+        op := op shr 8;
+    until op = 0;
+end;
+
+(* The legacy prefix pfx, if any, and REX: wide is REX.W; byte4 says
+   a byte register of 4 to 7 is used, spl to dil, which exist only with
+   a REX prefix. *)
+proc prefix(pfx: INT; w: BOOL; reg, index, base: INT; byte4: BOOL);
+var rex: INT;
+begin
+    if pfx # 0 then Chunk.put1(pfx); end;
+    rex := 0;
+    if w then rex := rex | 8; end;
+    if reg >= 8 then rex := rex | 4; end;
+    if index >= 8 then rex := rex | 2; end;
+    if base >= 8 then rex := rex | 1; end;
+    if (rex # 0) or byte4 then Chunk.put1(40H | rex); end;
+end;
+
+(* op reg, [mem] *)
+proc opM(pfx: INT; w: BOOL; op, reg: INT; m: Mem; byteReg: BOOL);
+var md, b, sc: INT;
+begin
+    byteReg := byteReg and (reg >= 4) and (reg <= 7);
+    if m.base = RIP then
+        prefix(pfx, w, reg, NoIndex, 0, byteReg);
+    else
+        prefix(pfx, w, reg, m.index, m.base, byteReg);
+    end;
+    opcode(op);
+    reg := reg & 7;
+    if m.base = RIP then
+        Chunk.put1((reg shl 3) | 5);
+        (* mod 00 with r/m 101 is rip + disp32. The displacement counts
+           from the end of the instruction, and the fixup takes it to end
+           with these four bytes: an instruction with an immediate after
+           them, aluMI's or storeI's, takes the immediate's size off disp
+           first (the assembler can't name a chunk). *)
+        Chunk.addFixup(Chunk.pc, m.chunk, m.disp);
+        Chunk.put4(0);
+        return;
+    end;
+    b := m.base & 7;
+    (* mod 00 takes no displacement, but with r/m 101 (RBP or R13) it means
+       rip-relative, or disp32 under a SIB byte, so those bases take a
+       zero disp8 *)
+    if (m.disp = 0) and (b # RBP) then
+        md := 0;
+    elsif (m.disp >= -128) and (m.disp <= 127) then
+        md := 1;
+    else
+        md := 2;
+    end;
+    (* r/m 100 (RSP or R12) means a SIB byte follows, so those bases need
+       one, with index 100 meaning none *)
+    if (m.index # NoIndex) or (b = RSP) then
+        Chunk.put1((md shl 6) | (reg shl 3) | 4);
+        if m.scale = 1 then sc := 0; elsif m.scale = 2 then sc := 1; elsif m.scale = 4 then sc := 2; else sc := 3; end;
+        if m.index = NoIndex then
+            Chunk.put1((sc shl 6) | (4 shl 3) | b);
+        else
+            Chunk.put1((sc shl 6) | ((m.index & 7) shl 3) | b);
+        end;
+    else
+        Chunk.put1((md shl 6) | (reg shl 3) | b);
+    end;
+    if md = 1 then
+        Chunk.put1(m.disp);
+    elsif md = 2 then
+        Chunk.put4(m.disp);
+    end;
+end;
+
+(* op reg, rm (both registers) *)
+proc opR(pfx: INT; w: BOOL; op, reg, rm: INT; byteReg: BOOL);
+begin
+    prefix(pfx, w, reg, NoIndex, rm, byteReg and (((reg >= 4) and (reg <= 7)) or ((rm >= 4) and (rm <= 7))));
+    opcode(op);
+    Chunk.put1(0C0H | ((reg & 7) shl 3) | (rm & 7));
+end;
+
+(* The listing: the text of each instruction, as it is made *)
+
+(* How many instructions the listing has, and back to n of them, for
+   code made again *)
+proc saidCount*: INT;
+begin
+    return numSaid;
+end;
+
+proc unsay*(n: INT);
+begin
+    numSaid := n;
+end;
+
+proc sayAt*(at: INT; s: []U8);
+begin
+    if not listing then return; end;
+    if numSaid = saidCap then
+        said := ^Said(Scan.regrab(^U8(said), numSaid * SIZE(Said), (saidCap * 2 + 1024) * SIZE(Said)));
+        saidCap := saidCap * 2 + 1024;
+    end;
+    said[numSaid].at := at;
+    said[numSaid].text := s;
+    INC(numSaid);
+end;
+
+(* The text of the instruction about to be written *)
+proc say*(s: []U8);
+begin
+    sayAt(Chunk.pc, s);
+end;
+
+(* The text of the instruction at at, said again, as when its operand is
+   patched *)
+proc restate*(at: INT; s: []U8);
+var i: INT;
+begin
+    i := numSaid - 1;
+    while (i >= 0) and (said[i].at # at) do DEC(i); end;
+    if i >= 0 then said[i].text := s; end;
+end;
+
+const
+    RegNames: [4][16][]U8 = [
+        ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
+         "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"],
+        ["eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi",
+         "r8d", "r9d", "r10d", "r11d", "r12d", "r13d", "r14d", "r15d"],
+        ["ax", "cx", "dx", "bx", "sp", "bp", "si", "di",
+         "r8w", "r9w", "r10w", "r11w", "r12w", "r13w", "r14w", "r15w"],
+        ["al", "cl", "dl", "bl", "spl", "bpl", "sil", "dil",
+         "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b"]];
+    CondNames*: [16][]U8 = ["o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns", "p", "np", "l", "ge", "le", "g"];
+    AluNames: [8][]U8 = ["add", "or", "adc", "sbb", "and", "sub", "xor", "cmp"];
+    ShiftNames: [8][]U8 = ["rol", "ror", "rcl", "rcr", "shl", "shr", "sal", "sar"];
+    UnaryNames: [8][]U8 = ["", "", "not", "neg", "mul", "imul", "div", "idiv"];   (* from 2 *)
+
+(* The name of register r, of size bytes *)
+proc rnSized(r, size: INT): []U8;
+begin
+    if size = 1 then return RegNames[3][r]; end;
+    if size = 2 then return RegNames[2][r]; end;
+    if size = 4 then return RegNames[1][r]; end;
+    return RegNames[0][r];
+end;
+
+proc rn(r: INT): []U8;
+begin
+    return RegNames[0][r];
+end;
+
+proc xn(x: INT): []U8;
+begin
+    return Diag.say("xmm{}", [Fmt.int(x)]);
+end;
+
+(* A memory operand, with the size of what it holds, as the assembler
+   reads it *)
+proc mnSized(m: Mem; size: INT): []U8;
+var b: ^Buf.Buf;
+begin
+    b := ^Buf.Buf(Scan.grab(SIZE(Buf.Buf)));
+    Buf.init(b, Heap.heap);
+    if size = 1 then Buf.str(b, "byte ");
+    elsif size = 2 then Buf.str(b, "word ");
+    elsif size = 4 then Buf.str(b, "dword ");
+    elsif size = 8 then Buf.str(b, "qword ");
+    end;
+    Buf.str(b, "[");
+    if m.base = RIP then Buf.str(b, Chunk.chunkName(m.chunk)); else Buf.str(b, rn(m.base)); end;
+    if m.index # NoIndex then Fmt.write(b, " + {} * {}", [Fmt.str(rn(m.index)), Fmt.int(m.scale)]); end;
+    if m.disp > 0 then
+        Fmt.write(b, " + {}", [Fmt.int(m.disp)]);
+    elsif m.disp < 0 then
+        Fmt.write(b, " - {}", [Fmt.int(-m.disp)]);
+    end;
+    Buf.str(b, "]");
+    return Buf.bytes(b);
+end;
+
+proc mn(m: Mem): []U8;
+begin
+    return mnSized(m, 0);
+end;
+
+(* "op a, b" and "op a" *)
+proc text2(op, a, b: []U8): []U8;
+begin
+    return Diag.say("{} {}, {}", [Fmt.str(op), Fmt.str(a), Fmt.str(b)]);
+end;
+
+proc text1(op, a: []U8): []U8;
+begin
+    return Diag.say("{} {}", [Fmt.str(op), Fmt.str(a)]);
+end;
+
+(* v in decimal *)
+proc num(v: INT): []U8;
+begin
+    return Diag.say("{}", [Fmt.int(v)]);
+end;
+
+proc movRR*(dst, src: INT);
+begin
+    if listing then say(text2("mov", rn(dst), rn(src))); end;
+    opR(0, true, 89H, src, dst, false);
+end;
+
+(* The operand-size prefix a size of 2 bytes takes *)
+proc pfx16(size: INT): INT;
+begin
+    if size = 2 then return 66H; end;
+    return 0;
+end;
+
+(* The immediate of n bytes that ends an instruction *)
+proc putImm(v, n: INT);
+begin
+    if n = 4 then
+        Chunk.put4(v);
+    else
+        Chunk.put1(v & 0FFH);
+        if n = 2 then Chunk.put1((v shr 8) & 0FFH); end;
+    end;
+end;
+
+(* op [m], v, on size bytes; v fits in them, or in 32 bits for 8 *)
+proc aluMI*(op: INT; m: Mem; v, size: INT);
+var n: INT;
+begin
+    if listing then say(text2(AluNames[op], mnSized(m, size), num(v))); end;
+    if (size = 1) or ((v >= -128) and (v <= 127)) then
+        n := 1;
+    elsif size = 2 then
+        n := 2;
+    else
+        n := 4;
+    end;
+    if m.base = RIP then m.disp := m.disp - n; end;
+    if size = 1 then
+        opM(0, false, 80H, op, m, false);
+    elsif n = 1 then
+        opM(pfx16(size), size = 8, 83H, op, m, false);
+    else
+        opM(pfx16(size), size = 8, 81H, op, m, false);
+    end;
+    putImm(v, n);
+end;
+
+(* mov [m], v, of size bytes; v fits in them, or in 32 bits for 8 *)
+proc storeI*(m: Mem; v, size: INT);
+var n: INT;
+begin
+    if listing then say(text2("mov", mnSized(m, size), num(v))); end;
+    n := size;
+    if n > 4 then n := 4; end;
+    if m.base = RIP then m.disp := m.disp - n; end;
+    if size = 1 then
+        opM(0, false, 0C6H, 0, m, false);
+    else
+        opM(pfx16(size), size = 8, 0C7H, 0, m, false);
+    end;
+    putImm(v, n);
+end;
+
+proc movRI*(r: INT; v: I64);
+begin
+    if listing then
+        if v = 0 then
+            say(text2("xor", rnSized(r, 4), rnSized(r, 4)));
+        else
+            say(text2("mov", rn(r), Diag.say("{}", [Fmt.int(v)])));
+        end;
+    end;
+    if (v >= -2147483648) and (v <= 2147483647) then
+        if v = 0 then
+            opR(0, false, 31H, r, r, false);        (* xor r32, r32 *)
+        elsif v > 0 then                            (* mov r32, imm32 *)
+            prefix(0, false, 0, NoIndex, r, false); Chunk.put1(0B8H + (r & 7)); Chunk.put4(INT(v));
+        else
+            opR(0, true, 0C7H, 0, r, false); Chunk.put4(INT(v));   (* sign-extended imm32 *)
+        end;
+    elsif (v > 0) and (v <= 0FFFFFFFFH) then
+        prefix(0, false, 0, NoIndex, r, false); Chunk.put1(0B8H + (r & 7)); Chunk.put4(INT(v));
+    else
+        prefix(0, true, 0, NoIndex, r, false); Chunk.put1(0B8H + (r & 7)); Chunk.put8(v);
+    end;
+end;
+
+proc load*(r: INT; m: Mem; size: INT; signed: BOOL);
+begin
+    if listing then
+        if size = 8 then
+            say(text2("mov", rn(r), mn(m)));
+        elsif (size = 4) and not signed then
+            say(text2("mov", rnSized(r, 4), mn(m)));
+        elsif size = 4 then
+            say(text2("movsxd", rn(r), mnSized(m, 4)));
+        elsif signed then
+            say(text2("movsx", rn(r), mnSized(m, size)));
+        else
+            say(text2("movzx", rnSized(r, 4), mnSized(m, size)));
+        end;
+    end;
+    if size = 1 then
+        if signed then opM(0, true, 0BE0FH, r, m, false); else opM(0, false, 0B60FH, r, m, false); end;
+    elsif size = 2 then
+        if signed then opM(0, true, 0BF0FH, r, m, false); else opM(0, false, 0B70FH, r, m, false); end;
+    elsif size = 4 then
+        if signed then opM(0, true, 63H, r, m, false); else opM(0, false, 8BH, r, m, false); end;
+    else
+        opM(0, true, 8BH, r, m, false);
+    end;
+end;
+
+proc store*(m: Mem; r: INT; size: INT);
+begin
+    if listing then say(text2("mov", mn(m), rnSized(r, size))); end;
+    if size = 1 then
+        opM(0, false, 88H, r, m, true);
+    elsif size = 2 then
+        opM(66H, false, 89H, r, m, false);
+    elsif size = 4 then
+        opM(0, false, 89H, r, m, false);
+    else
+        opM(0, true, 89H, r, m, false);
+    end;
+end;
+
+proc lea*(r: INT; m: Mem);
+begin
+    if listing then say(text2("lea", rn(r), mn(m))); end;
+    opM(0, true, 8DH, r, m, false);
+end;
+
+proc alu*(op, dst, src: INT);
+begin
+    if listing then say(text2(AluNames[op], rn(dst), rn(src))); end;
+    opR(0, true, (op shl 3) | 1, src, dst, false);
+end;
+
+proc aluI*(op, r: INT; v: INT);
+begin
+    if listing then say(text2(AluNames[op], rn(r), num(v))); end;
+    if (v >= -128) and (v <= 127) then
+        opR(0, true, 83H, op, r, false); Chunk.put1(v);
+    else
+        opR(0, true, 81H, op, r, false); Chunk.put4(v);
+    end;
+end;
+
+(* op r, [m] *)
+proc aluM*(op, r: INT; m: Mem);
+begin
+    if listing then say(text2(AluNames[op], rn(r), mn(m))); end;
+    opM(0, true, (op shl 3) | 3, r, m, false);
+end;
+
+proc imul*(dst, src: INT);
+begin
+    if listing then say(text2("imul", rn(dst), rn(src))); end;
+    opR(0, true, 0AF0FH, dst, src, false);
+end;
+
+proc imulI*(r: INT; v: INT);
+begin
+    if listing then say(Diag.say("imul {}, {}, {}", [Fmt.str(rn(r)), Fmt.str(rn(r)), Fmt.int(v)])); end;
+    opR(0, true, 69H, r, r, false);
+    Chunk.put4(v);
+end;
+
+proc shift*(op, r: INT);
+begin
+    if listing then say(text2(ShiftNames[op], rn(r), "cl")); end;
+    opR(0, true, 0D3H, op, r, false);
+end;
+
+proc shiftI*(op, r, n: INT);
+begin
+    if listing then say(text2(ShiftNames[op], rn(r), num(n))); end;
+    opR(0, true, 0C1H, op, r, false);
+    Chunk.put1(n);
+end;
+
+(* F7 /ext: 2 not, 3 neg, 6 div, 7 idiv *)
+proc unary*(ext, r: INT);
+begin
+    if listing then say(text1(UnaryNames[ext], rn(r))); end;
+    opR(0, true, 0F7H, ext, r, false);
+end;
+
+proc cqo*;
+begin
+    if listing then say("cqo"); end;
+    Chunk.put1(48H); Chunk.put1(99H);
+end;
+
+(* Brings a value of size bytes in r to 64 bits, by its sign or zeros. *)
+proc extend*(r, size: INT; signed: BOOL);
+begin
+    if listing then
+        if size = 4 then
+            if signed then
+                say(text2("movsxd", rn(r), rnSized(r, 4)));
+            else
+                say(text2("mov", rnSized(r, 4), rnSized(r, 4)));
+            end;
+        elsif signed then
+            say(text2("movsx", rn(r), rnSized(r, size)));
+        else
+            say(text2("movzx", rnSized(r, 4), rnSized(r, size)));
+        end;
+    end;
+    if size = 1 then
+        if signed then opR(0, true, 0BE0FH, r, r, true); else opR(0, false, 0B60FH, r, r, true); end;
+    elsif size = 2 then
+        if signed then opR(0, true, 0BF0FH, r, r, false); else opR(0, false, 0B70FH, r, r, false); end;
+    elsif size = 4 then
+        if signed then opR(0, true, 63H, r, r, false); else opR(0, false, 89H, r, r, false); end;
+    end;
+end;
+
+(* r := 1 if the condition holds, else 0 *)
+proc setCC*(cc, r: INT);
+begin
+    if listing then say(text1(Diag.say("set{}", [Fmt.str(CondNames[cc])]), rnSized(r, 1))); end;
+    opR(0, false, 900FH + (cc shl 8), 0, r, true);
+    if listing then say(text2("movzx", rnSized(r, 4), rnSized(r, 1))); end;
+    opR(0, false, 0B60FH, r, r, true);
+end;
+
+proc testRR*(a, b: INT);
+begin
+    if listing then say(text2("test", rn(a), rn(b))); end;
+    opR(0, true, 85H, b, a, false);
+end;
+
+proc push*(r: INT);
+begin
+    if listing then say(text1("push", rn(r))); end;
+    if r >= 8 then Chunk.put1(41H); end;
+    Chunk.put1(50H + (r & 7));
+end;
+
+proc pop*(r: INT);
+begin
+    if listing then say(text1("pop", rn(r))); end;
+    if r >= 8 then Chunk.put1(41H); end;
+    Chunk.put1(58H + (r & 7));
+end;
+
+proc callChunk*(c: INT);
+begin
+    if listing then say(text1("call", Chunk.chunkName(c))); end;
+    Chunk.put1(0E8H);
+    Chunk.addFixup(Chunk.pc, c, 0);
+    Chunk.put4(0);
+end;
+
+proc callBack*(target: INT);
+begin
+    if listing then say("call"); end;
+    Chunk.put1(0E8H);
+    Chunk.put4(target - (Chunk.pc + 4));
+end;
+
+proc callR*(r: INT);
+begin
+    if listing then say(text1("call", rn(r))); end;
+    opR(0, false, 0FFH, 2, r, false);
+end;
+
+proc jmpR*(r: INT);
+begin
+    if listing then say(text1("jmp", rn(r))); end;
+    opR(0, false, 0FFH, 4, r, false);
+end;
+
+proc callM*(m: Mem);
+begin
+    if listing then say(text1("call", mn(m))); end;
+    opM(0, false, 0FFH, 2, m, false);
+end;
+
+proc ret*;
+begin
+    if listing then say("ret"); end;
+    Chunk.put1(0C3H);
+end;
+
+proc leave*;
+begin
+    say("leave"); Chunk.put1(0C9H);
+end;
+
+proc syscall*;
+begin
+    say("syscall"); Chunk.put1(0FH); Chunk.put1(05H);
+end;
+
+proc mfence*;
+begin
+    say("mfence"); Chunk.put1(0FH); Chunk.put1(0AEH); Chunk.put1(0F0H);
+end;
+
+proc ud2*;
+begin
+    say("ud2"); Chunk.put1(0FH); Chunk.put1(0BH);
+end;
+
+(* Code made up to a multiple of n bytes with no-ops, the fewest: the
+   long forms of nop, of up to 8 bytes, that x86 decodes as one *)
+proc align*(n: INT);
+const
+    Nops: [8][]U8 = ["\x90", "\x66\x90", "\x0F\x1F\x00", "\x0F\x1F\x40\x00",
+        "\x0F\x1F\x44\x00\x00", "\x66\x0F\x1F\x44\x00\x00", "\x0F\x1F\x80\x00\x00\x00\x00",
+        "\x0F\x1F\x84\x00\x00\x00\x00\x00"];
+var k, i: INT;
+begin
+    while Chunk.pc mod n # 0 do
+        k := n - Chunk.pc mod n;
+        if k > 8 then k := 8; end;
+        say("nop");
+        for i := 0 to k - 1 do Chunk.put1(INT(Nops[k - 1][i])); end;
+    end;
+end;
+
+proc repMovsb*;
+begin
+    say("rep movsb"); Chunk.put1(0F3H); Chunk.put1(0A4H);
+end;
+
+(* the direction flag, which has rep movsb go down, and back up *)
+proc std*;
+begin
+    say("std"); Chunk.put1(0FDH);
+end;
+
+proc cld*;
+begin
+    say("cld"); Chunk.put1(0FCH);
+end;
+
+proc repStosb*;
+begin
+    say("rep stosb"); Chunk.put1(0F3H); Chunk.put1(0AAH);
+end;
+
+proc repeCmpsb*;
+begin
+    say("repe cmpsb"); Chunk.put1(0F3H); Chunk.put1(0A6H);
+end;
+
+proc lockCmpxchg*(m: Mem; r: INT);
+begin
+    if listing then say(text2("lock cmpxchg", mn(m), rn(r))); end;
+    Chunk.put1(0F0H);
+    opM(0, true, 0B10FH, r, m, false);
+end;
+
+proc xchg*(m: Mem; r: INT);
+begin
+    if listing then say(text2("xchg", mn(m), rn(r))); end;
+    opM(0, true, 87H, r, m, false);
+end;
+
+proc lockXadd*(m: Mem; r: INT);
+begin
+    if listing then say(text2("lock xadd", mn(m), rn(r))); end;
+    Chunk.put1(0F0H);
+    opM(0, true, 0C10FH, r, m, false);
+end;
+
+proc movqXR*(x, r: INT);
+begin
+    if listing then say(text2("movq", xn(x), rn(r))); end;
+    opR(66H, true, 6E0FH, x, r, false);
+end;
+
+proc movqRX*(r, x: INT);
+begin
+    if listing then say(text2("movq", rn(r), xn(x))); end;
+    opR(66H, true, 7E0FH, x, r, false);
+end;
+
+(* movaps: all of xmm y to xmm x, the shortest move between two *)
+proc movX*(x, y: INT);
+begin
+    if listing then say(text2("movaps", xn(x), xn(y))); end;
+    opR(0, false, 280FH, x, y, false);
+end;
+
+(* The prefix of a real instruction, and the end of its name: sd, or ss for single *)
+proc realPfx(single: BOOL): INT;
+begin
+    if single then return 0F3H; end;
+    return 0F2H;
+end;
+
+proc realEnd(single: BOOL): []U8;
+begin
+    if single then return "ss"; end;
+    return "sd";
+end;
+
+(* The real instructions take single: F32 (ss) rather than F64 (sd) *)
+proc movsXM*(x: INT; m: Mem; single: BOOL);
+begin
+    if listing then say(text2(Diag.say("movs{}", [Fmt.str(realEnd(single)[1..2])]), xn(x), mn(m))); end;
+    opM(realPfx(single), false, 100FH, x, m, false);
+end;
+
+proc movsMX*(m: Mem; x: INT; single: BOOL);
+begin
+    if listing then say(text2(Diag.say("movs{}", [Fmt.str(realEnd(single)[1..2])]), mn(m), xn(x))); end;
+    opM(realPfx(single), false, 110FH, x, m, false);
+end;
+
+proc sseName(op: INT; single: BOOL): []U8;
+begin
+    if op = 58H then return Diag.say("add{}", [Fmt.str(realEnd(single))]); end;
+    if op = 59H then return Diag.say("mul{}", [Fmt.str(realEnd(single))]); end;
+    if op = 5CH then return Diag.say("sub{}", [Fmt.str(realEnd(single))]); end;
+    if op = 5EH then return Diag.say("div{}", [Fmt.str(realEnd(single))]); end;
+    return Diag.say("cvt{}2{}", [Fmt.str(realEnd(single)), Fmt.str(realEnd(not single))]);
+end;
+
+(* 58 add, 59 mul, 5C sub, 5E div, 5A convert *)
+proc sse*(op, x, y: INT; single: BOOL);
+begin
+    if listing then say(text2(sseName(op, single), xn(x), xn(y))); end;
+    opR(realPfx(single), false, 0FH | (op shl 8), x, y, false);
+end;
+
+(* The same, its right operand in memory: addsd x, [m] *)
+proc sseM*(op, x: INT; m: Mem; single: BOOL);
+begin
+    if listing then say(text2(sseName(op, single), xn(x), mn(m))); end;
+    opM(realPfx(single), false, 0FH | (op shl 8), x, m, false);
+end;
+
+proc ucomis*(x, y: INT; single: BOOL);
+begin
+    if listing then say(text2(Diag.say("ucomi{}", [Fmt.str(realEnd(single))]), xn(x), xn(y))); end;
+    if single then opR(0, false, 2E0FH, x, y, false); else opR(66H, false, 2E0FH, x, y, false); end;
+end;
+
+proc cvtsi2s*(x, r: INT; single: BOOL);
+begin
+    if listing then say(text2(Diag.say("cvtsi2{}", [Fmt.str(realEnd(single))]), xn(x), rn(r))); end;
+    opR(realPfx(single), true, 2A0FH, x, r, false);
+end;
+
+proc cvtts2si*(r, x: INT; single: BOOL);
+begin
+    if listing then say(text2(Diag.say("cvtt{}2si", [Fmt.str(realEnd(single))]), rn(r), xn(x))); end;
+    opR(realPfx(single), true, 2C0FH, r, x, false);
+end;
+
+proc btc*(r, bit: INT);
+begin
+    if listing then say(text2("btc", rn(r), num(bit))); end;
+    opR(0, true, 0BA0FH, 7, r, false);
+    Chunk.put1(bit);
+end;
+
+(* Jumps. A label not yet placed is the chain of the jumps to it, each
+   rel32 field holding the position of the one before, NoLabel ending
+   it. Placing the label walks the chain and patches each. *)
+
+proc jmp*(var L: INT);
+begin
+    if listing then say("jmp"); end;
+    Chunk.put1(0E9H);
+    Chunk.put4(L);
+    L := Chunk.pc - 4;
+end;
+
+proc jcc*(cc: INT; var L: INT);
+begin
+    if listing then say(Diag.say("j{}", [Fmt.str(CondNames[cc])])); end;
+    Chunk.put1(0FH); Chunk.put1(80H + cc);
+    Chunk.put4(L);
+    L := Chunk.pc - 4;
+end;
+
+proc jmpBack*(target: INT);
+begin
+    if listing then say("jmp"); end;
+    Chunk.put1(0E9H);
+    Chunk.put4(target - (Chunk.pc + 4));
+end;
+
+proc jccBack*(cc, target: INT);
+begin
+    if listing then say(Diag.say("j{}", [Fmt.str(CondNames[cc])])); end;
+    Chunk.put1(0FH); Chunk.put1(80H + cc);
+    Chunk.put4(target - (Chunk.pc + 4));
+end;
+
+proc fixLinkTo*(L, target: INT);
+var next: INT;
+begin
+    while L # NoLabel do
+        next := Chunk.get4At(L);
+        Chunk.put4At(L, target - (L + 4));
+        L := next;
+    end;
+end;
+
+proc fixLink*(L: INT);
+begin
+    fixLinkTo(L, Chunk.pc);
+end;
+
+(* If the last instruction made is a jmp to L, it is taken back, since L
+   is to be placed just after it: a return at the end of a procedure
+   needn't jump to the code that returns. L is the place of the latest
+   jump's 4-byte field, so the last instruction is that jump when L is
+   4 bytes back and an E9 byte (jmp) is before it; a jcc's field follows
+   the bytes 0F 8x, never E9. L then becomes the next jump on the chain,
+   which the field held. The caller must place L next, before anything
+   can have noted where the jmp ended. *)
+proc dropJumpTo*(var L: INT);
+begin
+    if (L = NoLabel) or (L # Chunk.pc - 4) or (Chunk.text[L - 1] # 0E9H) then return; end;
+    L := Chunk.get4At(L);
+    Chunk.takeBack(5);
+    if listing and (numSaid > 0) and (said[numSaid - 1].at = Chunk.pc) then DEC(numSaid); end;
+end;
+
+(* The jumps of chains L1 and L2, as one chain: each jump's field holds
+   the next one's place until it is fixed, the last NoLabel *)
+proc joinLinks*(L1, L2: INT): INT;
+var L: INT;
+begin
+    if L2 = NoLabel then return L1; end;
+    if L1 # NoLabel then
+        L := L2;
+        while Chunk.get4At(L) # NoLabel do L := Chunk.get4At(L); end;
+        Chunk.put4At(L, L1);
+    end;
+    return L2;
+end;
+
+(* The assembler, for code procedures: x86-64 in Intel's syntax as NASM
+   writes it (report, appendix A). It reads instructions with the
+   scanner up to end, and encodes them with opM and opR; constants are
+   read by the parser's constExpr. *)
+
+const
+    NoBase = -3;   (* a memory operand's base, not yet read *)
+
+type
+    OpKind = (oReg, oXmm, oMem, oImm);
+    Operand = record
+        kind: OpKind;
+        r, size: INT;   (* oReg, oXmm: the register and its size; oMem: its size, or 0 *)
+        m: Mem;
+        v: I64;         (* oImm *)
+    end;
+
+(* The current symbol as a word: an identifier, or a reserved word that
+   is also an instruction *)
+proc asmWord: []U8;
+begin
+    match Scan.tok of
+    | sIdent: return Scan.nameOf(Scan.id);
+    | sAnd: return "and";
+    | sOr: return "or";
+    | sXor: return "xor";
+    | sNot: return "not";
+    | sDiv: return "div";
+    | sShl: return "shl";
+    | sShr: return "shr";
+    | else: return "";
+    end;
+end;
+
+(* Whether w names a register: rax, eax, ax, al and so on, or xmm0 to
+   xmm15 (size 16); r and size are set if so *)
+proc isReg(w: []U8; r, size: ^INT): BOOL;
+const Sizes: [4]INT = [8, 4, 2, 1];
+var i, j, n, d: INT;
+begin
+    for i := 0 to 3 do
+        for j := 0 to 15 do
+            if RegNames[i][j] = w then r^ := j; size^ := Sizes[i]; return true; end;
+        end;
+    end;
+    size^ := 16;
+    if not Str.hasPrefix(w, "xmm") or (LEN(w) <= 3) then return false; end;
+    (* the seed read the two bytes after xmm as a number, whatever follows *)
+    n := LEN(w) - 3;
+    if n > 2 then n := 2; end;
+    r^ := 0;
+    for i := 0 to n - 1 do
+        d := INT(w[3 + i]) - 48;
+        if (d < 0) or (d > 9) then return false; end;
+        r^ := r^ * 10 + d;
+    end;
+    return r^ <= 15;
+end;
+
+(* Which word of list, a list of words each with a space either side,
+   w is, from 0; -1 if none *)
+proc wordIndex(w: []U8; list: []U8): INT;
+var i, n, start: INT;
+begin
+    n := 0;
+    start := 1;
+    for i := 1 to LEN(list) - 1 do
+        if list[i] = ' ' then
+            if (i - start = LEN(w)) and (list[start..i] = w) then return n; end;
+            INC(n);
+            start := i + 1;
+        end;
+    end;
+    return -1;
+end;
+
+(* w from byte from on, at most n bytes of it, as copy does *)
+proc part(w: []U8; from, n: INT): []U8;
+var e: INT;
+begin
+    e := from + n;
+    if e > LEN(w) then e := LEN(w); end;
+    if from >= e then return ""; end;
+    return w[from..e];
+end;
+
+(* The condition a name ends in: e of je, nz of jnz *)
+proc cond(w: []U8): INT;
+const
+    Alias: [12][]U8 = ["c", "nae", "nc", "nb", "z", "nz", "na", "nbe", "nge", "nl", "ng", "nle"];
+    AliasCc: [12]INT = [2, 2, 3, 3, 4, 5, 6, 7, 12, 13, 14, 15];
+var i: INT;
+begin
+    for i := 0 to 15 do
+        if CondNames[i] = w then return i; end;
+    end;
+    for i := 0 to 11 do
+        if Alias[i] = w then return AliasCc[i]; end;
+    end;
+    return -1;
+end;
+
+proc operand(o: ^Operand; constExpr: ConstFn): ERROR;
+var w: []U8; r, size, sz: INT; st: Scan.State; v: I64; isR, wasMinus: BOOL;
+begin
+    o^ := {};
+    w := asmWord();
+    sz := 0;
+    if w = "byte" then sz := 1;
+    elsif w = "word" then sz := 2;
+    elsif w = "dword" then sz := 4;
+    elsif w = "qword" then sz := 8;
+    end;
+    if sz # 0 then Scan.next; w := asmWord(); end;
+    if Scan.tok = Scan.sLbrak then
+        (* [base + index * scale + disp], the displacement last *)
+        Scan.next;
+        o^.kind := oMem; o^.size := sz;
+        o^.m := mem(NoBase, 0);
+        repeat
+            if isReg(asmWord(), ADR(r), ADR(size)) and (size = 8) then
+                Scan.next;
+                (* the scale is a single number or constant: a whole expression
+                   would take in the displacement after it, as 4 + 16 in
+                   [rdi + rsi * 4 + 16] *)
+                if Scan.tok = Scan.sTimes then
+                    Scan.next;
+                    o^.m.index := r;
+                    v := try constExpr(false);
+                    o^.m.scale := INT(v);
+                elsif o^.m.base = NoBase then
+                    o^.m.base := r;
+                else
+                    o^.m.index := r; o^.m.scale := 1;
+                end;
+            else
+                v := try constExpr(true);
+                o^.m.disp := o^.m.disp + INT(v);
+            end;
+            if (Scan.tok # Scan.sPlus) and (Scan.tok # Scan.sMinus) then break; end;
+            wasMinus := Scan.tok = Scan.sMinus;
+            Scan.saveScan(st);
+            Scan.next;
+            isR := isReg(asmWord(), ADR(r), ADR(size));
+            if not isR and wasMinus then Scan.restoreScan(st); end;
+        until false;
+        if (Scan.tok # Scan.sRbrak) or (o^.m.base = NoBase)
+                or not ((o^.m.scale = 1) or (o^.m.scale = 2) or (o^.m.scale = 4) or (o^.m.scale = 8)) then
+            return Scan.mark("expected a memory operand, [base + index * scale + disp]");
+        end;
+        Scan.next;
+    elsif isReg(w, ADR(o^.r), ADR(o^.size)) then
+        if o^.size = 16 then o^.kind := oXmm; else o^.kind := oReg; end;
+        Scan.next;
+    else
+        o^.kind := oImm;
+        o^.v := try constExpr(true);
+    end;
+    return nil;
+end;
+
+(* op with register reg and the register or memory operand o *)
+proc rm(pfx: INT; w: BOOL; op, reg: INT; o: Operand; byteReg: BOOL);
+begin
+    if o.kind = oMem then opM(pfx, w, op, reg, o.m, byteReg); else opR(pfx, w, op, reg, o.r, byteReg); end;
+end;
+
+proc putImmV(v: I64; size: INT);
+begin
+    if size = 1 then
+        Chunk.put1(INT(v & 0FFH));
+    elsif size = 2 then
+        Chunk.put1(INT(v & 0FFH)); Chunk.put1(INT((v shr 8) & 0FFH));
+    else
+        Chunk.put4(INT(v & 0FFFFFFFFH));
+    end;
+end;
+
+const
+    Alus = " add or adc sbb and sub xor cmp ";
+    Unaries = " not neg mul imul div idiv ";
+    Shifts = " rol ror rcl rcr shl shr sal sar ";
+    SseOps = " sqrt add mul sub min div max ";
+    SseCodes: [7]INT = [51H, 58H, 59H, 5CH, 5DH, 5EH, 5FH];
+    (* SSE2 integer instructions that work on 16 bytes at a time: 66 0F code,
+       xmm and xmm or memory (pshufd also takes a byte) *)
+    PackedOps = " punpcklbw punpcklwd pcmpeqb pshufd pand pandn por pxor paddb psubb ";
+    PackedCodes: [10]INT = [60H, 61H, 74H, 70H, 0DBH, 0DFH, 0EBH, 0EFH, 0FCH, 0F8H];
+    (* bit scans and counts: reg, reg or memory, with the prefix and code that tell them *)
+    BitOps = " bsf bsr tzcnt lzcnt popcnt ";
+    BitPfx: [5]INT = [0, 0, 0F3H, 0F3H, 0F3H];
+    BitCodes: [5]INT = [0BC0FH, 0BD0FH, 0BC0FH, 0BD0FH, 0B80FH];
+    Plain: [15][]U8 = ["ret", "leave", "syscall", "cpuid", "rdtsc",
+        "pause", "nop", "ud2", "int3", "hlt", "cqo", "cdq", "mfence", "lfence", "sfence"];
+    PlainOp: [15]INT = [0C3H, 0C9H, 050FH, 0A20FH, 310FH,
+        90F3H, 90H, 0B0FH, 0CCH, 0F4H, 9948H, 99H, 0F0AE0FH, 0E8AE0FH, 0F8AE0FH];
+
+var
+    (* the instruction being assembled *)
+    aw: []U8;                    (* its word *)
+    ao: [3]Operand;              (* its operands *)
+    an: INT;                     (* how many *)
+    asize, apfx: INT;
+    awide, abyte: BOOL;
+    aat: Diag.Pos;               (* where it starts *)
+    (* the labels of the procedure *)
+    lnames, lplaces, lchains: [64]INT;
+    lusedAt: [64]Diag.Pos;
+    numLabels: INT;
+
+(* The label called n, entered if new *)
+proc lab(n: INT): (INT, ERROR);
+var i: INT;
+begin
+    for i := 0 to numLabels - 1 do
+        if lnames[i] = n then return i, nil; end;
+    end;
+    if numLabels > 63 then return 0, Scan.mark("more than 64 labels"); end;
+    lnames[numLabels] := n; lplaces[numLabels] := -1; lchains[numLabels] := NoLabel;
+    lusedAt[numLabels] := Scan.tokPos();
+    numLabels := numLabels + 1;
+    return numLabels - 1, nil;
+end;
+
+proc bad: ERROR;
+begin
+    return Scan.markAt(aat, Diag.say("can't assemble {} with these operands", [Fmt.str(aw)]));
+end;
+
+(* an instruction of two operands: a register or memory, and a
+   register (opcode toRM), the other way (fromRM), or an immediate
+   (opImm /digit, or none if opImm < 0) *)
+proc two(toRM, fromRM, opImm, digit: INT): ERROR;
+var b: INT;
+begin
+    b := 0;
+    if abyte then b := 1; end;
+    if an # 2 then return bad(); end;
+    if ao[1].kind = oImm then
+        if (ao[0].kind = oImm) or (opImm < 0) then return bad(); end;
+        if (opImm = 81H) and not abyte and (ao[1].v >= -128) and (ao[1].v <= 127) then
+            rm(apfx, awide, 83H, digit, ao[0], false);   (* a byte, sign-extended *)
+            Chunk.put1(INT(ao[1].v & 0FFH));
+        else
+            rm(apfx, awide, opImm - b, digit, ao[0], false);
+            putImmV(ao[1].v, asize);
+        end;
+    elsif (ao[1].kind = oReg) and ((ao[0].kind = oReg) or (ao[0].kind = oMem)) then
+        rm(apfx, awide, toRM - b, ao[1].r, ao[0], abyte);
+    elsif (ao[0].kind = oReg) and (ao[1].kind = oMem) then
+        rm(apfx, awide, fromRM - b, ao[0].r, ao[1], abyte);
+    else
+        return bad();
+    end;
+    return nil;
+end;
+
+(* whether operand i is an xmm register or a memory operand *)
+proc isXM(i: INT): BOOL;
+begin
+    return (ao[i].kind = oXmm) or (ao[i].kind = oMem);
+end;
+
+(* whether operand i is a general register or a memory operand, for an
+   xmm register's partner *)
+proc isRMem(i: INT): BOOL;
+begin
+    return (ao[i].kind = oReg) or (ao[i].kind = oMem);
+end;
+
+(* b as 1 for true *)
+proc bit(f: BOOL): INT;
+begin
+    if f then return 1; end;
+    return 0;
+end;
+
+(* The instruction w with its operands, in ao and an, apart from the
+   jumps to labels and db, which assemble does *)
+proc instruction(): ERROR;
+var k: INT;
+begin
+    if wordIndex(aw, Alus) >= 0 then
+        k := wordIndex(aw, Alus);
+        return two(k * 8 + 1, k * 8 + 3, 81H, k);
+    elsif aw = "mov" then
+        if (an = 2) and (ao[0].kind = oReg) and (ao[1].kind = oImm) and (asize >= 4) then
+            if awide then
+                movRI(ao[0].r, ao[1].v);
+            else
+                prefix(0, false, 0, NoIndex, ao[0].r, false); Chunk.put1(0B8H + (ao[0].r & 7)); Chunk.put4(INT(ao[1].v & 0FFFFFFFFH));
+            end;
+            return nil;
+        end;
+        return two(89H, 8BH, 0C7H, 0);
+    elsif aw = "test" then
+        return two(85H, 85H, 0F7H, 0);
+    elsif aw = "xchg" then
+        return two(87H, 87H, -1, 0);
+    elsif (aw = "cmpxchg") or (aw = "xadd") then
+        if (an # 2) or (ao[1].kind # oReg) then return bad(); end;
+        if aw = "xadd" then k := 0C10FH; else k := 0B10FH; end;
+        rm(apfx, awide, k - (bit(abyte) shl 8), ao[1].r, ao[0], abyte);
+    elsif aw = "lea" then
+        if (an # 2) or (ao[0].kind # oReg) or (ao[1].kind # oMem) then return bad(); end;
+        rm(apfx, awide, 8DH, ao[0].r, ao[1], false);
+    elsif (aw = "movzx") or (aw = "movsx") or (aw = "movsxd") then
+        if (an # 2) or (ao[0].kind # oReg) or (ao[1].kind = oImm) then return bad(); end;
+        if aw = "movsxd" then
+            k := 63H;
+        elsif ao[1].size = 1 then
+            k := 0B60FH;
+        elsif ao[1].size = 2 then
+            k := 0B70FH;
+        else
+            return bad();
+        end;
+        if aw = "movsx" then k := k + 0800H; end;
+        rm(apfx, awide, k, ao[0].r, ao[1], ao[1].size = 1);
+    elsif ((wordIndex(aw, Unaries) >= 0) and (an = 1)) or (aw = "inc") or (aw = "dec") then
+        if ao[0].kind = oImm then return bad(); end;
+        if aw = "inc" then
+            rm(apfx, awide, 0FFH - bit(abyte), 0, ao[0], abyte);
+        elsif aw = "dec" then
+            rm(apfx, awide, 0FFH - bit(abyte), 1, ao[0], abyte);
+        else
+            rm(apfx, awide, 0F7H - bit(abyte), wordIndex(aw, Unaries) + 2, ao[0], abyte);
+        end;
+    elsif aw = "imul" then
+        if (an < 2) or (ao[0].kind # oReg) or (ao[1].kind = oImm) then return bad(); end;
+        if an = 2 then
+            rm(apfx, awide, 0AF0FH, ao[0].r, ao[1], false);
+        else
+            rm(apfx, awide, 69H, ao[0].r, ao[1], false);
+            putImmV(ao[2].v, asize);
+        end;
+    elsif wordIndex(aw, Shifts) >= 0 then
+        k := wordIndex(aw, Shifts);
+        if k = 6 then k := 4; end;   (* sal is shl *)
+        if (an # 2) or (ao[0].kind = oImm) then return bad(); end;
+        if ao[1].kind = oImm then
+            rm(apfx, awide, 0C1H - bit(abyte), k, ao[0], abyte);
+            Chunk.put1(INT(ao[1].v & 0FFH));
+        elsif (ao[1].kind = oReg) and (ao[1].r = RCX) and (ao[1].size = 1) then
+            rm(apfx, awide, 0D3H - bit(abyte), k, ao[0], abyte);
+        else
+            return bad();
+        end;
+    elsif (aw = "push") or (aw = "pop") then
+        if (an # 1) or (ao[0].kind # oReg) or not awide then return bad(); end;
+        if aw = "push" then push(ao[0].r); else pop(ao[0].r); end;
+    elsif (aw = "call") or (aw = "jmp") then
+        if (an # 1) or (ao[0].kind = oImm) then return bad(); end;
+        if aw = "call" then rm(0, false, 0FFH, 2, ao[0], false); else rm(0, false, 0FFH, 4, ao[0], false); end;
+    elsif Str.hasPrefix(aw, "set") and (cond(part(aw, 3, 3)) >= 0) then
+        if (an # 1) or (ao[0].kind = oImm) or (asize # 1) then return bad(); end;
+        rm(0, false, 900FH + (cond(part(aw, 3, 3)) shl 8), 0, ao[0], true);
+    elsif Str.hasPrefix(aw, "cmov") and (cond(part(aw, 4, 3)) >= 0) then
+        if (an # 2) or (ao[0].kind # oReg) or (ao[1].kind = oImm) then return bad(); end;
+        rm(apfx, awide, 400FH + (cond(part(aw, 4, 3)) shl 8), ao[0].r, ao[1], false);
+    elsif (LEN(aw) > 2) and (wordIndex(aw[0..LEN(aw) - 2], SseOps) >= 0)
+            and ((aw[LEN(aw) - 2..LEN(aw)] = "sd") or (aw[LEN(aw) - 2..LEN(aw)] = "ss")) then
+        (* sqrtsd, addss and the like: xmm, xmm or memory *)
+        if (an # 2) or (ao[0].kind # oXmm) or not isXM(1) then return bad(); end;
+        k := 0FH | (SseCodes[wordIndex(aw[0..LEN(aw) - 2], SseOps)] shl 8);
+        rm(realPfx(aw[LEN(aw) - 1] = 's'), false, k, ao[0].r, ao[1], false);
+    elsif wordIndex(aw, PackedOps) >= 0 then
+        if (an < 2) or (ao[0].kind # oXmm) or not isXM(1) then return bad(); end;
+        k := wordIndex(aw, PackedOps);
+        rm(66H, false, 0FH | (PackedCodes[k] shl 8), ao[0].r, ao[1], false);
+        if aw = "pshufd" then
+            if (an # 3) or (ao[2].kind # oImm) then return bad(); end;
+            Chunk.put1(INT(ao[2].v & 0FFH));
+        elsif an # 2 then
+            return bad();
+        end;
+    elsif (aw = "movdqu") or (aw = "movdqa") then
+        (* the load is 6F and the store 7F; movdqu is F3, movdqa 66 *)
+        if aw = "movdqu" then k := 0F3H; else k := 66H; end;
+        if (an = 2) and (ao[0].kind = oXmm) and isXM(1) then
+            rm(k, false, 6F0FH, ao[0].r, ao[1], false);
+        elsif (an = 2) and (ao[0].kind = oMem) and (ao[1].kind = oXmm) then
+            rm(k, false, 7F0FH, ao[1].r, ao[0], false);
+        else
+            return bad();
+        end;
+    elsif aw = "pmovmskb" then
+        if (an # 2) or (ao[0].kind # oReg) or (ao[1].kind # oXmm) then return bad(); end;
+        rm(66H, false, 0D70FH, ao[0].r, ao[1], false);
+    elsif wordIndex(aw, BitOps) >= 0 then
+        if (an # 2) or (ao[0].kind # oReg) or (ao[1].kind = oImm) or (asize < 4) then return bad(); end;
+        k := wordIndex(aw, BitOps);
+        rm(BitPfx[k], awide, BitCodes[k], ao[0].r, ao[1], false);
+    elsif (aw = "movsd") or (aw = "movss") then
+        if aw = "movsd" then k := 0F2H; else k := 0F3H; end;
+        if (an = 2) and (ao[0].kind = oXmm) and isXM(1) then
+            rm(k, false, 100FH, ao[0].r, ao[1], false);
+        elsif (an = 2) and (ao[0].kind = oMem) and (ao[1].kind = oXmm) then
+            rm(k, false, 110FH, ao[1].r, ao[0], false);
+        else
+            return bad();
+        end;
+    elsif (aw = "movq") or (aw = "movd") then
+        if (an = 2) and (ao[0].kind = oXmm) and isRMem(1) then
+            rm(66H, aw = "movq", 6E0FH, ao[0].r, ao[1], false);
+        elsif (an = 2) and (ao[1].kind = oXmm) and isRMem(0) then
+            rm(66H, aw = "movq", 7E0FH, ao[1].r, ao[0], false);
+        else
+            return bad();
+        end;
+    elsif (aw = "ucomisd") or (aw = "ucomiss") then
+        if (an # 2) or (ao[0].kind # oXmm) or not isXM(1) then return bad(); end;
+        if aw = "ucomisd" then
+            rm(66H, false, 2E0FH, ao[0].r, ao[1], false);
+        else
+            rm(0, false, 2E0FH, ao[0].r, ao[1], false);
+        end;
+    elsif (aw = "cvtsi2sd") or (aw = "cvtsi2ss") then
+        if (an # 2) or (ao[0].kind # oXmm) or not isRMem(1) then return bad(); end;
+        rm(realPfx(aw = "cvtsi2ss"), ao[1].size # 4, 2A0FH, ao[0].r, ao[1], false);
+    elsif (aw = "cvttsd2si") or (aw = "cvttss2si") then
+        if (an # 2) or (ao[0].kind # oReg) or not isXM(1) then return bad(); end;
+        rm(realPfx(aw = "cvttss2si"), awide, 2C0FH, ao[0].r, ao[1], false);
+    elsif (aw = "cvtsd2ss") or (aw = "cvtss2sd") then
+        if (an # 2) or (ao[0].kind # oXmm) or not isXM(1) then return bad(); end;
+        rm(realPfx(aw = "cvtss2sd"), false, 5A0FH, ao[0].r, ao[1], false);
+    else
+        k := 0;
+        while (k <= 14) and (Plain[k] # aw) do INC(k); end;
+        if (k > 14) or (an # 0) then
+            return Scan.markAt(aat, Diag.say("unknown instruction {}", [Fmt.str(aw)]));
+        end;
+        opcode(PlainOp[k]);
+    end;
+    return nil;
+end;
+
+(* One instruction or label, as assemble reads it *)
+proc statement(constExpr: ConstFn): ERROR;
+var
+    i, k, cc, first: INT; wasListing: BOOL; start: Diag.Pos; v: I64;
+begin
+    aat := Scan.tokPos();
+    aw := asmWord();
+    if LEN(aw) = 0 then return Scan.mark("expected an instruction"); end;
+    Scan.next;
+    if Scan.tok = Scan.sColon then
+        sayAt(Chunk.pc, Diag.say("{}:", [Fmt.str(aw)]));
+        k := try lab(Scan.intern(ADR(aw[0]), LEN(aw)));
+        if lplaces[k] >= 0 then
+            return Scan.markAt(aat, Diag.say("label {} is defined twice", [Fmt.str(aw)]));
+        end;
+        lplaces[k] := Chunk.pc;
+        fixLink(lchains[k]);
+        Scan.next;
+        return nil;
+    end;
+    first := Chunk.pc;
+    wasListing := listing;
+    listing := false;   (* the instruction is said as it is written *)
+    if aw = "lock" then
+        Chunk.put1(0F0H);
+        aw := asmWord();
+        Scan.next;
+    end;
+    cc := -1;
+    if aw = "db" then
+        repeat
+            start := Scan.tokPos();
+            v := try constExpr(true);
+            if (v < -128) or (v > 255) then
+                return Scan.markAt(Scan.spanFrom(start), Diag.say("expected a byte from 0 to 255, found {}", [Fmt.int(v)]));
+            end;
+            Chunk.put1(INT(v & 0FFH));
+            if Scan.tok # Scan.sComma then break; end;
+            Scan.next;
+        until false;
+    elsif (aw[0] = 'j') and ((aw = "jmp") or (cond(part(aw, 1, 3)) >= 0)) and (Scan.tok = Scan.sIdent) then
+        (* a jump to a label *)
+        k := try lab(Scan.id);
+        Scan.next;
+        if aw # "jmp" then cc := cond(part(aw, 1, 3)); end;
+        if lplaces[k] >= 0 then
+            if cc < 0 then jmpBack(lplaces[k]); else jccBack(cc, lplaces[k]); end;
+        elsif cc < 0 then
+            jmp(lchains[k]);
+        else
+            jcc(cc, lchains[k]);
+        end;
+    else
+        an := 0;
+        if Scan.tok # Scan.sSemicolon then
+            repeat
+                if an > 2 then return Scan.mark("too many operands"); end;
+                try operand(ADR(ao[an]), constExpr);
+                INC(an);
+                if Scan.tok # Scan.sComma then break; end;
+                Scan.next;
+            until false;
+        end;
+        (* the size: a register's, or what the memory operand says *)
+        asize := 8;
+        for i := an - 1 to 0 by -1 do
+            if (ao[i].kind = oReg) or ((ao[i].kind = oMem) and (ao[i].size # 0)) then asize := ao[i].size; end;
+        end;
+        if an > 0 then
+            if (ao[0].kind = oReg) or ((ao[0].kind = oMem) and (ao[0].size # 0)) then asize := ao[0].size; end;
+        end;
+        awide := asize = 8;
+        abyte := asize = 1;
+        if asize = 2 then apfx := 66H; else apfx := 0; end;
+        try instruction();
+    end;
+    if Scan.tok # Scan.sSemicolon then return Scan.mark("expected \";\""); end;
+    listing := wasListing;
+    sayAt(first, Diag.source(Scan.spanFrom(aat)));
+    Scan.next;
+    return nil;
+end;
+
+proc assemble*(constExpr: ConstFn): ERROR;
+var k: INT;
+begin
+    numLabels := 0;
+    while (Scan.tok # Scan.sEnd) and (Scan.tok # Scan.sEof) do
+        if Scan.tok = Scan.sSemicolon then
+            Scan.next;
+        else
+            try statement(constExpr);
+        end;
+    end;
+    for k := 0 to numLabels - 1 do
+        if lplaces[k] < 0 then
+            return Scan.markAt(lusedAt[k], Diag.say("label {} isn't defined", [Fmt.str(Scan.nameOf(lnames[k]))]));
+        end;
+    end;
+    return nil;
+end;
+
+(* Whether s holds a space *)
+proc hasSpace(s: []U8): BOOL;
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do
+        if s[i] = ' ' then return true; end;
+    end;
+    return false;
+end;
+
+(* n, in decimal, at least w wide, as write(n: w) *)
+proc padded(n, w: INT);
+var s: []U8; i: INT;
+begin
+    s := Diag.say("{}", [Fmt.int(n)]);
+    for i := LEN(s) to w - 1 do Out.str(" "); end;
+    Out.str(s);
+end;
+
+(* The listing, raz -S: each live procedure of the module in the order
+   it was made, each line of source it comes from, and under it the
+   instructions made for it, at their offsets in the procedure; a jump
+   within it says where to by its offset too. *)
+proc list*(home: INT);
+var order: ^INT; n, i, j, k, c, t, line: INT; text: []U8;
+begin
+    order := ^INT(Scan.grab(Chunk.numChunks * SIZE(INT)));
+    n := 0;
+    for c := 0 to Chunk.numChunks - 1 do
+        if Chunk.chunks[c].live and (Chunk.chunks[c].sec = Chunk.secText) and (Chunk.chunks[c].home = home) then
+            i := n;
+            while (i > 0) and (Chunk.chunks[order[i - 1]].start > Chunk.chunks[c].start) do
+                order[i] := order[i - 1];
+                DEC(i);
+            end;
+            order[i] := c;
+            INC(n);
+        end;
+    end;
+    i := 0; j := 0;
+    for k := 0 to n - 1 do
+        c := order[k];
+        Out.ln;
+        Out.str(Chunk.chunkName(c)); Out.str(":\n");
+        line := -1;
+        while (i < numSaid) and (said[i].at < Chunk.chunks[c].start) do INC(i); end;
+        while (i < numSaid) and (said[i].at < Chunk.chunks[c].start + Chunk.chunks[c].size) do
+            while (j < Chunk.numLines) and (Chunk.lines[j].at <= said[i].at) do
+                if (Chunk.lines[j].chunk = c) and (Chunk.lines[j].line # line) then
+                    line := Chunk.lines[j].line;
+                    padded(line, 6);
+                    Out.str("  ");
+                    Out.str(Diag.lineText(Scan.nameOf(Chunk.lines[j].path), line));
+                    Out.ln;
+                end;
+                INC(j);
+            end;
+            text := said[i].text;
+            t := said[i].at;
+            if (text = "jmp") or (text = "call") then
+                text := Diag.say("{} {}", [Fmt.str(text), Fmt.int(t + 5 + Chunk.get4At(t + 1) - Chunk.chunks[c].start)]);
+            elsif (text[0] = 'j') and not hasSpace(text) then
+                text := Diag.say("{} {}", [Fmt.str(text), Fmt.int(t + 6 + Chunk.get4At(t + 2) - Chunk.chunks[c].start)]);
+            end;
+            padded(t - Chunk.chunks[c].start, 14);
+            Out.str("  ");
+            Out.str(text);
+            Out.ln;
+            INC(i);
+        end;
+    end;
+end;
+
+begin
+    listing := false;
+    numSaid := 0;
+    saidCap := 0;
+    said := nil;
+end X64.

@@ -17,7 +17,7 @@
    Exported variables can't be set from outside, so the setters at the
    end do what the seed's other units do to these. *)
 module Chunk;
-import Mem, Heap, Fmt, Diag, Scan;
+import Fmt, Diag, Scan;
 
 type
     Section* = (secText, secRodata, secBss);
@@ -27,7 +27,7 @@ type
         start*, size*, align*: INT;   (* in its section's buffer *)
         firstFix*, numFix*: INT;      (* its fixups: text's in fixups, rodata's in dataFixups *)
         home*, name*: INT;            (* its module and its name, for the symbol table; -1 if none *)
-        adr*: I64;                    (* its address, set by the linker *)
+        adr*: INT;                    (* its address, set by the linker *)
         live*: BOOL;                  (* reached from the entry point *)
         ext*: BOOL;                   (* bss: the address of a C symbol, its name *)
         reals*: BOOL;                 (* code: computes with reals, first at realsAt *)
@@ -81,21 +81,11 @@ var
 
     codeCap, roCap, chunkCap, fixCap, dataFixCap, lineCap, noteCap: INT;
 
-(* p, which holds used bytes, moved to a block of size bytes *)
-proc grown(p: ^U8; used, size: INT): ^U8;
-var q: ^U8;
-begin
-    q := Scan.grab(size);
-    COPY(q[0..used], p[0..used]);
-    Mem.free(Heap.heap, p);
-    return q;
-end;
-
 (* Room for n more bytes of code *)
 proc room(n: INT);
 begin
     if pc + n > codeCap then
-        text := grown(text, pc, codeCap * 2 + n);
+        text := Scan.regrab(text, pc, codeCap * 2 + n);
         codeCap := codeCap * 2 + n;
     end;
 end;
@@ -157,7 +147,7 @@ proc newChunk*(sec: Section; home, name: INT): INT;
 var c: ^Chunk;
 begin
     if numChunks = chunkCap then
-        chunks := ^Chunk(grown(^U8(chunks), numChunks * SIZE(Chunk), chunkCap * 2 * SIZE(Chunk)));
+        chunks := ^Chunk(Scan.regrab(^U8(chunks), numChunks * SIZE(Chunk), chunkCap * 2 * SIZE(Chunk)));
         chunkCap := chunkCap * 2;
     end;
     c := ADR(chunks[numChunks]);
@@ -194,7 +184,7 @@ end;
 proc setData*(c: INT; p: ^U8; n, align: INT);
 begin
     if rolen + n > roCap then
-        rodata := grown(rodata, rolen, roCap * 2 + n);
+        rodata := Scan.regrab(rodata, rolen, roCap * 2 + n);
         roCap := roCap * 2 + n;
     end;
     COPY(rodata[rolen..rolen + n], p[0..n]);
@@ -222,7 +212,7 @@ begin
         return;
     end;
     if numLines = lineCap then
-        lines := ^Line(grown(^U8(lines), numLines * SIZE(Line), lineCap * 2 * SIZE(Line)));
+        lines := ^Line(Scan.regrab(^U8(lines), numLines * SIZE(Line), lineCap * 2 * SIZE(Line)));
         lineCap := lineCap * 2;
     end;
     lines[numLines].at := pc;
@@ -250,7 +240,7 @@ end;
 proc addFixup*(at, chunk, addend: INT);
 begin
     if numFixups = fixCap then
-        fixups := ^Fixup(grown(^U8(fixups), numFixups * SIZE(Fixup), fixCap * 2 * SIZE(Fixup)));
+        fixups := ^Fixup(Scan.regrab(^U8(fixups), numFixups * SIZE(Fixup), fixCap * 2 * SIZE(Fixup)));
         fixCap := fixCap * 2;
     end;
     fixups[numFixups].at := at;
@@ -264,7 +254,7 @@ end;
 proc addDataFixup*(c, at, chunk, addend: INT);
 begin
     if numDataFixups = dataFixCap then
-        dataFixups := ^Fixup(grown(^U8(dataFixups), numDataFixups * SIZE(Fixup), dataFixCap * 2 * SIZE(Fixup)));
+        dataFixups := ^Fixup(Scan.regrab(^U8(dataFixups), numDataFixups * SIZE(Fixup), dataFixCap * 2 * SIZE(Fixup)));
         dataFixCap := dataFixCap * 2;
     end;
     dataFixups[numDataFixups].at := at;
@@ -277,7 +267,7 @@ end;
 proc noteVar*(chunk, name, off, kind: INT);
 begin
     if numVarNotes = noteCap then
-        varNotes := ^VarNote(grown(^U8(varNotes), numVarNotes * SIZE(VarNote), noteCap * 2 * SIZE(VarNote)));
+        varNotes := ^VarNote(Scan.regrab(^U8(varNotes), numVarNotes * SIZE(VarNote), noteCap * 2 * SIZE(VarNote)));
         noteCap := noteCap * 2;
     end;
     varNotes[numVarNotes].chunk := chunk;
@@ -321,7 +311,7 @@ begin
     chunks[c].live := true;
 end;
 
-proc setAdr*(c: INT; a: I64);
+proc setAdr*(c: INT; a: INT);
 begin
     chunks[c].adr := a;
 end;

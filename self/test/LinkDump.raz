@@ -1,0 +1,103 @@
+(* Makes a program of chunks by a fixed pseudo-random script, links it
+   and writes it as an executable to the file of the second argument,
+   in the way the first says (0 static, 1 dynamic, 2 stripped):
+   self/Link.raz's and self/Elf.raz's side of a test against the seed's,
+   LinkDump.pas, which writes the same file. *)
+module LinkDump;
+import Files, Diag, Scan, Chunk, Link, Elf;
+
+const NumC = 200;
+
+var seed: I64;
+
+proc rnd(n: INT): INT;
+begin
+    seed := (seed * 1103515245 + 12345) & 7FFFFFFFH;
+    return INT((seed shr 8) mod I64(n));
+end;
+
+(* a library that must be taken *)
+proc ok(taken: BOOL);
+begin
+    if not taken then Diag.fatal("too many libraries"); end;
+end;
+
+proc main*;
+var
+    names: [8]INT; b: [64]U8; arg: []U8;
+    i, j, kind, n, x, y, z, c, e, line, col, mode: INT;
+begin
+    seed := 5;
+    arg := Files.arg(1);
+    mode := INT(arg[0]) - 48;
+    for i := 0 to 7 do b[0] := U8(97 + i); names[i] := Scan.intern(ADR(b[0]), 1); end;
+    Link.setPlaces(Chunk.newChunk(Chunk.secRodata, -1, -1));
+    Chunk.setData(Link.placesChunk, ADR(b[0]), 0, 8);
+    for i := 0 to NumC - 1 do
+        if i = 0 then kind := 0; else kind := rnd(10); end;
+        x := rnd(4); y := rnd(8);
+        match kind of
+        | 0..5:
+            c := Chunk.newChunk(Chunk.secText, x - 1, y);
+            Chunk.beginChunk(c);
+            z := rnd(3); Chunk.setCurFile(names[z]);
+            line := rnd(300); col := rnd(60);
+            Chunk.noteLine(line, col);
+            if i = 0 then Chunk.addFixup(Chunk.pc, Link.placesChunk, 0); Chunk.put4(0); end;
+            n := 2 + rnd(10);
+            for j := 1 to n do
+                z := rnd(5);
+                if z <= 1 then
+                    e := rnd(NumC); y := rnd(8);
+                    Chunk.addFixup(Chunk.pc, e, y);
+                    Chunk.put4(0);
+                elsif z = 2 then
+                    z := rnd(3); Chunk.setCurFile(names[z]);
+                    line := rnd(300); col := rnd(60);
+                    Chunk.noteLine(line, col);
+                else
+                    x := rnd(1 shl 30); Chunk.put4(x); x := rnd(256); Chunk.put1(x);
+                end;
+            end;
+            Chunk.endChunk(c);
+            n := rnd(3);
+            for j := 1 to n do
+                x := rnd(8); y := rnd(200); z := rnd(6);
+                Chunk.noteVar(c, names[x], y - 100, z);
+            end;
+        | 6, 7:
+            c := Chunk.newChunk(Chunk.secRodata, x - 1, y);
+            n := 8 * (1 + rnd(4));
+            for j := 0 to n - 1 do b[j] := U8(rnd(256)); end;
+            Chunk.setData(c, ADR(b[0]), n, 8);
+            for j := 0 to n div 8 - 1 do
+                z := rnd(2);
+                if z = 0 then e := rnd(NumC); y := rnd(8); Chunk.addDataFixup(c, j * 8, e, y); end;
+            end;
+        | 8:
+            c := Chunk.newChunk(Chunk.secBss, x - 1, y);
+            z := rnd(200); e := rnd(4);
+            Chunk.setBss(c, 1 + z, 1 shl e);
+        | else: z := rnd(8); c := Chunk.externChunk(names[z]);
+        end;
+    end;
+    (* every chunk a fixup names must exist, and be defined if it is reached *)
+    while Chunk.numChunks < NumC do
+        c := Chunk.newChunk(Chunk.secBss, -1, -1);
+        Chunk.setBss(c, 8, 8);
+    end;
+    for i := 0 to Chunk.numChunks - 1 do
+        if Chunk.chunks[i].size < 0 then Chunk.setBss(i, 8, 8); end;
+    end;
+    Elf.setMainPath("some/main.raz");
+    if mode = 1 then
+        ok(Elf.needLib(names[0]));
+        ok(Elf.needLib(names[1]));
+    end;
+    Elf.setStripped(mode = 2);
+    if mode = 2 then Link.setPlaces(-1); end;
+    Link.markLive(1);
+    Elf.writeElf(Files.arg(2), 1);
+end;
+
+end LinkDump.

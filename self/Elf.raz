@@ -1,0 +1,431 @@
+(* Elf: the executable file.
+
+   Writes an ELF64 executable for x86-64 Linux: the ELF header, the
+   program headers, the linked text and rodata, and section headers
+   with a symbol table, so that objdump and gdb can name each procedure
+   and variable. For gdb's line numbers there is DWARF 4: a line table
+   (.debug_line), and the one compile unit that points to it
+   (.debug_info, .debug_abbrev). There are no types or variables.
+
+   A program that uses C is linked dynamically, in the least way the
+   loader accepts: it names its loader and libraries, and each C symbol
+   it uses is a quadword the loader fills in with the symbol's address
+   (a GLOB_DAT relocation), which the code calls or reads through.
+   There is no PLT and no lazy binding, and the program exports nothing.
+
+   Depends on: Link for the images and addresses, Chunk for the chunks,
+   Scan for names and memory, Diag for errors, Sys and Files to write
+   the file.
+   Leaves out: position independent executables, symbol versions, the
+   rest of DWARF.
+
+   Exported variables can't be set from outside, so needLib, setMainPath
+   and setStripped do it. *)
+module Elf;
+import Sys, Files, Fmt, Diag, Scan, Chunk, Link;
+
+var
+    needed: [32]INT;     (* the libraries to load, names interned *)
+    numNeeded*: INT;     (* none: a static program *)
+    mainPath: []U8;      (* the main module's file, for gdb *)
+    stripped*: BOOL;     (* -s: no symbols and no line numbers; the sections are there, empty *)
+
+    buf: ^U8;
+    len, cap: INT;
+
+(* The library name, to be loaded, unless it is already: false if there
+   are too many *)
+proc needLib*(name: INT): BOOL;
+var i: INT;
+begin
+    for i := 0 to numNeeded - 1 do
+        if needed[i] = name then return true; end;
+    end;
+    if numNeeded = 32 then return false; end;
+    needed[numNeeded] := name;
+    INC(numNeeded);
+    return true;
+end;
+
+(* A static program again *)
+proc noLibs*;
+begin
+    numNeeded := 0;
+end;
+
+proc setMainPath*(path: []U8);
+begin
+    mainPath := path;
+end;
+
+proc setStripped*(yes: BOOL);
+begin
+    stripped := yes;
+end;
+
+proc room(n: INT);
+begin
+    if len + n > cap then
+        buf := Scan.regrab(buf, len, cap * 2 + n);
+        cap := cap * 2 + n;
+    end;
+end;
+
+(* The n low bytes of v, least significant first *)
+proc putN(v: INT; n: INT);
+var i: INT;
+begin
+    room(n);
+    for i := 0 to n - 1 do
+        buf[len] := U8(v & 0FFH);
+        v := v shr 8;
+        INC(len);
+    end;
+end;
+
+proc putBytes(p: ^U8; n: INT);
+begin
+    room(n);
+    if n > 0 then COPY(buf[len..len + n], p[0..n]); end;
+    len := len + n;
+end;
+
+proc padTo(off: INT);
+begin
+    while len < off do putN(0, 1); end;
+end;
+
+proc patch(at: INT; v: INT; n: INT);
+var i: INT;
+begin
+    for i := 0 to n - 1 do
+        buf[at + i] := U8(v & 0FFH);
+        v := v shr 8;
+    end;
+end;
+
+proc phdr(typ, flags: INT; off, adr, filesz, memsz, align: INT);
+begin
+    putN(typ, 4);
+    putN(flags, 4);
+    putN(off, 8);
+    putN(adr, 8);
+    putN(adr, 8);
+    putN(filesz, 8);
+    putN(memsz, 8);
+    putN(align, 8);
+end;
+
+const
+    (* the section names, in .shstrtab; a section header names its own *)
+    ShNames = "\0.text\0.rodata\0.bss\0.symtab\0.strtab\0.shstrtab\0.dynamic\0.dynstr\0.dynsym\0.debug_line\0.debug_info\0.debug_abbrev\0";
+
+(* Where in ShNames the name is: the byte after a zero that starts it and
+   is followed by one; the empty name, found nowhere, is 0 *)
+proc nameAt(name: []U8): INT;
+var i, k: INT; same: BOOL;
+begin
+    for i := 1 to LEN(ShNames) - LEN(name) - 1 do
+        if ShNames[i - 1] = 0 then
+            same := ShNames[i + LEN(name)] = 0;
+            for k := 0 to LEN(name) - 1 do
+                if ShNames[i + k] # name[k] then same := false; end;
+            end;
+            if same and (LEN(name) > 0) then return i; end;
+        end;
+    end;
+    return 0;
+end;
+
+(* A section header. Its name is stored as its offset in ShNames. *)
+proc shdr(name: []U8; typ: INT; flags, adr, off, size: INT; lnk, info: INT; align, entsize: INT);
+begin
+    putN(nameAt(name), 4); putN(typ, 4); putN(flags, 8); putN(adr, 8);
+    putN(off, 8); putN(size, 8); putN(lnk, 4); putN(info, 4);
+    putN(align, 8); putN(entsize, 8);
+end;
+
+proc putStr(s: []U8);
+begin
+    putBytes(ADR(s[0]), LEN(s));
+    putN(0, 1);
+end;
+
+(* LEB128, unsigned *)
+proc putU(v: INT);
+begin
+    while v >= 80H do
+        putN(v & 7FH | 80H, 1);
+        v := v shr 7;
+    end;
+    putN(v, 1);
+end;
+
+(* The compile unit, which names the line table, and its abbreviation;
+   the table itself is in the places, in rodata (Link). Section
+   offsets go in off, sizes in size: line, info, abbrev. *)
+proc putDebug(off, size: []INT);
+var cwd: []U8; err: INT;
+begin
+    off[0] := Chunk.chunks[Link.placesChunk].adr - Link.roAdr + Link.roOff + Link.linesOff;
+    size[0] := Link.linesSize;
+    off[1] := len;
+    putN(0, 4); putN(4, 2); putN(0, 4); putN(8, 1);   (* length, version, abbrev, address size *)
+    putU(1);
+    putStr(mainPath);
+    cwd, err := Sys.workDir();
+    if err # 0 then cwd := ""; end;
+    putStr(cwd);
+    putStr("raz");
+    putN(0, 4);                                  (* the line table, at 0 *)
+    putN(Link.Base + Link.textOff, 8); putN(Link.textSize, 8);   (* the code, all of it *)
+    patch(off[1], len - off[1] - 4, 4);
+    size[1] := len - off[1];
+
+    off[2] := len;
+    putU(1); putU(11H); putN(0, 1);    (* 1: a compile unit, no children *)
+    putU(03H); putU(08H);              (* name, a string *)
+    putU(1BH); putU(08H);              (* comp_dir, a string *)
+    putU(25H); putU(08H);              (* producer, a string *)
+    putU(10H); putU(17H);              (* stmt_list, a section offset *)
+    putU(11H); putU(01H);              (* low_pc, an address *)
+    putU(12H); putU(07H);              (* high_pc, a length in 8 bytes *)
+    putN(0, 2); putN(0, 1);
+    size[2] := len - off[2];
+end;
+
+const
+    Interp = "/lib64/ld-linux-x86-64.so.2";
+    (* program header types *)
+    PtLoad = 1; PtDynamic = 2; PtInterp = 3; PtGnuStack = 6474E551H;
+
+var
+    (* in the room at the end of rodata: where each of the loader's
+       tables starts, from extraAdr *)
+    symAt, relaAt, hashAt, strAt: INT;
+    nsym, strLen: INT;
+
+(* Whether chunk c is a C symbol the program uses *)
+proc isExt(c: INT): BOOL;
+begin
+    return Chunk.chunks[c].live and Chunk.chunks[c].ext;
+end;
+
+(* The sizes of the loader's tables: what linkAll must leave room for. *)
+proc sizeTables(roExtra, dynSize: ^INT);
+var c, i: INT;
+begin
+    nsym := 1;
+    strLen := 1;
+    for i := 0 to numNeeded - 1 do strLen := strLen + LEN(Scan.nameOf(needed[i])) + 1; end;
+    for c := 0 to Chunk.numChunks - 1 do
+        if isExt(c) then
+            INC(nsym);
+            strLen := strLen + LEN(Scan.nameOf(Chunk.chunks[c].name)) + 1;
+        end;
+    end;
+    symAt := (LEN(Interp) + 1 + 7) div 8 * 8;
+    relaAt := symAt + nsym * 24;
+    hashAt := relaAt + (nsym - 1) * 24;
+    strAt := hashAt + 4 * (3 + nsym);
+    roExtra^ := strAt + strLen;
+    dynSize^ := (numNeeded + 10) * 16;
+end;
+
+(* The loader's tables in the room at the end of rodata, which the
+   buffer already holds as zeros: the loader's name; the symbols, one
+   for each C symbol used; a GLOB_DAT relocation for each, at its
+   quadword; a hash table of one bucket; and their names. *)
+proc putTables;
+var c, k, i, at, name: INT;
+begin
+    len := Link.extraAdr - Link.roAdr + Link.roOff;
+    putStr(Interp);
+    padTo(Link.extraAdr - Link.roAdr + Link.roOff + symAt);
+    putN(0, 24);
+    name := strLen;
+    for c := Chunk.numChunks - 1 to 0 by -1 do   (* names go last in the string table *)
+        if isExt(c) then name := name - LEN(Scan.nameOf(Chunk.chunks[c].name)) - 1; end;
+    end;
+    for c := 0 to Chunk.numChunks - 1 do
+        if isExt(c) then
+            putN(name, 4); putN(10H, 1); putN(0, 1); putN(0, 2);   (* global, undefined *)
+            putN(0, 8); putN(0, 8);
+            name := name + LEN(Scan.nameOf(Chunk.chunks[c].name)) + 1;
+        end;
+    end;
+    k := 1;
+    for c := 0 to Chunk.numChunks - 1 do
+        if isExt(c) then
+            putN(Chunk.chunks[c].adr, 8);
+            putN((k shl 32) | 6, 8);   (* R_X86_64_GLOB_DAT *)
+            putN(0, 8);
+            INC(k);
+        end;
+    end;
+    putN(1, 4); putN(nsym, 4); putN(nsym - 1, 4);   (* the bucket chains every symbol *)
+    putN(0, 4);
+    for i := 1 to nsym - 1 do putN(i - 1, 4); end;
+    putN(0, 1);
+    for i := 0 to numNeeded - 1 do putStr(Scan.nameOf(needed[i])); end;
+    for c := 0 to Chunk.numChunks - 1 do
+        if isExt(c) then putStr(Scan.nameOf(Chunk.chunks[c].name)); end;
+    end;
+    len := Link.roOff + Link.roSize;
+
+    (* the dynamic table, at the start of the writable segment *)
+    padTo(Link.bssOff);
+    at := 1;
+    for i := 0 to numNeeded - 1 do
+        putN(1, 8); putN(at, 8);   (* DT_NEEDED *)
+        at := at + LEN(Scan.nameOf(needed[i])) + 1;
+    end;
+    putN(4, 8); putN(Link.extraAdr + hashAt, 8);     (* DT_HASH *)
+    putN(5, 8); putN(Link.extraAdr + strAt, 8);      (* DT_STRTAB *)
+    putN(6, 8); putN(Link.extraAdr + symAt, 8);      (* DT_SYMTAB *)
+    putN(10, 8); putN(strLen, 8);                    (* DT_STRSZ *)
+    putN(11, 8); putN(24, 8);                        (* DT_SYMENT *)
+    putN(7, 8); putN(Link.extraAdr + relaAt, 8);     (* DT_RELA *)
+    putN(8, 8); putN((nsym - 1) * 24, 8);            (* DT_RELASZ *)
+    putN(9, 8); putN(24, 8);                         (* DT_RELAENT *)
+    putN(21, 8); putN(0, 8);                         (* DT_DEBUG, for gdb *)
+    putN(0, 16);                                     (* DT_NULL *)
+end;
+
+proc writeElf*(path: []U8; entry: INT);
+var
+    nph, nsh, c, nsyms, sec, strsCap: INT;
+    roExtra, dynSize, symOff, strOff, shstrOff, shOff, strsLen: INT;
+    dbgOff, dbgSize: [3]INT;
+    strs: ^U8;
+    s: []U8;
+    dyn: BOOL;
+begin
+    cap := 1 shl 16;
+    buf := Scan.grab(cap);
+    len := 0;
+    dyn := numNeeded > 0;
+    roExtra := 0; dynSize := 0;
+    if dyn then sizeTables(ADR(roExtra), ADR(dynSize)); end;
+    (* room for the most program headers either kind of program has *)
+    Link.linkAll(64 + 6 * 56, roExtra, dynSize);
+    if dyn then
+        nph := 6;
+    else
+        nph := 2;
+        if Link.roSize > 0 then INC(nph); end;
+        if Link.bssSize > 0 then INC(nph); end;
+    end;
+
+    (* ELF header *)
+    putN(464C457FH, 4);      (* #127 'ELF' *)
+    putN(2, 1); putN(1, 1); putN(1, 1); putN(0, 9);   (* 64-bit, little-endian, version 1 *)
+    putN(2, 2);              (* ET_EXEC *)
+    putN(62, 2);             (* EM_X86_64 *)
+    putN(1, 4);
+    putN(Chunk.chunks[entry].adr, 8);
+    putN(64, 8);             (* program headers follow *)
+    putN(0, 8);              (* section headers: patched below *)
+    putN(0, 4);
+    nsh := 10;
+    if dyn then nsh := 13; end;
+    putN(64, 2); putN(56, 2); putN(nph, 2);
+    putN(64, 2); putN(nsh, 2); putN(6, 2);   (* .shstrtab is section 6 *)
+
+    (* flags: 4 read, 5 read and run, 6 read and write *)
+    if dyn then
+        phdr(PtInterp, 4, Link.extraAdr - Link.roAdr + Link.roOff, Link.extraAdr, LEN(Interp) + 1, LEN(Interp) + 1, 1);
+    end;
+    (* the first segment maps the headers too, so text can follow them *)
+    phdr(PtLoad, 5, 0, Link.Base, Link.textOff + Link.textSize, Link.textOff + Link.textSize, Link.Page);
+    if Link.roSize > 0 then phdr(PtLoad, 4, Link.roOff, Link.roAdr, Link.roSize, Link.roSize, Link.Page); end;
+    if dyn then
+        phdr(PtLoad, 6, Link.bssOff, Link.bssAdr, dynSize, Link.bssSize, Link.Page);
+        phdr(PtDynamic, 6, Link.bssOff, Link.bssAdr, dynSize, dynSize, 8);
+    elsif Link.bssSize > 0 then
+        phdr(PtLoad, 6, 0, Link.bssAdr, 0, Link.bssSize, Link.Page);
+    end;
+    phdr(PtGnuStack, 6, 0, 0, 0, 0, 16);   (* a stack that can't run code *)
+
+    padTo(Link.textOff);
+    putBytes(Link.textImg, Link.textSize);
+    padTo(Link.roOff);   (* even when empty, so that every section lies in the file *)
+    putBytes(Link.roImg, Link.roSize);
+    if dyn then putTables; end;
+
+    (* the symbol table: one local symbol for each named live chunk *)
+    padTo((len + 7) div 8 * 8);
+    symOff := len;
+    strsCap := 1 shl 16;
+    strs := Scan.grab(strsCap);
+    strsLen := 1;
+    strs[0] := 0;
+    putN(0, 24);
+    nsyms := 1;
+    for c := 0 to Chunk.numChunks - 1 do
+        if not stripped and Chunk.chunks[c].live and (Chunk.chunks[c].name >= 0) and not Chunk.chunks[c].ext then
+            s := Chunk.chunkName(c);
+            if strsLen + LEN(s) + 1 > strsCap then
+                strs := Scan.regrab(strs, strsLen, strsLen * 2 + 256);
+                strsCap := strsLen * 2 + 256;
+            end;
+            COPY(strs[strsLen..strsLen + LEN(s)], s);
+            strs[strsLen + LEN(s)] := 0;
+            if Chunk.chunks[c].sec = Chunk.secText then   (* the section's index in the headers below *)
+                sec := 1;
+            elsif Chunk.chunks[c].sec = Chunk.secRodata then
+                sec := 2;
+            else
+                sec := 3;
+            end;
+            putN(strsLen, 4);
+            if sec = 1 then putN(2, 1); else putN(1, 1); end;   (* STT_FUNC, STT_OBJECT *)
+            putN(0, 1);
+            putN(sec, 2);
+            putN(Chunk.chunks[c].adr, 8);
+            putN(Chunk.chunks[c].size, 8);
+            strsLen := strsLen + LEN(s) + 1;
+            INC(nsyms);
+        end;
+    end;
+    strOff := len;
+    putBytes(strs, strsLen);
+    shstrOff := len;
+    putBytes(ADR(ShNames[0]), LEN(ShNames));
+    if stripped or (Link.placesChunk < 0) then
+        for c := 0 to 2 do dbgOff[c] := len; dbgSize[c] := 0; end;
+    else
+        putDebug(dbgOff, dbgSize);
+    end;
+
+    padTo((len + 7) div 8 * 8);
+    shOff := len;
+    patch(40, shOff, 8);
+    (* types: 1 PROGBITS, 2 SYMTAB, 3 STRTAB, 6 DYNAMIC, 8 NOBITS, 11 DYNSYM;
+       flags: 2 ALLOC, 3 WRITE+ALLOC, 6 ALLOC+EXECINSTR. A symbol table's
+       link is its string table's index: 5 .strtab, 8 .dynstr. The order
+       here is the index the code above relies on. *)
+    shdr("", 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    shdr(".text", 1, 6, Link.Base + Link.textOff, Link.textOff, Link.textSize, 0, 0, 16, 0);
+    shdr(".rodata", 1, 2, Link.roAdr, Link.roOff, Link.roSize, 0, 0, 16, 0);
+    shdr(".bss", 8, 3, Link.bssAdr + dynSize, Link.roOff + Link.roSize, Link.bssSize - dynSize, 0, 0, 16, 0);
+    shdr(".symtab", 2, 0, 0, symOff, nsyms * 24, 5, nsyms, 8, 24);
+    shdr(".strtab", 3, 0, 0, strOff, strsLen, 0, 0, 1, 0);
+    shdr(".shstrtab", 3, 0, 0, shstrOff, LEN(ShNames), 0, 0, 1, 0);
+    if dyn then   (* the loader's tables, for readelf and objdump *)
+        shdr(".dynamic", 6, 3, Link.bssAdr, Link.bssOff, dynSize, 8, 0, 8, 16);
+        shdr(".dynstr", 3, 2, Link.extraAdr + strAt, Link.extraAdr + strAt - Link.roAdr + Link.roOff, strLen, 0, 0, 1, 0);
+        shdr(".dynsym", 11, 2, Link.extraAdr + symAt, Link.extraAdr + symAt - Link.roAdr + Link.roOff, nsym * 24, 8, 1, 8, 24);
+    end;
+    shdr(".debug_line", 1, 0, 0, dbgOff[0], dbgSize[0], 0, 0, 1, 0);
+    shdr(".debug_info", 1, 0, 0, dbgOff[1], dbgSize[1], 0, 0, 1, 0);
+    shdr(".debug_abbrev", 1, 0, 0, dbgOff[2], dbgSize[2], 0, 0, 1, 0);
+
+    if not Files.write(path, buf[0..len]) or (Sys.chmod(path, 1EDH) < 0) then
+        Diag.fatal(Diag.say("can't write {}", [Fmt.str(path)]));
+    end;
+end;
+
+begin
+    mainPath := "";
+end Elf.

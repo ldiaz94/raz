@@ -1,0 +1,208 @@
+(* Writes every instruction the encoder makes, with operands drawn by a
+   fixed pseudo-random script, then prints the bytes, the fixups and the
+   listing (raz -S) of what it made: self/X64.raz's side of a test
+   against the seed's, X64Dump.pas, which prints the same. *)
+module X64Dump;
+import Out, Fmt, Diag, Scan, Chunk, X64;
+
+var seed: I64;
+
+proc rnd(n: INT): INT;
+begin
+    seed := (seed * 1103515245 + 12345) & 7FFFFFFFH;
+    return INT((seed shr 8) mod I64(n));
+end;
+
+(* a register *)
+proc reg: INT;
+begin
+    return rnd(16);
+end;
+
+(* a size of 1, 2, 4 or 8 bytes *)
+proc size: INT;
+begin
+    return 1 shl rnd(4);
+end;
+
+(* a value that fits sz bytes, of 8 as 32 bits *)
+proc imm(sz: INT): INT;
+var x, r: INT;
+begin
+    x := rnd(1 shl 30);
+    match rnd(3) of
+    | 0: r := x mod 100 - 50;
+    | 1: r := x - (1 shl 29);
+    | else: r := x mod 20000 - 10000;
+    end;
+    if sz = 1 then
+        r := r mod 128;
+    elsif sz = 2 then
+        r := r mod 32768;
+    end;
+    return r;
+end;
+
+proc randMem: X64.Mem;
+var kind, base, idx, sc, disp, x: INT;
+begin
+    kind := rnd(6);
+    base := reg(); idx := reg(); sc := 1 shl rnd(4); x := rnd(5);
+    match x of
+    | 0: disp := 0;
+    | 1: disp := rnd(250) - 125;
+    | 2: disp := rnd(1 shl 20) - (1 shl 19);
+    | 3: disp := 127 + rnd(3) - 1;
+    | else: disp := -128 + rnd(3) - 1;
+    end;
+    match kind of
+    | 0, 1: return X64.mem(base, disp);
+    | 2: return X64.memRip(rnd(5), disp);
+    | 3, 4: return X64.memIdx(base, idx, sc, disp);
+    | else: return X64.mem(base, 0);
+    end;
+end;
+
+proc main*;
+var
+    i, k, op, a, b, c, d, lab1, lab2: INT; m: X64.Mem; path: []U8;
+begin
+    seed := 3;
+    path := "lib/Rt.raz";
+    if LEN(Scan.open(path)) # 0 then Diag.fatal("no file"); end;
+    X64.setListing(true);
+    for i := 0 to 4 do c := Chunk.newChunk(Chunk.secText, i - 1, i); end;
+    Chunk.setCurFile(Scan.intern(ADR(path[0]), LEN(path)));
+    Chunk.beginChunk(0);
+    lab1 := X64.NoLabel; lab2 := X64.NoLabel;
+    for k := 1 to 3000 do
+        if k mod 7 = 0 then a := rnd(300); b := rnd(60); Chunk.noteLine(1 + a, b); end;
+        op := rnd(50);
+        match op of
+        | 0: a := reg(); b := reg(); X64.movRR(a, b);
+        | 1:
+            a := reg(); b := rnd(6); c := rnd(1 shl 30);
+            match b of
+            | 0: X64.movRI(a, 0);
+            | 1: X64.movRI(a, c);
+            | 2: X64.movRI(a, -c);
+            | 3: X64.movRI(a, I64(c) * 8 + 5);
+            | 4: X64.movRI(a, I64(c) * 4096 * 4096 * 9 - 7);
+            | else: X64.movRI(a, 0);
+            end;
+        | 2: a := rnd(8); m := randMem(); b := size(); c := imm(b); X64.aluMI(a, m, c, b);
+        | 3: m := randMem(); b := size(); c := imm(b); X64.storeI(m, c, b);
+        | 4: a := reg(); m := randMem(); b := size(); c := rnd(2); X64.load(a, m, b, c = 0);
+        | 5: m := randMem(); a := reg(); b := size(); X64.store(m, a, b);
+        | 6: a := reg(); m := randMem(); X64.lea(a, m);
+        | 7: a := rnd(8); b := reg(); c := reg(); X64.alu(a, b, c);
+        | 8: a := rnd(8); b := reg(); c := imm(8); X64.aluI(a, b, c);
+        | 9: a := rnd(8); b := reg(); m := randMem(); X64.aluM(a, b, m);
+        | 10: a := reg(); b := reg(); X64.imul(a, b);
+        | 11: a := reg(); c := imm(8); X64.imulI(a, c);
+        | 12:
+            a := rnd(3); b := reg();
+            if a = 0 then a := X64.shShl; elsif a = 1 then a := X64.shShr; else a := X64.shSar; end;
+            X64.shift(a, b);
+        | 13:
+            a := rnd(3); b := reg(); c := rnd(64);
+            if a = 0 then a := X64.shShl; elsif a = 1 then a := X64.shShr; else a := X64.shSar; end;
+            X64.shiftI(a, b, c);
+        | 14:
+            a := rnd(4); b := reg();
+            if a < 2 then a := a + 2; else a := a + 4; end;
+            X64.unary(a, b);
+        | 15: X64.cqo;
+        | 16: a := reg(); b := 1 shl rnd(3); c := rnd(2); X64.extend(a, b, c = 0);
+        | 17: a := rnd(16); b := reg(); X64.setCC(a, b);
+        | 18: a := reg(); b := reg(); X64.testRR(a, b);
+        | 19: a := reg(); X64.push(a);
+        | 20: a := reg(); X64.pop(a);
+        | 21: a := rnd(5); X64.callChunk(a);
+        | 22: a := rnd(1000); X64.callBack(a);
+        | 23: a := reg(); X64.callR(a);
+        | 24: a := reg(); X64.jmpR(a);
+        | 25: m := randMem(); X64.callM(m);
+        | 26:
+            a := rnd(5);
+            match a of
+            | 0: X64.ret;
+            | 1: X64.leave;
+            | 2: X64.syscall;
+            | 3: X64.mfence;
+            | else: X64.ud2;
+            end;
+        | 27: a := 8 shl rnd(3); X64.align(a);
+        | 28:
+            a := rnd(5);
+            match a of
+            | 0: X64.repMovsb;
+            | 1: X64.std;
+            | 2: X64.cld;
+            | 3: X64.repStosb;
+            | else: X64.repeCmpsb;
+            end;
+        | 29: m := randMem(); a := reg(); X64.lockCmpxchg(m, a);
+        | 30: m := randMem(); a := reg(); X64.xchg(m, a);
+        | 31: m := randMem(); a := reg(); X64.lockXadd(m, a);
+        | 32: a := reg(); b := reg(); X64.movqXR(a, b);
+        | 33: a := reg(); b := reg(); X64.movqRX(a, b);
+        | 34: a := reg(); b := reg(); X64.movX(a, b);
+        | 35: a := reg(); m := randMem(); b := rnd(2); X64.movsXM(a, m, b = 0);
+        | 36: m := randMem(); a := reg(); b := rnd(2); X64.movsMX(m, a, b = 0);
+        | 37:
+            d := rnd(5); a := reg(); b := reg(); c := rnd(2);
+            match d of
+            | 0: d := 58H;
+            | 1: d := 59H;
+            | 2: d := 5CH;
+            | 3: d := 5EH;
+            | else: d := 5AH;
+            end;
+            X64.sse(d, a, b, c = 0);
+        | 38:
+            d := rnd(5); a := reg(); m := randMem(); c := rnd(2);
+            match d of
+            | 0: d := 58H;
+            | 1: d := 59H;
+            | 2: d := 5CH;
+            | 3: d := 5EH;
+            | else: d := 5AH;
+            end;
+            X64.sseM(d, a, m, c = 0);
+        | 39: a := reg(); b := reg(); c := rnd(2); X64.ucomis(a, b, c = 0);
+        | 40: a := reg(); b := reg(); c := rnd(2); X64.cvtsi2s(a, b, c = 0);
+        | 41: a := reg(); b := reg(); c := rnd(2); X64.cvtts2si(a, b, c = 0);
+        | 42: a := reg(); b := rnd(64); X64.btc(a, b);
+        | 43:
+            a := rnd(16); b := rnd(2);
+            if b = 0 then X64.jmp(lab1); else X64.jcc(a, lab2); end;
+        | 44:
+            a := rnd(16); b := rnd(2); c := Chunk.pc - rnd(200);
+            if b = 0 then X64.jmpBack(c); else X64.jccBack(a, c); end;
+        | 45:
+            a := rnd(3);
+            if a = 0 then
+                X64.fixLink(lab1); lab1 := X64.NoLabel;
+            else
+                X64.fixLinkTo(lab2, Chunk.pc - 20); lab2 := X64.NoLabel;
+            end;
+        | 46: X64.jmp(lab1); X64.dropJumpTo(lab1);
+        | 47: a := X64.joinLinks(lab1, lab2); lab1 := a; lab2 := X64.NoLabel;
+        | else: a := rnd(256); Chunk.put1(a);
+        end;
+    end;
+    X64.fixLink(lab1); X64.fixLink(lab2);
+    Chunk.endChunk(0);
+    Chunk.setLive(0);
+    Fmt.print("pc {} fixups {} lines {} said {}\n", [Fmt.int(Chunk.pc), Fmt.int(Chunk.numFixups),
+        Fmt.int(Chunk.numLines), Fmt.int(X64.saidCount())]);
+    for i := 0 to Chunk.pc - 1 do Out.hex(U64(Chunk.text[i]), 2); end;
+    Out.ln;
+    for i := 0 to Chunk.numFixups - 1 do
+        Fmt.print("F {} {} {}\n", [Fmt.int(Chunk.fixups[i].at), Fmt.int(Chunk.fixups[i].chunk), Fmt.int(Chunk.fixups[i].addend)]);
+    end;
+    X64.list(-1);
+end;
+
+end X64Dump.

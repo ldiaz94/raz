@@ -1,0 +1,55 @@
+(* Assembles the instructions in the file of the argument, as the body of
+   a code procedure that ends in end, and prints the bytes and the
+   listing: self/X64.raz's assembler's side of a test against the seed's,
+   AsmDump.pas, which prints the same. Constants are numbers, with a
+   minus sign, and sums of them. *)
+module AsmDump;
+import Out, Files, Diag, Scan, Chunk, X64;
+
+proc number(neg: BOOL): (I64, ERROR);
+var v: I64;
+begin
+    if Scan.tok # Scan.sInt then return 0, Scan.mark("expected a number"); end;
+    v := Scan.ival;
+    Scan.next;
+    if neg then v := -v; end;
+    return v, nil;
+end;
+
+proc constant(whole: BOOL): (I64, ERROR);
+var neg: BOOL; v, w: I64;
+begin
+    neg := Scan.tok = Scan.sMinus;
+    if neg then Scan.next; end;
+    v := try number(neg);
+    while whole and ((Scan.tok = Scan.sPlus) or (Scan.tok = Scan.sMinus)) do
+        neg := Scan.tok = Scan.sMinus;
+        Scan.next;
+        w := try number(neg);
+        v := v + w;
+    end;
+    return v, nil;
+end;
+
+proc main*;
+var i: INT; path: []U8; err: ERROR;
+begin
+    if LEN(Scan.open(Files.arg(1))) # 0 then Diag.fatal("no file"); end;
+    path := "lib/Rt.raz";
+    Chunk.setCurFile(Scan.intern(ADR(path[0]), LEN(path)));
+    X64.setListing(true);
+    _ := Chunk.newChunk(Chunk.secText, 0, 0);
+    Chunk.beginChunk(0);
+    Chunk.noteLine(1, 1);
+    Scan.next;
+    err := X64.assemble(constant);
+    if err # nil then Diag.finish; end;
+    Chunk.endChunk(0);
+    Chunk.setLive(0);
+    for i := 0 to Chunk.pc - 1 do Out.hex(U64(Chunk.text[i]), 2); end;
+    Out.ln;
+    X64.list(0);
+    Diag.finish;
+end;
+
+end AsmDump.
