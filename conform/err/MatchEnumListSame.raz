@@ -1,0 +1,11 @@
+module MatchEnumListSame;
+type Op = (plus, minus, times);
+proc main*;
+var op: Op;
+begin
+    match op of
+    | plus, plus:
+    | minus, times:
+    end;
+end;
+end MatchEnumListSame.

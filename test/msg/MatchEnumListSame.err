@@ -1,0 +1,4 @@
+conform/err/MatchEnumListSame.raz:7:13: error: plus has two arms
+    7 |     | plus, plus:
+      |             ^^^^
+raz: 1 error

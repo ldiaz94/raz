@@ -1,0 +1,10 @@
+module MatchEnumListMissing;
+type Op = (plus, minus, times);
+proc main*;
+var op: Op;
+begin
+    match op of
+    | plus, minus:
+    end;
+end;
+end MatchEnumListMissing.

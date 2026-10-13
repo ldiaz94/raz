@@ -1600,7 +1600,7 @@ end;
 
 procedure MatchStatement(const start: TPos; ind: longint);
 var
-  x: TItem; t: PType; c, f, o: PObj; p: int64; L, endL, n, disp, elseAt: longint;
+  x: TItem; t: PType; c, f, o: PObj; p: int64; L, endL, n, first, disp, elseAt: longint;
   seen: array[0..255] of boolean; hasElse, all, byValue: boolean; endAt: TPos; ls: TLabels;
 begin
   Next;
@@ -1633,18 +1633,23 @@ begin
     end else if t^.form = fInt then
       IntArm(t, ls, endL)
     else begin
-      if tok <> sIdent then Expected('a case');
-      c := t^.fields;
-      while (c <> nil) and (c^.name <> id) do c := c^.next;
-      if c = nil then Mark(NameOf(id) + ' isn''t a case of ' + TypeName(t));
-      if (c^.val <= High(seen)) and seen[c^.val] then Mark(NameOf(c^.name) + ' has two arms');
-      if c^.val <= High(seen) then seen[c^.val] := true;
-      Next;
+      first := ls.n;
       L := NoLabel;
-      if t^.form = fEnum then begin
+      repeat
+        if tok <> sIdent then Expected('a case');
+        c := t^.fields;
+        while (c <> nil) and (c^.name <> id) do c := c^.next;
+        if c = nil then Mark(NameOf(id) + ' isn''t a case of ' + TypeName(t));
+        if (c^.val <= High(seen)) and seen[c^.val] then Mark(NameOf(c^.name) + ' has two arms');
+        if c^.val <= High(seen) then seen[c^.val] := true;
+        Next;
+        if t^.form <> fEnum then begin MatchTag(p, c^.val, L); break end;
+        { an enumeration's arm may name several, which share its place }
         ls.lo[ls.n] := c^.val; ls.hi[ls.n] := c^.val;
         inc(ls.n);
-      end else MatchTag(p, c^.val, L);
+        if tok <> sComma then break;
+        Next;
+      until false;
       OpenScope(NewScope);
       if tok = sLparen then begin
         Next;
@@ -1667,7 +1672,7 @@ begin
         Expect(sRparen);
       end;
       Expect(sColon);
-      if t^.form = fEnum then ls.at[ls.n - 1] := pc;
+      for n := first to ls.n - 1 do ls.at[n] := pc;
       Statements;
       CloseScope;
       Jump(endL);

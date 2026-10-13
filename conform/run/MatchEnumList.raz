@@ -1,0 +1,34 @@
+module MatchEnumList;
+import Out;
+
+type Op = (plus, minus, times, over, rest);
+
+proc kind(op: Op): INT;
+begin
+    match op of
+    | plus, minus: return 1;
+    | times: return 2;
+    | over, rest: return 3;
+    end;
+end;
+
+proc wide(op: Op): INT;
+var n: INT;
+begin
+    n := 0;
+    match op of
+    | minus, over, plus: n := 10;
+    | else: n := 20;
+    end;
+    return n;
+end;
+
+proc main*;
+var op: Op;
+begin
+    for op := plus to rest do
+        Out.int(kind(op)); Out.str(" "); Out.int(wide(op)); Out.ln;
+    end;
+end;
+
+end MatchEnumList.

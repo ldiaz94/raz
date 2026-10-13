@@ -9,7 +9,7 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.20 of the report; section 12 says what each
+This is version 2026-10.21 of the report; section 12 says what each
 version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -902,7 +902,20 @@ unnamed. Every case must have an arm, and only one, unless there is an
 `| else:` arm, which must come last.
 
 `match` on an enumeration works the same way: each arm names one of the
-enumeration's names.
+enumeration's names, or several, separated by commas, for the arm to
+run when the value is any of them:
+
+```
+match op of
+| sPlus, sMinus: kind := additive;
+| sTimes:        kind := multiplicative;
+| else:
+end;
+```
+
+Every name must have an arm, and only one, unless there is an `| else:`
+arm. A variant's arm names one case: the fields it may name belong to
+that case alone.
 
 `match` on an integer runs the arm whose labels hold its value:
 
@@ -2041,6 +2054,8 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   `ERROR`, which makes the procedure it stands in return that error
   when it isn't `nil` (sections 2, 5.8, 6, 7.8 and appendix B). `try`
   becomes a reserved word, which breaks a program with a name `try`.
+- **2026-10.21.** An arm of a `match` on an enumeration may name
+  several of its names (section 7.4).
 
 ## Appendix A. What an implementation chooses
 

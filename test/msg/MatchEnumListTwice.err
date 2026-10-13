@@ -1,0 +1,4 @@
+conform/err/MatchEnumListTwice.raz:8:7: error: minus has two arms
+    8 |     | minus, times:
+      |       ^^^^^
+raz: 1 error

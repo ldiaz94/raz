@@ -1,0 +1,4 @@
+conform/err/MatchEnumListMissing.raz:8:5: error: no arm for times
+    8 |     end;
+      |     ^^^
+raz: 1 error
