@@ -54,11 +54,10 @@ begin
         end;
         (* code and constants have fixups; variables start at zero, holding
            no addresses *)
-        fx := nil;
-        if Chunk.chunks[c].sec = Chunk.secText then
-            fx := Chunk.fixups;
-        elsif Chunk.chunks[c].sec = Chunk.secRodata then
-            fx := Chunk.dataFixups;
+        match Chunk.chunks[c].sec of
+        | secText: fx := Chunk.fixups;
+        | secRodata: fx := Chunk.dataFixups;
+        | secBss: fx := nil;
         end;
         if fx # nil then
             for f := Chunk.chunks[c].firstFix to Chunk.chunks[c].firstFix + Chunk.chunks[c].numFix - 1 do
