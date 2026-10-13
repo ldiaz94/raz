@@ -35,13 +35,13 @@ write memory exactly as written, take part in lock-free algorithms, make
 system calls and call C libraries. It has no garbage collector and no hidden
 run time: what the program does is what its text says.</p>
 
-<p>The compiler is one Free Pascal program of about 9,100 lines. It makes
+<p>The compiler is written in raz, about 10,500 lines, and builds itself. It makes
 x86-64 machine code and the ELF file itself, with no assembler or linker, in
-one pass, at about 900,000 lines a second.</p>
+one pass, at about 500,000 lines a second.</p>
 
 <div class="facts">
-  <span><b>~9,100</b> lines of compiler</span>
-  <span><b>~900K</b> lines compiled a second</span>
+  <span><b>~10,500</b> lines of compiler</span>
+  <span><b>~500K</b> lines compiled a second</span>
   <span><b>static</b> executables, no run time to install</span>
   <span><b>1</b> report, about <b>30</b> pages</span>
 </div>

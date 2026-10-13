@@ -246,18 +246,18 @@ Dot2.dot:
 <ul><li><code>gdb</code> finds procedures by name and lines by number, since the executable carries them: <code>break Dot.dot</code> and <code>list</code> work, and so does stepping a line at a time.</li><li><code>RAZ_PROFILE=1</code> samples the program every millisecond and says which procedures and lines took the time.</li><li><code>objdump -d</code> disassembles what is really in the file, if you want to see the bytes behind a listing.</li></ul>
 <pre class="output term"><code><span class="cmd">$ raz -o Dot Dot.raz</span>
 <span class="cmd">$ objdump -d -M intel --no-show-raw-insn Dot | sed -n &#x27;/&lt;Dot.dot&gt;:/,/ret/p&#x27; | head -12</span>
-0000000000403ac0 &lt;Dot.dot&gt;:
-  403ac0:	push   rbp
-  403ac1:	mov    rbp,rsp
-  403ac4:	sub    rsp,0x40
-  403acb:	mov    QWORD PTR [rbp-0x30],rbx
-  403acf:	xor    ebx,ebx
-  403ad1:	mov    QWORD PTR [rbp-0x28],r12
-  403ad5:	xor    r12d,r12d
-  403ad8:	mov    QWORD PTR [rbp-0x20],rdx
-  403adc:	mov    QWORD PTR [rbp-0x18],rcx
-  403ae0:	xor    ebx,ebx
-  403ae2:	mov    r8,rsi</code></pre>
+0000000000403b40 &lt;Dot.dot&gt;:
+  403b40:	push   rbp
+  403b41:	mov    rbp,rsp
+  403b44:	sub    rsp,0x40
+  403b4b:	mov    QWORD PTR [rbp-0x30],rbx
+  403b4f:	xor    ebx,ebx
+  403b51:	mov    QWORD PTR [rbp-0x28],r12
+  403b55:	xor    r12d,r12d
+  403b58:	mov    QWORD PTR [rbp-0x20],rdx
+  403b5c:	mov    QWORD PTR [rbp-0x18],rcx
+  403b60:	xor    ebx,ebx
+  403b62:	mov    r8,rsi</code></pre>
 <p>The listing is what the encoder meant; <code>objdump</code> is what the processor will read. They tell the same story.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="syscalls.html">&larr; System calls</a><a href="index.html">Contents</a><a class="next" href="volatile.html">Volatile &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license.</footer>

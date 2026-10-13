@@ -36,7 +36,7 @@
 </ul>
 <p>raz is a small systems language, first made for x86-64 Linux. A raz program can lay a record over a device’s registers, read and write a device’s memory exactly as written, take part in lock-free algorithms, make system calls and call C libraries. It has no garbage collector and no hidden run time: what the program does is what its text says.</p>
 <p>This report defines the language. It is short on purpose. Whatever it doesn’t allow, raz doesn’t have.</p>
-<p>This is version 2026-10.20 of the report; section 12 says what each version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>.</p>
+<p>This is version 2026-10.21 of the report; section 12 says what each version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>.</p>
 <p>The language is frozen, softly, from this version on: it changes only to mend a defect, and its library grows only by what breaks no program written for it. What anyone wishes it had waits on a list, for a later thaw.</p>
 <h1 id="a-first-look">1. A first look</h1>
 <pre><code>module Hello;
@@ -494,7 +494,13 @@ Target     = Designator | &quot;_&quot; .</code></pre>
 | dot:        area := 0.0;
 end;</code></pre>
 <p><code>match</code> runs the arm of the case <code>s</code> holds. An arm may name the case’s fields, in order, all of them; the names stand for those fields of <code>s</code> itself, so assigning to one changes <code>s</code>; if <code>s</code> isn’t a variable, they stand for the fields of a copy. An arm may also leave the fields unnamed. Every case must have an arm, and only one, unless there is an <code>| else:</code> arm, which must come last.</p>
-<p><code>match</code> on an enumeration works the same way: each arm names one of the enumeration’s names.</p>
+<p><code>match</code> on an enumeration works the same way: each arm names one of the enumeration’s names, or several, separated by commas, for the arm to run when the value is any of them:</p>
+<pre><code>match op of
+| sPlus, sMinus: kind := additive;
+| sTimes:        kind := multiplicative;
+| else:
+end;</code></pre>
+<p>Every name must have an arm, and only one, unless there is an <code>| else:</code> arm. A variant’s arm names one case: the fields it may name belong to that case alone.</p>
 <p><code>match</code> on an integer runs the arm whose labels hold its value:</p>
 <pre><code>match ch of
 | &#39; &#39;, &#39;\t&#39;:      skip := true;
@@ -1096,6 +1102,7 @@ usage: keep start [-b label] name command [argument ...]</code></pre>
 <li><strong>2026-10.18.</strong> A code procedure takes and returns slices (section 8).</li>
 <li><strong>2026-10.19.</strong> The library gains <code>Bytes</code> (section 11).</li>
 <li><strong>2026-10.20.</strong> <code>try</code>: a call of a procedure whose last result is an <code>ERROR</code>, which makes the procedure it stands in return that error when it isn’t <code>nil</code> (sections 2, 5.8, 6, 7.8 and appendix B). <code>try</code> becomes a reserved word, which breaks a program with a name <code>try</code>.</li>
+<li><strong>2026-10.21.</strong> An arm of a <code>match</code> on an enumeration may name several of its names (section 7.4).</li>
 </ul>
 <h1 id="appendix-a.-what-an-implementation-chooses">Appendix A. What an implementation chooses</h1>
 <p>Everything in this report binds every implementation of raz, except what follows, which each chooses for itself and documents. This compiler’s choices are in <code>doc/compiler.md</code>, under “This compiler’s choices”. The programs in <code>conform/</code> are how an implementation shows that it follows this report: it passes them all, its reals aside where its target has none; <code>conform/check.sh</code> runs them.</p>
