@@ -1,0 +1,75 @@
+module MatchTable;
+import Out;
+
+type
+    Day = (mon, tue, wed, thu, fri, sat, sun);
+
+(* dense, with a hole and a range: a jump table *)
+proc dense(n: I64): I64;
+begin
+    match n of
+    | 1: return 10;
+    | 2, 3: return 20;
+    | 5..7: return 30;
+    | 9: return 40;
+    | else: return -1;
+    end;
+end;
+
+(* negative labels *)
+proc signed(n: I64): I64;
+begin
+    match n of
+    | -2: return 1;
+    | -1: return 2;
+    | 0: return 3;
+    | 1: return 4;
+    | else: return 0;
+    end;
+end;
+
+(* unsigned, at the top of the range *)
+proc top(n: U64): I64;
+begin
+    match n of
+    | 0FFFFFFFFFFFFFFFCH: return 1;
+    | 0FFFFFFFFFFFFFFFDH: return 2;
+    | 0FFFFFFFFFFFFFFFEH: return 3;
+    | 0FFFFFFFFFFFFFFFFH: return 4;
+    | else: return 0;
+    end;
+end;
+
+proc kind(d: Day): I64;
+var r: I64;
+begin
+    r := 0;
+    match d of
+    | mon: r := 1;
+    | tue: r := 2;
+    | wed: r := 3;
+    | thu: r := 4;
+    | fri: r := 5;
+    | sat: r := 6;
+    | sun: r := 7;
+    end;
+    return r;
+end;
+
+proc main*;
+var i: I64; d: Day;
+begin
+    for i := -3 to 11 do
+        Out.int(dense(i)); Out.str(" ");
+    end;
+    Out.ln;
+    for i := -3 to 2 do
+        Out.int(signed(i)); Out.str(" ");
+    end;
+    Out.ln;
+    Out.int(top(0FFFFFFFFFFFFFFFBH)); Out.int(top(0FFFFFFFFFFFFFFFCH));
+    Out.int(top(0FFFFFFFFFFFFFFFFH)); Out.int(top(0)); Out.ln;
+    for d := mon to sun do Out.int(kind(d)); end;
+    Out.ln;
+end;
+end MatchTable.

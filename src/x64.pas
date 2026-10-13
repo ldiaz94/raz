@@ -75,6 +75,7 @@ procedure Pop(r: longint);
 procedure CallChunk(c: longint);
 procedure CallBack(target: longint);
 procedure CallR(r: longint);
+procedure JmpR(r: longint);
 procedure CallM(const m: TMem);
 procedure Ret;
 procedure Leave;
@@ -554,6 +555,12 @@ procedure CallR(r: longint);
 begin
   if listing then Say('call ' + RN(r));
   OpR(0, false, $FF, 2, r);
+end;
+
+procedure JmpR(r: longint);
+begin
+  if listing then Say('jmp ' + RN(r));
+  OpR(0, false, $FF, 4, r);
 end;
 
 procedure CallM(const m: TMem);

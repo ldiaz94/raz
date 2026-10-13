@@ -1506,7 +1506,8 @@ end;
 
 type
   TLabels = record
-    lo, hi: array[0..1023] of int64;   { the ranges of the arms so far }
+    lo, hi: array[0..1023] of int64;   { the ranges of the labels so far }
+    at: array[0..1023] of longint;     { where the arm of each starts }
     n: longint;
   end;
 
@@ -1516,14 +1517,15 @@ begin
   if unsign then Below := qword(a) < qword(b) else Below := a < b;
 end;
 
-{ An arm of a match on an integer of type t, held in slot p: its labels,
-  each a constant or a range, none overlapping another (report section
-  7.4), then its statements. }
-procedure IntArm(t: PType; p: int64; var ls: TLabels; var endL: longint);
-var lo, hi: TItem; L, body, i: longint; u: boolean; start: TPos;
+{ An arm of a match on an integer of type t: its labels, each a
+  constant or a range, none overlapping another (report section 7.4),
+  then its statements. No code tests the labels here; Dispatch does,
+  after the last arm, for which each label notes where its arm starts. }
+procedure IntArm(t: PType; var ls: TLabels; var endL: longint);
+var lo, hi: TItem; first, i: longint; u: boolean; start: TPos;
 begin
   u := not t^.signed;
-  body := NoLabel;
+  first := ls.n;
   repeat
     start := TokPos;
     Expression(lo, t);
@@ -1544,23 +1546,62 @@ begin
     if ls.n > High(ls.lo) then MarkAt(SpanFrom(start), 'more than ' + IntStr(High(ls.lo) + 1) + ' labels in one match');
     ls.lo[ls.n] := lo.val; ls.hi[ls.n] := hi.val;
     inc(ls.n);
-    MatchRange(p, lo.val, hi.val, body);
     if tok <> sComma then break;
     Next;
   until false;
-  L := NoLabel;
-  Jump(L);
-  Fix(body);
   Expect(sColon);
+  for i := first to ls.n - 1 do ls.at[i] := pc;
   Statements;
   Jump(endL);
-  Fix(L);
+end;
+
+const
+  MinTable = 4;      { fewer labels are tested one by one }
+  TableDensity = 8;  { a table has at most this many entries to a label }
+
+{ The code that picks the arm, after the last one, which the match's
+  start jumped to: label by label, as a chain of compares each to its
+  arm; or, for four or more labels not far apart, a jump table (JumpTable),
+  which takes the same few instructions for any of them. It is here and
+  not before the arms, since a table can only be made once every arm's
+  place is known; an arm is entered by a jump back to it. elseAt is where
+  the else arm starts, or NoLabel. }
+procedure Dispatch(t: PType; p: int64; const ls: TLabels; elseAt: longint; var endL: longint);
+var
+  lo, hi: int64; i, start: longint; v: int64; u: boolean; body: longint;
+  entry: array[0..1023] of longint;
+begin
+  u := (t^.form = fInt) and not t^.signed;
+  lo := 0; hi := 0;
+  if ls.n > 0 then begin
+    lo := ls.lo[0]; hi := ls.hi[0];
+    for i := 1 to ls.n - 1 do begin
+      if Below(ls.lo[i], lo, u) then lo := ls.lo[i];
+      if Below(hi, ls.hi[i], u) then hi := ls.hi[i];
+    end;
+  end;
+  if (ls.n >= MinTable) and (lo >= low(longint)) and (lo <= high(longint))
+      and (qword(hi - lo) < qword(TableDensity) * ls.n) and (hi - lo <= High(entry)) then begin
+    start := JumpTable(p, lo, hi - lo + 1, elseAt, endL);
+    for v := 0 to hi - lo do
+      if elseAt <> NoLabel then entry[v] := elseAt else entry[v] := start;
+    for i := 0 to ls.n - 1 do
+      for v := ls.lo[i] - lo to ls.hi[i] - lo do entry[v] := ls.at[i];
+    for v := 0 to hi - lo do TableEntry(start, entry[v]);
+    exit;
+  end;
+  for i := 0 to ls.n - 1 do begin
+    body := NoLabel;
+    MatchRange(p, ls.lo[i], ls.hi[i], body);
+    FixTo(body, ls.at[i]);
+  end;
+  if elseAt <> NoLabel then JumpBack(elseAt);
 end;
 
 procedure MatchStatement(const start: TPos; ind: longint);
 var
-  x: TItem; t: PType; c, f, o: PObj; p: int64; L, endL, n: longint;
-  seen: array[0..255] of boolean; hasElse, all: boolean; endAt: TPos; ls: TLabels;
+  x: TItem; t: PType; c, f, o: PObj; p: int64; L, endL, n, disp, elseAt: longint;
+  seen: array[0..255] of boolean; hasElse, all, byValue: boolean; endAt: TPos; ls: TLabels;
 begin
   Next;
   Expression(x, nil);
@@ -1573,16 +1614,24 @@ begin
   all := true;
   endL := NoLabel;
   ls.n := 0;
+  { an integer or an enumeration is matched by its value, and the arms
+    are picked by Dispatch, after them; a variant by its tag, arm by arm }
+  byValue := t^.form in [fInt, fEnum];
+  disp := NoLabel;
+  elseAt := NoLabel;
+  if byValue then Jump(disp);
   while tok = sBar do begin
     Next;
     if hasElse then Mark('else must be the last arm');
     if tok = sElse then begin
       Next;
       Expect(sColon);
+      elseAt := pc;
       Statements;
+      if byValue then Jump(endL);
       hasElse := true;
     end else if t^.form = fInt then
-      IntArm(t, p, ls, endL)
+      IntArm(t, ls, endL)
     else begin
       if tok <> sIdent then Expected('a case');
       c := t^.fields;
@@ -1592,7 +1641,10 @@ begin
       if c^.val <= High(seen) then seen[c^.val] := true;
       Next;
       L := NoLabel;
-      MatchTag(p, c^.val, L, t^.form = fEnum);
+      if t^.form = fEnum then begin
+        ls.lo[ls.n] := c^.val; ls.hi[ls.n] := c^.val;
+        inc(ls.n);
+      end else MatchTag(p, c^.val, L);
       OpenScope(NewScope);
       if tok = sLparen then begin
         Next;
@@ -1615,10 +1667,11 @@ begin
         Expect(sRparen);
       end;
       Expect(sColon);
+      if t^.form = fEnum then ls.at[ls.n - 1] := pc;
       Statements;
       CloseScope;
       Jump(endL);
-      Fix(L);
+      if t^.form <> fEnum then Fix(L);
     end;
     all := all and ends;
   end;
@@ -1633,6 +1686,10 @@ begin
       if (c^.val > High(seen)) or not seen[c^.val] then MarkAt(endAt, 'no arm for ' + NameOf(c^.name));
       c := c^.next;
     end;
+  end;
+  if byValue then begin
+    Fix(disp);
+    Dispatch(t, p, ls, elseAt, endL);
   end;
   Fix(endL);
 end;

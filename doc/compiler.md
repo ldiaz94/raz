@@ -1017,9 +1017,15 @@ comment walks through the report's rule). The blank is a symbol of its own, `sBl
 no declaration or expression takes it: `_ := e` loads a single value
 and drops it, and `MultiAssign` skips the results it stands for. A
 `match` on an integer reads each arm's
-labels in `IntArm`, which refuses a value in two of them, and tests them
-one after another with `MatchRange`: compares and branches, no jump
-table. `Defer` is worth reading: a deferred statement
+labels in `IntArm`, which refuses a value in two of them. The arms
+come first and the test after them: the match starts with a jump to
+`Dispatch`, placed after the last arm, since a jump table can only be
+made once every arm's place is known (an enumeration's arms are
+picked the same way; a variant's, by its tag, arm by arm).
+`Dispatch` makes a jump table (gen's `JumpTable`, whose comment shows
+the code) for four labels or more that lie close together, else
+compares and branches one label after another with `MatchRange`, each
+jumping back to its arm. `Defer` is worth reading: a deferred statement
 is compiled where it stands, as a little subroutine of the procedure
 that the code jumps over (gen's `DeferBegin` and `DeferEnd`), and
 `RunDefers` emits a call to it at every way out of its statement list:

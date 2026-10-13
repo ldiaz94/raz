@@ -100,7 +100,7 @@ procedure ZeroTemp(var x: TItem; t: PType);
 procedure Construct(var x: TItem; c: PObj);
 procedure SetField(const x: TItem; f: PObj; var a: TItem);
 function MatchBegin(var x: TItem): int64;
-procedure MatchTag(p: int64; tag: int64; var L: longint; isEnum: boolean);
+procedure MatchTag(p: int64; tag: int64; var L: longint);
 procedure MatchRange(p, lo, hi: int64; var body: longint);
 procedure CondJump(var x: TItem; var L: longint);
 procedure CondJumpTrue(var x: TItem; var L: longint);
@@ -1316,16 +1316,13 @@ begin
   MatchBegin := p;
 end;
 
-{ To L unless the tag of the variant whose address is in slot p, or the
-  enumeration in it, is tag }
-procedure MatchTag(p: int64; tag: int64; var L: longint; isEnum: boolean);
+{ To L unless the tag of the variant whose address is in slot p is tag }
+procedure MatchTag(p: int64; tag: int64; var L: longint);
 var a: TAdr;
 begin
   PushVar(FrameAdr(p), 8, false, kWord);
-  if not isEnum then begin
-    a.base := bStack; a.chunk := -1; a.off := 0;
-    PushVar(a, 8, false, kWord);
-  end;
+  a.base := bStack; a.chunk := -1; a.off := 0;
+  PushVar(a, 8, false, kWord);
   PushConst(kWord, tag);
   JumpCmp(sNeq, false, L);
 end;

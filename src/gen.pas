@@ -171,6 +171,8 @@ procedure JumpCmp(op: TSym; signed: boolean; var L: longint);
 procedure JumpOut(op: TSym; signed: boolean; var L: longint);
 procedure CondValue(notOp: TSym; signed: boolean; fj, tj: longint);
 procedure JumpBack(top: longint);
+function JumpTable(slot, lo: int64; n, elseAt: longint; var endL: longint): longint;
+procedure TableEntry(table, target: longint);
 procedure AlignLoop;
 procedure Fix(L: longint);
 procedure FixTo(L, top: longint);
@@ -1344,6 +1346,51 @@ end;
 procedure Fix(L: longint);
 begin
   FixLink(L);
+end;
+
+{ A jump table, for a match on the integer in frame slot slot, whose
+  labels run from lo up for n values. The selector less lo, compared
+  unsigned (so below lo is above n too), is out of the table if it
+  isn't below n, and goes to the else arm at elseAt, or, if there is
+  none, to endL, the end of the match. Else it indexes a table of
+  4-byte offsets, each from the start of the lea, that follows the
+  jump, and the code jumps to its start plus the entry:
+
+      mov  rax, [slot]
+      sub  rax, lo
+      cmp  rax, n - 1
+      ja   else
+      lea  rcx, [rip + start]     start: this very lea
+      movsxd rax, [rcx + rax*4 + 17]
+      add  rax, rcx
+      jmp  rax
+      table: .long arm0 - start, arm1 - start, ...
+
+  The four instructions after the compare are 7, 5, 3 and 2 bytes, so
+  the table is 17 bytes on, which JumpTable checks. It returns start;
+  the caller then makes the n entries with TableEntry. }
+function JumpTable(slot, lo: int64; n, elseAt: longint; var endL: longint): longint;
+const TableAt = 17;
+var start: longint;
+begin
+  Load(RAX, Mem(RBP, slot), 8, false);
+  if lo <> 0 then AluI(aluSub, RAX, lo);
+  AluI(aluCmp, RAX, n - 1);
+  if elseAt <> NoLabel then JccBack(ccA, elseAt) else Jcc(ccA, endL);
+  start := pc;
+  Lea(RCX, Here);
+  Load(RAX, MemIdx(RCX, RAX, 4, TableAt), 4, true);
+  Alu(aluAdd, RAX, RCX);
+  JmpR(RAX);
+  if pc <> start + TableAt then Fatal('internal error: the jump table is not where it was said');
+  JumpTable := start;
+end;
+
+{ The next entry of the table that JumpTable started at table: the
+  code at target }
+procedure TableEntry(table, target: longint);
+begin
+  Put4(target - table);
 end;
 
 procedure AlignLoop;

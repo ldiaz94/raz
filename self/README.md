@@ -47,7 +47,8 @@ Not the seed's to mend; for the owner to choose.
   comparison `a[0..n] = b[0..n]` (97 ms), a 256-entry table for the
   bytes of a name (84), and one for the symbols that are a byte each
   (75). What is left for the code generator, which would help every
-  module: a `match` on an integer is a chain of compares, each loading
-  the selector from the frame and jumping over a `jmp` (`je L1; jmp L2`),
-  where FPC makes a jump table; and the slice comparison is slower than
-  the loop it stands for.
+  module: the slice comparison is slower than the loop it stands for.
+  (The seed's `match` on an integer was a chain of compares, each
+  loading the selector from the frame and jumping over a `jmp`, where
+  FPC makes a jump table; now it makes one too, and the seed's `Scan`
+  runs on it.)
