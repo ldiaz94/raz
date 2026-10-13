@@ -53,7 +53,8 @@ The compiler needs Free Pascal 3.2.2 (`apt-get install fp-compiler`)
 and builds into the repository's root:
 
     make            # ./raz
-    make install    # ~/.local/bin/raz, its library in ~/.local/lib/raz,
+    make install    # ~/.local/bin/raz, its library and tools in
+                    # ~/.local/lib/raz, as the release's tarball has them,
                     # and its manual pages, raz(1), raz(7),
                     # raz-tutorial(7) and raz-lib(3)
     make uninstall  # removes them again

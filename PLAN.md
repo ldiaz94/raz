@@ -9,7 +9,8 @@ v0.9.0, better code for reals, with `Bytes` and slices in code
 procedures (reports 2026-10.18 and 10.19), is tagged by the owner's
 word. All before v0.7.1 is approved by the owner; v0.7.1, the
 manual, v0.8.0, better code again, and v0.9.0 wait for the owner's
-review.
+review. v0.9.1, by the owner's word, adds `tools/` to the tarball,
+for the programs that build with the raz on PATH: rat, rterm, rloc.
 
 ## Done: better code for reals
 

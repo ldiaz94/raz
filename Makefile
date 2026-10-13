@@ -100,16 +100,19 @@ build/raz.pdf: doc/raz.md doc/report.css | build
 	    -o build/raz.html
 	chromium --headless --no-pdf-header-footer --print-to-pdf=$@ build/raz.html 2>/dev/null
 
-# raz and its library go together under $(PREFIX)/lib/raz; the link
-# on PATH works since raz finds lib/ beside its real path. The manual
-# pages go where man looks, beside bin.
+# raz, its library and its tools go together under $(PREFIX)/lib/raz,
+# laid out as in the tarball; the link on PATH works since raz finds
+# lib/ beside its real path, and a program's make finds tools/ so. The
+# manual pages go where man looks, beside bin.
 PREFIX = $(HOME)/.local
 MAN = $(PREFIX)/share/man
+TOOLS = Pretty Doc Scan
 
 install: raz build/raz-lib.3
 	rm -rf $(PREFIX)/lib/raz
-	mkdir -p $(PREFIX)/lib/raz $(PREFIX)/bin $(MAN)/man1 $(MAN)/man3 $(MAN)/man7
+	mkdir -p $(PREFIX)/lib/raz/tools $(PREFIX)/bin $(MAN)/man1 $(MAN)/man3 $(MAN)/man7
 	cp -r raz lib $(PREFIX)/lib/raz
+	cp $(TOOLS:%=tools/%.raz) $(PREFIX)/lib/raz/tools
 	ln -sf $(PREFIX)/lib/raz/raz $(PREFIX)/bin/raz
 	cp doc/raz.1 $(MAN)/man1/raz.1
 	cp build/raz-lib.3 $(MAN)/man3/raz-lib.3
@@ -120,7 +123,8 @@ uninstall:
 	    $(MAN)/man7/raz.7 $(MAN)/man7/raz-tutorial.7
 
 # A release's tarball, build/raz-V-linux-x86_64.tar.gz: raz, the lib/
-# it reads beside itself, and the manual pages, V being what raz
+# it reads beside itself, the tools a program's make may build (the
+# formatter, Doc and the Scan they share) and the manual pages, V being what raz
 # --version says. It is made of the checkout in TREE, this one unless
 # given: CI packs the tag it checked out, and site/build.py the latest
 # tag, which it checks out apart.
@@ -132,6 +136,7 @@ dist:
 	d=raz-$$v-linux-x86_64; \
 	rm -rf build/$$d && mkdir -p build/$$d/man && \
 	cp -r $(TREE)/raz $(TREE)/lib $(TREE)/LICENSE $(TREE)/README.md build/$$d && \
+	mkdir build/$$d/tools && cp $(TOOLS:%=$(TREE)/tools/%.raz) build/$$d/tools && \
 	cp $(TREE)/doc/raz.1 $(TREE)/doc/raz.7 $(TREE)/doc/raz-tutorial.7 \
 	    $(TREE)/build/raz-lib.3 build/$$d/man && \
 	tar czf build/$$d.tar.gz -C build $$d && rm -rf build/$$d && \
