@@ -24,10 +24,10 @@ end Hello.
     $ examples/Hello
     hello, world
 
-The compiler is about 7,800 lines of Free Pascal: one pass, no
+The compiler is about 10,000 lines of raz, written in itself: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
 ELF executable itself, with no assembler or linker, and compiles about
-a million lines a second.
+over 400,000 lines a second.
 
 ## What's here
 
@@ -50,8 +50,9 @@ a million lines a second.
 
 ## Building
 
-The compiler needs Free Pascal 3.2.2 (`apt-get install fp-compiler`)
-and builds into the repository's root:
+The first build needs Free Pascal 3.2.2 (`apt-get install fp-compiler`):
+it builds the seed, the Pascal compiler in `seed/`, which builds the
+compiler, `src/`, in the repository's root:
 
     make            # ./raz
     make install    # ~/.local/bin/raz, its library and tools in

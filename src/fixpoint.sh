@@ -13,7 +13,7 @@ rm -rf $d
 mkdir -p $d/v
 ln -s ../../lib $d/lib
 printf 'module Version;\nconst Text* = "%s";\nend Version.\n' "$(tr -d "'" < build/version.inc)" >$d/v/Version.raz
-cp raz $d/stage0
+cp build/seed/raz $d/stage0
 for n in 1 2 3; do
     cp $d/stage$((n - 1)) $d/raz
     $d/raz -Werror -I src -I $d/v -o $d/stage$n src/Raz.raz

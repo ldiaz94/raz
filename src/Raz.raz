@@ -21,7 +21,7 @@
    Rt.exit then ends the program with.
 
    Depends on: everything else, and Version, a module the build makes
-   (build/self/Version.raz) from what git describe says, as the seed's
+   (build/src/Version.raz) from what git describe says, as the seed's
    build/version.inc is.
    Leaves out: the work itself; the other units compile, link and
    write, and this only reads the command line and runs them in order. *)

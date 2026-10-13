@@ -1,7 +1,9 @@
 # Reading the raz compiler
 
-The compiler is eleven files of Free Pascal, under 10,000 lines of code.
-This guide walks through them in the order they are best read: from the
+The compiler is eleven files of raz, about 10,500 lines of code (the
+budget is a soft 10,000, never past 11,000). It is its own compiler: the
+frozen Pascal compiler in `seed/` builds `src/` the first time, and
+after that `src/` builds itself. This guide walks through the files in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
 disassembly. The manual pages say the rest: `raz(1)` the command,
@@ -10,17 +12,17 @@ library, made from `lib/` by `tools/Doc.raz`.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `seed/diag.pas` | 316 | 233 | Messages: positions, source excerpts, colour, counts |
-| `seed/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
-| `seed/sym.pas` | 646 | 528 | Types, objects, scopes, layout |
-| `seed/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
-| `seed/x64.pas` | 1,208 | 998 | The instruction encoder, jumps within a procedure, the assembler |
-| `seed/gen.pas` | 2,322 | 1,670 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `seed/item.pas` | 1,575 | 1,299 | Items: types, constants, variables, operators, conversions, calls |
-| `seed/parse.pas` | 3,280 | 2,851 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `seed/link.pas` | 334 | 258 | Tree shaking, layout, patching, the places |
-| `seed/elf.pas` | 373 | 294 | Static and dynamic ELF, symbol table, line numbers |
-| `seed/raz.pas` | 245 | 188 | The command line |
+| `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
+| `src/Scan.raz` | 1,002 | 842 | Symbols, literals, comments, positions |
+| `src/Sym.raz` | 684 | 555 | Types, objects, scopes, layout |
+| `src/Chunk.raz` | 354 | 272 | The compiled program: chunks, fixups, line notes |
+| `src/X64.raz` | 1,472 | 1,222 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,350 | 1,693 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 1,729 | 1,438 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 3,775 | 3,298 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Link.raz` | 380 | 298 | Tree shaking, layout, patching, the places |
+| `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
+| `src/Raz.raz` | 273 | 214 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -30,18 +32,21 @@ on and what it leaves out. Read those first; they are the map.
 There is one pass and no tree. The parser reads a construct and, in
 the same breath, has the code generator emit its machine code. Nothing
 is kept to be looked at again, except the declarations, which live in
-the symbol table for as long as the compiler runs.
+the symbol table for as long as the compiler runs. An error is shown
+at once and returned as an `ERROR` (`Scan.Failed`), which each routine
+passes up with `try` to where the parser reads on, at the next
+statement or declaration.
 
-Three layers do it. `parse.pas` knows the language's syntax. `item.pas`
+Three layers do it. `Parse.raz` knows the language's syntax. `Item.raz`
 knows what the program means: each operand is an *item*, as in Wirth's
 compilers, and the routines there check the items' types, fold
 constants and work out where variables are. Neither knows the machine:
-they drive a stack machine, `gen.pas`, by its calls (push a value,
+they drive a stack machine, `Gen.raz`, by its calls (push a value,
 add the two on top, store the top in a variable, jump if it is false),
 each with the kind of the value (a word, a 64-bit integer, an `F32`,
-an `F64`). `gen.pas` is the only one that knows x86-64; a port to
-another machine is a new `gen.pas`, with an encoder of its own in place
-of `x64.pas`.
+an `F64`). `Gen.raz` is the only one that knows x86-64; a port to
+another machine is a new `Gen.raz`, with an encoder of its own in place
+of `X64.raz`.
 
 On x86-64 the stack lives in registers, as in Wirth's compilers
 (Niklaus Wirth's Pascal and Oberon compilers): the value at depth `d`,
@@ -79,23 +84,23 @@ files, no symbol files, and nothing to keep up to date.
 
 `raz Hello.raz` does this:
 
-1. `raz.pas` reads the command line and calls `CompileMain`
-   (`parse.pas`).
-2. `CompileMain` imports `Rt` first, since every program needs it, and
-   then compiles `Hello.raz` with `CompileFile`.
-3. `CompileFile` opens the file in the scanner and parses the module.
-   At `import Out;` it calls `ImportModule`, which finds `Out.raz` and
-   compiles it there and then, saving and restoring the scanner and the
+1. `Raz.raz` reads the command line and calls `compileMain`
+   (`Parse.raz`).
+2. `compileMain` imports `Rt` first, since every program needs it, and
+   then compiles `Hello.raz` with `compileFile`.
+3. `compileFile` opens the file in the scanner and parses the module.
+   At `import Out;` it calls `importModule`, which finds `Out.raz` and
+   compiles it there and then, saving and restoring the scanner (`Scan.saveScan`, `Scan.restoreScan`) and the
    scopes around it. So modules are finished in an order where each
    comes after those it imports; that is the order their bodies run.
 4. Each procedure becomes a chunk of code; `Out.str("hello, world\n")`
    becomes a string chunk, a call, and a fixup to `Out.str`'s chunk.
-5. Back in `raz.pas`, `Use` marks the modules the program uses; the
-   entry point, `_start`, is written by `gen.pas`'s `EntryPoint` as one
+5. Back in `Raz.raz`, `use` marks the modules the program uses; the
+   entry point, `_start`, is written by `Gen.raz`'s `entryPoint` as one
    more chunk: save `argc` and `argv` and the address of the places
    (below), call every used module's body, call `main`, call `Rt.exit`.
-6. `MarkLive` (`link.pas`) marks what `_start` reaches; then
-   `WriteElf` (`elf.pas`) has `link.pas` place it and patch it, and
+6. `markLive` (`Link.raz`) marks what `_start` reaches; then
+   `writeElf` (`Elf.raz`) has `Link.linkAll` place it and patch it, and
    writes headers, code, data, symbols and line numbers.
 
 ## A procedure, compiled
@@ -111,9 +116,9 @@ comes out as this (from `objdump -d -M intel`; `raz -S` shows the same
 under each line of source, named by the compiler as it made them):
 
 ```
-push   rbp                            ; EnterBody: the frame
+push   rbp                            ; enterBody: the frame
 mov    rbp,rsp
-sub    rsp,0x10                       ; its size, patched in by EndProc
+sub    rsp,0x10                       ; its size, patched in by endProc
 mov    r9,rsi                         ; b, at depth 1; a, at depth 0, and
 shl    r9,0x1                         ;   the 2 are only noted; times 2
 mov    r8,rdi                         ;   is a shift; a is loaded for +
@@ -124,13 +129,12 @@ ret
 ```
 
 `scale` calls nothing, so its parameters stay in `rdi` and `rsi`,
-where they arrive (`KeepArrived`): they are register variables that
+where they arrive (`keepArrived`): they are register variables that
 cost nothing to keep. Every line of it can be traced to a routine in
-`gen.pas`: the moves are `Loaded`'s, the shift and the add `Op`'s, the
-result `ReturnJump`'s, and the frame is `EnterBody`'s and `EndProc`'s.
+`Gen.raz`: the moves are `loaded`'s, the shift and the add `op`'s, the
+result `returnJump`'s, and the frame is `enterBody`'s and `endProc`'s.
 It is not the fastest code. It is code whose every instruction you
 can account for, which is the point.
-
 ## Better code, in one procedure
 
 `Str.decode` reads one UTF-8 character from a slice of bytes, and for
@@ -246,18 +250,18 @@ What went, and the routine that took it away:
    slots of the four variables, all of them in registers, and the slots
    the registers are saved in, which are written before they are read.
    Now a variable in a register has no slot, and only the locals in
-   memory are zeroed (`PlaceLocals`, `UseRegs`, `EnterBody`).
+   memory are zeroed (`placeLocals`, `useRegs`, `enterBody`).
 2. **The hidden pointer**: the two results went through `rcx` to the
    caller's memory. Two words come back in `rax` and `rdx` now
-   (`InTwoRegs`), so `return 0, 0` is two instructions; and the caller
-   pops them straight into its variables (`mWords`, `MultiAssign`).
+   (`inTwoRegs`), so `return 0, 0` is two instructions; and the caller
+   pops them straight into its variables (`pushWords`, `multiAssign`).
 3. **`cmp r8, 0`** is `test r8, r8`, the same flags in fewer bytes
-   (`CmpI`).
+   (`cmpI`).
 4. **Copies through `rax`**: `s[0]`'s address is worked out in the
-   register it is used from (`IndexSlice`), and a result is put in `rax`
-   from where it is (`PopTo`).
+   register it is used from (`indexSlice`), and a result is put in `rax`
+   from where it is (`popTo`).
 5. **The `jmp 421` after `return`**, which nothing could reach: a branch
-   of an `if` that ends gets no jump past the others (`IfStatement`).
+   of an `if` that ends gets no jump past the others (`ifStatement`).
 
 What is left is worth knowing too. The slice's two words still go to
 the frame, since only single values live in registers; `movzx` then
@@ -300,13 +304,13 @@ bought less than 2% on both was taken out again.
    add r9, r12
    ```
 
-   Its item is at `bReg`, and its `TAdr` names both registers (`hi`
-   for the length's): `PushVar` reads either word (`RegAt`),
-   `IndexSlice` and `Slice` compare with the length's and add the
+   Its item is at `bReg`, and its `Adr` names both registers (`hi`
+   for the length's): `pushVar` reads either word (`regAt`),
+   `indexSlice` and `slice` compare with the length's and add the
    pointer's, a failed check takes the length from its register
-   (`InRegister`), and `CopyTo` loads both. What wants a slice's
+   (`inRegister`), and `copyTo` loads both. What wants a slice's
    memory, a comparison or `COPY`, has its words stored in a
-   temporary first (`CopyToTemp`). rat 5% faster, the heap sort 5%,
+   temporary first (`copyToTemp`). rat 5% faster, the heap sort 5%,
    the search 4%.
 
 2. **Parameters left where they arrive.** `find(s, sub: []U8)` stored
@@ -321,12 +325,12 @@ bought less than 2% on both was taken out again.
    ```
 
    In a procedure that names no procedure, a procedure variable, `NEW`,
-   `SYSCALL` or `COPY`, as `ChooseRegs` sees reading ahead, the
+   `SYSCALL` or `COPY`, as `chooseRegs` sees reading ahead, the
    parameters that arrive in `rdi` and `rsi` stay there, which only a
    call or a copy needs: nothing is saved or moved, and `s[i]` is read
-   through `rdi` itself (`KeepArrived`). Where gen needs them after
+   through `rdi` itself (`keepArrived`). Where Gen needs them after
    all, to copy a record or compare two slices, it sets `lost`, and
-   `Body` compiles the procedure again with the parameters in memory,
+   `body` compiles the procedure again with the parameters in memory,
    as for a variable demoted. The trap report shows a parameter kept
    so: `Rt.fail` is given `rdi` and `rsi` as the failing code had
    them, and the signal handler takes them from the context the
@@ -347,11 +351,11 @@ bought less than 2% on both was taken out again.
    ```
 
    Now an element of a slice in registers is only noted, as the
-   operand `[rdi + r12 * 8]` (`lIdx`, made by `IndexSlice`), and a
+   operand `[rdi + r12 * 8]` (`lIdx`, made by `indexSlice`), and a
    variable in memory, or at an address noted, as the operand that
-   reads it (`lMem`, made by `PushVar`): each is read where it is
-   used, and `Op`, `Compare` and `JumpCmp` take an 8-byte one as their
-   right operand as it is (`TopInMem`):
+   reads it (`lMem`, made by `pushVar`): each is read where it is
+   used, and `op`, `compare` and `jumpCmp` take an 8-byte one as their
+   right operand as it is (`topInMem`):
 
    ```
    mov r8, rbx
@@ -359,8 +363,8 @@ bought less than 2% on both was taken out again.
    ```
 
    A value noted in memory must be read before anything can change
-   it: before a call (`SpillBelow`) and an atomic built-in (`Atomic`),
-   both through `ReadMems`. The heap sort 14% faster, the search 5%;
+   it: before a call (`spillBelow`) and an atomic built-in (`atomic`),
+   both through `readMems`. The heap sort 14% faster, the search 5%;
    rat within noise, its text 3.9% smaller. Loop tops aligned to 16
    bytes were tried with it, and taken out: the search lost 3%, and
    rat gained nothing.
@@ -376,9 +380,9 @@ bought less than 2% on both was taken out again.
 
    and `i`'s step as well. An assignment whose expression starts with
    its variable, in a register, and changes it by `+`, `-`, `|` or
-   `xor`, naming it nowhere else (`ChangesItself`, read ahead in the
-   statement), has gen work the value out in the variable's own
-   register (`inPlace`, `lInto`), and `ForStep` steps one so too:
+   `xor`, naming it nowhere else (`changesItself`, read ahead in the
+   statement), has Gen work the value out in the variable's own
+   register (`inPlace`, `lInto`), and `Item.forStep` steps one so too:
 
    ```
    add r12, 1
@@ -389,7 +393,7 @@ bought less than 2% on both was taken out again.
    slow as before, for it crossed a 64-byte line that the processor
    fetches decoded instructions in. The top of a `for` loop, which
    the code jumps to rather than runs into, now starts at a multiple
-   of 32 bytes (`AlignLoop`, `Align` in x64), the no-ops before it
+   of 32 bytes (`alignLoop`, `align` in X64), the no-ops before it
    never run. The sum 41% faster, the search 6%; rat within noise.
 
 4. **`while` tested at the bottom.** A `while` loop tested its
@@ -414,10 +418,10 @@ bought less than 2% on both was taken out again.
          jl top
    ```
 
-   One pass reads the condition before the body, so `WhileStatement`
+   One pass reads the condition before the body, so `whileStatement`
    compiles it where it is written, for its messages, takes its code
-   back (`Rewind`), and reads it again after the body (`SaveScan`,
-   `RestoreScan`). A constant condition, as in `while true`, is no
+   back (`rewind`), and reads it again after the body (`saveScan`,
+   `restoreScan`, in Scan). A constant condition, as in `while true`, is no
    test. The heap sort 3% faster, rat 2%; the search lost 7%, all of
    it to where its loops fell: without the top aligned it lost
    nothing, and rat gained nothing either.
@@ -466,12 +470,12 @@ division in its inner loop.
    ```
 
    Now a real at depth `d` is held in `xmm8` to `xmm11`, in
-   `XRegs[d mod 4]` (`RegIn`): it is loaded and stored with `movsd`
-   (`movss` for an `F32`; `XValueTo`, `PopVar`), a constant is read
-   from 8 bytes of read-only data (`RealConst`), and an operation takes
-   its right operand from memory as it is, as `Op` does for an integer
-   (`RealOp`). A constant on the left of `+` or `*` is left on top by
-   `Op2`, in `item.pas`, as their order doesn't matter, rather than
+   `XRegs[d mod 4]` (`regIn`): it is loaded and stored with `movsd`
+   (`movss` for an `F32`; `xValueTo`, `popVar`), a constant is read
+   from 8 bytes of read-only data (`realConst`), and an operation takes
+   its right operand from memory as it is, as `op` does for an integer
+   (`realOp`). A constant on the left of `+` or `*` is left on top by
+   `Item.op2`, as their order doesn't matter, rather than
    swapped under the other operand and back:
 
    ```
@@ -483,7 +487,7 @@ division in its inner loop.
    movsd [rdi + r8 * 8], xmm9
    ```
 
-   `Call` moves a real argument straight to its `xmm0` to `xmm7`, and
+   `call` moves a real argument straight to its `xmm0` to `xmm7`, and
    takes a real result from `xmm0`; a comparison is `ucomisd` of the
    two registers; a conversion is done in the value's own registers.
    The registers from `xmm8` up carry no arguments, so that moving one
@@ -509,7 +513,7 @@ division in its inner loop.
    its index in a variable's register, is noted as the operand that
    reads it, its base the array's address, made in the value's own
    register; one in the frame has `rbp` as its base, whatever its
-   index (`IndexArray`, as `IndexSlice` does for a slice in
+   index (`indexArray`, as `indexSlice` does for a slice in
    registers):
 
    ```
@@ -518,8 +522,8 @@ division in its inner loop.
    ```
 
    A computed index in a chunk's array is added up as before, as it
-   would need a third register. `CheckIndex` compares a variable's
-   register as it is (`Peek`), not a copy. NBody 225 ms to 147; rat
+   would need a third register. `checkIndex` compares a variable's
+   register as it is (`peek`), not a copy. NBody 225 ms to 147; rat
    within noise.
 
 3. **An offset as the machine has it.** The sweep's four neighbours,
@@ -540,12 +544,12 @@ division in its inner loop.
    ```
 
    Now a word in a register may carry an offset not yet added (`off`,
-   in `TEntry`): `Op` notes `x + c` and `x - c` there, carries it
+   in `Entry`): `op` notes `x + c` and `x - c` there, carries it
    through `+` and `-`, and through `*` by a constant, as `(x + a) * k`
    is `x * k + a * k`. An element's operand takes it as its
-   displacement (`IndexOff`, for `IndexSlice` and `IndexArray`), and so
-   does a field's through a pointer (`Place`); anything else adds it
-   where the value is read (`Loaded`, `Peek`, `ValueTo`, with a `lea`,
+   displacement (`indexOff`, for `indexSlice` and `indexArray`), and so
+   does a field's through a pointer (`place`); anything else adds it
+   where the value is read (`loaded`, `peek`, `valueTo`, with a `lea`,
    which leaves the flags alone). A value changed in place, `lInto`,
    carries none, and an index that is checked has it added first:
 
@@ -574,12 +578,12 @@ division in its inner loop.
    mulsd xmm8, [rbp - 8]
    ```
 
-   Now `ChooseRegs` gives the busiest reals of a procedure `xmm12` to
+   Now `chooseRegs` gives the busiest reals of a procedure `xmm12` to
    `xmm15` (`XVarRegs`), as it gives the busiest integers `rbx` and
    `r12` to `r15`, and gen reads and writes them where they are: a
    real in a variable's register is `lHeld` or `lInto`, as an
-   integer's is (`XValueTo`, `PopVar`, `Peek` for `RealOp` and
-   `Compare`):
+   integer's is (`xValueTo`, `popVar`, `peek` for `realOp` and
+   `compare`):
 
    ```
    subsd xmm8, [r9 + r12 * 8]
@@ -589,15 +593,15 @@ division in its inner loop.
    mulsd xmm8, xmm13
    ```
 
-   Each such variable has its slot too, which `PopVar` writes as it
+   Each such variable has its slot too, which `popVar` writes as it
    writes the register (`movsd [rbp - 8], xmm13` after the `movaps`),
    off the chain the round waits on: the trap report finds the value
    there, as it finds any variable's, whether a check failed or a
-   signal stopped the program, and `Call` loads the register from it
-   after each call (`XHome`, `HomeOf`), as System V keeps no xmm
+   signal stopped the program, and `call` loads the register from it
+   after each call (`xHome`, `homeOf`), as System V keeps no xmm
    register through one. A register number from `XmmVar`, 16, up is
    an xmm register's, so that `xmm12` isn't taken for `r12` where the
-   parser counts its registers (`RegsOf`, `RegAt`). NBody 147 ms to
+   parser counts its registers (`regsOf`, `regAt`). NBody 147 ms to
    116, and a copy of it without the call to `sqrt` 114 to 81; rat
    within noise. Storing the slot only before a call, and so showing
    nothing in the trap report, bought 3% more on that copy and nothing
@@ -615,69 +619,70 @@ array's address, which FPC makes too, and the fifth real, `d2`, for
 which there is no register. A comparison of reals still makes a
 `BOOL` before it jumps, as `not (a < b)` isn't `a >= b` for a NaN;
 neither kernel has one.
+## Diag.raz: messages
 
-## diag.pas: messages
+Every message the compiler prints is made here. A position, `Pos`, is a
+file and a stretch of bytes in it; `error`, `warning` and `note` show it
+as `file:line:column`, then the line of source with the stretch
+underlined, and `help` adds a line of advice. Notes and help are shown
+only with an error that was: not one at the place of the last, and not
+one under `quiet`, which the parser sets (`setQuiet`) when an error
+follows from another (see Parse.raz). The line and column are worked out
+only when a message is printed (`locate`, `chars`), so positions cost
+nothing while compiling. `addFile` keeps every source file the scanner
+opens, so a note can show a line of any of them. `finish` prints the
+count of errors and warnings and stops if there were errors; `fatal` is
+for errors with no place in the source. A message is made by `say` from
+a format and its arguments, and kept for good, since a message is made
+only where it is about to be shown.
 
-Every message the compiler prints is made here. A position, `TPos`, is
-a file and a stretch of bytes in it; `Error`, `Warning` and `Note` show
-it as `file:line:column`, then the line of source with the stretch
-underlined, and `Help` adds a line of advice. Notes and help are shown
-only with an error that was: not one at the place of the last, and
-not one under `quiet`, which the parser sets when an error follows
-from another (see parse.pas). The line and column are
-worked out only when a message is printed (`Locate`, `Chars`), so
-positions cost nothing while compiling. `AddFile` keeps every source
-file the scanner opens, so a note can show a line of any of them.
-`Finish` prints the count of errors and warnings and stops if there
-were errors; `Fatal` is for errors with no place in the source.
+## Scan.raz: the scanner
 
-## scan.pas: the scanner
-
-The scanner turns bytes into symbols (`TSym`). The current symbol is in
+The scanner turns bytes into symbols (`Sym`). The current symbol is in
 `tok`, with its value in `ival` (integers and characters), `rval`
-(reals), `id` (identifiers) or `sbuf` and `slen` (strings, already
-decoded).
+(reals), `id` (identifiers) or `strBytes`, the `slen` bytes of a string,
+already decoded.
 
-Read `Next` first: it skips white space and comments (`Comment`, which
-counts nesting), then dispatches on the first character. `Number`
-handles decimal, `0FFH`-style hexadecimal and reals; `LitChar` handles
-one character of a literal, escapes included. `ReadReal` turns a real's
-digits into the nearest `F64` exactly, as a fraction of two big
-integers (`TBig`), since Free Pascal's `Val` can be one bit off.
+Read `next` first: it skips white space and comments (`comment`, which
+counts nesting), then dispatches on the first character. `number`
+handles decimal, `0FFH`-style hexadecimal and reals; `litChar` handles
+one character of a literal, escapes included. `readReal` turns a real's
+digits into the nearest `F64` exactly, as a fraction of two big integers
+(`Big`), since a library's reader can be one bit off.
 
-Identifiers are *interned*: `Intern` puts each distinct name once in a
+Identifiers are *interned*: `intern` puts each distinct name once in a
 pool and hands back a small integer, so every later comparison of names
 is a comparison of integers. The reserved words are interned first, in
-the order of `TSym`, so a name's number tells at once whether it is a
+the order of `Sym`, so a name's number tells at once whether it is a
 reserved word.
 
-Source is UTF-8, checked by `Utf8` wherever a byte above 127 appears:
+Source is UTF-8, checked by `utf8` wherever a byte above 127 appears:
 in strings, characters and comments. Anywhere else it is an error.
 
-`TokPos` is the position of the current symbol, `SpanFrom` the stretch
+`tokPos` is the position of the current symbol, `spanFrom` the stretch
 from a saved position to the end of the symbol before the current one,
-and `MissingPos` the place to say a symbol is missing: just after the
-symbol before, when the current one starts a new line. Errors go
-through `Mark`, at the current symbol, `MarkAt`, at a position, or
-`MarkHelp`, which adds a line of help; each reports the error
-(`diag.Error`) and jumps to `recovery`, the parser's place to go on
-from (see parse.pas), through `Fail`. An error with notes is reported
-with `Error` and `Note`, then `Fail`. A message names what it found: `Found` describes
-the current symbol and `SymText` spells an operator or reserved word,
-so that the parser's `Expect` and `Expected` say `expected ";", found
-"end"`. Errors in the text itself stop the
-compiler (`MarkBytes`, `LexError`): past a string left open, the
-symbols can't be trusted. A slip from another language, such as `!=`
-for `#`, is reported by `Slip`, which reads on as if the right symbol
-were written; not while the parser is `skipping` what it read once
-before an error. `SaveScan` and `RestoreScan` keep
-the scanner's state while an imported module is compiled.
+and `missingPos` the place to say a symbol is missing: just after the
+symbol before, when the current one starts a new line. Errors go through
+`mark`, at the current symbol, `markAt`, at a position, or `markHelp`,
+which adds a line of help; each reports the error (`Diag.error`) and
+returns `Failed`, an `ERROR` the parser passes up with `try` to where it
+goes on from (see Parse.raz). An error with notes is reported with
+`Diag.error` and `Diag.note`, then returns `Failed` itself. A message
+names what it found: `found` describes the current symbol and `symText`
+spells an operator or reserved word, so that the parser's `expect` and
+`expected` say `expected ";", found "end"`. Errors in the text itself
+stop the compiler (`markBytes`, `lexError`): past a string left open,
+the symbols can't be trusted. A slip from another language, such as `!=`
+for `#`, is reported by `slip`, which reads on as if the right symbol
+were written; not while the parser is `skipping` (`setSkipping`) what it
+read once before an error. `saveScan` and `restoreScan` keep the
+scanner's state while an imported module is compiled.
 
-## sym.pas: types, objects and scopes
+## Sym.raz: types, objects and scopes
 
 Two records hold everything the compiler knows about a program.
 
-`TType` is a type. Its `form` says what kind (`fInt`, `fPtr`, `fArray`,
+`Type` is a type. Its `form` says what kind (`fInt`, `fPtr`, `fArray`,
 `fRecord`, `fVariant`, `fProc`, and so on), and the other fields mean
 what that form needs: `base` is what a pointer points at, an array or
 slice holds, or a procedure returns; `fields` lists a record's fields,
@@ -685,365 +690,390 @@ a variant's cases, a procedure's parameters; `len` counts an array's
 elements. `size` and `align` are worked out when the type is built, by
 the C rules. `obj` is the declaration that named the type, if any.
 
-`TObj` is anything a name can stand for: a constant, type, variable,
+`Obj` is anything a name can stand for: a constant, type, variable,
 procedure, module, field, variant case or built-in (`cls`), and `pos`
 is where its name is declared, for notes. Where it
 lives is decided here too: a module variable's chunk, a local's frame
 offset in `val`, a procedure's chunk.
 
 Scopes are numbers. The universe is 0; each module, procedure, record
-and match arm gets a new one from `NewScope`. All objects of all scopes
-sit in one open-addressed hash table, keyed by scope and name: `Find`
-looks in one scope, `Lookup` in each open scope from the innermost out.
-A lookup costs the same however big a program grows, which matters at
-a million lines a second. After an error, `Closest` looks through the
+and match arm gets a new one from `newScope`. All objects of all scopes
+sit in one open-addressed hash table, keyed by scope and name: `find`
+looks in one scope, `lookup` in each open scope from the innermost out.
+A lookup costs the same however big a program grows, which matters at a
+million lines a second. After an error, `closest` looks through the
 whole table for the name in reach spelled most like one not found
-(`Distance`), for "did you mean".
+(`distance`), for "did you mean".
 
-`Same` and `Alike` decide whether two types are the same: one
-declaration for named types, built alike otherwise. `Fingerprint`
-hashes what a declaration exports, for the check that a module's files
-for different targets agree. The universe, the basic types and built-in
-procedures, is set up in the unit's `initialization`.
+`same` and `alike` decide whether two types are the same: one
+declaration for named types, built alike otherwise. `fingerprint` hashes
+what a declaration exports, for the check that a module's files for
+different targets agree. The universe, the basic types and built-in
+procedures, is set up in the module's body.
 
-## chunk.pas: the compiled program
+Two routines can find an error: `insert`, for a name declared twice, and
+`openScope`, for too many scopes. Each shows it and returns
+`Scan.Failed`, for the parser to pass up with `try`. A record's module
+and an object's link, which the seed called `module` and `link`, are
+`home` and `chain`, since those are reserved words here; `setCurModule`
+is how the parser says which module it is in, as an exported variable
+can't be set from outside.
 
-Code is written into one growing buffer, `code`, with `pc` its length;
-strings and other constants go to `rodata`. A chunk (`TChunk`) records
+## Chunk.raz: the compiled program
+
+Code is written into one growing buffer, `text`, with `pc` its length;
+strings and other constants go to `rodata`. A chunk (`Chunk`) records
 its section, where its bytes start, how many, and the fixups it makes.
-`BeginChunk` and `EndChunk` bracket a procedure; `SetData` and `SetBss`
+`beginChunk` and `endChunk` bracket a procedure; `setData` and `setBss`
 make data chunks.
 
-A *fixup* (`TFixup`) is a 32-bit field in the code that will hold the
+A *fixup* (`Fixup`) is a 32-bit field in the code that will hold the
 distance to another chunk: a call's target, or a rip-relative address.
-`AddFixup` records one; `link.pas` fills them in. A constant's
-addresses are *data fixups*, `AddDataFixup`'s: 64-bit fields in
-rodata that will hold a chunk's address itself, since the executable is
-loaded where the linker placed it. `NoteLine` records
-which line and column of the source the code from `pc` on belongs to,
-for gdb and for the places. `ExternChunk` makes, once per C symbol,
-the quadword the dynamic loader will fill with that symbol's address.
-None of this depends on the machine.
+`addFixup` records one; `Link.raz` fills them in. A constant's addresses
+are *data fixups*, `addDataFixup`'s: 64-bit fields in rodata that will
+hold a chunk's address itself, since the executable is loaded where the
+linker placed it. `noteLine` records which line and column of the source
+the code from `pc` on belongs to, for gdb and for the places.
+`externChunk` makes, once per C symbol, the quadword the dynamic loader
+will fill with that symbol's address. `takeBack` and `rewindTo` undo the
+end of what was made, for a body compiled a second time. What other
+modules set in a chunk, such as `live` or `adr`, has a setter each
+(`setLive`, `setAdr`), since an exported variable can't be set from
+outside. None of this depends on the machine.
 
-## x64.pas: machine code
+## X64.raz: machine code
 
-The encoder is `OpM` and `OpR`: a prefix, the REX byte, the opcode, the
+The encoder is `opM` and `opR`: a prefix, the REX byte, the opcode, the
 ModRM and SIB bytes and the displacement, for a register and a memory
-operand (`TMem`) or two registers. Everything else (`MovRR`, `Load`,
-`Store`, `Alu`, `Sse`, ...) is a line or two that calls them with the
+operand (`Mem`) or two registers. Everything else (`movRR`, `load`,
+`store`, `alu`, `sse`, ...) is a line or two that calls them with the
 right opcode. Only the instructions the code generator uses are here.
-`test/enctest.pas` emits one of each for `objdump` to check. `Here` is
+`test/enctest.pas` emits one of each, with the seed's encoder, for `objdump` to check. `here` is
 the address of the code being written, as an operand.
 
-The assembler, `Assemble`, reads a code procedure's instructions with
+The assembler, `assemble`, reads a code procedure's instructions with
 the scanner, Intel's syntax as NASM writes it, and encodes them with
-`OpM` and `OpR`: `Operand` reads a register, a memory operand or a
-constant (by the parser's `AsmConst`, handed in: a whole expression,
-or for a scale a single factor, so that `[rdi + rsi * 4 + 16]` doesn't
-read `4 + 16` as the scale), and a few tables
-give the operations of a kind their opcodes (`Alus`, `Unaries`,
-`Shifts`, `SseOps`, `Plain`; `PackedOps` the SSE2 integer operations
-on 16 bytes at a time, with `movdqu`, `movdqa` and `pmovmskb` beside
-them, and `BitOps` the bit scans and counts: `bsf`, `bsr`, `tzcnt`,
-`lzcnt`, `popcnt`). Labels are chains of jumps, as below.
-`db` gives bytes it doesn't know. `RegNames` and `CondNames` are the
-names of the registers and conditions.
+`opM` and `opR`: `operand` reads a register, a memory operand or a
+constant (by the parser's `asmConst`, handed in as a `ConstFn`: a whole
+expression, or for a scale a single factor, so that `[rdi + rsi * 4 +
+16]` doesn't read `4 + 16` as the scale), and a few tables give the
+operations of a kind their opcodes (`Alus`, `Unaries`, `Shifts`,
+`SseOps`, `Plain`; `PackedOps` the SSE2 integer operations on 16 bytes
+at a time, with `movdqu`, `movdqa` and `pmovmskb` beside them, and
+`BitOps` the bit scans and counts: `bsf`, `bsr`, `tzcnt`, `lzcnt`,
+`popcnt`). Labels are chains of jumps, as below. `db` gives bytes it
+doesn't know. An error in an instruction is returned as an `ERROR`,
+which `assemble` passes up. An offset that doesn't fit in 32 bits
+(`mem`) can't be returned, since an operand has nowhere to give it: it
+is shown, and the compile goes on to its end. `RegNames` and `CondNames`
+are the names of the registers and conditions.
 
-The listing, `raz -S`: with `listing` set, each routine of the encoder
-says, with `Say`, the instruction it is about to write, as the
-assembler would read it; `List` prints the main module's live
-procedures with each line of source (`LineText` in `diag.pas`) and the
-instructions under it. Nothing is disassembled: the listing is what
-the encoder meant.
+The listing, `raz -S`: with `listing` set (`setListing`), each routine
+of the encoder says, with `say`, the instruction it is about to write,
+as the assembler would read it; `list` prints the main module's live
+procedures with each line of source (`lineText` in `Diag.raz`) and the
+instructions under it. Nothing is disassembled: the listing is what the
+encoder meant.
 
 Jumps within a procedure don't wait for the linker. A label not yet
 placed is a chain of the jumps to it, each jump's 32-bit field holding
-the position of the one before (`Jmp`, `Jcc`); `FixLink` walks the
+the position of the one before (`jmp`, `jcc`); `fixLink` walks the
 chain and patches each once the label's position is known. This is the
 trick from Wirth's compilers, and it means a label is one integer.
-`DropJumpTo` takes back a `jmp` just made to a label about to be
+`dropJumpTo` takes back a `jmp` just made to a label about to be
 placed after it, so a `return` that ends a procedure doesn't jump to
 the next instruction; the line notes made after it move back with it
-(`TakeBack`, in `chunk.pas`).
+(`takeBack`, in `Chunk.raz`).
 
-## gen.pas: the stack machine
+## Gen.raz: the stack machine
 
 This is the only unit that knows the machine. The calls it answers:
 
-- values: `PushConst`, `PushAdr` (the address of a variable),
-  `PushVar` (its value), `PushProc`, and `PopVar`, which stores the
-  value on top; `Drop` and `Swap`;
-- operations on the values on top: `Op`, `Compare`, `Neg`,
-  `Complement`, `NotBool`, `Narrow` (to a narrow integer's width),
-  the conversions between integers and reals, `CompareSeq` (of two
-  slices), and copying: `CopyBlock`, `CopyTo`, `ZeroVar`, and
-  `CopySlice` for `COPY`, a `rep movsb` that goes down when the
-  destination is above the source;
-- jumps: `Jump`, `JumpIf` (on a `BOOL`), `JumpCmp` (on two integers),
-  `JumpOut` (`JumpCmp` from within an expression) and `CondValue` for
-  `and` and `or`, `Fix` where the label is, and `JoinJumps`;
-- checks: `CheckIndex`, `CheckEnum`, and `IndexSlice`, `Slice` and
-  `SlicePtr`, which check as they make their address or slice; and
-  `IndexArray`, an element's address in an array in the frame or a
+- values: `pushConst`, `pushAdr` (the address of a variable), `pushVar`
+  (its value), `pushProc`, and `popVar`, which stores the value on top;
+  `drop` and `swap`;
+- operations on the values on top: `op`, `compare`, `neg`, `complement`,
+  `notBool`, `narrow` (to a narrow integer's width), the conversions
+  between integers and reals, `compareSeq` (of two slices), and copying:
+  `copyBlock`, `copyTo`, `zeroVar`, and `copySlice` for `COPY`, a `rep
+  movsb` that goes down when the destination is above the source;
+- jumps: `jump`, `jumpIf` (on a `BOOL`), `jumpCmp` (on two integers),
+  `jumpOut` (`jumpCmp` from within an expression) and `condValue` for
+  `and` and `or`, `fix` where the label is, and `joinJumps`;
+- checks: `checkIndex`, `checkEnum`, and `indexSlice`, `slice` and
+  `slicePtr`, which check as they make their address or slice; and
+  `indexArray`, an element's address in an array in the frame or a
   chunk, the index checked before;
-- calls (`Call`), frames (`BeginProc`, `EnterBody`, `ReturnJump`,
-  `EndProc`, the temporaries of `AllocTemp`), deferred statements
-  (`DeferBegin`, `DeferEnd`, `RunDefer`), the built-ins that are
-  instructions (`Atomic`, `SysCall`, `Fence`), and the program's entry
-  point (`EntryPoint`).
+- calls (`call`), frames (`beginProc`, `enterBody`, `returnJump`,
+  `endProc`, the temporaries of `allocTemp`), deferred statements
+  (`deferBegin`, `deferEnd`, `runDefer`), the built-ins that are
+  instructions (`atomic`, `sysCall`, `fence`), and the program's entry
+  point (`entryPoint`).
 
-A variable's place is a `TAdr`: relative to the frame (`bFrame`), to a
+A variable's place is an `Adr`: relative to the frame (`bFrame`), to a
 chunk (`bGlobal`), to an address on the stack (`bStack`), or to one
 held in a frame slot (`bSlot`, as a `var` parameter's is); plus `off`.
-`Place` turns it into an x64 memory operand, popping or loading the
+`place` turns it into an x64 memory operand, popping or loading the
 address first, so that a variable is read or written with one
 instruction.
 
 The stack: `stack` notes where each value is, a constant (`lConst`), an
-address not yet computed (`lAdr`, `AdrMem`'s operand), an element's
-address not yet computed (`lIdx`, an operand `[base + index * size]`),
-a variable's value not yet read (`lMem`, at an operand), a register
+address not yet computed (`lAdr`, `adrMem`'s operand), an element's
+address not yet computed (`lIdx`, an operand `[base + index * size]`), a
+variable's value not yet read (`lMem`, at an operand), a register
 variable's own register, read in place (`lHeld`), the value's own
-register (`lReg`) or a frame slot (`lFrame`); `owner` says which
-value each register holds, `lIdx` and `lMem` holding theirs when it
-is their index. A word in a register may have an offset not yet
-added (`off`), which an operand takes as its displacement. The value at depth `d` belongs in
-`Regs[d mod 4]`, `r8` to `r11`: `rax`, `rdx` and `rcx`, which division
-and shifts need, and `rsi` and `rdi`, which copying needs, aren't among
-them. A real belongs in `XRegs[d mod 4]`, `xmm8` to `xmm11`, which
-carry no arguments; each depth has the two registers, and `owner`
-doesn't tell them apart (`RegIn`, `RegOf`). `Claim` gives a value its register, and `Spill`s the lower one
-that holds it, when an expression is deeper than the registers;
-`Loaded` brings a value into its register, from its constant, address
-or slot; `Place` uses a noted address as the operand itself, so that
-`PopVar`, storing a constant, and `IncDec` are one instruction on
-memory: `DEC(n)` is `sub qword [rbp - 8], 1`. `Top` is `Loaded` for the
-value on top, and `Target` the register a new one is computed in.
-`Drop` emits no code, and the dropped value's register still holds it
-until the next push, which several routines rely on. Before a call every
-value in a register is spilled (`SpillBelow`), since the call may change
-them, and so are the values under a comparison that jumps out of an
-expression (`JumpOut`), which both ways to its label must find in the
-same place. `pushed` counts the quadwords on the machine's stack. A
-call needs `rsp` a multiple of 16, so `Call` pads by one quadword when
-`pushed` plus its stack arguments is odd; in a deferred statement
-`pushed` starts at 1, for the return address. `Op` takes a
-constant on the right as it is, after moving one on the left of `+`,
-`*`, `&`, `|` or `xor` there, and a power of two on the right of `*`,
-`div` or `mod` becomes shifts (`DivPow2`), since `idiv` is slow; an
-element's size multiplies an index by a shift too (`MulI`), as a shift
-takes one cycle and `imul` three.
-Narrow integers are brought back to their width after each operation,
-which is how `U8` arithmetic wraps; since they are computed in 64 bits,
-a shift's count is cut to their width first, and `DivTrap` makes the
-smallest value of one divided by -1 fault as an `I64`'s does.
+register (`lReg`) or a frame slot (`lFrame`); `owner` says which value
+each register holds, `lIdx` and `lMem` holding theirs when it is their
+index. A word in a register may have an offset not yet added (`off`),
+which an operand takes as its displacement. The value at depth `d`
+belongs in `Regs[d mod 4]`, `r8` to `r11`: `rax`, `rdx` and `rcx`, which
+division and shifts need, and `rsi` and `rdi`, which copying needs,
+aren't among them. A real belongs in `XRegs[d mod 4]`, `xmm8` to
+`xmm11`, which carry no arguments; each depth has the two registers, and
+`owner` doesn't tell them apart (`regIn`, `regOf`). `claim` gives a
+value its register, and `spill`s the lower one that holds it, when an
+expression is deeper than the registers; `loaded` brings a value into
+its register, from its constant, address or slot; `place` uses a noted
+address as the operand itself, so that `popVar`, storing a constant, and
+`incDec` are one instruction on memory: `DEC(n)` is `sub qword [rbp -
+8], 1`. `top` is `loaded` for the value on top, and `target` the
+register a new one is computed in. `drop` emits no code, and the dropped
+value's register still holds it until the next push, which several
+routines rely on. Before a call every value in a register is spilled
+(`spillBelow`), since the call may change them, and so are the values
+under a comparison that jumps out of an expression (`jumpOut`), which
+both ways to its label must find in the same place. `pushed` counts the
+quadwords on the machine's stack. A call needs `rsp` a multiple of 16,
+so `call` pads by one quadword when `pushed` plus its stack arguments is
+odd; in a deferred statement `pushed` starts at 1, for the return
+address. `op` takes a constant on the right as it is, after moving one
+on the left of `+`, `*`, `&`, `|` or `xor` there, and a power of two on
+the right of `*`, `div` or `mod` becomes shifts (`divPow2`), since
+`idiv` is slow; an element's size multiplies an index by a shift too
+(`mulI`), as a shift takes one cycle and `imul` three. Narrow integers
+are brought back to their width after each operation, which is how `U8`
+arithmetic wraps; since they are computed in 64 bits, a shift's count is
+cut to their width first, and `divTrap` makes the smallest value of one
+divided by -1 fault as an `I64`'s does.
 
-Checks: `Check` jumps, when the check fails, to code at the end of the
-procedure (`EndFails`), so that a check that holds is a jump not taken.
-That code puts the values involved where `Rt.fail` wants them and
-calls a stub for its kind of failure (`failStubs`, made by
-`EntryPoint`), which says the kind and passes the address it was
-called from, by which `Rt` finds the place: the failing code has the
-place of the offending expression (`LineCol` in `scan.pas`). It leaves
-`rdi` and `rsi` as they were, so that the stub can pass them on, for
-the trap report to show a parameter kept in them. A check
-costs a compare and a jump where it stands, and a dozen bytes out of
-the way. Code is aligned to 32 bytes, the windows x86 fetches it in,
-so that where a procedure's loops fall doesn't depend on what comes
-before it.
+Checks: `check` jumps, when the check fails, to code at the end of the
+procedure (`endFails`), so that a check that holds is a jump not taken.
+That code puts the values involved where `Rt.fail` wants them and calls
+a stub for its kind of failure (`failStubs`, made by `entryPoint`),
+which says the kind and passes the address it was called from, by which
+`Rt` finds the place: the failing code has the place of the offending
+expression (`lineCol` in `Scan.raz`). It leaves `rdi` and `rsi` as they
+were, so that the stub can pass them on, for the trap report to show a
+parameter kept in them. A check costs a compare and a jump where it
+stands, and a dozen bytes out of the way. Code is aligned to 32 bytes,
+the windows x86 fetches it in, so that where a procedure's loops fall
+doesn't depend on what comes before it.
 
-What the machine catches, the code doesn't test for (report section
-10, appendix A): on x86-64 Linux a division by zero raises SIGFPE, a
-stack overflow meets the guard page under the stack, a call to `nil`
-jumps to an address never mapped, and so does a load or store within
-`NilPage` bytes of address 0. `Rt`'s handlers say where and why. What
-is left is a field of a `nil` pointer past that page: an item reached
-through `^` is `deref` until `NilTest` (`item.pas`) has it used, and
-gen's `CheckNil` tests the pointer only if the use reaches past
-`NilPage`. A port whose machine catches less tests for more, in its
-own `gen.pas`: `Rt.fail` stops for a nil pointer, a division by zero
-and a stack overflow as the signals would.
+The stack has 256 places and a procedure may have 4,096 checks. Past
+either, `newEntry` or `check` shows the error and goes on, since a push
+or a check has nowhere to return it; the parser's `resetStack` makes the
+stack right again. `endProc` returns its error (a frame too big) and
+`codeProc` the assembler's.
+
+What the machine catches, the code doesn't test for (report section 10,
+appendix A): on x86-64 Linux a division by zero raises SIGFPE, a stack
+overflow meets the guard page under the stack, a call to `nil` jumps to
+an address never mapped, and so does a load or store within `NilPage`
+bytes of address 0. `Rt`'s handlers say where and why. What is left is a
+field of a `nil` pointer past that page: an item reached through `^` is
+`deref` until `nilTest` (`Item.raz`) has it used, and Gen's `checkNil`
+tests the pointer only if the use reaches past `NilPage`. A port whose
+machine catches less tests for more, in its own `Gen.raz`: `Rt.fail`
+stops for a nil pointer, a division by zero and a stack overflow as the
+signals would.
 
 Calls: the arguments are computed left to right onto the stack, where
-they wait for `Call`, as any values do: a constant, an address or a
-variable in a register only noted, the rest in registers, or spilled
-by a call in a later argument, so that it can't disturb them. `Call`
-spills what is under them, moves each into the register System V
-wants (`ValueTo`), `r8` and `r9` last since they may hold others, and
-aligns the stack. A slice goes as its two words, in two registers or
-both on the stack, as System V passes a struct of two integers, and
-the procedure keeps them in its frame. A record
-passed by value goes as the address of a copy. A result of two words,
-a slice or two single values that aren't reals (`InTwoRegs`, in
-`sym.pas`), comes back in rax and rdx, as System V returns a struct of
-two integers: `return` leaves both on the stack for `ReturnJump`.
-`Call` leaves two results on the stack, and stores a slice in a
-temporary of the caller's. Any other record, or
+they wait for `call`, as any values do: a constant, an address or a
+variable in a register only noted, the rest in registers, or spilled by
+a call in a later argument, so that it can't disturb them. `call` spills
+what is under them, moves each into the register System V wants
+(`valueTo`), `r8` and `r9` last since they may hold others, and aligns
+the stack. A slice goes as its two words, in two registers or both on
+the stack, as System V passes a struct of two integers, and the
+procedure keeps them in its frame. A record passed by value goes as the
+address of a copy. A result of two words, a slice or two single values
+that aren't reals (`inTwoRegs`, in `Sym.raz`), comes back in rax and
+rdx, as System V returns a struct of two integers: `return` leaves both
+on the stack for `returnJump`. `call` leaves two results on the stack,
+and stores a slice in a temporary of the caller's. Any other record, or
 several results, come back in memory the caller provides, through a
-hidden pointer in `rdi` (`BehindPointer`, `ResultTo`, `CopyResult`). C
+hidden pointer in `rdi` (`behindPointer`, `resultTo`, `copyResult`). C
 returns a struct of up to 16 bytes in `rax` and `rdx`; raz sends every
 record through memory, and only a slice or two single values in
 registers.
 
-Frames: `BeginProc` gives the parameters their slots; `EnterBody`
-writes the prologue, which zeroes the locals in memory (with a few
-stores, or a loop for more; there are none to zero in `scale`) but not
-the temporaries, since each is written before it is read; `EndProc` writes
+Frames: `beginProc` gives the parameters their slots; `enterBody` writes
+the prologue, which zeroes the locals in memory (with a few stores, or a
+loop for more; there are none to zero in `scale`) but not the
+temporaries, since each is written before it is read; `endProc` writes
 the epilogue and patches the frame's size in. Within a statement,
-scratch space comes from `AllocTemp` and is given back by
-`ReleaseTemps`; `AllocPerm` reserves space for the whole procedure.
+scratch space comes from `allocTemp` and is given back by
+`releaseTemps`; `allocPerm` reserves space for the whole procedure.
 
-Register variables: the parser chooses them (`ChooseRegs`, below),
-then gives the locals left in memory their slots (`PlaceLocals`), and
-tells gen (`UseRegs`) the registers, as bits of `VarRegs`. A variable
-in a register has no slot of its own. Gen saves the registers in slots
-a quadword each, after the locals and not zeroed, as each is written
-first. The
-prologue saves them, zeroes them, and moves a parameter into its
-register from the register or stack slot it arrived in; the epilogue
-restores them. A slice may have two, its pointer's and its length's
-(see "Better code again" above). A variable in one is an
-item at `bReg`: `PushVar` notes it (`lHeld`) rather than copying it,
-`Peek` reads it in place where the value is only read, so `i < n` is
-`cmp rbx, r12`, and `PopVar` and `IncDecReg` write it. Rt finds the
-values for the trap report from the saves: each procedure's record in
-the places says which it saved, and where (`saveMask`, `saveAt`).
-A real takes one of `xmm12` to `xmm15` (`XVarRegs`, numbered from
-`XmmVar` up, so that `xmm12` isn't taken for `r12`), which the prologue
-zeroes and saves nothing for, and a slot as well, which `PopVar`
-writes as it writes the register (`XHome`): the trap report finds it
-there, and `Call` loads the register from it after each call, as
-System V has no callee-saved xmm register.
+Register variables: the parser chooses them (`chooseRegs`, in
+Parse.raz), then gives the locals left in memory their slots
+(`placeLocals`), and tells Gen (`useRegs`) the registers, as bits of
+`VarRegs`. A variable in a register has no slot of its own. Gen saves
+the registers in slots a quadword each, after the locals and not zeroed,
+as each is written first. The prologue saves them, zeroes them, and
+moves a parameter into its register from the register or stack slot it
+arrived in; the epilogue restores them. A slice may have two, its
+pointer's and its length's (see "Better code again" above). A variable
+in one is an item at `bReg`: `pushVar` notes it (`lHeld`) rather than
+copying it, `peek` reads it in place where the value is only read, so `i
+< n` is `cmp rbx, r12`, and `popVar` and `incDecReg` write it. Rt finds
+the values for the trap report from the saves: each procedure's record
+in the places says which it saved, and where (`saveMask`, `saveAt`). A
+real takes one of `xmm12` to `xmm15` (`XVarRegs`, numbered from `XmmVar`
+up, so that `xmm12` isn't taken for `r12`), which the prologue zeroes
+and saves nothing for, and a slot as well, which `popVar` writes as it
+writes the register (`xHome`): the trap report finds it there, and
+`call` loads the register from it after each call, as System V has no
+callee-saved xmm register.
 
-## item.pas: items
+## Item.raz: items
 
-An operand is an *item* (`TItem`), as in Wirth's compilers. Its `mode`
+An operand is an *item* (`Item`), as in Wirth's compilers. Its `mode`
 says what it is now:
 
 - `mConst`: a value known to the compiler, in `val`;
-- `mVar`: a variable, at `base`, `chunk` and `off`, which `AdrOf`
-  makes a `TAdr` for gen;
-- `mStack`: a value on gen's stack;
+- `mVar`: a variable, at `base`, `chunk` and `off`, which `adrOf` makes
+  an `Adr` for Gen;
+- `mStack`: a value on Gen's stack;
 - `mWords`: the two results of a call, as rax and rdx brought them, on
-  gen's stack, the first under the second. `a, b := f(x)` brings the
-  first to the top (`Swap`) and pops each into its variable, so that
+  Gen's stack, the first under the second. `a, b := f(x)` brings the
+  first to the top (`swap`) and pops each into its variable, so that
   nothing goes through memory; `return f(x)` leaves them for
-  `ReturnJump`; anything else makes them a temporary (`CopyToTemp`);
+  `returnJump`; anything else makes them a temporary (`copyToTemp`);
 - `mCond`: a condition, as Wirth's compilers keep one: two integers on
-  gen's stack, compared by `rel` once something wants the result, and
-  the jumps of `and` and `or` that land where it is false (`fj`) or
-  true (`tj`); `CondJump` makes it a jump, `Value` a `BOOL`;
+  Gen's stack, compared by `rel` once something wants the result, and
+  the jumps of `and` and `or` that land where it is false (`fj`) or true
+  (`tj`); `condJump` makes it a jump, `value` a `BOOL`;
 - `mProc`, `mType`, `mStr`, and a few more the parser needs.
 
 An item also carries `pos`, the stretch of source it came from, which
 the parser sets as it reads an expression; an error about an item is
-reported there (`MarkAt(x.pos, ...)`), and one about two operands
-across both (`Join(x.pos, y.pos)`). `What` names an item for a
+reported there (`Scan.markAt(x.pos, ...)`), and one about two operands
+across both (`Diag.join(x.pos, y.pos)`). `what` names an item for a
 message: a constant without a type of its own as it is written
 (`found 1.5`), anything else by its type.
 
-Two routines move items towards the machine: `Value` pushes an item's
-value, and `Address` a variable's address. Both leave the item saying
-it is on the stack. An item nothing more is done with is given back to
-`Discard`.
+An error is shown where it is found, by `Scan.markAt` and the others,
+which return `Scan.Failed`. Every routine here that can find one returns
+an `ERROR` as its last result, and the ones that call it pass it up with
+`try`, to where the parser reads on.
 
-Expressions: `Op1` is called when the parser has seen an operator and
-its left operand, `Op2` when it has the right one. `Op1` pushes the
-left operand, unless it is a constant; for `and` and `or` it makes the
-left one a condition (`MakeCond`) and jumps past the right one, which
-`Op2` joins to it: `(a < b) and (c < d)` in an `if` is two compares
-and two jumps, as `not` of a condition is the other comparison. `Op2` checks the types, folds constants
-(`FoldInt`, `FoldReal`), and otherwise pushes the right operand and has
-gen do the operation; a constant on the left goes on after the right,
-and the two `Swap`. A set's operations are operations on its bits
-(`SetOp`). `=` and `#` on arrays, slices and strings make a slice of
-each side (`SeqSlice`) and have gen compare them right where the
-comparison stands: no call. `+` on two string constants is `JoinStr`,
-which makes one string of them, in a chunk of its own.
+Two routines move items towards the machine: `value` pushes an item's
+value, and `address` a variable's address. Both leave the item saying it
+is on the stack. An item nothing more is done with is given back to
+`discard`.
 
-Variables: `Deref`, `Field`, `Index` and `Slice` turn an item for a
-variable into an item for part of it, mostly by adding to `off`. An
-item for another module's exported variable, or part of it, is `ro`:
-it isn't a variable (`isVar`), and `NotReadOnly` says why where one is
-wanted; what it points at is. An array or record constant is a
-variable too, in read-only data: `AggregateConst` (`parse.pas`) reads
-its literal, part by part in `ConstPart`, into the bytes of a chunk,
-as a string constant's are; an address in it, of a string, an array
-constant, a procedure or an `ERROR`, becomes a data fixup. `MakeItem` makes it
-an `mVar` there that isn't `isVar`, so it is read, indexed, sliced and
-passed, never changed. `Index` and `Slice` have gen make the bounds
-checks, unless the module says `check off;` (`checks`, which
-`CompileFile` sets for each module), and `Convert` the check of an
-enumeration's position.
+Expressions: `op1` is called when the parser has seen an operator and
+its left operand, `op2` when it has the right one. `op1` pushes the left
+operand, unless it is a constant; for `and` and `or` it makes the left
+one a condition (`makeCond`) and jumps past the right one, which `op2`
+joins to it: `(a < b) and (c < d)` in an `if` is two compares and two
+jumps, as `not` of a condition is the other comparison. `op2` checks the
+types, folds constants (`foldInt`, `foldReal`), and otherwise pushes the
+right operand and has Gen do the operation; a constant on the left goes
+on after the right, and the two `swap`. A set's operations are
+operations on its bits (`setOp`). `=` and `#` on arrays, slices and
+strings make a slice of each side (`seqSlice`) and have Gen compare them
+right where the comparison stands: no call. `+` on two string constants
+is `joinStr`, which makes one string of them, in a chunk of its own.
 
-Assignment and conversion: `Coerce` makes a value fit the type it's
+Variables: `deref`, `field`, `index` and `slice` turn an item for a
+variable into an item for part of it, mostly by adding to `off`. An item
+for another module's exported variable, or part of it, is `ro`: it isn't
+a variable (`isVar`), and `notReadOnly` says why where one is wanted;
+what it points at is. An array or record constant is a variable too, in
+read-only data: `aggregateConst` (`Parse.raz`) reads its literal, part
+by part in `constPart`, into the bytes of a chunk, as a string
+constant's are; an address in it, of a string, an array constant, a
+procedure or an `ERROR`, becomes a data fixup. `makeItem` makes it an
+`mVar` there that isn't `isVar`, so it is read, indexed, sliced and
+passed, never changed. `index` and `slice` have Gen make the bounds
+checks, unless the module says `check off;` (`checks`, set by
+`setChecks`, which `compileFile` sets for each module), and `convert`
+the check of an enumeration's position.
+
+Assignment and conversion: `coerce` makes a value fit the type it's
 going to, or reports that it can't; it's where a string literal becomes
-a slice, an array a slice, an untyped constant a typed one, and an
-`INT` an `I64` (`Widens`). `CoerceExact` is for where the types must
-be the same, as in a `for` loop, `INC` and several results. `Assign`
-stores, or copies records and arrays. `Convert` is the written
-conversion, `T(x)`.
+a slice, an array a slice, an untyped constant a typed one, and an `INT`
+an `I64` (`widens`). `coerceExact` is for where the types must be the
+same, as in a `for` loop, `INC` and several results. `assign` stores, or
+copies records and arrays. `convert` is the written conversion, `T(x)`.
 
-Calls: `BeginCall`, then `PassArg` for each argument, then `EndCall`,
-which has gen's `Call` make the call. Each argument is left on gen's
-stack, a slice as its two words (`PushWords`). `return f(x);` passing
-on f's several results, with `ReturnAll`, pushes them from the call's
+Calls: `beginCall`, then `passArg` for each argument, then `endCall`,
+which has Gen's `call` make the call. Each argument is left on Gen's
+stack, a slice as its two words (`pushWords`). `return f(x);` passing on
+f's several results, with `returnAll`, pushes them from the call's
 temporary if they are two words, or else copies them to the place its
 own hidden pointer names.
 
-## parse.pas: the parser
+## Parse.raz: the parser
 
 A recursive descent parser, one routine for each rule of the grammar in
-the report, calling `item.pas`, and for jumps `gen.pas`, as it goes.
+the report, calling `Item.raz`, and for jumps `Gen.raz`, as it goes.
+Like the other modules it is written in raz: the Free Pascal seed built
+it the first time, and it builds itself now. Its routines begin in
+lower case, and each one that can find an error ends in an `ERROR`
+result, passed up with `try` (see Recovery below).
 
-Start with expressions, bottom up: `Factor`, `Term`, `SimpleExpr`,
-`Relation`, `Conjunct` (the `and`s), `Expression` (the `or`s). Then `Designator`, which reads a name and what follows
+Start with expressions, bottom up: `factor`, `term`, `simpleExpr`,
+`relation`, `conjunct` (the `and`s), `expression` (the `or`s). Then `designator`, which reads a name and what follows
 it: `.field`, `^`, `[i]`, `[lo..hi]`, a call, a conversion. Each step
-calls the matching routine in `item.pas` on the item it has. The
+calls the matching routine in `Item.raz` on the item it has. The
 `want` parameter carries the type an expression must have, where it is
-known, so that `[1, 2, 3]`, `{x: 1}` and `{red}` know what to build.
+known, so that `[1, 2, 3]`, `{x: 1}` and `{red}` know what to build
+(`arrayLiteral`, `recordLiteral`, `setLiteral`).
 
-Then statements: `Statement` makes each one a recovery point (below)
-and `OneStatement` dispatches; `IfStatement`,
-`WhileStatement`, `ForStatement` and `MatchStatement` emit their jumps
+Then statements: `statement` makes each one a recovery point (below)
+and `oneStatement` dispatches; `ifStatement`,
+`whileStatement`, `forStatement` and `matchStatement` emit their jumps
 with gen's labels. A branch of an `if` that ends, in `return` or
 `break` (`ends`), gets no jump past the others; and `if c then break;
-end` is one jump out of the loop where `c` holds (`ThenPart`,
-`LoneBreak`, `CondJumpTrue`), not a jump past a jump. A `for` loop
+end` is one jump out of the loop where `c` holds (`thenPart`,
+`loneBreak`, and `Item.condJumpTrue`), not a jump past a jump. A `for` loop
 steps its variable at the top and tests at the bottom, so that a round
 by 1 is one compare and one jump; its rare case, a body that moves the
-variable past the limit, has code of its own after (`ForNext`, whose
+variable past the limit, has code of its own after (`Item.forNext`, whose
 comment walks through the report's rule). The blank is a symbol of its own, `sBlank`, so
 no declaration or expression takes it: `_ := e` loads a single value
-and drops it, and `MultiAssign` skips the results it stands for. A
+and drops it, and `multiAssign` skips the results it stands for. A
 `match` on an integer reads each arm's
-labels in `IntArm`, which refuses a value in two of them. The arms
+labels in `intArm`, which refuses a value in two of them. The arms
 come first and the test after them: the match starts with a jump to
-`Dispatch`, placed after the last arm, since a jump table can only be
+`dispatch`, placed after the last arm, since a jump table can only be
 made once every arm's place is known (an enumeration's arms are
 picked the same way; a variant's, by its tag, arm by arm).
-`Dispatch` makes a jump table (gen's `JumpTable`, whose comment shows
+`dispatch` makes a jump table (gen's `jumpTable`, whose comment shows
 the code) for four labels or more that lie close together, else
-compares and branches one label after another with `MatchRange`, each
-jumping back to its arm. `Defer` is worth reading: a deferred statement
+compares and branches one label after another with `Item.matchRange`, each
+jumping back to its arm. `deferStatement` is worth reading: a deferred statement
 is compiled where it stands, as a little subroutine of the procedure
-that the code jumps over (gen's `DeferBegin` and `DeferEnd`), and
-`RunDefers` emits a call to it at every way out of its statement list:
+that the code jumps over (gen's `deferBegin` and `deferEnd`), and
+`runDefers` emits a call to it at every way out of its statement list:
 the end, `return` and `break`. A `return`'s result waits in the frame
 meanwhile, so that gen's stack is empty when they run.
 
-`try` (report 7.8) is `TryCall`, for the statement, an operand
-(`Factor`) and the right of a multiple assignment (`MultiAssign`). It
-reads the call as `Designator` does, takes the error, the last of its
+`try` (report 7.8) is `tryCall`, for the statement, an operand
+(`factor`) and the right of a multiple assignment (`multiAssign`). It
+reads the call as `designator` does, takes the error, the last of its
 results, out of the way into a slot of the frame, and leaves in `x`
 the results that are left: none, one value, or a tuple of the others,
-`WithoutLast`. Then, in the code before and after, this:
+`withoutLast`. Then, in the code before and after, this:
 
 ```
-        load [slot]; jz ok            ; JumpIf(ok, false)
-        and rsp, -16                  ; TryAlign, if a deferred statement is in force
-        call deferred...              ; RunDefers(0), as for a return
-        mov rax/rdx or the results    ; TryReturn(slot): zeros, and the error last
+        load [slot]; jz ok            ; Gen.jumpIf(ok, false)
+        and rsp, -16                  ; Gen.tryAlign, if a deferred statement is in force
+        call deferred...              ; runDefers(0), as for a return
+        mov rax/rdx or the results    ; Gen.tryReturn(slot): zeros, and the error last
         jmp exit
 ok:     ...
 ```
@@ -1051,117 +1081,130 @@ ok:     ...
 Unlike `return`, which is a statement and finds gen's stack empty,
 `try` can stand in the middle of an expression, with values waiting
 on gen's stack and quadwords pushed for another call's arguments. The
-out-of-line code therefore makes no entry on the stack: `TryReturn`
-loads registers and jumps, and `TryAlign` makes the machine's stack
+out-of-line code therefore makes no entry on the stack: `tryReturn`
+loads registers and jumps, and `tryAlign` makes the machine's stack
 even for the deferred statements, which expect it so. The code that
 follows is the code for an error that is nil, with the stack as it
 was, so no model needs resetting.
 
-Then declarations: `Declarations` reads `const`, `type`, `var`, `proc`
-and `extern`, each one through `Declaration`, a recovery point, which
-calls `ConstDecl`, `TypeDecl`, `VarDecl`, `ProcDecl` or `ExternDecl`. `ProcDecl` handles forward declarations, code procedures
-(`CodeBody`, which checks the signature, a slice parameter counting as
+Then declarations: `declarations` reads `const`, `type`, `var`, `proc`
+and `extern`, each one through `declaration`, a recovery point, which
+calls `constDecl`, `typeDecl`, `varDecl`, `procDecl` or `externDecl`
+(by `declarationOf`). `procDecl` handles forward declarations, code procedures
+(`codeBody`, which checks the signature, a slice parameter counting as
 two of the six integer registers and a slice result going in rax and
-rdx, and has gen's `CodeProc` run
-the target's assembler) and bodies (`Body`).
-`ParseType` and its helpers (`RecordType`, `VariantType`, `Signature`,
-`EnumType`) build `TType`s.
+rdx, and has gen's `codeProc` run
+the target's assembler) and bodies (`body`).
+`parseType` and its helpers (`recordType`, `variantType`, `signature`,
+`enumType`) build `Sym.Type`s.
 
-Last, modules, at the end of the file. `CompileFile` reads one module.
-`ImportModule` finds a module's file, trying the target's names first,
-and compiles it if it isn't yet. `CheckOneModule` first makes sure no
+Last, modules, at the end of the file. `compileFile` reads one module.
+`importModule` finds a module's file, trying the target's names first,
+and compiles it if it isn't yet. `checkOneModule` first makes sure no
 later directory has the module too, unless the file is a link to one
-of its files there; `CheckSiblings` then reads the files for other
-targets beside it, declarations only, and `CompareIface` holds them
+of its files there; `checkSiblings` then reads the files for other
+targets beside it, declarations only, and `compareIface` holds them
 to the same exports by their fingerprints. A generic module is
 compiled once per distinct list of arguments, where it is first used.
-The import only notes where its arguments are (`SkipArgs`, `deferred`);
-`FirstUse`, from `QualIdent`, has `MakeInstance` go back there, where
-`ParseArgs` reads them, then compile the instance. `Params` binds them
-to the module's parameters, and `IsModule` decides whether an instance
+The import only notes where its arguments are (`skipArgs`, `deferred`);
+`firstUse`, from `qualIdent`, has `makeInstance` go back there, where
+`parseArgs` reads them, then compile the instance. `moduleParams` binds them
+to the module's parameters, and `isModule` decides whether an instance
 already exists. An instance can't be compiled in the middle of another
 procedure's code, since the code buffer is one run of bytes, so
-`InstancesFor` reads ahead through a procedure, or the module's body,
+`instancesFor` reads ahead through a procedure, or the module's body,
 before its code begins, and makes the instances it names.
 
 **Recovery.** After an error the parser carries on, so that one run
-reports them all. `Guard` notes, at the start of a statement or
-declaration, the scanner's state and the parser's; `setjmp` marks the
-place, and `MarkAt` jumps back to it after reporting. `Restore` puts
+reports them all. The Pascal seed did it with `setjmp` and `longjmp`;
+raz has neither, so here an error is a value. `Scan.mark` and the
+routines like it show the message and return the `ERROR` `Scan.Failed`;
+each routine that calls one passes it up with `try`, until it reaches a
+recovery point, `statement` or `declaration`, which looks at what came
+back. At the start of its construct it called `guard`, which notes in a
+`Recover` the scanner's state and the parser's (the scopes, gen's stack,
+the loop, the deferred statements, `quiet`). On an error `restore` puts
 the state back, the construct's first symbol current again, and
-`SkipConstruct` reads past it, counting the words that open and close
+`skipConstruct` reads past it, counting the words that open and close
 blocks. A symbol at the start of a line ends the skip: by the usual
 layout it starts the next declaration, so the statement gives up its
-procedure (`GiveUp`), and `SkipProc` reads to the procedure's
-`end Name;`. A name not declared is reported by `NotDeclared`, with
-what it may have meant: a module to import (`ModuleFile`) or a name
-spelled alike. It is then declared where it is used, with the type
-`tPoison` (`Poison`), as are the names of a declaration that had an
-error; a construct that uses poison sets `quiet`, and its errors
-aren't reported, since they follow from one that was. Nothing breaks
-for the half-made code: once there is an error, no executable is
-written.
+procedure (`giveUp`), which passes the error on up to the next
+recovery point, the declaration of the procedure, and `skipProc`
+reads to the procedure's `end Name;`. A declaration that is not a
+procedure is skipped by `skipDeclaration`. `guards` counts the recovery
+points open: `giveUp` with none left ends the compile. A routine that
+can't fail has no `ERROR` result (`declarations`, `declaration`). A name not declared is reported by
+`notDeclared`, with what it may have meant: a module to import
+(`moduleFile`) or a name spelled alike (`didYouMean`). It is then
+declared where it is used, with the type `tPoison` (`poison`), as are
+the names of a declaration that had an error; a construct that uses
+poison sets `Diag.quiet` (by `Diag.setQuiet`, since a variable
+exported by another module is read-only), and its errors aren't
+reported, since they follow from one that was. Nothing breaks for the
+half-made code: once there is an error, no executable is written.
 
 **Hints.** Some messages guess at the mistake from the layout. A
-block statement passes `CloseEnd` its start and how far its line is
+block statement passes `closeEnd` its start and how far its line is
 indented; an `end` further left was most likely meant for a block
-around it, so the first such statement is kept, and `EndMissing`
+around it, so the first such statement is kept, and `endMissing`
 notes it when a procedure's own `end` turns out to be missing. A type
-error in an argument goes through `Mismatch`, which notes the
-parameter it goes to (`passing`, set by `PassArg`).
+error in an argument goes through `Item.mismatch`, which notes the
+parameter it goes to (`Item.passing`, set by `Item.passArg`).
 
-**Warnings.** `Declare` keeps each module's declarations in order in
-two lists, through `link`: its own and its procedures', parameters
-and a match's names for fields among them. `Named` marks an object
+**Warnings.** `declare` keeps each module's declarations in order in
+two lists, through `chain`: its own (`first`) and its procedures'
+(`locals`), parameters
+and a match's names for fields among them. `named` marks an object
 `used` and `read` wherever a name finds it, except a procedure naming
-itself; `LeftSide` puts `read` back as it was for a variable named
+itself; `leftSide` puts `read` back as it was for a variable named
 whole before `:=`, which is written, not read. At the end of a module
-with no errors, `Warnings` merges the two lists by position and `Warn`
+with no errors, `warnings` merges the two lists by position and `warn`
 reports what isn't exported, doesn't start with `_`, and was never
 used, or, for a variable, only assigned, and a procedure with results
 that may reach its end (`openEnd`, from `ends`, which each statement
 sets). The calls that drop results are a third list, `drops`, in
-order: `CompileFile` notes where the module's own begin, since the
-instances it makes along the way add theirs and take them back. A
+order: `compileFile` notes where the module's own begin (`numDrops`),
+since the instances it makes along the way add theirs and take them
+back. A
 generic module's instances
 share its text, so only the first is warned of.
 
-The built-in procedures are in `Builtin` (and `New_`, `Atomic`): each
+The built-in procedures are in `builtin` (and `new_`, `atomic`): each
 parses its own arguments, since `SIZE` takes a type and `INC` a
 variable.
 
 **Register variables.** One pass can't know whether a variable's
-address will be taken before its code is made, so `ChooseRegs` reads
-the body ahead, as `InstancesFor` does, and counts each variable's
+address will be taken before its code is made, so `chooseRegs` reads
+the body ahead, as `instancesFor` does, and counts each variable's
 uses: 1 for each, 4 in a loop, 16 in two, at most 64 (loops nested three
 deep or more); one `ADR` takes is out. The
 busiest used at least three times get the five registers (`o^.reg`),
 a slice two (`o^.reg2` too), its count halved for each, and the
-busiest reals the four of `XVarRegs`, each with a slot as well
-(`PlaceLocals`, `XHome`). An
+busiest reals the four of `Gen.XVarRegs`, each with a slot as well
+(`placeLocals`, `Gen.xHome`). An
 address wanted after all, by a `var` parameter, say, comes to
-`Address` (`item.pas`), which puts the variable back in memory and
-sets `demoted`: `Body` then throws the procedure's code away
-(`MarkCode`, `Redo`), places the locals again, and compiles its
+`Item.address`, which puts the variable back in memory and
+sets `Item.demoted`: `body` then throws the procedure's code away
+(`Gen.markCode`, `Gen.redo`), places the locals again, and compiles its
 statements again. Its notes for
-the trap report are made after, by `VarKind`, which marks a variable
+the trap report are made after, by `varKind`, which marks a variable
 in a register with the register's number.
 
-## link.pas: tree shaking and layout
+## Link.raz: tree shaking and layout
 
-`MarkLive` starts from the entry chunk and follows fixups, marking each
+`markLive` starts from the entry chunk and follows fixups, marking each
 chunk it reaches, through the data fixups of constants too; nothing
-else goes into the executable. `LinkAll`
-places the live chunks section by section (`Place`), each at its
+else goes into the executable. `linkAll`
+places the live chunks section by section (`place`), each at its
 alignment, then copies their bytes into the images of text and rodata,
 patching every fixup with the distance from the end of its field to its
 target, and every data fixup with its target's address.
 
-Between placing text and placing rodata, `MakePlaces` writes the
+Between placing text and placing rodata, `makePlaces` writes the
 places, a rodata chunk: for the trap report, each live procedure's
-address range and name, and its variables, which `Body` (`parse.pas`)
-notes with `NoteVar`: each one's name, its place in the frame and how
-`Rt` shows it (`VarKind`); then the line table (`MakeLines`), DWARF
+address range and name, and its variables, which `Parse.body`
+notes with `Chunk.noteVar`: each one's name, its place in the frame and how
+`Rt` shows it (`varKind`); then the line table (`makeLines`), DWARF
 4's line program, which gdb reads as `.debug_line`: one sequence of
 rows for each procedure, a row for each line note in live code, its
 address, file, line and column. A row that moves the address and the
@@ -1184,12 +1227,12 @@ calls under way, up the chain of frames while it stays in the program's
 own code, and `exit` has `profile` say which procedures and places
 those fell in, by the same tables: each procedure's samples in its own
 code, and its total, counting once each sample it was on the chain of.
-The entry point gives Rt what the program has (`TLink`): the places,
+The entry point gives Rt what the program has (`Gen.Link`): the places,
 `calls`, which tells the calls under way, `place`, which says where an
 address is, and the profiler's start. What it isn't given, nothing
 reaches, so the linker leaves it out: `raz -noprofile` gives no
 profiler, and `raz -s` none of them, whose failures say only their
-address (and `elf.pas` writes no symbols or line numbers). Hello is 28
+address (and `Elf.raz` writes no symbols or line numbers). Hello is 28
 KB, 21 KB without the profiler, and 7 KB stripped.
 
 The layout is chosen so the file can be mapped as it lies, with no
@@ -1199,9 +1242,9 @@ from its place in the file than the one before, so that no two
 segments, with their different permissions, share a page. bss follows
 the loader's table, or begins a page of its own.
 
-## elf.pas: the executable
+## Elf.raz: the executable
 
-`WriteElf` writes the ELF header, the program headers, the text and
+`writeElf` writes the ELF header, the program headers, the text and
 rodata images, and then what isn't loaded: section headers, a symbol
 table with every live procedure and variable by `Module.name`, and
 the compile unit that names the line table. The line table is in the
@@ -1211,34 +1254,36 @@ A program that uses C is linked dynamically, in the least way the
 loader accepts: an interpreter header naming the loader; a dynamic
 section naming the libraries; and, for each C symbol the program uses,
 a symbol and a `GLOB_DAT` relocation that has the loader write the
-symbol's address into the quadword `ExternChunk` made. Code calls C
+symbol's address into the quadword `Chunk.externChunk` made. Code calls C
 through that quadword. There is no PLT and no lazy binding.
-`SizeTables` and `PutTables` lay these out in the room `link.pas` left
+`sizeTables` and `putTables` lay these out in the room `Link.raz` left
 at the end of rodata.
 
-Line numbers are DWARF 4: the line table `MakeLines` made from the
-notes `NoteLine` made, and the single compile unit gdb needs to find
-it, which `PutDebug` writes. There are no types or variables in it;
+Line numbers are DWARF 4: the line table `makeLines` made from the
+notes `Chunk.noteLine` made, and the single compile unit gdb needs to find
+it, which `putDebug` writes. There are no types or variables in it;
 gdb can stop at a line and show where it is, not print a variable.
 
-## raz.pas: the command line
+## Raz.raz: the command line
 
-`raz.pas` parses the arguments, calls `CompileMain`, and works out what
-the program uses: `Use` marks the modules imported from the main module
-and `Rt`; `UsesC` decides whether the program is dynamic, refusing one
+`Raz.raz` parses the arguments, calls `Parse.compileMain`, and works out what
+the program uses: `use` marks the modules imported from the main module
+and `Rt`; `usesC` decides whether the program is dynamic, refusing one
 that both uses C and has a module saying `link static`. Then it has
-gen's `EntryPoint` write the entry point, and `MarkLive` mark what it
-reaches. On a target
-without reals (`HasReals`, beside `Target` in `parse.pas`; x86-64 has
+gen's `entryPoint` write the entry point, and `Link.markLive` mark what it
+reaches. The program is `proc main*: INT`; where raz is, for the library
+beside it, it reads from `/proc/self/exe`, and the version it prints is
+the module `Version`, which the build makes from `git describe`. On a target
+without reals (`HasReals`, a constant of `Parse`; x86-64 has
 them), a live chunk that computes with one is an error at the first
-place it does: `UsesReals` in `item.pas` notes it, from `Value` and a
+place it does: `Item.usesReals` notes it, from `Item.value` and a
 real literal, on the chunk of the procedure being compiled. A real
 moved whole, as a record's bytes are, isn't noted. A static program starts at `_start` itself. A dynamic
 one starts at a `_start` that calls `__libc_start_main` the way C's own
 start-up does, which sets C up and calls back a `main` that runs the
 module bodies and the program's `main`.
 
-`raz -S` lists the code (`List`, in `x64.pas`) instead of writing
+`raz -S` lists the code (`X64.list`) instead of writing
 it. `raz run` writes the executable to a memfd, a file only in memory, and
 executes it through `/proc/self/fd` in raz's own place, handing it the
 rest of raz's `argv`. Nothing is left on disk, and the program's
@@ -1259,23 +1304,23 @@ this one does.
   a link to it (`make install` puts `raz` and `lib/` together in
   `PREFIX/lib/raz`). In each directory it tries `X.linux-x86_64.raz`,
   `X.linux.raz`, `X.x86_64.raz` and `X.raz`, in that order, and takes
-  the first found (`ModuleFile`, `parse.pas`).
+  the first found (`moduleFile`, `Parse.raz`).
 - **Errors.** Every error in a run is reported, up to 20 (`MaxErrors`,
-  `diag.pas`); then the compiler stops. Two errors at the same place
+  `Diag.raz`); then the compiler stops. Two errors at the same place
   are told as one. Any error is status 1.
 - **Warnings.** Of a declaration never used, or a variable only
-  assigned (`Warn`, `parse.pas`): not of what is exported, a name that
+  assigned (`warn`, `Parse.raz`): not of what is exported, a name that
   starts with `_`, an enumeration's names or a generic module's
   parameters. A procedure naming itself doesn't use it; a type named by
   a pointer in its own declaration does. Assigning a variable whole
   (`x :=`, `a, b :=`) doesn't read it; anything else does. Warnings
   come only for a module with no errors, and a generic module's only
   for its first instance. A procedure with results is warned of if
-  it may reach its end without `return` (`ends`, `parse.pas`): each
+  it may reach its end without `return` (`ends`, `Parse.raz`): each
   way through its statements must end in a `return`, an `if` with an
   `else`, a `match`, a `while true` or a `repeat ... until false`
   with no `break`. So is a call standing on its own that drops a
-  result (`drops`, kept by `OneStatement` and told by `Dropped`);
+  result (`drops`, kept by `noteDrop` and told by `dropped`);
   `_ := f(x)` drops one on purpose. `-Werror` makes each an error.
 - **Registers for variables.** Up to five of a procedure's single
   values, not reals, whose address is never taken, live in `rbx` and
@@ -1317,24 +1362,29 @@ this one does.
   module body runs.
 - **Frames.** A deferred statement's slots stay reserved for the rest
   of its procedure. A generic instance first used in a procedure, or in
-  a module's body, is made before that code begins (`InstancesFor`).
+  a module's body, is made before that code begins (`instancesFor`).
 - **The executable** carries DWARF line numbers and the names of
   procedures for gdb, and the places (`Rt.places`), which hold the
   line table, DWARF's, that gdb reads and `Rt` runs.
 
 ## Where to start changing it
 
-- **A built-in procedure:** an entry in `sym.pas`'s universe, a case in
-  `Builtin` in `parse.pas`, and the code, in `gen.pas` if it is an
+- **A built-in procedure:** an entry in `Sym.raz`'s universe (`enter`),
+  a case in `builtin` in `Parse.raz`, and the code, in `Gen.raz` if it is an
   instruction, or of calls to gen right there.
-- **An instruction:** a routine in `x64.pas` built on `OpM` or `OpR`,
-  and a line in `test/enctest.pas` to check its encoding.
-- **A machine:** a new `gen.pas`, answering the same calls, and an
-  encoder and assembler for it in place of `x64.pas`.
-- **A statement:** a reserved word in `scan.pas` (in `TSym` and `Words`,
-  in the same order), a case in `OneStatement`, and a routine beside the
+- **An instruction:** a routine in `X64.raz` built on `opM` or `opR`,
+  and a line in `test/enctest.pas` to check its encoding (the seed's
+  test; `test/X64Dump` is the port's).
+- **A machine:** a new `Gen.raz`, answering the same calls, and an
+  encoder and assembler for it in place of `X64.raz`.
+- **A statement:** a reserved word in `Scan.raz` (in `Sym` and `words`,
+  in the same order), a case in `oneStatement`, and a routine beside the
   others.
-- **A check that fails:** `Check` in `gen.pas`, and the message in
+- **A check that fails:** `check` in `Gen.raz`, and the message in
   `lib/Rt.raz`'s `fail`; a reason a signal gives, `onSignal` there.
 
-After any change: `make check`, `make bench`, `make loc`.
+The compiler is in raz, and `make raz` builds it with the seed, the
+frozen Pascal compiler in `seed/`, which is never edited to suit it;
+`make fixpoint` has it build itself twice more and checks that the last
+two are the same file. After any change: `make check`, `make bench`,
+`make loc`.

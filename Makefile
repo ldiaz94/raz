@@ -1,11 +1,23 @@
-# Builds the compiler, raz, from seed/ into the repository's root; the
-# library it needs is lib/, beside it.
+# Builds the compiler, raz, from src/ into the repository's root; the
+# library it needs is lib/, beside it. The seed, the Pascal compiler in
+# seed/, builds it: fpc makes the seed in build/seed/ (with lib/ beside
+# it, as every raz has), and the seed compiles src/. The one module
+# the build makes, Version, holds what git says the version is.
 
 FPC = fpc
 FPCFLAGS = -O2 -Mobjfpc -Sh- -vew -FUbuild
 
-raz: seed/*.pas build/version.inc | build
-	$(FPC) $(FPCFLAGS) -Fibuild -FE. -oraz seed/raz.pas
+raz: build/seed/raz src/*.raz build/src/Version.raz
+	build/seed/raz -Werror -I src -I build/src -o raz src/Raz.raz
+
+build/seed/raz: seed/*.pas build/version.inc | build
+	mkdir -p build/seed
+	$(FPC) $(FPCFLAGS) -Fibuild -FEbuild/seed -obuild/seed/raz seed/raz.pas
+	ln -sfn ../../lib build/seed/lib
+
+build/src/Version.raz: build/version.inc | build
+	mkdir -p build/src
+	printf 'module Version;\nconst Text* = "%s";\nend Version.\n' "$$(tr -d "'" < build/version.inc)" >$@
 
 # The version is git's name for the commit; the file changes only when
 # that does, so raz isn't rebuilt for nothing.
@@ -35,11 +47,11 @@ clean:
 check: raz build/raz-lib.3
 	test/check.sh
 
-# the raz compiler in raz, src/, tested against the seed's units
-self: raz | build
+# the compiler's units, and the whole compiler, tested against the seed's
+seed-check: raz | build
 	src/check.sh
 
-self-bench: raz | build
+seed-bench: raz | build
 	src/bench.sh
 
 # the seed builds src/, that builds src/, that builds it again: the
@@ -88,8 +100,8 @@ fmt: raz | build
 # lines of the compiler, by rloc: each file's blank, comment and code,
 # then the lines of code in all
 loc:
-	@rloc -f seed/*.pas
-	@rloc -c seed/*.pas
+	@rloc -f src/*.raz
+	@rloc -c src/*.raz
 
 # raz-lib(3), the library's manual page, made by tools/Doc.raz from
 # its sources, in the order of the report's section 11
@@ -161,4 +173,4 @@ dist:
 site: raz
 	python3 site/build.py
 
-.PHONY: units tests self self-bench fixpoint check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall
+.PHONY: units tests seed-check seed-bench fixpoint check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall

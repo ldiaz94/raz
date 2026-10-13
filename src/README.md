@@ -7,9 +7,9 @@ One module to a seed unit, with the seed's name, written to the same
 rules: plain code, each module opening with what it is, what it
 depends on and what it leaves out. The seed is never edited from here.
 
-    make self        # each unit against the seed's, on the same files
-    make self-bench  # the scanner's speed against the seed's
-    make fixpoint    # the seed builds self, that builds self, that builds it again
+    make seed-check        # each unit against the seed's, on the same files
+    make seed-bench  # the scanner's speed against the seed's
+    make fixpoint    # the seed builds src, that builds src, that builds it again
 
 `Chunk` and `Sym` have no input files to read, so each has a dumper
 pair, `test/ChunkDump` and `test/SymDump`, that runs one fixed
@@ -41,14 +41,14 @@ run ends at its 20th error, as a compile does). The text its messages
 point into is `test/ItemDump.txt`.
 
 `Parse` and `Raz`, the last two units, are tested whole: the seed builds
-`src/Raz.raz` into `build/self/raz.self`, and each compiler, run as
+`src/Raz.raz` into `build/src/raz.src`, and each compiler, run as
 `build/cmp/raz` (a program holds the paths it was made from, and the
 library is found beside the compiler), compiles the library, the
 examples, the tools, `src/` itself, every test of `test/` and
 `conform/`, and the 348,025-line program of `test/genbench.py`, with the
 options each test has. The executable, the messages, and the status
 must be the same for every file: 409 of them, 289 of which are errors.
-`make self-bench` gives the speed of both.
+`make seed-bench` gives the speed of both.
 
 `make fixpoint` (`fixpoint.sh`) is the proof that the port is whole:
 the seed builds `Raz.raz` (stage 1), stage 1 builds it (stage 2), and
@@ -167,7 +167,7 @@ Not the seed's to mend; for the owner to choose.
   `raz run` writes the memfd with `Elf.writeElf` and executes it with
   the system call, `execve`, which `Sys` has no procedure for. The
   version is the module `Version`, which `check.sh` makes in
-  `build/self/` from `build/version.inc`, as the seed's `{$I}` is.
+  `build/src/` from `build/version.inc`, as the seed's `{$I}` is.
   Two names of a file, for a module found in two places, are told by
   the device and inode `SYSCALL` `stat` gives, which `Sys.info` lacks.
 - **Sets of `Scan.Sym`.** It has 76 names and a set holds 64, so the

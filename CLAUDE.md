@@ -8,12 +8,14 @@ disagrees, the report wins and the plan is fixed.
 ## Setup and checks
 
     apt-get install -y fp-compiler   # Free Pascal 3.2.2, if fpc is missing
-    make raz       # the compiler, ./raz; its library is lib/
+    make raz       # the compiler, ./raz, built from src/ by the seed; its library is lib/
     make check     # every example and test against its expected output
     make bench     # must report at least 400,000 lines a second
     make kernels   # test/bench's kernels against FPC -O2's twins
     make loc       # lines of the compiler, by rloc; the last, code, is the budget
     make tests     # the small Pascal tests of scan, x64, link and elf
+    make seed-check  # src/ against the seed: each unit, then every program
+    make fixpoint  # the seed builds src, that builds src, that again: the last two agree
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version
     make fmt       # lib/, examples/ and tools/ are formatted
@@ -44,9 +46,12 @@ library's tests: they must have no warnings.
 
 ## How we work
 
-- The compiler is Free Pascal 3.2.2, `{$mode objfpc}{$H-}`: records,
-  pointers, shortstrings. No classes, ansistrings, exceptions, dynamic
-  arrays or SysUtils.
+- The compiler, `src/`, is raz, in the language of the report and with
+  the library of `lib/`; it must build with the seed (`seed/`, Free
+  Pascal 3.2.2, `{$mode objfpc}{$H-}`: records, pointers, shortstrings;
+  no classes, ansistrings, exceptions, dynamic arrays or SysUtils), so
+  it uses nothing the seed doesn't know until a release makes a new
+  seed.
 - Plans go by milestones, each a release (`PLAN.md`). A milestone
   starts only on the owner's explicit go-ahead; within it, one commit
   per step, pushed as it is done, then stop for review. Never start a
@@ -96,7 +101,8 @@ v0.9.0, better code for reals: reals on the stack and the
 busiest real variables in xmm registers, and an array's element and a
 constant offset as operands, measured on two kernels of reals,
 `Jacobi` and `NBody`. `make kernels` measures `test/bench` against
-FPC `-O2`. Next, by `PLAN.md`: what the owner chooses.
+FPC `-O2`. Self (`PLAN.md`) is done: `src/` is the compiler in raz, and
+the seed in `seed/` is frozen. Next, by `PLAN.md`: what the owner chooses.
 
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
