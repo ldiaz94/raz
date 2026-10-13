@@ -1,0 +1,4 @@
+test/err/Alone.raz:2:13: error: Alone is generic: it is compiled where a module imports it
+    2 | module Alone(T);
+      |             ^
+raz: 1 error

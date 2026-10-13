@@ -1,0 +1,5 @@
+module ConvDeref;
+var a, b: INT;
+begin
+  b := ^INT(a)^
+end.

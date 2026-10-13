@@ -1,0 +1,4 @@
+(* A generic module, compiled on its own *)
+module Alone(T);
+var x: T;
+end.

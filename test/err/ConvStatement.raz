@@ -1,0 +1,6 @@
+module ConvStatement;
+var a: INT;
+begin
+  a := 1;
+  ^INT(a)^ := 1
+end.

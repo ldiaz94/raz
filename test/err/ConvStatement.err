@@ -1,0 +1,5 @@
+test/err/ConvStatement.raz:5:3: error: a statement starts with a name
+    5 |   ^INT(a)^ := 1
+      |   ^
+help: convert into a pointer variable, then assign through that
+raz: 1 error

@@ -1115,6 +1115,9 @@ begin
       Expression(x, nil);
       Expect(sRparen);
       Convert(x, t);
+      { a conversion is a factor, not a designator: nothing selects from it }
+      if tok = sArrow then
+        MarkHelp(TokPos, 'a conversion can''t be dereferenced', 'convert into a pointer variable, then dereference that');
     end;
   else Expected('an expression');
   end;
@@ -1789,6 +1792,7 @@ begin
       Jump(curLoop^.brk);
     end;
     sDefer: Defer;
+    sArrow: MarkHelp(TokPos, 'a statement starts with a name', 'convert into a pointer variable, then assign through that');
   else if AtLineStart then EndMissing(MissingPos, 'expected "end", found ' + Found)
   else Expected('a statement');
   end;
@@ -2722,7 +2726,11 @@ begin
   Expect(sModule);
   if (tok <> sIdent) or (id <> n) then Mark('expected module ' + NameOf(n) + ', found ' + Found);
   Next;
-  if tok = sLparen then Params(m)
+  { the module first pending is the one named on the command line,
+    which nothing imports, so no arguments come with it }
+  if (tok = sLparen) and not checkOnly and (numPending = 1) then
+    Mark(NameOf(n) + ' is generic: it is compiled where a module imports it')
+  else if tok = sLparen then Params(m)
   else if args.n > 0 then MarkAt(args.at, NameOf(n) + ' isn''t generic');
   Expect(sSemicolon);
   while tok = sImport do begin

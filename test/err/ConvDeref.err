@@ -1,0 +1,5 @@
+test/err/ConvDeref.raz:4:15: error: a conversion can't be dereferenced
+    4 |   b := ^INT(a)^
+      |               ^
+help: convert into a pointer variable, then dereference that
+raz: 1 error
