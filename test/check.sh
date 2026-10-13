@@ -22,6 +22,7 @@ raz=./raz
 out=build/check
 mkdir -p $out
 ulimit -c 0   # the tests stopped by a signal leave no core
+ulimit -s 8192   # Linux's usual stack: StackOverflow's depth depends on it, and CI's runner gives more
 pass=0
 fail=0
 
