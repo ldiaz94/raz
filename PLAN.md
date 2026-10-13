@@ -80,5 +80,18 @@ none is built while the freeze holds.
   time, since the loop's values then stay in registers, not the
   frame; FPC `-O2` with `inline` gains as much. `tools/Pretty` gained
   nothing: its small procedures cost their work, not their calls.
-  Open: where gdb and a failure place a line inside an inlined
-  procedure, the callee's or the caller's.
+  Dropped as a language change (2026-10-13): a hint means nothing a
+  program can see, and this compiler can inline by itself, with no
+  keyword. Debugging would be settled by keeping the callee's lines
+  in the line table as rows that aren't statements (DWARF's
+  `is_stmt`): gdb steps over them, `Rt` still tells a failure at its
+  expression; only `Rt.trace` loses the callee's frame.
+  Measured on rat's 26 MB workload (477 ms): its hot procedures are
+  almost never a single `return e`, and inlining those by hand gained
+  nothing. What did gain, 12%, was hoisting the fast path of two small
+  procedures into their callers by hand: `Width.cells` (`if c < 300H
+  then return 1`) and `Screen.unsplit` (a guard, then rare work),
+  called for every character. An inliner for that, statements and
+  early returns and procedures without results, is several times the
+  size; the same 12% is a few lines in rat. Revisit only if more
+  programs show it.
