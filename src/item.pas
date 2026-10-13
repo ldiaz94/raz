@@ -640,9 +640,8 @@ begin
   end else if t^.form = fArray then begin
     Value(y);
     if checks then CheckIndex(t^.len, y.pos);
-    ScaleBy(s);
-    if x.base <> bStack then begin PushAdr(AdrOf(x)); x.off := 0 end;
-    gen.Op(sPlus, kWord, 8, false);
+    if x.base = bStack then begin ScaleBy(s); gen.Op(sPlus, kWord, 8, false) end
+    else begin IndexArray(AdrOf(x), s); x.off := 0 end;
     x.base := bStack;
   end else begin
     Value(y);

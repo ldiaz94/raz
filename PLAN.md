@@ -29,7 +29,13 @@ buys less than 2% on both is reverted and noted here.
    `movsd`, a constant read from read-only data, and an operation takes
    its right operand from memory as it is. Jacobi 251 ms to 129, NBody
    375 to 225; rat within noise.
-3. **Real variables in xmm registers**, where that pays: measured, and
+3. Done: **An element of an array as the machine has it.** NBody's
+   time went mostly to its addresses, not its reals: `x[i]`, of an
+   array of the module, was a copy, a shift, a `lea` and an add before
+   its load. Now an element of an array in the frame or a chunk is the
+   operand `[base + i * 8]`, as one of a slice in registers is. NBody
+   225 ms to 147; rat within noise.
+4. **Real variables in xmm registers**, where that pays: measured, and
    kept only if it does.
 
 ## Next, when the owner says

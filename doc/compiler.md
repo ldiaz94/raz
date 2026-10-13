@@ -15,8 +15,8 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/sym.pas` | 646 | 528 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,201 | 992 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 2,093 | 1,522 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,579 | 1,302 | Items: types, constants, variables, operators, conversions, calls |
+| `src/gen.pas` | 2,121 | 1,542 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,578 | 1,301 | Items: types, constants, variables, operators, conversions, calls |
 | `src/parse.pas` | 3,103 | 2,707 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 334 | 258 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 373 | 294 | Static and dynamic ELF, symbol table, line numbers |
@@ -489,6 +489,36 @@ division in its inner loop.
    under it as it does the integers. Jacobi 251 ms to 129, NBody 375
    to 225; rat within noise.
 
+2. **An element of an array as the machine has it.** That left
+   NBody's reals waiting on their addresses: `x[i]`, of an array of
+   the module, was worked out as an address, and the index copied
+   from its register to be scaled:
+
+   ```
+   mov r8, rbx               ; i
+   shl r8, 3
+   lea r9, [NBody.x]
+   add r8, r9
+   movsd xmm8, [r8]
+   ```
+
+   Now an element of 1, 2, 4 or 8 bytes of an array in a chunk, with
+   its index in a variable's register, is noted as the operand that
+   reads it, its base the array's address, made in the value's own
+   register; one in the frame has `rbp` as its base, whatever its
+   index (`IndexArray`, as `IndexSlice` does for a slice in
+   registers):
+
+   ```
+   lea r8, [NBody.x]
+   movsd xmm8, [r8 + rbx * 8]
+   ```
+
+   A computed index in a chunk's array is added up as before, as it
+   would need a third register. `CheckIndex` compares a variable's
+   register as it is (`Peek`), not a copy. NBody 225 ms to 147; rat
+   within noise.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is
@@ -656,7 +686,9 @@ This is the only unit that knows the machine. The calls it answers:
   `JumpOut` (`JumpCmp` from within an expression) and `CondValue` for
   `and` and `or`, `Fix` where the label is, and `JoinJumps`;
 - checks: `CheckIndex`, `CheckEnum`, and `IndexSlice`, `Slice` and
-  `SlicePtr`, which check as they make their address or slice;
+  `SlicePtr`, which check as they make their address or slice; and
+  `IndexArray`, an element's address in an array in the frame or a
+  chunk, the index checked before;
 - calls (`Call`), frames (`BeginProc`, `EnterBody`, `ReturnJump`,
   `EndProc`, the temporaries of `AllocTemp`), deferred statements
   (`DeferBegin`, `DeferEnd`, `RunDefer`), the built-ins that are

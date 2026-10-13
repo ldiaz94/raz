@@ -169,6 +169,7 @@ function JoinJumps(L1, L2: longint): longint;
 procedure CheckIndex(n: int64; const p: TPos);
 procedure CheckEnum(n: int64; name: longint; const p: TPos);
 procedure CheckNil(reach: int64; const p: TPos);
+procedure IndexArray(const a: TAdr; size: int64);
 procedure IndexSlice(const a: TAdr; size: int64; checked: boolean; const p: TPos);
 procedure Slice(const a: TAdr; isArray: boolean; n, size, tmp: int64; checked: boolean; const p: TPos);
 procedure SlicePtr(size, tmp: int64; checked: boolean; const p: TPos);
@@ -1352,7 +1353,7 @@ end;
 procedure CheckIndex(n: int64; const p: TPos);
 var r: longint;
 begin
-  r := Top;
+  r := Peek(depth - 1);
   CmpI(r, n);
   Check(ccB, 0, p, r, NoMem, n, -1);
 end;
@@ -1424,6 +1425,32 @@ begin
   if inRax then MovRR(Target, RAX)
   else Claim(depth, kWord);   { the index's register again, now for the address }
   Computed(kWord);
+end;
+
+{ Pops an index, checked, and makes the address of the element it
+  picks of the array at a. An element of 1, 2,
+  4 or 8 bytes is only noted, as the operand [base + index * size]
+  (lIdx): an array in the frame has rbp as its base, and one in a
+  chunk, if the index is a variable's register, its address made in
+  the value's own register. Any other is added up. }
+procedure IndexArray(const a: TAdr; size: int64);
+var r, b: longint;
+begin
+  if (size in [1, 2, 4, 8]) and (a.base = bFrame) then begin
+    r := Peek(depth - 1);
+    Drop;
+    NewMem(lIdx, MemIdx(RBP, r, size, a.off), kWord, 8, false);
+  end else if (size in [1, 2, 4, 8]) and (a.base = bGlobal) and (stack[depth - 1].loc = lHeld) then begin
+    r := stack[depth - 1].val;
+    Drop;
+    b := Target;
+    Lea(b, MemRip(a.chunk, a.off));
+    NewMem(lIdx, MemIdx(b, r, size, 0), kWord, 8, false);
+  end else begin
+    MulI(Top, size);
+    PushAdr(a);
+    Op(sPlus, kWord, 8, false);
+  end;
 end;
 
 { Pops lo and hi, and the address of the array or slice at a if it is
