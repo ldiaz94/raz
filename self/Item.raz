@@ -868,19 +868,6 @@ begin
     return t^.size * 8;
 end;
 
-(* a div b and a mod b, of type t *)
-proc foldDiv(op: Scan.Sym; a, b: I64; t: ^Sym.Type; p: Diag.Pos): (I64, ERROR);
-begin
-    if b = 0 then return 0, Scan.markAt(p, "division by zero"); end;
-    if (t^.form = Sym.fInt) and not t^.signed then
-        if op = Scan.sDiv then return I64(U64(a) div U64(b)), nil; end;
-        return I64(U64(a) mod U64(b)), nil;
-    end;
-    if (b = -1) and (a = I64(-1) shl (bits(t) - 1)) then return 0, Scan.markAt(p, "division overflows"); end;
-    if op = Scan.sDiv then return a div b, nil; end;
-    return a mod b, nil;
-end;
-
 proc foldInt(op: Scan.Sym; a, b: I64; t: ^Sym.Type; p: Diag.Pos): (I64, ERROR);
 var u: BOOL;
 begin
@@ -892,8 +879,15 @@ begin
     | sPlus: return a + b, nil;
     | sMinus: return a - b, nil;
     | sTimes: return a * b, nil;
-    | sDiv: return foldDiv(op, a, b, t, p);
-    | sMod: return foldDiv(op, a, b, t, p);
+    | sDiv, sMod:
+        if b = 0 then return 0, Scan.markAt(p, "division by zero"); end;
+        if u then
+            if op = Scan.sDiv then return I64(U64(a) div U64(b)), nil; end;
+            return I64(U64(a) mod U64(b)), nil;
+        end;
+        if (b = -1) and (a = I64(-1) shl (bits(t) - 1)) then return 0, Scan.markAt(p, "division overflows"); end;
+        if op = Scan.sDiv then return a div b, nil; end;
+        return a mod b, nil;
     | sAmp: return a & b, nil;
     | sBar: return a | b, nil;
     | sXor: return a xor b, nil;
@@ -986,16 +980,6 @@ begin
     return nil;
 end;
 
-(* x <= y has no bit of x outside y; x >= y is y <= x *)
-proc setSubset(op: Scan.Sym);
-begin
-    if op = Scan.sGeq then Gen.swap(); end;
-    Gen.complement(8, false);
-    Gen.op(Scan.sAmp, Gen.kWord, 8, false);
-    Gen.pushConst(Gen.kWord, 0);
-    Gen.compare(Scan.sEql, Gen.kWord, false);
-end;
-
 (* A set's operations, as operations on its bits: the two values on top *)
 proc setOp(op: Scan.Sym);
 begin
@@ -1003,8 +987,13 @@ begin
     | sPlus: Gen.op(Scan.sBar, Gen.kWord, 8, false);
     | sTimes: Gen.op(Scan.sAmp, Gen.kWord, 8, false);
     | sMinus: Gen.complement(8, false); Gen.op(Scan.sAmp, Gen.kWord, 8, false);
-    | sLeq: setSubset(op);
-    | sGeq: setSubset(op);
+    | sLeq, sGeq:
+        (* x <= y has no bit of x outside y *)
+        if op = Scan.sGeq then Gen.swap(); end;
+        Gen.complement(8, false);
+        Gen.op(Scan.sAmp, Gen.kWord, 8, false);
+        Gen.pushConst(Gen.kWord, 0);
+        Gen.compare(Scan.sEql, Gen.kWord, false);
     | sIn:
         Gen.swap();
         Gen.op(Scan.sShr, Gen.kWord, 8, false);

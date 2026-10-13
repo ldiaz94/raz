@@ -125,10 +125,10 @@ Not the seed's to mend; for the owner to choose.
   the speed test of step 4 to say. A `const` parameter (a hint that
   the callee won't change it, so that the caller may pass its address)
   would be a language change: it goes on the wish list.
-- **Sets of `Scan.Sym`.** The operators a rule names are chains of `=`
-  or the helpers `oneOf` and `isRel`; the arms of a `match` on them
-  take one name each, so those with two names call a procedure of
-  their own (`foldDiv`, `setSubset`).
+- **Sets of `Scan.Sym`.** It has 76 names and a set holds 64, so the
+  operators a rule names are chains of `=` or the helpers `oneOf` and
+  `isRel`. (A `match` arm with several names, which the seed's `case`
+  has, was added to the report for this: 2026-10.21.)
 - **Strings made by the compiler.** A joined string (`"a" + "b"`) and
   an error's text are built in memory from `Scan.grab`, which is never
   freed, in place of `GetMem` and `FreeMem`; the compiler runs once.
