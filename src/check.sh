@@ -94,7 +94,7 @@ test $bad = 0
 
 # Gen and Item were tested here against the seed's while they were ported,
 # by the code they made: the same bytes, listings and line notes. Since the
-# compiler's own code was improved (v0.10.0) that code is no longer the
+# compiler's own code was improved (v0.10.1) that code is no longer the
 # seed's, so they are tested by what the seed can still check, the
 # messages and statuses of Parse and Raz below, and by the fixpoint and
 # the tests of `make check`, on the compiler they make.

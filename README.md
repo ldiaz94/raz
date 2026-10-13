@@ -26,8 +26,8 @@ end Hello.
 
 The compiler is about 10,700 lines of raz, written in itself: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
-ELF executable itself, with no assembler or linker, and compiles over
-400,000 lines a second.
+ELF executable itself, with no assembler or linker, and compiles about
+650,000 lines a second.
 
 ## What's here
 
@@ -197,16 +197,16 @@ with vim's. Both colour raz through `tools/Scan.raz`.
 The compiler says its own version and that of the report it follows:
 
     $ ./raz --version
-    raz 0.9.0, report 2026-10.19
+    raz 0.10.1, report 2026-10.21
 
 The compiler's version is git's name for the commit it was built from:
-`0.9.0` at the tag `v0.9.0`, `0.9.0-5-g38d29a8` five commits past it.
+`0.10.1` at the tag `v0.10.1`, `0.10.1-5-g38d29a8` five commits past it.
 To release, check `main` and tag it; the tag's message is what
 `raz --version` will print:
 
     $ make check
-    $ git tag -a v0.9.1 -m 'raz 0.9.1, report 2026-10.19'
-    $ git push origin v0.9.1
+    $ git tag -a v0.10.1 -m 'raz 0.10.1, report 2026-10.21'
+    $ git push origin v0.10.1
 
 GitHub then builds and checks the tag, and makes a release of it with
 a tarball of `raz`, its `lib/` and its manual pages, made by `make

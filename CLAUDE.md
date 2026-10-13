@@ -14,7 +14,7 @@ disagrees, the report wins and the plan is fixed.
     make kernels   # test/bench's kernels against FPC -O2's twins
     make loc       # lines of the compiler, by rloc; the last, code, is the budget
     make tests     # the small Pascal tests of scan, x64, link and elf
-    make seed-check  # src/ against the seed: each unit, then every program
+    make seed-check  # src/ against the seed: scan to x64, then the messages and statuses of every program
     make fixpoint  # the seed builds src, that builds src, that again: the last two agree
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version
@@ -130,8 +130,10 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.9.1, report 2026-10.19, the latest: v0.9.0 with
-`tools/` in the tarball, which the website offers from 0.7.1 on.
+the first; v0.10.1, report 2026-10.21, the latest: the compiler in raz,
+built by itself, and 1.4 times the Pascal one's time (v0.9.1 was the last
+built by the Pascal seed). The tarball has `tools/`, which the website
+offers from 0.7.1 on.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
