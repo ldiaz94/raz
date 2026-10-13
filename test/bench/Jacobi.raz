@@ -1,0 +1,41 @@
+(* A 2-D Jacobi sweep: each point of a grid becomes the mean of its four
+   neighbours, the edges held. *)
+module Jacobi;
+import Out;
+check off;
+
+const
+    N = 512;
+    Rounds = 200;
+
+var a, b: [N * N]F64;
+
+(* one sweep, from s to d *)
+proc sweep(d, s: []F64);
+var i, j: INT;
+begin
+    for i := 1 to N - 2 do
+        for j := 1 to N - 2 do
+            d[i * N + j] := 0.25 * (s[i * N + j - 1] + s[i * N + j + 1] + s[(i - 1) * N + j] + s[(i + 1) * N + j]);
+        end;
+    end;
+end;
+
+proc main*;
+var i, r: INT; sum: F64;
+begin
+    for i := 0 to N * N - 1 do
+        a[i] := F64(i mod 7);
+        b[i] := a[i];
+    end;
+    for r := 1 to Rounds do
+        sweep(b, a);
+        sweep(a, b);
+    end;
+    sum := 0.0;
+    for i := 0 to N * N - 1 do sum := sum + a[i]; end;
+    Out.int(INT(sum * 1000.0));
+    Out.ln;
+end;
+
+end Jacobi.
