@@ -91,3 +91,16 @@ for f in $b/asm/*.raz; do
 done
 echo "x64: $n assembler files, $bad differ"
 test $bad = 0
+
+# Gen: procedures made by a script of calls (expressions, statements,
+# calls, frames, checks, defers, the entry point), whose bytes, fixups,
+# line notes and listing must be the same; once with the static entry
+# point and once with the dynamic one
+fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fusrc -o$b/gendump.seed self/test/GenDump.pas >/dev/null
+./raz -Werror -I self -o $b/gendump.self self/test/GenDump.raz
+for a in "" dyn; do
+    $b/gendump.seed $a >$b/gen.seed
+    $b/gendump.self $a >$b/gen.self
+    cmp $b/gen.seed $b/gen.self
+done
+echo "gen ok"
