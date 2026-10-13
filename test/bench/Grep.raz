@@ -1,0 +1,141 @@
+(* A grep: the lines of a text, and those that hold a word, found
+   eight bytes at a time, as lupa (~/lib/utb) finds them sixteen at a
+   time with SSE2. A word of eight bytes holds a byte b exactly where
+   w xor b's eight copies has a zero byte; (v - 0101...H) & ~v &
+   8080...H sets the top bit of the lowest such byte, and maybe of
+   ones above it, which each place's own check rules out. The word is
+   sought by two of its bytes, each at its place in it, and checked
+   whole only where both are. *)
+module Grep;
+import Out;
+check off;
+
+const
+    N = 16777216;
+    Rounds = 16;
+    Letters = "etaoinshrdlucmfw";
+    Ones = 0101010101010101H;
+    Tops = 8080808080808080H;
+    Word = "error";
+    A = 1;          (* the two bytes sought: the r at 1 and the o at 3 *)
+    B = 3;
+
+var text: [N]U8;
+
+(* the top bit of each byte of v that is zero, the lowest one exactly *)
+proc zeros(v: U64): U64;
+begin
+    return (v - Ones) & ~v & Tops;
+end;
+
+(* the place of the lowest byte whose top bit m sets: the ones below
+   that bit, a one in each byte below it and one in its own, summed
+   into the top byte by the multiply *)
+proc lowest(m: U64): INT;
+begin
+    return INT((((m & (0 - m)) - 1) & Ones) * Ones shr 56) - 1;
+end;
+
+(* where the first line feed in s is, or LEN(s) *)
+proc lineEnd(s: []U8): INT;
+var i: INT; p: ^U64; m: U64;
+begin
+    i := 0;
+    while i + 8 <= LEN(s) do
+        p := ^U64(ADR(s[i]));
+        m := zeros(p^ xor 0A0A0A0A0A0A0A0AH);
+        if m # 0 then return i + lowest(m); end;
+        i := i + 8;
+    end;
+    while (i < LEN(s)) and (s[i] # 10) do INC(i); end;
+    return i;
+end;
+
+(* where Word first starts in s, or -1 *)
+proc find(s: []U8): INT;
+var i, j, last: INT; p, q: ^U64; m, wa, wb: U64;
+begin
+    last := LEN(s) - LEN(Word);
+    wa := U64(Word[A]) * Ones;
+    wb := U64(Word[B]) * Ones;
+    i := 0;
+    while i + 7 <= last do
+        p := ^U64(ADR(s[i + A]));
+        q := ^U64(ADR(s[i + B]));
+        m := zeros(p^ xor wa) & zeros(q^ xor wb);
+        while m # 0 do
+            j := i + lowest(m);
+            if s[j..j + LEN(Word)] = Word then return j; end;
+            m := m & (m - 1);
+        end;
+        i := i + 8;
+    end;
+    while i <= last do
+        if s[i..i + LEN(Word)] = Word then return i; end;
+        INC(i);
+    end;
+    return -1;
+end;
+
+(* how many lines s has, a line feed ending each *)
+proc lines(s: []U8): INT;
+var i, n: INT;
+begin
+    i := 0;
+    n := 0;
+    while i < LEN(s) do
+        i := i + lineEnd(s[i..LEN(s)]) + 1;
+        INC(n);
+    end;
+    return n;
+end;
+
+(* how many lines of s hold Word: from each match on to its line's end *)
+proc matching(s: []U8): INT;
+var i, k, n: INT;
+begin
+    i := 0;
+    n := 0;
+    k := find(s);
+    while k >= 0 do
+        INC(n);
+        i := i + k;
+        i := i + lineEnd(s[i..LEN(s)]) + 1;
+        if i >= LEN(s) then return n; end;
+        k := find(s[i..LEN(s)]);
+    end;
+    return n;
+end;
+
+proc main*;
+var i, r, x, v, total, hits: INT;
+begin
+    x := 1;
+    for i := 0 to N - 1 do
+        x := (x * 1103515245 + 12345) & 7FFFFFFFH;
+        v := (x shr 16) & 63;
+        if v = 0 then text[i] := 10;
+        elsif v < 10 then text[i] := U8(' ');
+        else text[i] := Letters[v & 15];
+        end;
+    end;
+    text[N - 1] := 10;
+    (* by chance the word is about four times in the text: some more *)
+    i := 0;
+    while i < N - 1000 do
+        COPY(text[i..i + LEN(Word)], Word);
+        i := i + 997;
+    end;
+    total := 0;
+    hits := 0;
+    for r := 1 to Rounds do
+        total := total + lines(text);
+        hits := hits + matching(text);
+    end;
+    Out.int(total);
+    Out.str(" ");
+    Out.int(hits);
+    Out.ln;
+end;
+
+end Grep.
