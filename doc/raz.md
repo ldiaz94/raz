@@ -9,7 +9,7 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.18 of the report; section 12 says what each
+This is version 2026-10.19 of the report; section 12 says what each
 version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -1229,6 +1229,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Heap` | a general allocator, `Heap.heap`, safe to call from several threads; freeing a block twice, or one it never gave out, stops the program |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
 | `Str` | operations on `[]U8` strings: comparing, hashing, finding, UTF-8, reading a number |
+| `Bytes` | searches of bytes, many at a time: `index`, `last`, `count` and `find` in a `[]U8`; one file per target where the target has instructions for it |
 | `Buf` | a growable byte buffer |
 | `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)])`, or into a `Buf` with `Fmt.write` |
 | `List` | a generic singly linked list, `List(T)` |
@@ -1931,6 +1932,7 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   another as a block (section 6.8).
 - **2026-10.18.** A code procedure takes and returns slices (section
   8).
+- **2026-10.19.** The library gains `Bytes` (section 11).
 
 ## Appendix A. What an implementation chooses
 
