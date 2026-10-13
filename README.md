@@ -205,9 +205,11 @@ To release, check `main` and tag it; the tag's message is what
 GitHub then builds and checks the tag, and makes a release of it with
 a tarball of `raz`, its `lib/` and its manual pages, made by `make
 dist`. A tag pushed before the workflow existed is released from the
-Actions tab: run "ci" with its name. Then `make site` puts the new
-tag's tarball on the website (it builds it from the tag, apart from
-the tree at hand); commit `site/public/` and push to publish it.
+Actions tab: run "ci" with its name. Then `make site` adds the new
+tag's tarball to the website's `download/` (it builds it from the tag,
+apart from the tree at hand); commit `site/public/` and push to publish
+it. Every release since 0.7.1 stays there, at its own name, and is
+never made again, so that its SHA-256 holds: programs pin raz by it.
 
 A version of the report is named by its month and a count; the report's
 last section says what each version changed.

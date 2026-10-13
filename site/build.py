@@ -7,7 +7,7 @@ The site is plain files: open public/index.html, or put the folder on
 any web server. Nothing runs in the reader's browser; the code on the
 tour's pages is run here, by ./raz, and the output shown is what it
 printed, so a lesson that stops working fails the build. The home page
-offers the latest release's tarball, made by make dist from the tag.
+offers every release's tarball, made by make dist from its tag.
 
 Lessons are site/content/<tour>/NN-name.txt, one folder to a tour (see
 TOURS below):
@@ -315,33 +315,42 @@ def build_spec():
     body = '<div class="spec">%s</div>' % p.stdout
     write("spec.html", page("The raz report", body, 0, "spec"))
 
+# The first release whose tarball the site offers: the first with the
+# manual, which make dist packs
+FIRST_RELEASE = "v0.7.1"
+
 def build_download():
-    """The latest release's tarball, in public/download/ with its SHA-256
-    and /download/latest leading to it; (version, file name, SHA-256).
-    It is made of the tag's own checkout, not of the tree at hand, and
-    kept in build/ to be made once."""
+    """Every release's tarball from FIRST_RELEASE on, in public/download/
+    with its SHA-256, and /download/latest leading to the newest; a list
+    of (version, file name, SHA-256), oldest first. A program's CI can
+    fetch the version it was written for by its name, so none is ever
+    taken away. Each is made of its tag's own checkout, not of the tree
+    at hand. One already in public/download/ is kept as it is, never
+    made again: a new one would differ in its dates, and so its SHA-256,
+    which a program's CI may check."""
     git = lambda *a: subprocess.run(("git", "-C", ROOT) + a, capture_output=True,
                                     text=True, check=True).stdout.strip()
-    tag = git("describe", "--tags", "--abbrev=0", "--match", "v*")
-    name = "raz-%s-linux-x86_64.tar.gz" % tag[1:]
-    made = os.path.join(ROOT, "build", name)
-    if not os.path.exists(made):
-        tree = tempfile.mkdtemp()
-        try:
-            git("worktree", "add", "--detach", tree, tag)
-            subprocess.run(["make", "-s", "-C", ROOT, "dist", "TREE=" + tree],
-                           stdout=subprocess.DEVNULL, check=True)
-        finally:
-            git("worktree", "remove", "--force", tree)
-    digest = hashlib.sha256(open(made, "rb").read()).hexdigest()
-    os.makedirs(os.path.join(OUT, "download"))
-    shutil.copy(made, os.path.join(OUT, "download"))
-    write("download/%s.sha256" % name, "%s  %s\n" % (digest, name))
+    releases = []
+    for tag in git("tag", "-l", "v*", "--sort=v:refname", "--contains", FIRST_RELEASE).split():
+        name = "raz-%s-linux-x86_64.tar.gz" % tag[1:]
+        made = os.path.join(OUT, "download", name)
+        if not os.path.exists(made):
+            tree = tempfile.mkdtemp()
+            try:
+                git("worktree", "add", "--detach", tree, tag)
+                subprocess.run(["make", "-s", "-C", ROOT, "dist", "TREE=" + tree],
+                               stdout=subprocess.DEVNULL, check=True)
+            finally:
+                git("worktree", "remove", "--force", tree)
+            shutil.copy(os.path.join(ROOT, "build", name), made)
+        digest = hashlib.sha256(open(made, "rb").read()).hexdigest()
+        write("download/%s.sha256" % name, "%s  %s\n" % (digest, name))
+        releases.append((tag[1:], name, digest))
     # Cloudflare reads _redirects from the root of what it serves
-    write("_redirects", "/download/latest /download/%s 302\n" % name)
-    return tag[1:], name, digest
+    write("_redirects", "/download/latest /download/%s 302\n" % releases[-1][1])
+    return releases
 
-def build_home(release):
+def build_home(releases):
     snippet = open(os.path.join(HERE, "content", "home.raz"), encoding="utf-8").read()
     tmp = tempfile.mkdtemp()
     try:
@@ -355,7 +364,10 @@ def build_home(release):
     text = open(os.path.join(HERE, "content", "home.html"), encoding="utf-8").read()
     text = text.replace("@SNIPPET@", highlight(snippet.rstrip("\n")))
     text = text.replace("@OUTPUT@", html.escape(stdout.rstrip("\n")))
-    version, name, digest = release
+    version, name, digest = releases[-1]
+    earlier = ", ".join('<a href="download/%s">%s</a>' % (n, v)
+                        for v, n, _ in reversed(releases[:-1]))
+    text = text.replace("@EARLIER@", earlier)
     text = text.replace("@VERSION@", version).replace("@TARBALL@", name)
     text = text.replace("@DIR@", name[:-len(".tar.gz")]).replace("@SHA256@", digest)
     write("index.html", page("raz: a small systems language", text, 0, "home"))
@@ -363,8 +375,16 @@ def build_home(release):
 def main():
     if not os.path.exists(RAZ):
         sys.exit("make raz first")
-    shutil.rmtree(OUT, ignore_errors=True)
-    os.makedirs(OUT)
+    # everything is made again but the tarballs (see build_download)
+    for f in os.listdir(OUT) if os.path.exists(OUT) else []:
+        path = os.path.join(OUT, f)
+        if f == "download":
+            continue
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
+        else:
+            os.remove(path)
+    os.makedirs(os.path.join(OUT, "download"), exist_ok=True)
     shutil.copy(os.path.join(HERE, "style.css"), OUT)
     for f in os.listdir(os.path.join(HERE, "assets")):      # the logo and icons
         if f not in ("social.html", "render.sh"):
