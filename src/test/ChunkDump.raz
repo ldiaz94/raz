@@ -1,5 +1,5 @@
 (* Makes a program of chunks by a fixed pseudo-random script and prints
-   all of it: self/Chunk.raz's side of a test against the seed's,
+   all of it: src/Chunk.raz's side of a test against the seed's,
    ChunkDump.pas, which prints the same. *)
 module ChunkDump;
 import Out, Fmt, Scan, Chunk;

@@ -1,5 +1,5 @@
 { Prints the symbols of a file, one per line: the seed's side of a test
-  of self/Scan.raz, which prints the same. A real is shown by its bits,
+  of src/Scan.raz, which prints the same. A real is shown by its bits,
   so that no formatting library decides what is the same. }
 program scandump;
 {$mode objfpc}{$H-}

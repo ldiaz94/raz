@@ -2,7 +2,7 @@
    Gen, valid by construction (an expression pushes its operands, then
    operates on them; a statement leaves the stack as it found it), then
    prints the bytes, the fixups, the line notes and the listing (raz -S)
-   of what it made: self/Gen.raz's side of a test against the seed's,
+   of what it made: src/Gen.raz's side of a test against the seed's,
    GenDump.pas, which makes and prints the same. With the argument dyn,
    the entry point is the dynamic one. *)
 module GenDump;

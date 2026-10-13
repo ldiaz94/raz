@@ -1,7 +1,7 @@
 (* Makes a program of chunks by a fixed pseudo-random script, links it
    and writes it as an executable to the file of the second argument,
    in the way the first says (0 static, 1 dynamic, 2 stripped):
-   self/Link.raz's and self/Elf.raz's side of a test against the seed's,
+   src/Link.raz's and src/Elf.raz's side of a test against the seed's,
    LinkDump.pas, which writes the same file. *)
 module LinkDump;
 import Files, Diag, Scan, Chunk, Link, Elf;

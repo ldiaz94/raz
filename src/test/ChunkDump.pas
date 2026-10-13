@@ -1,5 +1,5 @@
 { Makes a program of chunks by a fixed pseudo-random script and prints
-  all of it: the seed's side of a test of self/Chunk.raz, whose
+  all of it: the seed's side of a test of src/Chunk.raz, whose
   ChunkDump.raz does the same and prints the same. }
 program chunkdump;
 {$mode objfpc}{$H-}

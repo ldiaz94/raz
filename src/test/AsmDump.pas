@@ -1,6 +1,6 @@
 { Assembles the instructions in the file of the argument, as the body of
   a code procedure that ends in end, and prints the bytes and the
-  listing: the seed's side of a test of the assembler in self/X64.raz,
+  listing: the seed's side of a test of the assembler in src/X64.raz,
   whose AsmDump.raz does the same and prints the same. Constants are
   numbers, with a minus sign, and sums of them. }
 program asmdump;

@@ -1,6 +1,6 @@
 { Builds types and objects by a fixed pseudo-random script, asks of them
   what the parser asks of sym, and prints the answers: the seed's side
-  of a test of self/Sym.raz, whose SymDump.raz does the same and prints
+  of a test of src/Sym.raz, whose SymDump.raz does the same and prints
   the same. With the argument dup or deep it ends in the error of a name
   declared twice, or of too many scopes. }
 program symdump;

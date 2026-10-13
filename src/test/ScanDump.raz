@@ -1,4 +1,4 @@
-(* Prints the symbols of a file, one per line: self/Scan.raz's side of a
+(* Prints the symbols of a file, one per line: src/Scan.raz's side of a
    test against the seed's, ScanDump.pas, which prints the same. *)
 module ScanDump;
 import Out, Fmt, Files, Diag, Scan;

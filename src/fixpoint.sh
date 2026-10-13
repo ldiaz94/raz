@@ -1,5 +1,5 @@
 #!/bin/sh
-# The fixpoint: the seed builds self/ (stage 1), that builds self/
+# The fixpoint: the seed builds src/ (stage 1), that builds src/
 # (stage 2), that builds it again (stage 3), and stages 2 and 3 must
 # be the same file. A program holds the paths it was made from, so each
 # stage is built by the same command in the same place, from the
@@ -16,7 +16,7 @@ printf 'module Version;\nconst Text* = "%s";\nend Version.\n' "$(tr -d "'" < bui
 cp raz $d/stage0
 for n in 1 2 3; do
     cp $d/stage$((n - 1)) $d/raz
-    $d/raz -Werror -I self -I $d/v -o $d/stage$n self/Raz.raz
+    $d/raz -Werror -I src -I $d/v -o $d/stage$n src/Raz.raz
 done
 cmp $d/stage2 $d/stage3
 echo "fixpoint: stages 2 and 3 are the same, $(wc -c <$d/stage3) bytes"

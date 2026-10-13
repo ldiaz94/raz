@@ -1,5 +1,5 @@
 { Counts the symbols of a file and nothing else, for timing scan.pas
-  against self/Scan.raz (ScanBench.raz). }
+  against src/Scan.raz (ScanBench.raz). }
 program scanbench;
 {$mode objfpc}{$H-}
 uses diag, scan;

@@ -1,11 +1,11 @@
-# Builds the compiler, raz, from src/ into the repository's root; the
+# Builds the compiler, raz, from seed/ into the repository's root; the
 # library it needs is lib/, beside it.
 
 FPC = fpc
 FPCFLAGS = -O2 -Mobjfpc -Sh- -vew -FUbuild
 
-raz: src/*.pas build/version.inc | build
-	$(FPC) $(FPCFLAGS) -Fibuild -FE. -oraz src/raz.pas
+raz: seed/*.pas build/version.inc | build
+	$(FPC) $(FPCFLAGS) -Fibuild -FE. -oraz seed/raz.pas
 
 # The version is git's name for the commit; the file changes only when
 # that does, so raz isn't rebuilt for nothing.
@@ -15,14 +15,14 @@ build/version.inc: FORCE | build
 
 FORCE:
 
-units: src/*.pas | build
-	for u in diag scan sym chunk x64 link elf; do $(FPC) $(FPCFLAGS) src/$$u.pas || exit 1; done
+units: seed/*.pas | build
+	for u in diag scan sym chunk x64 link elf; do $(FPC) $(FPCFLAGS) seed/$$u.pas || exit 1; done
 
 # tests of the parts below the parser, built from test/
 tests: units
-	$(FPC) $(FPCFLAGS) -Fusrc -obuild/scantest test/scantest.pas
-	$(FPC) $(FPCFLAGS) -Fusrc -obuild/enctest test/enctest.pas
-	$(FPC) $(FPCFLAGS) -Fusrc -obuild/handtest test/handtest.pas
+	$(FPC) $(FPCFLAGS) -Fuseed -obuild/scantest test/scantest.pas
+	$(FPC) $(FPCFLAGS) -Fuseed -obuild/enctest test/enctest.pas
+	$(FPC) $(FPCFLAGS) -Fuseed -obuild/handtest test/handtest.pas
 	build/handtest build/hand && build/hand; test $$? = 42
 
 build:
@@ -35,17 +35,17 @@ clean:
 check: raz build/raz-lib.3
 	test/check.sh
 
-# the raz compiler in raz, self/, tested against the seed's units
+# the raz compiler in raz, src/, tested against the seed's units
 self: raz | build
-	self/check.sh
+	src/check.sh
 
 self-bench: raz | build
-	self/bench.sh
+	src/bench.sh
 
-# the seed builds self/, that builds self/, that builds it again: the
+# the seed builds src/, that builds src/, that builds it again: the
 # last two must be the same file; check and bench then run on it
 fixpoint: raz | build
-	self/fixpoint.sh
+	src/fixpoint.sh
 
 # line numbers: gdb stops at a line and names it
 gdb: raz
@@ -81,15 +81,15 @@ stress: raz | build
 # formatted already
 fmt: raz | build
 	./raz -o build/Pretty tools/Pretty.raz
-	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz self/*.raz self/test/*.raz; do \
+	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz src/*.raz src/test/*.raz; do \
 	    build/Pretty $$f | cmp -s - $$f || { echo "not formatted: $$f"; fail=1; }; \
 	done; test $$fail = 0
 
 # lines of the compiler, by rloc: each file's blank, comment and code,
 # then the lines of code in all
 loc:
-	@rloc -f src/*.pas
-	@rloc -c src/*.pas
+	@rloc -f seed/*.pas
+	@rloc -c seed/*.pas
 
 # raz-lib(3), the library's manual page, made by tools/Doc.raz from
 # its sources, in the order of the report's section 11

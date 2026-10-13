@@ -1,6 +1,6 @@
-# self: the compiler in raz
+# src: the compiler in raz
 
-The port of the Pascal compiler, the **seed** in `../src/`, to raz.
+The port of the Pascal compiler, the **seed** in `../seed/`, to raz.
 `../PLAN.md`, "Self", says what it is for and the order of its units.
 
 One module to a seed unit, with the seed's name, written to the same
@@ -41,10 +41,10 @@ run ends at its 20th error, as a compile does). The text its messages
 point into is `test/ItemDump.txt`.
 
 `Parse` and `Raz`, the last two units, are tested whole: the seed builds
-`self/Raz.raz` into `build/self/raz.self`, and each compiler, run as
+`src/Raz.raz` into `build/self/raz.self`, and each compiler, run as
 `build/cmp/raz` (a program holds the paths it was made from, and the
 library is found beside the compiler), compiles the library, the
-examples, the tools, `self/` itself, every test of `test/` and
+examples, the tools, `src/` itself, every test of `test/` and
 `conform/`, and the 348,025-line program of `test/genbench.py`, with the
 options each test has. The executable, the messages, and the status
 must be the same for every file: 409 of them, 289 of which are errors.

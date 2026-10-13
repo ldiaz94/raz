@@ -1,6 +1,6 @@
 (* Writes every instruction the encoder makes, with operands drawn by a
    fixed pseudo-random script, then prints the bytes, the fixups and the
-   listing (raz -S) of what it made: self/X64.raz's side of a test
+   listing (raz -S) of what it made: src/X64.raz's side of a test
    against the seed's, X64Dump.pas, which prints the same. *)
 module X64Dump;
 import Out, Fmt, Diag, Scan, Chunk, X64;

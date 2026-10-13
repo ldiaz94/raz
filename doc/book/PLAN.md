@@ -8,7 +8,7 @@ or a clumsy spot, report it rather than fixing it.
 
 ## Read first
 - CLAUDE.md, doc/raz.md (the report), doc/compiler.md, README.md.
-- src/*.pas, the whole compiler (about 5,000 lines), and enough of lib/
+- seed/*.pas, the whole compiler (about 5,000 lines), and enough of lib/
   (Rt, Heap, Mem, Thread, Sys) to explain the runtime.
 - The tiza skill, for drawings.
 
@@ -75,13 +75,13 @@ Refine this order in the outline (step 1).
   run by `make check`. It must:
   - compile and run every raz example marked as runnable and compare the
     expected output written in the book;
-  - confirm every quoted Pascal excerpt still matches src/, quoted by
+  - confirm every quoted Pascal excerpt still matches seed/, quoted by
     unit and routine name, never by line number;
   - regenerate or verify the cleaned disassembly.
   The goal: when the compiler changes, `make check` fails rather than
   the book going quietly wrong.
 - CI (.github/workflows/): on a push to main that touches doc/book/**,
-  src/** or lib/**, build the epub and replace the file on a standing
+  seed/** or lib/**, build the epub and replace the file on a standing
   prerelease tagged `book` (gh release upload --clobber), so the owner
   has a fixed URL to open on an iPad. Tagged releases also attach that
   version's epub.

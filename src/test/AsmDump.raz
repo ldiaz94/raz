@@ -1,6 +1,6 @@
 (* Assembles the instructions in the file of the argument, as the body of
    a code procedure that ends in end, and prints the bytes and the
-   listing: self/X64.raz's assembler's side of a test against the seed's,
+   listing: src/X64.raz's assembler's side of a test against the seed's,
    AsmDump.pas, which prints the same. Constants are numbers, with a
    minus sign, and sums of them. *)
 module AsmDump;

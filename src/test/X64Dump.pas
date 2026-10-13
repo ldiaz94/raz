@@ -1,7 +1,7 @@
 { Writes every instruction the encoder makes, with operands drawn by a
   fixed pseudo-random script, then prints the bytes, the fixups and the
   listing (raz -S) of what it made: the seed's side of a test of
-  self/X64.raz, whose X64Dump.raz does the same and prints the same. }
+  src/X64.raz, whose X64Dump.raz does the same and prints the same. }
 program x64dump;
 {$mode objfpc}{$H-}
 uses diag, scan, chunk, x64;

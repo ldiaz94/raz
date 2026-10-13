@@ -2,7 +2,7 @@
   operations, with mistakes among them, and prints what each step gave
   (the item, or that it failed, whose message goes to standard error),
   then the bytes, fixups, line notes and listing (raz -S) of the code
-  it made: the seed's side of a test of self/Item.raz, whose
+  it made: the seed's side of a test of src/Item.raz, whose
   ItemDump.raz does and prints the same. The argument, a number,
   changes the script. A run ends at the 20th error, as a compile does,
   so several scripts are run. }
@@ -643,7 +643,7 @@ begin
   seed := 5;
   for i := 1 to length(ParamStr(1)) do seed := seed * 10 + ord(ParamStr(1)[i]) - 48;
   Letters := 'abcdefgh' + #0;
-  path := 'self/test/ItemDump.txt';
+  path := 'src/test/ItemDump.txt';
   if Open(path) <> '' then Fatal('no file');
   Next;
   listing := true;

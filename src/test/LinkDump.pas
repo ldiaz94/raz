@@ -1,7 +1,7 @@
 { Makes a program of chunks by a fixed pseudo-random script, links it and
   writes it as an executable to the file of the second argument, in the
   way the first says (0 static, 1 dynamic, 2 stripped): the seed's side
-  of a test of self/Link.raz and self/Elf.raz, whose LinkDump.raz does
+  of a test of src/Link.raz and src/Elf.raz, whose LinkDump.raz does
   the same and writes the same file. }
 program linkdump;
 {$mode objfpc}{$H-}

@@ -1,12 +1,12 @@
 #!/bin/sh
 # The scanner's speed against the seed's, on the compiler's own
 # benchmark program: the best of seven runs of each. Run from the
-# repository root, after self/check.sh has built the tests.
+# repository root, after src/check.sh has built the tests.
 set -e
 b=build/self
 python3 test/genbench.py 12000 >$b/Bench.raz
-fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fusrc -o$b/scanbench.seed self/test/ScanBench.pas >/dev/null
-./raz -Werror -I self -o $b/scanbench.self self/test/ScanBench.raz
+fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fuseed -o$b/scanbench.seed src/test/ScanBench.pas >/dev/null
+./raz -Werror -I src -o $b/scanbench.self src/test/ScanBench.raz
 echo "$(wc -l <$b/Bench.raz) lines"
 for t in seed self; do
     best=0

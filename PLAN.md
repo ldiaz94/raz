@@ -12,10 +12,10 @@ for the owner's review. One milestone is under way: Self.
 ## Self: the compiler in raz (under way)
 
 For: a compiler written in raz that compiles itself, so that raz needs
-no Free Pascal. The Pascal compiler in `src/` is the **seed**: it is
+no Free Pascal. The Pascal compiler in `seed/` is the **seed**: it is
 never edited for this, and stays the one `make check` builds. The new
-compiler lives in `self/`, one raz module to a seed unit, the same
-names, and has its own targets; nothing in `src/` or `lib/` changes.
+compiler lives in `src/`, one raz module to a seed unit, the same
+names, and has its own targets; nothing in `seed/` or `lib/` changes.
 
 The language gained `try` (report 2026-10.20) for this: the parser's
 errors return an `ERROR` (`Scan.Failed`) that `try` passes up to where
@@ -39,13 +39,13 @@ Steps:
    builds, tested by compiling 409 programs, the library and the compiler
    itself with both and comparing the executables, messages and status;
    452,000 lines a second, the seed's 815,000.
-5. Fixpoint (done: `self/fixpoint.sh`, `make fixpoint`): the seed builds `self`, that builds `self`, that builds
-   `self` again, and the last two are byte for byte the same (all
+5. Fixpoint (done: `src/fixpoint.sh`, `make fixpoint`): the seed builds `src`, that builds `src`, that builds
+   `src` again, and the last two are byte for byte the same (all
    three are, 547,000 bytes: the seed and this compiler make the same
-   code from `self/`). `make check` passes on the compiler it made,
+   code from `src/`). `make check` passes on the compiler it made,
    661 tests, and `make bench` gives 493,000 to 870,000 lines a second.
-   Then the seed's last tag is the bootstrap, and the split of `src/` from
-   the rest is the owner's to decide.
+   Then `seed/` is frozen and `self/` is `src/` (the owner's word,
+   2026-10-13); the seed is dropped in time, its last tag the bootstrap.
 
 Done when step 5 passes with `make check` and `make bench` on the
 compiler it made, and the budget of lines kept.

@@ -1,7 +1,7 @@
 { Compiles procedures made by a fixed pseudo-random script of calls to
   Gen, valid by construction, then prints the bytes, the fixups and the
   listing (raz -S) of what it made: the seed's side of a test of
-  self/Gen.raz, whose GenDump.raz makes and prints the same. With an
+  src/Gen.raz, whose GenDump.raz makes and prints the same. With an
   argument, the entry point is the dynamic one. }
 program gendump;
 {$mode objfpc}{$H-}

@@ -1,5 +1,5 @@
 (* Builds types and objects by a fixed pseudo-random script, asks of them
-   what the parser asks of Sym, and prints the answers: self/Sym.raz's
+   what the parser asks of Sym, and prints the answers: src/Sym.raz's
    side of a test against the seed's, SymDump.pas, which prints the same.
    With the argument dup or deep it ends in the error of a name declared
    twice, or of too many scopes. *)
