@@ -49,7 +49,8 @@ code
     mov r15, [rdi + 48];
     mov rcx, [rdi + 56];
     mov eax, 1;
-    db 0FFH, 0E1H;          (* jmp rcx, which the assembler has no form for *)
+    push rcx;               (* a jump to rcx, for which the assembler has no form: *)
+    ret;                    (* push the place, and return to it *)
 end jump;
 
 end Jump.

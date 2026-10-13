@@ -26,18 +26,28 @@ Not the seed's to mend; for the owner to choose.
   `werror`, `recovery`, `skipping`) have setters. The `sbuf` array,
   which can't be sliced outside, is `strBytes`.
 - **Going on after an error.** raz has no `setjmp`: `Jump.raz` is the
-  two in assembly, which the parser's recovery needs. The assembler has
-  no `jmp reg`, so it is written `db 0FFH, 0E1H;`.
+  two in assembly. The parser's 200 or so error sites are deep in its
+  recursion and all end in a jump back to the statement or declaration
+  being read, which is how the seed reports up to 20 errors in a run
+  (15 of the 267 tests of messages show more than one). The assembler
+  has no `jmp reg`, so `jump` is `push rcx; ret`.
 - **`NO_COLOR` set to nothing.** `Sys.env` gives "" for a variable that
   is unset and for one that is empty, so the port reads the second as
-  the first, as no-color.org has it. The seed reads it as set.
+  the first. no-color.org says a variable that is empty doesn't turn
+  colour off, so the port is the one that follows it and the seed
+  differs; no test depends on either.
 - **Strings are slices.** A message is a `[]U8` made by `Diag.say`,
   which keeps what it makes: messages are made only to be shown. A name
   from `nameOf` stays valid, since names are kept in chunks that are
   never moved; the seed's was a copy.
 - **No bit cast.** A real's bits and back go through a pointer.
 - **Speed.** On the 348,025 lines of `test/genbench.py`, 7.6 MB, the
-  seed's scanner takes 75 ms and this one 83 ms. Two things cost the
-  rest: a slice comparison, `a[0..n] = b[0..n]`, is 25% slower than the
-  same bytes in a loop, and a procedure call to ask whether a byte is
-  in a name (a table now). The compiler could mend the first.
+  seed's scanner takes 75 ms and this one 74. It took 121 at first.
+  What closed the gap, in the source: a byte loop in place of the slice
+  comparison `a[0..n] = b[0..n]` (97 ms), a 256-entry table for the
+  bytes of a name (84), and one for the symbols that are a byte each
+  (75). What is left for the code generator, which would help every
+  module: a `match` on an integer is a chain of compares, each loading
+  the selector from the frame and jumping over a `jmp` (`je L1; jmp L2`),
+  where FPC makes a jump table; and the slice comparison is slower than
+  the loop it stands for.

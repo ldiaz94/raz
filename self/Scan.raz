@@ -12,7 +12,7 @@
    not closed: the first such error stops the compiler. The parser goes
    on after its own errors, through recovery below. *)
 module Scan;
-import Sys, Heap, Mem, Fmt, Diag, Jump;
+import Sys, Heap, Mem, Fmt, Str, Diag, Jump;
 
 type
     NamePtr = ^U8;
@@ -60,6 +60,8 @@ const
         "+", "-", "*", "/", "=", "#", "<", "<=", ">", ">=",
         ":=", ":", ";", ",", ".", "..", "...",
         "(", ")", "[", "]", "{", "}", "^", "&", "~", "|", "_"];
+    (* the operators that no longer one starts, so that one byte is the symbol *)
+    alone = "+-*/#;,()[]{}^~";
     PoolChunk = 65536;
 
 var
@@ -80,6 +82,10 @@ var
     (* Whether a byte may be in a name: a letter, a digit or _. A table,
        since the loop that reads a name asks it of every byte. *)
     nameChar: [256]BOOL;
+
+    (* The symbol a byte is by itself, as + is, or sNull: a table, since
+       most symbols are of this kind and a match would test them one by one. *)
+    single: [256]Sym;
 
     cur: State;         (* buf .. f; tok, ival, rval and id live above *)
 
@@ -870,6 +876,11 @@ begin
     cur.tokPos := cur.pos;
     cur.tokLine := cur.line;
     cur.tokLineStart := cur.lineStart;
+    if single[c] # sNull then
+        INC(cur.pos);
+        tok := single[c];
+        return;
+    end;
     match c of
     | 'A'..'Z', 'a'..'z', '_':
         start := cur.pos;
@@ -915,10 +926,6 @@ begin
         INC(cur.pos);
         sbuf[slen] := 0;
         tok := sString;
-    | '+': INC(cur.pos); tok := sPlus;
-    | '-': INC(cur.pos); tok := sMinus;
-    | '*': INC(cur.pos); tok := sTimes;
-    | '/': INC(cur.pos); tok := sSlash;
     | '=':
         if cur.buf[cur.pos + 1] = '=' then
             slip(2, sEql, "comparing is written =, not ==");
@@ -933,7 +940,6 @@ begin
             INC(cur.pos);
             tok := sAmp;
         end;
-    | '#': INC(cur.pos); tok := sNeq;
     | '<':
         INC(cur.pos);
         if cur.buf[cur.pos] = '=' then INC(cur.pos); tok := sLeq; else tok := sLss; end;
@@ -943,8 +949,6 @@ begin
     | ':':
         INC(cur.pos);
         if cur.buf[cur.pos] = '=' then INC(cur.pos); tok := sBecomes; else tok := sColon; end;
-    | ';': INC(cur.pos); tok := sSemicolon;
-    | ',': INC(cur.pos); tok := sComma;
     | '.':
         INC(cur.pos);
         if cur.buf[cur.pos] = '.' then
@@ -953,13 +957,6 @@ begin
         else
             tok := sPeriod;
         end;
-    | '(': INC(cur.pos); tok := sLparen;
-    | ')': INC(cur.pos); tok := sRparen;
-    | '[': INC(cur.pos); tok := sLbrak;
-    | ']': INC(cur.pos); tok := sRbrak;
-    | '{': INC(cur.pos); tok := sLbrace;
-    | '}': INC(cur.pos); tok := sRbrace;
-    | '^': INC(cur.pos); tok := sArrow;
     | '|':
         if cur.buf[cur.pos + 1] = '|' then
             slip(2, sOr, "\"or\" is written or, not ||");
@@ -967,7 +964,6 @@ begin
             INC(cur.pos);
             tok := sBar;
         end;
-    | '~': INC(cur.pos); tok := sTilde;
     | '!':
         if cur.buf[cur.pos + 1] = '=' then
             slip(2, sNeq, "\"not equal\" is written #, not !=");
@@ -987,6 +983,11 @@ var i: INT;
 
 begin
     for i := 0 to 255 do nameChar[i] := isLetter(U8(i)) or isDigit(U8(i)); end;
+    for i := 0 to NumOps - 1 do
+        if (LEN(ops[i]) = 1) and (Str.find(alone, ops[i]) >= 0) then
+            single[ops[i][0]] := Sym(INT(sPlus) + i);
+        end;
+    end;
     chunkLeft := 0;
     nameCap := 1 shl 12;
     namePtr := ^NamePtr(grab(nameCap * SIZE(NamePtr)));
