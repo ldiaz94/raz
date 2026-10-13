@@ -10,8 +10,8 @@ syntax case match
 syntax keyword razKeyword and begin break by code const defer div do else
 syntax keyword razKeyword elsif end extern for forward if import in link
 syntax keyword razKeyword match mod module not of or packed proc record
-syntax keyword razKeyword repeat return set shl shr then to type until var
-syntax keyword razKeyword variant VOLATILE while xor
+syntax keyword razKeyword repeat return set shl shr then to try type until
+syntax keyword razKeyword var variant VOLATILE while xor
 syntax keyword razType I8 I16 I32 I64 INT UINT U8 U16 U32 U64 BOOL F32 F64 ERROR
 syntax keyword razBuiltin SIZE ADR LEN NEW MSG SYSCALL FENCE CAS XCHG XADD
 syntax keyword razBuiltin ARGC ARGV INC DEC

@@ -1,0 +1,10 @@
+module TryInMain;
+proc f: ERROR;
+begin
+    return nil;
+end;
+proc main*;
+begin
+    try f();
+end;
+end TryInMain.

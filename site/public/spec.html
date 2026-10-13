@@ -36,7 +36,7 @@
 </ul>
 <p>raz is a small systems language, first made for x86-64 Linux. A raz program can lay a record over a device’s registers, read and write a device’s memory exactly as written, take part in lock-free algorithms, make system calls and call C libraries. It has no garbage collector and no hidden run time: what the program does is what its text says.</p>
 <p>This report defines the language. It is short on purpose. Whatever it doesn’t allow, raz doesn’t have.</p>
-<p>This is version 2026-10.19 of the report; section 12 says what each version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11.</p>
+<p>This is version 2026-10.20 of the report; section 12 says what each version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>.</p>
 <p>The language is frozen, softly, from this version on: it changes only to mend a defect, and its library grows only by what breaks no program written for it. What anyone wishes it had waits on a list, for a later thaw.</p>
 <h1 id="a-first-look">1. A first look</h1>
 <pre><code>module Hello;
@@ -55,8 +55,8 @@ end Hello.</code></pre>
 <p><strong>Reserved words</strong> are lowercase, except <code>VOLATILE</code>:</p>
 <pre><code>and begin break by code const defer div do else elsif end extern for
 forward if import in link match mod module not of or packed proc record
-repeat return set shl shr then to type until var variant VOLATILE while
-xor</code></pre>
+repeat return set shl shr then to try type until var variant VOLATILE
+while xor</code></pre>
 <p><code>static</code>, in <code>link static;</code> (section 3), isn’t one.</p>
 <p><strong>Predeclared names</strong> are the basic types (section 5.1), <code>ERROR</code>, <code>true</code>, <code>false</code>, <code>nil</code> and the built-in procedures (section 6.8). They belong to a scope around every module, so a module or a procedure may declare the same name for something else, which hides them there.</p>
 <p><strong>Numbers.</strong> <code>123</code> is decimal. <code>0FFH</code> is hexadecimal: it starts with a digit, its digits are <code>0</code> to <code>9</code> and <code>A</code> to <code>F</code>, and it ends in <code>H</code>, all in capitals. <code>1.5</code> and <code>2.0E-3</code> are reals; a real always has a digit on both sides of its point, and its exponent, if it has one, is <code>E</code>, a sign if wanted, and digits. A decimal number above the largest <code>I64</code>, or a hexadecimal one above the largest <code>U64</code>, is an error.</p>
@@ -229,6 +229,7 @@ QualIdent = [ ident &quot;.&quot; ] ident .</code></pre>
 <p><code>set of E</code>, for an enumeration <code>E</code> of at most 64 names, holds any choice of <code>E</code>’s names: bit <code>i</code> stands for the name at position <code>i</code>. It takes the smallest of 1, 2, 4 and 8 bytes that has a bit for each name, so a set can stand for a C flags word.</p>
 <h2 id="errors">5.8 Errors</h2>
 <pre><code>const NotFound*: ERROR = &quot;not found&quot;;</code></pre>
+<p>An <code>ERROR</code> is how a procedure says it failed: by convention the last of its results, and <code>nil</code> when nothing failed. A caller that can’t deal with a failure itself passes it on with <code>try</code> (section 7.8).</p>
 <p><code>ERROR</code> is a basic type as big as an address. A value of it is made only by a constant declared as above, and each such declaration makes an error different from every other, whatever its message: two modules that both declare <code>"not found"</code> have two different errors. A generic module makes its errors once per instance. <code>nil</code> is no error.</p>
 <p>Errors compare with <code>=</code> and <code>#</code> only, by which declaration made them, never by their message. <code>MSG(e)</code> is the message, a <code>[]U8</code>; <code>MSG(nil)</code> is <code>""</code>.</p>
 <pre><code>proc find*(key: I64): (^Node, ERROR);
@@ -266,14 +267,15 @@ Factor     = number | char | string | Designator | &quot;(&quot; Expr &quot;)&qu
            | &quot;not&quot; Factor | &quot;~&quot; Factor
            | &quot;[&quot; [ Expr { &quot;,&quot; Expr } ] &quot;]&quot;
            | &quot;{&quot; [ Element { &quot;,&quot; Element } ] &quot;}&quot;
-           | &quot;^&quot; [ &quot;VOLATILE&quot; ] Type &quot;(&quot; Expr &quot;)&quot; .
+           | &quot;^&quot; [ &quot;VOLATILE&quot; ] Type &quot;(&quot; Expr &quot;)&quot;
+           | &quot;try&quot; Designator .
 Element    = Expr | ident &quot;:&quot; Expr .
 Designator = QualIdent { Selector } .
 Selector   = &quot;.&quot; ident | &quot;^&quot; | &quot;[&quot; Expr [ &quot;..&quot; Expr ] &quot;]&quot;
            | &quot;(&quot; [ Expr { &quot;,&quot; Expr } ] &quot;)&quot; .</code></pre>
-<p>The operators bind in the order of the grammar: <code>not</code> and <code>~</code> most tightly, then the multiplying operators, then the adding ones, then the relations, then <code>and</code>, then <code>or</code>. So <code>a + b * c = d</code> is <code>(a + (b * c)) = d</code>, <code>x &amp; 0FH = 0</code> is <code>(x &amp; 0FH) = 0</code>, and <code>i &lt; n and a[i] # 0 or done</code> is <code>((i &lt; n) and (a[i] # 0)) or done</code>. A unary minus applies to the first term: <code>-a * b</code> is <code>-(a * b)</code>.</p>
+<p>The operators bind in the order of the grammar: <code>not</code>, <code>~</code> and <code>try</code> (section 7.8) most tightly, then the multiplying operators, then the adding ones, then the relations, then <code>and</code>, then <code>or</code>. So <code>a + b * c = d</code> is <code>(a + (b * c)) = d</code>, <code>x &amp; 0FH = 0</code> is <code>(x &amp; 0FH) = 0</code>, and <code>i &lt; n and a[i] # 0 or done</code> is <code>((i &lt; n) and (a[i] # 0)) or done</code>. A unary minus applies to the first term: <code>-a * b</code> is <code>-(a * b)</code>.</p>
 <p><code>and</code>, <code>or</code> and <code>not</code> are for <code>BOOL</code>s only; <code>&amp;</code>, <code>|</code>, <code>xor</code> and <code>~</code> are for integers only.</p>
-<p>A pointer to a record isn’t the record: its fields are <code>p^.f</code>, never <code>p.f</code>, and the elements of a pointer to an array are <code>p^[i]</code>. A statement starts with a name, so <code>^T(x)^ := v</code> isn’t one.</p>
+<p>A pointer to a record isn’t the record: its fields are <code>p^.f</code>, never <code>p.f</code>, and the elements of a pointer to an array are <code>p^[i]</code>. A statement starts with a name or <code>try</code>, so <code>^T(x)^ := v</code> isn’t one.</p>
 <h2 id="integers">6.1 Integers</h2>
 <p>Both operands of <code>+ - * div mod &amp; | xor</code>, and of a relation, have the same integer type, or one is an untyped constant that takes the other’s type, which it must fit. So do <code>v</code> and <code>k</code> in <code>INC(v, k)</code> and <code>DEC(v, k)</code>. The result has that type and wraps around at its width: in <code>U8</code>, <code>200 + 100</code> is <code>44</code>. A unary minus wraps too: for <code>x</code> of an unsigned type, <code>-x</code> is <code>0 - x</code>. Two integer types are never mixed, whatever their sizes: with <code>i: I64</code>, <code>i &lt; LEN(s)</code> is an error, and <code>i</code> should be an <code>INT</code>.</p>
 <p>Where the report asks for an integer and names no type, as an index, a slice’s bound, a shift’s count, a pointer’s offset <code>i</code> in <code>p + i</code>, or a conversion’s operand, any integer type will do, and its value is taken. On a target whose <code>INT</code> is narrower, a pointer’s offset is cut to an <code>INT</code>.</p>
@@ -467,7 +469,8 @@ Statement  = Designator [ &quot;:=&quot; Expr ]
            | &quot;match&quot; Expr &quot;of&quot; { &quot;|&quot; Arm } &quot;end&quot;
            | &quot;return&quot; [ Expr { &quot;,&quot; Expr } ]
            | &quot;break&quot;
-           | &quot;defer&quot; Statement .
+           | &quot;defer&quot; Statement
+           | &quot;try&quot; Designator .
 Arm        = ( ident [ &quot;(&quot; ident { &quot;,&quot; ident } &quot;)&quot; ]
              | Label { &quot;,&quot; Label } | &quot;else&quot; ) &quot;:&quot; Statements .
 Label      = Expr [ &quot;..&quot; Expr ] .
@@ -534,7 +537,40 @@ begin
 end;
 
 end Head.</code></pre>
-<p><code>return e;</code> evaluates <code>e</code> before the deferred statements run. A deferred statement can’t contain <code>return</code>, <code>break</code> or <code>defer</code> that would leave it. A failed check, <code>Rt.exit</code> and <code>Sys.exit</code> end the program without running the deferred statements still pending.</p>
+<p><code>return e;</code> evaluates <code>e</code> before the deferred statements run. A deferred statement can’t contain <code>return</code>, <code>break</code>, <code>defer</code> or <code>try</code> that would leave it. A failed check, <code>Rt.exit</code> and <code>Sys.exit</code> end the program without running the deferred statements still pending.</p>
+<h2 id="try">7.8 Try</h2>
+<p>A procedure that can fail returns an <code>ERROR</code> as its last result (section 5.8), <code>nil</code> when it didn’t. A caller that can’t deal with the failure passes it on to its own caller, which <code>try</code> does in a word:</p>
+<pre><code>proc total(words: [][]U8): (INT, ERROR);
+var i, sum: INT;
+begin
+    for i := 0 to LEN(words) - 1 do
+        sum := sum + try number(words[i]);
+    end;
+    return sum, nil;
+end;</code></pre>
+<p><code>try c</code>, where <code>c</code> is a call (below) of a procedure whose last result is an <code>ERROR</code>, makes the call and looks at that error. If it is <code>nil</code>, the program goes on, and <code>try c</code> is what <code>c</code> returned without the error. If it isn’t, the procedure <code>try</code> stands in returns at once, as <code>return</code> does (section 7.3): its last result is that error, and every other result is zero, as a variable of its type starts (section 4). Nothing more of the statement <code>try</code> stands in is done; in the example, <code>sum</code> isn’t assigned. So</p>
+<pre><code>x := try f(a);</code></pre>
+<p>is, with <code>e</code> a variable the program can’t name, and <code>0</code> standing for a zero of each of the procedure’s other results:</p>
+<pre><code>x, e := f(a);
+if e # nil then return 0, e; end;</code></pre>
+<p>The error is the one <code>c</code> returned, and compares with <code>=</code> as it did there. <code>try</code> has no handler and keeps no state: it is a <code>return</code>, written where the call is, so that every place a procedure can leave is in its text. A program that means to deal with an error tests it, as section 5.8 shows.</p>
+<p><strong>What <code>try</code> is applied to.</strong> <code>c</code> is a designator that ends in a call: <code>f(x)</code>, <code>Mod.f(x)</code>, <code>p^.next(x)</code>, or a call through a variable of procedure type. Where the procedure has no parameters its parentheses may be left out, as in a statement (section 7.1), and <code>try</code> calls it: <code>try setup;</code>. A conversion, a built-in procedure (section 6.8) and the case of a variant are written like calls and aren’t procedures’; <code>try</code> can’t be applied to them.</p>
+<p><strong>What <code>try c</code> is.</strong> <code>c</code>’s results but the last.</p>
+<ul>
+<li>With none, <code>try c</code> isn’t a value and stands only as a statement: <code>try flush;</code>.</li>
+<li>With one, it is a value of that type, an operand wherever <code>c</code> would be: <code>n := try number(s);</code>, <code>sum + try number(s)</code>, <code>if try ready(fd) then</code>. Like <code>not</code>, it applies to the factor after it: <code>try f(x) + 1</code> is <code>(try f(x)) + 1</code>.</li>
+<li>With several, it stands only on the right of a multiple assignment, as <code>c</code> itself would, with a target for each: <code>a, b := try f(x);</code>.</li>
+</ul>
+<p>As a statement, <code>try c;</code> drops the values of <code>c</code> that it has, and a dropped value is warned of as a call that drops a result is (section 10); <code>_ := try c;</code> and <code>a, _ := try c;</code> say it is meant (section 7.1). The error is never dropped: <code>try</code> is the way of passing it on.</p>
+<p><strong>Where <code>try</code> may stand.</strong> Every use of <code>try</code> is an error unless:</p>
+<ul>
+<li>the procedure it stands in has an <code>ERROR</code> as its last result. A module’s body, and a procedure with no results, such as <code>proc main*;</code>, have none: there an error is dealt with where it is found, by a test;</li>
+<li>the last result of the procedure <code>c</code> calls is an <code>ERROR</code>;</li>
+<li>it is not inside a deferred statement, which <code>try</code> would leave (section 7.7).</li>
+</ul>
+<p>A generic module is checked in each instance (section 3), so a procedure of an instance whose last result, by its type arguments, is no <code>ERROR</code> and uses <code>try</code> is an error in that instance.</p>
+<p><strong>Order.</strong> The arguments of <code>c</code> are evaluated from left to right, then <code>c</code> is called, and then its error is looked at (section 7.5). The designators on the left of an assignment are evaluated before its right side as always, so in <code>a[i()] := try g()</code>, <code>i</code> is called, then <code>g</code>; if <code>g</code> fails, nothing is assigned. A <code>try</code> in the right operand of <code>and</code> or <code>or</code> is reached only when that operand is evaluated (section 6.2).</p>
+<p><strong>Deferred statements.</strong> When <code>try</code> returns, the statements deferred in the procedure and not yet run are run, the last first, as for a <code>return</code> (section 7.7), after the error and the zero results have been chosen; no deferred statement can change them.</p>
 <h1 id="procedures">8. Procedures</h1>
 <pre><code>ProcDeclaration   = &quot;proc&quot; IdentDef Signature &quot;;&quot;
                     ( &quot;forward&quot; | { LocalDeclaration } &quot;begin&quot; Statements &quot;end&quot; [ ident ]
@@ -548,7 +584,7 @@ Params            = [ &quot;var&quot; ] ident { &quot;,&quot; ident } &quot;:&qu
 Results           = Type | &quot;(&quot; Type { &quot;,&quot; Type } &quot;)&quot; .</code></pre>
 <p>A procedure without parameters may leave out the parentheses, both where it is declared (<code>proc main*;</code>) and where it is called (<code>Out.ln</code>). Used without parentheses in an expression, a procedure is a procedure value, not a call.</p>
 <p><strong>Parameters.</strong> A value parameter is a copy: the procedure may change it, and the caller’s variable stays as it was. A <code>var</code> parameter is the caller’s variable itself; its argument must be a variable of exactly the parameter’s type.</p>
-<p><strong>Results.</strong> A procedure returns nothing, one value, or several. A call that returns several values can only stand on the right of a multiple assignment, alone as a statement, or alone after <code>return</code> in a procedure whose results are of the same types, in the same order, which then returns them as they are: <code>return divmod(n, 2);</code>.</p>
+<p><strong>Results.</strong> A procedure returns nothing, one value, or several. A call that returns several values can only stand on the right of a multiple assignment, alone as a statement, or alone after <code>return</code> in a procedure whose results are of the same types, in the same order, which then returns them as they are: <code>return divmod(n, 2);</code>. A procedure that can fail has an <code>ERROR</code> as its last result (section 5.8), which <code>try</code> passes on (section 7.8).</p>
 <pre><code>module Divide;
 import Out;
 
@@ -1059,6 +1095,7 @@ usage: keep start [-b label] name command [argument ...]</code></pre>
 <li><strong>2026-10.17.</strong> <code>COPY</code> copies the elements of one array or slice to another as a block (section 6.8).</li>
 <li><strong>2026-10.18.</strong> A code procedure takes and returns slices (section 8).</li>
 <li><strong>2026-10.19.</strong> The library gains <code>Bytes</code> (section 11).</li>
+<li><strong>2026-10.20.</strong> <code>try</code>: a call of a procedure whose last result is an <code>ERROR</code>, which makes the procedure it stands in return that error when it isn’t <code>nil</code> (sections 2, 5.8, 6, 7.8 and appendix B). <code>try</code> becomes a reserved word, which breaks a program with a name <code>try</code>.</li>
 </ul>
 <h1 id="appendix-a.-what-an-implementation-chooses">Appendix A. What an implementation chooses</h1>
 <p>Everything in this report binds every implementation of raz, except what follows, which each chooses for itself and documents. This compiler’s choices are in <code>doc/compiler.md</code>, under “This compiler’s choices”. The programs in <code>conform/</code> are how an implementation shows that it follows this report: it passes them all, its reals aside where its target has none; <code>conform/check.sh</code> runs them.</p>
@@ -1133,7 +1170,8 @@ Factor     = number | char | string | Designator | &quot;(&quot; Expr &quot;)&qu
            | &quot;not&quot; Factor | &quot;~&quot; Factor
            | &quot;[&quot; [ Expr { &quot;,&quot; Expr } ] &quot;]&quot;
            | &quot;{&quot; [ Element { &quot;,&quot; Element } ] &quot;}&quot;
-           | &quot;^&quot; [ &quot;VOLATILE&quot; ] Type &quot;(&quot; Expr &quot;)&quot; .
+           | &quot;^&quot; [ &quot;VOLATILE&quot; ] Type &quot;(&quot; Expr &quot;)&quot;
+           | &quot;try&quot; Designator .
 Element    = Expr | ident &quot;:&quot; Expr .
 Designator = QualIdent { Selector } .
 Selector   = &quot;.&quot; ident | &quot;^&quot; | &quot;[&quot; Expr [ &quot;..&quot; Expr ] &quot;]&quot;
@@ -1151,7 +1189,8 @@ Statement  = Designator [ &quot;:=&quot; Expr ]
            | &quot;match&quot; Expr &quot;of&quot; { &quot;|&quot; Arm } &quot;end&quot;
            | &quot;return&quot; [ Expr { &quot;,&quot; Expr } ]
            | &quot;break&quot;
-           | &quot;defer&quot; Statement .
+           | &quot;defer&quot; Statement
+           | &quot;try&quot; Designator .
 Arm        = ( ident [ &quot;(&quot; ident { &quot;,&quot; ident } &quot;)&quot; ]
              | Label { &quot;,&quot; Label } | &quot;else&quot; ) &quot;:&quot; Statements .
 Label      = Expr [ &quot;..&quot; Expr ] .

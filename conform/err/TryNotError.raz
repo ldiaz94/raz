@@ -1,0 +1,11 @@
+module TryNotError;
+proc f: INT;
+begin
+    return 1;
+end;
+proc g: ERROR;
+begin
+    try f;
+    return nil;
+end;
+end TryNotError.

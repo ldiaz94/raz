@@ -29,7 +29,7 @@ type
     sAnd, sBegin, sBreak, sBy, sCode, sConst, sDefer, sDiv, sDo, sElse,
     sElsif, sEnd, sExtern, sFor, sForward, sIf, sImport, sIn, sLink,
     sMatch, sMod, sModule, sNot, sOf, sOr, sPacked, sProc, sRecord,
-    sRepeat, sReturn, sSet, sShl, sShr, sThen, sTo, sType, sUntil, sVar,
+    sRepeat, sReturn, sSet, sShl, sShr, sThen, sTo, sTry, sType, sUntil, sVar,
     sVariant, sVolatile, sWhile, sXor,
     sEof);
 
@@ -106,7 +106,7 @@ const
     'else', 'elsif', 'end', 'extern', 'for', 'forward', 'if', 'import',
     'in', 'link', 'match', 'mod', 'module', 'not', 'of', 'or', 'packed',
     'proc', 'record', 'repeat', 'return', 'set', 'shl', 'shr', 'then',
-    'to', 'type', 'until', 'var', 'variant', 'VOLATILE', 'while', 'xor');
+    'to', 'try', 'type', 'until', 'var', 'variant', 'VOLATILE', 'while', 'xor');
   Ops: array[sPlus..sBlank] of string[3] = (
     '+', '-', '*', '/', '=', '#', '<', '<=', '>', '>=',
     ':=', ':', ';', ',', '.', '..', '...',

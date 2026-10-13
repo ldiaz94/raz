@@ -1,0 +1,4 @@
+conform/err/TryReturnsNothing.raz:7:9: error: try needs a call that returns an ERROR last, and this returns nothing
+    7 |     try f();
+      |         ^^^
+raz: 1 error

@@ -1,0 +1,8 @@
+module TryNotACall;
+var n: INT;
+proc g: ERROR;
+begin
+    try n;
+    return nil;
+end;
+end TryNotACall.

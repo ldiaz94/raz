@@ -24,8 +24,8 @@
   '("and" "begin" "break" "by" "code" "const" "defer" "div" "do" "else"
     "elsif" "end" "extern" "for" "forward" "if" "import" "in" "link"
     "match" "mod" "module" "not" "of" "or" "packed" "proc" "record"
-    "repeat" "return" "set" "shl" "shr" "then" "to" "type" "until" "var"
-    "variant" "VOLATILE" "while" "xor"))
+    "repeat" "return" "set" "shl" "shr" "then" "to" "try" "type" "until"
+    "var" "variant" "VOLATILE" "while" "xor"))
 
 (defconst raz-types
   '("I8" "I16" "I32" "I64" "INT" "UINT" "U8" "U16" "U32" "U64" "BOOL" "F32" "F64" "ERROR"))

@@ -1,0 +1,4 @@
+conform/err/TryNotACall.raz:5:9: error: try needs a call, found INT
+    5 |     try n;
+      |         ^
+raz: 1 error

@@ -1,0 +1,12 @@
+module TryNoValue;
+proc f: ERROR;
+begin
+    return nil;
+end;
+proc g: ERROR;
+var n: INT;
+begin
+    n := try f();
+    return nil;
+end;
+end TryNoValue.

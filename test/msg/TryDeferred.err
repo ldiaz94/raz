@@ -1,0 +1,4 @@
+conform/err/TryDeferred.raz:8:11: error: try can't leave a deferred statement
+    8 |     defer try f();
+      |           ^^^
+raz: 1 error

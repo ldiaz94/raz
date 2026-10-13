@@ -1,0 +1,8 @@
+module TryInBody;
+proc f: ERROR;
+begin
+    return nil;
+end;
+begin
+    try f();
+end TryInBody.

@@ -1,0 +1,11 @@
+module TryNeedsArguments;
+proc f(n: INT): ERROR;
+begin
+    return nil;
+end;
+proc g: ERROR;
+begin
+    try f;
+    return nil;
+end;
+end TryNeedsArguments.

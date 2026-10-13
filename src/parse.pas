@@ -1074,6 +1074,91 @@ begin
   end;
 end;
 
+procedure RunDefers(base: longint); forward;
+
+{ The type of the last result of t, the results of a procedure: t if
+  it has one, else the last of its several. }
+function LastResult(t: PType): PType;
+var f: PObj;
+begin
+  if not t^.tuple then exit(t);
+  f := t^.fields;
+  while f^.next <> nil do f := f^.next;
+  LastResult := f^.typ;
+end;
+
+{ The results of the tuple t but the last: the same fields, one fewer }
+function WithoutLast(t: PType): PType;
+var r: PType;
+begin
+  r := NewType(fRecord, t^.size, t^.align);
+  r^.tuple := true;
+  r^.fields := t^.fields;
+  r^.len := t^.len - 1;
+  WithoutLast := r;
+end;
+
+{ try c (the report, 7.8): the call c, then the error it returned, its
+  last result: if that isn't nil, the procedure returns it, and a zero
+  for each of its other results, after running the deferred statements
+  in force. x is left c's other results: none (mNone), one (a value) or
+  several (a tuple, for a multiple assignment). The error is kept in a
+  slot of the frame, and tested there; the code for it, out of line,
+  is made with the stack of values as it stands, and leaves it so,
+  since what follows is the code for an error that is nil. }
+procedure TryCall(var x: TItem);
+var
+  called: boolean; c: TCall; start, at: TPos; res: PType; last: PObj; slot: int64; ok: longint;
+begin
+  start := TokPos;
+  Next;
+  if deferring then MarkAt(SpanFrom(start), 'try can''t leave a deferred statement');
+  if curResult = nil then
+    MarkAt(SpanFrom(start), 'try needs a procedure that ends in an ERROR result, and this returns nothing')
+  else if LastResult(curResult) <> tError then
+    MarkAt(SpanFrom(start), 'try needs a procedure that ends in an ERROR result, and this returns ' + TypeName(curResult));
+  Designator(x, called);
+  if not called and ((x.mode = mProc) or ((x.mode in [mVar, mStack]) and (x.typ^.form = fProc))) then begin
+    { a procedure without parameters, written without parentheses }
+    at := x.pos;
+    BeginCall(c, x);
+    EndCall(c, x);
+    x.pos := at;
+    called := true;
+  end;
+  if not called then MarkAt(x.pos, 'try needs a call, found ' + What(x));
+  if x.mode = mNone then
+    MarkAt(x.pos, 'try needs a call that returns an ERROR last, and this returns nothing');
+  if LastResult(x.typ) <> tError then
+    MarkAt(x.pos, 'try needs a call that returns an ERROR last, and this returns ' + TypeName(x.typ));
+  res := x.typ;
+  if x.mode = mStack then begin
+    { an ERROR alone }
+    slot := AllocTemp(8, 8);
+    PopVar(FrameAdr(slot), 8);
+    x.mode := mNone; x.typ := tNone;
+  end else if x.mode = mWords then begin
+    { two words, the error on top }
+    slot := AllocTemp(8, 8);
+    PopVar(FrameAdr(slot), 8);
+    x.mode := mStack; x.typ := res^.fields^.typ;
+  end else begin
+    { several, in a temporary: the error is where it is }
+    last := res^.fields;
+    while last^.next <> nil do last := last^.next;
+    slot := x.off + last^.val;
+    if res^.len = 2 then Field(x, res^.fields) else x.typ := WithoutLast(res);
+  end;
+  ok := NoLabel;
+  PushVar(FrameAdr(slot), 8, false, kWord);
+  JumpIf(ok, false);
+  if numDefers > 0 then TryAlign;
+  RunDefers(0);
+  TryReturn(slot);
+  Fix(ok);
+  x.pos := SpanFrom(start);
+end;
+
 procedure Factor(var x: TItem; want: PType);
 var called, vol, several: boolean; t: PType; start: TPos; s: shortstring;
 begin
@@ -1101,6 +1186,12 @@ begin
       end;
     end;
     sLparen: begin Next; Expression(x, want); Expect(sRparen) end;
+    sTry: begin
+      TryCall(x);
+      if x.mode = mNone then MarkAt(x.pos, 'this try has no value');
+      if x.typ^.tuple then
+        MarkHelp(x.pos, 'this try has several values', 'they go to variables: a, b := try f(...)');
+    end;
     sNot: begin Next; Factor(x, nil); NotOp(x) end;
     sTilde: begin Next; Factor(x, nil); Complement(x) end;
     sLbrak: ArrayLiteral(x, want);
@@ -1610,7 +1701,10 @@ begin
     end;
   until false;
   Expect(sBecomes);
-  Designator(y, called);
+  if tok = sTry then begin
+    TryCall(y);
+    called := true;
+  end else Designator(y, called);
   if not called or not y.typ^.tuple or (y.typ^.len <> n) then begin
     MarkAt(y.pos, 'expected a call with ' + IntStr(n) + ' results');
     if y.mode = mWords then CopyToTemp(y);
@@ -1792,6 +1886,15 @@ begin
       Jump(curLoop^.brk);
     end;
     sDefer: Defer;
+    sTry: begin
+      TryCall(x);
+      if (x.mode <> mNone) and (numDrops <= High(drops)) then begin
+        drops[numDrops].at := x.pos;
+        if x.typ^.tuple then drops[numDrops].n := x.typ^.len else drops[numDrops].n := 1;
+        inc(numDrops);
+      end;
+      Discard(x);
+    end;
     sArrow: MarkHelp(TokPos, 'a statement starts with a name', 'convert into a pointer variable, then assign through that');
   else if AtLineStart then EndMissing(MissingPos, 'expected "end", found ' + Found)
   else Expected('a statement');

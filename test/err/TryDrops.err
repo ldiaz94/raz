@@ -1,0 +1,9 @@
+test/err/TryDrops.raz:13:5: error: the result of try half is dropped
+   13 |     try half(4);
+      |     ^^^^^^^^^^^
+help: if that is meant, write _ := try half(...)
+test/err/TryDrops.raz:16:5: error: the results of try three are dropped
+   16 |     try three(4);
+      |     ^^^^^^^^^^^^
+help: if that is meant, write _, _ := try three(...)
+raz: 2 errors

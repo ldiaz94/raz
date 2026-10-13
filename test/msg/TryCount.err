@@ -1,0 +1,4 @@
+conform/err/TryCount.raz:9:13: error: expected a call with 2 results
+    9 |     a, b := try f();
+      |             ^^^^^^^
+raz: 1 error

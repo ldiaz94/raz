@@ -1,0 +1,7 @@
+conform/err/TryNeedsArguments.raz:8:10: error: too few arguments: f takes 1
+    8 |     try f;
+      |          ^
+conform/err/TryNeedsArguments.raz:2:6: note: the signature is here
+    2 | proc f(n: INT): ERROR;
+      |      ^
+raz: 1 error

@@ -1,0 +1,8 @@
+module TryConversion;
+var n: INT;
+proc g: ERROR;
+begin
+    n := try INT(n);
+    return nil;
+end;
+end TryConversion.

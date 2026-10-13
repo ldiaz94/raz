@@ -1,0 +1,23 @@
+one 4: 0 ok, log 92
+one -1: 0 bad, log 0
+one 0: 0 worse, log 0
+two 8: 13 ok, log 0
+two 0: 0 worse, log 0
+many 3: 9 ok, log 0
+15
+many -2: 0 bad, log 0
+0
+whole 4: 49 ok, log 0
+whole -4: 0 bad, log 0
+deferred 6: 103 ok, log 21
+deferred 0: 0 worse, log 21
+among 4 6: 123 ok, log 3
+among 4 0: 0 worse, log 3
+among 0 6: 0 worse, log 3
+shortcut 3: 0 bad, log 0
+shortcut 0: 0 ok, log 0
+through 3: 0 ok, log 0
+through -3: 0 bad, log 0
+loop 5 3: 12 ok, log 0
+loop 2 3: 0 ok, log 0
+loop 5 -2: 0 bad, log 0

@@ -1026,6 +1026,31 @@ that the code jumps over (gen's `DeferBegin` and `DeferEnd`), and
 the end, `return` and `break`. A `return`'s result waits in the frame
 meanwhile, so that gen's stack is empty when they run.
 
+`try` (report 7.8) is `TryCall`, for the statement, an operand
+(`Factor`) and the right of a multiple assignment (`MultiAssign`). It
+reads the call as `Designator` does, takes the error, the last of its
+results, out of the way into a slot of the frame, and leaves in `x`
+the results that are left: none, one value, or a tuple of the others,
+`WithoutLast`. Then, in the code before and after, this:
+
+```
+        load [slot]; jz ok            ; JumpIf(ok, false)
+        and rsp, -16                  ; TryAlign, if a deferred statement is in force
+        call deferred...              ; RunDefers(0), as for a return
+        mov rax/rdx or the results    ; TryReturn(slot): zeros, and the error last
+        jmp exit
+ok:     ...
+```
+
+Unlike `return`, which is a statement and finds gen's stack empty,
+`try` can stand in the middle of an expression, with values waiting
+on gen's stack and quadwords pushed for another call's arguments. The
+out-of-line code therefore makes no entry on the stack: `TryReturn`
+loads registers and jumps, and `TryAlign` makes the machine's stack
+even for the deferred statements, which expect it so. The code that
+follows is the code for an error that is nil, with the stack as it
+was, so no model needs resetting.
+
 Then declarations: `Declarations` reads `const`, `type`, `var`, `proc`
 and `extern`, each one through `Declaration`, a recovery point, which
 calls `ConstDecl`, `TypeDecl`, `VarDecl`, `ProcDecl` or `ExternDecl`. `ProcDecl` handles forward declarations, code procedures

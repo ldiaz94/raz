@@ -1,0 +1,4 @@
+conform/err/TryConversion.raz:5:14: error: try needs a call, found INT
+    5 |     n := try INT(n);
+      |              ^^^^^^
+raz: 1 error

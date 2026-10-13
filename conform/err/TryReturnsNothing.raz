@@ -1,0 +1,10 @@
+module TryReturnsNothing;
+proc f;
+begin
+end;
+proc g: ERROR;
+begin
+    try f();
+    return nil;
+end;
+end TryReturnsNothing.

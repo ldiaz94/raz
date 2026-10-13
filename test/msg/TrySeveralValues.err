@@ -1,0 +1,5 @@
+conform/err/TrySeveralValues.raz:9:10: error: this try has several values
+    9 |     n := try f();
+      |          ^^^^^^^
+help: they go to variables: a, b := try f(...)
+raz: 1 error

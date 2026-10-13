@@ -1,0 +1,4 @@
+conform/err/TryInBody.raz:7:5: error: try needs a procedure that ends in an ERROR result, and this returns nothing
+    7 |     try f();
+      |     ^^^
+raz: 1 error

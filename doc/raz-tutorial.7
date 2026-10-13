@@ -513,6 +513,16 @@ begin
     return INT(n), nil;
 end;
 
+(* the sum of the numbers in words: the first error ends it *)
+proc total(words: [][]U8): (INT, ERROR);
+var i, sum: INT;
+begin
+    for i := 0 to LEN(words) - 1 do
+        sum := sum + try number(words[i]);
+    end;
+    return sum, nil;
+end;
+
 proc main*;
 var words: [3][]U8; i, n: INT; err: ERROR;
 begin
@@ -525,6 +535,10 @@ begin
         end;
         Out.ln;
     end;
+    n, err := total(["1", "2", "3"]);
+    Out.int(n); Out.ln;
+    n, err := total(words);
+    if err # nil then Out.str(MSG(err)); Out.ln; end;
 end;
 
 end Errors.
@@ -533,6 +547,8 @@ end Errors.
 42
 empty
 not a number up to 1000
+6
+nothing to read
 .Ed
 .Pp
 A procedure that can fail returns an
@@ -550,6 +566,30 @@ is the message.
 An exported one, as
 .Cm Empty
 is here, lets the callers tell it from the others.
+.Pp
+A caller that can't deal with an error passes it on to its own caller
+with
+.Cm try ,
+as
+.Cm total
+does: if the call returned an error that isn't
+.Cm nil ,
+the procedure
+.Cm try
+stands in returns that error, with zero for its other results, and
+otherwise
+.Cm try
+is the call's other results, here a number.
+.Cm try
+is a
+.Cm return ,
+written where the call is: it has no handler, keeps no state and
+unwinds nothing, so every place a procedure can leave is in its text.
+The procedure it stands in must itself end in an
+.Cm ERROR ,
+so
+.Cm main ,
+which returns none, tests each error and deals with it.
 raz has no exceptions.
 .Sh 9. DEFER
 .Bd -literal -offset indent

@@ -1,0 +1,4 @@
+conform/err/TryInMain.raz:8:5: error: try needs a procedure that ends in an ERROR result, and this returns nothing
+    8 |     try f();
+      |     ^^^
+raz: 1 error

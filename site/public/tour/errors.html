@@ -56,6 +56,16 @@
     <span class="kw">return</span> <span class="ty">INT</span>(n), <span class="ty">nil</span>;
 <span class="kw">end</span>;
 
+<span class="comment">(* the sum of the numbers in words: the first error ends it *)</span>
+<span class="kw">proc</span> total(words: [][]<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
+<span class="kw">var</span> i, sum: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(words) - <span class="number">1</span> <span class="kw">do</span>
+        sum := sum + <span class="kw">try</span> number(words[i]);
+    <span class="kw">end</span>;
+    <span class="kw">return</span> sum, <span class="ty">nil</span>;
+<span class="kw">end</span>;
+
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> words: [<span class="number">3</span>][]<span class="ty">U8</span>; i, n: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
 <span class="kw">begin</span>
@@ -68,12 +78,18 @@
         <span class="kw">end</span>;
         Out.ln;
     <span class="kw">end</span>;
+    n, err := total([<span class="string">&quot;1&quot;</span>, <span class="string">&quot;2&quot;</span>, <span class="string">&quot;3&quot;</span>]);
+    Out.int(n); Out.ln;
+    n, err := total(words);
+    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">end</span>;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Errors.</code></pre>
 <pre class="output"><code>42
 empty
 not a number up to 1000
+6
+nothing to read
 </code></pre>
 <p>A procedure that can fail returns an <code>ERROR</code> beside its result, and <code>nil</code> when it didn't. Each <code>ERROR</code> constant is an error of its own, compared with <code>=</code> by which declaration made it, never by its message; <code>MSG(err)</code> is the message. An exported one, as <code>Empty</code> is here, lets the callers tell it from the others. raz has no exceptions, so every failure is visible in the signature and handled where the call is written.</p>
 <h2>Handling them by kind</h2>
@@ -121,7 +137,9 @@ error: not a number
 error: out of range
 </code></pre>
 <h2>Passing errors up</h2>
-<p>When a procedure can't do anything useful with an error, it returns it, so the first caller that can decide gets it. There is no hidden unwinding: the <code>return</code> is right there.</p>
+<p>When a procedure can't do anything useful with an error, it returns it, so the first caller that can decide gets it. Written out, that is a test and a <code>return</code> after each call:</p>
+<p>``<code>raz x, err := value(a); if err # nil then return 0, err; end; </code>``</p>
+<p><code>try</code> says the same in a word. <code>x := try value(a)</code> calls <code>value</code> and, if the error it returned isn't <code>nil</code>, returns that error from the procedure it stands in, with zero for that procedure's other results; otherwise it is <code>value</code>'s number. There is no hidden unwinding and no handler: <code>try</code> is a <code>return</code>, written where the call is, and a procedure that uses it must end in an <code>ERROR</code> itself, so its signature says it can fail. <code>main</code> returns none, so it tests its errors and deals with them.</p>
 <div class="file"><span>Layers.raz</span></div><pre class="code"><code><span class="kw">module</span> Layers;
 <span class="kw">import</span> Out, Str;
 
@@ -137,15 +155,10 @@ error: out of range
     <span class="kw">return</span> <span class="ty">INT</span>(n), <span class="ty">nil</span>;
 <span class="kw">end</span>;
 
-<span class="comment">(* the sum of the values of two lines *)</span>
+<span class="comment">(* the sum of the values of two lines: the first error ends it *)</span>
 <span class="kw">proc</span> sum(a, b: []<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
-<span class="kw">var</span> x, y: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
 <span class="kw">begin</span>
-    x, err := value(a);
-    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, err; <span class="kw">end</span>;      <span class="comment">(* passed up *)</span>
-    y, err := value(b);
-    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, err; <span class="kw">end</span>;
-    <span class="kw">return</span> x + y, <span class="ty">nil</span>;
+    <span class="kw">return</span> <span class="kw">try</span> value(a) + <span class="kw">try</span> value(b), <span class="ty">nil</span>;
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;

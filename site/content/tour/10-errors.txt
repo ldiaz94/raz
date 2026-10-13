@@ -53,7 +53,14 @@ end Parse.
 
 ## Passing errors up
 
-When a procedure can't do anything useful with an error, it returns it, so the first caller that can decide gets it. There is no hidden unwinding: the `return` is right there.
+When a procedure can't do anything useful with an error, it returns it, so the first caller that can decide gets it. Written out, that is a test and a `return` after each call:
+
+```raz
+x, err := value(a);
+if err # nil then return 0, err; end;
+```
+
+`try` says the same in a word. `x := try value(a)` calls `value` and, if the error it returned isn't `nil`, returns that error from the procedure it stands in, with zero for that procedure's other results; otherwise it is `value`'s number. There is no hidden unwinding and no handler: `try` is a `return`, written where the call is, and a procedure that uses it must end in an `ERROR` itself, so its signature says it can fail. `main` returns none, so it tests its errors and deals with them.
 
 ```raz Layers run
 module Layers;
@@ -71,15 +78,10 @@ begin
     return INT(n), nil;
 end;
 
-(* the sum of the values of two lines *)
+(* the sum of the values of two lines: the first error ends it *)
 proc sum(a, b: []U8): (INT, ERROR);
-var x, y: INT; err: ERROR;
 begin
-    x, err := value(a);
-    if err # nil then return 0, err; end;      (* passed up *)
-    y, err := value(b);
-    if err # nil then return 0, err; end;
-    return x + y, nil;
+    return try value(a) + try value(b), nil;
 end;
 
 proc main*;

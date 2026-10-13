@@ -1,0 +1,11 @@
+module TryDeferred;
+proc f: ERROR;
+begin
+    return nil;
+end;
+proc g: ERROR;
+begin
+    defer try f();
+    return nil;
+end;
+end TryDeferred.

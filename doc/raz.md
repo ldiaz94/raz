@@ -9,12 +9,13 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.19 of the report; section 12 says what each
+This is version 2026-10.20 of the report; section 12 says what each
 version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
 0.5.0, the last release before them; and 2026-10.12 breaks code
-procedures written for 2026-10.11.
+procedures written for 2026-10.11. 2026-10.20 is a third, for `try`
+(section 7.8); it breaks a program that has a name `try`.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -59,8 +60,8 @@ the left of `:=` (section 7.1).
 ```
 and begin break by code const defer div do else elsif end extern for
 forward if import in link match mod module not of or packed proc record
-repeat return set shl shr then to type until var variant VOLATILE while
-xor
+repeat return set shl shr then to try type until var variant VOLATILE
+while xor
 ```
 
 `static`, in `link static;` (section 3), isn't one.
@@ -499,6 +500,10 @@ so a set can stand for a C flags word.
 const NotFound*: ERROR = "not found";
 ```
 
+An `ERROR` is how a procedure says it failed: by convention the last
+of its results, and `nil` when nothing failed. A caller that can't
+deal with a failure itself passes it on with `try` (section 7.8).
+
 `ERROR` is a basic type as big as an address. A value of it is made only
 by a constant declared as above, and each such declaration makes an
 error different from every other, whatever its message: two modules that
@@ -588,15 +593,16 @@ Factor     = number | char | string | Designator | "(" Expr ")"
            | "not" Factor | "~" Factor
            | "[" [ Expr { "," Expr } ] "]"
            | "{" [ Element { "," Element } ] "}"
-           | "^" [ "VOLATILE" ] Type "(" Expr ")" .
+           | "^" [ "VOLATILE" ] Type "(" Expr ")"
+           | "try" Designator .
 Element    = Expr | ident ":" Expr .
 Designator = QualIdent { Selector } .
 Selector   = "." ident | "^" | "[" Expr [ ".." Expr ] "]"
            | "(" [ Expr { "," Expr } ] ")" .
 ```
 
-The operators bind in the order of the grammar: `not` and `~` most
-tightly, then the multiplying operators, then the adding ones, then
+The operators bind in the order of the grammar: `not`, `~` and `try`
+(section 7.8) most tightly, then the multiplying operators, then the adding ones, then
 the relations, then `and`, then `or`. So `a + b * c = d` is
 `(a + (b * c)) = d`, `x & 0FH = 0` is `(x & 0FH) = 0`, and
 `i < n and a[i] # 0 or done` is `((i < n) and (a[i] # 0)) or done`. A
@@ -607,7 +613,7 @@ are for integers only.
 
 A pointer to a record isn't the record: its fields are `p^.f`, never
 `p.f`, and the elements of a pointer to an array are `p^[i]`. A
-statement starts with a name, so `^T(x)^ := v` isn't one.
+statement starts with a name or `try`, so `^T(x)^ := v` isn't one.
 
 ### 6.1 Integers
 
@@ -819,7 +825,8 @@ Statement  = Designator [ ":=" Expr ]
            | "match" Expr "of" { "|" Arm } "end"
            | "return" [ Expr { "," Expr } ]
            | "break"
-           | "defer" Statement .
+           | "defer" Statement
+           | "try" Designator .
 Arm        = ( ident [ "(" ident { "," ident } ")" ]
              | Label { "," Label } | "else" ) ":" Statements .
 Label      = Expr [ ".." Expr ] .
@@ -983,9 +990,104 @@ end Head.
 ```
 
 `return e;` evaluates `e` before the deferred statements run. A
-deferred statement can't contain `return`, `break` or `defer` that
-would leave it. A failed check, `Rt.exit` and `Sys.exit` end the
+deferred statement can't contain `return`, `break`, `defer` or `try`
+that would leave it. A failed check, `Rt.exit` and `Sys.exit` end the
 program without running the deferred statements still pending.
+
+### 7.8 Try
+
+A procedure that can fail returns an `ERROR` as its last result
+(section 5.8), `nil` when it didn't. A caller that can't deal with the
+failure passes it on to its own caller, which `try` does in a word:
+
+```
+proc total(words: [][]U8): (INT, ERROR);
+var i, sum: INT;
+begin
+    for i := 0 to LEN(words) - 1 do
+        sum := sum + try number(words[i]);
+    end;
+    return sum, nil;
+end;
+```
+
+`try c`, where `c` is a call (below) of a procedure whose last result
+is an `ERROR`, makes the call and looks at that error. If it is `nil`,
+the program goes on, and `try c` is what `c` returned without the
+error. If it isn't, the procedure `try` stands in returns at once, as
+`return` does (section 7.3): its last result is that error, and every
+other result is zero, as a variable of its type starts (section 4).
+Nothing more of the statement `try` stands in is done; in the example,
+`sum` isn't assigned. So
+
+```
+x := try f(a);
+```
+
+is, with `e` a variable the program can't name, and `0` standing for
+a zero of each of the procedure's other results:
+
+```
+x, e := f(a);
+if e # nil then return 0, e; end;
+```
+
+The error is the one `c` returned, and compares with `=` as it did
+there. `try` has no handler and keeps no state: it is a `return`,
+written where the call is, so that every place a procedure can leave is
+in its text. A program that means to deal with an error tests it, as
+section 5.8 shows.
+
+**What `try` is applied to.** `c` is a designator that ends in a call:
+`f(x)`, `Mod.f(x)`, `p^.next(x)`, or a call through a variable of
+procedure type. Where the procedure has no parameters its parentheses
+may be left out, as in a statement (section 7.1), and `try` calls it:
+`try setup;`. A conversion, a built-in procedure (section 6.8) and the
+case of a variant are written like calls and aren't procedures'; `try`
+can't be applied to them.
+
+**What `try c` is.** `c`'s results but the last.
+
+- With none, `try c` isn't a value and stands only as a statement:
+  `try flush;`.
+- With one, it is a value of that type, an operand wherever `c`
+  would be: `n := try number(s);`, `sum + try number(s)`,
+  `if try ready(fd) then`. Like `not`, it applies to the factor after
+  it: `try f(x) + 1` is `(try f(x)) + 1`.
+- With several, it stands only on the right of a multiple assignment,
+  as `c` itself would, with a target for each: `a, b := try f(x);`.
+
+As a statement, `try c;` drops the values of `c` that it has, and a
+dropped value is warned of as a call that drops a result is (section
+10); `_ := try c;` and `a, _ := try c;` say it is meant (section 7.1).
+The error is never dropped: `try` is the way of passing it on.
+
+**Where `try` may stand.** Every use of `try` is an error unless:
+
+- the procedure it stands in has an `ERROR` as its last result. A
+  module's body, and a procedure with no results, such as `proc
+  main*;`, have none: there an error is dealt with where it is found,
+  by a test;
+- the last result of the procedure `c` calls is an `ERROR`;
+- it is not inside a deferred statement, which `try` would leave
+  (section 7.7).
+
+A generic module is checked in each instance (section 3), so a
+procedure of an instance whose last result, by its type arguments, is
+no `ERROR` and uses `try` is an error in that instance.
+
+**Order.** The arguments of `c` are evaluated from left to right, then
+`c` is called, and then its error is looked at (section 7.5). The
+designators on the left of an assignment are evaluated before its
+right side as always, so in `a[i()] := try g()`, `i` is called, then
+`g`; if `g` fails, nothing is assigned. A `try` in the right operand
+of `and` or `or` is reached only when that operand is evaluated
+(section 6.2).
+
+**Deferred statements.** When `try` returns, the statements deferred
+in the procedure and not yet run are run, the last first, as for a
+`return` (section 7.7), after the error and the zero results have been
+chosen; no deferred statement can change them.
 
 ## 8. Procedures
 
@@ -1016,7 +1118,9 @@ the parameter's type.
 that returns several values can only stand on the right of a multiple
 assignment, alone as a statement, or alone after `return` in a
 procedure whose results are of the same types, in the same order,
-which then returns them as they are: `return divmod(n, 2);`.
+which then returns them as they are: `return divmod(n, 2);`. A
+procedure that can fail has an `ERROR` as its last result (section
+5.8), which `try` passes on (section 7.8).
 
 ```
 module Divide;
@@ -1933,6 +2037,10 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.18.** A code procedure takes and returns slices (section
   8).
 - **2026-10.19.** The library gains `Bytes` (section 11).
+- **2026-10.20.** `try`: a call of a procedure whose last result is an
+  `ERROR`, which makes the procedure it stands in return that error
+  when it isn't `nil` (sections 2, 5.8, 6, 7.8 and appendix B). `try`
+  becomes a reserved word, which breaks a program with a name `try`.
 
 ## Appendix A. What an implementation chooses
 
@@ -2057,7 +2165,8 @@ Factor     = number | char | string | Designator | "(" Expr ")"
            | "not" Factor | "~" Factor
            | "[" [ Expr { "," Expr } ] "]"
            | "{" [ Element { "," Element } ] "}"
-           | "^" [ "VOLATILE" ] Type "(" Expr ")" .
+           | "^" [ "VOLATILE" ] Type "(" Expr ")"
+           | "try" Designator .
 Element    = Expr | ident ":" Expr .
 Designator = QualIdent { Selector } .
 Selector   = "." ident | "^" | "[" Expr [ ".." Expr ] "]"
@@ -2075,7 +2184,8 @@ Statement  = Designator [ ":=" Expr ]
            | "match" Expr "of" { "|" Arm } "end"
            | "return" [ Expr { "," Expr } ]
            | "break"
-           | "defer" Statement .
+           | "defer" Statement
+           | "try" Designator .
 Arm        = ( ident [ "(" ident { "," ident } ")" ]
              | Label { "," Label } | "else" ) ":" Statements .
 Label      = Expr [ ".." Expr ] .

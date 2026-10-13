@@ -22,7 +22,7 @@ cases = {
     "tab": "\t\tx := @;\n", "multi": "x := \"\u00e9\u00e9\u00e9\" + @;\n", "ident64": "x" * 64 + ";\n", "ident63": "x" * 63 + ";\n",
     "bigstr": "x := \"" + "a" * 70000 + "\";\n", "empty": "", "nonl": "x := y",
     "ops": "+ - * / = # < <= > >= := : ; , . .. ... ( ) [ ] { } ^ & ~ | _ __ _a\n",
-    "words": "and begin break by code const defer div do else elsif end extern for forward if import in link match mod module not of or packed proc record repeat return set shl shr then to type until var variant VOLATILE while xor Volatile\n",
+    "words": "and begin break by code const defer div do else elsif end extern for forward if import in link match mod module not of or packed proc record repeat return set shl shr then to try type until var variant VOLATILE while xor Volatile\n",
 }
 for k, v in cases.items():
     open(f"{d}/{k}.raz", "wb").write(v.encode("utf-8", "surrogateescape") if isinstance(v, str) else v)

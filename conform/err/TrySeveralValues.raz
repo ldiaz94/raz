@@ -1,0 +1,12 @@
+module TrySeveralValues;
+proc f: (INT, INT, ERROR);
+begin
+    return 1, 2, nil;
+end;
+proc g: ERROR;
+var n: INT;
+begin
+    n := try f();
+    return nil;
+end;
+end TrySeveralValues.

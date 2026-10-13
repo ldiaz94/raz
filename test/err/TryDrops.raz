@@ -1,0 +1,20 @@
+module TryDrops;
+proc half(n: INT): (INT, ERROR);
+begin
+    return n div 2, nil;
+end;
+proc three(n: INT): (INT, INT, ERROR);
+begin
+    return n, n, nil;
+end;
+proc g*: ERROR;
+var n: INT;
+begin
+    try half(4);
+    _ := try half(4);
+    n, _ := try three(4);
+    try three(4);
+    _ := n;
+    return nil;
+end;
+end TryDrops.

@@ -48,7 +48,7 @@ TOURS = [
 
 KEYWORDS = set("""and begin break by code const defer div do else elsif end
 extern for forward if import in link match mod module not of or packed proc
-record repeat return set shl shr then to type until var variant VOLATILE
+record repeat return set shl shr then to try type until var variant VOLATILE
 while xor""".split())
 PREDECLARED = set("""INT UINT I8 I16 I32 I64 U8 U16 U32 U64 F32 F64 BOOL ERROR
 true false nil LEN ADR NEW SIZE INC DEC MSG XADD CAS XCHG""".split())

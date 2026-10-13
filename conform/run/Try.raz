@@ -1,0 +1,178 @@
+module Try;
+(* try: an error that isn't nil is returned, with zeros for the other
+   results; else the call's other results are the value. Every shape of
+   results, in expressions, among arguments, past deferred statements. *)
+import Out;
+
+const
+    Bad*: ERROR = "bad";
+    Worse*: ERROR = "worse";
+
+type Pair = record a, b: I64; end;
+
+var
+    log: INT;                 (* the deferred statements run, as digits *)
+    handler: proc(n: INT): ERROR;
+
+(* fails when n is negative *)
+proc check(n: INT): ERROR;
+begin
+    if n < 0 then return Bad; end;
+    return nil;
+end;
+
+(* two words: a value, and Worse when n is zero *)
+proc half(n: INT): (INT, ERROR);
+begin
+    if n = 0 then return 7, Worse; end;
+    return n div 2, nil;
+end;
+
+(* several results, in a temporary *)
+proc three(n: INT): (I64, I64, ERROR);
+begin
+    if n < 0 then return 5, 6, Bad; end;
+    return I64(n), I64(n * 2), nil;
+end;
+
+proc real(n: INT): (F64, ERROR);
+begin
+    if n < 0 then return 1.5, Bad; end;
+    return F64(n) / 2.0, nil;
+end;
+
+proc pair(n: INT): (Pair, ERROR);
+begin
+    if n < 0 then return {a: 1, b: 2}, Bad; end;
+    return {a: I64(n), b: I64(n + 1)}, nil;
+end;
+
+proc add(a, b, c: INT): INT;
+begin
+    return a * 100 + b * 10 + c;
+end;
+
+proc yes(n: INT): (BOOL, ERROR);
+begin
+    if n < 0 then return true, Bad; end;
+    return n > 5, nil;
+end;
+
+proc setup: ERROR;
+begin
+    log := log * 10 + 9;
+    return nil;
+end;
+
+(* the enclosing procedure ends in a lone ERROR *)
+proc one(n: INT): ERROR;
+var h: INT;
+begin
+    try check(n);
+    h := try half(n);
+    try setup;
+    log := log * 10 + h;
+    return nil;
+end;
+
+(* in two words *)
+proc two(n: INT): (INT, ERROR);
+begin
+    return 1 + try half(n) * 3, nil;
+end;
+
+(* behind a pointer *)
+proc many(n: INT): (I64, F64, ERROR);
+var a, b: I64; r: F64;
+begin
+    a, b := try three(n);
+    r := try real(n);
+    return a + b, r, nil;
+end;
+
+(* a record result, so the results of the caller are behind a pointer *)
+proc whole(n: INT): (Pair, I64, ERROR);
+var p: Pair;
+begin
+    p := try pair(n);
+    return p, p.a + p.b, nil;
+end;
+
+(* deferred statements run on the way out, the error unchanged *)
+proc deferred(n: INT): (INT, ERROR);
+begin
+    defer log := log * 10 + 1;
+    defer log := log * 10 + 2;
+    return try half(n) + 100, nil;
+end;
+
+(* among the arguments of another call, with a value pushed already *)
+proc among(n, m: INT): (INT, ERROR);
+begin
+    defer log := log * 10 + 3;
+    return add(1, try half(n), try half(m)), nil;
+end;
+
+(* only when its operand is evaluated *)
+proc shortcut(n: INT): (BOOL, ERROR);
+begin
+    return (n > 0) and try yes(n - 1 - 100), nil;
+end;
+
+proc through(n: INT): ERROR;
+begin
+    handler := check;
+    try handler(n);
+    return nil;
+end;
+
+proc loop(n, off: INT): (INT, ERROR);
+var i, sum: INT;
+begin
+    for i := 1 to n do
+        if try yes(i + off) then sum := sum + try half(i * 2); end;
+    end;
+    return sum, nil;
+end;
+
+proc flag(b: BOOL): INT;
+begin
+    if b then return 1; end;
+    return 0;
+end;
+
+proc show(what: []U8; v: INT; e: ERROR);
+begin
+    Out.str(what); Out.str(": "); Out.int(v);
+    if e = nil then Out.str(" ok"); else Out.str(" "); Out.str(MSG(e)); end;
+    Out.str(", log "); Out.int(log); Out.ln;
+    log := 0;
+end;
+
+proc main*;
+var v: INT; e: ERROR; a: I64; f: F64; p: Pair; b: BOOL;
+begin
+    e := one(4); show("one 4", 0, e);
+    e := one(-1); show("one -1", 0, e);
+    e := one(0); show("one 0", 0, e);
+    v, e := two(8); show("two 8", v, e);
+    v, e := two(0); show("two 0", v, e);
+    a, f, e := many(3); show("many 3", INT(a), e); Out.int(INT(f * 10.0)); Out.ln;
+    a, f, e := many(-2); show("many -2", INT(a), e); Out.int(INT(f * 10.0)); Out.ln;
+    p, a, e := whole(4); show("whole 4", INT(p.a * 10 + a), e);
+    p, a, e := whole(-4); show("whole -4", INT(p.a * 10 + a), e);
+    v, e := deferred(6); show("deferred 6", v, e);
+    v, e := deferred(0); show("deferred 0", v, e);
+    v, e := among(4, 6); show("among 4 6", v, e);
+    v, e := among(4, 0); show("among 4 0", v, e);
+    v, e := among(0, 6); show("among 0 6", v, e);
+    b, e := shortcut(3); show("shortcut 3", flag(b), e);
+    b, e := shortcut(0); show("shortcut 0", flag(b), e);
+    e := through(3); show("through 3", 0, e);
+    e := through(-3); show("through -3", 0, e);
+    v, e := loop(5, 3); show("loop 5 3", v, e);
+    v, e := loop(2, 3); show("loop 2 3", v, e);
+    v, e := loop(5, -2); show("loop 5 -2", v, e);
+end;
+
+end Try.

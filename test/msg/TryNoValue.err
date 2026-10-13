@@ -1,0 +1,4 @@
+conform/err/TryNoValue.raz:9:10: error: this try has no value
+    9 |     n := try f();
+      |          ^^^^^^^
+raz: 1 error

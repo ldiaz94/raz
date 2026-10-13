@@ -17,6 +17,10 @@ never edited for this, and stays the one `make check` builds. The new
 compiler lives in `self/`, one raz module to a seed unit, the same
 names, and has its own targets; nothing in `src/` or `lib/` changes.
 
+The language gained `try` (report 2026-10.20) for this: the parser's
+errors will return an `ERROR` that `try` passes up, and `self/Jump.raz`,
+which the scanner's `fail` uses now, goes when step 4 lands.
+
 Each unit is ported in the seed's order (leaves first) and tested on
 its own against the seed's, on the same inputs, since no program can
 link both. The language and the library are frozen: a gap found goes

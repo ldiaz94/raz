@@ -1,0 +1,11 @@
+module TryWrongResults;
+proc f: ERROR;
+begin
+    return nil;
+end;
+proc g: (INT, BOOL);
+begin
+    try f();
+    return 1, true;
+end;
+end TryWrongResults.

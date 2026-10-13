@@ -1,0 +1,12 @@
+module TryCount;
+proc f: (INT, ERROR);
+begin
+    return 1, nil;
+end;
+proc g: ERROR;
+var a, b: INT;
+begin
+    a, b := try f();
+    return nil;
+end;
+end TryCount.

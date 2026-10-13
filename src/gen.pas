@@ -206,6 +206,8 @@ procedure EnterBody(c, line: longint);
 procedure ResultTo(off: int64; size: longint);
 procedure CopyResult(off, size: int64);
 procedure ReturnJump;
+procedure TryAlign;
+procedure TryReturn(slot: int64);
 procedure EndProc(c: longint; open: boolean);
 function DeferBegin(var L, saved: longint): longint;
 procedure DeferEnd(L, saved: longint);
@@ -2062,6 +2064,41 @@ begin
       if resType^.form = fReal then begin XValueTo(depth - 1, 0); Drop end
       else PopTo(RAX);
     end;
+  Jmp(exitL);
+end;
+
+{ The first of what try does where the error isn't nil (the report, 7.8):
+  the machine's stack made even, as the deferred statements about to be
+  run expect to find it. try can stand among the arguments of another
+  call, where quadwords have been pushed. Nothing is lost: the frame is
+  above rsp, and the code returns through the frame pointer. }
+procedure TryAlign;
+begin
+  AluI(aluAnd, RSP, -16);
+end;
+
+{ The rest of it: the procedure returns the error in the frame slot, and
+  a zero for each of its other results. Only code is made: no entry of
+  the stack of values is touched, since the code that follows is the
+  code for an error that is nil, with the stack as it was. }
+procedure TryReturn(slot: int64);
+var f: PObj;
+begin
+  if BehindPointer(resType) then begin
+    Load(RDI, Mem(RBP, retSlot), 8, false);
+    MovRI(RCX, resType^.size);
+    MovRI(RAX, 0);
+    RepStosb;
+    f := resType^.fields;
+    while f^.next <> nil do f := f^.next;
+    Load(RCX, Mem(RBP, slot), 8, false);
+    Load(RDX, Mem(RBP, retSlot), 8, false);
+    Store(Mem(RDX, f^.val), RCX, 8);
+    Load(RAX, Mem(RBP, retSlot), 8, false);
+  end else if InTwoRegs(resType) then begin
+    Load(RDX, Mem(RBP, slot), 8, false);
+    MovRI(RAX, 0);
+  end else Load(RAX, Mem(RBP, slot), 8, false);
   Jmp(exitL);
 end;
 
