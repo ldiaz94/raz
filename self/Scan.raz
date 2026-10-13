@@ -76,7 +76,7 @@ var
 
     (* The parser is skipping what it has read once already, after an
        error, so slips in it aren't reported again. *)
-    skipping: BOOL;
+    skipping*: BOOL;
 
     (* Whether a byte may be in a name: a letter, a digit or _. A table,
        since the loop that reads a name asks it of every byte. *)
@@ -109,6 +109,13 @@ end;
 proc strBytes*: []U8;
 begin
     return sbuf[0..slen];
+end;
+
+(* The string just read and the zero after it, for the code that makes a
+   chunk of it: an empty string has bytes to point at, though none to index *)
+proc strWithZero*: ^U8;
+begin
+    return ADR(sbuf[0]);
 end;
 
 (* Memory, or the end of the compile when there is none *)

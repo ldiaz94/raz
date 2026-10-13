@@ -39,6 +39,16 @@ notes and listing of the code must be the same, over 60 scripts (a
 run ends at its 20th error, as a compile does). The text its messages
 point into is `test/ItemDump.txt`.
 
+`Parse` and `Raz`, the last two units, are tested whole: the seed builds
+`self/Raz.raz` into `build/self/raz.self`, and each compiler, run as
+`build/cmp/raz` (a program holds the paths it was made from, and the
+library is found beside the compiler), compiles the library, the
+examples, the tools, `self/` itself, every test of `test/` and
+`conform/`, and the 348,025-line program of `test/genbench.py`, with the
+options each test has. The executable, the messages, and the status
+must be the same for every file: 409 of them, 289 of which are errors.
+`make self-bench` gives the speed of both.
+
 `check.sh` builds a dumper for each side, `test/ScanDump.pas` over the
 seed's units and `test/ScanDump.raz` over these, and has both read the
 library, the examples, every test of the compiler and a file for each
@@ -125,6 +135,32 @@ Not the seed's to mend; for the owner to choose.
   the speed test of step 4 to say. A `const` parameter (a hint that
   the callee won't change it, so that the caller may pass its address)
   would be a language change: it goes on the wish list.
+- **`Parse` and the seed's jumps.** The seed's `Guard`, `setjmp` and
+  `longjmp` are `guard`, a record of what to put back, and the `ERROR`
+  that comes up through `try` to the statement or declaration that is
+  the recovery point (`statement`, `declaration`), which looks at it,
+  puts the state back (`restore`) and skips ahead, as the seed does.
+  `giveUp`, the seed's `GiveUp`, returns the error on to the next one,
+  or ends the compile if there is none (`guards` counts them). A routine
+  that can't fail has no `ERROR` (`declarations`, `declaration`). The
+  seed's nested procedures (`ChooseRegs`'s three) are procedures of the
+  module with its candidates in variables. `defer` and `module` being
+  words, the seed's `Defer` is `deferStatement`. A message is made
+  from strings with `Diag.say`, which has no shortstring to add up to.
+  `Scan.skipping` is exported to be read, and `Scan.strWithZero` gives
+  `Item.makeStr` a pointer to a string that may be empty: the seed's
+  `@sbuf` indexed nothing, and `ADR(Scan.strBytes()[0])`, which the
+  port of `Item` had, stopped on `""`.
+- **`Raz`.** The program is `proc main*: INT`. Where it is, for the
+  library beside it, it reads from `/proc/self/exe` as FPC's `ParamStr(0)`
+  does: `Files.arg(0)` is what the shell was typed, and `./raz` made the
+  library `./lib`, so the same program held other paths in its file.
+  `raz run` writes the memfd with `Elf.writeElf` and executes it with
+  the system call, `execve`, which `Sys` has no procedure for. The
+  version is the module `Version`, which `check.sh` makes in
+  `build/self/` from `build/version.inc`, as the seed's `{$I}` is.
+  Two names of a file, for a module found in two places, are told by
+  the device and inode `SYSCALL` `stat` gives, which `Sys.info` lacks.
 - **Sets of `Scan.Sym`.** It has 76 names and a set holds 64, so the
   operators a rule names are chains of `=` or the helpers `oneOf` and
   `isRel`. (A `match` arm with several names, which the seed's `case`
@@ -140,6 +176,11 @@ Not the seed's to mend; for the owner to choose.
   bytes of a name (84), and one for the symbols that are a byte each
   (75). What is left for the code generator, which would help every
   module: the slice comparison is slower than the loop it stands for.
+  On the whole compiler, the same 348,025 lines take 427 ms with the
+  seed's and 770 with this one (452,000 lines a second, over the 400,000
+  the budget wants): `Scan.tokPos`, a record of three words returned
+  through a pointer, is 9% of it, and the rest is spread thin; the
+  `const` parameter of `Item` isn't what stands out.
   (The seed's `match` on an integer was a chain of compares, each
   loading the selector from the frame and jumping over a `jmp`, where
   FPC makes a jump table; now it makes one too.)

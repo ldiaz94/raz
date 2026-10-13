@@ -289,13 +289,13 @@ begin
         | 6: Item.makeConst(x, Sym.tNil, 0);
         | 7: return Item.makeItem(x, procs[rnd(6)]);
         | 8: if rnd(4) = 0 then
-                match rnd(3) of
-                | 0: return Item.makeItem(x, typeObj);
-                | 1: return Item.makeItem(x, builtinObj);
-                | else: return Item.makeItem(x, caseObj);
-                end;
-             end;
-             return Item.makeItem(x, arrConst);
+            match rnd(3) of
+            | 0: return Item.makeItem(x, typeObj);
+            | 1: return Item.makeItem(x, builtinObj);
+            | else: return Item.makeItem(x, caseObj);
+            end;
+        end;
+            return Item.makeItem(x, arrConst);
         | 13: try Item.makeItem(x, vars[rnd(NumT)]); return Item.value(x);
         | else: return varItem(x, ty[rnd(NumT)]);
         end;

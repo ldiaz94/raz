@@ -174,7 +174,7 @@ begin
     x.typ := Sym.tStr;
     x.val := Scan.slen;
     x.chunk := Chunk.newChunk(Chunk.secRodata, -1, -1);
-    Chunk.setData(x.chunk, ADR(Scan.strBytes()[0]), Scan.slen + 1, 1);
+    Chunk.setData(x.chunk, Scan.strWithZero(), Scan.slen + 1, 1);
 end;
 
 proc frameAdr*(off: I64): Gen.Adr;

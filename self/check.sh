@@ -123,3 +123,58 @@ for a in $(seq 0 59); do
 done
 echo "item: $n scripts, $bad differ"
 test $bad = 0
+
+# Parse and Raz: the compiler this makes, built by the seed, compiles
+# what the seed compiles, to the same file, with the same messages and
+# status: every example, test and tool, and the library, with each
+# one's own options. Both sides run as build/cmp/raz, since a program
+# holds the paths it was made from and the library is found beside the
+# compiler.
+printf 'module Version;\nconst Text* = "%s";\nend Version.\n' "$(tr -d "'" < build/version.inc)" >$b/Version.raz
+./raz -Werror -I self -I $b -o $b/raz.self self/Raz.raz
+c=build/cmp
+mkdir -p $c
+ln -sfn ../../lib $c/lib
+# and the big program that times the compiler, 348,025 lines
+mkdir -p $c/bench
+python3 test/genbench.py 12000 >$c/bench/Bench.raz
+files=
+for f in $c/bench/Bench.raz lib/*.raz examples/*.raz tools/*.raz self/*.raz test/run/*.raz test/libc/*.raz test/bench/*.raz \
+         conform/run/*.raz test/err/*.raz conform/err/*.raz; do
+    files="$files $f"
+done
+for side in seed self; do
+    rm -rf $c/$side
+    mkdir -p $c/$side
+    if [ $side = seed ]; then cp raz $c/raz; else cp $b/raz.self $c/raz; fi
+    for f in $files; do
+        dir=$(dirname $f); name=$(basename $f .raz); x=$(echo $dir | tr / _).$name
+        flags=
+        case $dir in
+            examples|tools|lib|self) flags=-Werror ;;
+        esac
+        [ -f $dir/$name.args ] && [ $dir = test/err ] && flags="$flags $(cat $dir/$name.args)"
+        case $dir in
+            lib) opts= ;;
+            self|tools) opts="-I self -I build/self" ;;
+            test/err) opts="-I test/err/mods -I test/run/mods" ;;
+            *) opts="-I $dir/mods" ;;
+        esac
+        s=0
+        $c/raz $flags $opts -o $c/$side/$x $f >$c/$side/$x.out 2>$c/$side/$x.err || s=$?
+        echo $s >$c/$side/$x.status
+    done
+done
+n=0; bad=0
+for f in $files; do
+    x=$(dirname $f | tr / _).$(basename $f .raz)
+    n=$((n + 1))
+    for e in "" .out .err .status; do
+        [ -f $c/seed/$x$e ] || [ -f $c/self/$x$e ] || continue
+        if ! cmp -s $c/seed/$x$e $c/self/$x$e; then
+            echo "differs: $f ($x$e)"; bad=$((bad + 1)); break
+        fi
+    done
+done
+echo "raz: $n files, $bad differ"
+test $bad = 0

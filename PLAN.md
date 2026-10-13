@@ -35,7 +35,10 @@ Steps:
 3. `gen` (3a, done: `Gen.raz`, tested by `test/GenDump`, a script of
    calls whose bytes and listing are the same), `item` (3b, done: `Item.raz`, tested by
    `test/ItemDump`, 60 scripts of operations with mistakes in them).
-4. `parse`, `raz`: the first compiler that builds.
+4. `parse`, `raz` (done: `Parse.raz`, `Raz.raz`): the first compiler that
+   builds, tested by compiling 409 programs, the library and the compiler
+   itself with both and comparing the executables, messages and status;
+   452,000 lines a second, the seed's 815,000.
 5. Fixpoint: the seed builds `self`, that builds `self`, that builds
    `self` again, and the last two are byte for byte the same. Then
    the seed's last tag is the bootstrap, and the split of `src/` from
@@ -88,5 +91,6 @@ none is built while the freeze holds.
   may not change `x` (nor take its address), so the caller may pass the
   address of a record or array without a copy, and the program means the
   same. Met in Self step 3b, where the seed's `const x: TItem` (about 130
-  bytes) became a value parameter, copied at every call. Not measured
-  yet; the speed test of Self step 4 will say what it costs.
+  bytes) became a value parameter, copied at every call. Measured in Self
+  step 4: not what stands out, the compiler's profile is flat
+  (`Scan.tokPos` is 9%).

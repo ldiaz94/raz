@@ -1,0 +1,3775 @@
+(* Parse: the parser.
+
+   Reads modules by recursive descent and has Gen emit code as it goes:
+   one pass, no tree. Importing a module that isn't compiled yet
+   compiles it there and then, so modules are finished in an order where
+   each comes after the modules it imports; that is the order in which
+   their bodies run.
+
+   A module may come in one file per target (Name.linux-x86_64.raz and
+   so on). The file for this target is compiled; the others beside it
+   are read for their declarations only, and must export the same
+   interface.
+
+   Depends on: Scan, Sym, Chunk for data, Item and Gen for code.
+   Leaves out: linking; a module only records the libraries it names,
+   and whether it uses C or says link static.
+
+   The seed's errors ended in a jump back to the statement or
+   declaration being read (Scan.mark, longjmp). Here every routine that
+   can find an error returns an ERROR as its last result, and the ones
+   that call it pass it up with try, as Item does; the statement or
+   declaration that is a recovery point (guard) looks at what comes back
+   and reads on. What has been made by then is what the seed had made
+   when it jumped. A seed `var` that only gave a value back is a result
+   where that is shorter; the others stay as they were. A set of
+   Scan.Sym is a chain of tests, since it has more names than a set
+   holds. *)
+module Parse;
+import Fmt, Diag, Scan, Sym, Chunk, Gen, Item, Sys, Str, Buf, Heap;
+
+type
+    PType = ^Sym.Type;
+    PObj = ^Sym.Obj;
+    PModule = ^Sym.Module;
+    TItem = Item.Item;
+
+    (* The innermost loop: the chain of its breaks and the deferred
+       statements in force outside it *)
+    Loop = record
+        brk: INT;
+        base: INT;
+    end;
+    PLoop = ^Loop;
+
+    (* A generic module's import whose instance isn't made yet (deferred,
+       numDeferred); not to be confused with a defer statement (defers) *)
+    Deferred = record
+        o: PObj;             (* the name it imports as *)
+        home: PModule;       (* the module that imports it *)
+        mname: INT;          (* the generic module *)
+        args: Scan.State;    (* at the "(" of its arguments *)
+        at: Diag.Pos;        (* the import *)
+    end;
+
+const
+    (* Whether the target has reals (report, appendix A): x86-64 always has
+       SSE2. Without them, used code that computes with one is an error,
+       which Raz reports once it knows what the program uses. *)
+    HasReals* = true;
+
+    MaxNames = 64;        (* names in one declaration, and the like *)
+    MaxFwd = 256;         (* pointers to types not yet declared *)
+    MaxDefers = 64;       (* defer statements in force *)
+    MaxDrops = 4096;      (* calls that drop results, in one module *)
+    MaxDeferred = 64;     (* generic imports not yet made *)
+    MaxLabels = 1024;     (* labels of one match *)
+    MaxElements = 1024;   (* elements of an array literal *)
+    MaxFixes = 4096;      (* addresses in one constant *)
+    MaxPending = 64;      (* modules being compiled at once *)
+    Suffixes: [4][]U8 = [".linux-x86_64", ".linux", ".x86_64", ""];
+
+var
+    libDir*, mainDir: []U8;
+    incDirs*: [16][]U8;
+    numInc*: INT;
+    firstModule*, lastModule*: PModule;   (* in the order they were finished *)
+
+    checkMode: BOOL;     (* reading a file only for its interface *)
+    inTypes: BOOL;       (* in a type section: ^T may name a later type *)
+    fwdTypes: [MaxFwd]PType;
+    fwdPos: [MaxFwd]Diag.Pos;    (* where each names its type *)
+    numFwd: INT;
+    lastCalled: PObj;    (* the procedure the last call was of, if it had a name *)
+    passOn: BOOL;        (* the next factor may be a call with several results, for return *)
+    curProc: PObj;       (* the procedure being compiled, or nil *)
+    declExported: BOOL;  (* the export mark of the declaration being read *)
+    curLoop: PLoop;      (* the innermost loop, or nil *)
+    defers: [MaxDefers]INT;   (* the defer statements in force, their code's addresses *)
+    numDefers: INT;
+    deferring: BOOL;     (* compiling a defer statement's statement *)
+    directDefer: BOOL;   (* ... as the statement itself, not in a list *)
+    deferSlot: I64;      (* keeps a result while deferred statements run *)
+    curResult: PType;    (* the result type of the procedure being compiled *)
+    inExtern: BOOL;      (* reading an extern's signature: ... allowed *)
+    tArgv, tBodySig: PType;
+    nameRt, nameFail, nameBody, nameStatic, nameCheck, nameOff, nameAdr: INT;
+    declaring: [MaxNames]INT;    (* the names the declaration being read declares *)
+    numDeclaring: INT;
+    skipped: BOOL;       (* the last statement had an error and was skipped *)
+    deferred: [MaxDeferred]Deferred;   (* generic imports not yet made, not defer statements *)
+    numDeferred: INT;
+    making: BOOL;        (* reading an instance's arguments, at its first use *)
+    stray: BOOL;         (* an "end" in this procedure stood left of its statement's line *)
+    strayAt: Diag.Pos;   (* ... the first such statement *)
+    elseIf: BOOL;        (* an "else if" in this procedure *)
+    drops: [MaxDrops]record
+        at: Diag.Pos;    (* a call standing on its own that drops results *)
+        n: INT;          (* ... how many *)
+    end;
+    numDrops: INT;       (* the module being compiled has those from its
+                            first one, saved by compileFile, to here *)
+    ends: BOOL;          (* the statements just read never go on past
+                            their end: each way through them returns *)
+    useAt: Diag.Pos;     (* ... which is here *)
+    guards: INT;         (* the recovery points open *)
+
+proc expression(var x: TItem; want: PType): ERROR; forward;
+proc parseType: (PType, ERROR); forward;
+proc statements: ERROR; forward;
+proc statement: ERROR; forward;
+
+(* Little helpers *)
+
+proc setLibDir*(dir: []U8);
+begin
+    libDir := dir;
+end;
+
+proc addIncDir*(dir: []U8);
+begin
+    incDirs[numInc] := dir;
+    INC(numInc);
+end;
+
+proc nameOf(n: INT): []U8;
+begin
+    return Scan.nameOf(n);
+end;
+
+(* The name number of s, which isn't empty *)
+proc internName(s: []U8): INT;
+begin
+    return Scan.intern(ADR(s[0]), LEN(s));
+end;
+
+proc say1(f, a: []U8): []U8;
+begin
+    return Diag.say(f, [Fmt.str(a)]);
+end;
+
+proc say2(f, a, b: []U8): []U8;
+begin
+    return Diag.say(f, [Fmt.str(a), Fmt.str(b)]);
+end;
+
+proc say3(f, a, b, c: []U8): []U8;
+begin
+    return Diag.say(f, [Fmt.str(a), Fmt.str(b), Fmt.str(c)]);
+end;
+
+(* More than n of what, as a message *)
+proc tooMany(n: INT; what: []U8): []U8;
+begin
+    return Diag.say("more than {} {}", [Fmt.int(n), Fmt.str(what)]);
+end;
+
+(* A missing symbol is reported just after the one before it. *)
+proc expected(what: []U8): ERROR;
+begin
+    if Scan.tok = Scan.sBlank then
+        return Scan.mark("_ isn't a name: it is the blank, which stands only left of :=");
+    end;
+    return Scan.markAt(Scan.missingPos(), say2("expected {}, found {}", what, Scan.found()));
+end;
+
+proc expect(s: Scan.Sym): ERROR;
+begin
+    if (Scan.tok = Scan.sLbrace) and ((s = Scan.sThen) or (s = Scan.sDo)) then
+        return Scan.markHelp(Scan.missingPos(), say2("expected {}, found {}", Scan.symText(s), Scan.found()),
+            say1("a block is written {} ... end", Scan.symText(s)));
+    end;
+    if Scan.tok # s then return expected(Scan.symText(s)); end;
+    Scan.next;
+    return nil;
+end;
+
+(* The end of a block statement at start, whose line is indented to
+   ind. An "end" left of that was most likely meant for a block around
+   the statement, which leaves the statement's own "end" missing: the
+   first such is kept for endMissing. *)
+proc closeEnd(start: Diag.Pos; ind: INT): ERROR;
+begin
+    if (Scan.tok = Scan.sEnd) and not stray and (Scan.indent() < ind) then
+        stray := true;
+        strayAt := start;
+    end;
+    return expect(Scan.sEnd);
+end;
+
+(* The error of a procedure or module whose own "end" isn't where it
+   should be, with what closeEnd saw *)
+proc endMissing(p: Diag.Pos; msg: []U8): ERROR;
+begin
+    Diag.error(p, msg);
+    if stray then Diag.note(strayAt, "is this statement's \"end\" missing? one further left closes it"); end;
+    if elseIf then Diag.help("raz writes elsif: \"else if\" begins an if that needs its own \"end\""); end;
+    return Scan.Failed;
+end;
+
+(* A name being declared, and whether it is exported; at is the name *)
+proc identDef(var n: INT; var exp: BOOL; var at: Diag.Pos): ERROR;
+begin
+    if Scan.tok # Scan.sIdent then return expected("a name"); end;
+    n := Scan.id;
+    at := Scan.tokPos();
+    Scan.next;
+    exp := false;
+    if Scan.tok = Scan.sTimes then
+        exp := true;
+        Scan.next;
+    end;
+    return nil;
+end;
+
+(* Declares o in the innermost scope. Its module keeps its declarations
+   in order: its own, for the interface check, and its procedures', to
+   warn of those never used. *)
+proc declare(o: PObj): ERROR;
+var m: PModule;
+begin
+    m := Sym.curModule;
+    try Sym.insert(o, Sym.topScope());
+    if Sym.topScope() = m^.scope then
+        if m^.last = nil then m^.first := o; else m^.last^.chain := o; end;
+        m^.last := o;
+    else
+        if m^.lastLocal = nil then m^.locals := o; else m^.lastLocal^.chain := o; end;
+        m^.lastLocal := o;
+    end;
+    return nil;
+end;
+
+(* o is named: a procedure naming itself doesn't count *)
+proc named(o: PObj);
+begin
+    if o # curProc then
+        o^.used := true;
+        o^.read := true;
+    end;
+end;
+
+(* Recovery
+
+   After an error the parser goes on with the next statement or
+   declaration, so that one run reports every error. Each statement and
+   declaration is a recovery point: it notes the state of the scanner
+   and the parser where it starts, and when what it read comes back with
+   an error, the state is put back, the scanner reads the construct
+   again from its start, skipping to its end, and the parser carries on
+   after it. Nothing is generated after an error, so the code half made
+   for the construct does no harm. A name that isn't declared is
+   declared where it is used, with type tPoison, and what follows from
+   it is not reported again; so are the names of a declaration that had
+   an error.
+
+   Skipping counts the words that open and close blocks. A symbol at
+   the start of a line is taken to start a declaration of the module,
+   as layout has it: a statement skipped up to one gives up its
+   procedure, and the procedure is skipped up to its end. *)
+
+type
+    Recover = record
+        scan: Scan.State;
+        scopes, depth, pushed, numDefers: INT;
+        guards: INT;
+        loop: PLoop;
+        result: PType;
+        deferring, directDefer, quiet: BOOL;
+    end;
+
+proc guard(var r: Recover);
+begin
+    Scan.saveScan(r.scan);
+    r.guards := guards;
+    r.scopes := Sym.scopeDepth(); r.depth := Gen.depth; r.pushed := Gen.pushed; r.numDefers := numDefers;
+    r.loop := curLoop; r.result := curResult;
+    r.deferring := deferring; r.directDefer := directDefer; r.quiet := Diag.quiet;
+    INC(guards);
+    Diag.setQuiet(false);
+end;
+
+proc unguard(var r: Recover);
+begin
+    guards := r.guards;
+    Diag.setQuiet(r.quiet);
+    Scan.setSkipping(false);
+end;
+
+(* After an error: the state as it was at the start of r's construct,
+   whose first symbol is again the current one *)
+proc restore(var r: Recover);
+begin
+    Scan.restoreScan(r.scan);
+    Scan.setSkipping(true);
+    Sym.cutScopes(r.scopes);
+    Gen.resetStack(r.depth, r.pushed);
+    numDefers := r.numDefers;
+    curLoop := r.loop; curResult := r.result;
+    deferring := r.deferring; directDefer := r.directDefer;
+    inTypes := false; declExported := false; inExtern := false; making := false;
+end;
+
+(* Gives up the construct r is for, and the one around it: the error
+   goes on up to the next recovery point, or ends the compile if there
+   is none *)
+proc giveUp(var r: Recover): ERROR;
+begin
+    unguard(r);
+    if guards = 0 then Diag.finish(); end;
+    return Scan.Failed;
+end;
+
+(* Reads to the end of a statement or declaration, from its first
+   symbol: up to the ";" that ends it, not read, or to the "end",
+   "else", "elsif", "until" or "|" of the statement around it (an arm's
+   "|" comes after a ";", the operator's after an operand). False if it
+   stopped at a symbol that starts a line, or the end of the file. *)
+proc skipConstruct: BOOL;
+var d, p: INT; prev: Scan.Sym;
+begin
+    d := 0; p := 0; prev := Scan.sSemicolon;
+    repeat
+        match Scan.tok of
+        | sIf, sWhile, sFor, sMatch, sRepeat, sRecord, sVariant: INC(d);
+        | sEnd, sUntil:
+            if d = 0 then return true; end;
+            DEC(d);
+        | sElse, sElsif: if (d = 0) and (p = 0) then return true; end;
+        | sBar: if (d = 0) and (p = 0) and (prev = Scan.sSemicolon) then return true; end;
+        | sLparen, sLbrak, sLbrace: INC(p);
+        | sRparen, sRbrak, sRbrace: if p > 0 then DEC(p); end;
+        | sSemicolon: if (d = 0) and (p = 0) then return true; end;
+        | sEof: return false;
+        | else:
+        end;
+        prev := Scan.tok;
+        Scan.next;
+    until Scan.atLineStart();
+    return false;
+end;
+
+(* Declares n where it is used, after it was reported as not declared,
+   or after the declaration of it had an error *)
+proc poison(n: INT);
+var o: PObj;
+begin
+    o := Sym.newObj(Sym.oConst, n, Sym.tPoison);
+    _ := Sym.insert(o, Sym.topScope());   (* n isn't in this scope, so it can't be twice *)
+end;
+
+proc willDeclare(n: INT);
+begin
+    if numDeclaring < MaxNames then declaring[numDeclaring] := n; end;
+    INC(numDeclaring);
+end;
+
+(* After a declaration had an error: its names are poison, and reading
+   goes on after it *)
+proc skipDeclaration;
+var i: INT;
+begin
+    for i := 0 to numDeclaring - 1 do
+        if (i < MaxNames) and (Sym.find(Sym.topScope(), declaring[i]) = nil) then
+            poison(declaring[i]);
+        end;
+    end;
+    if skipConstruct() and (Scan.tok = Scan.sSemicolon) then Scan.next; end;
+end;
+
+proc constValue(var x: TItem): (I64, ERROR);
+begin
+    if x.mode # Item.mConst then return 0, Scan.markAt(x.pos, "expected a constant"); end;
+    return x.val, nil;
+end;
+
+proc constExpr: (I64, ERROR);
+var x: TItem;
+begin
+    try expression(x, nil);
+    if not Sym.isInt(x.typ) then
+        return 0, Scan.markAt(x.pos, say1("expected an integer constant, found {}", Item.what(x)));
+    end;
+    return constValue(x);
+end;
+
+(* Help after a name that isn't found: o, the closest name in reach *)
+proc didYouMean(o: PObj);
+begin
+    if o # nil then Diag.help(say1("did you mean {}?", nameOf(o^.name))); end;
+end;
+
+(* Where module n is found, if it is: dir and the file in it *)
+proc moduleFile(n: INT): ([]U8, []U8, BOOL); forward;
+
+(* name in lower case, in memory that is never freed, as messages are *)
+proc lowerCase(s: []U8): []U8;
+var p: ^U8; i: INT;
+begin
+    if LEN(s) = 0 then return ""; end;
+    p := Scan.grab(LEN(s));
+    for i := 0 to LEN(s) - 1 do
+        if (s[i] >= 'A') and (s[i] <= 'Z') then p[i] := s[i] + 32; else p[i] := s[i]; end;
+    end;
+    return p[0..LEN(s)];
+end;
+
+(* Reports name n at p as not declared, with what it may have meant *)
+proc notDeclared(p: Diag.Pos; n: INT);
+var found: BOOL; low: []U8;
+begin
+    Diag.error(p, say1("{} isn't declared", nameOf(n)));
+    _, _, found := moduleFile(n);
+    low := lowerCase(nameOf(n));
+    if found then Diag.help(say2("{} is a module: import {}", nameOf(n), nameOf(n)));
+    elsif (nameOf(n) = "elif") or (nameOf(n) = "elseif") then Diag.help("raz writes elsif");
+    elsif Scan.reserved(internName(low)) then Diag.help(say1("a reserved word is written in lower case: {}", low));
+    else didYouMean(Sym.closest(n, -1));
+    end;
+end;
+
+proc firstUse(o: PObj; at: Diag.Pos): ERROR; forward;
+proc instancesFor(wholeRest: BOOL): ERROR; forward;
+proc addImport(m, im: PModule); forward;
+
+proc qualIdent: (PObj, ERROR);
+var o: PObj; m: PModule; at: Diag.Pos;
+begin
+    if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
+    at := Scan.tokPos();
+    o := Sym.lookup(Scan.id);
+    if o = nil then
+        if not making then poison(Scan.id); end;   (* it may yet be declared *)
+        Diag.setQuiet(false);
+        notDeclared(at, Scan.id);
+        if making then Diag.note(useAt, "the instance is made here, where it is first used"); end;
+        return nil, Scan.Failed;
+    end;
+    if o^.typ = Sym.tPoison then Diag.setQuiet(true); end;
+    named(o);
+    Scan.next;
+    if o^.cls = Sym.oModule then
+        if o^.home = nil then try firstUse(o, at); end;
+        try expect(Scan.sPeriod);
+        if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
+        m := o^.home;
+        o := Sym.find(m^.scope, Scan.id);
+        if (o = nil) or not o^.exported then
+            Diag.error(Scan.tokPos(), say2("{} isn't exported by {}", nameOf(Scan.id), nameOf(m^.name)));
+            if o # nil then Diag.note(o^.pos, say1("{} is declared here, without a *", nameOf(Scan.id)));
+            else didYouMean(Sym.closest(Scan.id, m^.scope));
+            end;
+            return nil, Scan.Failed;
+        end;
+        Scan.next;
+    end;
+    return o, nil;
+end;
+
+(* The field of record type t named by the current symbol *)
+proc fieldOf(t: PType): (PObj, ERROR);
+var f: PObj;
+begin
+    f := Sym.find(t^.scope, Scan.id);
+    if f = nil then
+        Diag.error(Scan.tokPos(), say2("{} has no field {}", Sym.typeName(t), nameOf(Scan.id)));
+        didYouMean(Sym.closest(Scan.id, t^.scope));
+        return nil, Scan.Failed;
+    end;
+    if not f^.exported and (t^.home # Sym.curModule) then
+        Diag.error(Scan.tokPos(), say2("field {} of {} isn't exported", nameOf(Scan.id), Sym.typeName(t)));
+        Diag.note(f^.pos, say1("{} is declared here, without a *", nameOf(Scan.id)));
+        return nil, Scan.Failed;
+    end;
+    return f, nil;
+end;
+
+proc newPtr(base: PType; vol: BOOL): PType;
+var t: PType;
+begin
+    t := Sym.newType(Sym.fPtr, 8, 8);
+    t^.base := base;
+    t^.vol := vol;
+    return t;
+end;
+
+(* Types *)
+
+proc recordType: (PType, ERROR);
+var
+    t, ft: PType; f, last: PObj; names: [MaxNames]INT;
+    exps: [MaxNames]BOOL; poss: [MaxNames]Diag.Pos;
+    n, i: INT; off, a, maxA: I64;
+begin
+    t := Sym.newType(Sym.fRecord, 0, 1);
+    if Scan.tok = Scan.sPacked then t^.packd := true; Scan.next; end;
+    try expect(Scan.sRecord);
+    t^.scope := Sym.newScope();
+    off := 0; maxA := 1; last := nil;
+    while Scan.tok = Scan.sIdent do
+        n := 0;
+        repeat
+            if n >= MaxNames then return nil, Scan.mark(tooMany(MaxNames, "names in one declaration")); end;
+            try identDef(names[n], exps[n], poss[n]);
+            INC(n);
+            if Scan.tok # Scan.sComma then break; end;
+            Scan.next;
+        until false;
+        try expect(Scan.sColon);
+        ft := try parseType();
+        if t^.packd then a := 1; else a := ft^.align; end;
+        for i := 0 to n - 1 do
+            off := Sym.alignUp(off, a);
+            f := Sym.newObj(Sym.oField, names[i], ft);
+            f^.exported := exps[i];
+            f^.pos := poss[i];
+            f^.val := off;
+            try Sym.insert(f, t^.scope);
+            if last = nil then t^.fields := f; else last^.next := f; end;
+            last := f;
+            off := off + ft^.size;
+        end;
+        if a > maxA then maxA := a; end;
+        try expect(Scan.sSemicolon);
+    end;
+    try expect(Scan.sEnd);
+    t^.align := maxA;
+    t^.size := Sym.alignUp(off, maxA);
+    return t, nil;
+end;
+
+proc variantType: (PType, ERROR);
+var t, ft: PType; c, lastC, f, lastF: PObj; tag, off, maxSize: I64;
+begin
+    try expect(Scan.sVariant);
+    t := Sym.newType(Sym.fVariant, 8, 8);
+    tag := 0; maxSize := 8; lastC := nil;
+    while Scan.tok = Scan.sIdent do
+        c := Sym.newObj(Sym.oCase, Scan.id, t);
+        c^.val := tag;
+        c^.exported := declExported;
+        try declare(c);
+        if lastC = nil then t^.fields := c; else lastC^.next := c; end;
+        lastC := c;
+        Scan.next;
+        off := 8;
+        if Scan.tok = Scan.sLparen then
+            Scan.next;
+            lastF := nil;
+            repeat
+                repeat
+                    if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
+                    f := Sym.newObj(Sym.oField, Scan.id, nil);
+                    f^.exported := true;
+                    if lastF = nil then c^.fields := f; else lastF^.next := f; end;
+                    lastF := f;
+                    Scan.next;
+                    if Scan.tok # Scan.sComma then break; end;
+                    Scan.next;
+                until false;
+                try expect(Scan.sColon);
+                ft := try parseType();
+                f := c^.fields;
+                while f^.typ # nil do f := f^.next; end;
+                while f # nil do
+                    f^.typ := ft;
+                    off := Sym.alignUp(off, ft^.align);
+                    f^.val := off;
+                    off := off + ft^.size;
+                    f := f^.next;
+                end;
+                if ft^.align > t^.align then t^.align := ft^.align; end;
+                if Scan.tok # Scan.sSemicolon then break; end;
+                Scan.next;
+            until false;
+            try expect(Scan.sRparen);
+        end;
+        if off > maxSize then maxSize := off; end;
+        try expect(Scan.sSemicolon);
+        INC(tag);
+    end;
+    try expect(Scan.sEnd);
+    t^.len := tag;
+    t^.size := Sym.alignUp(maxSize, t^.align);
+    return t, nil;
+end;
+
+(* Several results: a record of them, laid out as C would, and
+   returned in rax and rdx if they are two words (inTwoRegs), or else
+   through a hidden pointer. *)
+proc results: (PType, ERROR);
+var t, ft: PType; f, last: PObj; off: I64;
+begin
+    Scan.next;
+    t := Sym.newType(Sym.fRecord, 0, 1);
+    t^.tuple := true;
+    off := 0; last := nil;
+    repeat
+        ft := try parseType();
+        off := Sym.alignUp(off, ft^.align);
+        f := Sym.newObj(Sym.oField, -1, ft);
+        f^.val := off;
+        off := off + ft^.size;
+        if ft^.align > t^.align then t^.align := ft^.align; end;
+        if last = nil then t^.fields := f; else last^.next := f; end;
+        last := f;
+        INC(t^.len);
+        if Scan.tok # Scan.sComma then break; end;
+        Scan.next;
+    until false;
+    try expect(Scan.sRparen);
+    t^.size := Sym.alignUp(off, t^.align);
+    if t^.len = 1 then return t^.fields^.typ, nil; end;
+    return t, nil;
+end;
+
+proc signature: (PType, ERROR);
+var
+    t, pt: PType; p, first, last: PObj; isVar: BOOL; n: INT;
+begin
+    t := Sym.newType(Sym.fProc, 8, 8);
+    last := nil; n := 0;
+    if Scan.tok = Scan.sLparen then
+        Scan.next;
+        if Scan.tok # Scan.sRparen then
+            repeat
+                if Scan.tok = Scan.sEllipsis then
+                    if not inExtern then return nil, Scan.mark("... is only for extern procedures"); end;
+                    Scan.next; t^.variadic := true; break;
+                end;
+                isVar := Scan.tok = Scan.sVar;
+                if isVar then Scan.next; end;
+                first := nil;
+                repeat
+                    if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
+                    p := Sym.newObj(Sym.oVar, Scan.id, nil);
+                    p^.isVar := isVar;
+                    p^.lev := 1;
+                    if last = nil then t^.fields := p; else last^.next := p; end;
+                    last := p;
+                    if first = nil then first := p; end;
+                    INC(n);
+                    Scan.next;
+                    if Scan.tok # Scan.sComma then break; end;
+                    Scan.next;
+                until false;
+                try expect(Scan.sColon);
+                pt := try parseType();
+                while first # nil do first^.typ := pt; first := first^.next; end;
+                if Scan.tok # Scan.sSemicolon then break; end;
+                Scan.next;
+            until false;
+        end;
+        try expect(Scan.sRparen);
+    end;
+    t^.len := n;
+    if Scan.tok = Scan.sColon then
+        Scan.next;
+        if Scan.tok = Scan.sLparen then t^.base := try results(); else t^.base := try parseType(); end;
+    end;
+    return t, nil;
+end;
+
+proc enumType: (PType, ERROR);
+var t: PType; o, last: PObj; start: Diag.Pos;
+begin
+    start := Scan.tokPos();
+    t := Sym.newType(Sym.fEnum, 1, 1);
+    last := nil;
+    repeat
+        Scan.next;
+        if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
+        o := Sym.newObj(Sym.oConst, Scan.id, t);
+        o^.val := t^.len;
+        o^.exported := declExported;
+        o^.used := true;   (* an enumeration's names are its type's, warned of with it *)
+        try declare(o);
+        if last = nil then t^.fields := o; else last^.next := o; end;
+        last := o;
+        INC(t^.len);
+        Scan.next;
+    until Scan.tok # Scan.sComma;
+    try expect(Scan.sRparen);
+    if t^.len > 256 then return nil, Scan.markAt(Scan.spanFrom(start), "an enumeration has at most 256 names"); end;
+    return t, nil;
+end;
+
+proc setOf(e: PType; at: Diag.Pos): (PType, ERROR);
+var t: PType;
+begin
+    if (e^.form # Sym.fEnum) or (e^.len > 64) then
+        return nil, Scan.markAt(at, say1("a set needs an enumeration of at most 64 names, found {}", Sym.typeName(e)));
+    end;
+    t := Sym.newType(Sym.fSet, 8, 8);
+    if e^.len <= 8 then t^.size := 1;
+    elsif e^.len <= 16 then t^.size := 2;
+    elsif e^.len <= 32 then t^.size := 4;
+    end;
+    t^.align := t^.size;
+    t^.base := e;
+    t^.len := e^.len;
+    return t, nil;
+end;
+
+proc parseType: (PType, ERROR);
+var t: PType; o: PObj; n: I64; vol: BOOL; start: Diag.Pos;
+begin
+    start := Scan.tokPos();
+    match Scan.tok of
+    | sIdent:
+        o := try qualIdent();
+        if o^.cls # Sym.oType then
+            return nil, Scan.markAt(Scan.spanFrom(start), say1("{} isn't a type", nameOf(o^.name)));
+        end;
+        t := o^.typ;
+    | sLbrak:
+        Scan.next;
+        if Scan.tok = Scan.sRbrak then
+            Scan.next;
+            t := Sym.newType(Sym.fSlice, 16, 8);
+            t^.base := try parseType();
+        else
+            start := Scan.tokPos();
+            n := try constExpr();
+            if (n <= 0) or (n > (I64(1) shl 40)) then
+                return nil, Scan.markAt(Scan.spanFrom(start), Diag.say("an array's length is from 1 to 2^40, found {}", [Fmt.int(n)]));
+            end;
+            try expect(Scan.sRbrak);
+            t := Sym.newType(Sym.fArray, 0, 1);
+            t^.len := n;
+            t^.base := try parseType();
+            t^.size := n * t^.base^.size;
+            t^.align := t^.base^.align;
+        end;
+    | sArrow:
+        Scan.next;
+        vol := Scan.tok = Scan.sVolatile;
+        if vol then Scan.next; end;
+        if inTypes and (Scan.tok = Scan.sIdent) and (Sym.lookup(Scan.id) = nil) then
+            (* a type declared later in this section *)
+            t := newPtr(nil, vol);
+            t^.fwd := Scan.id;
+            if numFwd >= MaxFwd then
+                return nil, Scan.mark(tooMany(MaxFwd, "pointers to types not yet declared"));
+            end;
+            fwdTypes[numFwd] := t;
+            fwdPos[numFwd] := Scan.tokPos();
+            INC(numFwd);
+            Scan.next;
+        else
+            t := newPtr(try parseType(), vol);
+        end;
+    | sPacked, sRecord: t := try recordType();
+    | sVariant: t := try variantType();
+    | sProc: Scan.next; t := try signature();
+    | sLparen: t := try enumType();
+    | sSet:
+        Scan.next;
+        try expect(Scan.sOf);
+        start := Scan.tokPos();
+        t := try setOf(try parseType(), start);
+    | else: return nil, expected("a type");
+    end;
+    return t, nil;
+end;
+
+(* Expressions *)
+
+proc call(var x: TItem): ERROR;
+var c: Gen.CallInfo; a: TItem; want: PType;
+begin
+    try Item.beginCall(c, x);
+    try expect(Scan.sLparen);
+    if Scan.tok # Scan.sRparen then
+        repeat
+            if c.param # nil then want := c.param^.typ; else want := nil; end;
+            try expression(a, want);
+            try Item.passArg(c, a);
+            if Scan.tok # Scan.sComma then break; end;
+            Scan.next;
+        until false;
+    end;
+    try expect(Scan.sRparen);
+    return Item.endCall(c, x);
+end;
+
+proc atomic(var x: TItem; which: INT): ERROR;
+var p, a: TItem; t: PType; i, n: INT;
+begin
+    try expression(p, nil);
+    if p.typ^.form # Sym.fPtr then
+        return Scan.markAt(p.pos, say1("expected a pointer, found {}", Item.what(p)));
+    end;
+    t := p.typ^.base;
+    if not (Item.isWord(t) or ((t^.form = Sym.fPtr) and (which # Sym.bXadd))) then
+        if which = Sym.bXadd then
+            return Scan.markAt(p.pos, say1("expected a pointer to an INT or a UINT, found {}", Sym.typeName(p.typ)));
+        end;
+        return Scan.markAt(p.pos, say1("expected a pointer to an INT, a UINT or a pointer, found {}", Sym.typeName(p.typ)));
+    end;
+    try Item.value(p);
+    if which = Sym.bCas then n := 2; else n := 1; end;
+    for i := 1 to n do
+        try expect(Scan.sComma);
+        try expression(a, t);
+        try Item.coerce(a, t);
+        try Item.value(a);
+    end;
+    Gen.atomic(which);
+    Item.makeConst(x, t, 0);
+    if which = Sym.bCas then x.typ := Sym.tBool; end;
+    x.mode := Item.mStack;
+    return nil;
+end;
+
+(* NEW(p, a): p := a^.alloc(a, SIZE(T), alignment), zeroed if not nil.
+   a is a ^Mem.Allocator, the one interface the compiler knows. *)
+proc new_(var x: TItem): ERROR;
+var y, z: TItem; t: PType; f: PObj; s: I64; c: Gen.CallInfo;
+begin
+    try expression(x, nil);
+    try Item.notReadOnly(x);
+    if (x.mode # Item.mVar) or not x.isVar or (x.typ^.form # Sym.fPtr) then
+        return Scan.markAt(x.pos, "NEW needs a pointer variable");
+    end;
+    t := x.typ^.base;
+    try expect(Scan.sComma);
+    try expression(y, nil);
+    if (y.typ^.form # Sym.fPtr) or (y.typ^.base^.obj = nil) or (y.typ^.base^.obj^.home = nil)
+        or (nameOf(y.typ^.base^.obj^.name) # "Allocator")
+        or (nameOf(y.typ^.base^.obj^.home^.name) # "Mem") then
+        return Scan.markAt(y.pos, say1("NEW needs a ^Mem.Allocator, found {}", Item.what(y)));
+    end;
+    f := Sym.find(y.typ^.base^.scope, internName("alloc"));
+    s := try Item.toSlot(y);
+    Gen.pushVar(Item.frameAdr(s), 8, false, Gen.kWord);
+    Item.makeConst(z, f^.typ, 0);
+    z.mode := Item.mVar; z.base := Gen.bStack; z.off := f^.val;
+    try Item.beginCall(c, z);
+    Gen.pushVar(Item.frameAdr(s), 8, false, Gen.kWord);
+    Item.makeConst(z, y.typ, 0);
+    z.mode := Item.mStack;
+    try Item.passArg(c, z);
+    Item.makeConst(z, Sym.tInt, t^.size);
+    try Item.passArg(c, z);
+    Item.makeConst(z, Sym.tInt, t^.align);
+    try Item.passArg(c, z);
+    try Item.endCall(c, z);
+    Gen.zeroNew(t^.size);
+    z.typ := x.typ;
+    try Item.assign(x, z);
+    Item.makeConst(x, Sym.tNone, 0);
+    x.mode := Item.mNone;
+    return nil;
+end;
+
+proc incOrDec(which: INT): []U8;
+begin
+    if which = Sym.bDec then return "DEC"; end;
+    return "INC";
+end;
+
+proc builtin(var x: TItem): ERROR;
+var which, n: INT; y: TItem; t: PType;
+begin
+    which := INT(x.obj^.val);
+    if (which = Sym.bFence) or (which = Sym.bArgc) or (which = Sym.bArgv) then
+        if Scan.tok = Scan.sLparen then Scan.next; try expect(Scan.sRparen); end;
+        Item.makeConst(x, Sym.tNone, 0);
+        match which of
+        | Sym.bFence: Gen.fence(); x.mode := Item.mNone;
+        | Sym.bArgc:
+            Gen.pushVar(Item.globalAdr(Gen.argcChunk), 8, false, Gen.kWord);
+            x.typ := Sym.tInt; x.mode := Item.mStack;
+        | else:
+            Gen.pushVar(Item.globalAdr(Gen.argvChunk), 8, false, Gen.kWord);
+            x.typ := tArgv; x.mode := Item.mStack;
+        end;
+        return nil;
+    end;
+    try expect(Scan.sLparen);
+    match which of
+    | Sym.bSize:
+        t := try parseType();
+        Item.makeConst(x, Sym.tConst, t^.size);
+    | Sym.bAdr:
+        try expression(y, nil);
+        try Item.notReadOnly(y);
+        if (y.mode # Item.mVar) or not y.isVar then return Scan.markAt(y.pos, "ADR needs a variable"); end;
+        if y.odd then return Scan.markAt(y.pos, "a field of a packed record has no address"); end;
+        t := newPtr(y.typ, y.vol);
+        try Item.address(y);
+        Item.makeConst(x, t, 0);
+        x.mode := Item.mStack;
+    | Sym.bLen:
+        try expression(y, nil);
+        if y.mode = Item.mStr then
+            Item.makeConst(x, Sym.tConst, y.val);
+        elsif y.typ^.form = Sym.fArray then
+            try Item.discard(y);
+            Item.makeConst(x, Sym.tConst, y.typ^.len);
+        elsif (y.typ^.form = Sym.fSlice) and (y.mode = Item.mVar) then
+            (* its length, the word after its pointer *)
+            y.off := y.off + 8;
+            y.typ := Sym.tInt;
+            try Item.value(y);
+            x := y;
+        else
+            return Scan.markAt(y.pos, say1("LEN needs an array or a slice, found {}", Item.what(y)));
+        end;
+    | Sym.bSyscall:
+        n := 0;
+        repeat
+            if n > 0 then Scan.next; end;
+            try expression(y, nil);
+            if not (Sym.isScalar(y.typ) and (y.typ^.form # Sym.fReal)) then
+                return Scan.markAt(y.pos, say1("expected an integer or a pointer, found {}", Item.what(y)));
+            end;
+            if y.typ^.form = Sym.fConst then try Item.coerce(y, Sym.tInt); end;
+            try Item.value(y);
+            INC(n);
+        until (Scan.tok # Scan.sComma) or (n = 7);
+        Gen.sysCall(n);
+        Item.makeConst(x, Sym.tInt, 0);
+        x.mode := Item.mStack;
+    | Sym.bCas, Sym.bXchg, Sym.bXadd: try atomic(x, which);
+    | Sym.bMsg:
+        try expression(x, Sym.tError);
+        try Item.msg(x);
+    | Sym.bInc, Sym.bDec:
+        try expression(x, nil);
+        try Item.notReadOnly(x);
+        if (x.mode # Item.mVar) or not x.isVar or (x.typ^.form # Sym.fInt) then
+            return Scan.markAt(x.pos, say1("{} needs an integer variable", incOrDec(which)));
+        end;
+        if x.base # Gen.bReg then try Item.address(x); end;
+        if Scan.tok = Scan.sComma then
+            Scan.next;
+            try expression(y, x.typ);
+        else
+            Item.makeConst(y, x.typ, 1);
+        end;
+        try Item.incDec(x, y, which = Sym.bDec);
+        Item.makeConst(x, Sym.tNone, 0);
+        x.mode := Item.mNone;
+    | Sym.bNew: try new_(x);
+    | Sym.bCopy:
+        try expression(x, nil);
+        try Item.copyDest(x);
+        try expect(Scan.sComma);
+        try expression(y, nil);
+        try Item.copyFrom(x, y);
+        Item.makeConst(x, Sym.tNone, 0);
+        x.mode := Item.mNone;
+    | else:
+    end;
+    return expect(Scan.sRparen);
+end;
+
+proc constructCase(var x: TItem; c: PObj; at: Diag.Pos): ERROR;
+var f: PObj; a: TItem;
+begin
+    Item.construct(x, c);
+    f := c^.fields;
+    if Scan.tok = Scan.sLparen then
+        Scan.next;
+        while f # nil do
+            try expression(a, f^.typ);
+            try Item.setField(x, f, a);
+            f := f^.next;
+            if f # nil then try expect(Scan.sComma); end;
+        end;
+        return expect(Scan.sRparen);
+    elsif f # nil then
+        return Scan.markAt(at, say1("{} needs its fields", nameOf(c^.name)));
+    end;
+    return nil;
+end;
+
+(* x, before ".", has no fields; tok is what follows. Other languages
+   write p.f through a pointer and s.len for a length. *)
+proc fieldOfWhat(x: TItem): ERROR;
+var msg, f: []U8;
+begin
+    msg := say1("expected a record, found {}", Item.what(x));
+    if Scan.tok = Scan.sIdent then f := nameOf(Scan.id); else f := ""; end;
+    if (x.typ^.form = Sym.fPtr) and (x.typ^.base^.form = Sym.fRecord) then
+        return Scan.markHelp(x.pos, msg, say2("through a pointer, write {}^.{}", Diag.source(x.pos), f));
+    elsif ((x.typ^.form = Sym.fArray) or (x.typ^.form = Sym.fSlice))
+        and ((f = "len") or (f = "length") or (f = "size") or (f = "count")) then
+        return Scan.markHelp(x.pos, msg, say1("its length is LEN({})", Diag.source(x.pos)));
+    end;
+    return Scan.markAt(x.pos, msg);
+end;
+
+(* A designator, with any selectors and calls after it. called tells
+   whether the last thing done was a call. *)
+proc designator(var x: TItem; var called: BOOL): ERROR;
+var o, f: PObj; y, z: TItem; t: PType; start: Diag.Pos;
+begin
+    start := Scan.tokPos();
+    o := try qualIdent();
+    called := false;
+    if o^.cls = Sym.oModule then
+        return Scan.markAt(Scan.spanFrom(start), say1("{} is a module, not a value", nameOf(o^.name)));
+    end;
+    try Item.makeItem(x, o);
+    if x.mode = Item.mBuiltin then
+        try builtin(x);
+        called := true;
+    elsif x.mode = Item.mCase then
+        try constructCase(x, o, Scan.spanFrom(start));
+    end;
+    repeat
+        x.pos := Scan.spanFrom(start);
+        match Scan.tok of
+        | sPeriod:
+            Scan.next;
+            if (x.mode # Item.mVar) or (x.typ^.form # Sym.fRecord) then return fieldOfWhat(x); end;
+            if Scan.tok # Scan.sIdent then return expected("a field"); end;
+            f := try fieldOf(x.typ);
+            Scan.next;
+            try Item.field(x, f);
+            called := false;
+        | sArrow:
+            Scan.next;
+            try Item.deref(x);
+            called := false;
+        | sLbrak:
+            Scan.next;
+            try Item.indexPrep(x);
+            try expression(y, nil);
+            if Scan.tok = Scan.sUpto then
+                Scan.next;
+                try Item.sliceLo(y);
+                try expression(z, nil);
+                try Item.slice(x, y, z);
+            else
+                try Item.index(x, y);
+            end;
+            try expect(Scan.sRbrak);
+            called := false;
+        | sLparen:
+            if x.mode = Item.mType then
+                t := x.typ;
+                Scan.next;
+                try expression(x, nil);
+                try expect(Scan.sRparen);
+                try Item.convert(x, t);
+            else
+                if x.mode = Item.mProc then lastCalled := x.obj; else lastCalled := nil; end;
+                try call(x);
+                called := true;
+            end;
+        | else: break;
+        end;
+    until false;
+    x.pos := Scan.spanFrom(start);
+    Item.nilTest(x);
+    return nil;
+end;
+
+proc arrayLiteral(var x: TItem; want: PType): ERROR;
+var
+    et, at: PType; e: TItem; slots: [MaxElements]I64; n, i: INT;
+    off, es: I64; start: Diag.Pos;
+begin
+    start := Scan.tokPos();
+    if (want = nil) or not ((want^.form = Sym.fArray) or (want^.form = Sym.fSlice)) then
+        return Scan.mark("an array literal needs a known array or slice type");
+    end;
+    et := want^.base;
+    es := et^.size;
+    Scan.next;
+    n := 0;
+    if Scan.tok # Scan.sRbrak then
+        repeat
+            if n >= MaxElements then return Scan.mark(tooMany(MaxElements, "elements")); end;
+            try expression(e, et);
+            try Item.coerce(e, et);
+            if Sym.isScalar(et) then
+                slots[n] := try Item.toSlot(e);
+            else
+                if e.isVar or e.vol or (e.mode # Item.mVar) or (e.base # Gen.bFrame) then try Item.copyToTemp(e); end;
+                slots[n] := e.off;
+            end;
+            INC(n);
+            if Scan.tok # Scan.sComma then break; end;
+            Scan.next;
+        until false;
+    end;
+    try expect(Scan.sRbrak);
+    if (want^.form = Sym.fArray) and (I64(n) # want^.len) then
+        return Scan.markAt(Scan.spanFrom(start), Diag.say("expected {} elements, found {}", [Fmt.int(want^.len), Fmt.int(n)]));
+    end;
+    if n = 0 then
+        Gen.pushConst(Gen.kWord, 0);
+        Item.sliceOf(x, want, 0);
+        return nil;
+    end;
+    if want^.form = Sym.fArray then
+        at := want;
+        off := Gen.allocTemp(at^.size, at^.align);
+    else
+        at := Sym.newType(Sym.fArray, I64(n) * es, et^.align);
+        at^.len := n;
+        at^.base := et;
+        off := Gen.allocPerm(at^.size, at^.align);   (* lives as long as the call *)
+    end;
+    for i := 0 to n - 1 do
+        if Sym.isScalar(et) then
+            Gen.pushVar(Item.frameAdr(slots[i]), 8, false, Gen.kindOf(et));
+            Gen.popVar(Item.frameAdr(off + I64(i) * es), Item.scalarSize(et));
+        else
+            Gen.pushAdr(Item.frameAdr(slots[i]));
+            Gen.copyTo(Item.frameAdr(off + I64(i) * es), es);
+        end;
+    end;
+    Item.tempItem(x, at, off);
+    return nil;
+end;
+
+(* A record literal: a zeroed temporary, with the fields named filled in. *)
+proc recordLiteral(var x: TItem; t: PType): ERROR;
+var f: PObj; a: TItem; seen: [MaxNames]INT; n, i: INT;
+begin
+    Scan.next;
+    Item.zeroTemp(x, t);
+    n := 0;
+    if Scan.tok # Scan.sRbrace then
+        repeat
+            if Scan.tok # Scan.sIdent then return expected("a field"); end;
+            f := try fieldOf(t);
+            for i := 0 to n - 1 do
+                if seen[i] = Scan.id then
+                    return Scan.mark(say1("field {} is given twice", nameOf(Scan.id)));
+                end;
+            end;
+            if n < MaxNames then seen[n] := Scan.id; INC(n); end;
+            Scan.next;
+            try expect(Scan.sColon);
+            try expression(a, f^.typ);
+            try Item.setField(x, f, a);
+            if Scan.tok # Scan.sComma then break; end;
+            Scan.next;
+        until false;
+    end;
+    return expect(Scan.sRbrace);
+end;
+
+(* A set literal: the bits of the constant names, or'd at run time with
+   those of the others. *)
+proc setLiteral(var x: TItem; t: PType): ERROR;
+var e: TItem; bits, slot: I64; start: Diag.Pos; s: []U8;
+begin
+    start := Scan.tokPos();
+    Scan.next;
+    if (t # nil) and (t^.form # Sym.fSet) then
+        return Scan.markAt(Scan.spanFrom(start), say1("expected a set type, found {}", Sym.typeName(t)));
+    end;
+    bits := 0;
+    slot := 0;
+    if Scan.tok # Scan.sRbrace then
+        repeat
+            if t = nil then try expression(e, nil); else try expression(e, t^.base); end;
+            if t = nil then
+                if e.typ^.form # Sym.fEnum then
+                    return Scan.markAt(e.pos, say1("a set holds names of an enumeration, found {}", Item.what(e)));
+                end;
+                t := try setOf(e.typ, e.pos);
+            end;
+            if not Sym.same(e.typ, t^.base) then
+                if e.obj # nil then s := nameOf(e.obj^.name); else s := Item.what(e); end;
+                return Scan.markAt(e.pos, say2("{} isn't a name of {}", s, Sym.typeName(t^.base)));
+            end;
+            if e.mode = Item.mConst then
+                bits := bits | (I64(1) shl e.val);
+            else
+                if slot = 0 then
+                    slot := Gen.allocTemp(8, 8);
+                    Gen.pushConst(Gen.kWord, 0);
+                    Gen.popVar(Item.frameAdr(slot), 8);
+                end;
+                try Item.value(e);
+                Gen.pushConst(Gen.kWord, 1);
+                Gen.swap();
+                Gen.op(Scan.sShl, Gen.kWord, 8, false);
+                Gen.pushVar(Item.frameAdr(slot), 8, false, Gen.kWord);
+                Gen.op(Scan.sBar, Gen.kWord, 8, false);
+                Gen.popVar(Item.frameAdr(slot), 8);
+            end;
+            if Scan.tok # Scan.sComma then break; end;
+            Scan.next;
+        until false;
+    end;
+    try expect(Scan.sRbrace);
+    if t = nil then return Scan.markAt(Scan.spanFrom(start), "{} needs a known set type"); end;
+    Item.makeConst(x, t, bits);
+    if slot # 0 then
+        Gen.pushVar(Item.frameAdr(slot), 8, false, Gen.kWord);
+        Gen.pushConst(Gen.kWord, bits);
+        Gen.op(Scan.sBar, Gen.kWord, 8, false);
+        x.mode := Item.mStack;
+    end;
+    return nil;
+end;
+
+proc runDefers(base: INT); forward;
+
+(* The type of the last result of t, the results of a procedure: t if
+   it has one, else the last of its several. *)
+proc lastResult(t: PType): PType;
+var f: PObj;
+begin
+    if not t^.tuple then return t; end;
+    f := t^.fields;
+    while f^.next # nil do f := f^.next; end;
+    return f^.typ;
+end;
+
+(* The results of the tuple t but the last: the same fields, one fewer *)
+proc withoutLast(t: PType): PType;
+var r: PType;
+begin
+    r := Sym.newType(Sym.fRecord, t^.size, t^.align);
+    r^.tuple := true;
+    r^.fields := t^.fields;
+    r^.len := t^.len - 1;
+    return r;
+end;
+
+(* try c (the report, 7.8): the call c, then the error it returned, its
+   last result: if that isn't nil, the procedure returns it, and a zero
+   for each of its other results, after running the deferred statements
+   in force. x is left c's other results: none (mNone), one (a value) or
+   several (a tuple, for a multiple assignment). The error is kept in a
+   slot of the frame, and tested there; the code for it, out of line,
+   is made with the stack of values as it stands, and leaves it so,
+   since what follows is the code for an error that is nil. *)
+proc tryCall(var x: TItem): ERROR;
+var
+    called: BOOL; c: Gen.CallInfo; start, at: Diag.Pos; res: PType; last: PObj; slot: I64; ok: INT;
+begin
+    start := Scan.tokPos();
+    Scan.next;
+    if deferring then return Scan.markAt(Scan.spanFrom(start), "try can't leave a deferred statement"); end;
+    if curResult = nil then
+        return Scan.markAt(Scan.spanFrom(start), "try needs a procedure that ends in an ERROR result, and this returns nothing");
+    elsif lastResult(curResult) # Sym.tError then
+        return Scan.markAt(Scan.spanFrom(start),
+            say1("try needs a procedure that ends in an ERROR result, and this returns {}", Sym.typeName(curResult)));
+    end;
+    try designator(x, called);
+    if not called and ((x.mode = Item.mProc)
+        or (((x.mode = Item.mVar) or (x.mode = Item.mStack)) and (x.typ^.form = Sym.fProc))) then
+        (* a procedure without parameters, written without parentheses *)
+        at := x.pos;
+        try Item.beginCall(c, x);
+        try Item.endCall(c, x);
+        x.pos := at;
+        called := true;
+    end;
+    if not called then return Scan.markAt(x.pos, say1("try needs a call, found {}", Item.what(x))); end;
+    if x.mode = Item.mNone then
+        return Scan.markAt(x.pos, "try needs a call that returns an ERROR last, and this returns nothing");
+    end;
+    if lastResult(x.typ) # Sym.tError then
+        return Scan.markAt(x.pos, say1("try needs a call that returns an ERROR last, and this returns {}", Sym.typeName(x.typ)));
+    end;
+    res := x.typ;
+    if x.mode = Item.mStack then
+        (* an ERROR alone *)
+        slot := Gen.allocTemp(8, 8);
+        Gen.popVar(Item.frameAdr(slot), 8);
+        x.mode := Item.mNone; x.typ := Sym.tNone;
+    elsif x.mode = Item.mWords then
+        (* two words, the error on top *)
+        slot := Gen.allocTemp(8, 8);
+        Gen.popVar(Item.frameAdr(slot), 8);
+        x.mode := Item.mStack; x.typ := res^.fields^.typ;
+    else
+        (* several, in a temporary: the error is where it is *)
+        last := res^.fields;
+        while last^.next # nil do last := last^.next; end;
+        slot := x.off + last^.val;
+        if res^.len = 2 then try Item.field(x, res^.fields); else x.typ := withoutLast(res); end;
+    end;
+    ok := Gen.NoLabel;
+    Gen.pushVar(Item.frameAdr(slot), 8, false, Gen.kWord);
+    Gen.jumpIf(ok, false);
+    if numDefers > 0 then Gen.tryAlign(); end;
+    runDefers(0);
+    Gen.tryReturn(slot);
+    Gen.fix(ok);
+    x.pos := Scan.spanFrom(start);
+    return nil;
+end;
+
+proc factor(var x: TItem; want: PType): ERROR;
+var called, vol, several: BOOL; t: PType; start: Diag.Pos; s: []U8;
+begin
+    several := passOn;
+    passOn := false;
+    start := Scan.tokPos();
+    match Scan.tok of
+    | sInt, sChar:
+        (* only a hex number can be above high(I64), and it is a U64 *)
+        if Scan.ival < 0 then Item.makeConst(x, Sym.tU64, Scan.ival); else Item.makeConst(x, Sym.tConst, Scan.ival); end;
+        Scan.next;
+    | sReal:
+        Item.makeReal(x, Scan.rval);
+        Item.usesReals(Scan.tokPos());
+        Scan.next;
+    | sString:
+        Item.makeStr(x);
+        Scan.next;
+    | sIdent:
+        try designator(x, called);
+        if x.mode = Item.mNone then
+            if lastCalled # nil then s := nameOf(lastCalled^.name); else s := "this procedure"; end;
+            return Scan.markAt(x.pos, say1("{} returns nothing", s));
+        end;
+        if x.typ^.tuple and not several then
+            if lastCalled # nil then s := nameOf(lastCalled^.name); else s := "this procedure"; end;
+            return Scan.markHelp(x.pos, say1("{} returns several results", s),
+                say1("they go to variables: a, b := {}(...)", s));
+        end;
+    | sLparen:
+        Scan.next;
+        try expression(x, want);
+        try expect(Scan.sRparen);
+    | sTry:
+        try tryCall(x);
+        if x.mode = Item.mNone then return Scan.markAt(x.pos, "this try has no value"); end;
+        if x.typ^.tuple then
+            return Scan.markHelp(x.pos, "this try has several values", "they go to variables: a, b := try f(...)");
+        end;
+    | sNot:
+        Scan.next;
+        try factor(x, nil);
+        try Item.notOp(x);
+    | sTilde:
+        Scan.next;
+        try factor(x, nil);
+        try Item.complement(x);
+    | sLbrak: try arrayLiteral(x, want);
+    | sLbrace:
+        if (want # nil) and (want^.form = Sym.fRecord) then try recordLiteral(x, want);
+        else try setLiteral(x, want);
+        end;
+    | sArrow:
+        Scan.next;
+        vol := Scan.tok = Scan.sVolatile;
+        if vol then Scan.next; end;
+        t := try parseType();
+        t := newPtr(t, vol);
+        try expect(Scan.sLparen);
+        try expression(x, nil);
+        try expect(Scan.sRparen);
+        try Item.convert(x, t);
+        (* a conversion is a factor, not a designator: nothing selects from it *)
+        if Scan.tok = Scan.sArrow then
+            return Scan.markHelp(Scan.tokPos(), "a conversion can't be dereferenced",
+                "convert into a pointer variable, then dereference that");
+        end;
+    | else: return expected("an expression");
+    end;
+    x.pos := Scan.spanFrom(start);
+    return nil;
+end;
+
+proc isMulOp: BOOL;
+begin
+    match Scan.tok of
+    | sTimes, sSlash, sDiv, sMod, sAmp, sShl, sShr: return true;
+    | else: return false;
+    end;
+end;
+
+proc isAddOp: BOOL;
+begin
+    match Scan.tok of
+    | sPlus, sMinus, sBar, sXor: return true;
+    | else: return false;
+    end;
+end;
+
+proc isRelOp: BOOL;
+begin
+    match Scan.tok of
+    | sEql, sNeq, sLss, sLeq, sGtr, sGeq, sIn: return true;
+    | else: return false;
+    end;
+end;
+
+proc term(var x: TItem; want: PType): ERROR;
+var op: Scan.Sym; y: TItem; L: INT; start: Diag.Pos;
+begin
+    start := Scan.tokPos();
+    try factor(x, want);
+    while isMulOp() do
+        op := Scan.tok;
+        Scan.next;
+        try Item.op1(op, x, L);
+        try factor(y, nil);
+        try Item.op2(op, x, y, L);
+        x.pos := Scan.spanFrom(start);
+    end;
+    return nil;
+end;
+
+proc simpleExpr(var x: TItem; want: PType): ERROR;
+var op: Scan.Sym; y: TItem; L: INT; start: Diag.Pos;
+begin
+    start := Scan.tokPos();
+    if Scan.tok = Scan.sMinus then
+        Scan.next;
+        try term(x, nil);
+        x.pos := Scan.spanFrom(start);
+        try Item.neg(x);
+    else
+        try term(x, want);
+    end;
+    while isAddOp() do
+        op := Scan.tok;
+        Scan.next;
+        try Item.op1(op, x, L);
+        try term(y, nil);
+        try Item.op2(op, x, y, L);
+        x.pos := Scan.spanFrom(start);
+    end;
+    return nil;
+end;
+
+proc relation(var x: TItem; want: PType): ERROR;
+var op: Scan.Sym; y: TItem; L: INT;
+begin
+    try simpleExpr(x, want);
+    if isRelOp() then
+        op := Scan.tok;
+        Scan.next;
+        try Item.op1(op, x, L);
+        if op = Scan.sIn then try simpleExpr(y, nil); else try simpleExpr(y, x.typ); end;
+        try Item.op2(op, x, y, L);
+        x.pos := Diag.join(x.pos, y.pos);
+    end;
+    return nil;
+end;
+
+(* and binds tighter than or, and both below the relations *)
+proc conjunct(var x: TItem; want: PType): ERROR;
+var y: TItem; L: INT; start: Diag.Pos;
+begin
+    start := Scan.tokPos();
+    try relation(x, want);
+    while Scan.tok = Scan.sAnd do
+        Scan.next;
+        try Item.op1(Scan.sAnd, x, L);
+        try relation(y, nil);
+        try Item.op2(Scan.sAnd, x, y, L);
+        x.pos := Scan.spanFrom(start);
+    end;
+    return nil;
+end;
+
+proc expression(var x: TItem; want: PType): ERROR;
+var y: TItem; L: INT; start: Diag.Pos;
+begin
+    start := Scan.tokPos();
+    try conjunct(x, want);
+    while Scan.tok = Scan.sOr do
+        Scan.next;
+        try Item.op1(Scan.sOr, x, L);
+        try conjunct(y, nil);
+        try Item.op2(Scan.sOr, x, y, L);
+        x.pos := Scan.spanFrom(start);
+    end;
+    return nil;
+end;
+
+(* Statements *)
+
+proc enterLoop(var lp: Loop; var old: PLoop);
+begin
+    lp.brk := Gen.NoLabel;
+    lp.base := numDefers;
+    old := curLoop;
+    curLoop := ADR(lp);
+end;
+
+(* Runs the deferred statements in force above base, newest first. *)
+proc runDefers(base: INT);
+var i: INT;
+begin
+    for i := numDefers - 1 to base by -1 do Gen.runDefer(defers[i]); end;
+end;
+
+(* Whether what follows "then" is a lone "break;", with no deferred
+   statement to run on the way out of the loop: the break must be the
+   branch's last statement, so ";" and then end, elsif or else follow. *)
+proc loneBreak: BOOL;
+var st: Scan.State; lone: BOOL;
+begin
+    if (Scan.tok # Scan.sBreak) or (curLoop = nil) or (numDefers # curLoop^.base) then return false; end;
+    Scan.saveScan(st);
+    lone := false;
+    Scan.next;
+    if Scan.tok = Scan.sSemicolon then
+        Scan.next;
+        lone := (Scan.tok = Scan.sEnd) or (Scan.tok = Scan.sElsif) or (Scan.tok = Scan.sElse);
+    end;
+    Scan.restoreScan(st);
+    return lone;
+end;
+
+(* The condition x of if or elsif, and the statements it guards, which
+   L skips when it is false. "if c then break; end" is one jump out of
+   the loop when c holds, not one past a jump out. *)
+proc thenPart(var x: TItem; var L: INT): ERROR;
+begin
+    try expect(Scan.sThen);
+    L := Gen.NoLabel;   (* stays so with a lone break: there is nothing to skip *)
+    if loneBreak() then
+        Chunk.noteLine(Scan.curLine(), Scan.curCol());   (* the jump gets the break's line *)
+        try Item.condJumpTrue(x, curLoop^.brk);
+        Scan.next; Scan.next;   (* skip "break" and ";" *)
+        ends := true;
+    else
+        try Item.condJump(x, L);
+        try statements();
+    end;
+    return nil;
+end;
+
+(* if, elsif and else: each condition's jump skips its branch to the
+   next; each branch that doesn't end jumps to the end. A branch that
+   ends, in return or break, needs no jump past the others, and all of
+   them ending is told to the caller in the global ends. *)
+proc ifStatement(start: Diag.Pos; ind: INT): ERROR;
+var x: TItem; L, endL: INT; all: BOOL;
+begin
+    Scan.next;
+    try expression(x, nil);
+    try thenPart(x, L);
+    all := ends;
+    endL := Gen.NoLabel;
+    while Scan.tok = Scan.sElsif do
+        if not ends then Gen.jump(endL); end;
+        Gen.fix(L);
+        Scan.next;
+        try expression(x, nil);
+        try thenPart(x, L);
+        all := all and ends;
+    end;
+    if Scan.tok = Scan.sElse then
+        if not ends then Gen.jump(endL); end;
+        Gen.fix(L);
+        Scan.next;
+        if Scan.tok = Scan.sIf then elseIf := true; end;
+        try statements();
+        all := all and ends;
+    else
+        Gen.fix(L);
+        all := false;
+    end;
+    try closeEnd(start, ind);
+    Gen.fix(endL);
+    ends := all;
+    return nil;
+end;
+
+(* while c do s end: the test comes after the body, and the loop jumps to
+   it first, so that a round takes one jump, back to the top if c holds:
+
+       jmp test                 rather than   top:  c, jump to out if false
+       top:  s                                      s
+       test: c, jump to top if true                 jmp top
+                                              out:
+
+   One pass reads c before s: so c is compiled where it is written, for
+   its messages, and its code taken back (rewind); then read again, and
+   compiled, after s (saveScan, restoreScan). *)
+proc whileStatement(start: Diag.Pos; ind: INT): ERROR;
+var
+    x: TItem; top, L, test: INT; lp: Loop; old: PLoop; cond, after: Scan.State; m: Gen.CodeMark;
+begin
+    Scan.next;
+    Scan.saveScan(cond);
+    Gen.markCode(m);
+    try expression(x, nil);
+    try Item.discard(x);
+    Gen.rewind(m);
+    try expect(Scan.sDo);
+    test := Gen.NoLabel;
+    Gen.jump(test);
+    Gen.alignLoop();
+    top := Chunk.pc;
+    enterLoop(lp, old);
+    try statements();
+    curLoop := old;
+    Scan.saveScan(after);
+    Scan.restoreScan(cond);
+    Gen.fix(test);
+    Chunk.noteLine(Scan.curLine(), Scan.curCol());
+    try expression(x, nil);
+    ends := (x.mode = Item.mConst) and (x.val # 0) and (lp.brk = Gen.NoLabel);   (* while true *)
+    if (x.mode = Item.mConst) and (x.typ^.form = Sym.fBool) then
+        if x.val # 0 then Gen.jumpBack(top); end;
+    else
+        L := Gen.NoLabel;
+        try Item.condJumpTrue(x, L);
+        Gen.fixTo(L, top);
+    end;
+    Scan.restoreScan(after);
+    try closeEnd(start, ind);
+    Gen.fix(lp.brk);
+    return nil;
+end;
+
+proc repeatStatement: ERROR;
+var x: TItem; top, L: INT; lp: Loop; old: PLoop;
+begin
+    Scan.next;
+    top := Chunk.pc;
+    enterLoop(lp, old);
+    try statements();
+    curLoop := old;
+    try expect(Scan.sUntil);
+    try expression(x, nil);
+    ends := (x.mode = Item.mConst) and (x.val = 0) and (lp.brk = Gen.NoLabel);   (* until false *)
+    L := Gen.NoLabel;
+    try Item.condJump(x, L);
+    Gen.fixTo(L, top);
+    Gen.fix(lp.brk);
+    return nil;
+end;
+
+(* for v := a to b by s do ... end, laid out as
+         v := a; the limit b, in a slot unless it is a constant
+         if v is past b then goto exit
+         goto body
+   top:  v := v + s
+   body: the statements
+         the end of a round: goto top, or exit (forNext)
+   exit:
+   so that a round of a loop by 1 takes one compare and one jump. *)
+proc forStatement(start: Diag.Pos; ind: INT): ERROR;
+var
+    o: PObj; v, a, b, s: TItem; step: I64; top, body, bodyL, exitL: INT;
+    lp: Loop; old: PLoop; f: Sym.Form; slot: I64;
+begin
+    Scan.next;
+    if Scan.tok # Scan.sIdent then return expected("a name"); end;
+    o := Sym.lookup(Scan.id);
+    if o = nil then
+        notDeclared(Scan.tokPos(), Scan.id);
+        return Scan.Failed;
+    end;
+    named(o);
+    if o^.cls # Sym.oVar then return Scan.mark(say1("{} isn't a variable", nameOf(Scan.id))); end;
+    f := o^.typ^.form;
+    if (f # Sym.fInt) and (f # Sym.fEnum) then
+        return Scan.mark(say1("a for loop needs an integer or enumeration variable, found {}", Sym.typeName(o^.typ)));
+    end;
+    Scan.next;
+    try expect(Scan.sBecomes);
+    try Item.makeItem(v, o);
+    try expression(a, o^.typ);
+    try Item.coerceExact(a, o^.typ, "");
+    try Item.assign(v, a);
+    try expect(Scan.sTo);
+    try expression(b, o^.typ);
+    try Item.coerceExact(b, o^.typ, "");
+    (* the limit, evaluated once: a constant as it is, else in a slot *)
+    if b.mode # Item.mConst then
+        slot := try Item.toSlot(b);
+        Item.tempItem(b, b.typ, slot);
+    end;
+    step := 1;
+    if Scan.tok = Scan.sBy then
+        Scan.next;
+        try expression(s, nil);
+        step := try constValue(s);
+        if step = 0 then return Scan.markAt(s.pos, "the step can't be zero"); end;
+    end;
+    try expect(Scan.sDo);
+    exitL := Gen.NoLabel;
+    if step > 0 then try Item.forCmp(o, b, Scan.sGtr, exitL); else try Item.forCmp(o, b, Scan.sLss, exitL); end;
+    bodyL := Gen.NoLabel;
+    Gen.jump(bodyL);
+    Gen.alignLoop();
+    top := Chunk.pc;
+    try Item.forStep(o, step);
+    Gen.fix(bodyL);
+    body := Chunk.pc;
+    enterLoop(lp, old);
+    try statements();
+    curLoop := old;
+    try closeEnd(start, ind);
+    try Item.forNext(o, b, step, exitL, top, body);
+    Gen.fix(exitL);
+    Gen.fix(lp.brk);
+    return nil;
+end;
+
+type
+    Labels = record
+        lo, hi: [MaxLabels]I64;   (* the ranges of the labels so far *)
+        at: [MaxLabels]INT;       (* where the arm of each starts *)
+        n: INT;
+    end;
+
+(* a < b, for values of an integer type, unsigned or not *)
+proc below(a, b: I64; unsign: BOOL): BOOL;
+begin
+    if unsign then return U64(a) < U64(b); end;
+    return a < b;
+end;
+
+(* An arm of a match on an integer of type t: its labels, each a
+   constant or a range, none overlapping another (report section 7.4),
+   then its statements. No code tests the labels here; dispatch does,
+   after the last arm, for which each label notes where its arm starts. *)
+proc intArm(t: PType; var ls: Labels; var endL: INT): ERROR;
+var lo, hi: TItem; first, i: INT; u: BOOL; start: Diag.Pos;
+begin
+    u := not t^.signed;
+    first := ls.n;
+    repeat
+        start := Scan.tokPos();
+        try expression(lo, t);
+        try Item.coerce(lo, t);
+        _ := try constValue(lo);
+        hi := lo;
+        if Scan.tok = Scan.sUpto then
+            Scan.next;
+            try expression(hi, t);
+            try Item.coerce(hi, t);
+            _ := try constValue(hi);
+            if below(hi.val, lo.val, u) then return Scan.markAt(Scan.spanFrom(start), "the range is empty"); end;
+        end;
+        for i := 0 to ls.n - 1 do
+            if not below(hi.val, ls.lo[i], u) and not below(ls.hi[i], lo.val, u) then
+                if lo.val = hi.val then
+                    return Scan.markAt(Scan.spanFrom(start), say1("{} is in another label too", Diag.source(Scan.spanFrom(start))));
+                end;
+                return Scan.markAt(Scan.spanFrom(start), say1("{} overlaps another label", Diag.source(Scan.spanFrom(start))));
+            end;
+        end;
+        if ls.n >= MaxLabels then
+            return Scan.markAt(Scan.spanFrom(start), tooMany(MaxLabels, "labels in one match"));
+        end;
+        ls.lo[ls.n] := lo.val; ls.hi[ls.n] := hi.val;
+        INC(ls.n);
+        if Scan.tok # Scan.sComma then break; end;
+        Scan.next;
+    until false;
+    try expect(Scan.sColon);
+    for i := first to ls.n - 1 do ls.at[i] := Chunk.pc; end;
+    try statements();
+    Gen.jump(endL);
+    return nil;
+end;
+
+const
+    MinTable = 4;      (* fewer labels are tested one by one *)
+    TableDensity = 8;  (* a table has at most this many entries to a label *)
+
+(* The code that picks the arm, after the last one, which the match's
+   start jumped to: label by label, as a chain of compares each to its
+   arm; or, for four or more labels not far apart, a jump table (jumpTable),
+   which takes the same few instructions for any of them. It is here and
+   not before the arms, since a table can only be made once every arm's
+   place is known; an arm is entered by a jump back to it. elseAt is where
+   the else arm starts, or NoLabel. *)
+proc dispatch(t: PType; p: I64; var ls: Labels; elseAt: INT; var endL: INT);
+var
+    lo, hi: I64; i, start, v, body: INT; u: BOOL;
+    entry: [MaxLabels]INT;
+begin
+    u := (t^.form = Sym.fInt) and not t^.signed;
+    lo := 0; hi := 0;
+    if ls.n > 0 then
+        lo := ls.lo[0]; hi := ls.hi[0];
+        for i := 1 to ls.n - 1 do
+            if below(ls.lo[i], lo, u) then lo := ls.lo[i]; end;
+            if below(hi, ls.hi[i], u) then hi := ls.hi[i]; end;
+        end;
+    end;
+    if (ls.n >= MinTable) and (lo >= -2147483648) and (lo <= 2147483647)
+        and (U64(hi - lo) < U64(TableDensity * ls.n)) and (hi - lo < MaxLabels) then
+        start := Gen.jumpTable(p, lo, INT(hi - lo) + 1, elseAt, endL);
+        for v := 0 to INT(hi - lo) do
+            if elseAt # Gen.NoLabel then entry[v] := elseAt; else entry[v] := start; end;
+        end;
+        for i := 0 to ls.n - 1 do
+            for v := INT(ls.lo[i] - lo) to INT(ls.hi[i] - lo) do entry[v] := ls.at[i]; end;
+        end;
+        for v := 0 to INT(hi - lo) do Gen.tableEntry(start, entry[v]); end;
+        return;
+    end;
+    for i := 0 to ls.n - 1 do
+        body := Gen.NoLabel;
+        Item.matchRange(p, ls.lo[i], ls.hi[i], body);
+        Gen.fixTo(body, ls.at[i]);
+    end;
+    if elseAt # Gen.NoLabel then Gen.jumpBack(elseAt); end;
+end;
+
+proc matchStatement(start: Diag.Pos; ind: INT): ERROR;
+var
+    x: TItem; t: PType; c, f, o: PObj; p: I64; L, endL, n, first, disp, elseAt: INT;
+    seen: [256]BOOL; hasElse, all, byValue: BOOL; endAt: Diag.Pos; ls: Labels;
+begin
+    Scan.next;
+    try expression(x, nil);
+    if x.typ^.form = Sym.fConst then try Item.coerce(x, Sym.tI64); end;
+    p := try Item.matchBegin(x);
+    t := x.typ;
+    try expect(Scan.sOf);
+    hasElse := false;
+    all := true;
+    endL := Gen.NoLabel;
+    ls.n := 0;
+    (* an integer or an enumeration is matched by its value, and the arms
+       are picked by dispatch, after them; a variant by its tag, arm by arm *)
+    byValue := (t^.form = Sym.fInt) or (t^.form = Sym.fEnum);
+    disp := Gen.NoLabel;
+    elseAt := Gen.NoLabel;
+    if byValue then Gen.jump(disp); end;
+    while Scan.tok = Scan.sBar do
+        Scan.next;
+        if hasElse then return Scan.mark("else must be the last arm"); end;
+        if Scan.tok = Scan.sElse then
+            Scan.next;
+            try expect(Scan.sColon);
+            elseAt := Chunk.pc;
+            try statements();
+            if byValue then Gen.jump(endL); end;
+            hasElse := true;
+        elsif t^.form = Sym.fInt then
+            try intArm(t, ls, endL);
+        else
+            first := ls.n;
+            L := Gen.NoLabel;
+            repeat
+                if Scan.tok # Scan.sIdent then return expected("a case"); end;
+                c := t^.fields;
+                while (c # nil) and (c^.name # Scan.id) do c := c^.next; end;
+                if c = nil then
+                    return Scan.mark(say2("{} isn't a case of {}", nameOf(Scan.id), Sym.typeName(t)));
+                end;
+                if (c^.val <= 255) and seen[c^.val] then
+                    return Scan.mark(say1("{} has two arms", nameOf(c^.name)));
+                end;
+                if c^.val <= 255 then seen[c^.val] := true; end;
+                Scan.next;
+                if t^.form # Sym.fEnum then
+                    Item.matchTag(p, c^.val, L);
+                    break;
+                end;
+                (* an enumeration's arm may name several, which share its place *)
+                ls.lo[ls.n] := c^.val; ls.hi[ls.n] := c^.val;
+                INC(ls.n);
+                if Scan.tok # Scan.sComma then break; end;
+                Scan.next;
+            until false;
+            try Sym.openScope(Sym.newScope());
+            if Scan.tok = Scan.sLparen then
+                Scan.next;
+                f := c^.fields;
+                n := 0;
+                repeat
+                    if Scan.tok # Scan.sIdent then return expected("a name"); end;
+                    if f = nil then
+                        return Scan.mark(say1("more names than {} has fields", nameOf(c^.name)));
+                    end;
+                    o := Sym.newObj(Sym.oVar, Scan.id, f^.typ);
+                    o^.lev := 1; o^.ind := true; o^.isVar := true;
+                    o^.val := p; o^.off := f^.val;
+                    try declare(o);
+                    f := f^.next;
+                    INC(n);
+                    Scan.next;
+                    if Scan.tok # Scan.sComma then break; end;
+                    Scan.next;
+                until false;
+                if f # nil then
+                    return Scan.mark(say1("name all the fields of {}, or none", nameOf(c^.name)));
+                end;
+                try expect(Scan.sRparen);
+            end;
+            try expect(Scan.sColon);
+            for n := first to ls.n - 1 do ls.at[n] := Chunk.pc; end;
+            try statements();
+            Sym.closeScope();
+            Gen.jump(endL);
+            if t^.form # Sym.fEnum then Gen.fix(L); end;
+        end;
+        all := all and ends;
+    end;
+    endAt := Scan.tokPos();
+    try closeEnd(start, ind);
+    ends := all;
+    if (t^.form = Sym.fInt) and not hasElse then
+        return Scan.markHelp(endAt, "a match on an integer needs an else arm", "it may be empty: | else:");
+    end;
+    if not hasElse then
+        c := t^.fields;
+        while c # nil do
+            if (c^.val > 255) or not seen[c^.val] then
+                return Scan.markAt(endAt, say1("no arm for {}", nameOf(c^.name)));
+            end;
+            c := c^.next;
+        end;
+    end;
+    if byValue then
+        Gen.fix(disp);
+        dispatch(t, p, ls, elseAt, endL);
+    end;
+    Gen.fix(endL);
+    return nil;
+end;
+
+(* What a message calls x: its name n when x is just that name, else what
+   it is. *)
+proc subject(x: TItem; n: INT): []U8;
+begin
+    if x.pos.b - x.pos.a = LEN(nameOf(n)) then return nameOf(n); end;
+    if x.mode = Item.mConst then return "a constant"; end;
+    return "a value";
+end;
+
+(* x, named first n, is a variable the program may assign: not an
+   array constant, nor any part of one. *)
+proc assignable(x: TItem; n: INT): ERROR;
+begin
+    if (x.mode = Item.mConst) and (subject(x, n) = nameOf(n)) then
+        return Scan.markAt(x.pos, say1("{} is a constant, and can't be changed", nameOf(n)));
+    end;
+    if (x.mode = Item.mVar) and (x.obj # nil) and (x.obj^.cls = Sym.oConst) then
+        return Scan.markAt(x.pos, say1("{} is a constant, and can't be changed", nameOf(x.obj^.name)));
+    end;
+    if (x.mode # Item.mVar) or not x.isVar then
+        return Scan.markAt(x.pos, say1("can't assign to {}", subject(x, n)));
+    end;
+    return nil;
+end;
+
+(* The designator a statement starts with. A variable named whole
+   before := is assigned, not read: naming it there leaves it as unread
+   as it was. *)
+proc leftSide(var x: TItem; var called: BOOL): ERROR;
+var o: PObj; wasRead: BOOL; n: INT;
+begin
+    n := Scan.id;
+    o := Sym.lookup(n);
+    wasRead := (o # nil) and o^.read;
+    try designator(x, called);
+    if ((Scan.tok = Scan.sBecomes) or (Scan.tok = Scan.sComma)) and (x.pos.b - x.pos.a = LEN(nameOf(n))) then
+        o^.read := wasRead;
+    end;
+    return nil;
+end;
+
+(* a, b := f(x): the variables first, left to right, then the call;
+   then each result to its variable, in order. x is the first variable,
+   first its name, blank whether it is _. *)
+proc multiAssign(var x: TItem; first: INT; blank: BOOL): ERROR;
+var
+    d: [16]TItem; dn: [16]INT; blanks: [16]BOOL;
+    y, z: TItem; n, i: INT; called: BOOL; f: PObj;
+begin
+    n := 0;
+    d[0] := x;
+    dn[0] := first;
+    blanks[0] := blank;
+    repeat
+        if not blanks[n] then
+            try Item.notReadOnly(d[n]);
+            try assignable(d[n], dn[n]);
+            try Item.pin(d[n]);   (* works out the address now, so that the call can't change it *)
+        end;
+        INC(n);
+        if Scan.tok # Scan.sComma then break; end;
+        if n > 15 then return Scan.mark(tooMany(16, "variables in one assignment")); end;
+        Scan.next;
+        blanks[n] := Scan.tok = Scan.sBlank;
+        if blanks[n] then
+            Scan.next;
+        else
+            dn[n] := Scan.id;
+            try leftSide(d[n], called);
+        end;
+    until false;
+    try expect(Scan.sBecomes);
+    if Scan.tok = Scan.sTry then
+        try tryCall(y);
+        called := true;
+    else
+        try designator(y, called);
+    end;
+    if not called or not y.typ^.tuple or (y.typ^.len # I64(n)) then
+        return Scan.markAt(y.pos, Diag.say("expected a call with {} results", [Fmt.int(n)]));
+    end;
+    (* two results on the stack: the first is brought to the top, and each
+       is popped into its variable in turn, as one value; else each is
+       read from the temporary they came back in *)
+    if y.mode = Item.mWords then Gen.swap(); end;
+    f := y.typ^.fields;
+    for i := 0 to n - 1 do
+        z := y;
+        if y.mode = Item.mWords then
+            z.mode := Item.mStack; z.typ := f^.typ;
+        else
+            try Item.field(z, f);
+        end;
+        if blanks[i] then
+            try Item.discard(z);
+        else
+            try Item.coerceExact(z, d[i].typ, "several results go to variables of just their types");
+            try Item.assign(d[i], z);
+        end;
+        f := f^.next;
+    end;
+    return nil;
+end;
+
+(* return a, b; or return f(x); with f's several results passed on *)
+proc returnResults: ERROR;
+var f: PObj; x: TItem;
+begin
+    f := curResult^.fields;
+    passOn := true;
+    while f # nil do
+        try expression(x, f^.typ);
+        if x.typ^.tuple then
+            if not Sym.same(x.typ, curResult) then
+                return Scan.markAt(x.pos, say2("expected the results {}, found {}", Sym.typeName(curResult), Sym.typeName(x.typ)));
+            end;
+            return Item.returnAll(x);
+        end;
+        try Item.returnField(f, x);
+        f := f^.next;
+        if f # nil then try expect(Scan.sComma); end;
+    end;
+    return nil;
+end;
+
+(* defer s: s is compiled where it stands, as a little subroutine of the
+   procedure, jumped over; each way out of the statement list calls it. *)
+proc deferStatement: ERROR;
+var L, pos, saved: INT; oldLoop: PLoop; oldDeferring: BOOL; start: Diag.Pos;
+begin
+    start := Scan.tokPos();
+    Scan.next;
+    if directDefer then return Scan.markAt(Scan.spanFrom(start), "defer can't be deferred"); end;
+    if numDefers >= MaxDefers then
+        return Scan.markAt(Scan.spanFrom(start), tooMany(MaxDefers, "deferred statements in one procedure"));
+    end;
+    L := Gen.NoLabel;
+    pos, saved := Gen.deferBegin(L);
+    oldLoop := curLoop; oldDeferring := deferring;
+    curLoop := nil;
+    deferring := true;
+    directDefer := true;
+    try statement();
+    directDefer := false;
+    curLoop := oldLoop; deferring := oldDeferring;
+    Gen.deferEnd(L, saved);
+    defers[numDefers] := pos;
+    INC(numDefers);
+    return nil;
+end;
+
+(* Whether the expression of x := ..., which starts at the current
+   symbol, is x changed by adding to it, taking from it or its bits:
+   x + e, x - e, x | e or x xor e, with x nowhere in e, so that it can be
+   worked out in x's own register, if x is in one (Gen's inPlace). *)
+proc changesItself(x: TItem): BOOL;
+var st: Scan.State; wasSkipping, changes: BOOL; d: INT;
+begin
+    if (x.mode # Item.mVar) or (x.base # Gen.bReg) or (x.typ^.form = Sym.fSlice)
+        or (Scan.tok # Scan.sIdent) or (Scan.id # x.obj^.name) then
+        return false;
+    end;
+    changes := false;
+    Scan.saveScan(st);
+    wasSkipping := Scan.skipping;
+    Scan.setSkipping(true);   (* its slips are told when it is compiled *)
+    Scan.next;
+    if isAddOp() then
+        changes := true;
+        d := 0;
+        while not ((d = 0) and ((Scan.tok = Scan.sSemicolon) or (Scan.tok = Scan.sEnd))) and (Scan.tok # Scan.sEof) do
+            if (Scan.tok = Scan.sIdent) and (Scan.id = x.obj^.name) then changes := false; end;
+            match Scan.tok of
+            | sLparen, sLbrak, sLbrace: INC(d);
+            | sRparen, sRbrak, sRbrace: DEC(d);
+            | else:
+            end;
+            Scan.next;
+        end;
+    end;
+    Scan.restoreScan(st);
+    Scan.setSkipping(wasSkipping);
+    return changes;
+end;
+
+(* A call standing on its own, which drops the results x holds, if any,
+   to be warned of *)
+proc noteDrop(x: TItem);
+begin
+    if (x.mode # Item.mNone) and (numDrops < MaxDrops) then
+        drops[numDrops].at := x.pos;
+        if x.typ^.tuple then drops[numDrops].n := INT(x.typ^.len); else drops[numDrops].n := 1; end;
+        INC(numDrops);
+    end;
+end;
+
+proc oneStatement: ERROR;
+var
+    x, y: TItem; called: BOOL; m: I64; c: Gen.CallInfo; start: Diag.Pos; first, n, i: INT; k: Gen.Kind;
+begin
+    start := Scan.tokPos();
+    first := Scan.id;
+    Chunk.noteLine(Scan.curLine(), Scan.curCol());
+    m := Gen.tempMark();
+    ends := false;
+    match Scan.tok of
+    | sIdent:
+        try leftSide(x, called);
+        if Scan.tok = Scan.sBecomes then
+            try Item.notReadOnly(x);
+            try assignable(x, first);
+            Scan.next;
+            if changesItself(x) then Gen.setInPlace(x.chunk); end;
+            try expression(y, x.typ);
+            Gen.setInPlace(-1);
+            try Item.assign(x, y);
+        elsif Scan.tok = Scan.sComma then
+            try multiAssign(x, first, false);
+        elsif not called then
+            if (x.mode = Item.mProc)
+                or (((x.mode = Item.mVar) or (x.mode = Item.mStack)) and (x.typ^.form = Sym.fProc)) then
+                try Item.beginCall(c, x);
+                try Item.endCall(c, x);
+                try Item.discard(x);
+            elsif Scan.tok = Scan.sEql then
+                return Scan.markHelp(x.pos, say1("{} isn't a statement", subject(x, first)), "assignment is written :=");
+            else
+                return Scan.markAt(x.pos, say1("{} isn't a statement", subject(x, first)));
+            end;
+        else
+            noteDrop(x);
+            try Item.discard(x);
+        end;
+    | sBlank:
+        Scan.next;
+        if Scan.tok = Scan.sComma then
+            try multiAssign(x, 0, true);
+        else
+            try expect(Scan.sBecomes);
+            try expression(x, nil);
+            (* evaluated and dropped: a single value is loaded, so that a
+               volatile one is read *)
+            if (x.mode = Item.mType) or (x.mode = Item.mBuiltin) or (x.mode = Item.mNone) or (x.mode = Item.mCase)
+                or ((x.mode # Item.mStr) and not Sym.isAggregate(x.typ)) then
+                try Item.value(x);
+            end;
+            try Item.discard(x);
+        end;
+    | sIf: try ifStatement(start, Scan.indent());
+    | sWhile: try whileStatement(start, Scan.indent());
+    | sRepeat: try repeatStatement();
+    | sFor: try forStatement(start, Scan.indent());
+    | sMatch: try matchStatement(start, Scan.indent());
+    | sReturn:
+        Scan.next;
+        if deferring then return Scan.markAt(Scan.spanFrom(start), "return can't leave a deferred statement"); end;
+        if Scan.tok = Scan.sSemicolon then
+            runDefers(0);
+            try Item.returnNone();
+        else
+            if (curResult # nil) and curResult^.tuple then
+                try returnResults();
+            else
+                try expression(x, curResult);
+                try Item.returnValue(x);
+            end;
+            (* the result, one value or two words on top, waits in the frame
+               while the deferred statements run *)
+            if (numDefers > 0) and (curResult # nil) and not Sym.behindPointer(curResult) then
+                n := 1; k := Gen.kindOf(curResult);
+                if Sym.inTwoRegs(curResult) then n := 2; k := Gen.kWord; end;
+                if deferSlot = 0 then deferSlot := Gen.allocPerm(16, 8); end;
+                for i := n - 1 to 0 by -1 do Gen.popVar(Item.frameAdr(deferSlot + I64(8 * i)), 8); end;
+                runDefers(0);
+                for i := 0 to n - 1 do Gen.pushVar(Item.frameAdr(deferSlot + I64(8 * i)), 8, false, k); end;
+            else
+                runDefers(0);
+            end;
+            Gen.returnJump();
+            ends := true;
+        end;
+    | sBreak:
+        Scan.next;
+        if curLoop = nil then return Scan.markAt(Scan.spanFrom(start), "break outside a loop"); end;
+        runDefers(curLoop^.base);
+        Gen.jump(curLoop^.brk);
+    | sDefer: try deferStatement();
+    | sTry:
+        try tryCall(x);
+        noteDrop(x);
+        try Item.discard(x);
+    | sArrow:
+        return Scan.markHelp(Scan.tokPos(), "a statement starts with a name",
+            "convert into a pointer variable, then assign through that");
+    | else:
+        if Scan.atLineStart() then
+            return endMissing(Scan.missingPos(), say1("expected \"end\", found {}", Scan.found()));
+        end;
+        return expected("a statement");
+    end;
+    Gen.releaseTemps(m);
+    return nil;
+end;
+
+proc statement: ERROR;
+var r: Recover; m: I64; err: ERROR;
+begin
+    m := Gen.tempMark();
+    guard(r);
+    err := oneStatement();
+    if err = nil then
+        skipped := false;
+    else
+        restore(r);
+        (* a statement never starts a line: this is the next declaration *)
+        if Scan.atLineStart() or not skipConstruct() then return giveUp(r); end;
+        Gen.releaseTemps(m);
+        skipped := true;
+    end;
+    unguard(r);
+    return nil;
+end;
+
+proc endsStatements: BOOL;
+begin
+    match Scan.tok of
+    | sEnd, sElse, sElsif, sUntil, sBar, sEof: return true;
+    | else: return false;
+    end;
+end;
+
+proc statements: ERROR;
+var base: INT; old: BOOL;
+begin
+    base := numDefers;
+    old := directDefer;
+    directDefer := false;
+    ends := false;
+    while not endsStatements() do
+        try statement();
+        if not skipped or (Scan.tok = Scan.sSemicolon) then try expect(Scan.sSemicolon); end;
+    end;
+    runDefers(base);
+    numDefers := base;
+    directDefer := old;
+    return nil;
+end;
+
+(* Declarations *)
+
+(* In a file read for its interface only: skip a procedure's body, from
+   its local declarations to the end that closes it. *)
+proc skipBody: ERROR;
+var d: INT; sawBegin: BOOL;
+begin
+    d := 0;
+    sawBegin := false;
+    repeat
+        match Scan.tok of
+        | sBegin:
+            if d = 0 then sawBegin := true; end;
+            INC(d);
+        | sIf, sWhile, sFor, sMatch, sRecord, sVariant: INC(d);
+        | sEnd:
+            DEC(d);
+            if (d = 0) and sawBegin then
+                Scan.next;
+                return nil;
+            end;
+        | sEof: return expected("\"end\"");
+        | else:
+        end;
+        Scan.next;
+    until false;
+    return nil;
+end;
+
+proc declarations(top: BOOL); forward;
+
+(* How Rt shows a variable of o's type in the trap report: 1 a signed
+   integer, 2 an unsigned one, 3 a BOOL, 4 an address, 5 a real; plus
+   its size times 16, and 256 if the frame holds its address, or 512
+   times 1 + i if it is in register ShownRegs[i]; 0 if it isn't shown. *)
+proc varKind(o: PObj): INT;
+var k, i, v: INT;
+begin
+    match o^.typ^.form of
+    | fInt: if o^.typ^.signed then k := 1; else k := 2; end;
+    | fEnum, fSet: k := 2;
+    | fBool: k := 3;
+    | fPtr, fProc, fError: k := 4;
+    | fReal: k := 5;
+    | else: return 0;
+    end;
+    v := k + INT(o^.typ^.size) * 16;
+    if o^.ind then v := v + 256; end;
+    for i := 0 to LEN(Gen.ShownRegs) - 1 do
+        if o^.reg = Gen.ShownRegs[i] then v := k + INT(o^.typ^.size) * 16 + (i + 1) * 512; end;
+    end;
+    return v;
+end;
+
+(* Whether variable o could live in registers: a single value, a real
+   in an xmm register, or a slice, in two, that isn't C's *)
+proc regFit(o: PObj): BOOL;
+var f: Sym.Form;
+begin
+    if (o^.cls # Sym.oVar) or o^.ind or o^.ext then return false; end;
+    f := o^.typ^.form;
+    return (f = Sym.fInt) or (f = Sym.fBool) or (f = Sym.fEnum) or (f = Sym.fPtr) or (f = Sym.fProc)
+        or (f = Sym.fError) or (f = Sym.fSlice) or (f = Sym.fReal)
+        or ((f = Sym.fSet) and (o^.typ^.size <= 8));
+end;
+
+(* The first local of the procedure being compiled. Locals are chained
+   by chain in the order declared, the module's own first; before is the
+   last one declared before the procedure's, or nil if there was none. *)
+proc firstLocal(before: PObj): PObj;
+begin
+    if before = nil then return Sym.curModule^.locals; end;
+    return before^.chain;
+end;
+
+const MaxCand = 64;   (* variables of a procedure that may go in registers *)
+
+var
+    cand: [MaxCand]PObj;     (* chooseRegs's candidates and their weights *)
+    weight: [MaxCand]INT;
+    numCand: INT;
+
+proc candidate(n: INT): INT;
+var j: INT;
+begin
+    for j := 0 to numCand - 1 do
+        if cand[j]^.name = n then return j; end;
+    end;
+    return -1;
+end;
+
+proc addCandidate(o: PObj);
+begin
+    if regFit(o) and (numCand < MaxCand) then
+        cand[numCand] := o;
+        weight[numCand] := 0;
+        INC(numCand);
+    end;
+end;
+
+(* Whether naming o may make a call: a procedure, a procedure variable,
+   or NEW, SYSCALL or COPY, which use the registers a call would *)
+proc calls(o: PObj): BOOL;
+begin
+    if o = nil then return false; end;
+    return (o^.cls = Sym.oProc) or ((o^.cls = Sym.oVar) and (o^.typ^.form = Sym.fProc))
+        or ((o^.cls = Sym.oBuiltin) and ((o^.val = Sym.bNew) or (o^.val = Sym.bSyscall) or (o^.val = Sym.bCopy)));
+end;
+
+(* Puts the busiest variables of the procedure, whose parameters are
+   params and whose locals follow before, in registers: read ahead from
+   its "begin" to its end, a use counts 1, in a loop 4, in two 16, in
+   three or more 64, and a variable ADR is taken of can't have one. A register costs a save
+   and a restore, so a variable used less than three times keeps its
+   place in memory. A slice takes two, its pointer's and its length's;
+   a real one of the xmm registers, stored and loaded again around each
+   call, as System V keeps none through one. In a procedure that names no procedure, so calls nothing, the
+   parameters that arrive in the registers no call needs stay there
+   (keepArrived), at no cost. *)
+proc chooseRegs(params, before: PObj);
+var
+    isLoop: [256]BOOL;
+    i, k, kx, d, loops, best, need: INT; o, q, qual: PObj; st: Scan.State;
+    afterDot, wasSkipping, leaf: BOOL;
+begin
+    numCand := 0;
+    o := params;
+    while o # nil do addCandidate(o); o := o^.next; end;
+    o := firstLocal(before);
+    while o # nil do addCandidate(o); o := o^.chain; end;
+    if numCand = 0 then return; end;
+    Scan.saveScan(st);
+    wasSkipping := Scan.skipping;
+    Scan.setSkipping(true);      (* its slips are told when it is compiled *)
+    d := 0; loops := 0; afterDot := false; leaf := true; qual := nil;
+    repeat
+        (* a name, or a module's name and one of its exports, that calls *)
+        if (Scan.tok = Scan.sIdent) and not afterDot then
+            q := Sym.lookup(Scan.id);
+            if calls(q) then leaf := false; end;
+            qual := nil;
+            if (q # nil) and (q^.cls = Sym.oModule) then qual := q; end;
+        elsif (Scan.tok = Scan.sIdent) and (qual # nil) then
+            if (qual^.home = nil) or calls(Sym.find(qual^.home^.scope, Scan.id)) then leaf := false; end;
+            qual := nil;
+        end;
+        match Scan.tok of
+        | sBegin, sIf, sMatch, sWhile, sFor, sRepeat:
+            if d < 255 then
+                INC(d);
+                isLoop[d] := (Scan.tok = Scan.sWhile) or (Scan.tok = Scan.sFor) or (Scan.tok = Scan.sRepeat);
+                if isLoop[d] then INC(loops); end;
+            end;
+        | sEnd, sUntil:
+            if isLoop[d] then DEC(loops); end;
+            DEC(d);
+        | sIdent:
+            if Scan.id = nameAdr then
+                Scan.next;
+                if Scan.tok = Scan.sLparen then Scan.next; end;
+                (* a hugely negative weight bars it from a register, whatever
+                   its uses add *)
+                if (Scan.tok = Scan.sIdent) and (candidate(Scan.id) >= 0) then weight[candidate(Scan.id)] := -1073741824; end;
+            elsif not afterDot and (candidate(Scan.id) >= 0) then
+                k := candidate(Scan.id);
+                if loops > 2 then INC(weight[k], 64); else INC(weight[k], 1 shl (2 * loops)); end;
+            end;
+        | else:
+        end;
+        afterDot := Scan.tok = Scan.sPeriod;   (* a name after a dot is a field, not a variable *)
+        if (d > 0) and (Scan.tok # Scan.sEof) then Scan.next; end;
+    until (d = 0) or (Scan.tok = Scan.sEof);
+    Scan.restoreScan(st);
+    Scan.setSkipping(wasSkipping);
+    if leaf then
+        o := params;
+        while o # nil do
+            k := candidate(o^.name);
+            if (k >= 0) and (weight[k] >= 0) then Gen.keepArrived(o); end;   (* a candidate whose ADR isn't taken *)
+            o := o^.next;
+        end;
+    end;
+    (* a slice's weight is shared by its two registers *)
+    for i := 0 to numCand - 1 do
+        if cand[i]^.typ^.form = Sym.fSlice then weight[i] := weight[i] div 2; end;
+    end;
+    (* the heaviest, each used at least three times a register, take the
+       five registers in turn, while there are enough for each, and the
+       reals the four xmm registers of XVarRegs *)
+    k := 0; kx := 0;
+    repeat
+        best := -1;
+        for i := 0 to numCand - 1 do
+            if (cand[i]^.reg = 0) and (weight[i] >= 3) and ((best < 0) or (weight[i] > weight[best])) then best := i; end;
+        end;
+        if best < 0 then break; end;
+        need := 1;
+        if cand[best]^.typ^.form = Sym.fSlice then need := 2; end;
+        if cand[best]^.typ^.form = Sym.fReal then
+            if kx < 4 then
+                cand[best]^.reg := Gen.XVarRegs[kx];
+                INC(kx);
+            else
+                weight[best] := 0;
+            end;
+        elsif k + need <= 5 then
+            cand[best]^.reg := Gen.VarRegs[k];
+            if need = 2 then cand[best]^.reg2 := Gen.VarRegs[k + 1]; end;
+            INC(k, need);
+        else
+            weight[best] := 0;   (* too big for what is left *)
+        end;
+    until false;
+end;
+
+(* The registers the variables of the procedure are in, as bits: bit i
+   is VarRegs[i], bit XBit + i XVarRegs[i] *)
+proc regBits(o: PObj): INT;
+var m, k: INT;
+begin
+    m := 0;
+    for k := 0 to 4 do
+        if (o^.reg = Gen.VarRegs[k]) or (o^.reg2 = Gen.VarRegs[k]) then m := m | (1 shl k); end;
+    end;
+    for k := 0 to 3 do
+        if o^.reg = Gen.XVarRegs[k] then m := m | (1 shl (Gen.XBit + k)); end;
+    end;
+    return m;
+end;
+
+proc regsOf(params, before: PObj): INT;
+var o: PObj; m: INT;
+begin
+    m := 0;
+    o := params;
+    while o # nil do
+        m := m | regBits(o);
+        o := o^.next;
+    end;
+    o := firstLocal(before);
+    while o # nil do
+        if o^.cls = Sym.oVar then m := m | regBits(o); end;
+        o := o^.chain;
+    end;
+    return m;
+end;
+
+(* Gives each local not in a register its slot in the frame, the slots
+   the prologue zeroes, and then tells Gen which registers the
+   variables are in. A variable in a register has no slot: it starts at
+   zero in its register, and the trap report finds it there. *)
+proc placeLocals(params, before: PObj);
+var o: PObj;
+begin
+    Gen.resetLocals();
+    o := firstLocal(before);
+    while o # nil do
+        if (o^.cls = Sym.oVar) and (o^.reg = 0) then
+            o^.val := Gen.allocPerm(o^.typ^.size, o^.typ^.align);
+        elsif (o^.cls = Sym.oVar) and (o^.reg >= Gen.XmmVar) then
+            o^.val := Gen.allocPerm(8, 8);
+            Gen.xHome(o^.reg, o^.val);
+        end;
+        o := o^.chain;
+    end;
+    o := params;
+    while o # nil do
+        if o^.reg >= Gen.XmmVar then Gen.xHome(o^.reg, o^.val); end;
+        o := o^.next;
+    end;
+    Gen.useRegs(regsOf(params, before));
+end;
+
+proc body(p: PObj; sig: PType; line: INT): ERROR;
+var
+    q, params, last, o, before: PObj; old: PType; st: Scan.State;
+    mark: Gen.CodeMark; drops0, errs: INT;
+begin
+    try Sym.openScope(Sym.newScope());
+    params := nil; last := nil;
+    q := sig^.fields;
+    while q # nil do
+        o := Sym.newObj(Sym.oVar, q^.name, q^.typ);
+        o^.pos := q^.pos;
+        o^.lev := 1;
+        o^.isVar := q^.isVar;
+        o^.param := true;
+        if last = nil then params := o; else last^.next := o; end;
+        last := o;
+        q := q^.next;
+    end;
+    Item.beginProc(sig, params);
+    deferSlot := 0;
+    o := params;
+    while o # nil do
+        q := o^.next;
+        try declare(o);
+        o := q;
+    end;
+    curProc := p;
+    before := Sym.curModule^.lastLocal;
+    declarations(false);
+    chooseRegs(params, before);
+    placeLocals(params, before);
+    (* the body, made again if a variable in a register must be in memory *)
+    Scan.saveScan(st);
+    Gen.markCode(mark); drops0 := numDrops; errs := Diag.errors;
+    old := curResult;
+    repeat
+        Item.setDemoted(false);
+        try expect(Scan.sBegin);
+        curResult := sig^.base;
+        Gen.enterBody(p^.chunk, line);
+        stray := false; elseIf := false; deferSlot := 0;
+        try statements();
+        p^.openEnd := (curResult # nil) and not ends;
+        Chunk.noteLine(Scan.curLine(), Scan.curCol());
+        try expect(Scan.sEnd);
+        if not (Item.demoted or Gen.lost) or (Diag.errors # errs) then break; end;
+        (* a parameter kept where it arrived goes to memory: a call or a copy
+           wanted its register *)
+        if Gen.lost then
+            o := params;
+            while o # nil do
+                if Gen.keptIn(o) then o^.reg := 0; o^.reg2 := 0; end;
+                o := o^.next;
+            end;
+        end;
+        numDrops := drops0;
+        Gen.redo(mark);
+        placeLocals(params, before);
+        Scan.restoreScan(st);
+    until false;
+    try Gen.endProc(p^.chunk, p^.openEnd);
+    (* its parameters and variables, for the trap report *)
+    o := firstLocal(before);
+    q := params;
+    while q # nil do
+        if varKind(q) # 0 then Chunk.noteVar(p^.chunk, q^.name, INT(q^.val), varKind(q)); end;
+        q := q^.next;
+    end;
+    while o # nil do
+        if (o^.cls = Sym.oVar) and (varKind(o) # 0) then Chunk.noteVar(p^.chunk, o^.name, INT(o^.val), varKind(o)); end;
+        o := o^.chain;
+    end;
+    curResult := old;
+    curProc := nil;
+    Sym.closeScope();
+    return nil;
+end;
+
+(* An integer constant in a code procedure, for the assembler: a whole
+   expression, or a single factor where an expression would read on
+   too far *)
+proc asmConst(whole: BOOL): (I64, ERROR);
+var x: TItem;
+begin
+    if whole then return constExpr(); end;
+    try factor(x, nil);
+    if not Sym.isInt(x.typ) then
+        return 0, Scan.markAt(x.pos, say1("expected an integer constant, found {}", Item.what(x)));
+    end;
+    return constValue(x);
+end;
+
+proc codeBody(p: PObj; sig: PType; at: Diag.Pos): ERROR;
+var q: PObj; ni, nf: INT;
+begin
+    ni := 0; nf := 0;
+    q := sig^.fields;
+    while q # nil do
+        if not q^.isVar and (q^.typ^.form = Sym.fSlice) then
+            INC(ni, 2);   (* address, then length *)
+        else
+            if not q^.isVar and not Sym.isScalar(q^.typ) then
+                return Scan.markAt(at, "a code procedure takes integers, BOOL, reals, pointers, procedures and slices");
+            end;
+            if (q^.typ^.form = Sym.fReal) and not q^.isVar then INC(nf); else INC(ni); end;
+        end;
+        q := q^.next;
+    end;
+    if (ni > 6) or (nf > 8) or sig^.variadic then
+        return Scan.markAt(at, "too many parameters for a code procedure");
+    end;
+    if sig^.base # nil then
+        if sig^.base^.tuple then
+            q := sig^.base^.fields;
+            if (sig^.base^.len # 2) or (q^.typ^.size # 8) or (q^.next^.typ^.size # 8)
+                or not Sym.isScalar(q^.typ) or not Sym.isScalar(q^.next^.typ)
+                or (q^.typ^.form = Sym.fReal) or (q^.next^.typ^.form = Sym.fReal) then
+                return Scan.markAt(at, "a code procedure returns two results only in rax and rdx");
+            end;
+        elsif not Sym.isScalar(sig^.base) and (sig^.base^.form # Sym.fSlice) then
+            return Scan.markAt(at, "a code procedure returns a single value");
+        end;
+    end;
+    try Gen.codeProc(p^.chunk, asmConst);
+    return expect(Scan.sEnd);
+end;
+
+proc procDecl: ERROR;
+var n, line: INT; exp: BOOL; sig: PType; p: PObj; at: Diag.Pos;
+begin
+    try instancesFor(false);
+    line := Scan.curLine();
+    Scan.next;
+    try identDef(n, exp, at);
+    sig := try signature();
+    try expect(Scan.sSemicolon);
+    p := Sym.find(Sym.topScope(), n);
+    if (p # nil) and (p^.cls = Sym.oProc) and p^.fwd then
+        if not Sym.same(p^.typ, sig) then
+            Diag.error(at, say1("{} doesn't have the signature it was declared forward with", nameOf(n)));
+            Diag.note(p^.pos, "the signature is here");
+            return Scan.Failed;
+        end;
+        if Scan.tok = Scan.sForward then return Scan.mark(say1("{} is declared forward twice", nameOf(n))); end;
+        p^.exported := p^.exported or exp;
+    else
+        p := Sym.newObj(Sym.oProc, n, sig);
+        p^.pos := at;
+        p^.exported := exp;
+        if (Sym.curModule^.name = nameRt) and not checkMode and (n = nameFail) then
+            p^.chunk := Gen.rtFail;
+        else
+            p^.chunk := Chunk.newChunk(Chunk.secText, Sym.curModule^.sname, n);
+        end;
+        try declare(p);
+    end;
+    if Scan.tok = Scan.sForward then
+        Scan.next;
+        p^.fwd := true;
+        return nil;
+    end;
+    p^.fwd := false;
+    if Scan.tok = Scan.sCode then
+        Scan.next;
+        p^.isCode := true;
+        try codeBody(p, sig, at);
+    elsif checkMode then
+        try skipBody();
+    else
+        try body(p, sig, line);
+    end;
+    if Scan.tok = Scan.sIdent then
+        if Scan.id = Sym.curModule^.name then
+            return endMissing(Scan.tokPos(), say1("{} has no \"end\": this one closes the module", nameOf(n)));
+        elsif Scan.id # n then
+            return endMissing(Scan.tokPos(), say2("expected {}, found {}", nameOf(n), nameOf(Scan.id)));
+        end;
+        Scan.next;
+    end;
+    return nil;
+end;
+
+(* An extern procedure or variable: C's, reached through the quadword
+   that holds its address. *)
+proc externDecl: ERROR;
+var n: INT; exp: BOOL; o, q: PObj; t: PType; at: Diag.Pos;
+begin
+    Scan.next;
+    Sym.curModule^.usesC := true;
+    if Scan.tok = Scan.sProc then
+        Scan.next;
+        try identDef(n, exp, at);
+        willDeclare(n);
+        inExtern := true;
+        t := try signature();
+        inExtern := false;
+        q := t^.fields;
+        while q # nil do
+            if q^.isVar or not Sym.isScalar(q^.typ) then
+                return Scan.markAt(at, "C takes integers, BOOL, reals, pointers and procedures");
+            end;
+            q := q^.next;
+        end;
+        if (t^.base # nil) and not Sym.isScalar(t^.base) then
+            return Scan.markAt(at, "C returns a single value");
+        end;
+        o := Sym.newObj(Sym.oProc, n, t);
+    else
+        if Scan.tok # Scan.sVar then return expected("\"proc\" or \"var\""); end;
+        Scan.next;
+        try identDef(n, exp, at);
+        willDeclare(n);
+        try expect(Scan.sColon);
+        declExported := exp;
+        t := try parseType();
+        declExported := false;
+        o := Sym.newObj(Sym.oVar, n, t);
+    end;
+    o^.pos := at;
+    o^.exported := exp;
+    o^.ext := true;
+    o^.chunk := Chunk.externChunk(n);
+    return declare(o);
+end;
+
+(* An array or record constant: a literal of constants, which become
+   the bytes of a read-only chunk, as a string constant's do (report
+   section 4). An address in it, of a string, an array constant, a
+   procedure or an ERROR, waits in fixes until the chunk is made, then
+   is a fixup the linker patches. The bytes are the compiler's own
+   machine's, little-endian, as the target's are. *)
+var
+    constBytes: ^U8;
+    fixes: [MaxFixes]record off, chunk: INT; end;
+    numFixes: INT;
+
+proc constFix(off, chunk: INT): ERROR;
+begin
+    if numFixes >= MaxFixes then
+        return Scan.mark(tooMany(MaxFixes, "addresses in one constant"));
+    end;
+    fixes[numFixes].off := off;
+    fixes[numFixes].chunk := chunk;
+    INC(numFixes);
+    return nil;
+end;
+
+(* The n bytes of v, at off in the constant: little-endian, as the machine is *)
+proc putBytes(off, n: INT; v: I64);
+var src: ^U8;
+begin
+    src := ^U8(ADR(v));
+    COPY(constBytes[off..off + n], src[0..n]);
+end;
+
+(* The part of type t at offset off of the constant *)
+proc constPart(t: PType; off: INT): ERROR;
+var e: TItem; f: PObj; k: INT; r: F32; start: Diag.Pos; src: ^U8; st: INT;
+begin
+    start := Scan.tokPos();
+    if (t^.form = Sym.fArray) and (Scan.tok = Scan.sLbrak) then
+        Scan.next;
+        k := 0;
+        if Scan.tok # Scan.sRbrak then
+            repeat
+                if I64(k) < t^.len then
+                    try constPart(t^.base, off + k * INT(t^.base^.size));
+                else
+                    try constPart(t^.base, off);
+                end;
+                INC(k);
+                if Scan.tok # Scan.sComma then break; end;
+                Scan.next;
+            until false;
+        end;
+        try expect(Scan.sRbrak);
+        if I64(k) # t^.len then
+            return Scan.markAt(Scan.spanFrom(start), Diag.say("expected {} elements, found {}", [Fmt.int(t^.len), Fmt.int(k)]));
+        end;
+        return nil;
+    end;
+    if (t^.form = Sym.fRecord) and not t^.tuple and (Scan.tok = Scan.sLbrace) then
+        Scan.next;
+        if Scan.tok # Scan.sRbrace then
+            repeat
+                if Scan.tok # Scan.sIdent then return expected("a field"); end;
+                f := try fieldOf(t);
+                Scan.next;
+                try expect(Scan.sColon);
+                try constPart(f^.typ, off + INT(f^.val));
+                if Scan.tok # Scan.sComma then break; end;
+                Scan.next;
+            until false;
+        end;
+        return expect(Scan.sRbrace);
+    end;
+    try expression(e, t);
+    if (e.mode = Item.mStr) and ((t^.form = Sym.fSlice) or (t^.form = Sym.fArray)) and (t^.base = Sym.tU8) then
+        if t^.form = Sym.fSlice then
+            try constFix(off, e.chunk);
+            putBytes(off + 8, 8, e.val);
+        elsif e.val > t^.len then
+            return Scan.markAt(e.pos, say1("the string is longer than {}", Sym.typeName(t)));
+        else
+            st := Chunk.chunks[e.chunk].start;
+            COPY(constBytes[off..off + INT(e.val)], Chunk.rodata[st..st + INT(e.val)]);
+        end;
+    elsif t^.form = Sym.fSlice then
+        if (e.mode # Item.mVar) or (e.obj = nil) or (e.obj^.cls # Sym.oConst) or (e.typ^.form # Sym.fArray)
+            or (e.pos.b - e.pos.a # LEN(nameOf(e.obj^.name))) or not Sym.same(e.typ^.base, t^.base) then
+            return Scan.markAt(e.pos, say1("a constant slice is a string or an array constant of its elements, found {}", Item.what(e)));
+        end;
+        try constFix(off, e.chunk);
+        putBytes(off + 8, 8, e.typ^.len);
+    elsif t^.form = Sym.fVariant then
+        return Scan.markAt(e.pos, "a constant holds no variant");
+    elsif (t^.form = Sym.fArray) or (t^.form = Sym.fRecord) then
+        return Scan.markAt(e.pos, say1("expected a literal of {}", Sym.typeName(t)));
+    else
+        try Item.coerce(e, t);
+        if (e.mode = Item.mProc) and not e.obj^.ext then
+            try constFix(off, e.obj^.chunk);
+        elsif e.mode # Item.mConst then
+            return Scan.markAt(e.pos, say1("expected a constant, found {}", Item.what(e)));
+        elsif (t^.form = Sym.fError) and (e.val > 0) then
+            try constFix(off, INT(e.val) - 1);
+        elsif (t^.form = Sym.fPtr) and (e.val # 0) then
+            return Scan.markAt(e.pos, "a constant pointer is nil");
+        elsif (t^.form = Sym.fReal) and (t^.size = 4) then
+            r := F32(Item.realOf(e));
+            src := ^U8(ADR(r));
+            COPY(constBytes[off..off + 4], src[0..4]);
+        else
+            putBytes(off, INT(t^.size), e.val);
+        end;
+    end;
+    return nil;
+end;
+
+(* The chunk of n, a constant of type t whose literal is next *)
+proc aggregateConst(t: PType; n: INT): (INT, ERROR);
+var c, i, size: INT;
+begin
+    size := INT(t^.size);
+    constBytes := Scan.grab(size + 8);
+    for i := 0 to size + 7 do constBytes[i] := 0; end;
+    numFixes := 0;
+    try constPart(t, 0);
+    c := Chunk.newChunk(Chunk.secRodata, Sym.curModule^.sname, n);
+    Chunk.setData(c, constBytes, size, INT(t^.align));
+    for i := 0 to numFixes - 1 do Chunk.addDataFixup(c, fixes[i].off, fixes[i].chunk, 0); end;
+    return c, nil;
+end;
+
+proc constDecl(top: BOOL): ERROR;
+var n, c: INT; exp: BOOL; x: TItem; o: PObj; t: PType; start, at: Diag.Pos;
+begin
+    try identDef(n, exp, at);
+    willDeclare(n);
+    t := nil;
+    if Scan.tok = Scan.sColon then
+        Scan.next;
+        start := Scan.tokPos();
+        t := try parseType();
+        if (t # Sym.tError) and not ((t^.form = Sym.fArray) or ((t^.form = Sym.fRecord) and not t^.tuple)) then
+            return Scan.markAt(Scan.spanFrom(start), "only an ERROR, an array or a record constant has a type");
+        end;
+    end;
+    try expect(Scan.sEql);
+    if (t # nil) and ((t^.form = Sym.fArray) or (t^.form = Sym.fRecord)) then
+        o := Sym.newObj(Sym.oConst, n, t);
+        o^.chunk := try aggregateConst(t, n);
+        o^.pos := at;
+        o^.exported := exp and top;
+        try declare(o);
+        return expect(Scan.sSemicolon);
+    end;
+    try expression(x, nil);
+    o := Sym.newObj(Sym.oConst, n, x.typ);
+    o^.pos := at;
+    o^.exported := exp and top;
+    if t = Sym.tError then
+        o^.typ := Sym.tError;
+        c := try Item.errorChunk(x, Sym.curModule^.sname, n);
+        o^.val := c + 1;
+    elsif x.mode = Item.mStr then
+        o^.val := x.val;
+        o^.chunk := x.chunk;
+    else
+        o^.val := try constValue(x);
+    end;
+    try declare(o);
+    return expect(Scan.sSemicolon);
+end;
+
+proc typeDecl(top: BOOL): ERROR;
+var n: INT; exp: BOOL; o: PObj; t: PType; at: Diag.Pos;
+begin
+    try identDef(n, exp, at);
+    willDeclare(n);
+    try expect(Scan.sEql);
+    declExported := exp and top;
+    inTypes := true;
+    t := try parseType();
+    o := Sym.newObj(Sym.oType, n, t);
+    o^.pos := at;
+    o^.exported := exp and top;
+    if t^.obj = nil then t^.obj := o; end;
+    try declare(o);
+    return expect(Scan.sSemicolon);
+end;
+
+proc varDecl(top: BOOL): ERROR;
+var
+    i, k: INT; o: PObj; t: PType;
+    names: [MaxNames]INT; exps: [MaxNames]BOOL; poss: [MaxNames]Diag.Pos;
+begin
+    k := 0;
+    repeat
+        if k >= MaxNames then return Scan.mark(tooMany(MaxNames, "names in one declaration")); end;
+        try identDef(names[k], exps[k], poss[k]);
+        willDeclare(names[k]);
+        INC(k);
+        if Scan.tok # Scan.sComma then break; end;
+        Scan.next;
+    until false;
+    try expect(Scan.sColon);
+    declExported := top and exps[0];
+    t := try parseType();
+    declExported := false;
+    for i := 0 to k - 1 do
+        o := Sym.newObj(Sym.oVar, names[i], t);
+        o^.pos := poss[i];
+        o^.exported := exps[i] and top;
+        o^.isVar := false;
+        if top then
+            o^.lev := 0;
+            o^.chunk := Chunk.newChunk(Chunk.secBss, Sym.curModule^.sname, names[i]);
+            Chunk.setBss(o^.chunk, INT(t^.size), INT(t^.align));
+        else
+            o^.lev := 1;   (* its slot comes from placeLocals, if it needs one *)
+        end;
+        try declare(o);
+    end;
+    return expect(Scan.sSemicolon);
+end;
+
+(* After a procedure had an error: its name is poison if it wasn't
+   declared, and reading goes on after the "end Name;" that closes it,
+   or at the next procedure if that is missing *)
+proc skipProc;
+var st: Scan.State;
+begin
+    Scan.next;
+    if (Scan.tok = Scan.sIdent) and (Sym.find(Sym.topScope(), Scan.id) = nil) then poison(Scan.id); end;
+    repeat
+        repeat Scan.next; until Scan.atLineStart() or (Scan.tok = Scan.sEof);
+        match Scan.tok of
+        | sProc, sExtern, sEof: return;
+        | sEnd:
+            Scan.saveScan(st);
+            Scan.next;
+            if Scan.tok = Scan.sIdent then Scan.next; end;
+            if Scan.tok = Scan.sSemicolon then
+                Scan.next;
+                return;
+            end;
+            Scan.restoreScan(st);
+            return;
+        | else:
+        end;
+    until false;
+end;
+
+(* What one declaration, of the kind k, reads *)
+proc declarationOf(k: Scan.Sym; top: BOOL): ERROR;
+begin
+    match k of
+    | sConst: return constDecl(top);
+    | sType: return typeDecl(top);
+    | sVar: return varDecl(top);
+    | sProc:
+        if not top then return Scan.mark("procedures don't nest"); end;
+        try procDecl();
+        return expect(Scan.sSemicolon);
+    | sExtern:
+        if not top then return Scan.mark("extern is only for the top of a module"); end;
+        try externDecl();
+        return expect(Scan.sSemicolon);
+    | else: return nil;
+    end;
+end;
+
+(* One declaration, as a recovery point: an error is reported, the
+   declaration skipped, and reading goes on after it *)
+proc declaration(k: Scan.Sym; top: BOOL);
+var r: Recover;
+begin
+    guard(r);
+    numDeclaring := 0;
+    if declarationOf(k, top) # nil then
+        restore(r);
+        if k = Scan.sProc then skipProc(); else skipDeclaration(); end;
+    end;
+    unguard(r);
+end;
+
+proc declarations(top: BOOL);
+var i: INT; o: PObj; k: Scan.Sym;
+begin
+    repeat
+        k := Scan.tok;
+        match k of
+        | sConst, sVar:
+            Scan.next;
+            while Scan.tok = Scan.sIdent do declaration(k, top); end;
+        | sType:
+            Scan.next;
+            numFwd := 0;
+            while Scan.tok = Scan.sIdent do declaration(Scan.sType, top); end;
+            inTypes := false;
+            for i := 0 to numFwd - 1 do
+                o := Sym.lookup(fwdTypes[i]^.fwd);
+                if (o = nil) or (o^.cls # Sym.oType) then
+                    notDeclared(fwdPos[i], fwdTypes[i]^.fwd);
+                    fwdTypes[i]^.base := Sym.tPoison;
+                else
+                    fwdTypes[i]^.base := o^.typ;
+                    named(o);
+                end;
+                fwdTypes[i]^.fwd := -1;
+            end;
+        | sProc, sExtern: declaration(k, top);
+        | else: return;
+        end;
+    until false;
+end;
+
+(* Modules *)
+
+(* Whether m is module n with these arguments. *)
+proc isModule(m: PModule; n: INT; args: Sym.Args): BOOL;
+var i: INT;
+begin
+    if (m^.name # n) or (m^.args.n # args.n) then return false; end;
+    for i := 0 to args.n - 1 do
+        if (m^.args.o[i] # args.o[i]) or not Sym.same(m^.args.t[i], args.t[i]) then return false; end;
+    end;
+    return true;
+end;
+
+proc findModule(n: INT; args: Sym.Args): PModule;
+var m: PModule;
+begin
+    m := firstModule;
+    while (m # nil) and not isModule(m, n, args) do m := m^.next; end;
+    return m;
+end;
+
+(* The arguments of an instance: types, or procedures named. *)
+proc parseArgs(var args: Sym.Args; mname: []U8): ERROR;
+var o: PObj; start: Diag.Pos;
+begin
+    Scan.next;
+    repeat
+        if args.n >= 8 then return Scan.mark(say1("too many type arguments for {}", mname)); end;
+        args.o[args.n] := nil;
+        start := Scan.tokPos();
+        if Scan.tok = Scan.sIdent then
+            o := try qualIdent();
+            if o^.cls = Sym.oProc then
+                args.o[args.n] := o;
+            elsif o^.cls # Sym.oType then
+                return Scan.markAt(Scan.spanFrom(start), say1("{} isn't a type or a procedure", nameOf(o^.name)));
+            end;
+            args.t[args.n] := o^.typ;
+        else
+            args.t[args.n] := try parseType();
+        end;
+        args.pos[args.n] := Scan.spanFrom(start);
+        INC(args.n);
+        if Scan.tok # Scan.sComma then break; end;
+        Scan.next;
+    until false;
+    return expect(Scan.sRparen);
+end;
+
+(* Past an instance's arguments, to be read when it is made *)
+proc skipArgs: ERROR;
+var p: INT;
+begin
+    p := 0;
+    repeat
+        if Scan.tok = Scan.sLparen then
+            INC(p);
+        elsif Scan.tok = Scan.sRparen then
+            DEC(p);
+        elsif (Scan.tok = Scan.sSemicolon) or (Scan.tok = Scan.sEof) then
+            return expected("\")\"");
+        end;
+        Scan.next;
+    until p = 0;
+    return nil;
+end;
+
+(* A generic module's parameters, bound to the instance's arguments: a
+   type parameter names its type, a procedure parameter its procedure.
+   The instance's name is the module's with its arguments, List(I64). *)
+proc moduleParams(m: PModule): ERROR;
+var i: INT; o, a: PObj; sig: PType; s: Buf.Buf; at: Diag.Pos; text: []U8;
+begin
+    Buf.init(ADR(s), Heap.heap);
+    i := 0;
+    Buf.str(ADR(s), nameOf(m^.name));
+    Buf.add(ADR(s), '(');
+    Scan.next;
+    repeat
+        if Scan.tok # Scan.sIdent then return expected("a name"); end;
+        if i >= m^.args.n then
+            return Scan.markAt(m^.args.at, say2("{} needs a type for {}", nameOf(m^.name), nameOf(Scan.id)));
+        end;
+        if m^.args.o[i] # nil then
+            return Scan.markAt(m^.args.pos[i], say2("{} needs a type for {}", nameOf(m^.name), nameOf(Scan.id)));
+        end;
+        o := Sym.newObj(Sym.oType, Scan.id, m^.args.t[i]);
+        o^.used := true;   (* a parameter of the module, not a declaration *)
+        try declare(o);
+        Buf.str(ADR(s), Sym.typeName(m^.args.t[i]));
+        Buf.add(ADR(s), ',');
+        INC(i);
+        Scan.next;
+        if Scan.tok # Scan.sComma then break; end;
+        Scan.next;
+    until false;
+    while Scan.tok = Scan.sSemicolon do
+        Scan.next;
+        if Scan.tok # Scan.sIdent then return expected("a name"); end;
+        at := Scan.tokPos();
+        o := Sym.newObj(Sym.oProc, Scan.id, nil);
+        Scan.next;
+        try expect(Scan.sColon);
+        try expect(Scan.sProc);
+        sig := try signature();
+        if i >= m^.args.n then
+            return Scan.markAt(m^.args.at, say2("{} needs a procedure for {}", nameOf(m^.name), nameOf(o^.name)));
+        end;
+        a := m^.args.o[i];
+        if a = nil then
+            return Scan.markAt(m^.args.pos[i], say2("{} needs a procedure for {}", nameOf(m^.name), nameOf(o^.name)));
+        end;
+        if not Sym.same(a^.typ, sig) then
+            Diag.error(m^.args.pos[i], say2("{} doesn't have the signature of {}", nameOf(a^.name), nameOf(o^.name)));
+            Diag.note(at, "the signature is here");
+            Diag.finish();
+        end;
+        o^.typ := a^.typ; o^.chunk := a^.chunk; o^.isCode := a^.isCode; o^.ext := a^.ext;
+        o^.used := true;
+        try declare(o);
+        Buf.str(ADR(s), nameOf(a^.home^.name));
+        Buf.add(ADR(s), '.');
+        Buf.str(ADR(s), nameOf(a^.name));
+        Buf.add(ADR(s), ',');
+        INC(i);
+    end;
+    try expect(Scan.sRparen);
+    if i # m^.args.n then
+        return Scan.markAt(m^.args.at, say1("too many type arguments for {}", nameOf(m^.name)));
+    end;
+    text := Buf.bytes(ADR(s));
+    text[LEN(text) - 1] := ')';
+    m^.sname := internName(text);
+    Buf.done(ADR(s));
+    return nil;
+end;
+
+(* Warns of o if it is never used, or a variable only assigned. What
+   is exported may be used elsewhere, and a name that starts with _ says
+   it is meant to go unused. Writing a var parameter, a match's name for
+   a field or C's variable is what it is for. *)
+proc warn(o: PObj);
+var s, t: []U8;
+begin
+    s := nameOf(o^.name);
+    if (o^.cls = Sym.oProc) and o^.openEnd then
+        Diag.warning(o^.pos, say1("{} may reach its end without return, and then returns zero", s));
+    end;
+    if o^.exported or (s[0] = '_') then return; end;
+    if o^.used and (o^.read or (o^.cls # Sym.oVar) or o^.isVar or o^.ext) then return; end;
+    match o^.cls of
+    | oConst: t := say1("constant {}", s);
+    | oType: t := say1("type {}", s);
+    | oVar:
+        if o^.param then t := say1("parameter {}", s); else t := say1("variable {}", s); end;
+    | oProc: t := say1("procedure {}", s);
+    | oModule: t := say1("module {}", s);
+    | else: return;
+    end;
+    if o^.used then
+        Diag.warning(o^.pos, say1("{} is assigned but never read", t));
+    elsif o^.cls = Sym.oModule then
+        Diag.warning(o^.pos, say1("{} is imported but never used", t));
+    else
+        Diag.warning(o^.pos, say1("{} is never used", t));
+    end;
+    if not o^.used and (o^.param or o^.ind) then
+        Diag.help(say1("if it must be there, call it _{}", s));
+    end;
+end;
+
+(* Warns of the call at p, which drops its n results *)
+proc dropped(p: Diag.Pos; n: INT);
+var s, blanks: []U8; i: INT;
+begin
+    s := Diag.source(p);
+    i := 0;
+    while (i < LEN(s)) and (s[i] # '(') do INC(i); end;
+    if i < LEN(s) then s := s[0..i]; end;
+    blanks := "_";
+    for i := 2 to n do blanks := say1("{}, _", blanks); end;
+    if n = 1 then
+        Diag.warning(p, say1("the result of {} is dropped", s));
+    else
+        Diag.warning(p, say1("the results of {} are dropped", s));
+    end;
+    Diag.help(say2("if that is meant, write {} := {}(...)", blanks, s));
+end;
+
+(* The warnings of module m, by where each declaration is: its own
+   declarations and its procedures' are two lists, each in order, and
+   firstDrop on are the calls that drop results. The
+   instances of a generic module share its text, and so its warnings:
+   only the first is warned of. *)
+proc warnings(m: PModule; firstDrop: INT);
+var a, b: PObj; n: PModule; i: INT;
+begin
+    n := firstModule;
+    while (n # nil) and (n^.name # m^.name) do n := n^.next; end;
+    if n # nil then return; end;
+    a := m^.first; b := m^.locals;
+    i := firstDrop;
+    while (a # nil) or (b # nil) or (i < numDrops) do
+        if (i < numDrops) and ((a = nil) or (drops[i].at.a < a^.pos.a)) and ((b = nil) or (drops[i].at.a < b^.pos.a)) then
+            dropped(drops[i].at, drops[i].n);
+            INC(i);
+        elsif (b = nil) or ((a # nil) and (a^.pos.a < b^.pos.a)) then
+            warn(a);
+            a := a^.chain;
+        else
+            warn(b);
+            b := b^.chain;
+        end;
+    end;
+end;
+
+(* Modules being compiled, not yet finished: for finding a cycle. *)
+var
+    pending: [MaxPending]PModule;
+    numPending: INT;
+
+proc exists(path: []U8): BOOL;
+var info: Sys.Info; err: INT;
+begin
+    info, err := Sys.info(path);
+    return (err = 0) and info.file;
+end;
+
+(* Which file path is, as its device and inode: two names of one file
+   have the same. Zero for a file that can't be asked about. *)
+proc identity(path: []U8): (INT, INT);
+var a: [4096]U8; st: [18]INT;   (* struct stat: st_dev, then st_ino *)
+begin
+    if LEN(path) >= 4096 then return 0, 0; end;
+    COPY(a[0..LEN(path)], path);
+    a[LEN(path)] := 0;
+    if SYSCALL(4, ADR(a[0]), ADR(st)) < 0 then return 0, 0; end;
+    return st[0], st[1];
+end;
+
+(* s, in memory that is never freed, for what must outlast the buffer it is in *)
+proc keep(s: []U8): []U8;
+var p: ^U8;
+begin
+    if LEN(s) = 0 then return ""; end;
+    p := Scan.grab(LEN(s));
+    COPY(p[0..LEN(s)], s);
+    return p[0..LEN(s)];
+end;
+
+proc importModule(name: INT; args: Sym.Args): (PModule, ERROR); forward;
+
+(* Compiles module n from path, an instance if args are given, or only
+   reads its interface if checkOnly; returns it. An import calls this in
+   the middle of reading another file, so it is re-entrant: it saves the
+   scanner's state, the open scopes, the current module and file and
+   whether checks are on, and puts them back at the end. *)
+proc compileFile(path: []U8; n: INT; args: Sym.Args; checkOnly: BOOL): (PModule, ERROR);
+var
+    st: Scan.State; saved: [Sym.MaxDepth]INT; d: INT;
+    oldMod: PModule; oldCheck, oldChecks: BOOL; m: PModule;
+    lib: ^Sym.Lib; start: Diag.Pos; alias, mname, line, oldPath: INT; o: PObj; bodyChunk: INT; iargs: Sym.Args;
+    generic: BOOL; argsAt: Scan.State; why: []U8; firstDrop: INT;
+begin
+    firstDrop := numDrops;
+    Scan.saveScan(st);
+    d := Sym.saveScopes(saved[0..Sym.MaxDepth]);
+    oldMod := Sym.curModule; oldCheck := checkMode; oldPath := Chunk.curFilePath(); oldChecks := Item.checks;
+    Item.setChecks(true);
+    Chunk.setCurFile(internName(path));
+    why := Scan.open(path);
+    if LEN(why) # 0 then Diag.fatal(say2("can't read {}: {}", path, why)); end;
+    NEW(m, Heap.heap);
+    m^.name := n;
+    m^.sname := n;
+    m^.args := args;
+    m^.scope := Sym.newScope();
+    m^.path := path;
+    m^.body := -1;
+    m^.checkOnly := checkOnly;
+    Sym.setCurModule(m);
+    checkMode := checkOnly;
+    if not checkOnly then
+        if numPending >= MaxPending then
+            return nil, Scan.mark(tooMany(MaxPending, "imports nested deep"));
+        end;
+        pending[numPending] := m;
+        INC(numPending);
+    end;
+    try Sym.openScope(m^.scope);
+    Scan.next;
+    try expect(Scan.sModule);
+    if (Scan.tok # Scan.sIdent) or (Scan.id # n) then
+        return nil, Scan.mark(say2("expected module {}, found {}", nameOf(n), Scan.found()));
+    end;
+    Scan.next;
+    (* the module first pending is the one named on the command line,
+       which nothing imports, so no arguments come with it *)
+    if (Scan.tok = Scan.sLparen) and not checkOnly and (numPending = 1) then
+        return nil, Scan.mark(say1("{} is generic: it is compiled where a module imports it", nameOf(n)));
+    elsif Scan.tok = Scan.sLparen then
+        try moduleParams(m);
+    elsif args.n > 0 then
+        return nil, Scan.markAt(args.at, say1("{} isn't generic", nameOf(n)));
+    end;
+    try expect(Scan.sSemicolon);
+    while Scan.tok = Scan.sImport do
+        Scan.next;
+        repeat
+            if Scan.tok # Scan.sIdent then return nil, expected("a module name"); end;
+            start := Scan.tokPos();
+            alias := Scan.id;
+            mname := Scan.id;
+            iargs.n := 0;
+            generic := false;
+            Scan.next;
+            if Scan.tok = Scan.sBecomes then
+                Scan.next;
+                if Scan.tok # Scan.sIdent then return nil, expected("a module name"); end;
+                mname := Scan.id;
+                Scan.next;
+                if Scan.tok = Scan.sLparen then
+                    generic := true;
+                    Scan.saveScan(argsAt);
+                    try skipArgs();
+                end;
+            end;
+            iargs.at := Scan.spanFrom(start);
+            o := Sym.newObj(Sym.oModule, alias, nil);
+            o^.pos := start;
+            try declare(o);
+            if not generic then
+                o^.home := try importModule(mname, iargs);
+                addImport(m, o^.home);
+            else
+                o^.home := nil;   (* until the instance is made, at its first use *)
+                if numDeferred >= MaxDeferred then
+                    return nil, Scan.mark(tooMany(MaxDeferred, "generic imports"));
+                end;
+                deferred[numDeferred].o := o;
+                deferred[numDeferred].home := m;
+                deferred[numDeferred].mname := mname;
+                deferred[numDeferred].args := argsAt;
+                deferred[numDeferred].at := iargs.at;
+                INC(numDeferred);
+            end;
+            if Scan.tok # Scan.sComma then break; end;
+            Scan.next;
+        until false;
+        try expect(Scan.sSemicolon);
+    end;
+    while Scan.tok = Scan.sLink do
+        Scan.next;
+        if (Scan.tok = Scan.sIdent) and (Scan.id = nameStatic) then
+            m^.linkStatic := true;
+        elsif Scan.tok = Scan.sString then
+            NEW(lib, Heap.heap);
+            lib^.name := internName(Scan.strBytes());
+            lib^.next := m^.libs;
+            m^.libs := lib;
+            m^.usesC := true;
+        else
+            return nil, expected("a library or \"static\"");
+        end;
+        Scan.next;
+        try expect(Scan.sSemicolon);
+    end;
+    (* check off;: the module's index and slice checks left out; neither
+       word is reserved *)
+    if (Scan.tok = Scan.sIdent) and (Scan.id = nameCheck) then
+        Scan.next;
+        if (Scan.tok # Scan.sIdent) or (Scan.id # nameOff) then return nil, expected("\"off\""); end;
+        Scan.next;
+        try expect(Scan.sSemicolon);
+        Item.setChecks(false);
+    end;
+    declarations(true);
+    if Scan.tok = Scan.sBegin then
+        if checkMode then
+            try skipBody();
+        else
+            try instancesFor(true);
+            line := Scan.curLine();
+            Scan.next;
+            bodyChunk := Chunk.newChunk(Chunk.secText, m^.sname, nameBody);
+            m^.body := bodyChunk;
+            Item.beginProc(tBodySig, nil);
+            deferSlot := 0;
+            curResult := nil;
+            Gen.enterBody(bodyChunk, line);
+            stray := false; elseIf := false;
+            try statements();
+            Chunk.noteLine(Scan.curLine(), Scan.curCol());
+            try expect(Scan.sEnd);
+            try Gen.endProc(bodyChunk, false);
+        end;
+    else
+        try expect(Scan.sEnd);
+    end;
+    if (Scan.tok # Scan.sIdent) or (Scan.id # n) then
+        return nil, endMissing(Scan.missingPos(), say2("expected {}, found {}", nameOf(n), Scan.found()));
+    end;
+    Scan.next;
+    if Scan.tok # Scan.sPeriod then return nil, expected("\".\""); end;
+    o := m^.first;
+    while o # nil do
+        if (o^.cls = Sym.oProc) and o^.fwd then
+            Diag.error(Scan.tokPos(), say1("{} is declared forward but never defined", nameOf(o^.name)));
+        end;
+        o := o^.chain;
+    end;
+    if (Diag.errors = 0) and not checkOnly then warnings(m, firstDrop); end;
+    numDrops := firstDrop;
+    if Diag.errors > 0 then Diag.finish(); end;   (* a module with errors stops the compiler after it *)
+    Sym.closeScope();
+    m^.done := true;
+    if not checkOnly then
+        DEC(numPending);
+        if lastModule = nil then firstModule := m; else lastModule^.next := m; end;
+        lastModule := m;
+    end;
+    Sym.setCurModule(oldMod); checkMode := oldCheck; Chunk.setCurFile(oldPath); Item.setChecks(oldChecks);
+    Sym.restoreScopes(d, saved[0..Sym.MaxDepth]);
+    Scan.restoreScan(st);
+    return m, nil;
+end;
+
+(* The interface check: b must export just what a does. *)
+proc compareIface(a, b: PModule);
+var o, q: PObj;
+begin
+    o := a^.first;
+    while o # nil do
+        if o^.exported then
+            q := Sym.find(b^.scope, o^.name);
+            if (q = nil) or not q^.exported or (Sym.fingerprint(o) # Sym.fingerprint(q)) then
+                Diag.fatal(Diag.say("{}: {} isn't exported as in {}", [Fmt.str(b^.path), Fmt.str(nameOf(o^.name)), Fmt.str(a^.path)]));
+            end;
+        end;
+        o := o^.chain;
+    end;
+    q := b^.first;
+    while q # nil do
+        o := Sym.find(a^.scope, q^.name);
+        if q^.exported and ((o = nil) or not o^.exported) then
+            Diag.fatal(Diag.say("{}: {} isn't exported by {}", [Fmt.str(b^.path), Fmt.str(nameOf(q^.name)), Fmt.str(a^.path)]));
+        end;
+        q := q^.chain;
+    end;
+end;
+
+(* Reads every other file of module n in dir, and checks its interface
+   against m, compiled from the file named chosen. *)
+proc checkSiblings(dir, chosen: []U8; n: INT; m: PModule; args: Sym.Args): ERROR;
+var
+    dp: Sys.Dir; e, prefix: []U8; i, numOthers: INT; more: BOOL; sib: PModule;
+    others: [32][]U8;
+begin
+    prefix := say1("{}.", nameOf(n));
+    numOthers := 0;
+    if Sys.openDir(ADR(dp), dir) # 0 then return nil; end;
+    repeat
+        e, more := Sys.nextEntry(ADR(dp));
+        if not more then break; end;
+        if (LEN(e) > 4) and Str.hasPrefix(e, prefix) and (e[LEN(e) - 4..LEN(e)] = ".raz")
+            and (e # chosen) and (numOthers < 32) then
+            others[numOthers] := keep(e);
+            INC(numOthers);
+        end;
+    until false;
+    Sys.closeDir(ADR(dp));
+    for i := 0 to numOthers - 1 do
+        sib := try compileFile(say2("{}/{}", dir, others[i]), n, args, true);
+        compareIface(m, sib);
+    end;
+    return nil;
+end;
+
+(* The directories searched for modules, in order, from -1 to numInc *)
+proc searchDir(i: INT): []U8;
+begin
+    if i = -1 then return mainDir; end;
+    if i = numInc then return libDir; end;
+    return incDirs[i];
+end;
+
+(* The file of module n in dir that suffix j says: Name.linux-x86_64.raz
+   for a file of this target alone, and so on to Name.raz *)
+proc fileName(n, j: INT): []U8;
+begin
+    return Diag.say("{}{}.raz", [Fmt.str(nameOf(n)), Fmt.str(Suffixes[j])]);
+end;
+
+proc moduleFile(n: INT): ([]U8, []U8, BOOL);
+var i, j: INT; dir, f: []U8;
+begin
+    for i := -1 to numInc do
+        dir := searchDir(i);
+        for j := 0 to 3 do
+            f := fileName(n, j);
+            if exists(say2("{}/{}", dir, f)) then return dir, f, true; end;
+        end;
+    end;
+    return "", "", false;
+end;
+
+(* A program has one module of each name: module n, found as dir/f,
+   must have no files in a later directory, unless dir/f is a link to
+   one of them, which chooses it (report, section 3) *)
+proc checkOneModule(n: INT; dir, f: []U8; at: Diag.Pos): ERROR;
+var
+    i, j, dev, ino, mineDev, mineIno: INT; past, chosen: BOOL; g, files, others: []U8;
+begin
+    mineDev, mineIno := identity(say2("{}/{}", dir, f));
+    others := "";
+    past := false;
+    for i := -1 to numInc do
+        if past then
+            files := "";
+            chosen := false;
+            for j := 0 to 3 do
+                g := say2("{}/{}", searchDir(i), fileName(n, j));
+                if exists(g) then
+                    files := say2("{} and {}", files, Diag.shownPath(g));
+                    dev, ino := identity(g);
+                    chosen := chosen or ((dev = mineDev) and (ino = mineIno));
+                end;
+            end;
+            if not chosen then others := say2("{}{}", others, files); end;
+        end;
+        past := past or (searchDir(i) = dir);
+    end;
+    if LEN(others) = 0 then return nil; end;
+    Diag.error(at, say3("module {} is in {}{}", nameOf(n), Diag.shownPath(say2("{}/{}", dir, f)), others));
+    Diag.help("a program has one module of each name; a symbolic link to one of these files chooses it");
+    return Scan.Failed;
+end;
+
+proc importModule(name: INT; args: Sym.Args): (PModule, ERROR);
+var m: PModule; i: INT; dir, f, where: []U8; found: BOOL;
+begin
+    m := findModule(name, args);
+    if m # nil then return m, nil; end;
+    for i := 0 to numPending - 1 do
+        if isModule(pending[i], name, args) then
+            return nil, Scan.markAt(args.at, say1("{} imports itself", nameOf(name)));
+        end;
+    end;
+    dir, f, found := moduleFile(name);
+    if not found then
+        Diag.error(args.at, say1("can't find module {}", nameOf(name)));
+        where := Diag.shownPath(searchDir(-1));
+        for i := 0 to numInc do where := say2("{}, {}", where, Diag.shownPath(searchDir(i))); end;
+        Diag.help(say2("looked for {}.raz in {}", nameOf(name), where));
+        return nil, Scan.Failed;
+    end;
+    try checkOneModule(name, dir, f, args.at);
+    m := try compileFile(say2("{}/{}", dir, f), name, args, false);
+    try checkSiblings(dir, f, name, m, args);
+    return m, nil;
+end;
+
+proc addImport(m, im: PModule);
+var imp: ^Sym.Import;
+begin
+    NEW(imp, Heap.heap);
+    imp^.home := im;
+    imp^.next := m^.imports;
+    m^.imports := imp;
+end;
+
+(* Makes the instance that deferred[i] imports: its arguments are read
+   where the import wrote them, and must be declared by now. Compiling
+   the instance comes in the middle of a declaration, so what that
+   declaration has under way is kept aside meanwhile. *)
+proc makeInstance(i: INT; at: Diag.Pos): ERROR;
+var
+    d: Deferred; st: Scan.State; args: Sym.Args; types, exported, ext, wasQuiet: BOOL; nf, nd: INT;
+    ft: [MaxFwd]PType; fp: [MaxFwd]Diag.Pos; decl: [MaxNames]INT;
+begin
+    d := deferred[i];
+    DEC(numDeferred);
+    deferred[i] := deferred[numDeferred];
+    Scan.saveScan(st);
+    Scan.restoreScan(d.args);
+    args.n := 0;
+    making := true; useAt := at;
+    try parseArgs(args, nameOf(d.mname));
+    making := false;
+    Scan.restoreScan(st);
+    args.at := d.at;
+    types := inTypes; exported := declExported; ext := inExtern; wasQuiet := Diag.quiet;
+    nf := numFwd; ft := fwdTypes; fp := fwdPos; nd := numDeclaring; decl := declaring;
+    d.o^.home := try importModule(d.mname, args);
+    inTypes := types; declExported := exported; inExtern := ext; Diag.setQuiet(wasQuiet);
+    numFwd := nf; fwdTypes := ft; fwdPos := fp; numDeclaring := nd; declaring := decl;
+    addImport(Sym.curModule, d.o^.home);
+    return nil;
+end;
+
+proc firstUse(o: PObj; at: Diag.Pos): ERROR;
+var i: INT;
+begin
+    for i := 0 to numDeferred - 1 do
+        if deferred[i].o = o then return makeInstance(i, at); end;
+    end;
+    return Scan.Failed;   (* its arguments had an error, already reported *)
+end;
+
+(* An instance can't be compiled in the middle of another procedure's
+   code, so before a procedure's code begins, from its "proc" on, or
+   the module body's, from its "begin" to the end of the file, this
+   reads ahead for the names of imports not yet made, and makes those. *)
+proc instancesFor(wholeRest: BOOL): ERROR;
+var st: Scan.State; d, i: INT; begun: BOOL;
+begin
+    if checkMode then return nil; end;
+    i := numDeferred - 1;
+    while (i >= 0) and (deferred[i].home # Sym.curModule) do DEC(i); end;
+    if i < 0 then return nil; end;
+    (* The procedure ends at the "end" that closes its first "begin": d
+       counts the words still open that "end" or "until" closes, and begun
+       says that begin was met, so that a record's end in its declarations
+       doesn't stop it. A forward or code procedure has no raz body to
+       read, so it stops at that word. The body reads to the end of the
+       file, as wholeRest says. *)
+    Scan.saveScan(st);
+    d := 0; begun := false;
+    repeat
+        match Scan.tok of
+        | sIdent:
+            for i := numDeferred - 1 to 0 by -1 do
+                if (deferred[i].home = Sym.curModule) and (deferred[i].o^.name = Scan.id) then
+                    try makeInstance(i, Scan.tokPos());
+                end;
+            end;
+        | sBegin:
+            begun := begun or (d = 0);
+            INC(d);
+        | sIf, sWhile, sFor, sMatch, sRepeat, sRecord, sVariant: INC(d);
+        | sEnd, sUntil: DEC(d);
+        | else:
+        end;
+        if not wholeRest and (d = 0) and (begun or (Scan.tok = Scan.sForward) or (Scan.tok = Scan.sCode)) then break; end;
+        Scan.next;
+    until Scan.tok = Scan.sEof;
+    Scan.restoreScan(st);
+    return nil;
+end;
+
+(* The main module, from the file at path, and Rt, which every program
+   needs, first *)
+proc compileMain*(path: []U8): (PModule, ERROR);
+var base: []U8; i, n: INT; none: Sym.Args; m: PModule;
+begin
+    none.n := 0;
+    i := LEN(path);
+    while (i > 0) and (path[i - 1] # '/') do DEC(i); end;
+    if i = 0 then mainDir := "."; else mainDir := path[0..i - 1]; end;
+    base := path[i..LEN(path)];
+    i := 0;
+    while (i < LEN(base)) and (base[i] # '.') do INC(i); end;
+    base := base[0..i];
+    if LEN(base) = 0 then Diag.fatal(say1("no module in {}", path)); end;
+    n := internName(base);
+    none.at := Scan.tokPos();
+    if n # nameRt then _ := try importModule(nameRt, none); end;
+    m := findModule(n, none);
+    if m # nil then return m, nil; end;
+    return compileFile(path, n, none, false);
+end;
+
+begin
+    nameRt := internName("Rt");
+    nameFail := internName("fail");
+    nameAdr := internName("ADR");
+    nameBody := internName("body");
+    nameStatic := internName("static");
+    nameCheck := internName("check");
+    nameOff := internName("off");
+    tArgv := newPtr(newPtr(Sym.tU8, false), false);
+    tBodySig := Sym.newType(Sym.fProc, 8, 8);
+end Parse.
