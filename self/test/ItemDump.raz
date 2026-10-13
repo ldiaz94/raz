@@ -1,0 +1,679 @@
+(* Drives Item with a fixed pseudo-random script of operands and
+   operations, with mistakes among them, and prints what each step gave
+   (the item, or that it failed, whose message goes to standard error),
+   then the bytes, fixups, line notes and listing (raz -S) of the code
+   it made: self/Item.raz's side of a test against the seed's,
+   ItemDump.pas, which does and prints the same. The argument, a digit,
+   changes the script. A run ends at the 20th error, as a compile does,
+   so several scripts are run. *)
+module ItemDump;
+import Out, Fmt, Files, Heap, Diag, Scan, Sym, Chunk, X := X64, Gen, Item;
+
+const
+    FirstProc = 3;     (* chunks 0 to 2 are Gen's own *)
+    NumProcs = 30;
+    FirstGlob = FirstProc + NumProcs;
+    NumGlobs = 4;
+    Steps = 14;
+    (* the types of the script, by number *)
+    YInt = 0; YI64 = 1; YI32 = 2; YU8 = 3; YU16 = 4; YU32 = 5; YU64 = 6; YBool = 7;
+    YReal = 8; YF32 = 9; YI8 = 10; YEnum = 11; YSet = 12; YPtr = 13; YVptr = 14;
+    YPtrArr = 15; YArr = 16; YArrU8 = 17; YSlice = 18; YBytes = 19; YRec = 20;
+    YPacked = 21; YVariant = 22; YProc0 = 23; YProc1 = 24; YProc2 = 25;
+    YPtrRec = 26; YErr = 27; YVrec = 28; YVarr = 29;
+    NumT = 30;
+    IntTypes: [8]INT = [YInt, YI64, YI32, YU8, YU16, YU32, YU64, YI8];
+    Ops: [20]Scan.Sym = [Scan.sPlus, Scan.sMinus, Scan.sTimes, Scan.sDiv, Scan.sMod,
+        Scan.sAmp, Scan.sBar, Scan.sXor, Scan.sShl, Scan.sShr,
+        Scan.sEql, Scan.sNeq, Scan.sLss, Scan.sLeq, Scan.sGtr, Scan.sGeq,
+        Scan.sSlash, Scan.sIn, Scan.sPlus, Scan.sMinus];
+    Cmps: [6]Scan.Sym = [Scan.sEql, Scan.sNeq, Scan.sLss, Scan.sLeq, Scan.sGtr, Scan.sGeq];
+
+var
+    Letters: []U8;
+    seed: I64;
+    ty: [NumT]^Sym.Type;
+    vars: [NumT]^Sym.Obj;    (* a variable of each type, placed anew for each procedure *)
+    procs: [6]^Sym.Obj;
+    strs: [3]^Sym.Obj;
+    arrConst, typeObj, builtinObj, caseObj: ^Sym.Obj;
+    mod0, mod1: ^Sym.Module;
+    tuple2, record3, packedR, variantT: ^Sym.Type;
+    results: [9]^Sym.Type;
+    curRes: INT;             (* the result of the procedure, an index of results *)
+    call: Gen.CallInfo;
+
+proc rnd(n: INT): INT;
+begin
+    seed := (seed * 1103515245 + 12345) & 7FFFFFFFH;
+    return INT((seed shr 8) mod I64(n));
+end;
+
+proc flag: BOOL;
+begin
+    return rnd(2) = 0;
+end;
+
+proc bit(f: BOOL): INT;
+begin
+    if f then return 1; end;
+    return 0;
+end;
+
+proc pos: Diag.Pos;
+var p: Diag.Pos;
+begin
+    p.f := 0; p.a := rnd(400); p.b := p.a + 1 + rnd(12);
+    return p;
+end;
+
+proc constVal: I64;
+var x: INT; r: I64;
+begin
+    x := rnd(1 shl 30);
+    match rnd(7) of
+    | 0: r := x mod 10;
+    | 1: r := -(x mod 100);
+    | 2: r := I64(1) shl (x mod 20);
+    | 3: r := x;
+    | 4: r := I64(x) * 4096 * 4096 * 9 - 7;
+    | 5: r := -I64(x) * 8;
+    | else: r := x mod 1000 - 500;
+    end;
+    return r;
+end;
+
+(* A name, interned *)
+proc intern(s: []U8): INT;
+begin
+    return Scan.intern(ADR(s[0]), LEN(s));
+end;
+
+(* A name v00, v01, ... , interned *)
+proc nameOf(i: INT): INT;
+var s: [3]U8;
+begin
+    s[0] := 'v'; s[1] := U8(48 + i div 10); s[2] := U8(48 + i mod 10);
+    return Scan.intern(ADR(s[0]), 3);
+end;
+
+proc newObjs(cls: Sym.Class; t: ^Sym.Type; n: INT; step: I64; at: INT): ^Sym.Obj;
+var first, o, last: ^Sym.Obj; i: INT;
+begin
+    first := nil; last := nil;
+    for i := 0 to n - 1 do
+        o := Sym.newObj(cls, nameOf(at + i), t);
+        o^.val := step * I64(i);
+        if last = nil then first := o; else last^.next := o; end;
+        last := o;
+    end;
+    return first;
+end;
+
+proc newType(form: Sym.Form; size, align: I64): ^Sym.Type;
+begin
+    return Sym.newType(form, size, align);
+end;
+
+proc procType(res: ^Sym.Type; params: ^Sym.Obj; n: INT): ^Sym.Type;
+var t: ^Sym.Type;
+begin
+    t := newType(Sym.fProc, 8, 8);
+    t^.base := res;
+    t^.fields := params;
+    t^.len := n;
+    return t;
+end;
+
+proc param(t: ^Sym.Type; isVar: BOOL; at: INT): ^Sym.Obj;
+var o: ^Sym.Obj;
+begin
+    o := Sym.newObj(Sym.oVar, nameOf(at), t);
+    o^.param := true;
+    o^.isVar := isVar;
+    return o;
+end;
+
+proc makeTypes;
+var t: ^Sym.Type; p, q, r: ^Sym.Obj; i: INT;
+begin
+    ty[YInt] := Sym.tInt; ty[YI64] := Sym.tI64; ty[YI32] := Sym.tI32; ty[YU8] := Sym.tU8;
+    ty[YU16] := Sym.tU16; ty[YU32] := Sym.tU32; ty[YU64] := Sym.tU64; ty[YBool] := Sym.tBool;
+    ty[YReal] := Sym.tReal; ty[YF32] := Sym.tF32; ty[YI8] := Sym.tI8; ty[YErr] := Sym.tError;
+    ty[YBytes] := Sym.tBytes;
+    t := newType(Sym.fEnum, 1, 1); t^.len := 5; ty[YEnum] := t;
+    t := newType(Sym.fSet, 8, 8); t^.len := 5; t^.base := ty[YEnum]; ty[YSet] := t;
+    t := newType(Sym.fPtr, 8, 8); t^.base := Sym.tI64; ty[YPtr] := t;
+    t := newType(Sym.fPtr, 8, 8); t^.base := Sym.tI64; t^.vol := true; ty[YVptr] := t;
+    t := newType(Sym.fArray, 48, 8); t^.base := Sym.tI64; t^.len := 6; ty[YArr] := t;
+    t := newType(Sym.fPtr, 8, 8); t^.base := ty[YArr]; ty[YPtrArr] := t;
+    t := newType(Sym.fPtr, 8, 8); t^.base := ty[YArr]; t^.vol := true; ty[YVarr] := t;
+    t := newType(Sym.fArray, 8, 1); t^.base := Sym.tU8; t^.len := 8; ty[YArrU8] := t;
+    t := newType(Sym.fSlice, 16, 8); t^.base := Sym.tI64; ty[YSlice] := t;
+    (* a record of an I64, an F64 and an I32 *)
+    record3 := newType(Sym.fRecord, 24, 8);
+    p := Sym.newObj(Sym.oField, nameOf(40), Sym.tI64); p^.val := 0;
+    q := Sym.newObj(Sym.oField, nameOf(41), Sym.tReal); q^.val := 8; p^.next := q;
+    r := Sym.newObj(Sym.oField, nameOf(42), Sym.tI32); r^.val := 16; q^.next := r;
+    record3^.fields := p;
+    ty[YRec] := record3;
+    t := newType(Sym.fPtr, 8, 8); t^.base := record3; ty[YPtrRec] := t;
+    t := newType(Sym.fPtr, 8, 8); t^.base := record3; t^.vol := true; ty[YVrec] := t;
+    (* a packed record: a byte, then an I32 that may be misaligned *)
+    packedR := newType(Sym.fRecord, 53, 1);
+    packedR^.packd := true;
+    p := Sym.newObj(Sym.oField, nameOf(43), Sym.tU8); p^.val := 0;
+    q := Sym.newObj(Sym.oField, nameOf(44), Sym.tI32); q^.val := 1; p^.next := q;
+    r := Sym.newObj(Sym.oField, nameOf(46), ty[YArr]); r^.val := 5; q^.next := r;
+    packedR^.fields := p;
+    ty[YPacked] := packedR;
+    variantT := newType(Sym.fVariant, 16, 8);
+    ty[YVariant] := variantT;
+    tuple2 := newType(Sym.fRecord, 16, 8);
+    tuple2^.tuple := true; tuple2^.len := 2; tuple2^.fields := newObjs(Sym.oVar, Sym.tInt, 2, 8, 45);
+    (* procedures: (I64, F64) I64;  ();  (var I64, []I64) of two results *)
+    p := param(Sym.tInt, false, 46); p^.next := param(Sym.tReal, false, 47);
+    ty[YProc0] := procType(Sym.tInt, p, 2);
+    ty[YProc1] := procType(nil, nil, 0);
+    p := param(Sym.tI64, true, 48); p^.next := param(ty[YSlice], false, 49);
+    ty[YProc2] := procType(tuple2, p, 2);
+    results[0] := nil; results[1] := Sym.tInt; results[2] := Sym.tReal; results[3] := ty[YSlice];
+    results[4] := tuple2; results[5] := record3; results[6] := Sym.tF32; results[7] := Sym.tI16;
+    results[8] := ty[YBytes];
+    for i := 0 to NumT - 1 do
+        if ty[i] = nil then Diag.fatal("a type is missing"); end;
+    end;
+end;
+
+(* The objects named by the script: procedures, strings, constants of
+   an array, a type, a built-in, a case of a variant *)
+proc makeObjs;
+var i, c: INT; o: ^Sym.Obj;
+begin
+    NEW(mod0, Heap.heap); mod0^.name := intern("Zero");
+    NEW(mod1, Heap.heap); mod1^.name := intern("Other");
+    Sym.setCurModule(mod0);
+    for i := 0 to 5 do
+        o := Sym.newObj(Sym.oProc, nameOf(50 + i), ty[YProc0 + i mod 3]);
+        o^.chunk := FirstProc + rnd(NumProcs);
+        o^.ext := i >= 4;
+        o^.isCode := i = 3;
+        procs[i] := o;
+    end;
+    for i := 0 to 2 do
+        o := Sym.newObj(Sym.oConst, nameOf(60 + i), Sym.tStr);
+        o^.val := 2 + 3 * i;
+        c := Chunk.newChunk(Chunk.secRodata, -1, -1);
+        Chunk.setData(c, ADR(Letters[0]), INT(o^.val) + 1, 1);
+        o^.chunk := c;
+        strs[i] := o;
+    end;
+    arrConst := Sym.newObj(Sym.oConst, nameOf(63), ty[YArr]);
+    arrConst^.chunk := Chunk.newChunk(Chunk.secRodata, -1, -1);
+    Chunk.setData(arrConst^.chunk, ADR(Letters[0]), 8, 8);
+    typeObj := Sym.newObj(Sym.oType, nameOf(64), ty[YRec]);
+    builtinObj := Sym.newObj(Sym.oBuiltin, nameOf(65), Sym.tNone);
+    caseObj := Sym.newObj(Sym.oCase, nameOf(66), variantT);
+    caseObj^.val := 3;
+    caseObj^.fields := newObjs(Sym.oField, Sym.tInt, 2, 8, 67);
+    caseObj^.fields^.val := 8;
+end;
+
+(* The variable of each type, in the frame, a chunk, a slot, a register,
+   another module or C's, as the procedure compiled has them *)
+proc makeVars;
+var i, k: INT; o: ^Sym.Obj; t: ^Sym.Type;
+begin
+    for i := 0 to NumT - 1 do
+        t := ty[i];
+        o := Sym.newObj(Sym.oVar, nameOf(i), t);
+        o^.lev := 1;
+        k := rnd(9);
+        if k = 2 then
+            o^.lev := 0; o^.chunk := FirstGlob + rnd(NumGlobs);
+        elsif k = 3 then
+            o^.ind := true; o^.val := Gen.allocPerm(8, 8); o^.off := 8 * rnd(3);
+        elsif k = 4 then
+            if (t^.form in {Sym.fInt, Sym.fPtr}) and (t^.size = 8) then
+                o^.reg := Gen.VarRegs[rnd(5)];
+            elsif t^.form = Sym.fReal then
+                o^.reg := Gen.XVarRegs[rnd(4)];
+            elsif t^.form = Sym.fSlice then
+                o^.reg := Gen.VarRegs[rnd(3)]; o^.reg2 := Gen.VarRegs[3 + rnd(2)];
+            end;
+            if o^.reg = 0 then o^.val := Gen.allocPerm(t^.size, 8); end;
+        elsif k = 5 then
+            o^.lev := 0; o^.chunk := FirstGlob + rnd(NumGlobs); o^.home := mod1;
+        elsif k = 6 then
+            o^.lev := 0; o^.chunk := FirstGlob + rnd(NumGlobs); o^.ext := true;
+        else
+            o^.val := Gen.allocPerm(t^.size + 8, 8);
+        end;
+        vars[i] := o;
+    end;
+end;
+
+(* Operands *)
+
+proc intType: ^Sym.Type;
+begin
+    return ty[IntTypes[rnd(8)]];
+end;
+
+proc varItem(var x: Item.Item; t: ^Sym.Type): ERROR;
+var i, k: INT;
+begin
+    k := rnd(NumT);
+    for i := 0 to NumT - 1 do
+        if ty[i] = t then k := i; end;
+    end;
+    x := {};
+    x.pos := pos();
+    return Item.makeItem(x, vars[k]);
+end;
+
+(* An operand of type t, or of any if t is nil *)
+proc operand(var x: Item.Item; t: ^Sym.Type): ERROR;
+var k: INT; r: F64; v: I64;
+begin
+    x := {};
+    x.pos := pos();
+    if t = nil then
+        match rnd(14) of
+        | 0: Item.makeConst(x, Sym.tConst, constVal());
+        | 1: Item.makeConst(x, Sym.tConst, constVal() mod 200);
+        | 2: t := intType(); v := constVal() mod 100; Item.makeConst(x, t, v);
+        | 3: r := F64(constVal() mod 1000) / 8.0; Item.makeReal(x, r);
+        | 4: Item.makeConst(x, Sym.tBool, I64(rnd(2)));
+        | 5: return Item.makeItem(x, strs[rnd(3)]);
+        | 6: Item.makeConst(x, Sym.tNil, 0);
+        | 7: return Item.makeItem(x, procs[rnd(6)]);
+        | 8: if rnd(4) = 0 then
+                match rnd(3) of
+                | 0: return Item.makeItem(x, typeObj);
+                | 1: return Item.makeItem(x, builtinObj);
+                | else: return Item.makeItem(x, caseObj);
+                end;
+             end;
+             return Item.makeItem(x, arrConst);
+        | 13: try Item.makeItem(x, vars[rnd(NumT)]); return Item.value(x);
+        | else: return varItem(x, ty[rnd(NumT)]);
+        end;
+        return nil;
+    end;
+    k := rnd(10);
+    if Sym.isInt(t) then
+        if k < 3 then Item.makeConst(x, Sym.tConst, constVal() mod 100); return nil; end;
+        if k = 3 then Item.makeConst(x, t, constVal() mod 100); return nil; end;
+    elsif t^.form = Sym.fReal then
+        if k < 3 then r := F64(constVal() mod 1000) / 8.0; Item.makeReal(x, r); return nil; end;
+    elsif t^.form = Sym.fBool then
+        if k < 3 then Item.makeConst(x, Sym.tBool, I64(rnd(2))); return nil; end;
+    elsif t^.form = Sym.fPtr then
+        if k < 2 then Item.makeConst(x, Sym.tNil, 0); return nil; end;
+    elsif (t^.form = Sym.fSlice) and (t^.base = Sym.tU8) then
+        if k < 3 then return Item.makeItem(x, strs[rnd(3)]); end;
+    end;
+    return varItem(x, t);
+end;
+
+(* A condition, left as one: a comparison of two integers *)
+proc condItem(var x: Item.Item): ERROR;
+var y: Item.Item; L: INT; op: Scan.Sym; t: ^Sym.Type;
+begin
+    t := intType();
+    op := Cmps[rnd(6)];
+    try operand(x, t);
+    try Item.op1(op, x, L);
+    try operand(y, t);
+    return Item.op2(op, x, y, L);
+end;
+
+(* A variable, or part of one: through a pointer, a field, an element, a slice *)
+proc place(var x: Item.Item): ERROR;
+var i, k: INT; f: ^Sym.Obj; y, lo, hi: Item.Item;
+begin
+    try varItem(x, ty[rnd(NumT)]);
+    for i := 1 to 3 do
+        if rnd(3) # 0 then
+            k := rnd(6);
+            if (k = 0) or (x.typ^.form = Sym.fPtr) then
+                try Item.deref(x);
+            elsif x.typ^.form = Sym.fRecord then
+                f := x.typ^.fields;
+                k := rnd(3);
+                while (k > 0) and (f^.next # nil) do f := f^.next; DEC(k); end;
+                try Item.field(x, f);
+            elsif (x.typ^.form in {Sym.fArray, Sym.fSlice, Sym.fStr}) then
+                try Item.indexPrep(x);
+                if k < 4 then
+                    try operand(y, intType());
+                    try Item.index(x, y);
+                else
+                    try operand(lo, intType());
+                    try Item.sliceLo(lo);
+                    try operand(hi, intType());
+                    try Item.slice(x, lo, hi);
+                end;
+            end;
+        end;
+    end;
+    return nil;
+end;
+
+(* The state of an item *)
+proc dump(var x: Item.Item);
+var name: []U8; flags: INT;
+begin
+    name := "-";
+    if x.typ # nil then name := Sym.typeName(x.typ); end;
+    flags := bit(x.vol) + 2 * bit(x.isVar) + 4 * bit(x.odd) + 8 * bit(x.ro) + 16 * bit(x.deref);
+    Fmt.print("I {} {} {} {} {} {} {}", [Fmt.int(INT(x.mode)), Fmt.str(name), Fmt.int(INT(x.rel)),
+        Fmt.int(bit(x.relSigned)), Fmt.int(x.fj), Fmt.int(x.tj), Fmt.int(x.val)]);
+    Fmt.print(" {} {} {} {} depth {} pushed {}\n", [Fmt.int(INT(x.base)), Fmt.int(x.chunk), Fmt.int(x.off),
+        Fmt.int(flags), Fmt.int(Gen.depth), Fmt.int(Gen.pushed)]);
+end;
+
+(* A call: of a procedure of the script or a variable of a procedure
+   type, with arguments that mostly fit its parameters *)
+proc doCall(var x: Item.Item): ERROR;
+var f, a: Item.Item; p: ^Sym.Obj; n: INT;
+begin
+    f := {};
+    f.pos := pos();
+    if rnd(5) = 0 then try Item.makeItem(f, vars[YProc0 + rnd(3)]);
+    else try Item.makeItem(f, procs[rnd(6)]); end;
+    try Item.beginCall(call, f);
+    p := call.param;
+    n := rnd(4) - 1;
+    while (p # nil) or (n > 0) do
+        if p # nil then
+            if p^.isVar and (rnd(2) = 0) then
+                try varItem(a, ty[YVptr]);
+                try Item.deref(a);
+            elsif rnd(6) = 0 then try operand(a, nil);
+            else try operand(a, p^.typ); end;
+            p := p^.next;
+        else
+            try operand(a, nil);
+            n := n - 1;
+        end;
+        try Item.passArg(call, a);
+        if (p = nil) and (n < 0) then n := 0; end;
+        if (p # nil) and (n < 0) and (rnd(4) = 0) then p := nil; n := 0; end;
+    end;
+    return Item.endCall(call, x);
+end;
+
+(* A binary operation, with a condition's jumps made after it, sometimes *)
+proc binary(var x: Item.Item): ERROR;
+var y: Item.Item; L, M: INT; op: Scan.Sym; t: ^Sym.Type;
+begin
+    L := Gen.NoLabel;
+    M := Gen.NoLabel;
+    op := Ops[rnd(20)];
+    match rnd(8) of
+    | 0, 1: t := intType();
+    | 2: t := ty[YReal + rnd(2)];
+    | 3: t := ty[YBool];
+    | 4: t := ty[YEnum + rnd(2)];
+    | else: t := ty[rnd(NumT)];
+    end;
+    if rnd(6) = 0 then
+        (* and, or *)
+        if flag() then op := Scan.sAnd; else op := Scan.sOr; end;
+        try condItem(x);
+        try Item.op1(op, x, L);
+        try condItem(y);
+    elsif op = Scan.sIn then
+        try operand(x, ty[YEnum]);
+        try Item.op1(op, x, L);
+        try operand(y, ty[YSet]);
+    else
+        try operand(x, t);
+        try Item.op1(op, x, L);
+        if rnd(5) = 0 then try operand(y, nil); else try operand(y, t); end;
+    end;
+    try Item.op2(op, x, y, L);
+    if (x.mode = Item.mCond) and (rnd(3) # 0) then
+        if flag() then try Item.condJump(x, M); else try Item.condJumpTrue(x, M); end;
+        Gen.fix(M);
+        x.mode := Item.mNone;   (* its values are used *)
+    end;
+    return nil;
+end;
+
+proc unary(var x: Item.Item): ERROR;
+begin
+    try operand(x, nil);
+    match rnd(3) of
+    | 0: return Item.neg(x);
+    | 1: return Item.notOp(x);
+    | else: return Item.complement(x);
+    end;
+end;
+
+(* match: the slot of a variant, an enumeration or an integer, and
+   tests of it *)
+proc doMatch(var x: Item.Item): ERROR;
+var p, lo, hi: I64; L: INT;
+begin
+    L := Gen.NoLabel;
+    match rnd(3) of
+    | 0: try varItem(x, ty[YVariant]);
+    | 1: try varItem(x, ty[YEnum]);
+    | else: try operand(x, nil);
+    end;
+    p := try Item.matchBegin(x);
+    Item.matchTag(p, constVal() mod 10, L);
+    lo := constVal() mod 10;
+    hi := constVal() mod 10 + 10;
+    Item.matchRange(p, lo, hi, L);
+    Item.matchRange(p, 3, 3, L);
+    Gen.fix(L);
+    return nil;
+end;
+
+(* A for loop's variable stepped and tested *)
+proc doFor(var x: Item.Item): ERROR;
+var o: ^Sym.Obj; lim: Item.Item; step: I64; exitL: INT;
+begin
+    o := vars[IntTypes[rnd(8)]];
+    step := constVal() mod 5;
+    if step = 0 then step := 1; end;
+    if rnd(2) = 0 then step := -step; end;
+    lim := {};
+    lim.pos := pos();
+    Item.makeConst(lim, o^.typ, constVal() mod 50);
+    exitL := Gen.NoLabel;
+    try Item.forStep(o, step);
+    try Item.forNext(o, lim, step, exitL, Chunk.pc, Chunk.pc);
+    Gen.fix(exitL);
+    x := lim;
+    return nil;
+end;
+
+(* INC and DEC, pin, COPY *)
+proc doMisc(var x: Item.Item): ERROR;
+var y: Item.Item;
+begin
+    match rnd(5) of
+    | 0:
+        try place(x);
+        try Item.address(x);
+        try operand(y, x.typ);
+        return Item.incDec(x, y, flag());
+    | 1:
+        try place(x);
+        return Item.pin(x);
+    | 2:
+        try place(x);
+        try Item.copyDest(x);
+        try place(y);
+        return Item.copyFrom(x, y);
+    | 3:
+        try operand(x, nil);
+        Item.makeStr(y);
+        return Item.coerce(y, ty[YBytes]);
+    | else:
+        try operand(x, nil);
+        Item.nilTest(x);
+        Item.usesReals(x.pos);
+        return Item.discard(x);
+    end;
+end;
+
+(* A variant, a record's fields, an error's chunk, the message of one *)
+proc doTemp(var x: Item.Item): ERROR;
+var a: Item.Item; c, h, n: INT; f: ^Sym.Obj;
+begin
+    x := {};
+    x.pos := pos();
+    match rnd(5) of
+    | 0: Item.zeroTemp(x, ty[YVariant]);
+    | 1:
+        Item.construct(x, caseObj);
+        f := caseObj^.fields;
+        try operand(a, f^.typ);
+        return Item.setField(x, f, a);
+    | 2:
+        Item.zeroTemp(x, ty[YRec]);
+        f := ty[YRec]^.fields;
+        if flag() then f := f^.next; end;
+        try operand(a, f^.typ);
+        return Item.setField(x, f, a);
+    | 3:
+        try operand(a, nil);
+        h := rnd(3) - 1;
+        n := rnd(3) - 1;
+        c := try Item.errorChunk(a, h, n);
+        Item.makeConst(x, Sym.tError, I64(c) + 1);
+        return nil;
+    | else:
+        try operand(x, ty[YErr]);
+        return Item.msg(x);
+    end;
+    return nil;
+end;
+
+proc doReturn(var x: Item.Item): ERROR;
+var f: ^Sym.Obj;
+begin
+    if (curRes = 4) and flag() then
+        (* several results *)
+        f := tuple2^.fields;
+        if flag() then f := f^.next; end;
+        if flag() then
+            try operand(x, f^.typ);
+            return Item.returnField(f, x);
+        end;
+        try doCall(x);
+        return Item.returnAll(x);
+    end;
+    if rnd(4) = 0 then return Item.returnNone(); end;
+    try operand(x, results[curRes]);
+    return Item.returnValue(x);
+end;
+
+(* One step of the script, whose item is x *)
+proc step(k: INT; var x: Item.Item): ERROR;
+var y: Item.Item;
+begin
+    x := {};
+    match k of
+    | 0: try operand(x, nil); return Item.value(x);
+    | 1: try operand(x, nil); return Item.address(x);
+    | 2: try operand(x, nil); return Item.coerce(x, ty[rnd(NumT)]);
+    | 3: try operand(x, nil); return Item.coerceExact(x, intType(), "");
+    | 4:
+        try place(x);
+        try operand(y, x.typ);
+        return Item.assign(x, y);
+    | 5: return unary(x);
+    | 6: return binary(x);
+    | 7: try operand(x, nil); return Item.convert(x, ty[rnd(NumT)]);
+    | 8: return place(x);
+    | 9: return doCall(x);
+    | 10: return doMatch(x);
+    | 11: return doFor(x);
+    | 12: return doMisc(x);
+    | 13: return doTemp(x);
+    | 14: return doReturn(x);
+    | else: return binary(x);
+    end;
+end;
+
+(* One procedure of Steps steps *)
+proc genProc(c: INT);
+var
+    sig: ^Sym.Type; i, k, line: INT; x: Item.Item; err: ERROR;
+begin
+    curRes := rnd(9);
+    sig := procType(results[curRes], nil, 0);
+    Item.beginProc(sig, nil);
+    for i := 0 to 5 do _ := Gen.allocPerm(8, 8); end;
+    makeVars();
+    Item.setChecks(flag());
+    line := 1 + rnd(40);
+    Gen.enterBody(c, line);
+    for i := 1 to Steps do
+        if Diag.errors >= 19 then break; end;   (* the 20th would end the run *)
+        k := rnd(17);
+        Item.setDemoted(false);
+        err := step(k, x);
+        if err # nil then
+            Fmt.print("S {} {} failed\n", [Fmt.int(c), Fmt.int(k)]);
+        else
+            Fmt.print("S {} {} ok\n", [Fmt.int(c), Fmt.int(k)]);
+            dump(x);
+            (* the items of these steps are as an operand is, on the stack *)
+            if (k < 4) or ((k >= 5) and (k <= 9)) then _ := Item.discard(x); end;
+        end;
+        Fmt.print("demoted {}\n", [Fmt.int(bit(Item.demoted))]);
+        Gen.resetStack(0, 0);
+    end;
+    _ := Gen.endProc(c, sig^.base # nil);
+end;
+
+proc chunkNameOf(i: INT): INT;
+var s: [3]U8;
+begin
+    s[0] := 'p'; s[1] := U8(48 + i div 10); s[2] := U8(48 + i mod 10);
+    return Scan.intern(ADR(s[0]), 3);
+end;
+
+proc main*;
+var i, c: INT; path: []U8; arg: []U8;
+begin
+    arg := Files.arg(1);
+    seed := 5;
+    for i := 0 to LEN(arg) - 1 do seed := seed * 10 + I64(arg[i]) - 48; end;
+    Letters := "abcdefgh\0";
+    path := "self/test/ItemDump.txt";
+    if LEN(Scan.open(path)) # 0 then Diag.fatal("no file"); end;
+    Scan.next;   (* the string the file starts with *)
+    X.setListing(true);
+    Chunk.setCurFile(Scan.intern(ADR(path[0]), LEN(path)));
+    for i := 0 to NumProcs - 1 do c := Chunk.newChunk(Chunk.secText, -1, chunkNameOf(i)); Chunk.setLive(c); end;
+    for i := 0 to NumGlobs - 1 do
+        c := Chunk.newChunk(Chunk.secBss, -1, chunkNameOf(NumProcs + i));
+        Chunk.setBss(c, 64, 8);
+    end;
+    makeTypes();
+    makeObjs();
+    for i := 0 to NumProcs - 1 do genProc(FirstProc + i); end;
+    Fmt.print("pc {} fixups {} lines {} said {}\n", [Fmt.int(Chunk.pc),
+        Fmt.int(Chunk.numFixups), Fmt.int(Chunk.numLines), Fmt.int(X.saidCount())]);
+    for i := 0 to Chunk.pc - 1 do Out.hex(U64(Chunk.text[i]), 2); end;
+    Out.ln;
+    for i := 0 to Chunk.numFixups - 1 do
+        Fmt.print("F {} {} {}\n", [Fmt.int(Chunk.fixups[i].at), Fmt.int(Chunk.fixups[i].chunk), Fmt.int(Chunk.fixups[i].addend)]);
+    end;
+    for i := 0 to Chunk.numLines - 1 do
+        Fmt.print("L {} {} {} {}\n", [Fmt.int(Chunk.lines[i].at), Fmt.int(Chunk.lines[i].chunk),
+            Fmt.int(Chunk.lines[i].line), Fmt.int(Chunk.lines[i].col)]);
+    end;
+    X.list(-1);
+end;
+
+end ItemDump.

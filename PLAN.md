@@ -33,7 +33,8 @@ Steps:
    if the cost is too high, mend the code generator first.
 2. `chunk`, `sym` (2a, done); `link`, `elf`, `x64` (2b, done).
 3. `gen` (3a, done: `Gen.raz`, tested by `test/GenDump`, a script of
-   calls whose bytes and listing are the same), `item` (3b).
+   calls whose bytes and listing are the same), `item` (3b, done: `Item.raz`, tested by
+   `test/ItemDump`, 60 scripts of operations with mistakes in them).
 4. `parse`, `raz`: the first compiler that builds.
 5. Fixpoint: the seed builds `self`, that builds `self`, that builds
    `self` again, and the last two are byte for byte the same. Then
@@ -83,3 +84,9 @@ none is built while the freeze holds.
   early returns and procedures without results, is several times the
   size; the same 12% is a few lines in rat. Revisit only if more
   programs show it.
+- **A `const` parameter.** `proc what(const x: Item): []U8;`: the callee
+  may not change `x` (nor take its address), so the caller may pass the
+  address of a record or array without a copy, and the program means the
+  same. Met in Self step 3b, where the seed's `const x: TItem` (about 130
+  bytes) became a value parameter, copied at every call. Not measured
+  yet; the speed test of Self step 4 will say what it costs.

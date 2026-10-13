@@ -1,0 +1,1740 @@
+(* Item: operands, their types, and what they mean.
+
+   The parser describes each operand as an item, as in Wirth's
+   compilers: a constant, a variable at an address it can name, a value
+   on Gen's stack, a procedure, a string. The routines here check the
+   items' types, fold constants, and have Gen make the code, as calls of
+   its stack machine; nothing here knows the machine.
+
+   Depends on: Scan for errors, Sym for types, Chunk for data, Gen for
+   code.
+   Leaves out: the language's syntax, which is Parse; the machine, which
+   is Gen.
+
+   An error the seed's `Mark` ended in a jump back to the parser's
+   recovery point. Here the routine that finds it shows it and returns
+   `Scan.Failed`, and every routine that calls one passes it up with
+   `try`, to where the parser reads on: what has been made by then is
+   what the seed had made when it jumped. So most routines here return an
+   ERROR, as the last of their results.
+
+   The seed's `Mismatch` of two operands is `mismatchOps` (raz has no
+   overloading), and what the parser sets, `demoted` and `checks`, has a
+   setter each, as an exported variable is read-only outside its module.
+   The seed's `TItem` is `Item` and `TMode` is `Mode`; its procedures begin
+   in lower case. *)
+module Item;
+import Fmt, Diag, Scan, Sym, Chunk, Gen;
+
+type
+    Mode* = (mConst, mVar, mStack, mProc, mType, mStr, mBuiltin, mCase, mNone, mCond,
+        mWords);   (* two results of a call, on the stack, the first under the second *)
+
+    Item* = record
+        mode*: Mode;
+        typ*: ^Sym.Type;
+        rel*: Scan.Sym;      (* mCond: the comparison of the two integers on
+                                the stack, not yet made, as Wirth's compilers
+                                keep a condition *)
+        relSigned*: BOOL;
+        fj*, tj*: INT;       (* mCond: the chains of jumps already made that are
+                                taken when the whole condition is false, and when
+                                it is true, not yet given a place (and, or and
+                                not make them); see Gen's jumpOut *)
+        val*: I64;           (* mConst: the value, an F64's bits; mStr: its length *)
+        base*: Gen.Base;     (* mVar: what the address is relative to *)
+        chunk*: INT;         (* mVar with bGlobal, mStr: the chunk; bSlot: the slot *)
+        off*: I64;           (* mVar: added to the base *)
+        vol*: BOOL;          (* mVar: reached through ^VOLATILE *)
+        isVar*: BOOL;        (* mVar: a variable of the program, not a temporary *)
+        odd*: BOOL;          (* mVar: in a packed record, so maybe misaligned *)
+        ro*: BOOL;           (* mVar: another module's exported variable, or part
+                                of one, which only that module changes *)
+        deref*: BOOL;        (* mVar: at an address from a pointer, which may be
+                                nil and isn't tested yet (nilTest) *)
+        obj*: ^Sym.Obj;      (* mProc, mBuiltin, mCase; mVar: the variable named *)
+        pos*: Diag.Pos;      (* where it is in the source, for messages *)
+    end;
+
+const
+    (* the comparison that holds when the one at the same place doesn't, for integers *)
+    NegatedOps: [6]Scan.Sym = [Scan.sNeq, Scan.sEql, Scan.sGeq, Scan.sGtr, Scan.sLeq, Scan.sLss];
+
+const
+    MaxI64 = 9223372036854775807;
+    MinI64 = -9223372036854775807 - 1;
+
+var
+    demoted*: BOOL;    (* address wanted a register variable's address: its
+                          procedure is compiled again, the variable in memory *)
+    checks*: BOOL;     (* the module's index and slice checks are made: it
+                          doesn't say check off *)
+    result: ^Sym.Type; (* the result of the procedure being compiled, or nil *)
+    passing: ^Sym.Obj; (* the parameter the argument at passingAt goes to *)
+    passingAt: Diag.Pos;
+
+proc setDemoted*(yes: BOOL);
+begin
+    demoted := yes;
+end;
+
+proc setChecks*(yes: BOOL);
+begin
+    checks := yes;
+end;
+
+(* The comparison that holds when op doesn't *)
+proc negated(op: Scan.Sym): Scan.Sym;
+begin
+    return NegatedOps[INT(op) - INT(Scan.sEql)];
+end;
+
+proc isRel(op: Scan.Sym): BOOL;
+begin
+    return (op >= Scan.sEql) and (op <= Scan.sGeq);
+end;
+
+(* Whether op is one of the list: Scan.Sym has too many names for a set *)
+proc oneOf(op: Scan.Sym; list: []Scan.Sym): BOOL;
+var i: INT;
+begin
+    for i := 0 to LEN(list) - 1 do
+        if list[i] = op then return true; end;
+    end;
+    return false;
+end;
+
+proc bit(f: BOOL): I64;
+begin
+    if f then return 1; end;
+    return 0;
+end;
+
+(* A message, from a format and the strings that fill it *)
+proc say1(f, a: []U8): []U8;
+begin
+    return Diag.say(f, [Fmt.str(a)]);
+end;
+
+proc say2(f, a, b: []U8): []U8;
+begin
+    return Diag.say(f, [Fmt.str(a), Fmt.str(b)]);
+end;
+
+(* Items *)
+
+proc makeConst*(var x: Item; t: ^Sym.Type; v: I64);
+var p: Diag.Pos;
+begin
+    p := x.pos;
+    x := {};
+    x.pos := p;
+    x.mode := mConst;
+    x.typ := t;
+    x.val := v;
+end;
+
+(* A real constant: untyped, unless typed later. Its value is an F64,
+   which for an F32 is one an F32 can hold. *)
+proc makeReal*(var x: Item; r: F64);
+var p: ^F64;
+begin
+    makeConst(x, Sym.tRConst, 0);
+    p := ^F64(ADR(x.val));
+    p^ := r;
+end;
+
+proc isF32(t: ^Sym.Type): BOOL;
+begin
+    return (t^.form = Sym.fReal) and (t^.size = 4);
+end;
+
+proc realOf*(x: Item): F64;
+var v: I64; p: ^F64;
+begin
+    v := x.val;
+    p := ^F64(ADR(v));
+    return p^;
+end;
+
+(* Gives a real constant the real type t, rounded to it. *)
+proc realTo(var x: Item; t: ^Sym.Type);
+var r: F64;
+begin
+    r := realOf(x);
+    if isF32(t) then makeReal(x, F64(F32(r))); else makeReal(x, r); end;
+    x.typ := t;
+end;
+
+(* The current string literal, as an item of its own chunk. *)
+proc makeStr*(var x: Item);
+begin
+    x := {};
+    x.mode := mStr;
+    x.typ := Sym.tStr;
+    x.val := Scan.slen;
+    x.chunk := Chunk.newChunk(Chunk.secRodata, -1, -1);
+    Chunk.setData(x.chunk, ADR(Scan.strBytes()[0]), Scan.slen + 1, 1);
+end;
+
+proc frameAdr*(off: I64): Gen.Adr;
+var a: Gen.Adr;
+begin
+    a.base := Gen.bFrame;
+    a.chunk := -1;
+    a.off := off;
+    a.hi := 0;
+    return a;
+end;
+
+proc globalAdr*(c: INT): Gen.Adr;
+var a: Gen.Adr;
+begin
+    a.base := Gen.bGlobal;
+    a.chunk := c;
+    a.off := 0;
+    a.hi := 0;
+    return a;
+end;
+
+(* Where the variable x is, for Gen; a slice in registers has two *)
+proc adrOf*(x: Item): Gen.Adr;
+var a: Gen.Adr;
+begin
+    a.base := x.base;
+    a.chunk := x.chunk;
+    a.off := x.off;
+    a.hi := 0;
+    if x.base = Gen.bReg then a.hi := x.obj^.reg2; end;
+    return a;
+end;
+
+(* An item for "found ...": a constant without a type of its own as it
+   is written, so that "found 1.5" says what is wrong; else its type. *)
+proc what*(x: Item): []U8;
+begin
+    if (x.mode = mConst) and ((x.typ = Sym.tConst) or (x.typ = Sym.tRConst)) then
+        return Diag.source(x.pos);
+    end;
+    return Sym.typeName(x.typ);
+end;
+
+(* Two operands of different types. Numbers convert, so say how. *)
+proc mismatchOps(x, y: Item; xt, yt: ^Sym.Type): ERROR;
+var text: []U8;
+begin
+    text := say2("{} and {} are different types", Sym.typeName(xt), Sym.typeName(yt));
+    if (Sym.isInt(xt) or (xt^.form = Sym.fReal)) and (Sym.isInt(yt) or (yt^.form = Sym.fReal))
+        and (xt # Sym.tConst) and (xt # Sym.tRConst) then
+        return Scan.markHelp(Diag.join(x.pos, y.pos), text,
+            say2("convert one to the other's type, as in {}({})", Sym.typeName(xt), Diag.source(y.pos)));
+    end;
+    return Scan.markAt(Diag.join(x.pos, y.pos), text);
+end;
+
+(* An item that is not a value, by what it is. *)
+proc notValue(x: Item): ERROR;
+begin
+    match x.mode of
+    | mType: return Scan.markAt(x.pos, say1("{} is a type, not a value", Sym.typeName(x.typ)));
+    | mBuiltin: return Scan.markAt(x.pos, say1("{} is a built-in procedure, not a value", Scan.nameOf(x.obj^.name)));
+    | mCase: return Scan.markAt(x.pos, say1("{} is a case, not a value", Scan.nameOf(x.obj^.name)));
+    | mNone:
+        if x.obj # nil then return Scan.markAt(x.pos, say1("{} returns nothing", Scan.nameOf(x.obj^.name))); end;
+        return Scan.markAt(x.pos, "the procedure returns nothing");
+    | else: return Scan.markAt(x.pos, "a string can't be an operand");
+    end;
+end;
+
+proc makeItem*(var x: Item; o: ^Sym.Obj): ERROR;
+begin
+    x := {};
+    x.typ := o^.typ;
+    x.obj := o;
+    match o^.cls of
+    | oConst:
+        if o^.typ = Sym.tStr then
+            x.mode := mStr; x.val := o^.val; x.chunk := o^.chunk;
+        elsif o^.typ^.form in {Sym.fArray, Sym.fRecord} then
+            (* an array or record constant: a variable in read-only data, not one of
+               the program's, so nothing can change it *)
+            x.mode := mVar; x.base := Gen.bGlobal; x.chunk := o^.chunk;
+        else
+            x.mode := mConst; x.val := o^.val;
+        end;
+    | oVar:
+        x.mode := mVar;
+        x.ro := (o^.lev = 0) and (o^.home # Sym.curModule);
+        x.isVar := not x.ro;
+        if o^.ext then
+            Gen.pushVar(globalAdr(o^.chunk), 8, false, Gen.kWord);
+            x.base := Gen.bStack;
+        elsif o^.lev = 0 then
+            x.base := Gen.bGlobal; x.chunk := o^.chunk;
+        elsif o^.ind then
+            x.base := Gen.bSlot; x.chunk := INT(o^.val); x.off := o^.off;
+        elsif o^.reg # 0 then
+            x.base := Gen.bReg; x.chunk := o^.reg;
+        else
+            x.base := Gen.bFrame; x.off := o^.val;
+        end;
+    | oProc: x.mode := mProc;
+    | oType: x.mode := mType;
+    | oBuiltin: x.mode := mBuiltin;
+    | oCase: x.mode := mCase;
+    | else: return Scan.mark(say1("{} is not a value", Scan.nameOf(o^.name)));
+    end;
+    return nil;
+end;
+
+proc scalarSize*(t: ^Sym.Type): INT;
+begin
+    if t^.form in {Sym.fInt, Sym.fBool, Sym.fEnum, Sym.fSet, Sym.fReal} then return INT(t^.size); end;
+    return 8;
+end;
+
+(* The width an operation on t is brought back to, and whether signed *)
+proc intSize(t: ^Sym.Type): INT;
+begin
+    if t^.form = Sym.fInt then return INT(t^.size); end;
+    return 8;
+end;
+
+proc signed(t: ^Sym.Type): BOOL;
+begin
+    return ((t^.form = Sym.fInt) and t^.signed) or (t^.form = Sym.fConst);
+end;
+
+proc cut(v: I64; t: ^Sym.Type): I64;
+begin
+    if t^.form # Sym.fInt then return v; end;
+    match t^.size of
+    | 1: if t^.signed then return I64(I8(v)); end; return I64(U8(v));
+    | 2: if t^.signed then return I64(I16(v)); end; return I64(U16(v));
+    | 4: if t^.signed then return I64(I32(v)); end; return I64(U32(v));
+    | else: return v;
+    end;
+end;
+
+(* Code computing with a real is noted on its chunk, at the first place,
+   for a target without reals (report 5.1) to refuse if the chunk turns
+   out to be used. A real moved whole, as a record's bytes are copied,
+   needs nothing the target lacks, and isn't noted. *)
+proc usesReals*(p: Diag.Pos);
+begin
+    if (Gen.codeChunk >= 0) and not Chunk.chunks[Gen.codeChunk].reals then
+        Chunk.setReals(Gen.codeChunk, p);
+    end;
+end;
+
+(* x, at an address from a pointer, is about to be used: Gen tests the
+   address for nil where the machine wouldn't stop at it (report section
+   10), from its offset to its end. *)
+proc nilTest*(var x: Item);
+begin
+    if (x.mode = mVar) and x.deref then Gen.checkNil(x.off + x.typ^.size, x.pos); end;
+    x.deref := false;
+end;
+
+(* x's value, on top of the stack *)
+proc value*(var x: Item): ERROR;
+var f: F32; p: ^U32;
+begin
+    if x.mode = mCond then
+        if (x.fj = Gen.NoLabel) and (x.tj = Gen.NoLabel) then Gen.compare(x.rel, Gen.kWord, x.relSigned);
+        else Gen.condValue(negated(x.rel), x.relSigned, x.fj, x.tj); end;
+        x.mode := mStack;
+        return nil;
+    end;
+    if x.typ^.form = Sym.fReal then usesReals(x.pos); end;
+    nilTest(x);
+    match x.mode of
+    | mConst:
+        if (x.typ^.form = Sym.fError) and (x.val > 0) then Gen.pushAdr(globalAdr(INT(x.val) - 1));
+        elsif isF32(x.typ) then
+            f := F32(realOf(x));
+            p := ^U32(ADR(f));
+            Gen.pushConst(Gen.kF32, I64(p^));
+        else Gen.pushConst(Gen.kindOf(x.typ), x.val); end;
+    | mVar:
+        if not Sym.isScalar(x.typ) then
+            return Scan.markAt(x.pos, say1("expected a single value, found {}", what(x)));
+        end;
+        Gen.pushVar(adrOf(x), scalarSize(x.typ), (x.typ^.form = Sym.fInt) and x.typ^.signed, Gen.kindOf(x.typ));
+    | mStack: x.mode := mStack;
+    | mProc:
+        if x.obj^.isCode and (x.obj^.typ^.base # nil) and x.obj^.typ^.base^.tuple then
+            return Scan.markAt(x.pos, "a code procedure with two results can only be called");
+        end;
+        Gen.pushProc(x.obj^.chunk, x.obj^.ext);
+    | else: return notValue(x);
+    end;
+    x.mode := mStack;
+    return nil;
+end;
+
+(* The address of the variable or string x, on top of the stack *)
+proc address*(var x: Item): ERROR;
+begin
+    nilTest(x);
+    if (x.mode = mVar) and (x.base = Gen.bReg) then
+        (* its address is wanted after all: the procedure is compiled again
+           with the variable in memory; till then, this code is thrown away *)
+        x.obj^.reg := 0;
+        x.obj^.reg2 := 0;
+        demoted := true;
+        x.base := Gen.bFrame;
+        x.off := x.obj^.val;
+    end;
+    if x.mode = mStr then Gen.pushAdr(globalAdr(x.chunk));
+    elsif x.mode = mVar then
+        Gen.pushAdr(adrOf(x));
+        x.base := Gen.bStack; x.off := 0;
+    else return Scan.markAt(x.pos, "expected a variable"); end;
+    return nil;
+end;
+
+(* x isn't wanted: what it has on the stack is dropped *)
+proc discard*(x: Item): ERROR;
+var y: Item;
+begin
+    if x.mode = mCond then
+        y := x;
+        try value(y);
+        Gen.drop();
+        return nil;
+    end;
+    if (x.mode = mStack) or ((x.mode = mVar) and (x.base = Gen.bStack)) then Gen.drop(); end;
+    if x.mode = mWords then Gen.drop(); Gen.drop(); end;
+    return nil;
+end;
+
+(* Frames *)
+
+proc tempItem*(var x: Item; t: ^Sym.Type; off: I64);
+var p: Diag.Pos;
+begin
+    p := x.pos;
+    x := {};
+    x.pos := p;
+    x.mode := mVar; x.typ := t; x.base := Gen.bFrame; x.off := off;
+end;
+
+proc toSlot*(var x: Item): (I64, ERROR);
+var s: I64;
+begin
+    try value(x);
+    s := Gen.allocTemp(8, 8);
+    Gen.popVar(frameAdr(s), 8);
+    return s, nil;
+end;
+
+(* Copying *)
+
+(* x, copied to a temporary *)
+proc copyToTemp*(var x: Item): ERROR;
+var t: I64; f, g: ^Sym.Obj; a: Gen.Adr;
+begin
+    if x.vol then return Scan.markAt(x.pos, "can't copy through a volatile pointer"); end;
+    t := Gen.allocTemp(x.typ^.size, x.typ^.align);
+    if (x.mode = mVar) and (x.base = Gen.bReg) then
+        (* a slice in registers, which has no address: its words stored *)
+        a := adrOf(x);
+        Gen.pushVar(a, 8, false, Gen.kWord);
+        Gen.popVar(frameAdr(t), 8);
+        a.off := 8;
+        Gen.pushVar(a, 8, false, Gen.kWord);
+        Gen.popVar(frameAdr(t + 8), 8);
+        tempItem(x, x.typ, t);
+        return nil;
+    end;
+    if x.mode = mWords then
+        (* the second result is on top, so it is popped first *)
+        f := x.typ^.fields; g := f^.next;
+        Gen.popVar(frameAdr(t + g^.val), scalarSize(g^.typ));
+        Gen.popVar(frameAdr(t + f^.val), scalarSize(f^.typ));
+        tempItem(x, x.typ, t);
+        return nil;
+    end;
+    try address(x);
+    Gen.copyTo(frameAdr(t), x.typ^.size);
+    tempItem(x, x.typ, t);
+    return nil;
+end;
+
+(* A slice made from an address on the stack and a length. *)
+proc sliceOf*(var x: Item; t: ^Sym.Type; len: I64);
+var s: I64;
+begin
+    s := Gen.allocTemp(16, 8);
+    Gen.popVar(frameAdr(s), 8);
+    Gen.pushConst(Gen.kWord, len);
+    Gen.popVar(frameAdr(s + 8), 8);
+    tempItem(x, t, s);
+end;
+
+(* An INT goes silently into an I64, and a UINT into a U64, losing
+   nothing on any target (report section 5.10). *)
+proc widens(s, t: ^Sym.Type): BOOL;
+begin
+    return ((s = Sym.tInt) and Sym.same(t, Sym.tI64)) or ((s = Sym.tUInt) and Sym.same(t, Sym.tU64));
+end;
+
+(* Another module's exported variable can be read, not changed, nor
+   handed to anything that could change it (report section 3). *)
+proc notReadOnly*(x: Item): ERROR;
+begin
+    if x.ro then
+        return Scan.markAt(x.pos, Diag.say("{} is {}'s, and can't be changed outside it",
+            [Fmt.str(Diag.source(x.pos)), Fmt.str(Scan.nameOf(x.obj^.home^.name))]));
+    end;
+    return nil;
+end;
+
+(* An error in x's type; if x is an argument, a note at the parameter
+   it goes to. *)
+proc mismatch(x: Item; text: []U8): ERROR;
+begin
+    Diag.error(x.pos, text);
+    if (passing # nil) and (x.pos.f = passingAt.f) and (x.pos.a = passingAt.a) and (x.pos.b = passingAt.b) then
+        Diag.note(passing^.pos, say1("it goes to {}, declared here", Scan.nameOf(passing^.name)));
+    end;
+    return Scan.Failed;
+end;
+
+proc coerce*(var x: Item; t: ^Sym.Type): ERROR;
+var s: ^Sym.Type; tmp: I64;
+begin
+    if x.mode = mCond then try value(x); end;
+    s := x.typ;
+    if x.mode = mStr then
+        if (t^.form = Sym.fSlice) and (t^.base = Sym.tU8) then
+            try address(x); sliceOf(x, t, x.val);
+        elsif (t^.form = Sym.fPtr) and (t^.base = Sym.tU8) then
+            try address(x); x.mode := mStack; x.typ := t;
+        elsif (t^.form = Sym.fArray) and (t^.base = Sym.tU8) and (t^.len >= x.val) then
+            tmp := Gen.allocTemp(t^.size, 1);
+            try address(x);
+            Gen.copyTo(frameAdr(tmp), x.val);
+            if t^.len > x.val then Gen.zeroVar(frameAdr(tmp + x.val), t^.len - x.val); end;
+            tempItem(x, t, tmp);
+        else return mismatch(x, say1("can't use a string as {}", Sym.typeName(t))); end;
+        return nil;
+    end;
+    if x.mode in {mType, mBuiltin, mNone, mCase} then return notValue(x); end;
+    if Sym.same(s, t) then return nil; end;
+    if widens(s, t) then x.typ := t;   (* the same bits, on a 64-bit target *)
+    elsif (s = Sym.tRConst) and (t^.form = Sym.fReal) then realTo(x, t);
+    elsif (s^.form = Sym.fConst) and (t^.form = Sym.fInt) then
+        if (x.mode = mConst) and not Sym.fits(x.val, t) then
+            return Scan.markAt(x.pos, Diag.say("{} doesn't fit {}", [Fmt.int(x.val), Fmt.str(Sym.typeName(t))]));
+        end;
+        x.typ := t;
+    elsif (s^.form = Sym.fNil) and (t^.form in {Sym.fPtr, Sym.fProc, Sym.fError}) then
+        x.typ := t;
+    elsif (s^.form = Sym.fPtr) and (t^.form = Sym.fPtr) and t^.vol and not s^.vol
+        and Sym.same(s^.base, t^.base) then
+        x.typ := t;
+    elsif (s^.form = Sym.fArray) and (t^.form = Sym.fSlice) and Sym.same(s^.base, t^.base) then
+        try notReadOnly(x);
+        if x.vol then return Scan.markAt(x.pos, "can't make a slice through a volatile pointer"); end;
+        if x.odd then return Scan.markAt(x.pos, "can't make a slice of a field of a packed record"); end;
+        try address(x);
+        sliceOf(x, t, s^.len);
+    elsif (x.mode = mProc) and (t^.form # Sym.fProc) and (s^.base = nil) then
+        return Scan.markAt(x.pos, say1("{} is a procedure, and returns nothing", Diag.source(x.pos)));
+    elsif (x.mode = mProc) and (t^.form # Sym.fProc) then
+        return Scan.markHelp(x.pos,
+            say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
+            say1("to call it, write {}()", Diag.source(x.pos)));
+    else
+        return mismatch(x, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)));
+    end;
+    return nil;
+end;
+
+(* coerce where the types must be the same, as in a for loop, INC and
+   several results, which don't widen an INT to an I64 (report sections
+   5.10, 6.1 and 7.2); help, if not empty, says why. *)
+proc coerceExact*(var x: Item; t: ^Sym.Type; help: []U8): ERROR;
+var h: []U8;
+begin
+    if widens(x.typ, t) then
+        h := help;
+        if LEN(h) = 0 then
+            h := say2("they don't mix here: write {}({})", Sym.typeName(t), Diag.source(x.pos));
+        end;
+        return Scan.markHelp(x.pos, say2("expected {}, found {}", Sym.typeName(t), what(x)), h);
+    end;
+    return coerce(x, t);
+end;
+
+(* dst := src. The address of dst, if it has to be computed, is on the
+   stack already, under src's. *)
+proc assign*(var dst, src: Item): ERROR;
+begin
+    try coerce(src, dst.typ);
+    if Sym.isScalar(dst.typ) then
+        try value(src);
+        Gen.popVar(adrOf(dst), scalarSize(dst.typ));
+    else
+        if dst.vol or src.vol then return Scan.markAt(src.pos, "can't copy through a volatile pointer"); end;
+        if (src.mode = mVar) and (src.base = Gen.bReg) then try copyToTemp(src); end;   (* a slice in registers *)
+        try address(src);
+        if dst.base = Gen.bStack then Gen.copyBlock(dst.typ^.size, dst.off);
+        else Gen.copyTo(adrOf(dst), dst.typ^.size); end;
+    end;
+    return nil;
+end;
+
+(* t's name, ending in a zero byte, for Rt.fail *)
+proc nameChunk(t: ^Sym.Type): INT;
+var s: []U8; p: ^U8; n, c: INT;
+begin
+    s := Sym.typeName(t);
+    n := LEN(s);
+    p := Scan.grab(n + 1);
+    COPY(p[0..n], s);
+    p[n] := 0;
+    c := Chunk.newChunk(Chunk.secRodata, -1, -1);
+    Chunk.setData(c, p, n + 1, 1);
+    return c;
+end;
+
+(* Selectors *)
+
+proc deref*(var x: Item): ERROR;
+var t: ^Sym.Type;
+begin
+    t := x.typ;
+    if t^.form # Sym.fPtr then
+        return Scan.markAt(x.pos, say1("expected a pointer, found {}", Sym.typeName(t)));
+    end;
+    if t^.base = nil then
+        return Scan.markAt(x.pos, say1("{} points to a type never declared", Sym.typeName(t)));
+    end;
+    try value(x);
+    x.mode := mVar; x.base := Gen.bStack; x.off := 0; x.deref := true;
+    x.typ := t^.base; x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
+    return nil;
+end;
+
+(* A field of a packed record, of more than one byte's alignment, may
+   sit anywhere; it is read and written, but has no address and no
+   volatile access, which a machine that can't reach a misaligned word
+   couldn't make one access (report section 5.5). *)
+proc field*(var x: Item; f: ^Sym.Obj): ERROR;
+begin
+    if x.typ^.packd and (f^.typ^.align > 1) then
+        if x.vol then return Scan.markAt(x.pos, "a field of a packed record can't be volatile"); end;
+        x.odd := true;
+    end;
+    x.off := x.off + f^.val;
+    x.typ := f^.typ;
+    return nil;
+end;
+
+proc indexPrep*(var x: Item): ERROR;
+begin
+    nilTest(x);
+    if x.mode = mStr then try coerce(x, Sym.tBytes); end;
+    if (x.typ^.form = Sym.fPtr) and (x.typ^.base^.form = Sym.fArray) then
+        return Scan.markAt(x.pos, "a pointer to an array is indexed as p^[i]");
+    end;
+    if x.typ^.form = Sym.fPtr then try value(x);
+    elsif not ((x.mode = mVar) and (x.typ^.form in {Sym.fArray, Sym.fSlice})) then
+        return Scan.markAt(x.pos, say1("expected an array, a slice or a pointer, found {}", what(x)));
+    end;
+    return nil;
+end;
+
+(* The index on top, times the size of an element *)
+proc scaleBy(s: I64);
+begin
+    if s # 1 then
+        Gen.pushConst(Gen.kWord, s);
+        Gen.op(Scan.sTimes, Gen.kWord, 8, true);
+    end;
+end;
+
+proc index*(var x, y: Item): ERROR;
+var t: ^Sym.Type; s: I64;
+begin
+    t := x.typ;
+    s := t^.base^.size;
+    if not Sym.isInt(y.typ) then
+        return Scan.markAt(y.pos, say1("an index is an integer, found {}", what(y)));
+    end;
+    if t^.form = Sym.fPtr then
+        try value(y);
+        scaleBy(s);
+        Gen.op(Scan.sPlus, Gen.kWord, 8, false);
+        x.mode := mVar; x.base := Gen.bStack; x.off := 0;
+        x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
+    elsif (t^.form = Sym.fArray) and (y.mode = mConst) then
+        if (y.val < 0) or (y.val >= t^.len) then
+            return Scan.markAt(y.pos, Diag.say("index {} is out of range for a length of {}", [Fmt.int(y.val), Fmt.int(t^.len)]));
+        end;
+        x.off := x.off + y.val * s;
+    elsif t^.form = Sym.fArray then
+        try value(y);
+        if checks then Gen.checkIndex(t^.len, y.pos); end;
+        if x.base = Gen.bStack then scaleBy(s); Gen.op(Scan.sPlus, Gen.kWord, 8, false);
+        else Gen.indexArray(adrOf(x), s); x.off := 0; end;
+        x.base := Gen.bStack;
+    else
+        try value(y);
+        Gen.indexSlice(adrOf(x), s, checks, y.pos);
+        x.base := Gen.bStack; x.off := 0; x.isVar := true; x.vol := false; x.ro := false;
+    end;
+    x.typ := t^.base;
+    return nil;
+end;
+
+proc sliceLo*(var lo: Item): ERROR;
+begin
+    if not Sym.isInt(lo.typ) then
+        return Scan.markAt(lo.pos, say1("an index is an integer, found {}", what(lo)));
+    end;
+    return value(lo);
+end;
+
+proc slice*(var x, lo, hi: Item): ERROR;
+var t, st: ^Sym.Type; tmp: I64;
+begin
+    t := x.typ;
+    if not Sym.isInt(hi.typ) then
+        return Scan.markAt(hi.pos, say1("an index is an integer, found {}", what(hi)));
+    end;
+    if x.vol then return Scan.markAt(x.pos, "can't make a slice through a volatile pointer"); end;
+    if x.odd then return Scan.markAt(x.pos, "can't make a slice of a field of a packed record"); end;
+    if t^.form = Sym.fArray then try notReadOnly(x); end;
+    try value(hi);
+    tmp := Gen.allocTemp(16, 8);
+    if t^.form = Sym.fPtr then Gen.slicePtr(t^.base^.size, tmp, checks, lo.pos);
+    else Gen.slice(adrOf(x), t^.form = Sym.fArray, t^.len, t^.base^.size, tmp, checks, lo.pos); end;
+    st := Sym.newType(Sym.fSlice, 16, 8);
+    st^.base := t^.base;
+    tempItem(x, st, tmp);
+    return nil;
+end;
+
+(* Operators *)
+
+proc neg*(var x: Item): ERROR;
+begin
+    if x.typ^.form = Sym.fReal then
+        if x.mode = mConst then x.val := x.val xor MinI64;
+        else try value(x); Gen.neg(Gen.kindOf(x.typ), 8, false); end;
+    elsif Sym.isInt(x.typ) then
+        if (x.mode = mConst) and (x.typ^.form = Sym.fConst) and (x.val = MinI64) then
+            return Scan.markAt(x.pos, "the constant is too big for I64");
+        elsif x.mode = mConst then x.val := cut(-x.val, x.typ);
+        else try value(x); Gen.neg(Gen.kWord, intSize(x.typ), signed(x.typ)); end;
+    else return Scan.markAt(x.pos, say1("can't negate {}", Sym.typeName(x.typ))); end;
+    return nil;
+end;
+
+proc notOp*(var x: Item): ERROR;
+var L: INT;
+begin
+    if Sym.isInt(x.typ) then
+        return Scan.markHelp(x.pos, say1("\"not\" needs a BOOL, found {}", what(x)), "the bits of an integer flip with ~");
+    end;
+    if x.typ^.form # Sym.fBool then
+        return Scan.markAt(x.pos, say1("\"not\" needs a BOOL, found {}", what(x)));
+    end;
+    if x.mode = mConst then x.val := 1 - x.val;
+    elsif x.mode = mCond then
+        x.rel := negated(x.rel);
+        L := x.fj; x.fj := x.tj; x.tj := L;
+    else try value(x); Gen.notBool(); end;
+    return nil;
+end;
+
+proc complement*(var x: Item): ERROR;
+begin
+    if x.typ^.form = Sym.fBool then
+        return Scan.markHelp(x.pos, say1("\"~\" needs an integer, found {}", what(x)), "a BOOL is negated with not");
+    end;
+    if not Sym.isInt(x.typ) then
+        return Scan.markAt(x.pos, say1("\"~\" needs an integer, found {}", what(x)));
+    end;
+    if x.mode = mConst then x.val := cut(~x.val, x.typ);
+    else try value(x); Gen.complement(intSize(x.typ), signed(x.typ)); end;
+    return nil;
+end;
+
+(* Arrays, slices and strings, which = and # compare element by element *)
+proc isSeq(t: ^Sym.Type): BOOL;
+begin
+    return t^.form in {Sym.fStr, Sym.fArray, Sym.fSlice};
+end;
+
+proc elemOf(t: ^Sym.Type): ^Sym.Type;
+begin
+    if t^.form = Sym.fStr then return Sym.tU8; end;
+    return t^.base;
+end;
+
+(* An array, slice or string as a slice in a temporary, for comparing. *)
+proc seqSlice(var x: Item): ERROR;
+var t: ^Sym.Type;
+begin
+    t := Sym.newType(Sym.fSlice, 16, 8);
+    t^.base := elemOf(x.typ);
+    if x.typ^.form = Sym.fSlice then
+        x.typ := t; try copyToTemp(x);
+    elsif x.mode = mStr then
+        try address(x); sliceOf(x, t, x.val);
+    else
+        if x.vol then return Scan.markAt(x.pos, "can't compare through a volatile pointer"); end;
+        try address(x); sliceOf(x, t, x.typ^.len);
+    end;
+    return nil;
+end;
+
+(* x, a BOOL, as a condition: a value compared with 0 if it isn't one *)
+proc makeCond(var x: Item): ERROR;
+begin
+    if x.mode = mCond then return nil; end;
+    try value(x);
+    Gen.pushConst(Gen.kWord, 0);
+    x.mode := mCond;
+    x.rel := Scan.sNeq;
+    x.relSigned := false;
+    x.fj := Gen.NoLabel;
+    x.tj := Gen.NoLabel;
+    return nil;
+end;
+
+proc op1*(op: Scan.Sym; var x: Item; var L: INT): ERROR;
+begin
+    L := Gen.NoLabel;
+    if ((op = Scan.sAnd) or (op = Scan.sOr)) and (x.typ^.form = Sym.fBool) then
+        if x.mode = mConst then return nil; end;    (* folded by op2 *)
+        try makeCond(x);
+        if op = Scan.sAnd then
+            Gen.jumpOut(negated(x.rel), x.relSigned, x.fj);
+            Gen.fix(x.tj);
+            x.tj := Gen.NoLabel;
+        else
+            Gen.jumpOut(x.rel, x.relSigned, x.tj);
+            Gen.fix(x.fj);
+            x.fj := Gen.NoLabel;
+        end;
+    elsif ((op = Scan.sEql) or (op = Scan.sNeq)) and isSeq(x.typ) then
+        try seqSlice(x);
+    elsif (op = Scan.sPlus) and (x.mode = mStr) then
+        (* two string constants to be joined: nothing to compute *)
+    elsif (op = Scan.sPlus) and isSeq(x.typ) then
+        return Scan.markHelp(x.pos, say1("+ doesn't join {}", what(x)), "strings are joined in a Buf: Buf.str(b, s)");
+    elsif x.mode in {mType, mBuiltin, mNone, mCase, mStr} then
+        return notValue(x);
+    elsif x.mode # mConst then
+        try value(x);
+    end;
+    return nil;
+end;
+
+proc log2(v: I64): INT;
+var n: INT;
+begin
+    n := 0;
+    while (v > 1) and ((v & 1) = 0) do v := v shr 1; INC(n); end;
+    if v # 1 then n := -1; end;
+    return n;
+end;
+
+(* Whether a op b, for + - *, overflows an I64: an untyped constant
+   doesn't wrap, it is an error (report section 4). *)
+proc overflows(op: Scan.Sym; a, b: I64): BOOL;
+begin
+    match op of
+    | sPlus: return ((b > 0) and (a > MaxI64 - b)) or ((b < 0) and (a < MinI64 - b));
+    | sMinus: return ((b < 0) and (a > MaxI64 + b)) or ((b > 0) and (a < MinI64 + b));
+    | sTimes:
+        if (a = 0) or (b = 0) then return false; end;
+        if a = -1 then return b = MinI64; end;
+        if b = -1 then return a = MinI64; end;
+        return (a * b) div b # a;
+    | else: return false;
+    end;
+end;
+
+(* A type's width in bits; an untyped constant's is an I64's *)
+proc bits(t: ^Sym.Type): I64;
+begin
+    return t^.size * 8;
+end;
+
+(* a div b and a mod b, of type t *)
+proc foldDiv(op: Scan.Sym; a, b: I64; t: ^Sym.Type; p: Diag.Pos): (I64, ERROR);
+begin
+    if b = 0 then return 0, Scan.markAt(p, "division by zero"); end;
+    if (t^.form = Sym.fInt) and not t^.signed then
+        if op = Scan.sDiv then return I64(U64(a) div U64(b)), nil; end;
+        return I64(U64(a) mod U64(b)), nil;
+    end;
+    if (b = -1) and (a = I64(-1) shl (bits(t) - 1)) then return 0, Scan.markAt(p, "division overflows"); end;
+    if op = Scan.sDiv then return a div b, nil; end;
+    return a mod b, nil;
+end;
+
+proc foldInt(op: Scan.Sym; a, b: I64; t: ^Sym.Type; p: Diag.Pos): (I64, ERROR);
+var u: BOOL;
+begin
+    u := (t^.form = Sym.fInt) and not t^.signed;
+    if (t^.form = Sym.fConst) and overflows(op, a, b) then
+        return 0, Scan.markAt(p, "the constant is too big for I64");
+    end;
+    match op of
+    | sPlus: return a + b, nil;
+    | sMinus: return a - b, nil;
+    | sTimes: return a * b, nil;
+    | sDiv: return foldDiv(op, a, b, t, p);
+    | sMod: return foldDiv(op, a, b, t, p);
+    | sAmp: return a & b, nil;
+    | sBar: return a | b, nil;
+    | sXor: return a xor b, nil;
+    | sShl: return a shl (b & (bits(t) - 1)), nil;
+    | sShr:
+        if u then return I64(U64(a) shr (b & (bits(t) - 1))), nil; end;
+        return a shr (b & (bits(t) - 1)), nil;
+    | sEql: return bit(a = b), nil;
+    | sNeq: return bit(a # b), nil;
+    | sLss:
+        if u then return bit(U64(a) < U64(b)), nil; end;
+        return bit(a < b), nil;
+    | sLeq:
+        if u then return bit(U64(a) <= U64(b)), nil; end;
+        return bit(a <= b), nil;
+    | sGtr:
+        if u then return bit(U64(a) > U64(b)), nil; end;
+        return bit(a > b), nil;
+    | sGeq:
+        if u then return bit(U64(a) >= U64(b)), nil; end;
+        return bit(a >= b), nil;
+    | else: return 0, Scan.markAt(p, "bad operator");
+    end;
+end;
+
+(* Folds x op y, of the real type t: an F32 rounded at each step, as
+   the machine would. *)
+proc foldReal(op: Scan.Sym; x, y: Item; t: ^Sym.Type; var r: Item): BOOL;
+var a, b: F64; ok: BOOL;
+begin
+    a := realOf(x); b := realOf(y);
+    ok := true;
+    match op of
+    | sPlus: makeReal(r, a + b);
+    | sMinus: makeReal(r, a - b);
+    | sTimes: makeReal(r, a * b);
+    | sSlash: makeReal(r, a / b);
+    | sEql: makeConst(r, Sym.tBool, bit(a = b));
+    | sNeq: makeConst(r, Sym.tBool, bit(a # b));
+    | sLss: makeConst(r, Sym.tBool, bit(a < b));
+    | sLeq: makeConst(r, Sym.tBool, bit(a <= b));
+    | sGtr: makeConst(r, Sym.tBool, bit(a > b));
+    | sGeq: makeConst(r, Sym.tBool, bit(a >= b));
+    | else: ok := false;
+    end;
+    if r.typ^.form = Sym.fReal then realTo(r, t); end;
+    return ok;
+end;
+
+(* and, or and not are for BOOLs; &, |, xor and ~ for the bits of
+   integers: x is the wrong kind for op, and the message names the
+   operator it may have meant *)
+proc wrongLogic(op: Scan.Sym; var x: Item): ERROR;
+var bitsOf: []U8;
+begin
+    bitsOf := "the bits of integers take ";
+    if (op = Scan.sAnd) and Sym.isInt(x.typ) then
+        return Scan.markHelp(x.pos, say1("\"and\" needs BOOLs, found {}", what(x)), say1("{}&", bitsOf));
+    elsif (op = Scan.sOr) and Sym.isInt(x.typ) then
+        return Scan.markHelp(x.pos, say1("\"or\" needs BOOLs, found {}", what(x)), say1("{}|", bitsOf));
+    elsif op = Scan.sAmp then
+        return Scan.markHelp(x.pos, say1("\"&\" needs integers, found {}", what(x)), "BOOLs take and");
+    elsif op = Scan.sBar then
+        return Scan.markHelp(x.pos, say1("\"|\" needs integers, found {}", what(x)), "BOOLs take or");
+    elsif op = Scan.sXor then
+        return Scan.markHelp(x.pos, say1("\"xor\" needs integers, found {}", what(x)), "BOOLs that differ are #");
+    end;
+    return Scan.markAt(x.pos, say2("{} needs BOOLs, found {}", Scan.symText(op), what(x)));
+end;
+
+(* x + y, of two string constants: one string, in a chunk of its own
+   (report section 4) *)
+proc joinStr(var x, y: Item): ERROR;
+var p: ^U8; c, xs, ys, xl, yl: INT;
+begin
+    if y.mode # mStr then
+        return Scan.markAt(y.pos, say1("\"+\" joins two strings, found {}", what(y)));
+    end;
+    xs := Chunk.chunks[x.chunk].start;
+    ys := Chunk.chunks[y.chunk].start;
+    xl := INT(x.val);
+    yl := INT(y.val);
+    p := Scan.grab(xl + yl + 1);
+    COPY(p[0..xl], Chunk.rodata[xs..xs + xl]);
+    COPY(p[xl..xl + yl + 1], Chunk.rodata[ys..ys + yl + 1]);
+    c := Chunk.newChunk(Chunk.secRodata, -1, -1);
+    Chunk.setData(c, p, xl + yl + 1, 1);
+    x.chunk := c;
+    x.val := x.val + y.val;
+    return nil;
+end;
+
+(* x <= y has no bit of x outside y; x >= y is y <= x *)
+proc setSubset(op: Scan.Sym);
+begin
+    if op = Scan.sGeq then Gen.swap(); end;
+    Gen.complement(8, false);
+    Gen.op(Scan.sAmp, Gen.kWord, 8, false);
+    Gen.pushConst(Gen.kWord, 0);
+    Gen.compare(Scan.sEql, Gen.kWord, false);
+end;
+
+(* A set's operations, as operations on its bits: the two values on top *)
+proc setOp(op: Scan.Sym);
+begin
+    match op of
+    | sPlus: Gen.op(Scan.sBar, Gen.kWord, 8, false);
+    | sTimes: Gen.op(Scan.sAmp, Gen.kWord, 8, false);
+    | sMinus: Gen.complement(8, false); Gen.op(Scan.sAmp, Gen.kWord, 8, false);
+    | sLeq: setSubset(op);
+    | sGeq: setSubset(op);
+    | sIn:
+        Gen.swap();
+        Gen.op(Scan.sShr, Gen.kWord, 8, false);
+        Gen.pushConst(Gen.kWord, 1);
+        Gen.op(Scan.sAmp, Gen.kWord, 8, false);
+    | else: Gen.compare(op, Gen.kWord, false);
+    end;
+end;
+
+(* The operators the arithmetic of integers, of reals and of sets
+   stand for, and the comparisons *)
+proc intOp(op: Scan.Sym): BOOL;
+begin
+    return isRel(op) or oneOf(op, [Scan.sPlus, Scan.sMinus, Scan.sTimes, Scan.sDiv, Scan.sMod,
+        Scan.sAmp, Scan.sBar, Scan.sXor, Scan.sShl, Scan.sShr]);
+end;
+
+proc doesntApply(op: Scan.Sym; x, y: Item; t: ^Sym.Type): ERROR;
+begin
+    return Scan.markAt(Diag.join(x.pos, y.pos), say2("{} doesn't apply to {}", Scan.symText(op), Sym.typeName(t)));
+end;
+
+proc op2*(op: Scan.Sym; var x, y: Item; _L: INT): ERROR;
+var xt, yt, t, e: ^Sym.Type; r: Item; scale: INT; isPtr: BOOL; a, b, v: I64;
+begin
+    xt := x.typ; yt := y.typ;
+    if y.mode in {mType, mBuiltin, mNone, mCase} then return notValue(y); end;
+    if (op = Scan.sPlus) and (x.mode = mStr) then return joinStr(x, y); end;
+
+    if (op = Scan.sAnd) or (op = Scan.sOr) then
+        if xt^.form # Sym.fBool then return wrongLogic(op, x); end;
+        if yt^.form # Sym.fBool then return wrongLogic(op, y); end;
+        if (x.mode = mConst) and (y.mode = mConst) then
+            if op = Scan.sAnd then x.val := x.val & y.val; else x.val := x.val | y.val; end;
+        elsif x.mode = mConst then
+            (* true and y, false or y: y; else x, y computed and dropped *)
+            if (x.val = 1) = (op = Scan.sAnd) then x := y;
+            else try discard(y); end;
+        else
+            try makeCond(y);
+            if op = Scan.sAnd then x.fj := Gen.joinJumps(x.fj, y.fj); x.tj := y.tj;
+            else x.tj := Gen.joinJumps(x.tj, y.tj); x.fj := y.fj; end;
+            x.rel := y.rel;
+            x.relSigned := y.relSigned;
+        end;
+        return nil;
+    end;
+
+    if oneOf(op, [Scan.sAmp, Scan.sBar, Scan.sXor]) and (xt^.form = Sym.fBool) then return wrongLogic(op, x); end;
+    if oneOf(op, [Scan.sAmp, Scan.sBar, Scan.sXor]) and (yt^.form = Sym.fBool) then return wrongLogic(op, y); end;
+
+    (* the lengths, then the bytes, LEN * SIZE(T) of them: the elements
+       are of types whose bytes say all there is to their values *)
+    if ((op = Scan.sEql) or (op = Scan.sNeq)) and isSeq(xt) then
+        e := elemOf(xt);
+        if not isSeq(yt) then
+            return Scan.markAt(Diag.join(x.pos, y.pos), say1("can't compare an array with {}", Sym.typeName(yt)));
+        elsif not Sym.same(e, elemOf(yt)) then
+            return Scan.markAt(Diag.join(x.pos, y.pos),
+                say2("can't compare an array of {} with one of {}", Sym.typeName(e), Sym.typeName(elemOf(yt))));
+        end;
+        if e^.form = Sym.fReal then
+            return Scan.markHelp(Diag.join(x.pos, y.pos),
+                say1("can't compare arrays of reals with {}", Scan.symText(op)),
+                "-0.0 = 0.0 and a NaN equals nothing, though their bytes say otherwise: write a loop");
+        elsif not (e^.form in {Sym.fInt, Sym.fBool, Sym.fEnum, Sym.fSet, Sym.fPtr}) then
+            return Scan.markHelp(Diag.join(x.pos, y.pos),
+                say2("can't compare arrays of {} with {}", Sym.typeName(e), Scan.symText(op)), "write a loop");
+        end;
+        try seqSlice(y);
+        Gen.compareSeq(x.off, y.off, log2(e^.size), op = Scan.sEql);
+        makeConst(x, Sym.tBool, 0);
+        x.mode := mStack;
+        return nil;
+    end;
+
+    (* the type of the result, and the checks *)
+    t := nil; scale := 1; isPtr := false;
+    if Sym.isInt(xt) and Sym.isInt(yt) then
+        if op = Scan.sSlash then
+            return Scan.markHelp(Diag.join(x.pos, y.pos), "\"/\" divides reals, not integers",
+                say2("to divide integers, write {} div {}", Diag.source(x.pos), Diag.source(y.pos)));
+        end;
+        if (op = Scan.sShl) or (op = Scan.sShr) then
+            if xt^.form = Sym.fConst then t := Sym.tConst; else t := xt; end;
+        elsif (xt^.form = Sym.fConst) and (yt^.form = Sym.fConst) then t := Sym.tConst;
+        elsif xt^.form = Sym.fConst then
+            if (x.mode = mConst) and not Sym.fits(x.val, yt) then
+                return Scan.markAt(x.pos, Diag.say("{} doesn't fit {}", [Fmt.int(x.val), Fmt.str(Sym.typeName(yt))]));
+            end;
+            t := yt;
+        elsif yt^.form = Sym.fConst then
+            if (y.mode = mConst) and not Sym.fits(y.val, xt) then
+                return Scan.markAt(y.pos, Diag.say("{} doesn't fit {}", [Fmt.int(y.val), Fmt.str(Sym.typeName(xt))]));
+            end;
+            t := xt;
+        elsif Sym.same(xt, yt) then t := xt;
+        else return mismatchOps(x, y, xt, yt); end;
+        if not intOp(op) then return doesntApply(op, x, y, t); end;
+    elsif (xt^.form = Sym.fReal) and (yt^.form = Sym.fReal) then
+        if not (isRel(op) or oneOf(op, [Scan.sPlus, Scan.sMinus, Scan.sTimes, Scan.sSlash])) then
+            return doesntApply(op, x, y, xt);
+        end;
+        if xt = Sym.tRConst then t := yt;
+        elsif (yt = Sym.tRConst) or Sym.same(xt, yt) then t := xt;
+        else return mismatchOps(x, y, xt, yt); end;
+        if (x.mode = mConst) and (x.typ # t) then realTo(x, t); end;
+        if (y.mode = mConst) and (y.typ # t) then realTo(y, t); end;
+    elsif (xt^.form = Sym.fBool) and (yt^.form = Sym.fBool) then
+        if (op # Scan.sEql) and (op # Scan.sNeq) then return doesntApply(op, x, y, xt); end;
+        t := Sym.tBool;
+    elsif (xt^.form = Sym.fPtr) and Sym.isInt(yt) and ((op = Scan.sPlus) or (op = Scan.sMinus)) then
+        t := xt; scale := INT(xt^.base^.size); isPtr := true;
+        if y.mode = mConst then y.typ := Sym.tInt; end;
+    elsif (xt^.form = Sym.fPtr) and (yt^.form = Sym.fPtr) and (op = Scan.sMinus) then
+        if not Sym.same(xt, yt) then return mismatchOps(x, y, xt, yt); end;
+        t := Sym.tInt; scale := INT(xt^.base^.size); isPtr := true;
+    elsif (xt^.form in {Sym.fPtr, Sym.fProc, Sym.fNil, Sym.fError}) and (yt^.form in {Sym.fPtr, Sym.fProc, Sym.fNil, Sym.fError}) then
+        if not isRel(op) then return doesntApply(op, x, y, xt); end;
+        if (xt^.form in {Sym.fProc, Sym.fError}) or (yt^.form in {Sym.fProc, Sym.fError}) then
+            if (op # Scan.sEql) and (op # Scan.sNeq) then return doesntApply(op, x, y, xt); end;
+        end;
+        if (xt^.form # Sym.fNil) and (yt^.form # Sym.fNil) and not Sym.same(xt, yt) then
+            if not ((xt^.form = Sym.fPtr) and (yt^.form = Sym.fPtr) and Sym.same(xt^.base, yt^.base)) then
+                return mismatchOps(x, y, xt, yt);
+            end;
+        end;
+        t := Sym.tU64;
+    elsif (xt^.form = Sym.fEnum) and Sym.same(xt, yt) then
+        if not isRel(op) then return doesntApply(op, x, y, xt); end;
+        t := xt;
+    elsif (xt^.form = Sym.fSet) and Sym.same(xt, yt) then
+        if not oneOf(op, [Scan.sPlus, Scan.sTimes, Scan.sMinus, Scan.sEql, Scan.sNeq, Scan.sLeq, Scan.sGeq]) then
+            return doesntApply(op, x, y, xt);
+        end;
+        t := xt;
+    elsif (op = Scan.sIn) and (yt^.form = Sym.fSet) and Sym.same(xt, yt^.base) then
+        t := yt;
+    else
+        return mismatchOps(x, y, xt, yt);
+    end;
+
+    (* constants *)
+    if (x.mode = mConst) and (y.mode = mConst) and not isPtr then
+        if t^.form = Sym.fReal then
+            if not foldReal(op, x, y, t, r) then return doesntApply(op, x, y, xt); end;
+            x := r;
+        elsif t^.form = Sym.fSet then
+            a := x.val; b := y.val;
+            match op of
+            | sPlus: makeConst(x, t, a | b);
+            | sTimes: makeConst(x, t, a & b);
+            | sMinus: makeConst(x, t, a & ~b);
+            | sIn: makeConst(x, Sym.tBool, (b shr a) & 1);
+            | sLeq: makeConst(x, Sym.tBool, bit((a & ~b) = 0));
+            | sGeq: makeConst(x, Sym.tBool, bit((b & ~a) = 0));
+            | else: makeConst(x, Sym.tBool, bit((a = b) = (op = Scan.sEql)));
+            end;
+        elsif isRel(op) then
+            v := try foldInt(op, x.val, y.val, t, Diag.join(x.pos, y.pos));
+            makeConst(x, Sym.tBool, v);
+        else
+            v := try foldInt(op, x.val, y.val, t, Diag.join(x.pos, y.pos));
+            makeConst(x, t, cut(v, t));
+        end;
+        return nil;
+    end;
+
+    (* x and y on the stack, x under y; a constant x goes on after y, and
+       is left on top where the order doesn't matter, as Gen takes a
+       constant best on the right: 0.25 * e is mulsd xmm8, [0.25] *)
+    try value(y);
+    if x.mode = mConst then
+        try value(x);
+        if not oneOf(op, [Scan.sPlus, Scan.sTimes, Scan.sAmp, Scan.sBar, Scan.sXor]) or isPtr then Gen.swap(); end;
+    end;
+
+    if t^.form = Sym.fReal then
+        if isRel(op) then Gen.compare(op, Gen.kindOf(t), false);
+        else Gen.op(op, Gen.kindOf(t), 8, false); end;
+    elsif t^.form = Sym.fSet then
+        setOp(op);
+    elsif isRel(op) then
+        x.mode := mCond;
+        x.rel := op;
+        x.relSigned := signed(t);
+        x.fj := Gen.NoLabel;
+        x.tj := Gen.NoLabel;
+        x.typ := Sym.tBool;
+        return nil;
+    elsif isPtr then
+        if t # Sym.tInt then scaleBy(scale); end;
+        Gen.op(op, Gen.kWord, 8, false);
+        if (t = Sym.tInt) and (scale # 1) then
+            Gen.pushConst(Gen.kWord, scale);
+            Gen.op(Scan.sDiv, Gen.kWord, 8, true);
+        end;
+    else
+        Gen.op(op, Gen.kindOf(t), intSize(t), signed(t));
+    end;
+    x.mode := mStack;
+    if isRel(op) or (op = Scan.sIn) then x.typ := Sym.tBool; else x.typ := t; end;
+    return nil;
+end;
+
+(* INT and UINT, the integers as big as an address, through which
+   integers and pointers convert (report section 6.7) *)
+proc isWord*(t: ^Sym.Type): BOOL;
+begin
+    return Sym.same(t, Sym.tInt) or Sym.same(t, Sym.tUInt);
+end;
+
+proc convert*(var x: Item; t: ^Sym.Type): ERROR;
+var s: ^Sym.Type; r: F64;
+begin
+    s := x.typ;
+    if x.mode in {mType, mBuiltin, mNone, mCase, mStr} then
+        if x.mode = mStr then return Scan.markAt(x.pos, "can't convert a string"); end;
+        return notValue(x);
+    end;
+    if Sym.same(s, t) then return nil; end;
+    if (Sym.isInt(s) or (s^.form in {Sym.fEnum, Sym.fSet})) and (t^.form = Sym.fInt) then
+        if x.mode = mConst then x.val := cut(x.val, t);
+        else try value(x); Gen.narrow(INT(t^.size), t^.signed); end;
+    elsif Sym.isInt(s) and (t^.form = Sym.fEnum) then
+        if x.mode = mConst then
+            if (x.val < 0) or (x.val >= t^.len) then
+                return Scan.markAt(x.pos, Diag.say("{} isn't a position of {}", [Fmt.int(x.val), Fmt.str(Sym.typeName(t))]));
+            end;
+        else try value(x); Gen.checkEnum(t^.len, nameChunk(t), x.pos); end;
+    elsif Sym.isInt(s) and (t^.form = Sym.fSet) then
+        if x.mode = mConst then
+            if t^.len < 64 then x.val := x.val & ((I64(1) shl t^.len) - 1); end;
+        else
+            try value(x);
+            if t^.len < 64 then
+                Gen.pushConst(Gen.kWord, (I64(1) shl t^.len) - 1);
+                Gen.op(Scan.sAmp, Gen.kWord, 8, false);
+            end;
+        end;
+    elsif Sym.isInt(s) and (t^.form = Sym.fReal) then
+        if x.mode = mConst then
+            if (s^.form = Sym.fInt) and not s^.signed then r := F64(U64(x.val)); else r := F64(x.val); end;
+            makeReal(x, r);
+            realTo(x, t);
+        else
+            try value(x);
+            Gen.intToReal(Gen.kindOf(t), (s^.form = Sym.fInt) and not s^.signed and (s^.size = 8));
+        end;
+    elsif (s^.form = Sym.fReal) and (t^.form = Sym.fReal) then
+        (* F32 to F64, F64 to F32, or a real constant to either *)
+        if x.mode = mConst then realTo(x, t);
+        else try value(x); Gen.realToReal(Gen.kindOf(s)); end;
+    elsif (s^.form = Sym.fReal) and (t^.form = Sym.fInt) then
+        if x.mode = mConst then
+            r := realOf(x);
+            (* NaN or out of range folds to low(int64), the "integer
+               indefinite" cvttsd2si gives at run time *)
+            if (r # r) or (r >= 9.2233720368547758E18) or (r < -9.2233720368547758E18) then
+                x.val := cut(MinI64, t);
+            else x.val := cut(I64(r), t); end;
+        else
+            try value(x); Gen.realToInt(Gen.kindOf(s)); Gen.narrow(INT(t^.size), t^.signed);
+        end;
+    elsif (isWord(s) or (s^.form in {Sym.fConst, Sym.fPtr, Sym.fProc, Sym.fNil})) and (t^.form in {Sym.fPtr, Sym.fProc}) then
+        if x.mode # mConst then try value(x); end;
+    elsif (s^.form in {Sym.fPtr, Sym.fProc}) and isWord(t) then
+        try value(x);
+    else
+        return Scan.markAt(x.pos, say2("can't convert {} to {}", Sym.typeName(s), Sym.typeName(t)));
+    end;
+    x.typ := t;
+    return nil;
+end;
+
+(* Calls *)
+
+proc beginCall*(var c: Gen.CallInfo; var x: Item): ERROR;
+begin
+    if x.mode = mProc then
+        c.sig := x.obj^.typ; c.chunk := x.obj^.chunk; c.target := 0;
+        c.obj := x.obj; c.ext := x.obj^.ext;
+    else
+        c.obj := nil; c.ext := false;
+        if x.typ^.form # Sym.fProc then
+            return Scan.markAt(x.pos, say1("expected a procedure, found {}", what(x)));
+        end;
+        c.sig := x.typ; c.chunk := -1;
+        c.target := try toSlot(x);
+    end;
+    c.param := c.sig^.fields;
+    c.n := 0;
+    return nil;
+end;
+
+(* Too many arguments or too few, at p *)
+proc wrongCount(var c: Gen.CallInfo; p: Diag.Pos; text: []U8): ERROR;
+begin
+    if c.obj = nil then return Scan.markAt(p, text); end;
+    Diag.error(p, Diag.say("{}: {} takes {}", [Fmt.str(text), Fmt.str(Scan.nameOf(c.obj^.name)), Fmt.int(c.sig^.len)]));
+    if c.obj^.home # nil then Diag.note(c.obj^.pos, "the signature is here"); end;
+    return Scan.Failed;
+end;
+
+(* Pushes the two words of x, a slice or two results (inTwoRegs), read
+   from memory now, so that what comes after can't change them. *)
+proc pushWords(var x: Item): ERROR;
+var adr: Gen.Adr; f: ^Sym.Obj;
+begin
+    if x.mode = mWords then return nil; end;   (* there already *)
+    (* copied to a temporary unless its two words are in memory at a place
+       that a later argument can't change *)
+    if (x.mode # mVar) or x.vol or not (x.base in {Gen.bFrame, Gen.bGlobal, Gen.bSlot, Gen.bReg}) then
+        try copyToTemp(x);
+    end;
+    adr := adrOf(x);
+    if x.typ^.form = Sym.fSlice then
+        Gen.pushVar(adr, 8, false, Gen.kWord);
+        INC(adr.off, 8);
+        Gen.pushVar(adr, 8, false, Gen.kWord);
+    else
+        f := x.typ^.fields;
+        while f # nil do
+            adr.off := adrOf(x).off + f^.val;
+            Gen.pushVar(adr, scalarSize(f^.typ), signed(f^.typ), Gen.kindOf(f^.typ));
+            f := f^.next;
+        end;
+    end;
+    return nil;
+end;
+
+proc passArg*(var c: Gen.CallInfo; var a: Item): ERROR;
+var p: ^Sym.Obj;
+begin
+    p := c.param;
+    if c.n >= LEN(c.isF) - 1 then return Scan.markAt(a.pos, "too many arguments"); end;
+    if p = nil then
+        (* past the parameters of a C procedure that ends in ...: a string
+           goes as a C string, an integer constant as an INT, a real
+           constant as an F64; C takes no F32 there *)
+        if not c.sig^.variadic then return wrongCount(c, a.pos, "too many arguments"); end;
+        if a.mode = mStr then try coerce(a, Sym.tPtrU8);
+        elsif a.typ^.form = Sym.fConst then try coerce(a, Sym.tInt);
+        elsif a.typ = Sym.tRConst then try coerce(a, Sym.tReal);
+        elsif isF32(a.typ) then return Scan.markAt(a.pos, "an F32 goes to ... as F64(x)");
+        elsif not Sym.isScalar(a.typ) then return Scan.markAt(a.pos, "only a single value goes to ..."); end;
+        c.isF[c.n] := a.typ^.form = Sym.fReal;
+        c.pair[c.n] := false;
+        try value(a);
+        INC(c.n);
+        return nil;
+    end;
+    c.isF[c.n] := (p^.typ^.form = Sym.fReal) and not p^.isVar;
+    passing := p;
+    passingAt := a.pos;
+    if p^.isVar then
+        try notReadOnly(a);
+        if (a.mode # mVar) or not a.isVar then return Scan.markAt(a.pos, "a var parameter needs a variable"); end;
+        if a.odd then return Scan.markAt(a.pos, "a field of a packed record can't be a var parameter"); end;
+        if not Sym.same(a.typ, p^.typ) then
+            return mismatch(a, say2("a var parameter needs exactly {}, found {}", Sym.typeName(p^.typ), what(a)));
+        end;
+        if a.vol then return Scan.markAt(a.pos, "can't pass through a volatile pointer to a var parameter"); end;
+        try address(a);
+    elsif p^.typ^.form = Sym.fSlice then
+        try coerce(a, p^.typ);
+        try pushWords(a);
+        c.pair[c.n] := true;
+        INC(c.n);
+        c.isF[c.n] := false;
+    elsif Sym.isAggregate(p^.typ) then
+        try coerce(a, p^.typ);
+        if a.isVar or a.vol or (a.base # Gen.bFrame) then try copyToTemp(a); end;
+        try address(a);
+    else
+        try coerce(a, p^.typ);
+        try value(a);
+    end;
+    c.pair[c.n] := false;
+    INC(c.n);
+    c.param := p^.next;
+    return nil;
+end;
+
+(* The call c made, with x its result as an item: none; a temporary, for a
+   slice or a record; two results on Gen's stack (mWords); else one value
+   on the stack. *)
+proc endCall*(var c: Gen.CallInfo; var x: Item): ERROR;
+var res: ^Sym.Type;
+begin
+    if c.param # nil then try wrongCount(c, Scan.tokPos(), "too few arguments"); end;
+    Gen.call(c);
+    res := c.sig^.base;
+    x := {};
+    if res = nil then
+        x.mode := mNone; x.typ := Sym.tNone; x.obj := c.obj;
+    elsif c.ret # 0 then
+        tempItem(x, res, c.ret);
+    else
+        x.mode := mStack; x.typ := res;
+        if res^.tuple then x.mode := mWords; end;
+    end;
+    return nil;
+end;
+
+(* Variants *)
+
+(* A temporary of type t, all zero: for variants and record literals. *)
+proc zeroTemp*(var x: Item; t: ^Sym.Type);
+var tmp: I64;
+begin
+    tmp := Gen.allocTemp(t^.size, t^.align);
+    Gen.zeroVar(frameAdr(tmp), t^.size);
+    tempItem(x, t, tmp);
+end;
+
+proc construct*(var x: Item; c: ^Sym.Obj);
+begin
+    zeroTemp(x, c^.typ);
+    Gen.pushConst(Gen.kWord, c^.val);
+    Gen.popVar(frameAdr(x.off), 8);
+end;
+
+proc setField*(x: Item; f: ^Sym.Obj; var a: Item): ERROR;
+begin
+    try coerce(a, f^.typ);
+    if Sym.isScalar(f^.typ) then
+        try value(a);
+        Gen.popVar(frameAdr(x.off + f^.val), scalarSize(f^.typ));
+    else
+        if a.vol then return Scan.markAt(a.pos, "can't copy through a volatile pointer"); end;
+        try address(a);
+        Gen.copyTo(frameAdr(x.off + f^.val), f^.typ^.size);
+    end;
+    return nil;
+end;
+
+(* The slot match tests: a variant's address, or an enumeration's or an
+   integer's value. *)
+proc matchBegin*(var x: Item): (I64, ERROR);
+var p: I64;
+begin
+    if x.typ^.form in {Sym.fEnum, Sym.fInt} then return toSlot(x); end;
+    if (x.mode # mVar) or (x.typ^.form # Sym.fVariant) then
+        return 0, Scan.markAt(x.pos, say1("match needs a variant, an enumeration or an integer, found {}", what(x)));
+    end;
+    if x.ro then try copyToTemp(x); end;   (* its arms' names stand for a copy's fields *)
+    try address(x);
+    p := Gen.allocTemp(8, 8);
+    Gen.popVar(frameAdr(p), 8);
+    return p, nil;
+end;
+
+(* To L unless the tag of the variant whose address is in slot p is tag *)
+proc matchTag*(p: I64; tag: I64; var L: INT);
+var a: Gen.Adr;
+begin
+    Gen.pushVar(frameAdr(p), 8, false, Gen.kWord);
+    a.base := Gen.bStack; a.chunk := -1; a.off := 0; a.hi := 0;
+    Gen.pushVar(a, 8, false, Gen.kWord);
+    Gen.pushConst(Gen.kWord, tag);
+    Gen.jumpCmp(Scan.sNeq, false, L);
+end;
+
+(* To body if the integer in slot p is from lo to hi: less its lo, it is
+   then at most hi - lo, compared unsigned, which holds for a signed type
+   or not, with no second jump. *)
+proc matchRange*(p, lo, hi: I64; var body: INT);
+begin
+    Gen.pushVar(frameAdr(p), 8, false, Gen.kWord);
+    if lo = hi then
+        Gen.pushConst(Gen.kWord, lo);
+        Gen.jumpCmp(Scan.sEql, false, body);
+        return;
+    end;
+    if lo # 0 then
+        Gen.pushConst(Gen.kWord, lo);
+        Gen.op(Scan.sMinus, Gen.kWord, 8, false);
+    end;
+    Gen.pushConst(Gen.kWord, hi - lo);
+    Gen.jumpCmp(Scan.sLeq, false, body);
+end;
+
+(* A for loop's variable o, stepped by step, wrapping as its type does *)
+proc forStep*(o: ^Sym.Obj; step: I64): ERROR;
+var v, w: Item;
+begin
+    try makeItem(v, o);
+    if v.base = Gen.bReg then
+        (* a variable in a register is stepped in it *)
+        Gen.pushConst(Gen.kWord, step);
+        Gen.incDecReg(v.chunk, intSize(o^.typ), signed(o^.typ), false);
+        return nil;
+    end;
+    try makeItem(w, o);
+    try value(w);
+    Gen.pushConst(Gen.kWord, step);
+    Gen.op(Scan.sPlus, Gen.kWord, intSize(o^.typ), signed(o^.typ));
+    return assign(v, w);
+end;
+
+(* For a for loop: pushes the variable o and the limit lim, a constant or
+   the slot it was put in, and jumps to L if the one is op the other, as
+   the type of o compares *)
+proc forCmp*(o: ^Sym.Obj; lim: Item; op: Scan.Sym; var L: INT): ERROR;
+var v, b: Item;
+begin
+    try makeItem(v, o);
+    try value(v);
+    b := lim;
+    try value(b);
+    Gen.jumpCmp(op, o^.typ^.signed, L);
+    return nil;
+end;
+
+(* The end of a round of a for loop, for a positive step s, as the report
+   has it: if v <= b and b - v < s, the loop ends; otherwise v becomes
+   v + s and the loop goes on while v <= b. Counting the distance left,
+   rather than comparing after the step, can't be fooled by v wrapping
+   around. A negative step is the same the other way round: before, past
+   and within are chosen by up, whether the step is positive.
+   For a step of 1: v < b goes on to top, where v is stepped; v = b
+   ends; otherwise the body moved v past b.
+   For another step: v past b goes to past; else b - v (unsigned, as
+   v <= b) >= |step| goes on to top, and else the loop ends.
+   Past: v is stepped here and tested, going to body if within b. *)
+proc forNext*(o: ^Sym.Obj; lim: Item; step: I64; var exitL: INT; top, body: INT): ERROR;
+var v, b: Item; L, pastL: INT; up: BOOL; before, past, within: Scan.Sym; a: I64;
+begin
+    up := step > 0;
+    (* by a negative step, by a positive *)
+    if up then before := Scan.sLss; past := Scan.sGtr; within := Scan.sLeq;
+    else before := Scan.sGtr; past := Scan.sLss; within := Scan.sGeq; end;
+    a := step;
+    if a < 0 then a := -a; end;
+    L := Gen.NoLabel;
+    pastL := Gen.NoLabel;
+    if a = 1 then
+        try forCmp(o, lim, before, L);
+        Gen.fixTo(L, top);
+        try forCmp(o, lim, Scan.sEql, exitL);
+    else
+        try forCmp(o, lim, past, pastL);
+        try makeItem(v, o);
+        b := lim;
+        if up then try value(b); try value(v);
+        else try value(v); try value(b); end;
+        Gen.op(Scan.sMinus, Gen.kWord, 8, false);
+        Gen.pushConst(Gen.kWord, a);
+        Gen.jumpCmp(Scan.sGeq, false, L);
+        Gen.fixTo(L, top);
+        Gen.jump(exitL);
+    end;
+    Gen.fix(pastL);
+    try forStep(o, step);
+    L := Gen.NoLabel;
+    try forCmp(o, lim, within, L);
+    Gen.fixTo(L, body);
+    return nil;
+end;
+
+(* Jumps to L if the condition x is false. The jumps waiting in x.fj join
+   L; those in x.tj are placed here, as x is true past this. *)
+proc condJump*(var x: Item; var L: INT): ERROR;
+begin
+    if x.typ^.form # Sym.fBool then
+        return Scan.markAt(x.pos, say1("a condition is a BOOL, found {}", what(x)));
+    end;
+    if x.mode = mCond then
+        Gen.jumpCmp(negated(x.rel), x.relSigned, L);
+        L := Gen.joinJumps(L, x.fj);
+        Gen.fix(x.tj);
+        return nil;
+    end;
+    try value(x);
+    Gen.jumpIf(L, false);
+    return nil;
+end;
+
+(* As condJump, but the jump to L is taken where the condition is true;
+   x.tj joins L and x.fj is placed here *)
+proc condJumpTrue*(var x: Item; var L: INT): ERROR;
+begin
+    if x.typ^.form # Sym.fBool then
+        return Scan.markAt(x.pos, say1("a condition is a BOOL, found {}", what(x)));
+    end;
+    if x.mode = mCond then
+        Gen.jumpCmp(x.rel, x.relSigned, L);
+        L := Gen.joinJumps(L, x.tj);
+        Gen.fix(x.fj);
+        return nil;
+    end;
+    try value(x);
+    Gen.jumpIf(L, true);
+    return nil;
+end;
+
+(* Procedures *)
+
+proc beginProc*(sig: ^Sym.Type; params: ^Sym.Obj);
+begin
+    result := sig^.base;
+    Gen.beginProc(sig, params);
+end;
+
+(* The result of return x: a value on top, a slice's two words on top,
+   or one copied behind the hidden pointer *)
+proc returnValue*(var x: Item): ERROR;
+begin
+    if result = nil then return Scan.markAt(x.pos, "this procedure returns nothing"); end;
+    try coerce(x, result);
+    if Sym.inTwoRegs(result) then try pushWords(x);
+    elsif Sym.isAggregate(result) then
+        if x.vol then return Scan.markAt(x.pos, "can't copy through a volatile pointer"); end;
+        try address(x);
+        Gen.copyResult(0, result^.size);
+    else try value(x); end;
+    return nil;
+end;
+
+(* One of several results: of two words, a value left on top for
+   returnJump to put in rax or rdx; else into its place behind the
+   hidden pointer. *)
+proc returnField*(f: ^Sym.Obj; var x: Item): ERROR;
+begin
+    try coerce(x, f^.typ);
+    if Sym.inTwoRegs(result) then try value(x);
+    elsif Sym.isScalar(f^.typ) then
+        try value(x);
+        Gen.resultTo(f^.val, scalarSize(f^.typ));
+    else
+        if x.vol then return Scan.markAt(x.pos, "can't copy through a volatile pointer"); end;
+        try address(x);
+        Gen.copyResult(f^.val, f^.typ^.size);
+    end;
+    return nil;
+end;
+
+(* Several results at once, the call's that return f(x) passes on. *)
+proc returnAll*(var x: Item): ERROR;
+begin
+    if Sym.inTwoRegs(result) then try pushWords(x);
+    else
+        try address(x);
+        Gen.copyResult(0, result^.size);
+    end;
+    return nil;
+end;
+
+proc returnNone*: ERROR;
+begin
+    if result # nil then
+        return Scan.mark(say1("return needs a result of {}", Sym.typeName(result)));
+    end;
+    Gen.returnJump();
+    return nil;
+end;
+
+(* Keeps a variable's address in a frame slot, rather than on the stack,
+   while other code runs. *)
+proc pin*(var x: Item): ERROR;
+var s: I64;
+begin
+    if (x.mode = mVar) and (x.base = Gen.bStack) then
+        try address(x);
+        s := Gen.allocTemp(8, 8);
+        Gen.popVar(frameAdr(s), 8);
+        x.base := Gen.bSlot;
+        x.chunk := INT(s);
+    end;
+    return nil;
+end;
+
+(* INC(v, k) or DEC: v's address is on the stack, from address. *)
+proc incDec*(var v, k: Item; dec: BOOL): ERROR;
+begin
+    try coerceExact(k, v.typ, "");
+    try value(k);
+    if v.base = Gen.bReg then Gen.incDecReg(v.chunk, scalarSize(v.typ), v.typ^.signed, dec);
+    else Gen.incDec(scalarSize(v.typ), v.typ^.signed, dec); end;
+    return nil;
+end;
+
+(* COPY(d, s): d, an array variable or a slice, as a slice in the frame,
+   before s is read *)
+proc copyDest*(var d: Item): ERROR;
+begin
+    if not isSeq(d.typ) or (d.mode = mStr) or ((d.typ^.form = Sym.fArray) and ((d.mode # mVar) or not d.isVar)) then
+        return Scan.markAt(d.pos, say1("COPY copies into an array variable or a slice, found {}", what(d)));
+    end;
+    if d.typ^.form = Sym.fArray then try notReadOnly(d); end;
+    return seqSlice(d);
+end;
+
+(* ... and the elements of s copied to its start *)
+proc copyFrom*(var d, s: Item): ERROR;
+begin
+    if not isSeq(s.typ) or not Sym.same(elemOf(s.typ), d.typ^.base) then
+        return Scan.markAt(s.pos, say2("COPY copies elements of {}, found {}", Sym.typeName(d.typ^.base), what(s)));
+    end;
+    try seqSlice(s);
+    Gen.copySlice(d.off, s.off, d.typ^.base^.size, checks, s.pos);
+    return nil;
+end;
+
+(* An error is the address of its length, followed by its message. *)
+proc errorChunk*(var x: Item; home, name: INT): (INT, ERROR);
+var c, xs, xl: INT; p: ^U8; q: ^I64;
+begin
+    if x.mode # mStr then return 0, Scan.markAt(x.pos, "an error is made from a string"); end;
+    xl := INT(x.val);
+    p := Scan.grab(xl + 8);
+    q := ^I64(p);
+    q^ := x.val;
+    xs := Chunk.chunks[x.chunk].start;
+    COPY(p[8..8 + xl], Chunk.rodata[xs..xs + xl]);
+    c := Chunk.newChunk(Chunk.secRodata, home, name);
+    Chunk.setData(c, p, xl + 8, 8);
+    return c, nil;
+end;
+
+proc msg*(var x: Item): ERROR;
+var s: I64;
+begin
+    try coerce(x, Sym.tError);
+    try value(x);
+    s := Gen.allocTemp(16, 8);
+    Gen.errorText(s);
+    tempItem(x, Sym.tBytes, s);
+    return nil;
+end;
+
+end Item.

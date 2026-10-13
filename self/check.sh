@@ -104,3 +104,22 @@ for a in "" dyn; do
     cmp $b/gen.seed $b/gen.self
 done
 echo "gen ok"
+
+# Item: operands and operations driven by a script with mistakes in it,
+# which show their messages and go on; what each step gave, the code
+# made and the messages must be the same. A run ends at the 20th error,
+# as a compile does, so the script changes with each argument.
+fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fusrc -o$b/itemdump.seed self/test/ItemDump.pas >/dev/null
+./raz -Werror -I self -o $b/itemdump.self self/test/ItemDump.raz
+n=0; bad=0
+for a in $(seq 0 59); do
+    s1=0; s2=0
+    $b/itemdump.seed $a >$b/seed.out 2>$b/seed.err || s1=$?
+    $b/itemdump.self $a >$b/self.out 2>$b/self.err || s2=$?
+    n=$((n + 1))
+    if [ $s1 != $s2 ] || ! cmp -s $b/seed.out $b/self.out || ! cmp -s $b/seed.err $b/self.err; then
+        echo "differs: item script $a (status $s1 and $s2)"; bad=$((bad + 1))
+    fi
+done
+echo "item: $n scripts, $bad differ"
+test $bad = 0
