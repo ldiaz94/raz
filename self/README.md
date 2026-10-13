@@ -9,6 +9,7 @@ depends on and what it leaves out. The seed is never edited from here.
 
     make self        # each unit against the seed's, on the same files
     make self-bench  # the scanner's speed against the seed's
+    make fixpoint    # the seed builds self, that builds self, that builds it again
 
 `Chunk` and `Sym` have no input files to read, so each has a dumper
 pair, `test/ChunkDump` and `test/SymDump`, that runs one fixed
@@ -48,6 +49,14 @@ examples, the tools, `self/` itself, every test of `test/` and
 options each test has. The executable, the messages, and the status
 must be the same for every file: 409 of them, 289 of which are errors.
 `make self-bench` gives the speed of both.
+
+`make fixpoint` (`fixpoint.sh`) is the proof that the port is whole:
+the seed builds `Raz.raz` (stage 1), stage 1 builds it (stage 2), and
+stage 2 builds it again (stage 3). Stages 2 and 3 must be the same
+file; they are, and so is stage 1, since the seed and the port make the
+same code. Stage 3 then stands in for `./raz`, and `make check` and
+`make bench` run on it. Each stage is built by the same command in the
+same place, since a program holds the paths it was made from.
 
 `check.sh` builds a dumper for each side, `test/ScanDump.pas` over the
 seed's units and `test/ScanDump.raz` over these, and has both read the

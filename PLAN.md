@@ -39,9 +39,12 @@ Steps:
    builds, tested by compiling 409 programs, the library and the compiler
    itself with both and comparing the executables, messages and status;
    452,000 lines a second, the seed's 815,000.
-5. Fixpoint: the seed builds `self`, that builds `self`, that builds
-   `self` again, and the last two are byte for byte the same. Then
-   the seed's last tag is the bootstrap, and the split of `src/` from
+5. Fixpoint (done: `self/fixpoint.sh`, `make fixpoint`): the seed builds `self`, that builds `self`, that builds
+   `self` again, and the last two are byte for byte the same (all
+   three are, 547,000 bytes: the seed and this compiler make the same
+   code from `self/`). `make check` passes on the compiler it made,
+   661 tests, and `make bench` gives 493,000 to 870,000 lines a second.
+   Then the seed's last tag is the bootstrap, and the split of `src/` from
    the rest is the owner's to decide.
 
 Done when step 5 passes with `make check` and `make bench` on the

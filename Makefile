@@ -42,6 +42,11 @@ self: raz | build
 self-bench: raz | build
 	self/bench.sh
 
+# the seed builds self/, that builds self/, that builds it again: the
+# last two must be the same file; check and bench then run on it
+fixpoint: raz | build
+	self/fixpoint.sh
+
 # line numbers: gdb stops at a line and names it
 gdb: raz
 	test/gdb.sh
@@ -156,4 +161,4 @@ dist:
 site: raz
 	python3 site/build.py
 
-.PHONY: units tests self self-bench check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall
+.PHONY: units tests self self-bench fixpoint check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall
