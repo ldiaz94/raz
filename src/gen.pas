@@ -213,10 +213,11 @@ type
                         nothing in an expression can change }
           lAdr,       { not loaded: the address of chunk, or of the frame
                         if chunk is -1, plus val }
-          lIdx,       { not loaded: the address m, an element of a slice
-                        in registers: its pointer's register as the base,
-                        and the index in a register variable's or the
-                        value's own register (IndexSlice) }
+          lIdx,       { not loaded: the address m, an element of an array
+                        or of a slice in registers: the array's or the
+                        pointer's register, or rbp, as the base, and the
+                        index in a register variable's or the value's
+                        own register (IndexSlice, IndexArray) }
           lMem,       { not loaded: the value of size bytes at m, in the
                         frame, a chunk, or at an address lAdr or lIdx
                         noted, read where it is used (PushVar) }
@@ -235,6 +236,10 @@ type
     size: longint;    { lMem }
     signed: boolean;  { lMem }
     k: TKind;
+    off: int64;       { lHeld, lReg: a word, its register plus off, the
+                        constant of x + 1 not yet added (Op), so that an
+                        operand that uses it can take it as its
+                        displacement: [r13 + r9 * 8 - 8] }
   end;
 
 const
@@ -306,6 +311,11 @@ end;
   from xmm8 up carry no arguments, so that Call can move a real into
   xmm0 to xmm7 without overwriting another still to go. }
 
+function Fits32(v: int64): boolean;
+begin
+  Fits32 := (v >= low(longint)) and (v <= high(longint));
+end;
+
 { The register of kind k for the value at depth i }
 function RegIn(k: TKind; i: longint): longint;
 begin
@@ -353,7 +363,7 @@ function Loaded(i: longint): longint; forward;
 procedure Spill(i: longint);
 var s: int64;
 begin
-  if stack[i].loc <> lReg then Loaded(i);
+  if (stack[i].loc <> lReg) or (stack[i].off <> 0) then Loaded(i);
   s := AllocTemp(8, 8);
   if IsReal(i) then MovsMX(Mem(RBP, s), RegOf(i), false)
   else Store(Mem(RBP, s), RegOf(i), 8);
@@ -419,6 +429,10 @@ begin
     end;
     stack[i].loc := lReg;
   end;
+  if stack[i].off <> 0 then begin
+    Lea(RegOf(i), Mem(RegOf(i), stack[i].off));
+    stack[i].off := 0;
+  end;
   Loaded := RegOf(i);
 end;
 
@@ -426,7 +440,26 @@ end;
   its register }
 function Peek(i: longint): longint;
 begin
-  if stack[i].loc = lHeld then Peek := stack[i].val else Peek := Loaded(i);
+  if (stack[i].loc = lHeld) and (stack[i].off = 0) then Peek := stack[i].val else Peek := Loaded(i);
+end;
+
+{ The offset of value i, taken from it, for the caller to add or to
+  make a displacement of }
+function TakeOff(i: longint): int64;
+begin
+  TakeOff := stack[i].off;
+  stack[i].off := 0;
+end;
+
+{ The word on top, in a register, has o added: noted, if o can be a
+  displacement, else added now }
+procedure PutOff(o: int64);
+begin
+  if Fits32(stack[depth - 1].off + o) then stack[depth - 1].off := stack[depth - 1].off + o
+  else begin
+    MovRI(RCX, o);
+    Alu(aluAdd, Loaded(depth - 1), RCX);
+  end;
 end;
 
 function Top: longint;
@@ -442,6 +475,7 @@ begin
   stack[depth].loc := loc;
   stack[depth].val := v;
   stack[depth].chunk := -1;
+  stack[depth].off := 0;
   inc(depth);
 end;
 
@@ -505,6 +539,7 @@ begin
       else if RegOf(i) <> r then MovRR(r, RegOf(i));
   else Load(r, Mem(RBP, stack[i].val), 8, false);
   end;
+  if stack[i].off <> 0 then Lea(r, Mem(r, stack[i].off));
 end;
 
 { The value on top, popped into register r }
@@ -534,11 +569,6 @@ begin
   NewEntry(k, lConst, v);
 end;
 
-function Fits32(v: int64): boolean;
-begin
-  Fits32 := (v >= low(longint)) and (v <= high(longint));
-end;
-
 { The register of the word at a, a variable in registers: the variable's
   own, or for a slice its pointer's (off 0) or its length's (off 8) }
 function RegAt(const a: TAdr): longint;
@@ -549,7 +579,7 @@ end;
 { The memory a names. An address on the stack is popped, and is in its
   register still; one in a slot is loaded into r. }
 function Place(const a: TAdr; r: longint): TMem;
-var ra: longint;
+var ra: longint; o: int64;
 begin
   if a.base = bReg then Fatal('internal error: a register has no address');
   case a.base of
@@ -564,9 +594,12 @@ begin
         Place.disp := Place.disp + a.off;
         Drop;
       end else begin
+        { an offset noted on the address is the operand's, as
+          p^.f + 8: [r8 + 8] }
+        if Fits32(a.off + stack[depth - 1].off) then o := TakeOff(depth - 1) else o := 0;
         ra := Peek(depth - 1);
         Drop;
-        Place := Mem(ra, a.off)
+        Place := Mem(ra, a.off + o)
       end;
   else   { bSlot: the address is in the frame slot a.chunk }
     Load(r, Mem(RBP, a.chunk), 8, false);
@@ -876,7 +909,7 @@ end;
 { The two values on top, the left op the right, an integer of size
   bytes, signed or not, brought back to its width. }
 procedure Op(op: TSym; k: TKind; size: longint; signed: boolean);
-var v: int64; r, y, sh, bits: longint; c: boolean; m: TMem;
+var v, o: int64; r, y, sh, bits: longint; c: boolean; m: TMem;
 begin
   if k in [kF32, kF64] then begin RealOp(op, k); exit end;
   bits := size * 8;
@@ -885,6 +918,26 @@ begin
   if (op in [sPlus, sTimes, sAmp, sBar, sXor]) and (stack[depth - 2].loc = lConst)
     and (stack[depth - 1].loc <> lConst) then Swap;
   c := TopConst(v);
+  { A word's offset (see TEntry) is carried through + and -, and
+    through * by a constant, as (x + a) * k is x * k + a * k: the
+    operation is done on the registers, the offsets worked out here,
+    and put on the result. x + 1 is only noted. A value changed in
+    place, lInto, has no offset. }
+  o := 0;
+  if (bits = 64) and (stack[depth - 2].loc <> lInto)
+    and ((op in [sPlus, sMinus]) or (op = sTimes) and c and Fits32(v)) then begin
+    o := TakeOff(depth - 2);
+    if op = sTimes then o := o * v
+    else if c and Fits32(v) then begin
+      if op = sPlus then o := o + v else o := o - v;
+      Drop;
+      if not (stack[depth - 1].loc in [lReg, lHeld]) then Top;
+      PutOff(o);
+      exit;
+    end
+    else if op = sPlus then o := o + TakeOff(depth - 1)
+    else o := o - TakeOff(depth - 1);
+  end;
   sh := -1;
   if c and (op in [sTimes, sDiv, sMod]) then sh := ExactLog2(v);
   if c and (sh >= 1) then begin
@@ -932,6 +985,7 @@ begin
   end;
   if bits < 64 then Extend(r, size, signed);
   stack[depth - 1].k := k;
+  if o <> 0 then PutOff(o);
 end;
 
 { The left op the right of the two values on top, as a BOOL }
@@ -1379,6 +1433,15 @@ begin
   Check(ccNE, 4, p, r, NoMem, 0, -1);
 end;
 
+{ The displacement disp of an element of size bytes, with the offset of
+  the index on top taken into it if it fits: s[k - 1] is [r13 + r9 * 8
+  - 8] }
+function IndexOff(size, disp: int64): int64;
+begin
+  IndexOff := disp;
+  if Fits32(disp + stack[depth - 1].off * size) then IndexOff := disp + TakeOff(depth - 1) * size;
+end;
+
 { Pops an index, and the address of the slice at a if it is on the
   stack, and pushes the address of its element of size bytes: the
   index, checked against the length, times size, plus the pointer.
@@ -1390,16 +1453,18 @@ end;
   bytes, its address is only noted, as the operand [pointer + index *
   size], to be read or written where it is used (lIdx). }
 procedure IndexSlice(const a: TAdr; size: int64; checked: boolean; const p: TPos);
-var m, ml: TMem; r: longint; inRax: boolean;
+var m, ml: TMem; r: longint; inRax: boolean; o: int64;
 begin
   if (a.base = bReg) and (size in [1, 2, 4, 8]) then begin
+    o := 0;
+    if not checked then o := IndexOff(size, 0);
     r := Peek(depth - 1);
     if checked then begin
       Alu(aluCmp, r, a.hi);
       Check(ccB, 0, p, r, InRegister(a.hi), 0, -1);
     end;
     Drop;
-    NewMem(lIdx, MemIdx(a.chunk, r, size, 0), kWord, 8, false);
+    NewMem(lIdx, MemIdx(a.chunk, r, size, o), kWord, 8, false);
     exit;
   end;
   inRax := a.base = bStack;
@@ -1434,18 +1499,20 @@ end;
   chunk, if the index is a variable's register, its address made in
   the value's own register. Any other is added up. }
 procedure IndexArray(const a: TAdr; size: int64);
-var r, b: longint;
+var r, b: longint; o: int64;
 begin
   if (size in [1, 2, 4, 8]) and (a.base = bFrame) then begin
+    o := IndexOff(size, a.off);
     r := Peek(depth - 1);
     Drop;
-    NewMem(lIdx, MemIdx(RBP, r, size, a.off), kWord, 8, false);
+    NewMem(lIdx, MemIdx(RBP, r, size, o), kWord, 8, false);
   end else if (size in [1, 2, 4, 8]) and (a.base = bGlobal) and (stack[depth - 1].loc = lHeld) then begin
-    r := stack[depth - 1].val;
+    o := IndexOff(size, 0);
+    r := Peek(depth - 1);
     Drop;
     b := Target;
     Lea(b, MemRip(a.chunk, a.off));
-    NewMem(lIdx, MemIdx(b, r, size, 0), kWord, 8, false);
+    NewMem(lIdx, MemIdx(b, r, size, o), kWord, 8, false);
   end else begin
     MulI(Top, size);
     PushAdr(a);

@@ -15,7 +15,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/sym.pas` | 646 | 528 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,201 | 992 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 2,121 | 1,542 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/gen.pas` | 2,188 | 1,588 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,578 | 1,301 | Items: types, constants, variables, operators, conversions, calls |
 | `src/parse.pas` | 3,103 | 2,707 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 334 | 258 | Tree shaking, layout, patching, the places |
@@ -519,6 +519,46 @@ division in its inner loop.
    register as it is (`Peek`), not a copy. NBody 225 ms to 147; rat
    within noise.
 
+3. **An offset as the machine has it.** The sweep's four neighbours,
+   `s[i * N + j - 1]` and the others, each worked out its index in
+   full, the constant added too:
+
+   ```
+   mov r9, r12               ; i * N + j - 1
+   shl r9, 9
+   add r9, rbx
+   sub r9, 1
+   ...
+   mov r10, r12              ; (i - 1) * N + j
+   sub r10, 1
+   shl r10, 9
+   add r10, rbx
+   addsd xmm9, [r13 + r10 * 8]
+   ```
+
+   Now a word in a register may carry an offset not yet added (`off`,
+   in `TEntry`): `Op` notes `x + c` and `x - c` there, carries it
+   through `+` and `-`, and through `*` by a constant, as `(x + a) * k`
+   is `x * k + a * k`. An element's operand takes it as its
+   displacement (`IndexOff`, for `IndexSlice` and `IndexArray`), and so
+   does a field's through a pointer (`Place`); anything else adds it
+   where the value is read (`Loaded`, `Peek`, `ValueTo`, with a `lea`,
+   which leaves the flags alone). A value changed in place, `lInto`,
+   carries none, and an index that is checked has it added first:
+
+   ```
+   mov r9, r12
+   shl r9, 9
+   add r9, rbx
+   ...
+   movsd xmm9, [r13 + r9 * 8 - 8]
+   ...
+   addsd xmm9, [r13 + r10 * 8 - 4096]
+   ```
+
+   Jacobi 129 ms to 106; rat 2% faster, within noise; the integer
+   kernels unchanged.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is
@@ -709,7 +749,8 @@ a variable's value not yet read (`lMem`, at an operand), a register
 variable's own register, read in place (`lHeld`), the value's own
 register (`lReg`) or a frame slot (`lFrame`); `owner` says which
 value each register holds, `lIdx` and `lMem` holding theirs when it
-is their index. The value at depth `d` belongs in
+is their index. A word in a register may have an offset not yet
+added (`off`), which an operand takes as its displacement. The value at depth `d` belongs in
 `Regs[d mod 4]`, `r8` to `r11`: `rax`, `rdx` and `rcx`, which division
 and shifts need, and `rsi` and `rdi`, which copying needs, aren't among
 them. A real belongs in `XRegs[d mod 4]`, `xmm8` to `xmm11`, which

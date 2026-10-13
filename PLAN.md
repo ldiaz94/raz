@@ -35,7 +35,13 @@ buys less than 2% on both is reverted and noted here.
    its load. Now an element of an array in the frame or a chunk is the
    operand `[base + i * 8]`, as one of a slice in registers is. NBody
    225 ms to 147; rat within noise.
-4. **Real variables in xmm registers**, where that pays: measured, and
+4. Done: **An offset as the machine has it.** Jacobi's index
+   arithmetic, `s[i * N + j - 1]`, added its constant before the load;
+   now a word's constant offset waits on the stack, carried through
+   `+`, `-` and `*` by a constant, and an element's operand takes it as
+   its displacement: `[r13 + r9 * 8 - 8]`. Jacobi 129 ms to 106; rat
+   within noise.
+5. **Real variables in xmm registers**, where that pays: measured, and
    kept only if it does.
 
 ## Next, when the owner says

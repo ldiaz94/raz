@@ -23,7 +23,9 @@ begin
   SetCC(ccL, RAX); SetCC(ccA, RCX); SetCC(ccE, RDI); TestRR(RAX, RAX);
   Push(RAX); Push(12); Pop(RCX); Pop(R11); CallR(R11); CallM(Mem(RCX, 8)); Ret; Leave; Syscall; Mfence; Ud2; RepMovsb; RepStosb;
   LockCmpxchg(Mem(RCX, 0), RDX); Xchg(Mem(RCX, 0), RAX); LockXadd(Mem(RCX, 0), RAX);
-  MovqXR(0, RAX); MovqXR(1, RCX); MovqRX(RAX, 0); MovsdXM(2, Mem(RBP, -8)); MovsdMX(Mem(RBP, -8), 7);
+  MovqXR(0, RAX); MovqXR(1, RCX); MovqRX(RAX, 0); MovsXM(2, Mem(RBP, -8), false); MovsMX(Mem(RBP, -8), 7, false);
+  MovX(9, 12); MovX(0, 8); MovsXM(8, MemIdx(R13, R9, 8, -8), true); MovsMX(Mem(RBP, -8), 11, true);
+  SseM($58, 9, MemIdx(R13, R10, 8, 4096), false); SseM($59, 0, Mem(RBP, -16), true); Sse($5C, 8, 11, false);
   Sse($58, 0, 1, false); Sse($5E, 0, 1, true); Sse($5A, 0, 0, false); Sse($5A, 0, 0, true);
   Ucomis(0, 1, false); Ucomis(0, 1, true); Cvtsi2s(0, RAX, false); Cvtsi2s(0, RAX, true);
   Cvtts2si(RAX, 0, false); Cvtts2si(RAX, 0, true); Btc(RAX, 63);
