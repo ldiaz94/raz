@@ -603,6 +603,19 @@ division in its inner loop.
    nothing in the trap report, bought 3% more on that copy and nothing
    on NBody.
 
+All told, against v0.8.0: Jacobi 251 ms to 103, 3.1 times FPC
+`-O2`'s time to 1.3; NBody 375 ms to 116, 4.4 times to 1.4; rat and
+the integer kernels as they were. What is left of Jacobi is its index,
+`i * N + j`, worked out five times a round, once for each element,
+where FPC works it out three times: one pass keeps no expression to
+share. What is left of
+NBody is mostly its call to `Math.sqrt`, an instruction FPC puts in
+place, with the spills and loads around it; then the `lea` of each
+array's address, which FPC makes too, and the fifth real, `d2`, for
+which there is no register. A comparison of reals still makes a
+`BOOL` before it jumps, as `not (a < b)` isn't `a >= b` for a NaN;
+neither kernel has one.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is

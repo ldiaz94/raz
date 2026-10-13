@@ -91,9 +91,12 @@ compiler says it follows, and v0.7.0, better code, and v0.7.1, the manual: `raz(
 `raz-tutorial(7)`, `raz(7)` and `raz-lib(3)`, made by `tools/Doc.raz`
 from `lib/`, and v0.8.0, better code again: slices in registers,
 parameters left in rdi and rsi, operands as the machine has them,
-`while` tested at the bottom, and one line table, DWARF's. `make
-kernels` measures `test/bench` against FPC `-O2`. Next, by `PLAN.md`:
-what the owner chooses.
+`while` tested at the bottom, and one line table, DWARF's, and,
+not yet tagged, better code for reals: reals on the stack and the
+busiest real variables in xmm registers, and an array's element and a
+constant offset as operands, measured on two kernels of reals,
+`Jacobi` and `NBody`. `make kernels` measures `test/bench` against
+FPC `-O2`. Next, by `PLAN.md`: what the owner chooses.
 
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written

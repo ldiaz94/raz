@@ -5,12 +5,12 @@ for, what is in it and when it is done; its steps are commits, each
 stopping for the owner's review. A finished milestone is cut from this
 file: git keeps the history, and the report's section 12 the language's.
 
-Better code for reals is under way, by the owner's word. v0.7.1, the
-manual, and v0.8.0, better code again, are tagged; all before v0.7.1
-is approved by the owner, and v0.7.1 and v0.8.0 wait for the owner's
-review.
+Better code for reals, begun by the owner's word, is done and waits for the
+owner's review; it isn't tagged. v0.7.1, the manual, and v0.8.0,
+better code again, are tagged; all before v0.7.1 is approved by the
+owner, and v0.7.1 and v0.8.0 wait for the owner's review.
 
-## Now: better code for reals
+## Done: better code for reals
 
 For: code with reals near FPC `-O2`'s, as integer code is. raz keeps a
 real in an integer register and copies it to xmm0 or xmm1 and back
@@ -46,6 +46,13 @@ buys less than 2% on both is reverted and noted here.
    slot, from which the trap report reads it and a call's return loads
    it, as System V keeps no xmm register through a call. NBody 147 ms
    to 116; rat within noise.
+
+All told: Jacobi 3.1 times FPC `-O2`'s time to 1.3, NBody 4.4 to 1.4;
+rat and the integer kernels as they were; 9,131 lines of code. Left:
+Jacobi's index, worked out for each element where FPC shares it, which
+one pass can't; NBody's call to `Math.sqrt`, an instruction to FPC;
+a comparison of reals that jumps without making a `BOOL`, which
+neither kernel needs.
 
 ## Next, when the owner says
 
