@@ -1,0 +1,348 @@
+(* Searches of bytes, many at a time: the first and the last place of a
+   byte in a []U8, how many places it has, and where one []U8 first
+   starts in another. This body is for x86-64, where SSE2 compares
+   sixteen bytes at a time; Bytes.raz is the same interface for any
+   64-bit target, eight at a time in a U64. *)
+module Bytes;
+import Rt;
+
+(* The first place of b in s, or -1. Sixteen bytes at a time are
+   compared with b's sixteen copies (pcmpeqb), and pmovmskb makes of the
+   result a number with a bit set for each byte that matched. The bytes
+   left over, fewer than sixteen, are compared one by one. Where the
+   machine finds them: s's address in rdi, its length in rsi, b in dl. *)
+proc index*(s: []U8; b: U8): INT;
+code
+    movd xmm1, edx;
+    punpcklbw xmm1, xmm1;       (* b in the low two bytes... *)
+    punpcklwd xmm1, xmm1;       (* ...in the low four... *)
+    pshufd xmm1, xmm1, 0;       (* ...and in all sixteen *)
+    xor ecx, ecx;
+    blocks:
+    lea rax, [rcx + 16];
+    cmp rax, rsi;
+    ja tail;
+    movdqu xmm0, [rdi + rcx];
+    pcmpeqb xmm0, xmm1;
+    pmovmskb eax, xmm0;
+    test eax, eax;
+    jnz found;
+    add rcx, 16;
+    jmp blocks;
+    found:
+    bsf eax, eax;               (* the lowest bit set: the first match *)
+    add rax, rcx;
+    ret;
+    tail:
+    cmp rcx, rsi;
+    jae missing;
+    cmp [rdi + rcx], dl;
+    je here;
+    inc rcx;
+    jmp tail;
+    here:
+    mov rax, rcx;
+    ret;
+    missing:
+    mov rax, -1;
+    ret;
+end index;
+
+(* The last place of b in s, or -1: as index, from the end. *)
+proc last*(s: []U8; b: U8): INT;
+code
+    movd xmm1, edx;
+    punpcklbw xmm1, xmm1;
+    punpcklwd xmm1, xmm1;
+    pshufd xmm1, xmm1, 0;
+    mov rcx, rsi;               (* the bytes not yet seen are the first rcx *)
+    blocks:
+    cmp rcx, 16;
+    jb tail;
+    sub rcx, 16;
+    movdqu xmm0, [rdi + rcx];
+    pcmpeqb xmm0, xmm1;
+    pmovmskb eax, xmm0;
+    test eax, eax;
+    jz blocks;
+    bsr eax, eax;               (* the highest bit set: the last match *)
+    add rax, rcx;
+    ret;
+    tail:
+    test rcx, rcx;
+    jz missing;
+    dec rcx;
+    cmp [rdi + rcx], dl;
+    jne tail;
+    mov rax, rcx;
+    ret;
+    missing:
+    mov rax, -1;
+    ret;
+end last;
+
+(* How many bytes of s are b: the bits of each block's number, counted. *)
+proc count*(s: []U8; b: U8): INT;
+code
+    movd xmm1, edx;
+    punpcklbw xmm1, xmm1;
+    punpcklwd xmm1, xmm1;
+    pshufd xmm1, xmm1, 0;
+    xor eax, eax;               (* the count *)
+    xor ecx, ecx;
+    blocks:
+    lea r8, [rcx + 16];
+    cmp r8, rsi;
+    ja tail;
+    movdqu xmm0, [rdi + rcx];
+    pcmpeqb xmm0, xmm1;
+    pmovmskb r8d, xmm0;
+    popcnt r8d, r8d;
+    add rax, r8;
+    add rcx, 16;
+    jmp blocks;
+    tail:
+    cmp rcx, rsi;
+    jae done;
+    cmp [rdi + rcx], dl;
+    jne next;
+    inc rax;
+    next:
+    inc rcx;
+    jmp tail;
+    done:
+    ret;
+end count;
+
+(* The first place i, from from on, with s[i] = a and s[i + gap] = b,
+   or -1; LEN(s) must be more than gap. Sixteen places are tried at
+   once: sixteen bytes are compared with a, sixteen from gap places on
+   with b, and the two results anded. The places in rdi and rsi (s),
+   rdx (gap), cl (a), r8b (b) and r9 (from). *)
+proc pair(s: []U8; gap: INT; a, b: U8; from: INT): INT;
+code
+    mov r11, rcx;               (* a, for the places one by one *)
+    movd xmm1, ecx;
+    punpcklbw xmm1, xmm1;
+    punpcklwd xmm1, xmm1;
+    pshufd xmm1, xmm1, 0;
+    movd xmm2, r8d;
+    punpcklbw xmm2, xmm2;
+    punpcklwd xmm2, xmm2;
+    pshufd xmm2, xmm2, 0;
+    mov r10, rsi;
+    sub r10, rdx;               (* the places are those below r10 *)
+    mov rax, r9;
+    blocks:
+    lea rcx, [rax + 16];
+    cmp rcx, r10;
+    ja tail;
+    movdqu xmm0, [rdi + rax];
+    pcmpeqb xmm0, xmm1;
+    lea rcx, [rax + rdx];
+    movdqu xmm3, [rdi + rcx];
+    pcmpeqb xmm3, xmm2;
+    pand xmm0, xmm3;
+    pmovmskb ecx, xmm0;
+    test ecx, ecx;
+    jnz found;
+    add rax, 16;
+    jmp blocks;
+    found:
+    bsf ecx, ecx;
+    add rax, rcx;
+    ret;
+    tail:
+    cmp rax, r10;
+    jae missing;
+    cmp [rdi + rax], r11b;
+    jne next;
+    lea rcx, [rax + rdx];
+    cmp [rdi + rcx], r8b;
+    je here;
+    next:
+    inc rax;
+    jmp tail;
+    here:
+    ret;
+    missing:
+    mov rax, -1;
+    ret;
+end pair;
+
+(* Where sub first starts in s, or -1; 0 for an empty sub. Places are
+   found by two bytes of sub, its first and its last, each compared at
+   its place (pair), and checked whole only where both agree. They are
+   the two bytes farthest apart, so as far from being the same test as
+   two can be, and need no table of which bytes are rare. *)
+proc find*(s, sub: []U8): INT;
+var i, n: INT;
+begin
+    n := LEN(sub);
+    if n = 0 then return 0; end;
+    if n > LEN(s) then return -1; end;
+    i := pair(s, n - 1, sub[0], sub[n - 1], 0);
+    while i >= 0 do
+        if s[i..i + n] = sub then return i; end;
+        i := pair(s, n - 1, sub[0], sub[n - 1], i + 1);
+    end;
+    return -1;
+end;
+
+(* The tests: each result against a plain loop over the same bytes. *)
+
+var
+    seed: U64;
+    fills: [6]U8;           (* bytes that tempt the zero-byte test *)
+    buf: [160]U8;
+    subs: [24]U8;
+
+(* a pseudo-random number below n *)
+proc random(n: INT): INT;
+begin
+    seed := seed * 6364136223846793005 + 1442695040888963407;
+    return INT((seed shr 33) mod U64(n));
+end;
+
+proc refIndex(s: []U8; b: U8): INT;
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do
+        if s[i] = b then return i; end;
+    end;
+    return -1;
+end;
+
+proc refLast(s: []U8; b: U8): INT;
+var i: INT;
+begin
+    for i := LEN(s) - 1 to 0 by -1 do
+        if s[i] = b then return i; end;
+    end;
+    return -1;
+end;
+
+proc refCount(s: []U8; b: U8): INT;
+var i, n: INT;
+begin
+    n := 0;
+    for i := 0 to LEN(s) - 1 do
+        if s[i] = b then INC(n); end;
+    end;
+    return n;
+end;
+
+proc refFind(s, sub: []U8): INT;
+var i: INT;
+begin
+    for i := 0 to LEN(s) - LEN(sub) do
+        if s[i..i + LEN(sub)] = sub then return i; end;
+    end;
+    return -1;
+end;
+
+(* index, last and count of b in s agree with the plain loops *)
+proc checkByte(s: []U8; b: U8);
+begin
+    if index(s, b) # refIndex(s, b) then Rt.stop("Bytes.index"); end;
+    if last(s, b) # refLast(s, b) then Rt.stop("Bytes.last"); end;
+    if count(s, b) # refCount(s, b) then Rt.stop("Bytes.count"); end;
+end;
+
+proc checkFind(s, sub: []U8);
+begin
+    if find(s, sub) # refFind(s, sub) then Rt.stop("Bytes.find"); end;
+end;
+
+(* every length to 40, from every start 0 to 8, with one byte at every
+   place, among each kind of filler: the first place, the last, and
+   the places either side of a block of 8 or 16 *)
+proc testEdges;
+var n, o, p, f, g, i: INT;
+begin
+    for o := 0 to 8 do
+        for n := 0 to 40 do
+            for f := 0 to 5 do
+                for g := 0 to 5 do
+                    for i := 0 to 159 do buf[i] := fills[f]; end;
+                    checkByte(buf[o..o + n], fills[g]);
+                    for p := 0 to n - 1 do
+                        buf[o + p] := fills[g];
+                        checkByte(buf[o..o + n], fills[g]);
+                        buf[o + p] := fills[f];
+                    end;
+                end;
+            end;
+        end;
+    end;
+end;
+
+(* random bytes from a few kinds, of every length to 150 *)
+proc testRandom;
+var n, i, k, o: INT;
+begin
+    for n := 0 to 150 do
+        for k := 1 to 20 do
+            o := random(8);
+            for i := 0 to 159 do buf[i] := fills[random(2 + k mod 5)]; end;
+            for i := 0 to 5 do checkByte(buf[o..o + n], fills[i]); end;
+            checkByte(buf[o..o + n], 41H);
+        end;
+    end;
+end;
+
+(* a sub of every length at every place of a long slice, among fillers
+   that are almost its bytes; the slice cut short just before and just
+   after it; also subs longer than the slice, and empty ones *)
+proc testPlanted;
+var n, p, i, f: INT; s: []U8;
+begin
+    for f := 0 to 2 do
+        for n := 1 to 24 do
+            for i := 0 to 23 do subs[i] := U8(0F0H + random(2) + i mod 3); end;
+            for p := 0 to 159 - n do
+                for i := 0 to 159 do buf[i] := U8(0F0H + f); end;
+                COPY(buf[p..p + n], subs[0..n]);
+                checkFind(buf[0..160], subs[0..n]);
+                checkFind(buf[1..160], subs[0..n]);
+                checkFind(buf[0..p + n], subs[0..n]);
+                checkFind(buf[0..p + n - 1], subs[0..n]);
+            end;
+        end;
+    end;
+    if find(buf[0..5], "") # 0 then Rt.stop("Bytes.find, empty sub"); end;
+    if find(buf[0..0], "") # 0 then Rt.stop("Bytes.find, both empty"); end;
+    if find(buf[0..3], buf[0..4]) # -1 then Rt.stop("Bytes.find, sub longer"); end;
+    s := "abcabd";
+    if (find(s, "abd") # 3) or (find(s, "bc") # 1) or (find(s, "d") # 5) or (find(s, s) # 0)
+        or (find(s, "abcabde") # -1) then Rt.stop("Bytes.find, text"); end;
+end;
+
+(* random text and subs from two or three kinds of byte, so that one
+   end of the sub is often where the other isn't *)
+proc testFind;
+var n, m, i, k, o: INT;
+begin
+    for n := 0 to 100 do
+        for k := 1 to 12 do
+            o := random(8);
+            for i := 0 to 159 do buf[i] := fills[3 + random(2 + k mod 2)]; end;
+            for m := 0 to 24 do
+                for i := 0 to 23 do subs[i] := fills[3 + random(2 + k mod 2)]; end;
+                checkFind(buf[o..o + n], subs[0..m]);
+            end;
+        end;
+    end;
+end;
+
+proc main*;
+begin
+    fills := [0, 1, 7FH, 80H, 81H, 0FFH];
+    seed := 12345;
+    testEdges;
+    testRandom;
+    testPlanted;
+    testFind;
+end;
+
+end Bytes.

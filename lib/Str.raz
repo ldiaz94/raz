@@ -2,7 +2,7 @@
    module orders, searches and hashes them, reads and writes their
    UTF-8, reads a number from one, and copies one to keep. *)
 module Str;
-import Mem, Heap, Rt;
+import Mem, Heap, Rt, Bytes;
 
 const least = -9223372036854775807 - 1;   (* the smallest I64 *)
 
@@ -54,12 +54,8 @@ end;
 
 (* Where sub first starts in s, or -1. *)
 proc find*(s, sub: []U8): INT;
-var i: INT;
 begin
-    for i := 0 to LEN(s) - LEN(sub) do
-        if s[i..i + LEN(sub)] = sub then return i; end;
-    end;
-    return -1;
+    return Bytes.find(s, sub);
 end;
 
 (* Whether s starts with p. *)

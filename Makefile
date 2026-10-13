@@ -82,7 +82,7 @@ loc:
 # raz-lib(3), the library's manual page, made by tools/Doc.raz from
 # its sources, in the order of the report's section 11
 LIBDOC = Rt Mem Heap Arena Lock Thread.linux-x86_64 Out Sys.linux-x86_64 \
-	Str Buf Fmt List Map Sort Math Files Opt C
+	Str Bytes.x86_64 Buf Fmt List Map Sort Math Files Opt C
 
 man: build/raz-lib.3
 

@@ -156,7 +156,7 @@ The report, `doc/raz.md`, says all of it in about 2,000 lines.
 
 `Rt` (ending the program, failed checks, signals), `Sys` (system calls), `Out`
 (buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
-`Heap`, `Arena`, `Str`, `Buf`, `Fmt`, `Math`, `Files`, `Opt` (a command
+`Heap`, `Arena`, `Str`, `Bytes`, `Buf`, `Fmt`, `Math`, `Files`, `Opt` (a command
 line read through one table), `List(T)`, `Map(K, V; hash, eq)` and
 `Sort(T; less)`. Section 11 of the report gives each one's interface,
 and `tools/Doc.raz` prints it from the module's file:
