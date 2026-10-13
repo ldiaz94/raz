@@ -5,56 +5,9 @@ for, what is in it and when it is done; its steps are commits, each
 stopping for the owner's review. A finished milestone is cut from this
 file: git keeps the history, and the report's section 12 the language's.
 
-v0.9.0, better code for reals, with `Bytes` and slices in code
-procedures (reports 2026-10.18 and 10.19), is tagged by the owner's
-word. All before v0.7.1 is approved by the owner; v0.7.1, the
-manual, v0.8.0, better code again, and v0.9.0 wait for the owner's
-review. v0.9.1, by the owner's word, adds `tools/` to the tarball,
-for the programs that build with the raz on PATH: rat, rterm, rloc.
-
-## Done: better code for reals
-
-For: code with reals near FPC `-O2`'s, as integer code is. raz keeps a
-real in an integer register and copies it to xmm0 or xmm1 and back
-for each operation; its variables are always in memory. A 2-D Jacobi
-sweep took 3.1 times FPC's time. No change to the language. Each step
-is measured on the kernels and on rat, as v0.8.0's were, and one that
-buys less than 2% on both is reverted and noted here.
-
-1. Done: **Two kernels of reals.** `test/bench/Jacobi`, a sweep of a
-   grid of `F64`s, each point the mean of its neighbours: loads, adds
-   and a constant; and `NBody`, bodies under gravity: real variables,
-   a square root and a division in the inner loop. raz 3.1 and 4.4
-   times FPC's time.
-2. Done: **Reals on the stack in xmm registers.** A real on the value
-   stack is held in xmm8 to xmm11, loaded and stored there with
-   `movsd`, a constant read from read-only data, and an operation takes
-   its right operand from memory as it is. Jacobi 251 ms to 129, NBody
-   375 to 225; rat within noise.
-3. Done: **An element of an array as the machine has it.** NBody's
-   time went mostly to its addresses, not its reals: `x[i]`, of an
-   array of the module, was a copy, a shift, a `lea` and an add before
-   its load. Now an element of an array in the frame or a chunk is the
-   operand `[base + i * 8]`, as one of a slice in registers is. NBody
-   225 ms to 147; rat within noise.
-4. Done: **An offset as the machine has it.** Jacobi's index
-   arithmetic, `s[i * N + j - 1]`, added its constant before the load;
-   now a word's constant offset waits on the stack, carried through
-   `+`, `-` and `*` by a constant, and an element's operand takes it as
-   its displacement: `[r13 + r9 * 8 - 8]`. Jacobi 129 ms to 106; rat
-   within noise.
-5. Done: **Real variables in xmm registers.** The busiest four reals
-   of a procedure live in xmm12 to xmm15, each written through to its
-   slot, from which the trap report reads it and a call's return loads
-   it, as System V keeps no xmm register through a call. NBody 147 ms
-   to 116; rat within noise.
-
-All told: Jacobi 3.1 times FPC `-O2`'s time to 1.3, NBody 4.4 to 1.4;
-rat and the integer kernels as they were; 9,131 lines of code. Left:
-Jacobi's index, worked out for each element where FPC shares it, which
-one pass can't; NBody's call to `Math.sqrt`, an instruction to FPC;
-a comparison of reals that jumps without making a `BOOL`, which
-neither kernel needs.
+v0.9.1, the latest release, is tagged by the owner's word. All before
+v0.7.1 is approved by the owner; v0.7.1, v0.8.0, v0.9.0 and v0.9.1 wait
+for the owner's review. No milestone is under way.
 
 ## Next, when the owner says
 
