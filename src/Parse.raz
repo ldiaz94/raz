@@ -1005,23 +1005,23 @@ end;
 (* A designator, with any selectors and calls after it. called tells
    whether the last thing done was a call. *)
 proc designator(var x: TItem; var called: BOOL): ERROR;
-var o, f: PObj; y, z: TItem; t: PType; start: Diag.Pos;
+var o, f: PObj; y, z: TItem; t: PType; start: INT;
 begin
-    start := Scan.tokPos();
+    start := Scan.tokStart();
     o := try qualIdent();
     called := false;
     if o^.cls = Sym.oModule then
-        return Scan.markAt(Scan.spanFrom(start), say1("{} is a module, not a value", nameOf(o^.name)));
+        return Scan.markAt(Scan.spanFromAt(start), say1("{} is a module, not a value", nameOf(o^.name)));
     end;
     try Item.makeItem(x, o);
     if x.mode = Item.mBuiltin then
         try builtin(x);
         called := true;
     elsif x.mode = Item.mCase then
-        try constructCase(x, o, Scan.spanFrom(start));
+        try constructCase(x, o, Scan.spanFromAt(start));
     end;
     repeat
-        x.pos := Scan.spanFrom(start);
+        x.pos := Scan.spanFromAt(start);
         match Scan.tok of
         | sPeriod:
             Scan.next;
@@ -1064,7 +1064,7 @@ begin
         | else: break;
         end;
     until false;
-    x.pos := Scan.spanFrom(start);
+    x.pos := Scan.spanFromAt(start);
     Item.nilTest(x);
     return nil;
 end;
@@ -1129,13 +1129,57 @@ begin
     return nil;
 end;
 
-(* A record literal: a zeroed temporary, with the fields named filled in. *)
+(* The padding of the record type t, the bytes between its fields and
+   after the last, cleared in x: a word at a time, so a few stores *)
+proc clearPadding(x: TItem; t: PType);
+var f: PObj; at, lo, hi: I64;
+begin
+    at := 0;
+    f := t^.fields;
+    while true do
+        if f # nil then hi := f^.val; else hi := t^.size; end;
+        if hi > at then
+            lo := at - at mod 8;
+            hi := Sym.alignUp(hi, 8);
+            if hi > t^.size then hi := t^.size; end;
+            Item.zeroRange(x, lo, hi - lo);
+        end;
+        if f = nil then break; end;
+        at := f^.val + f^.typ^.size;
+        f := f^.next;
+    end;
+end;
+
+(* The fields of the record type t that a literal left out, of which seen
+   are the n names it gave, cleared in x *)
+proc clearMissing(x: TItem; t: PType; seen: [MaxNames]INT; n: INT);
+var f: PObj; i: INT; given: BOOL;
+begin
+    f := t^.fields;
+    while f # nil do
+        given := false;
+        for i := 0 to n - 1 do
+            if seen[i] = f^.name then given := true; end;
+        end;
+        if not given then Item.zeroRange(x, f^.val, f^.typ^.size); end;
+        f := f^.next;
+    end;
+end;
+
+(* A record literal: a temporary, or the result's place, with the fields
+   named filled in and the rest zero. The temporary is cleared where the
+   fields won't write: the padding first, then what the literal left out. *)
 proc recordLiteral(var x: TItem; t: PType): ERROR;
-var f: PObj; a: TItem; seen: [MaxNames]INT; n, i: INT;
+var f: PObj; a: TItem; seen: [MaxNames]INT; n, i, fields: INT;
 begin
     Scan.next;
-    Item.zeroTemp(x, t);
+    Item.tempOf(x, t);
     n := 0;
+    fields := 0;
+    f := t^.fields;
+    while f # nil do INC(fields); f := f^.next; end;
+    if fields > MaxNames then Item.zeroRange(x, 0, t^.size);   (* more than seen has room for *)
+    else clearPadding(x, t); end;
     if Scan.tok # Scan.sRbrace then
         repeat
             if Scan.tok # Scan.sIdent then return expected("a field"); end;
@@ -1154,6 +1198,7 @@ begin
             Scan.next;
         until false;
     end;
+    if fields <= MaxNames then clearMissing(x, t, seen, n); end;
     return expect(Scan.sRbrace);
 end;
 
@@ -1248,7 +1293,7 @@ end;
    since what follows is the code for an error that is nil. *)
 proc tryCall(var x: TItem): ERROR;
 var
-    called: BOOL; c: Gen.CallInfo; start, at: Diag.Pos; res: PType; last: PObj; slot: I64; ok: INT;
+    called: BOOL; c: Gen.CallInfo; start, at: Diag.Pos; res: PType; last: PObj; slot: I64; ok: INT; direct: BOOL;
 begin
     start := Scan.tokPos();
     Scan.next;
@@ -1277,15 +1322,22 @@ begin
         return Scan.markAt(x.pos, say1("try needs a call that returns an ERROR last, and this returns {}", Sym.typeName(x.typ)));
     end;
     res := x.typ;
+    direct := false;
     if x.mode = Item.mStack then
         (* an ERROR alone *)
-        slot := Gen.allocTemp(8, 8);
-        Gen.popVar(Item.frameAdr(slot), 8);
+        direct := numDefers = 0;
+        if not direct then
+            slot := Gen.allocTemp(8, 8);
+            Gen.popVar(Item.frameAdr(slot), 8);
+        end;
         x.mode := Item.mNone; x.typ := Sym.tNone;
     elsif x.mode = Item.mWords then
         (* two words, the error on top *)
-        slot := Gen.allocTemp(8, 8);
-        Gen.popVar(Item.frameAdr(slot), 8);
+        direct := numDefers = 0;
+        if not direct then
+            slot := Gen.allocTemp(8, 8);
+            Gen.popVar(Item.frameAdr(slot), 8);
+        end;
         x.mode := Item.mStack; x.typ := res^.fields^.typ;
     else
         (* several, in a temporary: the error is where it is *)
@@ -1295,22 +1347,28 @@ begin
         if res^.len = 2 then try Item.field(x, res^.fields); else x.typ := withoutLast(res); end;
     end;
     ok := Gen.NoLabel;
-    Gen.pushVar(Item.frameAdr(slot), 8, false, Gen.kWord);
-    Gen.jumpIf(ok, false);
-    if numDefers > 0 then Gen.tryAlign(); end;
-    runDefers(0);
-    Gen.tryReturn(slot);
+    if direct then
+        (* nothing to defer: the error is tested and returned from the
+           register it is in, with no slot *)
+        Gen.tryReturnFrom(Gen.tryTest(ok));
+    else
+        Gen.pushVar(Item.frameAdr(slot), 8, false, Gen.kWord);
+        Gen.jumpIf(ok, false);
+        if numDefers > 0 then Gen.tryAlign(); end;
+        runDefers(0);
+        Gen.tryReturn(slot);
+    end;
     Gen.fix(ok);
     x.pos := Scan.spanFrom(start);
     return nil;
 end;
 
 proc factor(var x: TItem; want: PType): ERROR;
-var called, vol, several: BOOL; t: PType; start: Diag.Pos; s: []U8;
+var called, vol, several: BOOL; t: PType; start: INT; s: []U8;
 begin
     several := passOn;
     passOn := false;
-    start := Scan.tokPos();
+    start := Scan.tokStart();
     match Scan.tok of
     | sInt, sChar:
         (* only a hex number can be above high(I64), and it is a U64 *)
@@ -1374,7 +1432,7 @@ begin
         end;
     | else: return expected("an expression");
     end;
-    x.pos := Scan.spanFrom(start);
+    x.pos := Scan.spanFromAt(start);
     return nil;
 end;
 
@@ -1403,9 +1461,9 @@ begin
 end;
 
 proc term(var x: TItem; want: PType): ERROR;
-var op: Scan.Sym; y: TItem; L: INT; start: Diag.Pos;
+var op: Scan.Sym; y: TItem; L: INT; start: INT;
 begin
-    start := Scan.tokPos();
+    start := Scan.tokStart();
     try factor(x, want);
     while isMulOp() do
         op := Scan.tok;
@@ -1413,19 +1471,19 @@ begin
         try Item.op1(op, x, L);
         try factor(y, nil);
         try Item.op2(op, x, y, L);
-        x.pos := Scan.spanFrom(start);
+        x.pos := Scan.spanFromAt(start);
     end;
     return nil;
 end;
 
 proc simpleExpr(var x: TItem; want: PType): ERROR;
-var op: Scan.Sym; y: TItem; L: INT; start: Diag.Pos;
+var op: Scan.Sym; y: TItem; L: INT; start: INT;
 begin
-    start := Scan.tokPos();
+    start := Scan.tokStart();
     if Scan.tok = Scan.sMinus then
         Scan.next;
         try term(x, nil);
-        x.pos := Scan.spanFrom(start);
+        x.pos := Scan.spanFromAt(start);
         try Item.neg(x);
     else
         try term(x, want);
@@ -1436,7 +1494,7 @@ begin
         try Item.op1(op, x, L);
         try term(y, nil);
         try Item.op2(op, x, y, L);
-        x.pos := Scan.spanFrom(start);
+        x.pos := Scan.spanFromAt(start);
     end;
     return nil;
 end;
@@ -1458,31 +1516,31 @@ end;
 
 (* and binds tighter than or, and both below the relations *)
 proc conjunct(var x: TItem; want: PType): ERROR;
-var y: TItem; L: INT; start: Diag.Pos;
+var y: TItem; L: INT; start: INT;
 begin
-    start := Scan.tokPos();
+    start := Scan.tokStart();
     try relation(x, want);
     while Scan.tok = Scan.sAnd do
         Scan.next;
         try Item.op1(Scan.sAnd, x, L);
         try relation(y, nil);
         try Item.op2(Scan.sAnd, x, y, L);
-        x.pos := Scan.spanFrom(start);
+        x.pos := Scan.spanFromAt(start);
     end;
     return nil;
 end;
 
 proc expression(var x: TItem; want: PType): ERROR;
-var y: TItem; L: INT; start: Diag.Pos;
+var y: TItem; L: INT; start: INT;
 begin
-    start := Scan.tokPos();
+    start := Scan.tokStart();
     try conjunct(x, want);
     while Scan.tok = Scan.sOr do
         Scan.next;
         try Item.op1(Scan.sOr, x, L);
         try conjunct(y, nil);
         try Item.op2(Scan.sOr, x, y, L);
-        x.pos := Scan.spanFrom(start);
+        x.pos := Scan.spanFromAt(start);
     end;
     return nil;
 end;
@@ -2194,7 +2252,10 @@ begin
             if (curResult # nil) and curResult^.tuple then
                 try returnResults();
             else
+                Item.literalInResult((Scan.tok = Scan.sLbrace) and (curResult # nil)
+                    and (curResult^.form = Sym.fRecord) and Sym.behindPointer(curResult));
                 try expression(x, curResult);
+                Item.literalInResult(false);
                 try Item.returnValue(x);
             end;
             (* the result, one value or two words on top, waits in the frame
@@ -2317,6 +2378,7 @@ proc declarations(top: BOOL); forward;
 proc varKind(o: PObj): INT;
 var k, i, v: INT;
 begin
+    if o^.ind and (o^.reg # 0) then return 0; end;   (* the address is in a register, not shown *)
     match o^.typ^.form of
     | fInt: if o^.typ^.signed then k := 1; else k := 2; end;
     | fEnum, fSet: k := 2;
@@ -2338,7 +2400,9 @@ end;
 proc regFit(o: PObj): BOOL;
 var f: Sym.Form;
 begin
-    if (o^.cls # Sym.oVar) or o^.ind or o^.ext then return false; end;
+    if (o^.cls # Sym.oVar) or o^.ext then return false; end;
+    (* a parameter passed by its address keeps the address in the register *)
+    if o^.ind then return o^.param; end;
     f := o^.typ^.form;
     return (f = Sym.fInt) or (f = Sym.fBool) or (f = Sym.fEnum) or (f = Sym.fPtr) or (f = Sym.fProc)
         or (f = Sym.fError) or (f = Sym.fSlice) or (f = Sym.fReal)
@@ -2415,15 +2479,18 @@ begin
     Scan.setSkipping(true);      (* its slips are told when it is compiled *)
     d := 0; loops := 0; afterDot := false; leaf := true; qual := nil;
     repeat
-        (* a name, or a module's name and one of its exports, that calls *)
-        if (Scan.tok = Scan.sIdent) and not afterDot then
-            q := Sym.lookup(Scan.id);
-            if calls(q) then leaf := false; end;
-            qual := nil;
-            if (q # nil) and (q^.cls = Sym.oModule) then qual := q; end;
-        elsif (Scan.tok = Scan.sIdent) and (qual # nil) then
-            if (qual^.home = nil) or calls(Sym.find(qual^.home^.scope, Scan.id)) then leaf := false; end;
-            qual := nil;
+        (* a name, or a module's name and one of its exports, that calls;
+           once one has, the rest needn't be looked up *)
+        if leaf then
+            if (Scan.tok = Scan.sIdent) and not afterDot then
+                q := Sym.lookup(Scan.id);
+                if calls(q) then leaf := false; end;
+                qual := nil;
+                if (q # nil) and (q^.cls = Sym.oModule) then qual := q; end;
+            elsif (Scan.tok = Scan.sIdent) and (qual # nil) then
+                if (qual^.home = nil) or calls(Sym.find(qual^.home^.scope, Scan.id)) then leaf := false; end;
+                qual := nil;
+            end;
         end;
         match Scan.tok of
         | sBegin, sIf, sMatch, sWhile, sFor, sRepeat:

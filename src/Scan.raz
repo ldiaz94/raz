@@ -268,35 +268,86 @@ begin
     return p;
 end;
 
+(* The same from a start that tokStart noted, which costs less than a
+   whole place: the parser notes one at every level of an expression *)
+proc tokStart*: INT;
+begin
+    return cur.tokPos;
+end;
+
+proc spanFromAt*(a: INT): Diag.Pos;
+begin
+    return {f: cur.f, a: a, b: cur.prevEnd};
+end;
+
 proc curLine*: INT;
 begin
     return cur.tokLine;
 end;
 
-(* The line and column of byte a of the file, at or before the current
-   symbol: counted back from the symbol's line, so that it costs only
+var
+    (* what lineCol found last, in file lcFile: byte lcAt is in line lcLine,
+       which starts at lcStart, at column lcCol. The next ask is likely
+       near it, as the places of the checks of a procedure are told in order,
+       and a line's statements come one after another. *)
+    lcFile, lcAt, lcLine, lcStart, lcCol: INT;
+
+(* The line and column of byte a of the file: counted from the place last
+   found, or the current symbol's, back or forward, so that it costs only
    the distance. A column counts characters, as Diag's do. *)
 proc lineCol*(a: INT): (INT, INT);
 var i, line, start, col: INT;
 begin
-    line := cur.tokLine;
-    start := cur.tokLineStart;
-    while a < start do
-        DEC(line);
-        DEC(start);
-        while (start > 0) and (cur.buf[start - 1] # '\n') do DEC(start); end;
+    if lcFile = cur.f then
+        line := lcLine;
+        start := lcStart;
+        i := lcAt;
+        col := lcCol;
+    else
+        line := cur.tokLine;
+        start := cur.tokLineStart;
+        i := start;
+        col := 1;
     end;
-    col := 1;
-    for i := start to a - 1 do
-        if (cur.buf[i] & 0C0H) # 80H then INC(col); end;
+    if a < i then
+        (* before the place, back to the start of its line, or of the
+           line before until a is in it *)
+        i := start;
+        col := 1;
+        while a < start do
+            DEC(line);
+            DEC(start);
+            while (start > 0) and (cur.buf[start - 1] # '\n') do DEC(start); end;
+        end;
+        i := start;
     end;
+    while i < a do
+        if cur.buf[i] = '\n' then
+            INC(line);
+            start := i + 1;
+            col := 1;
+        elsif (cur.buf[i] & 0C0H) # 80H then
+            INC(col);
+        end;
+        INC(i);
+    end;
+    lcFile := cur.f;
+    lcAt := a;
+    lcLine := line;
+    lcStart := start;
+    lcCol := col;
     return line, col;
 end;
 
+(* The column of the current symbol: only its line's start to count
+   from, which the scanner noted *)
 proc curCol*: INT;
-var col: INT;
+var i, col: INT;
 begin
-    _, col := lineCol(cur.tokPos);
+    col := 1;
+    for i := cur.tokLineStart to cur.tokPos - 1 do
+        if (cur.buf[i] & 0C0H) # 80H then INC(col); end;
+    end;
     return col;
 end;
 
@@ -858,25 +909,33 @@ end;
 
 (* Reads the next symbol *)
 proc next*;
-var c: U8; start, h, v, i: INT;
+var c: U8; start, h, v, i, p: INT; buf: ^U8;
 begin
-    cur.prevEnd := cur.pos;
+    (* the position and the text are kept in variables, in registers,
+       while the loops run: cur is in memory, and each step through it
+       waits for the one before *)
+    buf := cur.buf;
+    p := cur.pos;
+    cur.prevEnd := p;
     repeat
-        c := cur.buf[cur.pos];
+        c := buf[p];
         while (c = ' ') or (c = '\t') or (c = '\r') or (c = '\n') do
             if c = '\n' then
                 INC(cur.line);
-                cur.lineStart := cur.pos + 1;
+                cur.lineStart := p + 1;
             end;
-            INC(cur.pos);
-            c := cur.buf[cur.pos];
+            INC(p);
+            c := buf[p];
         end;
-        if (c = '(') and (cur.buf[cur.pos + 1] = '*') then
+        if (c = '(') and (buf[p + 1] = '*') then
+            cur.pos := p;
             comment;
+            p := cur.pos;
             c := ' ';
         end;
     until c # ' ';
-    cur.tokPos := cur.pos;
+    cur.pos := p;
+    cur.tokPos := p;
     cur.tokLine := cur.line;
     cur.tokLineStart := cur.lineStart;
     if single[c] # sNull then
@@ -886,13 +945,14 @@ begin
     end;
     match c of
     | 'A'..'Z', 'a'..'z', '_':
-        start := cur.pos;
-        repeat INC(cur.pos); until not nameChar[cur.buf[cur.pos]];
-        if cur.pos - start > MaxIdent then
+        start := p;
+        repeat INC(p); until not nameChar[buf[p]];
+        cur.pos := p;
+        if p - start > MaxIdent then
             lexError(Diag.say("a name has at most {} characters", [Fmt.int(MaxIdent)]));
         end;
-        h := intern(cur.buf + start, cur.pos - start);
-        if (cur.pos - start = 1) and (c = '_') then
+        h := intern(buf + start, p - start);
+        if (p - start = 1) and (c = '_') then
             tok := sBlank;
         elsif h < NumWords then
             tok := Sym(INT(sAnd) + h);

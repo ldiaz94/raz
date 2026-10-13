@@ -92,41 +92,16 @@ done
 echo "x64: $n assembler files, $bad differ"
 test $bad = 0
 
-# Gen: procedures made by a script of calls (expressions, statements,
-# calls, frames, checks, defers, the entry point), whose bytes, fixups,
-# line notes and listing must be the same; once with the static entry
-# point and once with the dynamic one
-fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fuseed -o$b/gendump.seed src/test/GenDump.pas >/dev/null
-./raz -Werror -I src -o $b/gendump.src src/test/GenDump.raz
-for a in "" dyn; do
-    $b/gendump.seed $a >$b/gen.seed
-    $b/gendump.src $a >$b/gen.src
-    cmp $b/gen.seed $b/gen.src
-done
-echo "gen ok"
-
-# Item: operands and operations driven by a script with mistakes in it,
-# which show their messages and go on; what each step gave, the code
-# made and the messages must be the same. A run ends at the 20th error,
-# as a compile does, so the script changes with each argument.
-fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fuseed -o$b/itemdump.seed src/test/ItemDump.pas >/dev/null
-./raz -Werror -I src -o $b/itemdump.src src/test/ItemDump.raz
-n=0; bad=0
-for a in $(seq 0 59); do
-    s1=0; s2=0
-    $b/itemdump.seed $a >$b/seed.out 2>$b/seed.err || s1=$?
-    $b/itemdump.src $a >$b/src.out 2>$b/src.err || s2=$?
-    n=$((n + 1))
-    if [ $s1 != $s2 ] || ! cmp -s $b/seed.out $b/src.out || ! cmp -s $b/seed.err $b/src.err; then
-        echo "differs: item script $a (status $s1 and $s2)"; bad=$((bad + 1))
-    fi
-done
-echo "item: $n scripts, $bad differ"
-test $bad = 0
+# Gen and Item were tested here against the seed's while they were ported,
+# by the code they made: the same bytes, listings and line notes. Since the
+# compiler's own code was improved (v0.10.0) that code is no longer the
+# seed's, so they are tested by what the seed can still check, the
+# messages and statuses of Parse and Raz below, and by the fixpoint and
+# the tests of `make check`, on the compiler they make.
 
 # Parse and Raz: the compiler this makes, built by the seed, compiles
-# what the seed compiles, to the same file, with the same messages and
-# status: every example, test and tool, and the library, with each
+# what the seed compiles, with the same messages and status (the files
+# are no longer the same, as it makes better code): every example, test and tool, and the library, with each
 # one's own options. Both sides run as build/cmp/raz, since a program
 # holds the paths it was made from and the library is found beside the
 # compiler.
@@ -169,7 +144,7 @@ n=0; bad=0
 for f in $files; do
     x=$(dirname $f | tr / _).$(basename $f .raz)
     n=$((n + 1))
-    for e in "" .out .err .status; do
+    for e in .out .err .status; do
         [ -f $c/seed/$x$e ] || [ -f $c/src/$x$e ] || continue
         if ! cmp -s $c/seed/$x$e $c/src/$x$e; then
             echo "differs: $f ($x$e)"; bad=$((bad + 1)); break

@@ -43,7 +43,7 @@ type
                                 not make them); see Gen's jumpOut *)
         val*: I64;           (* mConst: the value, an F64's bits; mStr: its length *)
         base*: Gen.Base;     (* mVar: what the address is relative to *)
-        chunk*: INT;         (* mVar with bGlobal, mStr: the chunk; bSlot: the slot *)
+        chunk*: INT;         (* mVar with bGlobal, mStr: the chunk; bSlot: the slot; bPtr: the register *)
         off*: I64;           (* mVar: added to the base *)
         vol*: BOOL;          (* mVar: reached through ^VOLATILE *)
         isVar*: BOOL;        (* mVar: a variable of the program, not a temporary *)
@@ -178,35 +178,23 @@ begin
 end;
 
 proc frameAdr*(off: I64): Gen.Adr;
-var a: Gen.Adr;
 begin
-    a.base := Gen.bFrame;
-    a.chunk := -1;
-    a.off := off;
-    a.hi := 0;
-    return a;
+    return {base: Gen.bFrame, chunk: -1, off: off, hi: 0};
 end;
 
 proc globalAdr*(c: INT): Gen.Adr;
-var a: Gen.Adr;
 begin
-    a.base := Gen.bGlobal;
-    a.chunk := c;
-    a.off := 0;
-    a.hi := 0;
-    return a;
+    return {base: Gen.bGlobal, chunk: c, off: 0, hi: 0};
 end;
 
-(* Where the variable x is, for Gen; a slice in registers has two *)
+(* Where the variable x is, for Gen; a slice in registers has two. x is
+   a var parameter only so as not to be copied, as it is a whole Item. *)
 proc adrOf*(x: Item): Gen.Adr;
-var a: Gen.Adr;
+var hi: INT;
 begin
-    a.base := x.base;
-    a.chunk := x.chunk;
-    a.off := x.off;
-    a.hi := 0;
-    if x.base = Gen.bReg then a.hi := x.obj^.reg2; end;
-    return a;
+    hi := 0;
+    if x.base = Gen.bReg then hi := x.obj^.reg2; end;
+    return {base: x.base, chunk: x.chunk, off: x.off, hi: hi};
 end;
 
 (* An item for "found ...": a constant without a type of its own as it
@@ -271,6 +259,8 @@ begin
             x.base := Gen.bStack;
         elsif o^.lev = 0 then
             x.base := Gen.bGlobal; x.chunk := o^.chunk;
+        elsif o^.ind and (o^.reg # 0) then
+            x.base := Gen.bPtr; x.chunk := o^.reg; x.off := o^.off;
         elsif o^.ind then
             x.base := Gen.bSlot; x.chunk := INT(o^.val); x.off := o^.off;
         elsif o^.reg # 0 then
@@ -658,7 +648,7 @@ begin
 end;
 
 proc index*(var x, y: Item): ERROR;
-var t: ^Sym.Type; s: I64;
+var t: ^Sym.Type; s: I64; isConst: BOOL;
 begin
     t := x.typ;
     s := t^.base^.size;
@@ -666,9 +656,12 @@ begin
         return Scan.markAt(y.pos, say1("an index is an integer, found {}", what(y)));
     end;
     if t^.form = Sym.fPtr then
+        isConst := y.mode = mConst;
         try value(y);
-        scaleBy(s);
-        Gen.op(Scan.sPlus, Gen.kWord, 8, false);
+        if isConst or not ((s = 1) or (s = 2) or (s = 4) or (s = 8)) then
+            scaleBy(s);
+            Gen.op(Scan.sPlus, Gen.kWord, 8, false);
+        else Gen.indexPtr(s); end;
         x.mode := mVar; x.base := Gen.bStack; x.off := 0;
         x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
     elsif (t^.form = Sym.fArray) and (y.mode = mConst) then
@@ -1306,7 +1299,7 @@ begin
     if x.mode = mWords then return nil; end;   (* there already *)
     (* copied to a temporary unless its two words are in memory at a place
        that a later argument can't change *)
-    if (x.mode # mVar) or x.vol or not (x.base in {Gen.bFrame, Gen.bGlobal, Gen.bSlot, Gen.bReg}) then
+    if (x.mode # mVar) or x.vol or not (x.base in {Gen.bFrame, Gen.bGlobal, Gen.bSlot, Gen.bReg, Gen.bPtr}) then
         try copyToTemp(x);
     end;
     adr := adrOf(x);
@@ -1401,13 +1394,49 @@ end;
 
 (* Variants *)
 
-(* A temporary of type t, all zero: for variants and record literals. *)
-proc zeroTemp*(var x: Item; t: ^Sym.Type);
-var tmp: I64;
+(* Whether the record literal about to be parsed is the whole of a return
+   (see zeroTemp): Parse says so, and clears it after the expression. *)
+var inResult: BOOL;
+
+proc literalInResult*(yes: BOOL);
 begin
+    inResult := yes;
+end;
+
+(* A temporary of type t, not cleared: where a record literal is made,
+   which clears only what its fields leave (zeroRange). With
+   literalInResult it is behind the hidden pointer, so that return {...}
+   makes the record where the caller wants it, not in a temporary copied
+   there after. *)
+proc tempOf*(var x: Item; t: ^Sym.Type);
+var tmp: I64; p: Diag.Pos;
+begin
+    if inResult and (t = result) then
+        inResult := false;
+        p := x.pos;
+        x := {};
+        x.pos := p;
+        x.mode := mVar; x.typ := t; x.base := Gen.bSlot; x.chunk := INT(Gen.resultSlot());
+        return;
+    end;
     tmp := Gen.allocTemp(t^.size, t^.align);
-    Gen.zeroVar(frameAdr(tmp), t^.size);
     tempItem(x, t, tmp);
+end;
+
+(* A temporary of type t, all zero: for variants. *)
+proc zeroTemp*(var x: Item; t: ^Sym.Type);
+begin
+    tempOf(x, t);
+    Gen.zeroVar(adrOf(x), t^.size);
+end;
+
+(* size bytes, off bytes into the variable x, cleared *)
+proc zeroRange*(x: Item; off, size: I64);
+var a: Gen.Adr;
+begin
+    a := adrOf(x);
+    a.off := a.off + off;
+    Gen.zeroVar(a, size);
 end;
 
 proc construct*(var x: Item; c: ^Sym.Obj);
@@ -1418,15 +1447,18 @@ begin
 end;
 
 proc setField*(x: Item; f: ^Sym.Obj; var a: Item): ERROR;
+var at: Gen.Adr;
 begin
+    at := adrOf(x);
+    at.off := at.off + f^.val;
     try coerce(a, f^.typ);
     if Sym.isScalar(f^.typ) then
         try value(a);
-        Gen.popVar(frameAdr(x.off + f^.val), scalarSize(f^.typ));
+        Gen.popVar(at, scalarSize(f^.typ));
     else
         if a.vol then return Scan.markAt(a.pos, "can't copy through a volatile pointer"); end;
         try address(a);
-        Gen.copyTo(frameAdr(x.off + f^.val), f^.typ^.size);
+        Gen.copyTo(at, f^.typ^.size);
     end;
     return nil;
 end;
@@ -1607,6 +1639,8 @@ begin
     try coerce(x, result);
     if Sym.inTwoRegs(result) then try pushWords(x);
     elsif Sym.isAggregate(result) then
+        (* a record literal made behind the hidden pointer is there already *)
+        if (x.base = Gen.bSlot) and (x.chunk = INT(Gen.resultSlot())) and (x.off = 0) then return nil; end;
         if x.vol then return Scan.markAt(x.pos, "can't copy through a volatile pointer"); end;
         try address(x);
         Gen.copyResult(0, result^.size);

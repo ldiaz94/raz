@@ -1,9 +1,10 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 10,500 lines of code (the
+The compiler is eleven files of raz, about 10,700 lines of code (the
 budget is a soft 10,000, never past 11,000). It is its own compiler: the
 frozen Pascal compiler in `seed/` builds `src/` the first time, and
-after that `src/` builds itself. This guide walks through the files in the order they are best read: from the
+after that a raz builds `src/` (`make fixpoint` checks that it makes
+itself again, byte for byte). This guide walks through the files in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
 disassembly. The manual pages say the rest: `raz(1)` the command,
@@ -13,13 +14,13 @@ library, made from `lib/` by `tools/Doc.raz`.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,002 | 842 | Symbols, literals, comments, positions |
+| `src/Scan.raz` | 1,062 | 886 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 684 | 555 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 354 | 272 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,472 | 1,222 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,350 | 1,693 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 1,729 | 1,438 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 3,775 | 3,298 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/X64.raz` | 1,493 | 1,238 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,471 | 1,778 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 1,763 | 1,458 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 3,842 | 3,353 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 380 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 273 | 214 | The command line |
@@ -619,6 +620,128 @@ array's address, which FPC makes too, and the fifth real, `d2`, for
 which there is no register. A comparison of reals still makes a
 `BOOL` before it jumps, as `not (a < b)` isn't `a >= b` for a NaN;
 neither kernel has one.
+## Better code, for the compiler itself
+
+The compiler, built by itself, took 684 ms for a program of 348,000
+lines where the same compiler written in Pascal took 374: 1.8 times as
+long. `perf` (`perf record`, `perf annotate`; raz keeps `rbp` frames and
+a symbol table, so it reads the compiler as it reads any program) found
+no hot spot, but a few habits of the code, each cheap to mend. The
+compiler now takes about 500 ms, 1.4 times the Pascal one's, and its
+own programs are no slower for it (`make kernels`). Each step below was
+measured by cycles (`perf stat`), as timing alone is too noisy to see
+1%.
+
+1. **Small blocks cleared and copied by moves.** A record made by a
+   literal was cleared with `rep stosb` and copied with `rep movsb`,
+   which take some twenty cycles to start whatever the size: `x := {}`
+   on a 112-byte `Item` was most of `makeItem`'s time. `copyBytes` did
+   go by moves up to 64 bytes, but `zeroVar` never did. Now both take
+   `MaxMoves`, 256 bytes, by moves: 16 bytes at a time through `xmm0`
+   (`movdqu`), then 8, 4, 2 and 1 (`copyBytes`, `zeroBytes`). A copy of
+   up to 64 bytes stays in words (`MaxWordMoves`): a record just made
+   field by field is read back by loads as wide as its stores, and a
+   16-byte load across two 8-byte stores waits for both to reach the
+   cache (measured: `Scan.tokPos` doubled). The prologue's loop over
+   the locals, a quadword an iteration, is now `pxor xmm8` and a row of
+   `movdqu` stores, or a loop of 16 bytes for a frame of more than 256.
+   `Parse.matchStatement` has a frame of 25 kilobytes, its table of
+   labels, cleared at each `match`: that was 5% of the compiler's
+   misses in the first-level cache, and is the largest left.
+
+2. **A record literal made where it is wanted.** `return {f: a, b: c}`
+   built the record in a temporary, cleared, and copied it behind the
+   hidden pointer:
+
+   ```
+   lea rdi, [rbp - 32]       ; the temporary
+   (clear it)
+   mov [rbp - 32], r8        ; its fields
+   ...
+   lea rsi, [rbp - 32]       ; and copy it out
+   mov rdi, [rbp - 8]
+   mov rcx, [rsi] ...
+   ```
+
+   Now `oneStatement`, at `return`, says the literal is the whole of the result
+   (`Item.literalInResult`), `tempOf` makes the item at `bSlot`, at the
+   slot that holds the hidden pointer (`Gen.resultSlot`), and the
+   fields go there: `mov rcx, [rbp - 8]; mov [rcx], r8`. A caller always
+   passes a temporary of its own, so the fields can't alias what they
+   are made from. And a literal clears only what its fields leave:
+   `clearPadding` the words that hold padding, before the fields, and
+   `clearMissing` the fields it gave no value, after them. `Scan.tokPos`,
+   which the parser calls over and over, went from 33 instructions to 14.
+
+3. **`p[i]` through a pointer as an operand.** An element of a slice in
+   registers was only noted, `[rdi + r12 * 8]` (`lIdx`); an element
+   through a pointer worked out its address, `i * 8`, then `+ p`:
+
+   ```
+   mov r9, r12               mov r8, [Sym.hashTab]
+   shl r9, 3          now:   mov r8, [r8 + r12 * 8]
+   mov r8, [Sym.hashTab]
+   add r8, r9
+   mov r8, [r8]
+   ```
+
+   `indexPtr` notes it as `lIdx` when at most one of the pointer and the
+   index is in a register of the stack (the one the value then owns),
+   and makes it with one `lea` otherwise.
+
+4. **`try` with nothing to defer tests the error in its register.** The
+   error was stored in a frame slot, loaded, tested, and loaded again
+   to be returned:
+
+   ```
+   call f; mov r8, rax; mov [rbp - 160], r8; mov r8, [rbp - 160]
+   test r8, r8; je ok; mov rax, [rbp - 160]; jmp exit
+   ```
+
+   Where no deferred statement is in force, `tryTest` tests the register
+   the call's result is in and `tryReturnFrom` returns it from there:
+   `call f; mov r8, rax; test r8, r8; je ok; mov rax, r8; jmp exit`.
+   With a deferred statement the slot stays, as `runDefers` calls code
+   that would take the register.
+
+5. **A `var` parameter's address in a register.** `term(var x: Item)`
+   loaded the pointer from its slot, `mov r8, [rbp - 8]`, at each use of
+   `x`, `x.pos := ...` included. A parameter passed by its address (a
+   `var` parameter, a record or an array) is now a candidate for a
+   register as any variable is (`regFit`), and an item at `bPtr`
+   names it: `place` is `[r12 + off]`, with no load, and `pushVar` notes
+   it as `lMem`, so that it is read as an operand. The trap report
+   doesn't show it (`varKind`). One in `rdi` or `rsi` of a procedure
+   that calls nothing is kept there (`keepArrived`), as any parameter.
+
+6. **Two small things in the code.** `lea r8, [r8]`, which `pushAdr`
+   made of an address already in the register, is not made.
+   `Scan.next` reads and steps through its text in two variables that
+   live in registers while its loops run, and stores them back after:
+   `cur.pos`, in memory, made each step wait for the store of the one
+   before. And `Parse.chooseRegs`, which reads a procedure through once
+   to count its variables' uses, stops looking names up for calls after
+   the first that does.
+
+The source changed too, where one routine had the habit. `Scan.lineCol`,
+for the places the checks of a procedure are told in, counts from the
+line last found, back or forward, where it counted back from the
+current symbol's line each time; `curCol`, for the line table of each
+statement, from the start of the symbol's line only; and the expression
+levels note where they start as a number (`tokStart`, `spanFromAt`) in
+place of a whole `Pos` that most never use.
+
+What did not help, as it is as well to know: `check off;` for the whole
+compiler (1%), a better hash for `Sym` (the old one keeps the names of
+a scope near one another and is faster), putting `scope` next to `name`
+in `Obj`, a cache of the names found by `chooseRegs`' look-ahead, and
+passing `Item` to `adrOf` as a `var` parameter, so as not to copy it.
+What is left is spread thinly: the procedure call overhead of many small
+routines (`Gen.drop`, `X64.mem`, `Chunk.put1`, which an inliner, listed
+in `PLAN.md`, would remove), the reading of every procedure twice, and
+a record parameter copied at each call that passes it on (`Mem`, in the
+encoder).
+
 ## Diag.raz: messages
 
 Every message the compiler prints is made here. A position, `Pos`, is a
@@ -796,7 +919,8 @@ This is the only unit that knows the machine. The calls it answers:
   `notBool`, `narrow` (to a narrow integer's width), the conversions
   between integers and reals, `compareSeq` (of two slices), and copying:
   `copyBlock`, `copyTo`, `zeroVar`, and `copySlice` for `COPY`, a `rep
-  movsb` that goes down when the destination is above the source;
+  movsb` that goes down when the destination is above the source; the
+  small ones by moves (`copyBytes`, `zeroBytes`);
 - jumps: `jump`, `jumpIf` (on a `BOOL`), `jumpCmp` (on two integers),
   `jumpOut` (`jumpCmp` from within an expression) and `condValue` for
   `and` and `or`, `fix` where the label is, and `joinJumps`;
@@ -812,7 +936,8 @@ This is the only unit that knows the machine. The calls it answers:
 
 A variable's place is an `Adr`: relative to the frame (`bFrame`), to a
 chunk (`bGlobal`), to an address on the stack (`bStack`), or to one
-held in a frame slot (`bSlot`, as a `var` parameter's is); plus `off`.
+held in a frame slot (`bSlot`, as a `var` parameter's is) or in a register
+(`bPtr`, as one that has a register's is); plus `off`.
 `place` turns it into an x64 memory operand, popping or loading the
 address first, so that a variable is read or written with one
 instruction.
@@ -908,8 +1033,8 @@ record through memory, and only a slice or two single values in
 registers.
 
 Frames: `beginProc` gives the parameters their slots; `enterBody` writes
-the prologue, which zeroes the locals in memory (with a few stores, or a
-loop for more; there are none to zero in `scale`) but not the
+the prologue, which zeroes the locals in memory (16 bytes a store: a row of
+them, or a loop for more; there are none to zero in `scale`) but not the
 temporaries, since each is written before it is read; `endProc` writes
 the epilogue and patches the frame's size in. Within a statement,
 scratch space comes from `allocTemp` and is given back by
@@ -1070,10 +1195,11 @@ the results that are left: none, one value, or a tuple of the others,
 `withoutLast`. Then, in the code before and after, this:
 
 ```
-        load [slot]; jz ok            ; Gen.jumpIf(ok, false)
+        load [slot]; jz ok            ; Gen.jumpIf(ok, false); with no deferred
+                                      ; statement, the register, tryTest
         and rsp, -16                  ; Gen.tryAlign, if a deferred statement is in force
         call deferred...              ; runDefers(0), as for a return
-        mov rax/rdx or the results    ; Gen.tryReturn(slot): zeros, and the error last
+        mov rax/rdx or the results    ; Gen.tryReturn(slot), tryReturnFrom: zeros, and the error last
         jmp exit
 ok:     ...
 ```
@@ -1374,7 +1500,7 @@ this one does.
   instruction, or of calls to gen right there.
 - **An instruction:** a routine in `X64.raz` built on `opM` or `opR`,
   and a line in `test/enctest.pas` to check its encoding (the seed's
-  test; `test/X64Dump` is the port's).
+  test; `src/test/X64Dump.raz` is the port's).
 - **A machine:** a new `Gen.raz`, answering the same calls, and an
   encoder and assembler for it in place of `X64.raz`.
 - **A statement:** a reserved word in `Scan.raz` (in `Sym` and `words`,
@@ -1383,8 +1509,10 @@ this one does.
 - **A check that fails:** `check` in `Gen.raz`, and the message in
   `lib/Rt.raz`'s `fail`; a reason a signal gives, `onSignal` there.
 
-The compiler is in raz, and `make raz` builds it with the seed, the
-frozen Pascal compiler in `seed/`, which is never edited to suit it;
-`make fixpoint` has it build itself twice more and checks that the last
-two are the same file. After any change: `make check`, `make bench`,
+The compiler is in raz. `make raz` builds it with the seed, the frozen
+Pascal compiler in `seed/` (which needs Free Pascal, and is never edited
+to suit `src/`); a raz that already exists could do it as well.
+`make fixpoint` has the seed's build compile `src/`, that compile it
+again, and that again, and checks that the last two are the same file.
+`make seed-check` tests each unit of `src/` against the seed's. After any change: `make check`, `make bench`,
 `make loc`.

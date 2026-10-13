@@ -75,10 +75,11 @@ type
 
     (* Where a variable is: its address is relative to the frame, to a
        chunk, to an address on the stack, or to one held in a frame slot *)
-    Base* = (bFrame, bGlobal, bStack, bSlot, bReg);
+    Base* = (bFrame, bGlobal, bStack, bSlot, bReg, bPtr);
     Adr* = record
         base*: Base;
-        chunk*: INT;   (* bGlobal: the chunk; bSlot: the frame slot; bReg: the register *)
+        chunk*: INT;   (* bGlobal: the chunk; bSlot: the frame slot; bReg: the register;
+                    bPtr: the register that holds the address *)
         off*: I64;     (* added to the address; for bReg, which word, 0 or 8 *)
         hi*: INT;      (* bReg, a slice: the register of its length, the
                           second word; chunk is that of its pointer *)
@@ -568,6 +569,7 @@ begin
         ra := peek(depth - 1);
         drop();
         return X.mem(ra, a.off + o);
+    | bPtr: return X.mem(a.chunk, a.off);
     | else:   (* bSlot: the address is in the frame slot a.chunk *)
         X.load(r, X.mem(RBP, a.chunk), 8, false);
         return X.mem(r, a.off);
@@ -592,7 +594,8 @@ begin
     else
         r := target(); m := place(a, r);
     end;
-    X.lea(r, m);
+    (* an address that is already in r, [r], needs no instruction *)
+    if (m.base # r) or (m.index # X.NoIndex) or (m.disp # 0) then X.lea(r, m); end;
     computed(kWord);
 end;
 
@@ -612,7 +615,7 @@ begin
     end;
     (* a variable in the frame or a chunk, or at an address only noted, is
        only noted too: read where it is used, as an operand if it can be *)
-    if (a.base in {bFrame, bGlobal}) or (a.base = bStack) and (stack[depth - 1].loc in {lAdr, lIdx}) then
+    if (a.base in {bFrame, bGlobal, bPtr}) or (a.base = bStack) and (stack[depth - 1].loc in {lAdr, lIdx}) then
         m := place(a, -1);
         newMem(lMem, m, k, size, signed);
         return;
@@ -710,19 +713,34 @@ end;
 
 (* Copying *)
 
-(* size bytes from [rsi] to [rdi], through rcx; rsi and rdi are left
-   as they fall. Up to 64 bytes, as a record or a small array mostly
-   is, they go as moves of 8, 4, 2 and 1 bytes: rep movsb takes some
-   twenty cycles to start, longer than the few moves take. *)
+(* The most that copyBytes and zeroBytes do with moves, in place of rep
+   movsb and rep stosb, which take some twenty cycles to start, longer
+   than the few moves take. *)
+const MaxMoves = 256;
+
+(* Up to this size a copy goes as words: a record just made field by
+   field is read back by loads as wide as its stores, and a 16-byte
+   load across two 8-byte stores waits for them to reach the cache. *)
+const MaxWordMoves = 64;
+
+(* size bytes from [rsi] to [rdi], through xmm0 and rcx; rsi and rdi are
+   left as they fall. Up to MaxMoves bytes, as a record or a small array
+   mostly is, they go as moves: of 16 bytes from MaxWordMoves up, then
+   of 8, 4, 2 and 1. *)
 proc copyBytes(size: I64);
 var o, n: I64;
 begin
-    if size > 64 then
+    if size > MaxMoves then
         X.movRI(RCX, size);
         X.repMovsb();
         return;
     end;
     o := 0;
+    while (size > MaxWordMoves) and (o + 16 <= size) do
+        X.movdquXM(0, X.mem(RSI, o));
+        X.movdquMX(X.mem(RDI, o), 0);
+        INC(o, 16);
+    end;
     while o < size do
         n := 8;
         while n > size - o do n := n div 2; end;
@@ -758,13 +776,38 @@ begin
     copyBytes(size);
 end;
 
+(* size zero bytes at [rdi], through xmm0 and rax; rdi is left as it
+   falls. Up to MaxMoves bytes they go as stores of 16, then of 8, 4, 2
+   and 1 bytes, as copyBytes does. *)
+proc zeroBytes(size: I64);
+var o, n: I64;
+begin
+    if size > MaxMoves then
+        X.movRI(RAX, 0);
+        X.movRI(RCX, size);
+        X.repStosb();
+        return;
+    end;
+    o := 0;
+    if size >= 16 then X.pxorXX(0); end;
+    while o + 16 <= size do
+        X.movdquMX(X.mem(RDI, o), 0);
+        INC(o, 16);
+    end;
+    if o < size then X.movRI(RAX, 0); end;
+    while o < size do
+        n := 8;
+        while n > size - o do n := n div 2; end;
+        X.store(X.mem(RDI, o), RAX, INT(n));
+        INC(o, n);
+    end;
+end;
+
 proc zeroVar*(a: Adr; size: I64);
 begin
     clobberArgs();
     X.lea(RDI, place(a, RDI));
-    X.movRI(RCX, size);
-    X.movRI(RAX, 0);
-    X.repStosb();
+    zeroBytes(size);
 end;
 
 (* Operations *)
@@ -1554,6 +1597,44 @@ begin
     computed(kWord);
 end;
 
+(* Whether r is one of the stack's registers, not a variable's *)
+proc isStackReg(r: INT): BOOL;
+var i: INT;
+begin
+    for i := 0 to NumRegs - 1 do
+        if Regs[i] = r then return true; end;
+    end;
+    return false;
+end;
+
+(* Pops an index and the pointer under it, and pushes the address of
+   the element of size bytes: p + i * size. For an element of 1, 2, 4
+   or 8 bytes it is only noted, as the operand [p + i * size] (lIdx), to
+   be read or written where it is used, when at most one of the two is
+   in a stack register, the register the new value owns. Otherwise lea
+   adds them up, in one instruction in place of a multiplication and an
+   addition. *)
+proc indexPtr*(size: I64);
+var b, x, own: INT; o: I64;
+begin
+    o := 0;
+    if fits32(stack[depth - 2].off + stack[depth - 1].off * size) then
+        o := takeOff(depth - 2) + takeOff(depth - 1) * size;
+    end;
+    b := peek(depth - 2);
+    x := peek(depth - 1);
+    own := Regs[(depth - 2) mod NumRegs];
+    drop();
+    drop();
+    if (not isStackReg(b) or (b = own)) and (not isStackReg(x) or (x = own)) then
+        newMem(lIdx, X.memIdx(b, x, INT(size), o), kWord, 8, false);
+        if b = own then owner[(depth - 1) mod NumRegs] := depth - 1; end;
+    else
+        X.lea(target(), X.memIdx(b, x, INT(size), o));
+        computed(kWord);
+    end;
+end;
+
 (* Pops an index, checked, and makes the address of the element it
    picks of the array at a. An element of 1, 2,
    4 or 8 bytes is only noted, as the operand [base + index * size]
@@ -2019,17 +2100,31 @@ begin
     Chunk.put1(48H); Chunk.put1(81H); Chunk.put1(0ECH);
     frameFix := Chunk.pc; Chunk.put4(0);
     n := (Sym.alignUp(zeroTop, 8) - paramTop) div 8;
-    if n > 0 then X.movRI(RAX, 0); end;
-    if n <= 4 then
-        for i := 1 to INT(n) do X.store(X.mem(RBP, -paramTop - I64(8 * i)), RAX, 8); end;
-    else
-        (* a quadword at a time: r10 runs from -n up to 0, and the store's
-           address is scaled by it *)
-        X.movRI(R10, -n);
-        loop := Chunk.pc;
-        X.store(X.memIdx(RBP, R10, 8, -paramTop), RAX, 8);
-        X.aluI(X.aluAdd, R10, 1);
-        X.jccBack(X.ccNE, loop);
+    if n = 1 then
+        X.movRI(RAX, 0);
+        X.store(X.mem(RBP, -paramTop - 8), RAX, 8);
+    elsif n > 1 then
+        (* the locals, 16 bytes at a time, from xmm8, which holds nothing
+           yet (xmm0 to xmm7 may hold a parameter): up to 16 stores in a
+           row, else a loop with r10 running from minus the bytes up to 0,
+           the store's address scaled by 1. An odd quadword is the
+           lowest. *)
+        X.pxorXX(8);
+        if n <= 32 then
+            for i := 0 to INT(n div 2) - 1 do
+                X.movdquMX(X.mem(RBP, -paramTop - 16 * I64(i + 1)), 8);
+            end;
+        else
+            X.movRI(R10, -16 * (n div 2));
+            loop := Chunk.pc;
+            X.movdquMX(X.memIdx(RBP, R10, 1, -paramTop), 8);
+            X.aluI(X.aluAdd, R10, 16);
+            X.jccBack(X.ccNE, loop);
+        end;
+        if n mod 2 = 1 then
+            X.movRI(RAX, 0);
+            X.store(X.mem(RBP, -paramTop - 8 * n), RAX, 8);
+        end;
     end;
     (* each register that holds a variable is saved, for the caller, and
        zeroed, as a variable starts at zero *)
@@ -2086,6 +2181,12 @@ end;
 
 (* Pops one of several results, a value of size bytes, into its place
    off bytes into the caller's, behind the hidden pointer. *)
+(* The frame slot that holds the hidden result pointer *)
+proc resultSlot*: I64;
+begin
+    return retSlot;
+end;
+
 proc resultTo*(off: I64; size: INT);
 var r: INT; fl: BOOL;
 begin
@@ -2139,31 +2240,52 @@ begin
     X.aluI(X.aluAnd, RSP, -16);
 end;
 
+(* The procedure returns the error in register r, and a zero for each of
+   its other results; it isn't rax, rcx, rdx or rdi, which this uses. *)
+proc returnError(r: INT);
+var f: ^Sym.Obj;
+begin
+    if Sym.behindPointer(resType) then
+        X.load(RDI, X.mem(RBP, retSlot), 8, false);
+        zeroBytes(resType^.size);
+        f := resType^.fields;
+        while f^.next # nil do f := f^.next; end;
+        X.load(RDX, X.mem(RBP, retSlot), 8, false);
+        X.store(X.mem(RDX, f^.val), r, 8);
+        X.load(RAX, X.mem(RBP, retSlot), 8, false);
+    elsif Sym.inTwoRegs(resType) then
+        X.movRR(RDX, r);
+        X.movRI(RAX, 0);
+    else
+        X.movRR(RAX, r);
+    end;
+    X.jmp(exitL);
+end;
+
 (* The rest of it: the procedure returns the error in the frame slot, and
    a zero for each of its other results. Only code is made: no entry of
    the stack of values is touched, since the code that follows is the
    code for an error that is nil, with the stack as it was. *)
 proc tryReturn*(slot: I64);
-var f: ^Sym.Obj;
 begin
-    if Sym.behindPointer(resType) then
-        X.load(RDI, X.mem(RBP, retSlot), 8, false);
-        X.movRI(RCX, resType^.size);
-        X.movRI(RAX, 0);
-        X.repStosb();
-        f := resType^.fields;
-        while f^.next # nil do f := f^.next; end;
-        X.load(RCX, X.mem(RBP, slot), 8, false);
-        X.load(RDX, X.mem(RBP, retSlot), 8, false);
-        X.store(X.mem(RDX, f^.val), RCX, 8);
-        X.load(RAX, X.mem(RBP, retSlot), 8, false);
-    elsif Sym.inTwoRegs(resType) then
-        X.load(RDX, X.mem(RBP, slot), 8, false);
-        X.movRI(RAX, 0);
-    else
-        X.load(RAX, X.mem(RBP, slot), 8, false);
-    end;
-    X.jmp(exitL);
+    X.load(RSI, X.mem(RBP, slot), 8, false);
+    returnError(RSI);
+end;
+
+(* try, with no deferred statement to run: the error on top is tested in
+   its register r, which is returned, and, if it isn't nil, returned from
+   the procedure by tryReturnFrom, so it needs no slot in the frame. *)
+proc tryTest*(var ok: INT): INT;
+var r: INT;
+begin
+    r := loaded(depth - 1);
+    jumpIf(ok, false);
+    return r;
+end;
+
+proc tryReturnFrom*(r: INT);
+begin
+    returnError(r);
 end;
 
 (* The end of the procedure in chunk c: the code that returns, and the

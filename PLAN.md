@@ -47,12 +47,32 @@ Steps:
    Then `seed/` is frozen and `self/` is `src/` (the owner's word,
    2026-10-13); the seed is dropped in time, its last tag the bootstrap.
 
+6. Faster (done, the owner's word, 2026-10-13: the compiler built by
+   itself took 1.8 times as long as the Pascal one, and 1.3 was the aim).
+   `perf` found no hot spot but habits of the code: small blocks cleared
+   and copied by `rep`, a record literal made in a temporary and copied,
+   an element through a pointer worked out, `try` through a slot of the
+   frame, a `var` parameter's address loaded at each use, and a few
+   routines of the scanner. `doc/compiler.md`, "Better code, for the
+   compiler itself", has each, with what it measured and what did not
+   help. The compiler takes 506 ms of 359 for the 348,025-line program,
+   1.4 times (1.36 by cycles; before 657 of 359, 1.8 times); `make
+   bench`, 678,000 lines a second. The seed's code is no longer what
+   `src/` makes, so `seed-check` no longer compares `Gen`, `Item` or
+   the executables, only messages and statuses, and the fixpoint is of
+   stage 2 and 3.
+
 Done when step 5 passes with `make check` and `make bench` on the
 compiler it made, and the budget of lines kept.
 
 ## Next, when the owner says
 
 - The book, "Compiling Raz": its brief is `doc/book/PLAN.md`.
+- The compiler's last 0.1 of the 1.3: an inliner for the small procedures
+  that are one expression (`Gen.drop`, `X64.mem`, `Chunk.put1`, `Scan.tokPos`)
+  would take call overhead off some 15% of the instructions; `chooseRegs`
+  reads each procedure twice, which is 13% of the time; and `Mem`, `Item`
+  and `Adr` are records copied at each call that passes them on.
 - A port to aarch64, to measure one: a new `gen.pas`, an encoder and
   assembler for it, and its ELF.
 

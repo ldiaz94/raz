@@ -23,22 +23,16 @@ same file; `X64` by `test/X64Dump`, every encoder with operands from a
 script, bytes, fixups and listing, and by `test/AsmDump` on the files
 `test/genasm.py` makes: a long run of every instruction the assembler
 knows, and a file for each of its errors.
-`Gen` is tested by `test/GenDump`, a script of calls, valid by
-construction (an expression pushes its operands and then operates; a
-statement leaves the stack as it found it), that compiles 80 procedures
-with every kind of expression, statement, call, check, frame and defer,
-and the entry point, static and dynamic: the bytes, fixups, line notes
-and listing must be the same.
-`Item` is tested by `test/ItemDump`, a script of operands and operations
-with mistakes among them (a constant, a variable in the frame, a
-register, a slot, another module's or C's, a string, a procedure, a
-selector through a pointer, a field, an element or a slice, a call, a
-`match`, a `for`, `return`, `COPY`, a variant): each step shows what
-it gave, or its message, and goes on, as the parser does after an
-error. What each step gave, the messages, and the bytes, fixups, line
-notes and listing of the code must be the same, over 60 scripts (a
-run ends at its 20th error, as a compile does). The text its messages
-point into is `test/ItemDump.txt`.
+`Gen` and `Item` were tested by `test/GenDump`, a script of calls, valid
+by construction, that compiles 80 procedures with every kind of
+expression, statement, call, check, frame and defer, and the entry
+point, and by `test/ItemDump`, a script of operands and operations with
+mistakes among them, over 60 scripts (the text its messages point into
+is `test/ItemDump.txt`): the bytes, fixups, line notes and listing, and
+the messages, had to be the same as the seed's. They were, until the
+compiler's code was improved (v0.10.0): `src/` makes better code than
+the seed, so the dumpers are kept, as a way to read what `Gen` makes,
+and no longer compared. `src/check.sh` says what is.
 
 `Parse` and `Raz`, the last two units, are tested whole: the seed builds
 `src/Raz.raz` into `build/src/raz.src`, and each compiler, run as
@@ -46,15 +40,15 @@ point into is `test/ItemDump.txt`.
 library is found beside the compiler), compiles the library, the
 examples, the tools, `src/` itself, every test of `test/` and
 `conform/`, and the 348,025-line program of `test/genbench.py`, with the
-options each test has. The executable, the messages, and the status
-must be the same for every file: 409 of them, 289 of which are errors.
+options each test has. The messages and the status must be the same
+for every file (the executables no longer are, since v0.10.0): 409 of them, 289 of which are errors.
 `make seed-bench` gives the speed of both.
 
 `make fixpoint` (`fixpoint.sh`) is the proof that the port is whole:
 the seed builds `Raz.raz` (stage 1), stage 1 builds it (stage 2), and
 stage 2 builds it again (stage 3). Stages 2 and 3 must be the same
-file; they are, and so is stage 1, since the seed and the port make the
-same code. Stage 3 then stands in for `./raz`, and `make check` and
+file; they are (stage 1 is not, since v0.10.0: the port makes better code
+than the seed's). Stage 3 then stands in for `./raz`, and `make check` and
 `make bench` run on it. Each stage is built by the same command in the
 same place, since a program holds the paths it was made from.
 

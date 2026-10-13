@@ -24,10 +24,10 @@ end Hello.
     $ examples/Hello
     hello, world
 
-The compiler is about 10,000 lines of raz, written in itself: one pass, no
+The compiler is about 10,700 lines of raz, written in itself: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
-ELF executable itself, with no assembler or linker, and compiles about
-over 400,000 lines a second.
+ELF executable itself, with no assembler or linker, and compiles over
+400,000 lines a second.
 
 ## What's here
 
@@ -37,7 +37,7 @@ over 400,000 lines a second.
 | `doc/compiler.md` | A guide to reading the compiler, file by file |
 | `doc/raz.1`, `doc/raz.7`, `doc/raz-tutorial.7` | The manual pages: the command, the language at a glance, a tour; `make man` makes the library's, raz-lib(3), from `lib/` |
 | `src/` | The compiler, in raz |
-| `seed/` | The first compiler, in Free Pascal: frozen, it builds `src/` the first time |
+| `seed/` | The first compiler, in Free Pascal: frozen, kept only to build `src/` the first time |
 | `lib/` | The library, in raz; the compiler finds it beside itself |
 | `examples/` | Small programs, each with the output it should give |
 | `tools/Doc.raz` | Prints what a module exports, with its comments |
@@ -50,9 +50,12 @@ over 400,000 lines a second.
 
 ## Building
 
-The first build needs Free Pascal 3.2.2 (`apt-get install fp-compiler`):
-it builds the seed, the Pascal compiler in `seed/`, which builds the
-compiler, `src/`, in the repository's root:
+The compiler is written in raz, so building it takes a raz. The first
+time there is none, and Free Pascal 3.2.2 (`apt-get install fp-compiler`)
+builds the seed, the Pascal compiler in `seed/`, which builds the
+compiler, `src/`, in the repository's root. Free Pascal is needed for
+nothing else, and `make fixpoint` has the compiler build itself and
+checks that the result is the same file.
 
     make            # ./raz
     make install    # ~/.local/bin/raz, its library and tools in

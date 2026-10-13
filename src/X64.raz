@@ -699,6 +699,26 @@ begin
     opR(0, false, 280FH, x, y, false);
 end;
 
+(* movdqu: 16 bytes between xmm x and memory, and pxor, which zeroes
+   xmm x: how Gen copies and clears a record in a few instructions *)
+proc movdquXM*(x: INT; m: Mem);
+begin
+    if listing then say(text2("movdqu", xn(x), mn(m))); end;
+    opM(0F3H, false, 6F0FH, x, m, false);
+end;
+
+proc movdquMX*(m: Mem; x: INT);
+begin
+    if listing then say(text2("movdqu", mn(m), xn(x))); end;
+    opM(0F3H, false, 7F0FH, x, m, false);
+end;
+
+proc pxorXX*(x: INT);
+begin
+    if listing then say(text2("pxor", xn(x), xn(x))); end;
+    opR(66H, false, 0EF0FH, x, x, false);
+end;
+
 (* The prefix of a real instruction, and the end of its name: sd, or ss for single *)
 proc realPfx(single: BOOL): INT;
 begin
