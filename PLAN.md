@@ -32,7 +32,8 @@ Steps:
    seed's and list what `Sys` and the library lacked. Stop for review:
    if the cost is too high, mend the code generator first.
 2. `chunk`, `sym` (2a, done); `link`, `elf`, `x64` (2b, done).
-3. `gen`, `item`.
+3. `gen` (3a, done: `Gen.raz`, tested by `test/GenDump`, a script of
+   calls whose bytes and listing are the same), `item` (3b).
 4. `parse`, `raz`: the first compiler that builds.
 5. Fixpoint: the seed builds `self`, that builds `self`, that builds
    `self` again, and the last two are byte for byte the same. Then

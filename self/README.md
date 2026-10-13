@@ -22,6 +22,12 @@ same file; `X64` by `test/X64Dump`, every encoder with operands from a
 script, bytes, fixups and listing, and by `test/AsmDump` on the files
 `test/genasm.py` makes: a long run of every instruction the assembler
 knows, and a file for each of its errors.
+`Gen` is tested by `test/GenDump`, a script of calls, valid by
+construction (an expression pushes its operands and then operates; a
+statement leaves the stack as it found it), that compiles 80 procedures
+with every kind of expression, statement, call, check, frame and defer,
+and the entry point, static and dynamic: the bytes, fixups, line notes
+and listing must be the same.
 
 `check.sh` builds a dumper for each side, `test/ScanDump.pas` over the
 seed's units and `test/ScanDump.raz` over these, and has both read the
@@ -80,6 +86,18 @@ Not the seed's to mend; for the owner to choose.
   `setStripped` and `X64.setListing`. The file is written by
   `Files.write` and made executable by `Sys.chmod`, in place of one
   `open` with mode 755 (which the umask would trim).
+- **`Gen`.** The seed's `Mark` in the middle of a push or a check
+  can't give an error back: `newEntry` (the stack's 256 places) and
+  `check` (4,096 checks a procedure) show it and go on without doing
+  what they couldn't, and the parser's `resetStack` makes the stack
+  right again; `endProc` returns its error ("frame too big") and
+  `codeProc` the assembler's. A `var` out of the seed became a result
+  (`topConst`, `operands`, `deferBegin`); the labels, which are chains
+  that a call extends, stay `var`. `inPlace` has a setter. The seed's
+  `Call` record is `CallInfo` (the procedure is `call`) and `TLink` is
+  `Link`. A `match` on an enumeration takes one name to an arm, and a
+  set holds at most 64 names, so `Scan.Sym` (over 64) has none: the
+  seed's sets of its names are chains of `=`.
 - **No bit cast.** A real's bits and back go through a pointer.
 - **Speed.** On the 348,025 lines of `test/genbench.py`, 7.6 MB, the
   seed's scanner takes 75 ms and this one 74. It took 121 at first.
