@@ -1,0 +1,75 @@
+module Simd;
+(* Code procedures with SSE2 and the bit scans: a search sixteen bytes
+   at a time, and the counts of bits *)
+import Out;
+
+(* the first place of b in the n bytes at p, or -1: p in rdi, n in rsi, b in dl *)
+proc index(p: ^U8; n: INT; b: U8): INT;
+code
+    movd xmm1, edx;
+    punpcklbw xmm1, xmm1;       (* b in the low two bytes... *)
+    punpcklwd xmm1, xmm1;       (* ...in the low four... *)
+    pshufd xmm1, xmm1, 0;       (* ...and in all sixteen *)
+    xor ecx, ecx;
+    blocks:
+    lea rax, [rcx + 16];
+    cmp rax, rsi;
+    ja tail;
+    movdqu xmm0, [rdi + rcx];
+    pcmpeqb xmm0, xmm1;
+    pmovmskb eax, xmm0;
+    test eax, eax;
+    jnz found;
+    add rcx, 16;
+    jmp blocks;
+    found:
+    bsf eax, eax;
+    add rax, rcx;
+    ret;
+    tail:
+    cmp rcx, rsi;
+    jae missing;
+    cmp [rdi + rcx], dl;
+    je here;
+    inc rcx;
+    jmp tail;
+    here:
+    mov rax, rcx;
+    ret;
+    missing:
+    mov rax, -1;
+    ret;
+end index;
+
+(* the bits set in x, the places of its lowest and highest, and its
+   leading zeros, packed as count + 100 * (low + 100 * (high + 100 * lead)) *)
+proc bits(x: U64): I64;
+code
+    popcnt rax, rdi;
+    tzcnt rcx, rdi;
+    imul rcx, rcx, 100;
+    add rax, rcx;
+    bsr rcx, rdi;
+    imul rcx, rcx, 10000;
+    add rax, rcx;
+    lzcnt rcx, rdi;
+    imul rcx, rcx, 1000000;
+    add rax, rcx;
+    ret;
+end bits;
+
+proc main*;
+var buf: [40]U8; i: INT;
+begin
+    for i := 0 to 39 do buf[i] := 'a'; end;
+    buf[37] := 'x'; buf[20] := 'y'; buf[5] := 'z';
+    Out.int(index(ADR(buf[0]), 40, 'z')); Out.str(" ");
+    Out.int(index(ADR(buf[0]), 40, 'y')); Out.str(" ");
+    Out.int(index(ADR(buf[0]), 40, 'x')); Out.str(" ");
+    Out.int(index(ADR(buf[0]), 40, 'q')); Out.str(" ");
+    Out.int(index(ADR(buf[0]), 0, 'a')); Out.str(" ");
+    Out.int(index(ADR(buf[6]), 15, 'y')); Out.ln;
+    Out.int(bits(0B0A0H)); Out.ln;
+end;
+
+end Simd.

@@ -554,7 +554,10 @@ the scanner, Intel's syntax as NASM writes it, and encodes them with
 `OpM` and `OpR`: `Operand` reads a register, a memory operand or a
 constant (by the parser's `ConstExpr`, handed in), and a few tables
 give the operations of a kind their opcodes (`Alus`, `Unaries`,
-`Shifts`, `SseOps`, `Plain`). Labels are chains of jumps, as below.
+`Shifts`, `SseOps`, `Plain`; `PackedOps` the SSE2 integer operations
+on 16 bytes at a time, with `movdqu`, `movdqa` and `pmovmskb` beside
+them, and `BitOps` the bit scans and counts: `bsf`, `bsr`, `tzcnt`,
+`lzcnt`, `popcnt`). Labels are chains of jumps, as below.
 `db` gives bytes it doesn't know. `RegNames` and `CondNames` are the
 names of the registers and conditions.
 

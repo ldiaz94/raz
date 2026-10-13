@@ -890,6 +890,14 @@ const
   Shifts = ' rol ror rcl rcr shl shr sal sar ';
   SseOps = ' sqrt add mul sub min div max ';
   SseCodes: array[0..6] of longint = ($51, $58, $59, $5C, $5D, $5E, $5F);
+  { SSE2 integer instructions that work on 16 bytes at a time: 66 0F code,
+    xmm and xmm or memory (pshufd also takes a byte) }
+  PackedOps = ' punpcklbw punpcklwd pcmpeqb pshufd pand pandn por pxor paddb psubb ';
+  PackedCodes: array[0..9] of longint = ($60, $61, $74, $70, $DB, $DF, $EB, $EF, $FC, $F8);
+  { bit scans and counts: reg, reg or memory, with the prefix and code that tell them }
+  BitOps = ' bsf bsr tzcnt lzcnt popcnt ';
+  BitPfx: array[0..4] of longint = (0, 0, $F3, $F3, $F3);
+  BitCodes: array[0..4] of longint = ($BC0F, $BD0F, $BC0F, $BD0F, $B80F);
   Plain: array[0..14] of string[7] = ('ret', 'leave', 'syscall', 'cpuid', 'rdtsc',
     'pause', 'nop', 'ud2', 'int3', 'hlt', 'cqo', 'cdq', 'mfence', 'lfence', 'sfence');
   PlainOp: array[0..14] of longint = ($C3, $C9, $050F, $A20F, $310F,
@@ -1061,6 +1069,27 @@ begin
         if (n <> 2) or (o[0].kind <> oXmm) or not (o[1].kind in [oXmm, oMem]) then Bad;
         k := $0F or SseCodes[WordIndex(copy(w, 1, length(w) - 2), SseOps)] shl 8;
         RM(RealPfx[w[length(w)] = 's'], false, k, o[0].r, o[1]);
+      end else if WordIndex(w, PackedOps) >= 0 then begin
+        if (n < 2) or (o[0].kind <> oXmm) or not (o[1].kind in [oXmm, oMem]) then Bad;
+        k := WordIndex(w, PackedOps);
+        RM($66, false, $0F or PackedCodes[k] shl 8, o[0].r, o[1]);
+        if w = 'pshufd' then begin
+          if (n <> 3) or (o[2].kind <> oImm) then Bad;
+          Put1(o[2].v);
+        end else if n <> 2 then Bad;
+      end else if (w = 'movdqu') or (w = 'movdqa') then begin
+        { the load is 6F and the store 7F; movdqu is F3, movdqa 66 }
+        if w = 'movdqu' then k := $F3 else k := $66;
+        if (n = 2) and (o[0].kind = oXmm) and (o[1].kind in [oXmm, oMem]) then RM(k, false, $6F0F, o[0].r, o[1])
+        else if (n = 2) and (o[0].kind = oMem) and (o[1].kind = oXmm) then RM(k, false, $7F0F, o[1].r, o[0])
+        else Bad;
+      end else if w = 'pmovmskb' then begin
+        if (n <> 2) or (o[0].kind <> oReg) or (o[1].kind <> oXmm) then Bad;
+        RM($66, false, $D70F, o[0].r, o[1]);
+      end else if WordIndex(w, BitOps) >= 0 then begin
+        if (n <> 2) or (o[0].kind <> oReg) or (o[1].kind = oImm) or (size < 4) then Bad;
+        k := WordIndex(w, BitOps);
+        RM(BitPfx[k], wide, BitCodes[k], o[0].r, o[1]);
       end else if (w = 'movsd') or (w = 'movss') then begin
         if w = 'movsd' then k := $F2 else k := $F3;
         if (n = 2) and (o[0].kind = oXmm) and (o[1].kind in [oXmm, oMem]) then RM(k, false, $100F, o[0].r, o[1])
