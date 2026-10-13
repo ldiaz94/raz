@@ -7,7 +7,36 @@ file: git keeps the history, and the report's section 12 the language's.
 
 v0.9.1, the latest release, is tagged by the owner's word. All before
 v0.7.1 is approved by the owner; v0.7.1, v0.8.0, v0.9.0 and v0.9.1 wait
-for the owner's review. No milestone is under way.
+for the owner's review. One milestone is under way: Self.
+
+## Self: the compiler in raz (under way)
+
+For: a compiler written in raz that compiles itself, so that raz needs
+no Free Pascal. The Pascal compiler in `src/` is the **seed**: it is
+never edited for this, and stays the one `make check` builds. The new
+compiler lives in `self/`, one raz module to a seed unit, the same
+names, and has its own targets; nothing in `src/` or `lib/` changes.
+
+Each unit is ported in the seed's order (leaves first) and tested on
+its own against the seed's, on the same inputs, since no program can
+link both. The language and the library are frozen: a gap found goes
+on the wish list, a defect is mended.
+
+Steps:
+
+1. `diag` and `scan`: the trial. Measure `scan`'s speed against the
+   seed's and list what `Sys` and the library lacked. Stop for review:
+   if the cost is too high, mend the code generator first.
+2. `chunk`, `sym`, `link`, `elf`, `x64`.
+3. `gen`, `item`.
+4. `parse`, `raz`: the first compiler that builds.
+5. Fixpoint: the seed builds `self`, that builds `self`, that builds
+   `self` again, and the last two are byte for byte the same. Then
+   the seed's last tag is the bootstrap, and the split of `src/` from
+   the rest is the owner's to decide.
+
+Done when step 5 passes with `make check` and `make bench` on the
+compiler it made, and the budget of lines kept.
 
 ## Next, when the owner says
 
