@@ -9,7 +9,7 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.17 of the report; section 12 says what each
+This is version 2026-10.18 of the report; section 12 says what each
 version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -1068,8 +1068,12 @@ It is called like any procedure, with the System V convention: integer
 and pointer arguments arrive in `rdi`, `rsi`, `rdx`, `rcx`, `r8` and
 `r9`, `F32` and `F64` ones in `xmm0` to `xmm7`, and the result goes in
 `rax` (and `rdx` for a second) or `xmm0`. Its parameters and results
-are therefore of the types C can take (section 9), at most six integer
-and eight real parameters, and at most two results. The instructions
+are therefore of the types C can take (section 9), or slices, at most
+six integer and eight real parameters, and at most two results. A
+slice is two integers, as System V passes a struct of them: as a
+parameter its address arrives in one register and its length in the
+next, the two counting among the six; as the result its address goes
+in `rax` and its length in `rdx`, and it is the only result. The instructions
 are the whole procedure, `ret` included; they must keep `rbx`, `rbp`,
 `rsp` and `r12` to `r15` as they found them. The compiler doesn't look
 past what they say.
@@ -1925,6 +1929,8 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
   `copy` (section 11).
 - **2026-10.17.** `COPY` copies the elements of one array or slice to
   another as a block (section 6.8).
+- **2026-10.18.** A code procedure takes and returns slices (section
+  8).
 
 ## Appendix A. What an implementation chooses
 
