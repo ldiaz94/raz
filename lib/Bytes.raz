@@ -12,36 +12,25 @@ const
     Lows = 7F7F7F7F7F7F7F7FH;     (* the low seven bits of each byte *)
     Tops = 8080808080808080H;     (* the top bit of each byte *)
 
-(* eight bytes at s[i]: i + 8 must not pass LEN(s). The address needn't
-   be a multiple of 8; x86-64 reads such a word as it does any. *)
-proc word(s: []U8; i: INT): U64;
-var p: ^U64;
-begin
-    p := ^U64(ADR(s[i]));
-    return p^;
-end;
+(* Every loop below tests eight bytes w for b in one expression, written
+   out where it is used, since a call in a loop would push the loop's
+   values out of their registers into the frame. With v = w xor (b in
+   each byte), a byte of w is b when the byte of v is zero. A byte of v
+   is zero when its low seven bits are, which adding 7FH to them shows,
+   as no sum overflows into the next byte, and its top bit is. So
 
-(* The top bit of each byte of v that is zero, and no other bit. A byte
-   of v is zero when its low seven bits are, which adding 7FH to them
-   shows, as no sum overflows into the next byte, and its top bit is. *)
-proc zeros(v: U64): U64;
-begin
-    return ~(((v & Lows) + Lows) | v | Lows) & Tops;
-end;
+       ~(((v & Lows) + Lows) | v | Lows) & Tops
 
-(* The eight bytes of w that are b: their top bits. *)
-proc matches(w: U64; b: U8): U64;
-begin
-    return zeros(w xor (U64(b) * Ones));
-end;
+   is the top bit of each byte of w that is b, and no other bit; call it
+   m. The place, 0 to 7, of the lowest bit of m (m is not 0) is the
+   ones below that bit, one in each byte up to its own, summed into the
+   top byte by a multiply, less one; the highest is found by a loop.
+   The bits m sets are counted by moving each down to bit 0 of its
+   byte and summing them into the top byte by a multiply.
 
-(* The place, 0 to 7, of the lowest top bit that m sets (m is not 0):
-   the ones below that bit, one in each byte up to its own, summed
-   into the top byte by the multiply, less one. *)
-proc lowest(m: U64): INT;
-begin
-    return INT((((m & (0 - m)) - 1) & Ones) * Ones shr 56) - 1;
-end;
+   A word is read through a U64 pointer to s[i], with i + 8 not past
+   LEN(s); the address needn't be a multiple of 8, and x86-64 reads
+   such a word as it does any. *)
 
 (* The place, 0 to 7, of the highest top bit that m sets (m is not 0). *)
 proc highest(m: U64): INT;
@@ -52,21 +41,17 @@ begin
     return k;
 end;
 
-(* How many top bits m sets: each moved down to bit 0 of its byte, and
-   summed into the top byte by the multiply. *)
-proc ones(m: U64): INT;
-begin
-    return INT(((m shr 7) * Ones) shr 56);
-end;
-
 (* The first place of b in s, or -1. *)
 proc index*(s: []U8; b: U8): INT;
-var i: INT; m: U64;
+var i: INT; m, v, bs: U64; p: ^U64;
 begin
+    bs := U64(b) * Ones;
     i := 0;
     while i + 8 <= LEN(s) do
-        m := matches(word(s, i), b);
-        if m # 0 then return i + lowest(m); end;
+        p := ^U64(ADR(s[i]));
+        v := p^ xor bs;
+        m := ~(((v & Lows) + Lows) | v | Lows) & Tops;
+        if m # 0 then return i + INT((((m & (0 - m)) - 1) & Ones) * Ones shr 56) - 1; end;
         i := i + 8;
     end;
     while i < LEN(s) do
@@ -78,11 +63,14 @@ end;
 
 (* The last place of b in s, or -1. *)
 proc last*(s: []U8; b: U8): INT;
-var i: INT; m: U64;
+var i: INT; m, v, bs: U64; p: ^U64;
 begin
+    bs := U64(b) * Ones;
     i := LEN(s);
     while i >= 8 do
-        m := matches(word(s, i - 8), b);
+        p := ^U64(ADR(s[i - 8]));
+        v := p^ xor bs;
+        m := ~(((v & Lows) + Lows) | v | Lows) & Tops;
         if m # 0 then return i - 8 + highest(m); end;
         i := i - 8;
     end;
@@ -95,12 +83,15 @@ end;
 
 (* How many bytes of s are b. *)
 proc count*(s: []U8; b: U8): INT;
-var i, n: INT;
+var i, n: INT; v, bs: U64; p: ^U64;
 begin
+    bs := U64(b) * Ones;
     i := 0;
     n := 0;
     while i + 8 <= LEN(s) do
-        n := n + ones(matches(word(s, i), b));
+        p := ^U64(ADR(s[i]));
+        v := p^ xor bs;
+        n := n + INT(((~(((v & Lows) + Lows) | v | Lows) & Tops) shr 7) * Ones shr 56);
         i := i + 8;
     end;
     while i < LEN(s) do
@@ -117,18 +108,24 @@ end;
    being the same test as two can be, and need no table of which bytes
    are rare. *)
 proc find*(s, sub: []U8): INT;
-var i, j, n, lastStart: INT; m: U64;
+var i, j, n, lastStart: INT; m, v, w, b0, b1: U64; p: ^U64;
 begin
     n := LEN(sub);
     if n = 0 then return 0; end;
     if n > LEN(s) then return -1; end;
     if n = 1 then return index(s, sub[0]); end;
     lastStart := LEN(s) - n;
+    b0 := U64(sub[0]) * Ones;
+    b1 := U64(sub[n - 1]) * Ones;
     i := 0;
     while i + 7 <= lastStart do
-        m := matches(word(s, i), sub[0]) & matches(word(s, i + n - 1), sub[n - 1]);
+        p := ^U64(ADR(s[i]));
+        v := p^ xor b0;
+        p := ^U64(ADR(s[i + n - 1]));
+        w := p^ xor b1;
+        m := ~(((v & Lows) + Lows) | v | Lows) & ~(((w & Lows) + Lows) | w | Lows) & Tops;
         while m # 0 do
-            j := i + lowest(m);
+            j := i + INT((((m & (0 - m)) - 1) & Ones) * Ones shr 56) - 1;
             if s[j..j + n] = sub then return j; end;
             m := m & (m - 1);
         end;
