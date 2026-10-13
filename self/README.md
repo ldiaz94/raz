@@ -50,5 +50,4 @@ Not the seed's to mend; for the owner to choose.
   module: the slice comparison is slower than the loop it stands for.
   (The seed's `match` on an integer was a chain of compares, each
   loading the selector from the frame and jumping over a `jmp`, where
-  FPC makes a jump table; now it makes one too, and the seed's `Scan`
-  runs on it.)
+  FPC makes a jump table; now it makes one too.)

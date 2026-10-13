@@ -14,10 +14,10 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 646 | 528 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,201 | 992 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 2,238 | 1,622 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,578 | 1,301 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 3,120 | 2,722 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/x64.pas` | 1,208 | 998 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 2,322 | 1,670 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,575 | 1,299 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 3,280 | 2,851 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 334 | 258 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 373 | 294 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 245 | 188 | The command line |
