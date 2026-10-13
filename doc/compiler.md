@@ -15,9 +15,9 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/sym.pas` | 646 | 528 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
 | `src/x64.pas` | 1,201 | 992 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 2,188 | 1,588 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/gen.pas` | 2,238 | 1,622 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/item.pas` | 1,578 | 1,301 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 3,103 | 2,707 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/parse.pas` | 3,120 | 2,722 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 334 | 258 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 373 | 294 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 245 | 188 | The command line |
@@ -60,7 +60,10 @@ anything clever to begin with. A procedure's busiest variables, up to
 five, live in registers that calls leave alone: the callee-saved ones
 of System V, the calling convention of x86-64 Linux, which a called
 procedure must give back as it found them (`rbx` and `r12` to `r15`).
-Nothing but their own assignments can change them.
+Nothing but their own assignments can change them. Up to four reals
+live in `xmm12` to `xmm15`, each written to the frame as well and
+loaded from there after a call, as System V has no xmm register that
+a call leaves alone.
 
 The output is a set of *chunks*: one for each procedure, each module
 variable, each string. Code refers to other chunks through *fixups*,
@@ -559,6 +562,47 @@ division in its inner loop.
    Jacobi 129 ms to 106; rat 2% faster, within noise; the integer
    kernels unchanged.
 
+4. **Real variables in xmm registers.** NBody's `dx`, `dy`, `dz` and
+   `mag` lived in the frame, each assignment a store and each use a
+   load, on the chain of operations that each round waits on:
+
+   ```
+   subsd xmm8, [r9 + r12 * 8]
+   movsd [rbp - 8], xmm8     ; dx := x[i] - x[j]
+   ...
+   movsd xmm8, [rbp - 8]     ; dx * dx
+   mulsd xmm8, [rbp - 8]
+   ```
+
+   Now `ChooseRegs` gives the busiest reals of a procedure `xmm12` to
+   `xmm15` (`XVarRegs`), as it gives the busiest integers `rbx` and
+   `r12` to `r15`, and gen reads and writes them where they are: a
+   real in a variable's register is `lHeld` or `lInto`, as an
+   integer's is (`XValueTo`, `PopVar`, `Peek` for `RealOp` and
+   `Compare`):
+
+   ```
+   subsd xmm8, [r9 + r12 * 8]
+   movaps xmm13, xmm8
+   ...
+   movaps xmm8, xmm13
+   mulsd xmm8, xmm13
+   ```
+
+   Each such variable has its slot too, which `PopVar` writes as it
+   writes the register (`movsd [rbp - 8], xmm13` after the `movaps`),
+   off the chain the round waits on: the trap report finds the value
+   there, as it finds any variable's, whether a check failed or a
+   signal stopped the program, and `Call` loads the register from it
+   after each call (`XHome`, `HomeOf`), as System V keeps no xmm
+   register through one. A register number from `XmmVar`, 16, up is
+   an xmm register's, so that `xmm12` isn't taken for `r12` where the
+   parser counts its registers (`RegsOf`, `RegAt`). NBody 147 ms to
+   116, and a copy of it without the call to `sqrt` 114 to 81; rat
+   within noise. Storing the slot only before a call, and so showing
+   nothing in the trap report, bought 3% more on that copy and nothing
+   on NBody.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is
@@ -851,6 +895,12 @@ item at `bReg`: `PushVar` notes it (`lHeld`) rather than copying it,
 `cmp rbx, r12`, and `PopVar` and `IncDecReg` write it. Rt finds the
 values for the trap report from the saves: each procedure's record in
 the places says which it saved, and where (`saveMask`, `saveAt`).
+A real takes one of `xmm12` to `xmm15` (`XVarRegs`, numbered from
+`XmmVar` up, so that `xmm12` isn't taken for `r12`), which the prologue
+zeroes and saves nothing for, and a slot as well, which `PopVar`
+writes as it writes the register (`XHome`): the trap report finds it
+there, and `Call` loads the register from it after each call, as
+System V has no callee-saved xmm register.
 
 ## item.pas: items
 
@@ -1042,7 +1092,9 @@ the body ahead, as `InstancesFor` does, and counts each variable's
 uses: 1 for each, 4 in a loop, 16 in two, at most 64 (loops nested three
 deep or more); one `ADR` takes is out. The
 busiest used at least three times get the five registers (`o^.reg`),
-a slice two (`o^.reg2` too), its count halved for each. An
+a slice two (`o^.reg2` too), its count halved for each, and the
+busiest reals the four of `XVarRegs`, each with a slot as well
+(`PlaceLocals`, `XHome`). An
 address wanted after all, by a `var` parameter, say, comes to
 `Address` (`item.pas`), which puts the variable back in memory and
 sets `demoted`: `Body` then throws the procedure's code away
@@ -1183,10 +1235,11 @@ this one does.
   `_ := f(x)` drops one on purpose. `-Werror` makes each an error.
 - **Registers for variables.** Up to five of a procedure's single
   values, not reals, whose address is never taken, live in `rbx` and
-  `r12` to `r15`, a slice taking two of them; in a procedure that
-  calls nothing, a parameter that arrives in `rdi` or `rsi` stays
-  there. The trap report shows them as it shows the others, but for
-  slices, which it never shows.
+  `r12` to `r15`, a slice taking two of them, and up to four reals in
+  `xmm12` to `xmm15`, each written to its slot in the frame too; in a
+  procedure that calls nothing, a parameter that arrives in `rdi` or
+  `rsi` stays there. The trap report shows them as it shows the
+  others, but for slices, which it never shows.
 - **Several results** that are two words, and a slice, come back in
   rax and rdx, as from a code procedure; others through a hidden
   pointer to the caller's slots.

@@ -1878,12 +1878,12 @@ begin
     if o^.reg = ShownRegs[i] then VarKind := k + o^.typ^.size * 16 + (i + 1) * 512;
 end;
 
-{ Whether variable o could live in registers: a single value, not a
-  real, or a slice, in two, that isn't C's }
+{ Whether variable o could live in registers: a single value, a real
+  in an xmm register, or a slice, in two, that isn't C's }
 function RegFit(o: PObj): boolean;
 begin
   RegFit := (o^.cls = oVar) and not o^.ind and not o^.ext
-    and ((o^.typ^.form in [fInt, fBool, fEnum, fPtr, fProc, fError, fSlice])
+    and ((o^.typ^.form in [fInt, fBool, fEnum, fPtr, fProc, fError, fSlice, fReal])
       or (o^.typ^.form = fSet) and (o^.typ^.size <= 8));
 end;
 
@@ -1900,15 +1900,16 @@ end;
   its "begin" to its end, a use counts 1, in a loop 4, in two 16, in
   three or more 64, and a variable ADR is taken of can't have one. A register costs a save
   and a restore, so a variable used less than three times keeps its
-  place in memory. A slice takes two, its pointer's and its length's.
-  In a procedure that names no procedure, so calls nothing, the
+  place in memory. A slice takes two, its pointer's and its length's;
+  a real one of the xmm registers, stored and loaded again around each
+  call, as System V keeps none through one. In a procedure that names no procedure, so calls nothing, the
   parameters that arrive in the registers no call needs stay there
   (KeepArrived), at no cost. }
 procedure ChooseRegs(params, before: PObj);
 var
   cand: array[0..63] of PObj; weight: array[0..63] of longint;
   isLoop: array[0..255] of boolean;
-  n, i, k, d, loops, best, need: longint; o, q, qual: PObj; st: TScanState;
+  n, i, k, kx, d, loops, best, need: longint; o, q, qual: PObj; st: TScanState;
   afterDot, wasSkipping, leaf: boolean;
 
   function Candidate(name: longint): longint;
@@ -1993,25 +1994,29 @@ begin
     for i := 0 to n - 1 do
       if cand[i]^.typ^.form = fSlice then weight[i] := weight[i] div 2;
     { the heaviest, each used at least three times a register, take the
-      five registers in turn, while there are enough for each }
-    k := 0;
+      five registers in turn, while there are enough for each, and the
+      reals the four xmm registers of XVarRegs }
+    k := 0; kx := 0;
     repeat
       best := -1;
       for i := 0 to n - 1 do
         if (cand[i]^.reg = 0) and (weight[i] >= 3) and ((best < 0) or (weight[i] > weight[best])) then best := i;
       if best < 0 then break;
       need := 1 + ord(cand[best]^.typ^.form = fSlice);
-      if k + need <= 5 then begin
+      if cand[best]^.typ^.form = fReal then begin
+        if kx < 4 then begin cand[best]^.reg := XVarRegs[kx]; inc(kx) end
+        else weight[best] := 0;
+      end else if k + need <= 5 then begin
         cand[best]^.reg := VarRegs[k];
         if need = 2 then cand[best]^.reg2 := VarRegs[k + 1];
         inc(k, need);
       end else weight[best] := 0;   { too big for what is left }
-    until k = 5;
+    until false;
   end;
 end;
 
-{ The registers the variables of the procedure are in, as bits of
-  VarRegs }
+{ The registers the variables of the procedure are in, as bits: bit i
+  is VarRegs[i], bit XBit + i XVarRegs[i] }
 function RegsOf(params, before: PObj): longint;
 var o: PObj; m, k: longint;
 begin
@@ -2019,12 +2024,15 @@ begin
   o := params;
   while o <> nil do begin
     for k := 0 to 4 do if (o^.reg = VarRegs[k]) or (o^.reg2 = VarRegs[k]) then m := m or (1 shl k);
+    for k := 0 to 3 do if o^.reg = XVarRegs[k] then m := m or (1 shl (XBit + k));
     o := o^.next;
   end;
   o := FirstLocal(before);
   while o <> nil do begin
-    if o^.cls = oVar then
+    if o^.cls = oVar then begin
       for k := 0 to 4 do if (o^.reg = VarRegs[k]) or (o^.reg2 = VarRegs[k]) then m := m or (1 shl k);
+      for k := 0 to 3 do if o^.reg = XVarRegs[k] then m := m or (1 shl (XBit + k));
+    end;
     o := o^.link;
   end;
   RegsOf := m;
@@ -2040,8 +2048,17 @@ begin
   ResetLocals;
   o := FirstLocal(before);
   while o <> nil do begin
-    if (o^.cls = oVar) and (o^.reg = 0) then o^.val := AllocPerm(o^.typ^.size, o^.typ^.align);
+    if (o^.cls = oVar) and (o^.reg = 0) then o^.val := AllocPerm(o^.typ^.size, o^.typ^.align)
+    else if (o^.cls = oVar) and (o^.reg >= XmmVar) then begin
+      o^.val := AllocPerm(8, 8);
+      XHome(o^.reg, o^.val);
+    end;
     o := o^.link;
+  end;
+  o := params;
+  while o <> nil do begin
+    if o^.reg >= XmmVar then XHome(o^.reg, o^.val);
+    o := o^.next;
   end;
   UseRegs(RegsOf(params, before));
 end;

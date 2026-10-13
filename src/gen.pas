@@ -105,6 +105,16 @@ const
     rdi and rsi, where a procedure that calls nothing keeps the
     parameters that arrive in them (KeptIn) }
   ShownRegs: array[0..6] of longint = (RBX, R12, R13, R14, R15, RDI, RSI);
+  { the registers a procedure keeps its busiest reals in, xmm12 to
+    xmm15, numbered from XmmVar up so that they aren't taken for r12 to
+    r15 (RegAt). Each has a slot too, written as it is, where the trap
+    report finds it, and from which it is loaded again after a call, as
+    System V has no callee-saved xmm register (XHome). }
+  XmmVar = 16;
+  XVarRegs: array[0..3] of longint = (XmmVar + 12, XmmVar + 13, XmmVar + 14, XmmVar + 15);
+  { a procedure's registers of variables, as bits: bit i is VarRegs[i],
+    bit XBit + i XVarRegs[i] }
+  XBit = 5;
 
 var
   rtFail, argcChunk, argvChunk: longint;
@@ -188,6 +198,7 @@ procedure ResetLocals;
 procedure KeepArrived(o: PObj);
 function KeptIn(o: PObj): boolean;
 procedure UseRegs(mask: longint);
+procedure XHome(r: longint; slot: int64);
 procedure MarkCode(var m: TCodeMark);
 procedure Redo(const m: TCodeMark);
 procedure Rewind(const m: TCodeMark);
@@ -269,9 +280,10 @@ var
   inObj: array[0..13] of PObj;
   numIn: longint;
   procParams: PObj;             { the parameters, for EnterBody }
-  regMask: longint;             { the registers of variables: bit i is VarRegs[i] }
+  regMask: longint;             { the registers of variables, as bits (XBit) }
   kept: longint;                { bit r: register r holds a parameter, as it arrived }
   saveAt: int64;                { where they are saved, a quadword each }
+  homes: array[0..3] of int64;   { the slots of the variables in XVarRegs }
   frameAt: array[0..2] of int64;   { frameTop, frameMax, permTop after the declarations }
   { the checks of the procedure, whose failures EndFails makes }
   fails: array[0..4095] of record
@@ -351,6 +363,7 @@ begin
   case stack[i].loc of
     lConst: MovsXM(x, RealConst(stack[i].val), single);
     lMem: MovsXM(x, stack[i].m, stack[i].size = 4);
+    lHeld, lInto: if stack[i].val <> x then MovX(x, stack[i].val);
     lReg: if RegOf(i) <> x then MovX(x, RegOf(i));
   else MovsXM(x, Mem(RBP, stack[i].val), false);   { spilled, as 8 bytes }
   end;
@@ -528,7 +541,8 @@ end;
   value where it was, so r is its only new copy. }
 procedure ValueTo(i, r: longint);
 begin
-  case stack[i].loc of
+  if IsReal(i) and (stack[i].loc in [lHeld, lInto]) then MovqRX(r, stack[i].val)
+  else case stack[i].loc of
     lConst: MovRI(r, stack[i].val);
     lHeld, lInto: MovRR(r, stack[i].val);
     lAdr: Lea(r, AdrMem(i, 0));
@@ -574,6 +588,7 @@ end;
 function RegAt(const a: TAdr): longint;
 begin
   if a.off = 0 then RegAt := a.chunk else RegAt := a.hi;
+  if RegAt >= XmmVar then RegAt := RegAt - XmmVar;   { an xmm register, XVarRegs }
 end;
 
 { The memory a names. An address on the stack is popped, and is in its
@@ -631,6 +646,7 @@ var m: TMem; r: longint;
 begin
   r := inPlace;
   inPlace := -1;
+  if r >= XmmVar then r := r - XmmVar;
   if (a.base = bReg) and (RegAt(a) = r) then begin
     NewEntry(k, lInto, r);
     exit;
@@ -663,11 +679,23 @@ begin
   Computed(kWord);
 end;
 
+{ The slot of the variable in xmm register x }
+function HomeOf(x: longint): TMem;
+begin
+  HomeOf := Mem(RBP, homes[x + XmmVar - XVarRegs[0]]);
+end;
+
 { Pops a value into the variable at a; an address on the stack is under
   the value. }
 procedure PopVar(const a: TAdr; size: longint);
 var r: longint; v: int64; real: boolean;
 begin
+  if (a.base = bReg) and IsReal(depth - 1) then begin
+    XValueTo(depth - 1, RegAt(a));
+    Drop;
+    MovsMX(HomeOf(RegAt(a)), RegAt(a), false);   { written through, as XHome says }
+    exit;
+  end;
   if a.base = bReg then begin
     if TopConst(v) then MovRI(RegAt(a), v)
     else if Peek(depth - 1) <> RegAt(a) then MovRR(RegAt(a), Peek(depth - 1));   { else it is there, lInto }
@@ -887,7 +915,7 @@ begin
     Drop;
     SseM(c, Top, m, f);
   end else begin
-    y := Loaded(depth - 1);
+    y := Peek(depth - 1);
     Drop;
     x := Top;
     Sse(c, x, y, f);
@@ -997,9 +1025,9 @@ var f: boolean; r, x, y: longint; v: int64; m: TMem;
 begin
   if k in [kF32, kF64] then begin
     f := k = kF32;
-    y := Loaded(depth - 1);
+    y := Peek(depth - 1);
     Drop;
-    x := Top;
+    x := Peek(depth - 1);
     Drop;
     r := Target;   { the BOOL, in the left's integer register }
     { ucomis sets the flags as an unsigned comparison would, but for an
@@ -1697,6 +1725,10 @@ begin
     CallR(R11);
   end;
   if k + pad > 0 then AluI(aluAdd, RSP, 8 * (k + pad));
+  { the variables in xmm registers, which the call may have changed,
+    from their slots }
+  for i := 0 to 3 do
+    if regMask and (1 shl (XBit + i)) <> 0 then MovsXM(XVarRegs[i] - XmmVar, Mem(RBP, homes[i]), false);
   { the result: a slice in rax and rdx goes to the caller's temporary,
     two results on the stack, the first under the second, and a single
     value on top }
@@ -1881,6 +1913,13 @@ begin
   frameAt[0] := frameTop; frameAt[1] := frameMax; frameAt[2] := permTop;
 end;
 
+{ The variable in xmm register r of XVarRegs has a slot of 8 bytes at
+  slot, kept as it changes }
+procedure XHome(r: longint; slot: int64);
+begin
+  homes[r - XVarRegs[0]] := slot;
+end;
+
 procedure MarkCode(var m: TCodeMark);
 begin
   m.pc := pc; m.fixups := numFixups; m.lines := numLines; m.said := SaidCount;
@@ -1939,7 +1978,7 @@ begin
   end;
   { each register that holds a variable is saved, for the caller, and
     zeroed, as a variable starts at zero }
-  chunks^[c].saveMask := regMask;
+  chunks^[c].saveMask := regMask and (1 shl XBit - 1);
   chunks^[c].saveAt := saveAt;
   n := 0;
   for i := 0 to 4 do
@@ -1948,11 +1987,21 @@ begin
       MovRI(VarRegs[i], 0);
       inc(n);
     end;
+  { and each xmm register that holds a variable, zeroed, as its slot
+    is: the caller keeps its own }
+  for i := 0 to 3 do
+    if regMask and (1 shl (XBit + i)) <> 0 then begin
+      MovRI(RAX, 0);
+      MovqXR(XVarRegs[i] - XmmVar, RAX);
+    end;
   { the parameters that came in registers, to their slots or, for a
     register variable, to its register: a slice's second word, the one
     for the slot 8 bytes into its own, to its length's }
   for i := 0 to numIn - 1 do
-    if inReg[i] < 0 then MovsMX(Mem(RBP, inSlot[i]), -1 - inReg[i], false)
+    if inReg[i] < 0 then begin
+      MovsMX(Mem(RBP, inSlot[i]), -1 - inReg[i], false);
+      if inObj[i]^.reg <> 0 then MovX(inObj[i]^.reg - XmmVar, -1 - inReg[i]);
+    end
     else if (inObj[i] <> nil) and (inObj[i]^.reg <> 0) then begin
       r := inObj[i]^.reg;
       if inSlot[i] <> inObj[i]^.val then r := inObj[i]^.reg2;
@@ -1964,7 +2013,8 @@ begin
   p := procParams;
   while p <> nil do begin
     if (p^.reg <> 0) and (p^.val > 0) then
-      if p^.typ^.form in [fInt, fBool, fEnum, fSet] then
+      if p^.typ^.form = fReal then MovsXM(p^.reg - XmmVar, Mem(RBP, p^.val), p^.typ^.size = 4)
+      else if p^.typ^.form in [fInt, fBool, fEnum, fSet] then
         Load(p^.reg, Mem(RBP, p^.val), p^.typ^.size, p^.typ^.signed)
       else begin
         Load(p^.reg, Mem(RBP, p^.val), 8, false);

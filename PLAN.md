@@ -41,8 +41,11 @@ buys less than 2% on both is reverted and noted here.
    `+`, `-` and `*` by a constant, and an element's operand takes it as
    its displacement: `[r13 + r9 * 8 - 8]`. Jacobi 129 ms to 106; rat
    within noise.
-5. **Real variables in xmm registers**, where that pays: measured, and
-   kept only if it does.
+5. Done: **Real variables in xmm registers.** The busiest four reals
+   of a procedure live in xmm12 to xmm15, each written through to its
+   slot, from which the trap report reads it and a call's return loads
+   it, as System V keeps no xmm register through a call. NBody 147 ms
+   to 116; rat within noise.
 
 ## Next, when the owner says
 
