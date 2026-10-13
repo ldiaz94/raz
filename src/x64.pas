@@ -92,10 +92,12 @@ procedure Xchg(const m: TMem; r: longint);
 procedure LockXadd(const m: TMem; r: longint);
 procedure MovqXR(x, r: longint);
 procedure MovqRX(r, x: longint);
-procedure MovsdXM(x: longint; const m: TMem);
-procedure MovsdMX(const m: TMem; x: longint);
+procedure MovX(x, y: longint);
 { The real instructions take single: F32 (ss) rather than F64 (sd) }
+procedure MovsXM(x: longint; const m: TMem; single: boolean);
+procedure MovsMX(const m: TMem; x: longint; single: boolean);
 procedure Sse(op, x, y: longint; single: boolean);   { 58 add, 59 mul, 5C sub, 5E div, 5A convert }
+procedure SseM(op, x: longint; const m: TMem; single: boolean);
 procedure Ucomis(x, y: longint; single: boolean);
 procedure Cvtsi2s(x, r: longint; single: boolean);
 procedure Cvtts2si(r, x: longint; single: boolean);
@@ -621,36 +623,51 @@ begin
   OpR($66, true, $7E0F, x, r);
 end;
 
-procedure MovsdXM(x: longint; const m: TMem);
+{ movaps: all of xmm y to xmm x, the shortest move between two }
+procedure MovX(x, y: longint);
 begin
-  if listing then Say('movsd ' + XN(x) + ', ' + MN(m));
-  OpM($F2, false, $100F, x, m);
-end;
-
-procedure MovsdMX(const m: TMem; x: longint);
-begin
-  if listing then Say('movsd ' + MN(m) + ', ' + XN(x));
-  OpM($F2, false, $110F, x, m);
+  if listing then Say('movaps ' + XN(x) + ', ' + XN(y));
+  OpR(0, false, $280F, x, y);
 end;
 
 const
   RealPfx: array[boolean] of longint = ($F2, $F3);
   RealEnd: array[boolean] of string[2] = ('sd', 'ss');
 
-procedure Sse(op, x, y: longint; single: boolean);
-var s: shortstring;
+procedure MovsXM(x: longint; const m: TMem; single: boolean);
 begin
-  if listing then begin
+  if listing then Say('movs' + RealEnd[single][2] + ' ' + XN(x) + ', ' + MN(m));
+  OpM(RealPfx[single], false, $100F, x, m);
+end;
+
+procedure MovsMX(const m: TMem; x: longint; single: boolean);
+begin
+  if listing then Say('movs' + RealEnd[single][2] + ' ' + MN(m) + ', ' + XN(x));
+  OpM(RealPfx[single], false, $110F, x, m);
+end;
+
+function SseName(op: longint; single: boolean): shortstring;
+begin
   case op of
-    $58: s := 'add' + RealEnd[single];
-    $59: s := 'mul' + RealEnd[single];
-    $5C: s := 'sub' + RealEnd[single];
-    $5E: s := 'div' + RealEnd[single];
-  else s := 'cvt' + RealEnd[single] + '2' + RealEnd[not single];
+    $58: SseName := 'add' + RealEnd[single];
+    $59: SseName := 'mul' + RealEnd[single];
+    $5C: SseName := 'sub' + RealEnd[single];
+    $5E: SseName := 'div' + RealEnd[single];
+  else SseName := 'cvt' + RealEnd[single] + '2' + RealEnd[not single];
   end;
-  Say(s + ' ' + XN(x) + ', ' + XN(y));
-  end;
+end;
+
+procedure Sse(op, x, y: longint; single: boolean);
+begin
+  if listing then Say(SseName(op, single) + ' ' + XN(x) + ', ' + XN(y));
   OpR(RealPfx[single], false, $0F or op shl 8, x, y);
+end;
+
+{ The same, its right operand in memory: addsd x, [m] }
+procedure SseM(op, x: longint; const m: TMem; single: boolean);
+begin
+  if listing then Say(SseName(op, single) + ' ' + XN(x) + ', ' + MN(m));
+  OpM(RealPfx[single], false, $0F or op shl 8, x, m);
 end;
 
 procedure Ucomis(x, y: longint; single: boolean);

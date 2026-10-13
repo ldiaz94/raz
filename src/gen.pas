@@ -11,9 +11,10 @@
 
   The stack is kept in registers, as in Wirth's compilers (Niklaus
   Wirth's Pascal and Oberon compilers): the value at depth d, depth 0
-  being the bottom, is in r8 to r11, register d mod 4. A value that
-  needs a register a lower one holds spills that one: stores it in a
-  frame slot, to free the register. A constant, or an address in the
+  being the bottom, is in r8 to r11, register d mod 4, or in xmm8 to
+  xmm11 if it is a real. A value that needs a register a lower one
+  holds spills that one: stores it in a frame slot, to free the
+  register. A constant, or an address in the
   frame or of a chunk, is only noted until something needs it in a
   register, so that it can be an instruction's operand.
 
@@ -242,6 +243,7 @@ const
     and rdi, which copying needs, aren't among them. }
   NumRegs = 4;
   Regs: array[0..NumRegs - 1] of longint = (R8, R9, R10, R11);
+  XRegs: array[0..NumRegs - 1] of longint = (8, 9, 10, 11);   { xmm8 to xmm11 }
   IntRegs: array[0..5] of longint = (RDI, RSI, RDX, RCX, R8, R9);
 
 var
@@ -294,12 +296,53 @@ end;
   Registers outside the stack, free within one operation: rax, rcx and
   rdx for arithmetic; rsi and rdi for copying; and, where the stack holds
   nothing in them, r10 for the prologue's zeroing loop and r11 for a call
-  through a procedure value. Reals are kept as their bits in the integer
-  registers, and moved to xmm0 and xmm1 for each operation (RealOp). }
+  through a procedure value; xmm0 and xmm1 for reals.
+
+  A real, an F32 or an F64, is held in xmm8 to xmm11 (XRegs), where the
+  machine computes with reals, the value at depth d in XRegs[d mod
+  NumRegs]: so each depth has two registers, and holds its value in the
+  one of its kind, which owner doesn't tell apart. The xmm registers
+  from xmm8 up carry no arguments, so that Call can move a real into
+  xmm0 to xmm7 without overwriting another still to go. }
+
+{ The register of kind k for the value at depth i }
+function RegIn(k: TKind; i: longint): longint;
+begin
+  if k in [kF32, kF64] then RegIn := XRegs[i mod NumRegs] else RegIn := Regs[i mod NumRegs];
+end;
 
 function RegOf(i: longint): longint;
 begin
-  RegOf := Regs[i mod NumRegs];
+  RegOf := RegIn(stack[i].k, i);
+end;
+
+function IsReal(i: longint): boolean;
+begin
+  IsReal := stack[i].k in [kF32, kF64];
+end;
+
+{ A real constant, its bits v, as an operand: 8 bytes in read-only
+  data, as the machine has no instruction that holds one }
+function RealConst(v: int64): TMem;
+var c: longint;
+begin
+  c := NewChunk(secRodata, -1, -1);
+  SetData(c, @v, 8, 8);
+  RealConst := MemRip(c, 0);
+end;
+
+{ The real i into xmm register x, from wherever it is, as ValueTo does
+  for an integer register }
+procedure XValueTo(i, x: longint);
+var single: boolean;
+begin
+  single := stack[i].k = kF32;
+  case stack[i].loc of
+    lConst: MovsXM(x, RealConst(stack[i].val), single);
+    lMem: MovsXM(x, stack[i].m, stack[i].size = 4);
+    lReg: if RegOf(i) <> x then MovX(x, RegOf(i));
+  else MovsXM(x, Mem(RBP, stack[i].val), false);   { spilled, as 8 bytes }
+  end;
 end;
 
 function Loaded(i: longint): longint; forward;
@@ -311,7 +354,8 @@ var s: int64;
 begin
   if stack[i].loc <> lReg then Loaded(i);
   s := AllocTemp(8, 8);
-  Store(Mem(RBP, s), RegOf(i), 8);
+  if IsReal(i) then MovsMX(Mem(RBP, s), RegOf(i), false)
+  else Store(Mem(RBP, s), RegOf(i), 8);
   stack[i].loc := lFrame;
   stack[i].val := s;
   owner[i mod NumRegs] := -1;
@@ -336,15 +380,15 @@ begin
     if (owner[r] >= 0) and (owner[r] < d) then Spill(owner[r]);
 end;
 
-{ The register of value i, for it to hold: a lower value in it is
-  spilled. }
-function Claim(i: longint): longint;
+{ The register of kind k of value i, for it to hold: a lower value at
+  its depth's registers is spilled. }
+function Claim(i: longint; k: TKind): longint;
 var r: longint;
 begin
   r := i mod NumRegs;
   if (owner[r] >= 0) and (owner[r] <> i) then Spill(owner[r]);
   owner[r] := i;
-  Claim := Regs[r];
+  Claim := RegIn(k, i);
 end;
 
 { The memory at the noted address i, plus off }
@@ -359,8 +403,11 @@ function Loaded(i: longint): longint;
 var r: longint;
 begin
   if stack[i].loc = lInto then exit(stack[i].val);
-  if stack[i].loc <> lReg then begin
-    r := Claim(i);
+  if (stack[i].loc <> lReg) and IsReal(i) then begin
+    XValueTo(i, Claim(i, stack[i].k));
+    stack[i].loc := lReg;
+  end else if stack[i].loc <> lReg then begin
+    r := Claim(i, kWord);
     case stack[i].loc of
       lConst: MovRI(r, stack[i].val);
       lHeld: MovRR(r, stack[i].val);
@@ -406,13 +453,19 @@ begin
   stack[depth - 1].m := m;
   stack[depth - 1].size := size;
   stack[depth - 1].signed := signed;
-  if m.index = RegOf(depth - 1) then owner[(depth - 1) mod NumRegs] := depth - 1;
+  if m.index = Regs[(depth - 1) mod NumRegs] then owner[(depth - 1) mod NumRegs] := depth - 1;
 end;
 
 { The register a new value on top is to be computed in }
 function Target: longint;
 begin
-  Target := Claim(depth);
+  Target := Claim(depth, kWord);
+end;
+
+{ The xmm register a new real on top is to be computed in }
+function XTarget: longint;
+begin
+  XTarget := Claim(depth, kF64);
 end;
 
 { The value just computed in Target goes on top }
@@ -446,7 +499,9 @@ begin
     lAdr: Lea(r, AdrMem(i, 0));
     lIdx: Lea(r, stack[i].m);
     lMem: Load(r, stack[i].m, stack[i].size, stack[i].signed);
-    lReg: if RegOf(i) <> r then MovRR(r, RegOf(i));
+    lReg:
+      if IsReal(i) then MovqRX(r, RegOf(i))
+      else if RegOf(i) <> r then MovRR(r, RegOf(i));
   else Load(r, Mem(RBP, stack[i].val), 8, false);
   end;
 end;
@@ -560,7 +615,8 @@ begin
   { in the order PushAdr explains }
   if a.base = bStack then begin m := Place(a, -1); r := Target end
   else begin r := Target; m := Place(a, r) end;
-  Load(r, m, size, signed);
+  if k in [kF32, kF64] then MovsXM(XTarget, m, size = 4)
+  else Load(r, m, size, signed);
   Computed(k);
 end;
 
@@ -576,7 +632,7 @@ end;
 { Pops a value into the variable at a; an address on the stack is under
   the value. }
 procedure PopVar(const a: TAdr; size: longint);
-var r: longint; v: int64;
+var r: longint; v: int64; real: boolean;
 begin
   if a.base = bReg then begin
     if TopConst(v) then MovRI(RegAt(a), v)
@@ -591,13 +647,21 @@ begin
   end;
   if TopConst(v) then begin r := RAX; MovRI(RAX, v) end
   else r := Peek(depth - 1);
+  real := (stack[depth - 1].loc <> lConst) and IsReal(depth - 1);
   Drop;
-  Store(Place(a, RCX), r, size);
+  if real then MovsMX(Place(a, RCX), r, size = 4)
+  else Store(Place(a, RCX), r, size);
 end;
 
-{ The two values on top change places. }
+{ Register src to dst, an xmm register's if real }
+procedure MovReg(real: boolean; dst, src: longint);
+begin
+  if real then MovX(dst, src) else MovRR(dst, src);
+end;
+
+{ The two values on top, of one kind, change places. }
 procedure Swap;
-var e: TEntry; x, y: longint; rx, ry: boolean;
+var e: TEntry; x, y, t: longint; rx, ry, real: boolean;
 begin
   x := depth - 2; y := depth - 1;
   { a value noted at an address that uses its register is worked out,
@@ -606,16 +670,18 @@ begin
   if stack[y].loc in [lIdx, lMem] then Loaded(y);
   rx := stack[x].loc = lReg;
   ry := stack[y].loc = lReg;
+  real := IsReal(y);
+  if real then t := 0 else t := RAX;   { xmm0, or rax }
   if rx and ry then begin
-    MovRR(RAX, RegOf(x));
-    MovRR(RegOf(x), RegOf(y));
-    MovRR(RegOf(y), RAX);
+    MovReg(real, t, RegOf(x));
+    MovReg(real, RegOf(x), RegOf(y));
+    MovReg(real, RegOf(y), t);
   end else if rx then begin
     owner[x mod NumRegs] := -1;
-    MovRR(Claim(y), RegOf(x));
+    MovReg(real, Claim(y, stack[y].k), RegOf(x));
   end else if ry then begin
     owner[y mod NumRegs] := -1;
-    MovRR(Claim(x), RegOf(y));
+    MovReg(real, Claim(x, stack[x].k), RegOf(y));
   end;
   e := stack[x]; stack[x] := stack[y]; stack[y] := e;
 end;
@@ -765,20 +831,33 @@ begin
   Operands := Top;
 end;
 
+{ The two reals on top, the left op the right, worked out in the left's
+  xmm register. The right is taken from memory where it is, as a
+  constant, a variable or a spilled value is: mulsd xmm8, [rbp - 16]. }
 procedure RealOp(op: TSym; k: TKind);
-var f: boolean; r, y: longint;
+var f: boolean; c, x, y: longint; m: TMem;
 begin
   f := k = kF32;
-  r := Operands(y);
-  MovqXR(0, r);
-  MovqXR(1, y);
   case op of
-    sPlus: Sse($58, 0, 1, f);    { addsd, or addss for an F32 }
-    sMinus: Sse($5C, 0, 1, f);   { subsd, subss }
-    sTimes: Sse($59, 0, 1, f);   { mulsd, mulss }
-    sSlash: Sse($5E, 0, 1, f);   { divsd, divss }
+    sPlus: c := $58;    { addsd, or addss for an F32 }
+    sMinus: c := $5C;   { subsd, subss }
+    sTimes: c := $59;   { mulsd, mulss }
+  else c := $5E;        { divsd, divss }
   end;
-  MovqRX(r, 0);
+  if stack[depth - 1].loc in [lConst, lMem, lFrame] then begin
+    case stack[depth - 1].loc of
+      lConst: m := RealConst(stack[depth - 1].val);
+      lMem: m := stack[depth - 1].m;
+    else m := Mem(RBP, stack[depth - 1].val);
+    end;
+    Drop;
+    SseM(c, Top, m, f);
+  end else begin
+    y := Loaded(depth - 1);
+    Drop;
+    x := Top;
+    Sse(c, x, y, f);
+  end;
 end;
 
 { The group 1 operation of +, -, &, | and xor }
@@ -859,13 +938,15 @@ procedure Compare(op: TSym; k: TKind; signed: boolean);
 const
   CcSigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccL, ccLE, ccG, ccGE);
   CcUnsigned: array[sEql..sGeq] of longint = (ccE, ccNE, ccB, ccBE, ccA, ccAE);
-var f: boolean; r, y: longint; v: int64; m: TMem;
+var f: boolean; r, x, y: longint; v: int64; m: TMem;
 begin
   if k in [kF32, kF64] then begin
     f := k = kF32;
-    r := Operands(y);
-    MovqXR(0, r);
-    MovqXR(1, y);
+    y := Loaded(depth - 1);
+    Drop;
+    x := Top;
+    Drop;
+    r := Target;   { the BOOL, in the left's integer register }
     { ucomis sets the flags as an unsigned comparison would, but for an
       unordered pair (a NaN) it sets zero, parity and carry all. So only
       "above" can be tested straight: it is false for NaN, as every
@@ -873,13 +954,14 @@ begin
       no parity, as NaN = NaN sets the zero flag, and <> asks for
       parity as well. }
     case op of
-      sEql: begin Ucomis(0, 1, f); SetCC(ccE, r); SetCC(ccNP, RCX); Alu(aluAnd, r, RCX) end;
-      sNeq: begin Ucomis(0, 1, f); SetCC(ccNE, r); SetCC(ccP, RCX); Alu(aluOr, r, RCX) end;
-      sLss: begin Ucomis(1, 0, f); SetCC(ccA, r) end;
-      sLeq: begin Ucomis(1, 0, f); SetCC(ccAE, r) end;
-      sGtr: begin Ucomis(0, 1, f); SetCC(ccA, r) end;
-      sGeq: begin Ucomis(0, 1, f); SetCC(ccAE, r) end;
+      sEql: begin Ucomis(x, y, f); SetCC(ccE, r); SetCC(ccNP, RCX); Alu(aluAnd, r, RCX) end;
+      sNeq: begin Ucomis(x, y, f); SetCC(ccNE, r); SetCC(ccP, RCX); Alu(aluOr, r, RCX) end;
+      sLss: begin Ucomis(y, x, f); SetCC(ccA, r) end;
+      sLeq: begin Ucomis(y, x, f); SetCC(ccAE, r) end;
+      sGtr: begin Ucomis(x, y, f); SetCC(ccA, r) end;
+      sGeq: begin Ucomis(x, y, f); SetCC(ccAE, r) end;
     end;
+    Computed(kWord);
   end else begin
     if TopConst(v) then begin Drop; r := Top; CmpI(r, v) end
     else if TopInMem then begin m := stack[depth - 1].m; Drop; r := Top; AluM(aluCmp, r, m) end
@@ -889,13 +971,17 @@ begin
   stack[depth - 1].k := kWord;
 end;
 
+{ A real is negated by flipping its sign bit, in rax }
 procedure Neg(k: TKind; size: longint; signed: boolean);
 var r: longint;
 begin
   r := Top;
   case k of
-    kF32: Btc(r, 31);
-    kF64: Btc(r, 63);
+    kF32, kF64: begin
+      MovqRX(RAX, r);
+      if k = kF32 then Btc(RAX, 31) else Btc(RAX, 63);
+      MovqXR(r, RAX);
+    end;
   else
     Unary(3, r);   { neg }
     if size < 8 then Extend(r, size, signed);
@@ -927,48 +1013,45 @@ end;
 { The integer on top, as a real of kind k; big if it may be a U64 above
   high(I64), which the machine would take as negative }
 procedure IntToReal(k: TKind; big: boolean);
-var L1, L2, r: longint; f: boolean;
+var L1, L2, r, x: longint; f: boolean;
 begin
   f := k = kF32;
   r := Top;
+  x := RegIn(k, depth - 1);   { its xmm register }
   if big then begin
     { above high(I64): halve, keeping the low bit, and double }
     L1 := NoLabel; L2 := NoLabel;
     TestRR(r, r);
     Jcc(ccS, L1);
-    Cvtsi2s(0, r, f);
+    Cvtsi2s(x, r, f);
     Jmp(L2);
     FixLink(L1);
     MovRR(RCX, r);
     ShiftI(shShr, RCX, 1);
     AluI(aluAnd, r, 1);
     Alu(aluOr, RCX, r);
-    Cvtsi2s(0, RCX, f);
-    Sse($58, 0, 0, f);   { adds it to itself: doubles }
+    Cvtsi2s(x, RCX, f);
+    Sse($58, x, x, f);   { adds it to itself: doubles }
     FixLink(L2);
-  end else Cvtsi2s(0, r, f);
-  MovqRX(r, 0);
+  end else Cvtsi2s(x, r, f);
   stack[depth - 1].k := k;
 end;
 
 { The real of kind k on top, truncated to an integer }
 procedure RealToInt(k: TKind);
-var r: longint;
+var x: longint;
 begin
-  r := Top;
-  MovqXR(0, r);
-  Cvtts2si(r, 0, k = kF32);
+  x := Top;
+  Cvtts2si(RegIn(kWord, depth - 1), x, k = kF32);
   stack[depth - 1].k := kWord;
 end;
 
 { The real of kind k on top, as the other kind }
 procedure RealToReal(k: TKind);
-var r: longint;
+var x: longint;
 begin
-  r := Top;
-  MovqXR(0, r);
-  Sse($5A, 0, 0, k = kF32);   { cvtss2sd, or cvtsd2ss }
-  MovqRX(r, 0);
+  x := Top;
+  Sse($5A, x, x, k = kF32);   { cvtss2sd, or cvtsd2ss }
   if k = kF32 then stack[depth - 1].k := kF64 else stack[depth - 1].k := kF32;
 end;
 
@@ -1339,7 +1422,7 @@ begin
     AluM(aluAdd, r, m);
   end;
   if inRax then MovRR(Target, RAX)
-  else Claim(depth);   { the index's register again, now for the address }
+  else Claim(depth, kWord);   { the index's register again, now for the address }
   Computed(kWord);
 end;
 
@@ -1499,8 +1582,7 @@ begin
   for i := 0 to c.n - 1 do
     if not onStack[i] then
       if c.isF[i] then begin
-        if stack[first + i].loc = lFrame then MovsdXM(nf, Mem(RBP, stack[first + i].val))
-        else begin ValueTo(first + i, RAX); MovqXR(nf, RAX) end;
+        XValueTo(first + i, nf);
         inc(nf);
       end else begin
         if ni < 4 then ValueTo(first + i, IntRegs[ni]) else late[ni] := first + i;
@@ -1532,14 +1614,14 @@ begin
   end else if InTwoRegs(res) then begin
     MovRR(Target, RAX); Computed(kWord);
     MovRR(Target, RDX); Computed(kWord);
+  end else if (c.ret = 0) and (res^.form = fReal) then begin
+    MovX(XTarget, 0);
+    Computed(KindOf(res));
   end else if c.ret = 0 then begin
     r := Target;
-    if res^.form = fReal then MovqRX(r, 0)
-    else begin
-      MovRR(r, RAX);
-      if res^.form = fBool then Extend(r, 1, false)
-      else if (res^.form = fInt) and (res^.size < 8) then Extend(r, res^.size, res^.signed);
-    end;
+    MovRR(r, RAX);
+    if res^.form = fBool then Extend(r, 1, false)
+    else if (res^.form = fInt) and (res^.size < 8) then Extend(r, res^.size, res^.signed);
     Computed(KindOf(res));
   end;
 end;
@@ -1776,7 +1858,7 @@ begin
     register variable, to its register: a slice's second word, the one
     for the slot 8 bytes into its own, to its length's }
   for i := 0 to numIn - 1 do
-    if inReg[i] < 0 then MovsdMX(Mem(RBP, inSlot[i]), -1 - inReg[i])
+    if inReg[i] < 0 then MovsMX(Mem(RBP, inSlot[i]), -1 - inReg[i], false)
     else if (inObj[i] <> nil) and (inObj[i]^.reg <> 0) then begin
       r := inObj[i]^.reg;
       if inSlot[i] <> inObj[i]^.val then r := inObj[i]^.reg2;
@@ -1801,12 +1883,14 @@ end;
 { Pops one of several results, a value of size bytes, into its place
   off bytes into the caller's, behind the hidden pointer. }
 procedure ResultTo(off: int64; size: longint);
-var r: longint;
+var r: longint; real: boolean;
 begin
   r := Top;
+  real := IsReal(depth - 1);
   Drop;
   Load(RCX, Mem(RBP, retSlot), 8, false);
-  Store(Mem(RCX, off), r, size);
+  if real then MovsMX(Mem(RCX, off), r, size = 4)
+  else Store(Mem(RCX, off), r, size);
 end;
 
 { Pops an address, and copies size bytes from it to the result, off
@@ -1831,7 +1915,7 @@ begin
       PopTo(RDX);
       PopTo(RAX);
     end else begin
-      if resType^.form = fReal then begin MovqXR(0, Top); Drop end
+      if resType^.form = fReal then begin XValueTo(depth - 1, 0); Drop end
       else PopTo(RAX);
     end;
   Jmp(exitL);

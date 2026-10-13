@@ -1051,9 +1051,14 @@ begin
     exit;
   end;
 
-  { x and y on the stack, x under y; a constant x goes on after y }
+  { x and y on the stack, x under y; a constant x goes on after y, and
+    is left on top where the order doesn't matter, as gen takes a
+    constant best on the right: 0.25 * e is mulsd xmm8, [0.25] }
   Value(y);
-  if x.mode = mConst then begin Value(x); Swap end;
+  if x.mode = mConst then begin
+    Value(x);
+    if not (op in [sPlus, sTimes, sAmp, sBar, sXor]) or isPtr then Swap;
+  end;
 
   if t^.form = fReal then begin
     if op in Rel then Compare(op, KindOf(t), false) else gen.Op(op, KindOf(t), 8, false)

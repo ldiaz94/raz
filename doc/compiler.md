@@ -14,10 +14,10 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/scan.pas` | 886 | 747 | Symbols, literals, comments, positions |
 | `src/sym.pas` | 646 | 528 | Types, objects, scopes, layout |
 | `src/chunk.pas` | 318 | 246 | The compiled program: chunks, fixups, line notes |
-| `src/x64.pas` | 1,146 | 951 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/gen.pas` | 2,010 | 1,462 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/item.pas` | 1,574 | 1,299 | Items: types, constants, variables, operators, conversions, calls |
-| `src/parse.pas` | 3,078 | 2,689 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/x64.pas` | 1,201 | 992 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/gen.pas` | 2,093 | 1,522 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/item.pas` | 1,579 | 1,302 | Items: types, constants, variables, operators, conversions, calls |
+| `src/parse.pas` | 3,103 | 2,707 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/link.pas` | 334 | 258 | Tree shaking, layout, patching, the places |
 | `src/elf.pas` | 373 | 294 | Static and dynamic ELF, symbol table, line numbers |
 | `src/raz.pas` | 245 | 188 | The command line |
@@ -45,7 +45,8 @@ of `x64.pas`.
 
 On x86-64 the stack lives in registers, as in Wirth's compilers
 (Niklaus Wirth's Pascal and Oberon compilers): the value at depth `d`,
-depth 0 being the bottom, is in register `d mod 4`, of `r8` to `r11`.
+depth 0 being the bottom, is in register `d mod 4`, of `r8` to `r11`,
+or of `xmm8` to `xmm11` for a real.
 A value that needs a register a lower one holds *spills* it: stores it
 in a frame slot, to free the register. A constant or an address in the
 frame or of a chunk is only noted, until something needs it in a
@@ -430,6 +431,64 @@ fewer, the search 15%, the sum 41%, each now within 2% of FPC
 `-O2`'s; rat 2.5% fewer cycles and 6% fewer instructions on its
 workload. Every default program is 20 to 25% smaller.
 
+## Better code for reals
+
+Each change below was measured as v0.8.0's were, on rat and on the
+kernels, two of which compute with reals: `Jacobi`, a sweep of a grid
+of `F64`s, each point the mean of its four neighbours, and `NBody`,
+bodies under gravity, with real variables, a square root and a
+division in its inner loop.
+
+1. **Reals on the stack in xmm registers.** A real on the value stack
+   was held in an integer register, as its bits, and copied to `xmm0`
+   and `xmm1` for each operation and back. The sweep's
+   `0.25 * (s[k - 1] + s[k + 1] + s[k - N] + s[k + N])` was, for each
+   addition and the product:
+
+   ```
+   mov r10, [r13 + r10 * 8]
+   mov r9, [r13 + r9 * 8]
+   movq xmm0, r9
+   movq xmm1, r10
+   addsd xmm0, xmm1
+   movq r9, xmm0
+   ...
+   mov r10, r9
+   mov r9, 4598175219545276416   ; 0.25, as its bits
+   movq xmm0, r9
+   movq xmm1, r10
+   mulsd xmm0, xmm1
+   movq r9, xmm0
+   mov [rdi + r8 * 8], r9
+   ```
+
+   Now a real at depth `d` is held in `xmm8` to `xmm11`, in
+   `XRegs[d mod 4]` (`RegIn`): it is loaded and stored with `movsd`
+   (`movss` for an `F32`; `XValueTo`, `PopVar`), a constant is read
+   from 8 bytes of read-only data (`RealConst`), and an operation takes
+   its right operand from memory as it is, as `Op` does for an integer
+   (`RealOp`). A constant on the left of `+` or `*` is left on top by
+   `Op2`, in `item.pas`, as their order doesn't matter, rather than
+   swapped under the other operand and back:
+
+   ```
+   movsd xmm9, [r13 + r9 * 8]
+   addsd xmm9, [r13 + r10 * 8]
+   ...
+   addsd xmm9, [r13 + r10 * 8]
+   mulsd xmm9, [literal498]
+   movsd [rdi + r8 * 8], xmm9
+   ```
+
+   `Call` moves a real argument straight to its `xmm0` to `xmm7`, and
+   takes a real result from `xmm0`; a comparison is `ucomisd` of the
+   two registers; a conversion is done in the value's own registers.
+   The registers from `xmm8` up carry no arguments, so that moving one
+   argument to its register never overwrites another still to go; all
+   xmm registers are the caller's to save, so a call spills the reals
+   under it as it does the integers. Jacobi 251 ms to 129, NBody 375
+   to 225; rat within noise.
+
 ## diag.pas: messages
 
 Every message the compiler prints is made here. A position, `TPos`, is
@@ -621,7 +680,9 @@ value each register holds, `lIdx` and `lMem` holding theirs when it
 is their index. The value at depth `d` belongs in
 `Regs[d mod 4]`, `r8` to `r11`: `rax`, `rdx` and `rcx`, which division
 and shifts need, and `rsi` and `rdi`, which copying needs, aren't among
-them. `Claim` gives a value its register, and `Spill`s the lower one
+them. A real belongs in `XRegs[d mod 4]`, `xmm8` to `xmm11`, which
+carry no arguments; each depth has the two registers, and `owner`
+doesn't tell them apart (`RegIn`, `RegOf`). `Claim` gives a value its register, and `Spill`s the lower one
 that holds it, when an expression is deeper than the registers;
 `Loaded` brings a value into its register, from its constant, address
 or slot; `Place` uses a noted address as the operand itself, so that

@@ -24,10 +24,11 @@ buys less than 2% on both is reverted and noted here.
    and a constant; and `NBody`, bodies under gravity: real variables,
    a square root and a division in the inner loop. raz 3.1 and 4.4
    times FPC's time.
-2. **Reals on the stack in xmm registers.** A real on the value stack
-   is held in xmm8 to xmm11, loaded and stored there with `movsd`, a
-   constant read from read-only data, and an operation takes its right
-   operand from memory as it is.
+2. Done: **Reals on the stack in xmm registers.** A real on the value
+   stack is held in xmm8 to xmm11, loaded and stored there with
+   `movsd`, a constant read from read-only data, and an operation takes
+   its right operand from memory as it is. Jacobi 251 ms to 129, NBody
+   375 to 225; rat within noise.
 3. **Real variables in xmm registers**, where that pays: measured, and
    kept only if it does.
 
