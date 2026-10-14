@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.23 of the report; section 11 says where each
+This is version 2026-10.24 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler

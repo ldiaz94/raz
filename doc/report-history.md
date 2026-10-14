@@ -128,3 +128,9 @@ at the time.
 - **2026-10.23.** `Math` gains `bits` and `fromBits`, an `F64`'s bits
   and back, and `mul`, the 128-bit product of two `U64`s, for reading
   and writing reals exactly (volume 2).
+- **2026-10.24.** `Sys` gains serving datagrams, `listenUdp`,
+  `receive` and `reply`; a socket's own port, `localPort`; connecting
+  with a timeout, `connectTcpWithin`; passing files over a Unix socket,
+  `sendFds` and `receiveFds`; and memory shared through a file,
+  `memFile` and `mapFile`. `Thread` works in a program that uses C,
+  and no longer says `link static` (volume 2).

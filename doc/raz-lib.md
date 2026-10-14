@@ -11,11 +11,11 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openRead`, `create`, `read`, `write`, `seek`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; and sockets. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openRead`, `create`, `read`, `write`, `seek`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
-| `Thread` | threads for a program without C: `spawn`, `join`, and `Mutex`; it says `link static` |
+| `Thread` | threads, `spawn` and `join`, and `Mutex`, in any program; in one that uses C, made by C's `pthread_create` |
 | `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
 | `Heap` | a general allocator, `Heap.heap`, safe to call from several threads; freeing a block twice, or one it never gave out, stops the program |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
@@ -105,9 +105,11 @@ proc unlock*(m: ^Mutex);
 A `Lock` is for short sections: a thread that finds it taken tries
 again, giving up the processor now and then. A `Mutex` sleeps. Each of
 `Thread`'s threads runs on a stack of its own, with a page below it
-that can't be touched, so that running off the stack stops the program.
-A program that uses C makes its threads with C's `pthread_create`, and
-so can't use `Thread`.
+that can't be touched, so that running off the stack stops the program
+with a message, as in the main thread. In a program that uses C,
+`Thread` makes its threads with C's `pthread_create`, so that C's
+library knows of them; in one that doesn't, with the system's own
+calls. The program is the same either way.
 
 ```
 module Out;
@@ -183,6 +185,7 @@ type
         tty*: INT;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
     end;
     Status* = (running, exited, killed, stopped);
+    Peer* = record ... end;   (* whom a datagram came from *)
 
 proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
 proc read*(fd: INT; buf: []U8): INT;    (* the bytes read; 0 at the end *)
@@ -250,6 +253,16 @@ proc listen*(path: []U8): INT;     (* a Unix socket made at path, taking connect
 proc listenTcp*(addr: []U8; port: INT): INT;
 proc accept*(fd: INT): INT;        (* the next connection, waiting for one *)
 proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
+proc connectTcpWithin*(addr: []U8; port, ms: INT): INT;   (* connectTcp, or -110 (ETIMEDOUT) after ms *)
+proc listenUdp*(addr: []U8; port: INT): INT;   (* a socket of datagrams on port at addr *)
+proc receive*(fd: INT; buf: []U8): (INT, Peer);   (* the next datagram, in buf, and who sent it *)
+proc reply*(fd: INT; to: Peer; s: []U8): INT;     (* s, as one datagram, to to *)
+proc localPort*(fd: INT): INT;     (* the port the socket fd is bound to *)
+proc sendFds*(fd: INT; s: []U8; fds: []INT): INT;   (* send, and with it fds, to a Unix socket *)
+proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);   (* read, and the fds that came with it *)
+
+proc memFile*(size: INT): INT;     (* a file of size zero bytes, in memory, with no name: its fd *)
+proc mapFile*(fd, size: INT): ^U8; (* the first size bytes of fd, shared; munmap gives them back; or nil *)
 ```
 
 `info` follows a symbolic link: `size`, `dir` and `file` are those of
@@ -344,7 +357,29 @@ program learns its server has gone and can end as it wants.
 `listen` and `listenTcp` are the other side: a server's socket, on
 `path`, which must not be there yet, or on `port` at `addr`,
 `"0.0.0.0"` or `"::"` for every address the machine has; `accept`
-gives each connection that comes, as a socket of its own.
+gives each connection that comes, as a socket of its own. A server
+started on port 0 gets a port the system chooses, which `localPort`
+says, as a test does that must not take a port in use.
+`connectTcp` waits as long as the system does, minutes for a host
+that never answers; `connectTcpWithin` gives up after `ms`
+milliseconds, with -110 (ETIMEDOUT).
+
+`listenUdp` is the server's side of `connectUdp`: a socket of
+datagrams from anyone, as a name server has. `receive` gives the next
+datagram, at most `LEN(buf)` bytes of it, the rest lost, and a `Peer`
+that `reply` sends an answer to.
+
+**Passing files and sharing memory.** A program can give another an
+open file over a Unix socket: `sendFds` sends `s`, at least one byte,
+and with it `fds`, at most 16, each a file the other program then has
+open too; `receiveFds` reads into `buf` as `read` does, puts the fds
+that came with it in `fds`, as many as there is room for, closing the
+rest, and says how many bytes and how many fds. Each is closed in a
+program exec starts. `memFile` makes a file that lives in memory, of
+`size` zeroed bytes, and `mapFile` maps it, or any file, so that
+what one program writes there another sees at once: so a program hands
+an X server or a Wayland compositor its pixels, by `sendFds` of a
+`memFile` both map, rather than by copying them down a socket.
 
 `readyOf` waits on several file descriptors at once, as a program does
 that listens to a server and a terminal both; a descriptor at its end,
