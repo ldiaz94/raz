@@ -1,0 +1,69 @@
+(* Every variable starts at zero: a module's, and a procedure's even
+   where the stack held other values before. *)
+module ZeroStart;
+import Out;
+
+type
+    Colour = (red, green, blue);
+    Flags = set of Colour;
+    Rec = record n: I64; ok: BOOL; p: ^Rec; end;
+    Shape = variant first(x: I64); second(y: I64); end;
+
+var
+    n: I64; u: U8; ok: BOOL; p: ^Rec; f: proc; e: ERROR; s: []U8;
+    c: Colour; fl: Flags; r: Rec; a: [3]I64; v: Shape;
+
+proc line(name: []U8; zero: BOOL);
+begin
+    Out.str(name);
+    if zero then Out.str(" zero"); else Out.str(" NOT ZERO"); end;
+    Out.ln;
+end;
+
+proc which(name: []U8; v: Shape);
+begin
+    Out.str(name);
+    match v of
+    | first(x):  Out.str(" first "); Out.int(x);
+    | second(y): Out.str(" second "); Out.int(y);
+    end;
+    Out.ln;
+end;
+
+(* leaves its frame full of other values *)
+proc dirty;
+var pad: [64]I64; i: INT;
+begin
+    for i := 0 to 63 do pad[i] := 7; end;
+end;
+
+proc locals;
+var
+    n: I64; u: U8; ok: BOOL; p: ^Rec; f: proc; e: ERROR; s: []U8;
+    c: Colour; fl: Flags; r: Rec; a: [3]I64; v: Shape;
+begin
+    line("local number", (n = 0) and (u = 0));
+    line("local bool", not ok);
+    line("local pointers", (p = nil) and (f = nil) and (e = nil));
+    line("local slice", LEN(s) = 0);
+    line("local enumeration and set", (c = red) and not (red in fl) and not (blue in fl));
+    line("local record", (r.n = 0) and not r.ok and (r.p = nil));
+    line("local array", (a[0] = 0) and (a[1] = 0) and (a[2] = 0));
+    which("local variant", v);
+end;
+
+proc main*;
+begin
+    line("number", (n = 0) and (u = 0));
+    line("bool", not ok);
+    line("pointers", (p = nil) and (f = nil) and (e = nil));
+    line("slice", LEN(s) = 0);
+    line("enumeration and set", (c = red) and not (red in fl) and not (blue in fl));
+    line("record", (r.n = 0) and not r.ok and (r.p = nil));
+    line("array", (a[0] = 0) and (a[1] = 0) and (a[2] = 0));
+    which("variant", v);
+    dirty;
+    locals;
+end;
+
+end ZeroStart.

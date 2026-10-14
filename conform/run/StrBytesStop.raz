@@ -1,0 +1,13 @@
+(* putLE and putBE write at most 8 bytes: more stops the program. *)
+module StrBytesStop;
+import Out, Str;
+
+proc main*;
+var b: [9]U8;
+begin
+    Out.str("before\n");
+    Str.putLE(b[0..9], 1);
+    Out.str("after\n");
+end;
+
+end StrBytesStop.

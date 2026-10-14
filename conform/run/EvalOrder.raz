@@ -1,0 +1,34 @@
+(* Operands, arguments and the designators of an assignment are
+   evaluated from left to right, the designators before the right side. *)
+module EvalOrder;
+import Out;
+
+var t: [4]I64;
+
+proc say(c: U8): INT;
+begin
+    Out.char(c);
+    return 1;
+end;
+
+proc three(_x, _y, _z: INT);
+begin
+    Out.char('|');
+end;
+
+proc main*;
+var x: INT; s: []I64;
+begin
+    x := say('a') + say('b') * say('c');
+    Out.ln;
+    three(say('a'), say('b'), say('c'));
+    Out.ln;
+    t[say('i')] := say('g');
+    Out.ln;
+    s := t[say('l') - 1 .. say('h') + 1];
+    Out.ln;
+    if (say('p') = 1) and (say('q') = 1) then Out.char('!'); end;
+    Out.ln;
+end;
+
+end EvalOrder.

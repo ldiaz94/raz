@@ -1,0 +1,34 @@
+(* Str's byte order: le and be read, putLE and putBE write, a number
+   of up to 8 bytes, whatever the machine's own order. *)
+module StrBytes;
+import Out, Str;
+
+proc bytes(s: []U8);
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do
+        if i > 0 then Out.char(' '); end;
+        Out.int(I64(s[i]));
+    end;
+    Out.ln;
+end;
+
+proc main*;
+var b: [8]U8;
+begin
+    Str.putLE(b[0..8], 0102030405060708H);
+    bytes(b[0..8]);
+    Str.putBE(b[0..8], 0102030405060708H);
+    bytes(b[0..8]);
+    Out.int(I64(Str.le(b[0..8]))); Out.ln;
+    Out.int(I64(Str.be(b[0..8]))); Out.ln;
+    Str.putBE(b[0..2], 513);
+    bytes(b[0..2]);
+    Out.int(I64(Str.le(b[0..2]))); Out.ln;
+    Out.int(I64(Str.be(b[0..2]))); Out.ln;
+    Out.int(I64(Str.le(b[0..0]))); Out.ln;
+    Str.putLE(b[0..3], 0AABBCCH);
+    bytes(b[0..3]);
+end;
+
+end StrBytes.

@@ -1483,9 +1483,9 @@ this one does.
   the program by `Rt.exit` with status 2; `Rt.stop` says its message
   and ends it the same way. A signal
   is told at the place of the statement it stopped in, or of the
-  procedure for a stack overflow in its prologue, and then ends the
-  program as the report says, with status 2 (until `Rt`'s handlers
-  do so, its status is the signal's). The handlers run on a stack
+  procedure for a stack overflow in its prologue, and then `Rt.exit`
+  ends the program with status 2, after the procedures registered with
+  `Rt.atExit`, as for a failed check. The handlers run on a stack
   of their own: `Rt`'s for the main thread, one in each `Thread`
   thread's mapping. C's threads have none, so a stack overflow in one
   ends the program by the signal with no message.

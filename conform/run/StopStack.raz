@@ -1,0 +1,27 @@
+(* Running out of stack stops the program. The program ends with status 2, after the procedures registered
+   with Rt.atExit, so that what it wrote is out. *)
+module StopStack;
+import Out, Rt;
+
+proc down(n: INT): INT;
+var pad: [65536]INT;
+begin
+    pad[n mod 65536] := n;
+    return down(n + 1) + pad[0];
+end;
+
+proc bye;
+begin
+    Out.str("bye\n");
+end;
+
+proc main*;
+var n: INT;
+begin
+    _ := Rt.atExit(bye);
+    Out.str("before\n");
+    n := down(0);
+    Out.int(n);
+end;
+
+end StopStack.

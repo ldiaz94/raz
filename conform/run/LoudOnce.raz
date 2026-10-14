@@ -1,0 +1,11 @@
+(* The body of a generic module runs once for an instance, however
+   many times it is imported. *)
+module LoudOnce;
+import Out, A := Loud(I64), B := Loud(I64);
+
+proc main*;
+begin
+    Out.str("sizes "); Out.int(A.size); Out.char(' '); Out.int(B.size); Out.ln;
+end;
+
+end LoudOnce.

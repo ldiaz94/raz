@@ -539,27 +539,23 @@ end;
    the enumeration called name; 3 for a slice a..b of a pointer, which
    runs backwards. What a target's machine doesn't catch the code
    tests for, and stops at with what 4, a nil pointer; 5, a division
-   by zero; 6, a stack overflow; these end the program by the signal
-   the machine would have given, as if it had. rdi and rsi are the
+   by zero; 6, a stack overflow; these end the program by exit with
+   status 2 too, as the signal handler does. rdi and rsi are the
    registers as the failing code had them. *)
 proc fail*(what, a, b, len: INT; at: UINT; name: ^U8; rdi, rsi: UINT);
-var sig: INT;
 begin
     regs[5] := rdi;
     regs[6] := rsi;
     where(at);
     if what >= 4 then
         put("stopped by ");
-        sig := SigSegv;
         if what = 4 then put("a nil pointer");
-        elsif what = 5 then put("a division fault"); sig := SigFpe;
+        elsif what = 5 then put("a division fault");
         else put("a stack overflow");
         end;
         say;
         if teller # nil then teller(at, callerFrame(), true); end;
-        act := {};   (* the signal's default action *)
-        _ := SYSCALL(13, sig, ADR(act), 0, 8);   (* rt_sigaction *)
-        _ := SYSCALL(62, SYSCALL(39), sig); (* kill(getpid(), sig) *)
+        exit(2);
     end;
     if what = 0 then
         put("index ");
@@ -592,10 +588,8 @@ code
 end sigReturn;
 
 (* A signal stops the program: says where it was and why on standard
-   error, and returns to the instruction that faulted. The handler was
-   reset as it was called, so the instruction faults again and the
-   signal ends the program. info and ctx are the kernel's siginfo and
-   ucontext. *)
+   error, then ends the program by exit with status 2, as a failed
+   check does. info and ctx are the kernel's siginfo and ucontext. *)
 proc onSignal(sig: INT; info, ctx: ^U8);
 var adr, sp, ip, bp: UINT; q: ^UINT; why: []U8;
 begin
@@ -623,6 +617,7 @@ begin
     say;
     (* the variables of a frame the stack overflowed in may be past it *)
     if teller # nil then teller(ip, bp, why # "a stack overflow"); end;
+    exit(2);
 end;
 
 (* Whether a is in the program's own code, not C's *)

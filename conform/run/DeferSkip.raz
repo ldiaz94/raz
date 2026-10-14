@@ -1,0 +1,41 @@
+(* Only the defers that have been reached run, last first; return
+   evaluates its value before they do. *)
+module DeferSkip;
+import Out;
+
+proc f(early: BOOL);
+begin
+    defer Out.str("first\n");
+    if early then return; end;
+    defer Out.str("second\n");
+    Out.str("body\n");
+end;
+
+proc g(): INT;
+var x: INT;
+begin
+    x := 1;
+    defer INC(x);
+    return x;
+end;
+
+proc loop;
+var i: INT;
+begin
+    for i := 1 to 3 do
+        defer Out.int(i);
+        if i = 2 then break; end;
+        Out.char('.');
+    end;
+    Out.ln;
+end;
+
+proc main*;
+begin
+    f(true);
+    f(false);
+    Out.int(g()); Out.ln;
+    loop;
+end;
+
+end DeferSkip.

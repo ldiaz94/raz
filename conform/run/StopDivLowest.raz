@@ -1,0 +1,22 @@
+(* Dividing the smallest I64 by -1 stops the program. The program ends with status 2, after the procedures registered
+   with Rt.atExit, so that what it wrote is out. *)
+module StopDivLowest;
+import Out, Rt;
+
+
+proc bye;
+begin
+    Out.str("bye\n");
+end;
+
+proc main*;
+var a, b: I64;
+begin
+    _ := Rt.atExit(bye);
+    a := -9223372036854775807 - 1;
+    b := -1;
+    Out.str("before\n");
+    Out.int(a div b);
+end;
+
+end StopDivLowest.

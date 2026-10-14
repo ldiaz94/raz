@@ -1,0 +1,15 @@
+(* A failed check ends the program without running the deferred
+   statements still pending; what the program wrote is still out. *)
+module DeferStop;
+import Out;
+
+proc main*;
+var a: [3]I64; i: INT;
+begin
+    defer Out.str("deferred\n");
+    Out.str("before\n");
+    i := ARGC() + 4;
+    Out.int(a[i]);
+end;
+
+end DeferStop.

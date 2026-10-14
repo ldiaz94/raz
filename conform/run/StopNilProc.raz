@@ -1,0 +1,20 @@
+(* Calling a nil procedure stops the program. The program ends with status 2, after the procedures registered
+   with Rt.atExit, so that what it wrote is out. *)
+module StopNilProc;
+import Out, Rt;
+
+
+proc bye;
+begin
+    Out.str("bye\n");
+end;
+
+proc main*;
+var p: proc;
+begin
+    _ := Rt.atExit(bye);
+    Out.str("before\n");
+    p();
+end;
+
+end StopNilProc.

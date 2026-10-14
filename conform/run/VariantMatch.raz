@@ -1,0 +1,74 @@
+(* match: the names of an arm stand for the fields of the variant
+   itself when it is a variable, and for a copy when it isn't. *)
+module VariantMatch;
+import Out;
+
+type
+    Shape = variant num(n: I64); pair(a, b: I64); none; end;
+    Op = (plus, minus, times, divide);
+
+var g: Shape;
+
+proc copyOfG(): Shape;
+begin
+    return g;
+end;
+
+proc show(s: Shape);
+begin
+    match s of
+    | num(n):    Out.str("num "); Out.int(n);
+    | pair(a, b): Out.str("pair "); Out.int(a); Out.char(' '); Out.int(b);
+    | none:      Out.str("none");
+    end;
+    Out.ln;
+end;
+
+proc kind(op: Op);
+begin
+    match op of
+    | plus, minus:   Out.str("additive");
+    | times:         Out.str("times");
+    | else:          Out.str("other");
+    end;
+    Out.ln;
+end;
+
+proc size(n: I64);
+begin
+    match n of
+    | 0:            Out.str("zero");
+    | 1 .. 9:       Out.str("small");
+    | -5 .. -1, 10: Out.str("negative or ten");
+    | else:         Out.str("big");
+    end;
+    Out.ln;
+end;
+
+proc main*;
+begin
+    g := pair(3, 4);
+    match g of
+    | pair(a, b): a := a * 10; INC(b);    (* through the names: g changes *)
+    | else:
+    end;
+    show(g);
+    match copyOfG() of
+    | pair(a, b): a := 0; b := 0;         (* a copy: g does not change *)
+    | else:
+    end;
+    show(g);
+    match g of
+    | num:  Out.str("no\n");              (* fields left unnamed *)
+    | pair: Out.str("unnamed\n");
+    | none: Out.str("no\n");
+    end;
+    g := none;
+    show(g);
+    g := num(5);
+    show(g);
+    kind(plus); kind(minus); kind(times); kind(divide);
+    size(0); size(5); size(-3); size(10); size(11);
+end;
+
+end VariantMatch.

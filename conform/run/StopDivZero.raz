@@ -1,0 +1,22 @@
+(* Dividing by zero stops the program. The program ends with status 2, after the procedures registered
+   with Rt.atExit, so that what it wrote is out. *)
+module StopDivZero;
+import Out, Rt;
+
+
+proc bye;
+begin
+    Out.str("bye\n");
+end;
+
+proc main*;
+var a, b: I64;
+begin
+    _ := Rt.atExit(bye);
+    a := 7;
+    b := ARGC() - 1;
+    Out.str("before\n");
+    Out.int(a div b);
+end;
+
+end StopDivZero.
