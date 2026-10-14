@@ -612,7 +612,7 @@ address and its length, and its element type."
     (when (is ty :string)
       ;; a string constant is indexed and sliced as an array of U8
       (setf ty (make-array-type (ty-len ty) (basic "U8"))
-            item (make-item :mode :var :type ty :form (string-address (item-val item)) :ro :const :tok tk)))
+            item (make-item :mode :var :type ty :form (string-address (item-val item)) :ro :string :tok tk)))
     (unless (member (ty-kind ty) '(:array :slice :ptr))
       (fail-tok tk "~a can't be indexed" (type-name ty)))
     (when (and (is ty :ptr) (is (ptr-base ty) :array))
@@ -755,6 +755,7 @@ address and its length, and its element type."
   (case (item-ro a)
     (:export (fail-tok tk "another module's variable can't be ~a" what))
     (:const (fail-tok tk "a constant can't be ~a" what))
+    (:string (fail-tok tk "a string's bytes can't be ~a" what))
     (:value (fail-tok tk "a part of a value can't be ~a" what))))
 
 (defun vararg-form (a)
@@ -893,7 +894,8 @@ that it may stand as a statement."
               (arity args 1)
               (let ((x (arg 0)))
                 (unless (eq (item-mode x) :var) (fail-tok tk "ADR takes a variable"))
-                (check-writable x tk "given to ADR")
+                ;; a string's bytes have an address, as a ^U8 made from it does (5.10)
+                (unless (eq (item-ro x) :string) (check-writable x tk "given to ADR"))
                 (when (item-noaddr x) (fail-tok tk "a field of a packed record has no address"))
                 (val-item (make-ptr-type (item-type x) (item-vol x)) (item-form x) tk)))
              ((string= name "LEN")

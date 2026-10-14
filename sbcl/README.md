@@ -123,6 +123,11 @@ wants.
 
 ## Beyond conform/
 
+It compiles the raz compiler, `src/` (with `-I build/src` for its
+`Version`), in about 4 seconds. That compiler, run on SBCL, passes
+`conform/`, and makes executables byte for byte the same as the native
+one's, its own included.
+
 Of the reference compiler's own tests, `test/run` and `examples/`, all
 pass whose expected output this target can give: the rest are x86
 code procedures (`Asm`, `Atomic`, `Edge`, `Results`, `Simd`, `Single`,
