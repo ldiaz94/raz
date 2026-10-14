@@ -9,8 +9,8 @@ no hidden run time: what the program does is what its text says.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.21 of the report; section 12 says what each
-version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
+This is version 2026-10.21 of the report; section 12 says where each
+version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
 0.5.0, the last release before them; and 2026-10.12 breaks code
@@ -1290,11 +1290,6 @@ proc trace*;                    (* the calls under way, on standard error *)
 that calls it out, each with its variables, as a program that stops
 does.
 
-Only what can be reached from `main` and the module bodies goes into
-the executable: unused procedures, variables and strings are left out.
-The executable names its procedures and carries line numbers, so that
-gdb can stop at a line of the source and show where it is.
-
 **Defined behaviour.** Every variable starts at zero, integers wrap,
 and indexing arrays and slices is checked, so a program's behaviour is
 defined by this report, with one exception: memory reached other than
@@ -1315,11 +1310,9 @@ the compiled code checks for them is the implementation's choice
 
 **Separate compilation.** An importer depends only on a module's
 interface: what it exports, as an importer sees it, never its source
-or its code. So a module can be compiled on its own, and a program
-made from modules compiled at different times. Whether an
-implementation does so, and into what, is its own choice (appendix
-A); one that does makes the same program as if every module were
-compiled together, and keeps one copy of each instance.
+or its code. An implementation that compiles modules on its own makes
+the same program as if every module were compiled together (appendix
+A).
 
 **Errors.** A program that breaks a rule of this report that says it
 is an error isn't a raz program, and an implementation must reject it:
@@ -1411,9 +1404,8 @@ proc reset*(ar: ^Arena);                   (* every allocation forgotten; the me
 proc done*(ar: ^Arena);                    (* its memory given back *)
 ```
 
-`NEW(p, a)` calls `a^.alloc`. `Heap` keeps blocks of nine sizes, from
-16 to 4096 bytes with their header, each with a list of the free ones;
-a bigger block gets pages of its own. An arena hands out memory from
+`NEW(p, a)` calls `a^.alloc`. `Heap` is the general
+allocator. An arena hands out memory from
 one block: its `free` does nothing, and `reset` forgets everything.
 
 ```
@@ -1591,9 +1583,8 @@ holds data: opening a pipe would wait for a program to write to it.
 
 `nextEntry` gives every name in the directory except `.` and `..`, in
 no particular order. `rawMode` turns off what the terminal does with
-keys before the program reads them: echo, waiting for a whole line,
-Ctrl-C and Ctrl-Z as signals, Ctrl-S and Ctrl-Q as flow control, and
-CR to NL; and with output, NL to CR NL. A program that turns it on
+keys before the program reads them (echo, line editing, signals, flow
+control), and NL to CR NL on output. A program that turns it on
 restores it before it ends: `Rt.atExit` is the place.
 
 **Files.** `open` gives a file for what `how` asks: `reading`,
@@ -1955,111 +1946,8 @@ A version of this report is named by the month it was made in and a
 count: `2026-10.0`, then `2026-10.1` for the next change that month.
 `raz --version` says which version the compiler follows.
 
-- **2026-10.0.** The first numbered version: the language of compiler
-  0.3.0.
-- **2026-10.1.** Messages: every error in a run, warnings of what is
-  never used and `-Werror` (section 10); failed checks say what failed,
-  and signals say where (sections 6.5 and 10).
-- **2026-10.2.** `Sys` gains files and directories, the terminal, and
-  the environment (section 11).
-- **2026-10.3.** `return f(x);` passes on the several results of `f`
-  (sections 7.3 and 8). `and`, `or` and `not` are for `BOOL`s, and
-  bind below the relations; `&`, `|` and `~` are the operators on bits,
-  and `xor` is for integers only (sections 2 and 6). Arrays and slices
-  of integers, `BOOL`s, enumerations, sets and pointers compare with
-  `=`, by code where the comparison stands, not by a call into `Rt`
-  (section 6.5). A generic module's instance is made where it is first
-  used, so its arguments may name types declared after the imports
-  (section 3).
-- **2026-10.4.** `Sys` gains a connection to a Unix socket, waiting on
-  several files at once, pseudo-terminals, and starting, waiting for
-  and stopping programs (section 11).
-- **2026-10.5.** A module with files in more than one of the
-  directories searched is an error, unless the first is a link to one
-  of the others (section 3).
-- **2026-10.6.** `Sys.Info` says whether the path is a regular file,
-  and whether it is a symbolic link (section 11).
-- **2026-10.7.** `Sys.send` writes to a socket without SIGPIPE
-  (section 11).
-- **2026-10.8.** `Sys.workDir` returns the directory, with no `var`
-  parameter (section 11).
-- **2026-10.9.** The language is frozen (the start of the report).
-  `Sys` gains opening a file for any use, seeking,
-  links, permissions and times; pipes, process groups and the
-  terminal's foreground; signals caught on a file descriptor; clocks,
-  sleeping and random bytes; and network sockets. `Sys.spawn` takes a
-  `Program`, and `Sys.wait` says which program changed and how. `Str`
-  gains UTF-8 and reading a number, `Map` removing and walking, `Fmt`
-  reals; `Sort`, `Math`, `Files` and `Opt` are new (section 11).
-- **2026-10.10.** Said at last: what the compiler did and the report
-  didn't say, all through; what an implementation chooses, and the
-  core every target has (appendix A); the whole grammar (appendix B);
-  the library's module names are kept for it (section 3); a record,
-  variant or enumeration is a type of its own wherever it is written
-  (section 5.10); a `nil` pointer, a division by zero and a stack
-  overflow stop the program on every target (section 10); byte order
-  is the target's, and `Str` reads and writes a fixed one (sections
-  5.5 and 11); `Out`'s buffer is `Sys.outSize` bytes (section 11).
-  Changed: a field of a packed record that may be misaligned has no
-  address and no volatile access (section 5.5). Mended:
-  arithmetic on untyped constants that overflows is an error (section
-  2); a slice of a pointer can't run backwards (section 6.4). Ordinary
-  accesses are no longer promised to be made exactly as written, only
-  volatile and atomic ones (section 7.6).
-- **2026-10.11.** `INT` and `UINT`, as big as an
-  address, are the integers of lengths, slices, pointer differences,
-  pointer conversions, `SYSCALL` and `ARGC`; `SIZE` and a constant
-  `LEN` are untyped; `INT` widens silently to `I64` and `UINT` to
-  `U64`, but neither mixes with them in an expression or a `for`
-  (sections 5, 6.1 and 7.2); `Mem.Allocator` takes `INT` sizes.
-  Pointers, procedures, `ERROR`s, slices and variants' tags are sized
-  by the address, and basic types aligned as the target's C aligns
-  them (section 5). Reals are a target's to have or not (section
-  5.1). An exported variable can't be changed, passed by `var` or
-  addressed outside its module, nor an array in it sliced (section 3). `check off;`
-  leaves a module's index and slice checks out (sections 3, 6.4 and
-  6.5). An index of any integer type is checked by its value (6.5). A
-  shift counts modulo its operand's width, and the smallest value of
-  every signed type divided by -1 stops the program (6.1). Writing a
-  string's bytes isn't defined (5.10). The atomic built-ins work on
-  `INT`, `UINT` and pointers (6.8). An integer constant past an
-  extern's parameters goes as an `INT` (9). An importer depends only
-  on a module's interface, so a module can be compiled on its own;
-  whether it is, and into what, is the implementation's (sections 3
-  and 10; appendix A). The library takes and gives
-  `INT` for lengths, counts, descriptors, process ids and statuses,
-  `main`'s and `Rt.exit`'s among them, and `I32` for a character;
-  `I64` stays for what may pass an `INT` on a small target: a file's
-  size and position, times, and numbers read from text (section
-  11). An array constant has a type and is used as a variable that
-  can't be changed; `+` joins string constants (section 4). `match`
-  takes an integer, with constants and ranges as labels (7.4).
-- **2026-10.12.** A code procedure is written in the target's assembly
-  language, not as bytes (section 8; appendix A). A program that stops
-  says the calls under way and their variables, and `Rt.trace` says
-  them on demand (sections 10 and 11).
-- **2026-10.13.** `Sys` gains writing without waiting, and waiting for
-  room to write (section 11).
-- **2026-10.14.** The blank, `_`, drops a value or one of several
-  results (section 7.1); a call that drops a result is a lint
-  (section 10).
-- **2026-10.15.** `Math` gains `pow`, `ceil`, `round`, `log2`,
-  `log10`, `tan`, `asin`, `acos` and `atan`; `Sys` gains `space`
-  (section 11).
-- **2026-10.16.** Record constants, and array and record constants of
-  records, strings, procedures and more (section 4); `Str` gains
-  `copy` (section 11).
-- **2026-10.17.** `COPY` copies the elements of one array or slice to
-  another as a block (section 6.8).
-- **2026-10.18.** A code procedure takes and returns slices (section
-  8).
-- **2026-10.19.** The library gains `Bytes` (section 11).
-- **2026-10.20.** `try`: a call of a procedure whose last result is an
-  `ERROR`, which makes the procedure it stands in return that error
-  when it isn't `nil` (sections 2, 5.8, 6, 7.8 and appendix B). `try`
-  becomes a reserved word, which breaks a program with a name `try`.
-- **2026-10.21.** An arm of a `match` on an enumeration may name
-  several of its names (section 7.4).
+The history of the versions, what each changed, is in
+`doc/report-history.md`.
 
 ## Appendix A. What an implementation chooses
 
@@ -2094,11 +1982,8 @@ that it follows this report: it passes them all, its reals aside where its targe
   value's bytes is the target's (little-endian on x86-64).
 - **The assembly language.** How a code procedure's instructions are
   written (section 8). On x86-64 it is Intel's syntax, as NASM writes
-  it: the destination first; registers by name (`rax`, `eax`, `al`,
-  `xmm0`); memory as `[base + index * scale + disp]`, with `byte`,
-  `word`, `dword` or `qword` before it where no register says the
-  size; `lock` before an instruction. Which instructions it knows is
-  the implementation's; `db` gives any others.
+  it, destination first. Which instructions it knows is the
+  implementation's; `db` gives any others.
 - **Sizes in the library.** How many bytes `Out` keeps before it
   writes them, `Sys.outSize` (section 11): 4 KB on Linux, fewer on a
   small machine.

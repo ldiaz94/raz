@@ -1500,7 +1500,17 @@ this one does.
 - **Frames.** A deferred statement's slots stay reserved for the rest
   of its procedure. A generic instance first used in a procedure, or in
   a module's body, is made before that code begins (`instancesFor`).
-- **The executable** carries DWARF line numbers and the names of
+- **Heap.** Blocks of nine sizes, from 16 to 4096 bytes with their
+  header, each with a list of the free ones; a bigger block gets pages
+  of its own.
+- **The assembly language.** Intel's syntax as NASM writes it: the
+  destination first; registers by name (`rax`, `eax`, `al`, `xmm0`);
+  memory as `[base + index * scale + disp]`, with `byte`, `word`,
+  `dword` or `qword` before it where no register says the size; `lock`
+  before an instruction.
+- **The executable** holds only what can be reached from `main` and the
+  module bodies: unused procedures, variables and strings are left
+  out. It carries DWARF line numbers and the names of
   procedures for gdb, and the places (`Rt.places`), which hold the
   line table, DWARF's, that gdb reads and `Rt` runs.
 
