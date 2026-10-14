@@ -1,0 +1,146 @@
+(* Formatted output: Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)]),
+   or into a Buf with Fmt.write. Each {} takes the next argument; {{ and
+   }} stand for { and }. *)
+module Fmt;
+import Out, Buf;
+
+type Arg* = variant
+    int(i: I64);
+    uint(u: U64);
+    hex(h: U64);
+    str(s: []U8);
+    char(c: U8);
+    bool(b: BOOL);
+    real(r: F64; places: INT);
+end;
+
+const digits = "0123456789ABCDEF";
+
+(* Text is made in a Piece before it goes out, a piece at a time. *)
+type Piece = record bytes: [64]U8; len: INT; end;
+
+proc add(p: ^Piece; c: U8);
+begin
+    p^.bytes[p^.len] := c;
+    INC(p^.len);
+end;
+
+(* u in base, at least min digits *)
+proc unsigned(p: ^Piece; u: U64; base: U64; min: INT);
+var d: [20]U8; n: INT;
+begin
+    repeat
+        d[n] := digits[INT(u mod base)];
+        u := u div base;
+        INC(n);
+    until u = 0;
+    while n < min do d[n] := '0'; INC(n); end;
+    while n > 0 do DEC(n); add(p, d[n]); end;
+end;
+
+proc signed(p: ^Piece; i: I64);
+begin
+    if i < 0 then add(p, '-'); unsigned(p, 0 - U64(i), 10, 1);
+    else unsigned(p, U64(i), 10, 1);
+    end;
+end;
+
+(* x, at least 0 and below 1e15, with places digits after the point *)
+proc fixed(p: ^Piece; x: F64; places: INT);
+var whole, scale: F64; ip, frac, one: U64; i: INT;
+begin
+    one := 1;
+    for i := 1 to places do one := one * 10; end;
+    scale := F64(one);
+    ip := U64(x);
+    whole := F64(ip);
+    frac := U64((x - whole) * scale + 0.5);
+    if frac >= one then INC(ip); frac := frac - one; end;
+    unsigned(p, ip, 10, 1);
+    if places > 0 then
+        add(p, '.');
+        unsigned(p, frac, 10, places);
+    end;
+end;
+
+proc writeReal(p: ^Piece; x: F64; places: INT);
+var e, i: INT; m: F64; q: Piece;
+begin
+    if places < 0 then places := 0; end;
+    if places > 9 then places := 9; end;
+    if x # x then add(p, 'n'); add(p, 'a'); add(p, 'n'); return; end;
+    if x < 0.0 or (x = 0.0 and 1.0 / x < 0.0) then add(p, '-'); x := -x; end;
+    if x > 1.7976931348623157E308 then add(p, 'i'); add(p, 'n'); add(p, 'f'); return; end;
+    if x < 1.0E15 then fixed(p, x, places); return; end;
+    (* m times ten to the e, m from 1 to 10 *)
+    m := x;
+    while m >= 10.0 do m := m / 10.0; INC(e); end;
+    fixed(ADR(q), m, places);
+    if q.bytes[0] = '1' and q.bytes[1] = '0' then
+        (* m rounded up to 10 *)
+        q.len := 0;
+        fixed(ADR(q), m / 10.0, places);
+        INC(e);
+    end;
+    for i := 0 to q.len - 1 do add(p, q.bytes[i]); end;
+    add(p, 'e');
+    signed(p, I64(e));
+end;
+
+(* The text of each piece of f, and of each argument, given to put. *)
+proc format(f: []U8; args: []Arg; out: proc(s: []U8; b: ^Buf.Buf); b: ^Buf.Buf);
+var i, start, next: INT; p: Piece;
+begin
+    while i < LEN(f) do
+        if (f[i] = '{' or f[i] = '}') and i + 1 < LEN(f) and f[i + 1] = f[i] then
+            out(f[start..i + 1], b);
+            i := i + 2;
+            start := i;
+        elsif f[i] = '{' and i + 1 < LEN(f) and f[i + 1] = '}' then
+            out(f[start..i], b);
+            if next < LEN(args) then
+                p.len := 0;
+                match args[next] of
+                | int(n): signed(ADR(p), n);
+                | uint(u): unsigned(ADR(p), u, 10, 1);
+                | hex(h): unsigned(ADR(p), h, 16, 1);
+                | str(s): out(s, b);
+                | char(c): add(ADR(p), c);
+                | bool(v): if v then out("true", b); else out("false", b); end;
+                | real(x, places): writeReal(ADR(p), x, places);
+                end;
+                out(p.bytes[0..p.len], b);
+                INC(next);
+            end;
+            i := i + 2;
+            start := i;
+        else
+            INC(i);
+        end;
+    end;
+    out(f[start..LEN(f)], b);
+end;
+
+proc toOut(s: []U8; b: ^Buf.Buf);
+begin
+    Out.str(s);
+end;
+
+proc toBuf(s: []U8; b: ^Buf.Buf);
+begin
+    Buf.str(b, s);
+end;
+
+(* to standard output *)
+proc print*(f: []U8; args: []Arg);
+begin
+    format(f, args, toOut, nil);
+end;
+
+(* added to b *)
+proc write*(b: ^Buf.Buf; f: []U8; args: []Arg);
+begin
+    format(f, args, toBuf, b);
+end;
+
+end Fmt.

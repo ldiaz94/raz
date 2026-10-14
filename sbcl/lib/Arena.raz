@@ -1,0 +1,54 @@
+(* An allocator that hands out memory from one block: its free does
+   nothing, and reset forgets everything at once. *)
+module Arena;
+import Mem;
+
+type Arena* = record
+    base*: Mem.Allocator;     (* first, so that ^Arena(a) finds the rest *)
+    mem: ^U8;
+    size, used: INT;
+end;
+
+proc alloc(a: ^Mem.Allocator; size, align: INT): ^U8;
+var ar: ^Arena; start: INT;
+begin
+    ar := ^Arena(a);
+    start := (ar^.used + align - 1) div align * align;
+    if start + size > ar^.size then return nil; end;
+    ar^.used := start + size;
+    return ar^.mem + start;
+end;
+
+proc free(a: ^Mem.Allocator; p: ^U8);
+begin
+end;
+
+(* an arena of size bytes; false if the system has none *)
+proc init*(ar: ^Arena; size: INT): BOOL;
+begin
+    ar^.base.alloc := alloc;
+    ar^.base.free := free;
+    ar^.mem := Mem.pages(size);
+    ar^.size := size;
+    ar^.used := 0;
+    return ar^.mem # nil;
+end;
+
+(* every allocation forgotten; the memory used again, zeroed *)
+proc reset*(ar: ^Arena);
+var i: INT;
+begin
+    for i := 0 to ar^.used - 1 do ar^.mem[i] := 0; end;
+    ar^.used := 0;
+end;
+
+(* its memory given back *)
+proc done*(ar: ^Arena);
+begin
+    if ar^.mem # nil then Mem.unmap(ar^.mem, ar^.size); end;
+    ar^.mem := nil;
+    ar^.size := 0;
+    ar^.used := 0;
+end;
+
+end Arena.

@@ -307,11 +307,36 @@
       (sb-thread:join-thread th :default nil)
       (sb-thread:with-mutex (*threads-lock*) (remhash id *threads*)))))
 
+;;; Signals, for the library's Sys.catch and Sys.ignore: SBCL's run time
+;;; handles each signal caught, writing its number to a pipe.
+
+(sb-ext:defglobal *signal-pipe* nil "The fds of the pipe, read and write, once made.")
+
+(defun catch-signal (sig)
+  (unless *signal-pipe*
+    (let ((buf (c-call "malloc" sb-alien:unsigned-long sb-alien:unsigned-long 8)))
+      ;; pipe2(buf, O_CLOEXEC | O_NONBLOCK)
+      (syscall 293 buf (logior #x80000 #x800))
+      (setf *signal-pipe* (cons (ld :i32 buf) (ld :i32 (+ buf 4))))))
+  (let ((w (cdr *signal-pipe*)))
+    (sb-sys:enable-interrupt sig (lambda (&rest args)
+                                   (declare (ignore args))
+                                   (let ((b (c-call "malloc" sb-alien:unsigned-long sb-alien:unsigned-long 1)))
+                                     (st :u8 b sig)
+                                     (syscall 1 w b 1)
+                                     (c-call "free" sb-alien:void sb-alien:unsigned-long b)))))
+  (car *signal-pipe*))
+
+(defun ignore-signal (sig yes)
+  (sb-sys:enable-interrupt sig (if yes :ignore :default)))
+
 ;;; The start. The saved program begins here: the data block mapped and
 ;;; filled, then the program run on the main thread's raz stack, and its
 ;;; status given to Rt.exit.
 
 (defun start ()
+  ;; the signals SBCL handles for itself do what they do in any program
+  (dolist (sig '(1 2 3 13 15)) (sb-sys:enable-interrupt sig :default))
   (let ((size (length *data-image*)))
     (when (> size 0)
       (map-memory (round-up size 4096) +data-base+)

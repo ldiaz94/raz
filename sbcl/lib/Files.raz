@@ -1,0 +1,46 @@
+(* An argument as a string, and a whole file read or written. *)
+module Files;
+import Sys, Buf;
+
+(* argument i; 0 is the program's name *)
+proc arg*(i: INT): []U8;
+var s: ^U8; n: INT;
+begin
+    if i < 0 or i >= ARGC() then return ""; end;
+    s := ARGV()[i];
+    while s[n] # 0 do INC(n); end;
+    return s[0..n];
+end;
+
+(* the whole file added to b *)
+proc read*(path: []U8; b: ^Buf.Buf): BOOL;
+var fd, n: INT; chunk: [4096]U8;
+begin
+    fd := Sys.openRead(path);
+    if fd < 0 then return false; end;
+    defer Sys.close(fd);
+    n := Sys.read(fd, chunk);
+    while n > 0 do
+        if not Buf.room(b, n) then return false; end;
+        Buf.str(b, chunk[0..n]);
+        n := Sys.read(fd, chunk);
+    end;
+    return n = 0;
+end;
+
+(* the file made to hold data *)
+proc write*(path, data: []U8): BOOL;
+var fd, n, done: INT;
+begin
+    fd := Sys.create(path);
+    if fd < 0 then return false; end;
+    defer Sys.close(fd);
+    while done < LEN(data) do
+        n := Sys.write(fd, data[done..LEN(data)]);
+        if n <= 0 then return false; end;
+        done := done + n;
+    end;
+    return true;
+end;
+
+end Files.

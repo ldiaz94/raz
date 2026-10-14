@@ -1,0 +1,124 @@
+(* A generic hash map, open addressing with linear probing; it hashes and
+   compares its keys with the procedures it is given. *)
+module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
+import Mem;
+
+type
+    Entry = record key: K; val: V; used: BOOL; end;
+    Map* = record
+        len*: INT;
+        slots: ^Entry;      (* cap of them; cap is 0 or a power of 2 *)
+        cap: INT;
+        a: ^Mem.Allocator;
+    end;
+
+proc init*(m: ^Map; a: ^Mem.Allocator);
+begin
+    m^.len := 0;
+    m^.slots := nil;
+    m^.cap := 0;
+    m^.a := a;
+end;
+
+(* the slot of k: where it is, or the free slot it would go in *)
+proc slot(m: ^Map; k: K): INT;
+var i: INT;
+begin
+    i := INT(hash(k) & U64(m^.cap - 1));
+    while m^.slots[i].used and not eq(m^.slots[i].key, k) do
+        i := (i + 1) & (m^.cap - 1);
+    end;
+    return i;
+end;
+
+(* twice the slots, every entry moved; false if there is no room *)
+proc grow(m: ^Map): BOOL;
+var old: ^Entry; n, i, j, cap: INT; p: ^U8;
+begin
+    cap := m^.cap * 2;
+    if cap = 0 then cap := 8; end;
+    p := Mem.alloc(m^.a, cap * SIZE(Entry), 8);
+    if p = nil then return false; end;
+    for i := 0 to cap * SIZE(Entry) - 1 do p[i] := 0; end;
+    old := m^.slots;
+    n := m^.cap;
+    m^.slots := ^Entry(p);
+    m^.cap := cap;
+    for i := 0 to n - 1 do
+        if old[i].used then
+            j := slot(m, old[i].key);
+            m^.slots[j] := old[i];
+        end;
+    end;
+    if old # nil then Mem.free(m^.a, ^U8(old)); end;
+    return true;
+end;
+
+(* k now maps to v; false if there was no room *)
+proc put*(m: ^Map; k: K; v: V): BOOL;
+var i: INT;
+begin
+    if (m^.len + 1) * 4 > m^.cap * 3 and not grow(m) then return false; end;
+    i := slot(m, k);
+    if not m^.slots[i].used then
+        m^.slots[i].used := true;
+        m^.slots[i].key := k;
+        INC(m^.len);
+    end;
+    m^.slots[i].val := v;
+    return true;
+end;
+
+(* the slot k's hash points at *)
+proc home(m: ^Map; k: K): INT;
+begin
+    return INT(hash(k) & U64(m^.cap - 1));
+end;
+
+(* false if k wasn't there *)
+proc remove*(m: ^Map; k: K): BOOL;
+var i, j, h: INT;
+begin
+    if m^.cap = 0 then return false; end;
+    i := slot(m, k);
+    if not m^.slots[i].used then return false; end;
+    m^.slots[i].used := false;
+    DEC(m^.len);
+    (* each entry after it in the run moves back into the hole, unless its
+       home is between the hole and where it is *)
+    j := (i + 1) & (m^.cap - 1);
+    while m^.slots[j].used do
+        h := home(m, m^.slots[j].key);
+        if (j > i and (h <= i or h > j)) or (j < i and h <= i and h > j) then
+            m^.slots[i] := m^.slots[j];
+            m^.slots[j].used := false;
+            i := j;
+        end;
+        j := (j + 1) & (m^.cap - 1);
+    end;
+    return true;
+end;
+
+(* what k maps to, and whether it maps to anything *)
+proc get*(m: ^Map; k: K): (V, BOOL);
+var i: INT; v: V;
+begin
+    if m^.cap = 0 then return v, false; end;
+    i := slot(m, k);
+    if not m^.slots[i].used then return v, false; end;
+    return m^.slots[i].val, true;
+end;
+
+(* the entry after i: from 0, the next entry and the number to pass for
+   the one after it; -1 when there are no more *)
+proc next*(m: ^Map; i: INT): (INT, K, V);
+var k: K; v: V;
+begin
+    while i < m^.cap do
+        if m^.slots[i].used then return i + 1, m^.slots[i].key, m^.slots[i].val; end;
+        INC(i);
+    end;
+    return -1, k, v;
+end;
+
+end Map.

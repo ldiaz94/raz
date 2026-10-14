@@ -120,6 +120,9 @@ statement's own level."
   (case (item-mode x)
     (:proc (item-form (call-proc (item-obj x) nil tk)))
     ((:none :multi) (item-form x))
+    (:builtin (if (string= (item-val x) "FENCE")
+                  '(sb-thread:barrier (:memory))
+                  (fail-tok tk "~a takes arguments" (item-val x))))
     (t (if (consp (item-obj x))
            (item-form x)                ; a call with one result
            (if (and (member (item-mode x) '(:var :val)) (is (item-type x) :proc))

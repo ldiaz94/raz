@@ -1,0 +1,68 @@
+(* A generic singly linked list, its nodes from an allocator. *)
+module List(T);
+import Mem;
+
+type
+    Node* = record next*: ^Node; val*: T; end;
+    List* = record head*: ^Node; len*: INT; a: ^Mem.Allocator; end;
+
+proc init*(l: ^List; a: ^Mem.Allocator);
+begin
+    l^.head := nil;
+    l^.len := 0;
+    l^.a := a;
+end;
+
+(* v at the front; false if the allocator has no room *)
+proc push*(l: ^List; v: T): BOOL;
+var n: ^Node;
+begin
+    NEW(n, l^.a);
+    if n = nil then return false; end;
+    n^.val := v;
+    n^.next := l^.head;
+    l^.head := n;
+    INC(l^.len);
+    return true;
+end;
+
+(* the front value, taken off; false if the list is empty *)
+proc pop*(l: ^List): (T, BOOL);
+var n: ^Node; v: T;
+begin
+    n := l^.head;
+    if n = nil then return v, false; end;
+    v := n^.val;
+    l^.head := n^.next;
+    DEC(l^.len);
+    Mem.free(l^.a, ^U8(n));
+    return v, true;
+end;
+
+proc reverse*(l: ^List);
+var prev, n, next: ^Node;
+begin
+    n := l^.head;
+    while n # nil do
+        next := n^.next;
+        n^.next := prev;
+        prev := n;
+        n := next;
+    end;
+    l^.head := prev;
+end;
+
+proc clear*(l: ^List);
+var n, next: ^Node;
+begin
+    n := l^.head;
+    while n # nil do
+        next := n^.next;
+        Mem.free(l^.a, ^U8(n));
+        n := next;
+    end;
+    l^.head := nil;
+    l^.len := 0;
+end;
+
+end List.

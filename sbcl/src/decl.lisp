@@ -80,7 +80,7 @@ it is exported."
 
 (defun pointer-type-rest ()
   "A pointer type, after its ^."
-  (let ((vol (accept :volatile)))
+  (let ((vol (and (accept :volatile) t)))
     (if (and (listp *forward-types*) (eq (kind) :ident) (not (eq (kind 1) :|.|))
              (not (lookup (tok-val (tok)))))
         ;; a type declared later in this section (section 4)

@@ -1,0 +1,30 @@
+(* Sorting a slice in place, by heapsort: n log n at most, and no memory
+   of its own. *)
+module Sort(T; less: proc(a, b: T): BOOL);
+
+(* the element at i moved down the heap of the first n elements *)
+proc sift(s: []T; i, n: INT);
+var child: INT; t: T;
+begin
+    child := 2 * i + 1;
+    while child < n do
+        if child + 1 < n and less(s[child], s[child + 1]) then INC(child); end;
+        if not less(s[i], s[child]) then return; end;
+        t := s[i]; s[i] := s[child]; s[child] := t;
+        i := child;
+        child := 2 * i + 1;
+    end;
+end;
+
+proc sort*(s: []T);
+var i, n: INT; t: T;
+begin
+    n := LEN(s);
+    for i := n div 2 - 1 to 0 by -1 do sift(s, i, n); end;
+    for i := n - 1 to 1 by -1 do
+        t := s[0]; s[0] := s[i]; s[i] := t;
+        sift(s, 0, i);
+    end;
+end;
+
+end Sort.

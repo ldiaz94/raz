@@ -1,0 +1,60 @@
+(* Threads for a program without C: spawn, join, and Mutex. Here each is a
+   thread of SBCL's, on a raz stack of its own. *)
+module Thread;
+import Heap, Mem;
+link static;
+
+const Failed*: ERROR = "can't start a thread";
+
+type
+    Thread* = record id: INT; end;
+    Mutex* = record state: INT; end;     (* zero is free; 1 taken; 2 taken, with waiters *)
+
+const
+    sysFutex = 202;
+    futexWait = 128;    (* FUTEX_WAIT, private *)
+    futexWake = 129;
+
+proc start(p: proc(arg: ^U8); arg: ^U8): INT;
+code
+    (thread-spawn p arg);
+end;
+
+proc wait(id: INT);
+code
+    (thread-join id);
+end;
+
+(* p(arg) in a new thread *)
+proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);
+var t: ^Thread;
+begin
+    NEW(t, Heap.heap);
+    if t = nil then return nil, Failed; end;
+    t^.id := start(p, arg);
+    return t, nil;
+end;
+
+(* waits for t to end, then frees what it had *)
+proc join*(t: ^Thread);
+begin
+    wait(t^.id);
+    Mem.free(Heap.heap, ^U8(t));
+end;
+
+proc lock*(m: ^Mutex);
+begin
+    if CAS(ADR(m^.state), 0, 1) then return; end;
+    while XCHG(ADR(m^.state), 2) # 0 do
+        _ := SYSCALL(sysFutex, ADR(m^.state), futexWait, 2, 0);
+    end;
+end;
+
+proc unlock*(m: ^Mutex);
+begin
+    if XCHG(ADR(m^.state), 0) = 2 then
+        _ := SYSCALL(sysFutex, ADR(m^.state), futexWake, 1);
+    end;
+end;
+
+end Thread.

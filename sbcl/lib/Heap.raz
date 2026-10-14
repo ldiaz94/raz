@@ -1,0 +1,117 @@
+(* A general allocator, Heap.heap, safe to call from several threads.
+
+   A small block comes from one of eight free lists, by its size: 16 to
+   2048 bytes, each twice the one before, a header of 16 bytes included.
+   The lists are filled from chunks of pages. A big block, or one aligned
+   to more than 16 bytes, has pages of its own. The header says which
+   list a block belongs to, or how many bytes of pages it has, and
+   whether it is given out: freeing a block twice, or one the heap never
+   gave, stops the program. *)
+module Heap;
+import Mem, Lock, Rt;
+
+const
+    classes = 8;            (* the free lists: blocks of 16 shl i bytes *)
+    chunkSize = 65536;      (* the pages a list is filled from at once *)
+    given = 0A110CA7EDH;    (* a header's mark for a block given out *)
+    freed = 0F7EEDH;        (* and for one on a free list *)
+
+type
+    Header = record
+        size: INT;          (* the list, from 0; or minus the bytes of the block's own pages *)
+        mark: INT;          (* given or freed *)
+    end;
+    Free = record next: ^Free; end;    (* a block on a free list, past its header *)
+
+var
+    allocator: Mem.Allocator;
+    heap*: ^Mem.Allocator;
+    lists: [classes]^Free;
+    lock: Lock.Lock;
+
+(* A block with pages of its own: the header sits just before the
+   aligned start. *)
+proc big(size, align: INT): ^U8;
+var bytes, lead: INT; p: ^U8; h: ^Header; base: ^^U8;
+begin
+    lead := 16;
+    if align > 16 then lead := align; end;
+    bytes := (size + lead + Mem.Page - 1) div Mem.Page * Mem.Page;
+    p := Mem.pages(bytes);
+    if p = nil then return nil; end;
+    p := p + lead;
+    (* past an alignment's lead, the pages' start, for free *)
+    if lead > 16 then base := ^^U8(p - 24); base^ := p - lead; end;
+    h := ^Header(p - 16);
+    h^.size := -bytes;
+    h^.mark := given;
+    return p;
+end;
+
+(* List c filled from a new chunk; false if the system has no room. *)
+proc fill(c: INT): BOOL;
+var chunk: ^U8; size, i: INT; f: ^Free; h: ^Header;
+begin
+    chunk := Mem.pages(chunkSize);
+    if chunk = nil then return false; end;
+    size := 16 shl c;
+    for i := 0 to chunkSize div size - 1 do
+        h := ^Header(chunk + i * size);
+        h^.size := c;
+        h^.mark := freed;
+        f := ^Free(chunk + i * size + 16);
+        f^.next := lists[c];
+        lists[c] := f;
+    end;
+    return true;
+end;
+
+proc alloc(a: ^Mem.Allocator; size, align: INT): ^U8;
+var c: INT; f: ^Free; h: ^Header;
+begin
+    (* a size the memory can't hold, or an alignment that isn't a power
+       of 2 up to a page, is refused *)
+    if size < 0 or size > 1 shl 46 or align <= 0 or align > Mem.Page or align & (align - 1) # 0 then
+        return nil;
+    end;
+    if size + 16 > 16 shl (classes - 1) or align > 16 then return big(size, align); end;
+    c := 0;
+    while 16 shl c < size + 16 do INC(c); end;
+    Lock.take(ADR(lock));
+    if lists[c] = nil and not fill(c) then Lock.give(ADR(lock)); return nil; end;
+    f := lists[c];
+    lists[c] := f^.next;
+    h := ^Header(^U8(f) - 16);
+    h^.mark := given;
+    Lock.give(ADR(lock));
+    return ^U8(f);
+end;
+
+proc free(a: ^Mem.Allocator; p: ^U8);
+var h: ^Header; f: ^Free;
+begin
+    if p = nil then return; end;
+    h := ^Header(p - 16);
+    if h^.mark # given then Rt.stop("Heap: a block freed twice, or one the heap never gave"); end;
+    if h^.size < 0 then
+        h^.mark := 0;
+        if INT(p) mod Mem.Page = 16 then
+            Mem.unmap(p - 16, -h^.size);
+        else
+            Mem.unmap(^^U8(p - 24)^, -h^.size);
+        end;
+        return;
+    end;
+    Lock.take(ADR(lock));
+    h^.mark := freed;
+    f := ^Free(p);
+    f^.next := lists[h^.size];
+    lists[h^.size] := f;
+    Lock.give(ADR(lock));
+end;
+
+begin
+    allocator.alloc := alloc;
+    allocator.free := free;
+    heap := ADR(allocator);
+end Heap.

@@ -1,0 +1,362 @@
+(* A command line read through one table, by getopt's rules with GNU's
+   long options; the help and the mistakes are made from the table.
+
+   The parser walks the arguments with arg, the next word, and pos, the
+   next letter in a group such as -lw (0 outside one). Each step is read
+   by step, which never ends the program: init and scope use it to look
+   ahead for -h and --help, and next to read the options one by one. *)
+module Opt;
+import Out, Sys, Rt, Str, Buf, Heap, Files;
+
+type
+    Row* = variant
+        usage(scope, line: []U8);           (* a synopsis line, without "usage: " *)
+        sub(scope, name, help: []U8);       (* a subcommand *)
+        option(scope: []U8; letter: U8; long, value, help: []U8);
+    end;
+    Parser* = record
+        letter*: U8;    (* the option just read *)
+        value*: []U8;   (* its value; "" for a flag *)
+        long*: BOOL;    (* it was written by its long name *)
+        name: []U8;     (* the program's *)
+        table: []Row;
+        scope: []U8;
+        arg, pos: INT;
+        ended: BOOL;    (* the options have ended: what is left are operands *)
+    end;
+    Step = (anOption, theEnd, aHelp, aMistake);   (* what step read *)
+
+var text: Buf.Buf;  (* a mistake's sentence, as step makes it *)
+
+(* What an option row says, if row r is an option of scope s. *)
+proc optionOf(r: Row; s: []U8): (BOOL, U8, []U8, []U8);
+begin
+    match r of
+    | option(scope, letter, long, value, help):
+        if scope = s then return true, letter, long, value; end;
+    | else:
+    end;
+    return false, 0, "", "";
+end;
+
+proc say(s: []U8);
+begin
+    Buf.str(ADR(text), s);
+end;
+
+(* The option of p's scope with the letter c (or, if c is 0, the long
+   name n): its row, or -1. *)
+proc find(p: ^Parser; c: U8; n: []U8): INT;
+var i: INT; is: BOOL; letter: U8; long, value: []U8;
+begin
+    for i := 0 to LEN(p^.table) - 1 do
+        is, letter, long, value := optionOf(p^.table[i], p^.scope);
+        if is and ((c # 0 and letter = c) or (c = 0 and LEN(n) > 0 and long = n)) then return i; end;
+    end;
+    return -1;
+end;
+
+(* The next option of p, by getopt's rules. *)
+proc step(p: ^Parser): Step;
+var w, n: []U8; i, eq: INT; is: BOOL; letter: U8; long, value: []U8;
+begin
+    Buf.reset(ADR(text));
+    p^.value := "";
+    p^.long := false;
+    if p^.ended or p^.arg >= ARGC() then return theEnd; end;
+    w := Files.arg(p^.arg);
+    if p^.pos = 0 then
+        if w = "--" then INC(p^.arg); p^.ended := true; return theEnd; end;
+        if LEN(w) < 2 or w[0] # '-' then return theEnd; end;
+        if w[1] = '-' then
+            (* --name, --name=value or --name value *)
+            INC(p^.arg);
+            eq := 2;
+            while eq < LEN(w) and w[eq] # '=' do INC(eq); end;
+            n := w[2..eq];
+            if n = "help" then return aHelp; end;
+            i := find(p, 0, n);
+            if i < 0 then say("unknown option --"); say(n); return aMistake; end;
+            is, letter, long, value := optionOf(p^.table[i], p^.scope);
+            p^.letter := letter;
+            p^.long := true;
+            if LEN(value) = 0 then
+                if eq < LEN(w) then say("--"); say(n); say(" takes no value"); return aMistake; end;
+            elsif eq < LEN(w) then
+                p^.value := w[eq + 1..LEN(w)];
+            elsif p^.arg < ARGC() then
+                p^.value := Files.arg(p^.arg);
+                INC(p^.arg);
+            else
+                say("--"); say(n); say(" needs a "); say(value); return aMistake;
+            end;
+            return anOption;
+        end;
+        p^.pos := 1;
+    end;
+    (* a letter of a group *)
+    letter := w[p^.pos];
+    INC(p^.pos);
+    if p^.pos = LEN(w) then p^.pos := 0; INC(p^.arg); end;
+    if letter = 'h' then return aHelp; end;
+    i := find(p, letter, "");
+    if i < 0 or letter < '!' then say("unknown option -"); Buf.add(ADR(text), letter); return aMistake; end;
+    is, letter, long, value := optionOf(p^.table[i], p^.scope);
+    p^.letter := letter;
+    if LEN(value) > 0 then
+        (* the rest of the word, or the whole next word *)
+        if p^.pos > 0 then
+            p^.value := w[p^.pos..LEN(w)];
+            p^.pos := 0;
+            INC(p^.arg);
+        elsif p^.arg < ARGC() then
+            p^.value := Files.arg(p^.arg);
+            INC(p^.arg);
+        else
+            say("-"); Buf.add(ADR(text), letter); say(" needs a "); say(value); return aMistake;
+        end;
+    end;
+    return anOption;
+end;
+
+(* The words of the scope's name, "remote.add" as "remote add". *)
+proc scopeWords(p: ^Parser; b: ^Buf.Buf);
+var i: INT;
+begin
+    for i := 0 to LEN(p^.scope) - 1 do
+        if p^.scope[i] = '.' then Buf.add(b, ' '); else Buf.add(b, p^.scope[i]); end;
+    end;
+end;
+
+(* The scope's synopsis lines, as the help and the mistakes begin. *)
+proc synopsis(p: ^Parser; b: ^Buf.Buf);
+var i: INT; first: BOOL;
+begin
+    first := true;
+    for i := 0 to LEN(p^.table) - 1 do
+        match p^.table[i] of
+        | usage(scope, line):
+            if scope = p^.scope then
+                if first then Buf.str(b, "usage: "); else Buf.str(b, "       "); end;
+                Buf.str(b, line);
+                Buf.add(b, '\n');
+                first := false;
+            end;
+        | else:
+        end;
+    end;
+    if first then
+        Buf.str(b, "usage: ");
+        Buf.str(b, p^.name);
+        if LEN(p^.scope) > 0 then Buf.add(b, ' '); scopeWords(p, b); end;
+        Buf.add(b, '\n');
+    end;
+end;
+
+(* The left column of a help line for an option. *)
+proc left(b: ^Buf.Buf; letter: U8; long, value: []U8);
+begin
+    Buf.str(b, "  ");
+    if letter >= '!' then
+        Buf.add(b, '-'); Buf.add(b, letter);
+        if LEN(long) > 0 then Buf.str(b, ", "); end;
+    else
+        Buf.str(b, "    ");
+    end;
+    if LEN(long) > 0 then Buf.str(b, "--"); Buf.str(b, long); end;
+    if LEN(value) > 0 then Buf.add(b, ' '); Buf.str(b, value); end;
+end;
+
+(* The help: the synopsis, a blank line, and each subcommand and option
+   of the scope, and the help itself, each with its line of help, the
+   helps in a column as far right as the longest left column needs. *)
+proc printHelp(p: ^Parser);
+var out, line: Buf.Buf; width, i, k, round: INT; help: []U8;
+begin
+    Buf.init(ADR(out), Heap.heap);
+    Buf.init(ADR(line), Heap.heap);
+    synopsis(p, ADR(out));
+    Buf.add(ADR(out), '\n');
+    (* round 0 measures the left column, round 1 writes the lines *)
+    for round := 0 to 1 do
+        for i := 0 to LEN(p^.table) do
+            Buf.reset(ADR(line));
+            help := "";
+            if i = LEN(p^.table) then
+                left(ADR(line), 'h', "help", "");
+                help := "print this and exit";
+            else
+                match p^.table[i] of
+                | sub(scope, name, h):
+                    if scope = p^.scope then Buf.str(ADR(line), "  "); Buf.str(ADR(line), name); help := h; end;
+                | option(scope, letter, long, value, h):
+                    if scope = p^.scope then left(ADR(line), letter, long, value); help := h; end;
+                | else:
+                end;
+            end;
+            if line.len > 0 then
+                if round = 0 then
+                    if line.len > width then width := line.len; end;
+                else
+                    Buf.str(ADR(out), Buf.bytes(ADR(line)));
+                    for k := line.len to width + 2 do Buf.add(ADR(out), ' '); end;
+                    Buf.str(ADR(out), help);
+                    Buf.add(ADR(out), '\n');
+                end;
+            end;
+        end;
+    end;
+    Out.str(Buf.bytes(ADR(out)));
+    Rt.exit(0);
+end;
+
+(* "name: sentence" on standard error, the synopsis after it if wanted,
+   and the end, with status. *)
+proc complain(p: ^Parser; sentence: []U8; withSynopsis: BOOL; status: INT);
+var b: Buf.Buf;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    Buf.str(ADR(b), p^.name);
+    Buf.str(ADR(b), ": ");
+    Buf.str(ADR(b), sentence);
+    Buf.add(ADR(b), '\n');
+    if withSynopsis then synopsis(p, ADR(b)); end;
+    Out.flush;
+    _ := Sys.write(Sys.stderr, Buf.bytes(ADR(b)));
+    Rt.exit(status);
+end;
+
+(* -h or --help among the scope's options, before the program sees any:
+   read ahead by a copy of the parser *)
+proc lookForHelp(p: ^Parser);
+var q: Parser; s: Step;
+begin
+    q := p^;
+    repeat
+        s := step(ADR(q));
+        if s = aHelp then printHelp(p); end;
+    until s = theEnd;
+end;
+
+proc decimal(b: ^Buf.Buf; n: I64);
+var d: [20]U8; i: INT; u: U64;
+begin
+    u := U64(n);
+    if n < 0 then Buf.add(b, '-'); u := 0 - u; end;
+    i := LEN(d);
+    repeat DEC(i); d[i] := U8(u mod 10) + '0'; u := u div 10; until u = 0;
+    Buf.str(b, d[i..LEN(d)]);
+end;
+
+(* The table checked before a word is read: a mistake in it is the
+   program's, status 1. *)
+proc checkTable(p: ^Parser);
+var i, j, k: INT; is, other: BOOL; letter, l2: U8; long, value, l3, v3, why: []U8; b: Buf.Buf;
+begin
+    for i := 0 to LEN(p^.table) - 1 do
+        why := "";
+        match p^.table[i] of
+        | option(scope, letter, long, value, help):
+            if letter = 0 and LEN(long) = 0 then why := "the option has neither a letter nor a long name";
+            elsif letter = '-' then why := "the letter is -";
+            elsif letter = 'h' or long = "help" then why := "-h and --help are Opt's";
+            else
+                for k := 0 to LEN(long) - 1 do
+                    if long[k] = '=' then why := "the long name has = in it"; end;
+                end;
+                for j := 0 to i - 1 do
+                    other, l2, l3, v3 := optionOf(p^.table[j], scope);
+                    if other and ((letter # 0 and l2 = letter) or (LEN(long) > 0 and l3 = long)) then
+                        why := "the option is in the scope already";
+                    end;
+                end;
+            end;
+        | else:
+        end;
+        if LEN(why) > 0 then
+            Buf.init(ADR(b), Heap.heap);
+            Buf.str(ADR(b), "option table, row ");
+            decimal(ADR(b), I64(i + 1));
+            Buf.str(ADR(b), ": ");
+            Buf.str(ADR(b), why);
+            complain(p, Buf.bytes(ADR(b)), false, 1);
+        end;
+    end;
+end;
+
+(* the arguments from 1 on, by table *)
+proc init*(p: ^Parser; name: []U8; table: []Row);
+begin
+    if text.len = 0 then Buf.init(ADR(text), Heap.heap); end;
+    p^.letter := 0; p^.value := ""; p^.long := false;
+    p^.name := name;
+    p^.table := table;
+    p^.scope := "";
+    p^.arg := 1;
+    p^.pos := 0;
+    p^.ended := false;
+    checkTable(p);
+    lookForHelp(p);
+end;
+
+(* the next option; false when they end *)
+proc next*(p: ^Parser): BOOL;
+begin
+    match step(p) of
+    | anOption: return true;
+    | theEnd: return false;
+    | aHelp: printHelp(p);
+    | aMistake: complain(p, Buf.bytes(ADR(text)), true, 2);
+    end;
+    return false;
+end;
+
+(* the next operand; false when there are no more *)
+proc operand*(p: ^Parser): ([]U8, BOOL);
+begin
+    while next(p) do end;
+    p^.ended := true;
+    if p^.arg >= ARGC() then return "", false; end;
+    INC(p^.arg);
+    return Files.arg(p^.arg - 1), true;
+end;
+
+(* subcommand name's options, from the word after it *)
+proc scope*(p: ^Parser; name: []U8);
+begin
+    p^.scope := name;
+    p^.ended := false;
+    p^.pos := 0;
+    lookForHelp(p);
+end;
+
+(* the value just read, a number from lo to hi *)
+proc number*(p: ^Parser; lo, hi: I64): I64;
+var n: I64; ok: BOOL; b: Buf.Buf; i: INT; is: BOOL; letter: U8; long, value: []U8;
+begin
+    n, ok := Str.toInt(p^.value);
+    if ok and n >= lo and n <= hi then return n; end;
+    Buf.init(ADR(b), Heap.heap);
+    i := find(p, p^.letter, "");
+    is, letter, long, value := optionOf(p^.table[i], p^.scope);
+    if p^.long then Buf.str(ADR(b), "--"); Buf.str(ADR(b), long);
+    else Buf.add(ADR(b), '-'); Buf.add(ADR(b), letter);
+    end;
+    Buf.str(ADR(b), " wants a number from ");
+    decimal(ADR(b), lo);
+    Buf.str(ADR(b), " to ");
+    decimal(ADR(b), hi);
+    Buf.str(ADR(b), ", not '");
+    Buf.str(ADR(b), p^.value);
+    Buf.str(ADR(b), "'");
+    complain(p, Buf.bytes(ADR(b)), true, 2);
+    return 0;
+end;
+
+(* the program's own mistake *)
+proc fail*(p: ^Parser; text: []U8);
+begin
+    complain(p, text, false, 2);
+end;
+
+end Opt.

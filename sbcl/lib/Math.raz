@@ -1,0 +1,93 @@
+(* Roots, powers, logarithms, rounding and trigonometry, for F64: C's
+   math.h, called through the run time. *)
+module Math;
+
+const pi* = 3.141592653589793;
+
+proc sqrt*(x: F64): F64;
+code
+    (c-call "sqrt" double-float double-float x);
+end;
+
+(* x to the power y *)
+proc pow*(x, y: F64): F64;
+code
+    (c-call "pow" double-float double-float x double-float y);
+end;
+
+proc floor*(x: F64): F64;
+code
+    (c-call "floor" double-float double-float x);
+end;
+
+proc ceil*(x: F64): F64;
+code
+    (c-call "ceil" double-float double-float x);
+end;
+
+(* to the nearest whole number; a half away from 0 *)
+proc round*(x: F64): F64;
+code
+    (c-call "round" double-float double-float x);
+end;
+
+proc exp*(x: F64): F64;
+code
+    (c-call "exp" double-float double-float x);
+end;
+
+proc ln*(x: F64): F64;
+code
+    (c-call "log" double-float double-float x);
+end;
+
+proc log2*(x: F64): F64;
+code
+    (c-call "log2" double-float double-float x);
+end;
+
+proc log10*(x: F64): F64;
+code
+    (c-call "log10" double-float double-float x);
+end;
+
+proc sin*(x: F64): F64;
+code
+    (c-call "sin" double-float double-float x);
+end;
+
+proc cos*(x: F64): F64;
+code
+    (c-call "cos" double-float double-float x);
+end;
+
+proc tan*(x: F64): F64;
+code
+    (c-call "tan" double-float double-float x);
+end;
+
+(* from -pi/2 to pi/2 *)
+proc asin*(x: F64): F64;
+code
+    (c-call "asin" double-float double-float x);
+end;
+
+(* from 0 to pi *)
+proc acos*(x: F64): F64;
+code
+    (c-call "acos" double-float double-float x);
+end;
+
+(* from -pi/2 to pi/2 *)
+proc atan*(x: F64): F64;
+code
+    (c-call "atan" double-float double-float x);
+end;
+
+(* the angle of (x, y) from the x axis, from -pi to pi *)
+proc atan2*(y, x: F64): F64;
+code
+    (c-call "atan2" double-float double-float y double-float x);
+end;
+
+end Math.

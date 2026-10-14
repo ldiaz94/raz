@@ -1,0 +1,44 @@
+(* Searches of bytes in a []U8. *)
+module Bytes;
+
+(* where b first is in s, or -1 *)
+proc index*(s: []U8; b: U8): INT;
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do
+        if s[i] = b then return i; end;
+    end;
+    return -1;
+end;
+
+(* where b last is in s, or -1 *)
+proc last*(s: []U8; b: U8): INT;
+var i: INT;
+begin
+    for i := LEN(s) - 1 to 0 by -1 do
+        if s[i] = b then return i; end;
+    end;
+    return -1;
+end;
+
+(* how many times b is in s *)
+proc count*(s: []U8; b: U8): INT;
+var i, n: INT;
+begin
+    for i := 0 to LEN(s) - 1 do
+        if s[i] = b then INC(n); end;
+    end;
+    return n;
+end;
+
+(* where sub first starts in s, or -1 *)
+proc find*(s, sub: []U8): INT;
+var i: INT;
+begin
+    for i := 0 to LEN(s) - LEN(sub) do
+        if s[i..i + LEN(sub)] = sub then return i; end;
+    end;
+    return -1;
+end;
+
+end Bytes.

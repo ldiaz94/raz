@@ -130,7 +130,10 @@
                    (cond ((string= text "_") (add :blank nil l c))
                          ((member text *reserved* :test #'string=)
                           (add (keyword-of (string-upcase text)) nil l c)
-                          (when (string= text "code") (code-body)))
+                          ;; a code body follows `code` after a signature's `;`
+                          (when (and (string= text "code") (rest toks)
+                                     (eq (tok-kind (second toks)) :|;|))
+                            (code-body)))
                          (t (add :ident text l c))))))
              (number (l c)
                ;; digits and capitals A-F; then H for hexadecimal, or a
