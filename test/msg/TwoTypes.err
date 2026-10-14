@@ -1,4 +1,4 @@
-conform/err/TwoTypes.raz:6:10: error: can't use List(I32).List as List(I64).List
+conform/err/TwoTypes.raz:6:10: error: can't use Pile(I32).Pile as Pile(I64).Pile
     6 |     a := b;
       |          ^
 raz: 1 error

@@ -1,4 +1,4 @@
-conform/err/NoArgs.raz:2:8: error: List needs a type for T
-    2 | import List;
+conform/err/NoArgs.raz:2:8: error: Pile needs a type for T
+    2 | import Pile;
       |        ^^^^
 raz: 1 error

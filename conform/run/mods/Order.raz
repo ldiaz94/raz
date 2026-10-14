@@ -1,0 +1,19 @@
+(* A generic module whose procedure parameter orders its values: an
+   insertion sort of a slice, in place and stable. *)
+module Order(T; less: proc(a, b: T): BOOL);
+
+proc sort*(s: []T);
+var i, j: INT; t: T;
+begin
+    for i := 1 to LEN(s) - 1 do
+        t := s[i];
+        j := i - 1;
+        while (j >= 0) and less(t, s[j]) do
+            s[j + 1] := s[j];
+            DEC(j);
+        end;
+        s[j + 1] := t;
+    end;
+end;
+
+end Order.

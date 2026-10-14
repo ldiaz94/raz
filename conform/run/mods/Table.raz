@@ -1,0 +1,48 @@
+(* A generic module with procedure parameters and no library: a table
+   of sixteen slots, filled by linear probing. *)
+module Table(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
+
+const Slots = 16;
+
+type Table* = record
+        used: [Slots]BOOL;
+        keys: [Slots]K;
+        vals: [Slots]V;
+        len*: INT;
+    end;
+
+(* v for k, a new entry or a change; false if the table is full. *)
+proc put*(t: ^Table; k: K; v: V): BOOL;
+var i, n: INT;
+begin
+    i := INT(hash(k) mod Slots);
+    for n := 1 to Slots do
+        if not t^.used[i] then
+            t^.used[i] := true;
+            t^.keys[i] := k;
+            t^.vals[i] := v;
+            INC(t^.len);
+            return true;
+        elsif eq(t^.keys[i], k) then
+            t^.vals[i] := v;
+            return true;
+        end;
+        i := (i + 1) mod Slots;
+    end;
+    return false;
+end;
+
+(* What k has; false if it has nothing. *)
+proc get*(t: ^Table; k: K): (V, BOOL);
+var i, n: INT; zero: V;
+begin
+    i := INT(hash(k) mod Slots);
+    for n := 1 to Slots do
+        if not t^.used[i] then return zero, false; end;
+        if eq(t^.keys[i], k) then return t^.vals[i], true; end;
+        i := (i + 1) mod Slots;
+    end;
+    return zero, false;
+end;
+
+end Table.

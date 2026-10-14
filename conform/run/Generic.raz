@@ -1,30 +1,26 @@
 module Generic;
-import Fmt, Buf, Str, Heap, Stack, Ints := List(I64), More := List(I64), Strs := List([]U8);
+import Out, Stack, Ints := Pile(I64), More := Pile(I64), Strs := Pile([]U8);
 
-proc twice(x: I64): I64; begin return x * 2; end;
+proc yes(b: BOOL);
+begin
+    if b then Out.str("true"); else Out.str("false"); end;
+end;
 
 proc main*;
-var l: Strs.List; v: I64; s: []U8; ok: BOOL; b: Buf.Buf; n: ^Ints.Node;
+var l: Strs.Pile; v: I64; s: []U8; ok: BOOL;
 begin
     ok := Ints.push(Stack.p, 7);
-    ok := More.push(Stack.p, 8);
-    Fmt.print("{} {} {}\n", [Fmt.int(Stack.top()), Fmt.int(Stack.p^.len), Fmt.bool(ok)]);
-    n := Stack.p^.head;
+    ok := More.push(Stack.p, 8);   (* two imports, one instance: one pile *)
+    Out.int(Stack.top()); Out.char(' '); Out.int(Stack.p^.len); Out.char(' '); yes(ok); Out.ln;
     v, ok := Ints.pop(Stack.p);
-    Fmt.print("{} {}\n", [Fmt.int(v), Fmt.int(Stack.p^.len)]);
-    Strs.init(ADR(l), Heap.heap);
+    Out.int(v); Out.char(' '); Out.int(Stack.p^.len); Out.ln;
     ok := Strs.push(ADR(l), "b");
     ok := Strs.push(ADR(l), "a");
     s, ok := Strs.pop(ADR(l));
-    Fmt.print("{}{}{}\n", [Fmt.str(s), Fmt.str(l.head^.val), Fmt.bool(ok)]);
+    Out.str(s); Out.str(Strs.top(ADR(l))); yes(ok); Out.ln;
     s, ok := Strs.pop(ADR(l));
     s, ok := Strs.pop(ADR(l));
-    Fmt.print("[{}] {}\n", [Fmt.str(s), Fmt.bool(ok)]);
-    Buf.init(ADR(b), Heap.heap);
-    for v := 1 to 40 do Fmt.write(ADR(b), "{},", [Fmt.int(v * v)]); end;
-    Fmt.print("{} {} {}\n", [Fmt.int(b.len), Fmt.int(Str.find(Buf.bytes(ADR(b)), "1600")), Fmt.int(Str.cmp("ab", "b"))]);
-    Buf.done(ADR(b));
-    Fmt.print("{{ {} }} {}{}\n", [Fmt.hex(48879), Fmt.char('x'), Fmt.uint(0FFFFFFFFFFFFFFFFH)]);
+    Out.char('['); Out.str(s); Out.str("] "); yes(ok); Out.ln;
 end;
 
 end Generic.

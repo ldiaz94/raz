@@ -1,0 +1,36 @@
+(* A generic module that needs no library: a stack of at most eight
+   values of T. *)
+module Pile(T);
+
+const Max = 8;
+
+type Pile* = record
+        items: [Max]T;
+        len*: INT;
+    end;
+
+(* x on top; false if the pile is full. *)
+proc push*(p: ^Pile; x: T): BOOL;
+begin
+    if p^.len = Max then return false; end;
+    p^.items[p^.len] := x;
+    INC(p^.len);
+    return true;
+end;
+
+(* The top, taken off; false if the pile is empty. *)
+proc pop*(p: ^Pile): (T, BOOL);
+var zero: T;
+begin
+    if p^.len = 0 then return zero, false; end;
+    DEC(p^.len);
+    return p^.items[p^.len], true;
+end;
+
+(* The top, left where it is; the pile must not be empty. *)
+proc top*(p: ^Pile): T;
+begin
+    return p^.items[p^.len - 1];
+end;
+
+end Pile.

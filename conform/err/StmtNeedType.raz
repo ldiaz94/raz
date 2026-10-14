@@ -1,6 +1,6 @@
 module StmtNeedType;
-import Str, M := Map(Str.cmp, I64, Str.cmp, Str.eq);
+import Str, M := Table(Str.cmp, I64, Str.cmp, Str.eq);
 
-var m: M.Map;
+var m: M.Table;
 
 end StmtNeedType.

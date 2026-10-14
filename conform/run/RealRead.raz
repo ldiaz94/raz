@@ -1,7 +1,7 @@
 (* Real literals read to the nearest F64, ties to the even one: their
    bits, for numbers a reader of decimals easily gets one off. *)
 module RealRead;
-import Fmt;
+import Out;
 
 proc bits(x: F64): U64;
 var p: ^U64;
@@ -12,7 +12,7 @@ end;
 
 proc show(x: F64);
 begin
-    Fmt.print("{}\n", [Fmt.hex(bits(x))]);
+    Out.hex(bits(x), 16); Out.ln;
 end;
 
 proc main*;

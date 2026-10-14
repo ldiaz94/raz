@@ -1,10 +1,10 @@
 module FirstUse;
-import Out, Str, Heap, Table := Map([]U8, Colour, Str.hash, Str.eq),
-    Ints := List(I64), More := List(I64), Never := Loud(I64), Ones := Loud(U8);
+import Out, Str, Table := Table([]U8, Colour, Str.hash, Str.eq),
+    Ints := Pile(I64), More := Pile(I64), Never := Loud(I64), Ones := Loud(U8);
 
 type Colour = (red, green, blue);
 
-var names: Table.Map;   (* Table is made here, after Colour *)
+var names: Table.Table;   (* Table is made here, after Colour *)
 
 proc show(k: []U8);
 var c: Colour; found: BOOL;
@@ -17,10 +17,10 @@ end;
 
 (* Ones is first used in a procedure, and made before its code *)
 proc main*;
-var a: Ints.List; b: More.List;
+var a: Ints.Pile; b: More.Pile;
 begin
     a := b;   (* two imports, one instance *)
-    if a.head = nil then Out.str("an empty list\n"); end;
+    if a.len = 0 then Out.str("an empty list\n"); end;
     Out.str("in main, Ones has size "); Out.int(Ones.size); Out.ln;
     show("sky");
     show("rose");
@@ -28,7 +28,6 @@ begin
 end;
 
 begin
-    Table.init(ADR(names), Heap.heap);
     _ := Table.put(ADR(names), "rose", red);
     _ := Table.put(ADR(names), "sky", blue);
 end FirstUse.

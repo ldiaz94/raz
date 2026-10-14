@@ -1,7 +1,7 @@
-(* Sort: slices in many orders and of every length up to 40 come out
+(* A generic sort: slices in many orders and of every length up to 40 come out
    in order, holding what they held; and a sort by a record's field. *)
 module Sorted;
-import Fmt, Rt, Ints := Sort(I64, below), ByAge := Sort(Person, younger);
+import Out, Rt, Ints := Order(I64, below), ByAge := Order(Person, younger);
 
 type Person = record name: []U8; age: I64; end;
 
@@ -45,7 +45,7 @@ begin
     end;
     people := [{name: "Ana", age: 41}, {name: "Bo", age: 7}, {name: "Cy", age: 90}, {name: "Di", age: 23}];
     ByAge.sort(people);
-    for i := 0 to 3 do Fmt.print("{} {}\n", [Fmt.str(people[i].name), Fmt.int(people[i].age)]); end;
+    for i := 0 to 3 do Out.str(people[i].name); Out.char(' '); Out.int(people[i].age); Out.ln; end;
 end;
 
 end Sorted.

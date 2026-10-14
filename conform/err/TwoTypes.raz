@@ -1,7 +1,7 @@
 module TwoTypes;
-import A := List(I64), B := List(I32);
+import A := Pile(I64), B := Pile(I32);
 proc main*;
-var a: A.List; b: B.List;
+var a: A.Pile; b: B.Pile;
 begin
     a := b;
 end;

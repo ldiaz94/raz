@@ -1,6 +1,6 @@
 module StmtArgKind;
-import Mem, L := List(Mem.Page);
+import Mem, L := Pile(Mem.Page);
 
-var l: L.List;
+var l: L.Pile;
 
 end StmtArgKind.

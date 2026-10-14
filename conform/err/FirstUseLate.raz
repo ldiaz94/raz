@@ -1,7 +1,7 @@
 module FirstUseLate;
-import L := List(Later);
+import L := Pile(Later);
 
-var l: L.List;   (* made here, before Later is declared *)
+var l: L.Pile;   (* made here, before Later is declared *)
 
 type Later = I64;
 

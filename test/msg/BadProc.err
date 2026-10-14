@@ -1,7 +1,7 @@
-conform/err/BadProc.raz:2:33: error: cmp doesn't have the signature of hash
-    2 | import Str, M := Map([]U8, I64, Str.cmp, Str.eq);
-      |                                 ^^^^^^^
-lib/Map.raz:4:18: note: the signature is here
-    4 | module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
-      |                  ^^^^
+conform/err/BadProc.raz:2:35: error: cmp doesn't have the signature of hash
+    2 | import Str, M := Table([]U8, I64, Str.cmp, Str.eq);
+      |                                   ^^^^^^^
+conform/err/mods/Table.raz:3:20: note: the signature is here
+    3 | module Table(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
+      |                    ^^^^
 raz: 1 error

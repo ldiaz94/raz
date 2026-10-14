@@ -1,4 +1,4 @@
-conform/err/StmtNeedType.raz:2:22: error: Map needs a type for K
-    2 | import Str, M := Map(Str.cmp, I64, Str.cmp, Str.eq);
-      |                      ^^^^^^^
+conform/err/StmtNeedType.raz:2:24: error: Table needs a type for K
+    2 | import Str, M := Table(Str.cmp, I64, Str.cmp, Str.eq);
+      |                        ^^^^^^^
 raz: 1 error
