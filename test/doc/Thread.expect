@@ -1,17 +1,25 @@
 module Thread;
-    Threads for programs without C, made with the clone system call.
+    Threads, made with the clone system call in a program without C.
     Each runs on a stack of its own, mmaped, with a page below it that
     can't be touched, so that running off the stack stops the program
     rather than spoiling what lies below; above it, a little stack for
     Rt's signal handlers, so that they can say so. join waits on the
     thread's id, which the kernel clears, and wakes it for, when the
-    thread ends; a Mutex sleeps on a futex. A program with C threads
-    uses C's, through pthread_create, and so can't use these.
+    thread ends; a Mutex sleeps on a futex.
+    
+    A program that uses C makes them with C's pthread_create instead,
+    since C keeps things of each thread's own, errno and its buffers,
+    that a thread clone makes wouldn't have. The compiler's entry point
+    finds cCreate and cJoin by name and stores C's calls in them, as it
+    stores C's exit in Rt.cExit; so this module uses no C itself, and
+    serves both kinds of program. C's thread has a stack and a guard
+    page of C's; the mapping here holds only the handlers' stack and
+    the Thread.
 
 const Failed*: ERROR = "can't start a thread";
 
 type Thread* = record
-    tid: INT;        (* the kernel's id, until the thread ends *)
+    tid: INT;        (* the kernel's id, until the thread ends; or C's pthread_t *)
     base: ^U8;       (* its stack's mapping, the guard page first *)
     size: INT;
     fn: proc(arg: ^U8);   (* what it runs, and with what *)

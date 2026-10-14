@@ -37,6 +37,8 @@ const
 var
     links: [4]Gen.Link;
     numLinks: INT;
+    cLinks: [3]Gen.Link;    (* C's symbols the entry point gives the library, in a program that uses C *)
+    numCLinks: INT;
 
 proc say1(f, a: []U8): []U8;
 begin
@@ -108,11 +110,21 @@ begin
     Out.flush();
 end;
 
-proc rtObj(rt: ^Sym.Module; n: []U8): ^Sym.Obj;
+(* The module named n, or nil if the program has none *)
+proc moduleNamed(n: []U8): ^Sym.Module;
+var m: ^Sym.Module;
+begin
+    m := Parse.firstModule;
+    while (m # nil) and (Scan.nameOf(m^.name) # n) do m := m^.next; end;
+    return m;
+end;
+
+(* What the library module m, found by name, declares as n *)
+proc objIn(m: ^Sym.Module; n: []U8): ^Sym.Obj;
 var o: ^Sym.Obj;
 begin
-    o := Sym.find(rt^.scope, internStr(n));
-    if o = nil then Diag.fatal(say1("Rt has no {}", n)); end;
+    o := Sym.find(m^.scope, internStr(n));
+    if o = nil then Diag.fatal(Diag.say("{} has no {}", [Fmt.str(Scan.nameOf(m^.name)), Fmt.str(n)])); end;
     return o;
 end;
 
@@ -122,6 +134,14 @@ begin
     links[numLinks].chunk := chunk;
     links[numLinks].into := v^.chunk;
     INC(numLinks);
+end;
+
+(* The library is given C's symbol sym, in its variable v *)
+proc addCLink(sym: []U8; v: ^Sym.Obj);
+begin
+    cLinks[numCLinks].chunk := Chunk.externChunk(internStr(sym));
+    cLinks[numCLinks].into := v^.chunk;
+    INC(numCLinks);
 end;
 
 (* s as a C string, in memory that is never freed *)
@@ -138,8 +158,8 @@ proc main*: INT;
 var
     path, outPath, s: []U8; dir: []U8;
     i, first, entry, fd, last, errno: INT;
-    m, rt: ^Sym.Module; mainObj: ^Sym.Obj;
-    run, noProfile, listing: BOOL; err: ERROR;
+    m, rt, thread: ^Sym.Module; mainObj: ^Sym.Obj;
+    run, noProfile, listing, dynamic: BOOL; err: ERROR;
 begin
     path := "";
     outPath := "";
@@ -210,8 +230,7 @@ begin
     if Diag.errors > 0 then Diag.finish(); end;
 
     use(m);
-    rt := Parse.firstModule;
-    while (rt # nil) and (Scan.nameOf(rt^.name) # "Rt") do rt := rt^.next; end;
+    rt := moduleNamed("Rt");
     if rt # nil then use(rt); end;
 
     mainObj := Sym.find(m^.scope, internStr("main"));
@@ -234,13 +253,26 @@ begin
     if not Elf.stripped then
         Link.setPlaces(Chunk.newChunk(Chunk.secRodata, -1, -1));
         Chunk.setData(Link.placesChunk, nil, 0, 8);
-        addLink(Link.placesChunk, rtObj(rt, "places"));
-        addLink(rtObj(rt, "calls")^.chunk, rtObj(rt, "teller"));
-        addLink(rtObj(rt, "place")^.chunk, rtObj(rt, "placer"));
-        if not noProfile then addLink(rtObj(rt, "startProfile")^.chunk, rtObj(rt, "profiler")); end;
+        addLink(Link.placesChunk, objIn(rt, "places"));
+        addLink(objIn(rt, "calls")^.chunk, objIn(rt, "teller"));
+        addLink(objIn(rt, "place")^.chunk, objIn(rt, "placer"));
+        if not noProfile then addLink(objIn(rt, "startProfile")^.chunk, objIn(rt, "profiler")); end;
     end;
-    entry := Gen.entryPoint(usesC(), Parse.firstModule, mainObj, rtObj(rt, "cExit")^.chunk,
-        rtObj(rt, "exit")^.chunk, links[0..numLinks], numLinks);
+    (* what a program that uses C is given of C: Rt its exit, and
+       Thread, if the program has it, the calls that make and join C's
+       threads, so that the C library knows of them *)
+    dynamic := usesC();
+    numCLinks := 0;
+    if dynamic then
+        addCLink("exit", objIn(rt, "cExit"));
+        thread := moduleNamed("Thread");
+        if (thread # nil) and thread^.used then
+            addCLink("pthread_create", objIn(thread, "cCreate"));
+            addCLink("pthread_join", objIn(thread, "cJoin"));
+        end;
+    end;
+    entry := Gen.entryPoint(dynamic, Parse.firstModule, mainObj, cLinks[0..numCLinks], numCLinks,
+        objIn(rt, "exit")^.chunk, links[0..numLinks], numLinks);
 
     Link.markLive(entry);
     if not Parse.HasReals then

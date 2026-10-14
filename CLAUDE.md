@@ -163,7 +163,10 @@ otherwise.
 - C symbols are reached through quadwords the loader fills in
   (GLOB_DAT), with no PLT; the executable exports nothing. In a C
   program the entry point stores C's `exit` in `Rt.cExit`, found by
-  name like `Rt.exit`, before any module body runs.
+  name like `Rt.exit`, before any module body runs; and, if the
+  program has `Thread`, `pthread_create` and `pthread_join` in
+  `Thread.cCreate` and `Thread.cJoin`, so that `Thread` makes C's
+  threads there and serves programs with C and without.
 - Past an extern's parameters, a string goes as a C string and an
   integer constant as an `INT`.
 - A real constant is held as an F64; one typed `F32` holds a value an
@@ -177,8 +180,9 @@ otherwise.
   its prologue, and the program ends by `Rt.exit(2)`, after its
   `atExit` procedures, as a failed check does (report 2026-10.22; a
   fault inside `Out`'s or `Heap`'s lock would hang there). The handlers run on a stack of their own: `Rt`'s for
-  the main thread, and one in each `Thread` thread's mapping. C's
-  threads have none, so a stack overflow in one still ends the program
+  the main thread, and one in each `Thread` thread's mapping, made
+  by clone or by C. Threads a program makes with `pthread_create`
+  itself have none, so a stack overflow in one still ends the program
   by the signal with no message.
 - The smallest value of a signed type divided by -1 stops the program
   (SIGFPE), as 6.1 says, `mod` as `div`; for a type narrower than 64

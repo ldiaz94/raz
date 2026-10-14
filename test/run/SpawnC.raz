@@ -1,0 +1,52 @@
+(* Threads in a program that uses C, which Thread makes with C's
+   pthread_create: a counter under a Mutex, the heap and Out used from
+   every thread at once, and join. *)
+module SpawnC;
+import Out, Thread, Heap, Mem, C;
+
+const
+    Workers = 8;
+    Rounds = 20000;
+
+type Node = record next: ^Node; n: I64; end;
+
+var
+    m: Thread.Mutex;
+    count: I64; atomic: INT;
+
+proc work(arg: ^U8);
+var i: I64; p, list: ^Node;
+begin
+    list := nil;
+    for i := 1 to Rounds do
+        Thread.lock(ADR(m));
+        INC(count);
+        Thread.unlock(ADR(m));
+        _ := XADD(ADR(atomic), 1);
+        NEW(p, Heap.heap);
+        p^.next := list;
+        list := p;
+        if i mod 4 = 0 then
+            while list # nil do
+                p := list^.next;
+                Mem.free(Heap.heap, ^U8(list));
+                list := p;
+            end;
+        end;
+    end;
+    for i := 1 to 25 do Out.str("the same line from every thread\n"); end;
+end;
+
+proc main*;
+var t: [Workers]^Thread.Thread; i: I64; err: ERROR;
+begin
+    if C.getpid() <= 0 then return; end;
+    for i := 0 to Workers - 1 do
+        t[i], err := Thread.spawn(work, nil);
+        if err # nil then Out.str(MSG(err)); Out.ln; return; end;
+    end;
+    for i := 0 to Workers - 1 do Thread.join(t[i]); end;
+    Out.int(count); Out.char(' '); Out.int(atomic); Out.ln;
+end;
+
+end SpawnC.

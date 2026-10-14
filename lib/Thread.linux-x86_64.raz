@@ -1,14 +1,21 @@
-(* Threads for programs without C, made with the clone system call.
+(* Threads, made with the clone system call in a program without C.
    Each runs on a stack of its own, mmaped, with a page below it that
    can't be touched, so that running off the stack stops the program
    rather than spoiling what lies below; above it, a little stack for
    Rt's signal handlers, so that they can say so. join waits on the
    thread's id, which the kernel clears, and wakes it for, when the
-   thread ends; a Mutex sleeps on a futex. A program with C threads
-   uses C's, through pthread_create, and so can't use these. *)
+   thread ends; a Mutex sleeps on a futex.
+
+   A program that uses C makes them with C's pthread_create instead,
+   since C keeps things of each thread's own, errno and its buffers,
+   that a thread clone makes wouldn't have. The compiler's entry point
+   finds cCreate and cJoin by name and stores C's calls in them, as it
+   stores C's exit in Rt.cExit; so this module uses no C itself, and
+   serves both kinds of program. C's thread has a stack and a guard
+   page of C's; the mapping here holds only the handlers' stack and
+   the Thread. *)
 module Thread;
 import Sys, Rt;
-link static;
 
 const
     Failed*: ERROR = "can't start a thread";
@@ -25,7 +32,7 @@ const
 type
     (* A thread, as spawn gives it, until join. *)
     Thread* = record
-        tid: INT;        (* the kernel's id, until the thread ends *)
+        tid: INT;        (* the kernel's id, until the thread ends; or C's pthread_t *)
         base: ^U8;       (* its stack's mapping, the guard page first *)
         size: INT;
         fn: proc(arg: ^U8);   (* what it runs, and with what *)
@@ -36,6 +43,12 @@ type
     (* A lock whose waiters sleep, free when zeroed. Its state is 0
        free, 1 taken, 2 taken with a thread waiting. *)
     Mutex* = record state: INT; end;
+
+var
+    (* C's pthread_create and pthread_join, in a program that uses C;
+       nil in one that doesn't *)
+    cCreate: proc(t: ^UINT; attr: ^U8; start: proc(arg: ^U8): ^U8; arg: ^U8): I32;
+    cJoin: proc(t: UINT; result: ^^U8): I32;
 
 (* clone(flags, stack, tid, tid), the new thread starting with fn(arg)
    on stack and ending, when fn returns, with the exit system call.
@@ -80,19 +93,21 @@ begin
     t^.fn(t^.arg);
 end;
 
+(* Where a thread C makes starts, as pthread_create calls it *)
+proc cRun(arg: ^U8): ^U8;
+begin
+    run(arg);
+    return nil;
+end;
+
 (* Starts p(arg) in a new thread. *)
 proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);
-var base: ^U8; t: ^Thread; size: INT;
+var base: ^U8; t: ^Thread; size: INT; tid: UINT;
 begin
     size := Page + Stack + Alt + Page;
+    if cCreate # nil then size := Alt + Page; end;     (* C gives the stack *)
     base := Sys.mmap(size);
     if base = nil then return nil, Failed; end;
-    (* mprotect: the guard page, no access; it fails when the process
-       has as many mappings as it may *)
-    if SYSCALL(10, base, Page, 0) < 0 then
-        Sys.munmap(base, size);
-        return nil, Failed;
-    end;
     (* from the top: the Thread in the last page, the handlers' stack,
        then the thread's, starting on a page *)
     t := ^Thread(base + size - Page);
@@ -100,7 +115,18 @@ begin
     t^.size := size;
     t^.fn := p;
     t^.arg := arg;
-    if start(Flags, base + Page + Stack, ADR(t^.tid), ADR(t^.tid), run, ^U8(t)) < 0 then
+    if cCreate # nil then
+        if cCreate(ADR(tid), nil, cRun, ^U8(t)) # 0 then
+            Sys.munmap(base, size);
+            return nil, Failed;
+        end;
+        t^.tid := INT(tid);
+        return t, nil;
+    end;
+    (* mprotect: the guard page, no access; it fails when the process
+       has as many mappings as it may *)
+    if (SYSCALL(10, base, Page, 0) < 0)
+            or (start(Flags, base + Page + Stack, ADR(t^.tid), ADR(t^.tid), run, ^U8(t)) < 0) then
         Sys.munmap(base, size);
         return nil, Failed;
     end;
@@ -111,11 +137,15 @@ end;
 proc join*(t: ^Thread);
 var tid: ^VOLATILE INT; v: INT; base: ^U8; size: INT;
 begin
-    tid := ADR(t^.tid);
-    v := tid^;
-    while v # 0 do
-        _ := futex(ADR(t^.tid), FutexWait, v);
+    if cJoin # nil then
+        _ := cJoin(UINT(t^.tid), nil);
+    else
+        tid := ADR(t^.tid);
         v := tid^;
+        while v # 0 do
+            _ := futex(ADR(t^.tid), FutexWait, v);
+            v := tid^;
+        end;
     end;
     base := t^.base;
     size := t^.size;

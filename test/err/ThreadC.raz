@@ -1,8 +1,0 @@
-module ThreadC;
-import Thread, C;
-
-proc main*;
-begin
-end;
-
-end ThreadC.

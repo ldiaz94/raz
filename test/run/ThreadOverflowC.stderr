@@ -1,0 +1,5 @@
+test/run/ThreadOverflowC.raz:7:1: stopped by a stack overflow
+  in ThreadOverflowC.big at test/run/ThreadOverflowC.raz:7:1
+  in ThreadOverflowC.work at test/run/ThreadOverflowC.raz:16:5: _arg = nil
+  in Thread.run at lib/Thread.linux-x86_64.raz:93:5: arg = 0x?, t = 0x?
+  in Thread.cRun at lib/Thread.linux-x86_64.raz:99:5: arg = 0x?

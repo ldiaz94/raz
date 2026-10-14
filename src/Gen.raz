@@ -89,7 +89,8 @@ type
     CodeMark* = record pc*, fixups*, lines*, said*, fails*: INT; end;
 
     (* For entryPoint: the address of chunk, put in the variable whose
-       chunk is into before the program starts *)
+       chunk is into before the program starts; or, for C's symbols, the
+       address in chunk, the quadword the loader fills in *)
     Link* = record chunk*, into*: INT; end;
 
     CallInfo* = record
@@ -2365,15 +2366,18 @@ end;
    main; and ends with Rt.exit, its status main's or 0. A dynamic program
    starts as C's crt1 does, through __libc_start_main(main, argc, argv,
    nil, nil, rtld_fini, stack_end), with rsp aligned; its main first
-   gives Rt C's exit, in cExit.
+   gives the library what it needs of C: Rt C's exit, in cExit, and
+   Thread pthread_create and pthread_join.
 
    dynamic: the program uses C. first: the first module, whose chain
    gives the order of the bodies. mainObj: the program's main procedure, or
-   nil. cExit and exitProc: the chunks of Rt's cExit and exit. The
+   nil. The first numCLinks of cLinks: C's symbols, each loaded from the
+   quadword the loader fills in and stored in a variable of the
+   library's, in a program that uses C. exitProc: the chunk of Rt's exit. The
    first numLinks of links: the addresses Rt is given, of what the program
    has: the places, and the profiler and calls; what it isn't given,
    nothing reaches, and the linker leaves out. *)
-proc entryPoint*(dynamic: BOOL; first: ^Sym.Module; mainObj: ^Sym.Obj; cExit, exitProc: INT; links: []Link; numLinks: INT): INT;
+proc entryPoint*(dynamic: BOOL; first: ^Sym.Module; mainObj: ^Sym.Obj; cLinks: []Link; numCLinks, exitProc: INT; links: []Link; numLinks: INT): INT;
 var entry, start, i: INT; m: ^Sym.Module;
 begin
     entry := Chunk.newChunk(Chunk.secText, -1, internStr("_start"));
@@ -2399,8 +2403,10 @@ begin
         X.push(RBP);   (* aligns the stack again *)
         X.store(X.memRip(argcChunk, 0), RDI, 8);
         X.store(X.memRip(argvChunk, 0), RSI, 8);
-        X.load(RAX, X.memRip(Chunk.externChunk(internStr("exit")), 0), 8, false);
-        X.store(X.memRip(cExit, 0), RAX, 8);
+        for i := 0 to numCLinks - 1 do
+            X.load(RAX, X.memRip(cLinks[i].chunk, 0), 8, false);
+            X.store(X.memRip(cLinks[i].into, 0), RAX, 8);
+        end;
     else
         start := entry;
         Chunk.beginChunk(entry);

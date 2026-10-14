@@ -1,0 +1,27 @@
+module ThreadOverflowC;
+(* A stack overflow in a thread of a program that uses C is told as
+   one in the main thread is: Thread gives C's thread a stack for the
+   signal handlers. One frame bigger than any stack C gives a thread. *)
+import Thread, C;
+
+proc big: I64;
+var pad: [64 * 1024 * 1024]U8;
+begin
+    pad[0] := 1;
+    return I64(pad[0]);
+end;
+
+proc work(_arg: ^U8);
+begin
+    _ := big();
+end;
+
+proc main*;
+var t: ^Thread.Thread; e: ERROR;
+begin
+    _ := C.getpid();
+    t, e := Thread.spawn(work, nil);
+    if e = nil then Thread.join(t); end;
+end;
+
+end ThreadOverflowC.

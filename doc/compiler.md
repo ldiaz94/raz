@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Sym.raz` | 684 | 555 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 354 | 272 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,493 | 1,237 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,471 | 1,778 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Gen.raz` | 2,478 | 1,780 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 1,763 | 1,458 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 3,846 | 3,355 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 380 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Raz.raz` | 273 | 214 | The command line |
+| `src/Raz.raz` | 305 | 238 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -1395,7 +1395,11 @@ gdb can stop at a line and show where it is, not print a variable.
 `Raz.raz` parses the arguments, calls `Parse.compileMain`, and works out what
 the program uses: `use` marks the modules imported from the main module
 and `Rt`; `usesC` decides whether the program is dynamic, refusing one
-that both uses C and has a module saying `link static`. Then it has
+that both uses C and has a module saying `link static`. In a program
+that uses C, it gives the entry point the C symbols the library needs,
+each with the variable it goes in, found by name (`addCLink`): `exit`
+for `Rt.cExit`, and, if the program has `Thread`, `pthread_create` and
+`pthread_join` for `Thread.cCreate` and `Thread.cJoin`. Then it has
 gen's `entryPoint` write the entry point, and `Link.markLive` mark what it
 reaches. The program is `proc main*: INT`; where raz is, for the library
 beside it, it reads from `/proc/self/exe`, and the version it prints is
@@ -1487,16 +1491,20 @@ this one does.
   ends the program with status 2, after the procedures registered with
   `Rt.atExit`, as for a failed check. A fault inside a section that holds the lock of `Out` or `Heap` (a stack overflow in `Out`, say) would leave `atExit`'s flush waiting for it: the program hangs instead of ending. This is rare, and a failed check has the same exposure. The handlers run on a stack
   of their own: `Rt`'s for the main thread, one in each `Thread`
-  thread's mapping. C's threads have none, so a stack overflow in one
-  ends the program by the signal with no message.
+  thread's mapping, whether clone or C made the thread. Threads a
+  program makes with C's `pthread_create` itself have none, so a stack
+  overflow in one ends the program by the signal with no message.
 - **Locks.** `Heap` and `Out` lock with `Lock`, a spinlock that yields,
   since they serve C's threads and `Thread`'s alike; `Thread.Mutex` is
   a futex.
 - **C.** A program uses C if a module it uses has an `extern` or a
   `link` of a library. C's symbols are reached through quadwords the
   loader fills in (GLOB_DAT), with no PLT; the executable exports
-  nothing. Its entry point stores C's `exit` in `Rt.cExit` before any
-  module body runs.
+  nothing. Its entry point stores C's `exit` in `Rt.cExit`, and, if
+  the program has `Thread`, `pthread_create` and `pthread_join` in
+  `Thread.cCreate` and `Thread.cJoin`, before any module body runs:
+  `Thread` then makes C's threads, which C's library knows of, and
+  uses no C itself.
 - **Frames.** A deferred statement's slots stay reserved for the rest
   of its procedure. A generic instance first used in a procedure, or in
   a module's body, is made before that code begins (`instancesFor`).
