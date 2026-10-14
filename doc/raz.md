@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.21 of the report; section 11 says where each
+This is version 2026-10.22 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -50,7 +50,7 @@ executable `Hello`.
 
 A program is written in UTF-8. The compiler rejects a file that isn't
 valid UTF-8: a malformed or overlong sequence, a surrogate, or a code
-point beyond 10FFFFH. Everything outside strings, characters and
+point beyond 10FFFFH, and a file with a NUL byte. Everything outside strings, characters and
 comments is ASCII. Spaces, tabs and line breaks separate symbols and
 are otherwise ignored.
 
@@ -81,7 +81,8 @@ digit, its digits are `0` to `9` and `A` to `F`, and it ends in `H`,
 all in capitals. `1.5` and `2.0E-3` are reals; a real always has a
 digit on both sides of its point, and its exponent, if it has one, is
 `E`, a sign if wanted, and digits. A decimal number above the largest
-`I64`, or a hexadecimal one above the largest `U64`, is an error.
+`I64`, or a hexadecimal one above the largest `U64`, is an error; so is
+a real above the largest `F64`. A real below the least `F64` is 0.
 
 An integer is an untyped constant, which takes the type it is used as,
 up to the largest `I64`. A hexadecimal number above that, such as
@@ -103,7 +104,7 @@ error for `x: F64`, and `x := 1.0;` is right.
 `"é"` is the two bytes 0C3H, 0A9H. Both characters and strings take the
 escapes `\n` (line feed), `\t` (tab), `\r` (carriage return), `\0`
 (zero), `\\`, `\'`, `\"`, `\u{H...}` (the code point with hexadecimal
-value H..., in a string its UTF-8) and, in strings only, `\xHH` (the
+value H..., up to 10FFFFH, in a string its UTF-8) and, in strings only, `\xHH` (the
 byte with hexadecimal value HH, which needn't make valid UTF-8). In
 an escape, the hexadecimal digits may be capitals or not. A character
 or a string ends on the line it starts on.
@@ -759,7 +760,7 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 | `F32` | `F64` | the same value |
 | `F64` | `F32` | the nearest `F32`; too big a value gives an infinity |
 | enumeration | integer | its position |
-| integer | enumeration | the name at that position; a position out of range is a failed check (6.5) |
+| integer | enumeration | the name at that position; a position out of range is a failed check (6.5), and in a constant an error |
 | set | integer | its bits |
 | integer | set | the low bits, as many as the set has |
 | `INT`, `UINT` | pointer, procedure | the address |
@@ -960,7 +961,9 @@ of exactly its size, and volatile accesses happen in the order the
 program writes them. Copying a whole record or array through a
 volatile pointer is not allowed, since it can't be one access.
 
-A `^VOLATILE T` doesn't convert to `^T` without a written conversion.
+A `^VOLATILE T` doesn't convert to `^T` without a written conversion,
+and a volatile variable isn't passed as a `var` argument, which would
+lose its volatility.
 
 `FENCE` also orders the program's ordinary accesses against those of
 other processors and devices.
@@ -1166,8 +1169,9 @@ end Divide.
 ```
 
 **forward.** `proc f(x: I64): I64; forward;` declares `f` so that it
-can be called before its body appears; the body comes later with the
-same signature, though its parameters may have other names.
+can be called before its body appears; the body comes later in the
+module, with the same signature, though its parameters may have other
+names; a `forward` with no body is an error.
 
 A name after a procedure's `end`, if written, is the procedure's own.
 
@@ -1323,7 +1327,11 @@ is an error isn't a raz program, and an implementation must reject it:
 say what is wrong and make no executable. Such a rule is one whose
 breach would leave the program with no meaning this report can give: a
 mistake of types, a name that isn't declared or is declared twice, an
-assignment to what is read-only, a module that imports itself. A fault
+assignment to what is read-only, a call with the wrong number of
+arguments, a type name or a procedure with no result used as a value,
+type arguments given to a module that isn't generic, or too many, an
+import that can't be found, a procedure declared `forward` and never
+defined, a module that imports itself. A fault
 that is only a lint isn't an error: a name declared and never used, or
 a result that a call standing on its own drops (`Sys.write(fd, s);`,
 where `_ := Sys.write(fd, s);` says it is meant). A program with one is

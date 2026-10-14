@@ -110,3 +110,18 @@ at the time.
   becomes a reserved word, which breaks a program with a name `try`.
 - **2026-10.21.** An arm of a `match` on an enumeration may name
   several of its names (section 7.4).
+- **2026-10.22.** Mends and trims, from an audit of the report against its
+  tests. What is an error is stated once (section 10), by meaning; the
+  words of messages, the number of them and the warnings are an
+  implementation's. Every stop of a running program, a nil pointer, a
+  division by zero, a stack overflow, a failed check, ends with status 2,
+  after the `Rt.atExit` procedures (section 10). Readings the compiler
+  had taken are in the report: `check` and `off` aren't reserved, an
+  untyped constant converts to a pointer as an `INT` does, a shift of an
+  untyped constant, which types `match` takes, `lo` above `hi`, a `defer`
+  in a `defer`, where an `INT` widens, a real above the largest `F64`, a
+  code point above 10FFFFH, a NUL byte, a volatile variable passed by
+  `var`, and a `forward` with no body. The core of the library is what
+  `conform/` tests (appendix A); the rest of the library is the standard
+  library. The report is in two volumes, `doc/raz.md` and `doc/raz-lib.md`,
+  and its history is here.
