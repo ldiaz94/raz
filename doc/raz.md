@@ -21,8 +21,8 @@ for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
 procedures written for 2026-10.11. 2026-10.20 is a third, for `try`
 (section 7.8); it breaks a program that has a name `try`. 2026-10.25
 is a fourth, for strings: raw strings, which may run over lines
-(section 2), and `match` on a string (section 7.4); it breaks no
-program.
+and may be indented with the code around them (section 2), and
+`match` on a string (section 7.4); it breaks no program.
 
 The compiler follows version 2026-10.24 until it has what 2026-10.25
 adds.
@@ -120,19 +120,31 @@ or a string in double quotes, ends on the line it starts on.
 backquotes: its bytes are the text between them as it stands, with no
 escapes, so `\` and `"` are themselves. A raw string may run over
 lines, and each line break in it is a line feed, part of the string; a
-carriage return in it is left out, and so is a line break right after
-the opening backquote, so that a long text may start on a line of its
-own:
+carriage return in it is left out.
+
+A raw string whose opening backquote ends its line, and whose closing
+backquote has only blanks (spaces and tabs) before it on its line, is
+indented: the text is its lines between those two, each without the
+closing line's blanks at its start, and each ending in a line feed. So
+a long text may stand at the indentation of the code around it:
 
 ```
-const Usage = `
-usage: tool [-v] file ...
-  -v  say what is done
-`;
+proc usage;
+begin
+    Out.str(`
+        usage: tool [-v] file ...
+          -v  say what is done
+        `);
+end;
 ```
 
-is `"usage: tool [-v] file ...\n  -v  say what is done\n"`. A raw
-string can't hold a backquote; a text that needs one joins it with
+writes `"usage: tool [-v] file ...\n  -v  say what is done\n"`. Each
+line of an indented raw string must start with the closing line's
+blanks, the same spaces and tabs in the same order, or it is an error;
+a line holding only blanks is an empty line of the text. A raw string
+that isn't indented is the text between its backquotes as it stands.
+
+A raw string can't hold a backquote; a text that needs one joins it with
 `+`, as ``"`"``. Everywhere else a raw string is a string, as one in
 double quotes is.
 

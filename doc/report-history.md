@@ -135,9 +135,10 @@ at the time.
   `memFile` and `mapFile`. `Thread` works in a program that uses C,
   and no longer says `link static` (volume 2).
 - **2026-10.25.** A thaw, for strings. A raw string, between
-  backquotes, has no escapes and may run over lines (section 2 and
-  appendix B); `match` takes a string, with string constants as labels
+  backquotes, has no escapes and may run over lines, indented with
+  the code around it (section 2 and appendix B); `match` takes a string, with string constants as labels
   (section 7.4). It breaks no program. `Str` gains `eqFold`,
   `findLast`, `hasSuffix`, `trim`, `trimLeft`, `trimRight`, `cut`,
-  `field`, `lower`, `upper`, `join`, `replace`, `decodeLast`, `valid`,
-  `chars`, `toHex` and `fromInt`; `Math` gains `toReal` (volume 2).
+  `field`, `lower`, `upper`, `join`, `replace`, `decodeLast`,
+  `next`, `valid`, `chars`, `toHex` and `fromInt`; `Math` gains
+  `toReal` (volume 2).

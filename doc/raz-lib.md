@@ -423,6 +423,7 @@ proc replace*(b: ^Buf.Buf; s, old, new: []U8);       (* s added to b, with new f
 proc encode*(c: I32): ([4]U8, INT);   (* c in UTF-8: its bytes, and how many *)
 proc decode*(s: []U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
 proc decodeLast*(s: []U8): (I32, INT);   (* the character s ends with, and its length in bytes *)
+proc next*(s: []U8; i: INT): (I32, INT);  (* the character at i, and where the next starts; -1 at the end *)
 proc valid*(s: []U8): BOOL;           (* s is UTF-8, every character rightly spelled *)
 proc chars*(s: []U8): INT;            (* the characters in s, as decode reads them *)
 proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
@@ -516,15 +517,16 @@ followed by too few continuations, a surrogate, a character beyond
 10FFFFH or one spelled in more bytes than it needs. `decodeLast` reads
 the last character in the same way, to walk a string backwards.
 `valid` says that `decode` finds no such byte in `s`, and `chars`
-counts the characters, each such byte one. A string is walked a
-character at a time so:
+counts the characters, each such byte one. `next` walks a string a
+character at a time, as `decode` reads them: from 0, it gives the
+character at `i` and where the one after it starts, and 0 and -1 when
+`i` is at the end, or past it:
 
 ```
-i := 0;
-while i < LEN(s) do
-    c, n := Str.decode(s[i..LEN(s)]);
-    ...
-    i := i + n;
+c, i := Str.next(s, 0);
+while i >= 0 do
+    ...                               (* c is a character of s *)
+    c, i := Str.next(s, i);
 end;
 ```
 
