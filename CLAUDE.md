@@ -95,7 +95,7 @@ library. rat, rlX11 and rloc are other users of `Sys`.
 defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes in
 `PROPOSALS.md`, for a later thaw; it isn't built. Thaws happen only by the
-owner's word (v0.6.0, and reports 2026-10.13 to 10.23).
+owner's word (v0.6.0, reports 2026-10.13 to 10.23, and 10.25 for strings).
 
 The parser reaches the machine only through `Gen.raz`. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the

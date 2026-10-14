@@ -15,23 +15,6 @@ Met in porting the compiler to raz, where the seed's `const x: TItem`
 Measured once the port built: not what stands out, the compiler's
 profile is flat (`Scan.tokPos` is 9%).
 
-## Text that runs over lines, or comes from a file
-
-A string ends on the line it starts on, so a long text, a program's
-help or a script it carries, is written as one constant of many
-strings joined by `+`, a `\n` at the end of each. Two ways out, either
-enough:
-
-- a string that may run over lines, its line breaks part of it;
-- a constant whose value is a file's bytes, read when the module is
-  compiled, found as a module is: `const Prelude = file "prelude.fs";`.
-  The second keeps the text a file of its own, which an editor and
-  other tools see as what it is.
-
-Met in tery, a Forth in raz, whose prelude of 270 lines of Forth is
-made into a module of 270 strings by `sed` in its Makefile, every `\`
-and `"` escaped.
-
 ## Dereferencing a conversion
 
 `^I64(ADR(mem[a]))^` is an error today ("a conversion can't be

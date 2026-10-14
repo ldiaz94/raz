@@ -13,13 +13,19 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.24 of the report; section 11 says where each
+This is version 2026-10.25 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
 0.5.0, the last release before them; and 2026-10.12 breaks code
 procedures written for 2026-10.11. 2026-10.20 is a third, for `try`
-(section 7.8); it breaks a program that has a name `try`.
+(section 7.8); it breaks a program that has a name `try`. 2026-10.25
+is a fourth, for strings: raw strings, which may run over lines
+(section 2), and `match` on a string (section 7.4); it breaks no
+program.
+
+The compiler follows version 2026-10.24 until it has what 2026-10.25
+adds.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -107,8 +113,28 @@ escapes `\n` (line feed), `\t` (tab), `\r` (carriage return), `\0`
 (zero), `\\`, `\'`, `\"`, `\u{H...}` (the code point with hexadecimal
 value H..., up to 10FFFFH, in a string its UTF-8) and, in strings only, `\xHH` (the
 byte with hexadecimal value HH, which needn't make valid UTF-8). In
-an escape, the hexadecimal digits may be capitals or not. A character
-or a string ends on the line it starts on.
+an escape, the hexadecimal digits may be capitals or not. A character,
+or a string in double quotes, ends on the line it starts on.
+
+**Raw strings.** ``` `C:\tmp\"a b"` ``` is a string written between
+backquotes: its bytes are the text between them as it stands, with no
+escapes, so `\` and `"` are themselves. A raw string may run over
+lines, and each line break in it is a line feed, part of the string; a
+carriage return in it is left out, and so is a line break right after
+the opening backquote, so that a long text may start on a line of its
+own:
+
+```
+const Usage = `
+usage: tool [-v] file ...
+  -v  say what is done
+`;
+```
+
+is `"usage: tool [-v] file ...\n  -v  say what is done\n"`. A raw
+string can't hold a backquote; a text that needs one joins it with
+`+`, as ``"`"``. Everywhere else a raw string is a string, as one in
+double quotes is.
 
 Messages give the line and the column, counted in characters
 (section 10).
@@ -905,8 +931,8 @@ match s of
 end;
 ```
 
-`match` takes a variant, an enumeration or an integer type (a `U8`
-included); other types are an error. It runs the arm of the case `s` holds. An arm may name the case's
+`match` takes a variant, an enumeration, an integer type (a `U8`
+included) or a string, a `[]U8`; other types are an error. It runs the arm of the case `s` holds. An arm may name the case's
 fields, in order, all of them; the names stand for those fields of `s`
 itself, so assigning to one changes `s`; if `s` isn't a variable, they
 stand for the fields of a copy. An arm may also leave the fields
@@ -943,9 +969,26 @@ A label is a constant, or `lo .. hi`, the constants from `lo` to `hi`,
 both included (unlike a slice, which leaves `hi` out; `lo` may not be
 above `hi`). Each must fit the integer's type, and no value may be in
 two labels. An integer
-`match` must have an `| else:` arm, which may be empty. Whether an arm
+`match` must have an `| else:` arm, which may be empty.
+
+`match` on a string, a `[]U8` or what converts to one (section 5.10),
+runs the arm one of whose labels it equals, as `=` compares strings
+(section 6.5):
+
+```
+match word of
+| "add", "plus": op := add;
+| "sub":         op := sub;
+| else:          op := none;
+end;
+```
+
+A label is a string constant, and no two labels may be equal; there
+are no ranges. A `match` on a string must have an `| else:` arm, which
+may be empty. Whether an arm
 names a case or gives labels is set by the type matched: `| Max:` is a
-case of a variant or an enumeration, and a constant for an integer.
+case of a variant or an enumeration, and a constant for an integer
+or a string.
 
 ### 7.5 Order of evaluation
 
@@ -1429,7 +1472,8 @@ number     = digit { digit }
            | digit { hexDigit } "H"
            | digit { digit } "." digit { digit } [ "E" [ "+" | "-" ] digit { digit } ] .
 char       = "'" ( character | escape ) "'" .
-string     = '"' { character | escape | "\x" anyHex anyHex } '"' .
+string     = '"' { character | escape | "\x" anyHex anyHex } '"'
+           | "`" { rawChar } "`" .
 escape     = "\n" | "\t" | "\r" | "\0" | "\\" | "\'" | '\"'
            | "\u{" anyHex { anyHex } "}" .
 anyHex     = hexDigit | "a" .. "f" .
@@ -1517,7 +1561,8 @@ ExternDeclaration = "extern" ( "proc" IdentDef Signature
 ```
 
 `character` is any character but a line break, and in a string any
-but `"` and `\`, in a character any but `'` and `\`. A procedure
+but `"` and `\`, in a character any but `'` and `\`. `rawChar` is any
+character but `` ` ``, line breaks included. A procedure
 argument of a generic module (section 3) is written as a `QualIdent`,
 which is a `Type` here. `...` comes last in a `Signature`, and only in
 an `extern`. An `Instruction` is written in the target's assembly

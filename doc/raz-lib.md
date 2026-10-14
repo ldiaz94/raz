@@ -19,7 +19,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
 | `Heap` | a general allocator, `Heap.heap`, safe to call from several threads; freeing a block twice, or one it never gave out, stops the program |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
-| `Str` | operations on `[]U8` strings: comparing, hashing, finding, UTF-8, reading a number |
+| `Str` | operations on `[]U8` strings: comparing, hashing, finding, trimming and cutting, case, joining and replacing, UTF-8, numbers to and from text |
 | `Bytes` | searches of bytes, many at a time: `index`, `last`, `count` and `find` in a `[]U8`; one file per target where the target has instructions for it |
 | `Buf` | a growable byte buffer |
 | `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)])`, or into a `Buf` with `Fmt.write` |
@@ -404,13 +404,30 @@ is ready for either; the 64 it looks at are `reads`, then `writes`.
 module Str;
 proc cmp*(a, b: []U8): INT;           (* -1, 0 or 1 as a sorts before, with or after b, byte by byte *)
 proc eq*(a, b: []U8): BOOL;
+proc eqFold*(a, b: []U8): BOOL;       (* eq, an ASCII letter's capital and small the same *)
 proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);   (* s's bytes in memory from a; false if a has none *)
 proc hash*(s: []U8): U64;             (* FNV-1a, 64 bits *)
 proc find*(s, sub: []U8): INT;        (* where sub first starts in s, or -1 *)
+proc findLast*(s, sub: []U8): INT;    (* where sub last starts in s, or -1 *)
 proc hasPrefix*(s, p: []U8): BOOL;
+proc hasSuffix*(s, x: []U8): BOOL;
+proc trim*(s: []U8): []U8;            (* s without the spaces at either end *)
+proc trimLeft*(s: []U8): []U8;        (* s without the spaces at its start *)
+proc trimRight*(s: []U8): []U8;       (* s without the spaces at its end *)
+proc cut*(s, sep: []U8): ([]U8, []U8, BOOL);   (* what comes before the first sep, and after it *)
+proc field*(s: []U8): ([]U8, []U8);   (* the first run of bytes in s that aren't spaces, and what follows it *)
+proc lower*(s: []U8);                 (* s's ASCII capitals made small, in place *)
+proc upper*(s: []U8);                 (* s's ASCII small letters made capitals, in place *)
+proc join*(b: ^Buf.Buf; parts: [][]U8; sep: []U8);   (* the parts added to b, sep between each two *)
+proc replace*(b: ^Buf.Buf; s, old, new: []U8);       (* s added to b, with new for each old in it *)
 proc encode*(c: I32): ([4]U8, INT);   (* c in UTF-8: its bytes, and how many *)
 proc decode*(s: []U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
+proc decodeLast*(s: []U8): (I32, INT);   (* the character s ends with, and its length in bytes *)
+proc valid*(s: []U8): BOOL;           (* s is UTF-8, every character rightly spelled *)
+proc chars*(s: []U8): INT;            (* the characters in s, as decode reads them *)
 proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
+proc toHex*(s: []U8): (U64, BOOL);    (* s, in hexadecimal; false if it isn't a number a U64 holds *)
+proc fromInt*(n: I64): ([20]U8, INT); (* n in decimal: its bytes, and how many *)
 proc le*(s: []U8): U64;               (* s, at most 8 bytes, the first the lowest *)
 proc be*(s: []U8): U64;               (* s, at most 8 bytes, the first the highest *)
 proc putLE*(s: []U8; v: U64);         (* v into s, the lowest byte first *)
@@ -481,6 +498,7 @@ proc atan2*(y, x: F64): F64;          (* the angle of (x, y) from the x axis, fr
 proc bits*(x: F64): U64;              (* the bits of x, as IEEE 754 lays them out *)
 proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
 proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
+proc toReal*(s: []U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn't one *)
 ```
 
 A `Buf`, a `List` and a `Map` take their memory from the allocator
@@ -493,8 +511,56 @@ compares its keys with the procedures it is given:
 10FFFFH, in one to four bytes; a number that isn't one becomes FFFDH,
 the character that stands for a wrong one. `decode` reads the first
 character of `s`, and gives FFFDH and 1 for a byte that doesn't start
-one rightly, and 0 and 0 for an empty `s`. `toInt` reads a decimal
-number, with a `-` or `+` before it if any, and nothing else.
+one rightly, and 0 and 0 for an empty `s`: a continuation, a byte
+followed by too few continuations, a surrogate, a character beyond
+10FFFFH or one spelled in more bytes than it needs. `decodeLast` reads
+the last character in the same way, to walk a string backwards.
+`valid` says that `decode` finds no such byte in `s`, and `chars`
+counts the characters, each such byte one. A string is walked a
+character at a time so:
+
+```
+i := 0;
+while i < LEN(s) do
+    c, n := Str.decode(s[i..LEN(s)]);
+    ...
+    i := i + n;
+end;
+```
+
+A string is bytes, and `Str` takes no more of Unicode than UTF-8:
+`lower`, `upper` and `eqFold` change and match ASCII letters alone,
+and nothing says how wide a character is on a terminal, nor which
+spellings of a text are the same.
+
+A space, to `trim`, `trimLeft`, `trimRight` and `field`, is a blank, a
+tab, a line feed, a carriage return, a vertical tab or a form feed.
+`cut` gives what comes before the first `sep` in `s`, what comes after
+it, and `true`; or `s`, an empty string and `false` if `s` has no
+`sep`. `field` passes the spaces at the start of `s` and gives the
+bytes up to the next space or the end, and the rest of `s` from there;
+two empty strings if `s` holds only spaces. They take a string apart
+without memory of their own, each part a slice of `s`:
+
+```
+line, rest, more := Str.cut(text, "\n");     (* the first line, and the others *)
+key, val, ok := Str.cut(line, "=");
+w, rest := Str.field(line);                 (* the words of a line *)
+while LEN(w) > 0 do
+    Out.str(w); Out.ln;
+    w, rest := Str.field(rest);
+end;
+```
+
+`lower` and `upper` write `s`'s bytes, so they take a variable's, not
+a string literal's (section 5.10). `join` and `replace` add to a
+`Buf` as `Buf.str` does; an empty `old` adds `s` as it is.
+
+`toInt` reads a decimal number, with a `-` or `+` before it if any,
+and nothing else. `toHex` reads hexadecimal digits, capitals or not,
+and nothing else: no sign, `0x` or `H`. `fromInt` writes a number as
+`Out.int` does, with a `-` if it is negative, its bytes the first of
+the 20 it gives.
 
 `le` and `be` read an unsigned number of up to 8 bytes in a fixed
 order, little-endian or big-endian, whatever the machine's own, and
@@ -505,6 +571,13 @@ They are how a file format or a network protocol is read and written:
 len := U32(Str.le(header[4..8]));
 Str.putBE(packet[0..2], U64(port));
 ```
+
+`Math.toReal` reads a real as a constant is written (section 2), with
+a `-` or `+` before it if any, its point and the digits after it, or
+its exponent, left out if it has none, and `e` taken as `E`: `2`,
+`-0.5` and `1.5e-3` are reals to it. It gives the `F64` nearest the
+number, and `false` for anything else, or a number too big for an
+`F64`.
 
 `Map.next` walks a map: from 0, it gives the next entry and the number
 to pass for the one after it, and -1 when there are no more. A walk
