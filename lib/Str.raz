@@ -1,8 +1,11 @@
 (* Operations on strings, which are []U8. = and # compare them; this
-   module orders, searches and hashes them, reads and writes their
-   UTF-8, reads a number from one, and copies one to keep. *)
+   module orders, searches and hashes them, trims them and takes them
+   apart, changes the case of their ASCII letters, joins them and
+   replaces in them, reads and writes their UTF-8, reads a number from
+   one and writes one, and copies one to keep. A part it gives is a
+   slice of the string it was given, with no memory of its own. *)
 module Str;
-import Mem, Heap, Rt, Bytes;
+import Mem, Heap, Rt, Bytes, Buf;
 
 const least = -9223372036854775807 - 1;   (* the smallest I64 *)
 
@@ -41,6 +44,24 @@ begin
     return a = b;
 end;
 
+(* c, a small letter if it is an ASCII capital. *)
+proc small(c: U8): U8;
+begin
+    if (c >= 'A') and (c <= 'Z') then return c + 32; end;
+    return c;
+end;
+
+(* Whether a and b are the same but for the case of ASCII letters. *)
+proc eqFold*(a, b: []U8): BOOL;
+var i: INT;
+begin
+    if LEN(a) # LEN(b) then return false; end;
+    for i := 0 to LEN(a) - 1 do
+        if small(a[i]) # small(b[i]) then return false; end;
+    end;
+    return true;
+end;
+
 (* FNV-1a, 64 bits. *)
 proc hash*(s: []U8): U64;
 var h: U64; i: INT;
@@ -58,10 +79,121 @@ begin
     return Bytes.find(s, sub);
 end;
 
+(* Where sub last starts in s, or -1. *)
+proc findLast*(s, sub: []U8): INT;
+var i: INT;
+begin
+    for i := LEN(s) - LEN(sub) to 0 by -1 do
+        if s[i..i + LEN(sub)] = sub then return i; end;
+    end;
+    return -1;
+end;
+
 (* Whether s starts with p. *)
 proc hasPrefix*(s, p: []U8): BOOL;
 begin
     return (LEN(s) >= LEN(p)) and (s[0..LEN(p)] = p);
+end;
+
+(* Whether s ends with x. *)
+proc hasSuffix*(s, x: []U8): BOOL;
+begin
+    return (LEN(s) >= LEN(x)) and (s[LEN(s) - LEN(x)..LEN(s)] = x);
+end;
+
+(* Whether c is a space: a blank, a tab, a line feed, a vertical tab, a
+   form feed or a carriage return. *)
+proc space(c: U8): BOOL;
+begin
+    return (c = ' ') or (c >= 9) and (c <= 13);
+end;
+
+(* s without the spaces at its start. *)
+proc trimLeft*(s: []U8): []U8;
+var i: INT;
+begin
+    i := 0;
+    while (i < LEN(s)) and space(s[i]) do INC(i); end;
+    return s[i..LEN(s)];
+end;
+
+(* s without the spaces at its end. *)
+proc trimRight*(s: []U8): []U8;
+var n: INT;
+begin
+    n := LEN(s);
+    while (n > 0) and space(s[n - 1]) do DEC(n); end;
+    return s[0..n];
+end;
+
+(* s without the spaces at either end. *)
+proc trim*(s: []U8): []U8;
+begin
+    return trimRight(trimLeft(s));
+end;
+
+(* What comes before the first sep in s, what comes after it, and true;
+   or s, an empty string and false if s has no sep. *)
+proc cut*(s, sep: []U8): ([]U8, []U8, BOOL);
+var i: INT;
+begin
+    i := find(s, sep);
+    if i < 0 then return s, s[LEN(s)..LEN(s)], false; end;
+    return s[0..i], s[i + LEN(sep)..LEN(s)], true;
+end;
+
+(* The first word of s, the bytes after the spaces at its start up to
+   the next space or the end, and the rest of s from there; two empty
+   strings if s holds only spaces. *)
+proc field*(s: []U8): ([]U8, []U8);
+var i: INT;
+begin
+    s := trimLeft(s);
+    i := 0;
+    while (i < LEN(s)) and not space(s[i]) do INC(i); end;
+    return s[0..i], s[i..LEN(s)];
+end;
+
+(* s's ASCII capitals made small, in place. *)
+proc lower*(s: []U8);
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do s[i] := small(s[i]); end;
+end;
+
+(* s's small ASCII letters made capitals, in place. *)
+proc upper*(s: []U8);
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do
+        if (s[i] >= 'a') and (s[i] <= 'z') then s[i] := s[i] - 32; end;
+    end;
+end;
+
+(* The parts added to b, with sep between each two. *)
+proc join*(b: ^Buf.Buf; parts: [][]U8; sep: []U8);
+var i: INT;
+begin
+    for i := 0 to LEN(parts) - 1 do
+        if i > 0 then Buf.str(b, sep); end;
+        Buf.str(b, parts[i]);
+    end;
+end;
+
+(* s added to b, with new for each old in it, from the left, none
+   overlapping another; s as it is if old is empty. *)
+proc replace*(b: ^Buf.Buf; s, old, new: []U8);
+var i: INT;
+begin
+    i := -1;
+    if LEN(old) > 0 then i := find(s, old); end;
+    while i >= 0 do
+        Buf.str(b, s[0..i]);
+        Buf.str(b, new);
+        s := s[i + LEN(old)..LEN(s)];
+        i := find(s, old);
+    end;
+    Buf.str(b, s);
 end;
 
 (* c in UTF-8: its bytes, and how many. A number that isn't a
@@ -116,6 +248,57 @@ begin
     return c, n;
 end;
 
+(* The character s ends with, and its length in bytes, read as decode
+   reads one: FFFDH and 1 if the last byte doesn't end one rightly; 0
+   and 0 if s is empty. *)
+proc decodeLast*(s: []U8): (I32, INT);
+var c: I32; i, n: INT;
+begin
+    if LEN(s) = 0 then return 0, 0; end;
+    (* back to the byte that starts it, at most 3 continuations back *)
+    i := LEN(s) - 1;
+    while (i > 0) and (i > LEN(s) - 4) and (s[i] & 0C0H = 80H) do DEC(i); end;
+    c, n := decode(s[i..LEN(s)]);
+    if i + n # LEN(s) then return 0FFFDH, 1; end;
+    return c, n;
+end;
+
+(* The character at i in s, as decode reads it, and where the one after
+   it starts; 0 and -1 if i is at the end or past it. *)
+proc next*(s: []U8; i: INT): (I32, INT);
+var c: I32; n: INT;
+begin
+    if i >= LEN(s) then return 0, -1; end;
+    c, n := decode(s[i..LEN(s)]);
+    return c, i + n;
+end;
+
+(* The characters in s, as decode reads them, each byte that doesn't
+   start one rightly counted as one. *)
+proc chars*(s: []U8): INT;
+var i, n: INT;
+begin
+    _, i := next(s, 0);
+    while i >= 0 do
+        INC(n);
+        _, i := next(s, i);
+    end;
+    return n;
+end;
+
+(* Whether s is UTF-8: decode finds no byte that doesn't start a
+   character rightly. *)
+proc valid*(s: []U8): BOOL;
+var c: I32; i, n: INT;
+begin
+    while i < LEN(s) do
+        c, n := decode(s[i..LEN(s)]);
+        if (c = 0FFFDH) and (n = 1) then return false; end;
+        INC(i, n);
+    end;
+    return true;
+end;
+
 (* s as a decimal number, with a - or + before it if any, and nothing
    else; false if it isn't one, or an I64 can't hold it. *)
 proc toInt*(s: []U8): (I64, BOOL);
@@ -137,6 +320,43 @@ begin
         n := -n;
     end;
     return n, true;
+end;
+
+(* s in hexadecimal, digits only, capitals or not; false if it isn't
+   that, or a U64 can't hold it. *)
+proc toHex*(s: []U8): (U64, BOOL);
+var v: U64; d, i: INT;
+begin
+    if LEN(s) = 0 then return 0, false; end;
+    for i := 0 to LEN(s) - 1 do
+        match s[i] of
+        | '0'..'9': d := INT(s[i]) - '0';
+        | 'A'..'F': d := INT(s[i]) - 'A' + 10;
+        | 'a'..'f': d := INT(s[i]) - 'a' + 10;
+        | else: return 0, false;
+        end;
+        if v shr 60 # 0 then return 0, false; end;
+        v := v shl 4 | U64(d);
+    end;
+    return v, true;
+end;
+
+(* n in decimal, as Out.int writes it: its bytes, the first of the 20,
+   and how many. *)
+proc fromInt*(n: I64): ([20]U8, INT);
+var t, d: [20]U8; u: U64; i: INT;
+begin
+    (* as a U64, which holds the smallest I64's magnitude *)
+    if n < 0 then u := U64(-(n + 1)) + 1; else u := U64(n); end;
+    i := 20;
+    repeat
+        DEC(i);
+        t[i] := U8(u mod 10) + '0';
+        u := u div 10;
+    until u = 0;
+    if n < 0 then DEC(i); t[i] := '-'; end;
+    COPY(d[0..20 - i], t[i..20]);
+    return d, 20 - i;
 end;
 
 (* The bytes of s, at most 8, as an unsigned number, the first byte
@@ -235,6 +455,66 @@ begin
     b := [0F4H, 90H, 80H, 80H];
     c, n := decode(b);
     if (c # 0FFFDH) or (n # 1) then Rt.stop("Str.decode: past 10FFFFH"); end;
+    if not valid(b[1..1]) or valid(b) then Rt.stop("Str.valid"); end;
+    c, n := decodeLast("a€");
+    if (c # 20ACH) or (n # 3) then Rt.stop("Str.decodeLast: €"); end;
+    c, n := decodeLast("");
+    if (c # 0) or (n # 0) then Rt.stop("Str.decodeLast: empty"); end;
+    b := ['a', 0E2H, 82H, 0];
+    c, n := decodeLast(b[0..3]);
+    if (c # 0FFFDH) or (n # 1) then Rt.stop("Str.decodeLast: cut short"); end;
+    b := [80H, 80H, 80H, 80H];
+    c, n := decodeLast(b);
+    if (c # 0FFFDH) or (n # 1) then Rt.stop("Str.decodeLast: continuations"); end;
+    if (chars("héllo😀") # 6) or (chars("") # 0) or (chars(b) # 4) or not valid("héllo😀")
+        then Rt.stop("Str.chars"); end;
+    c, n := next("é!", 0);
+    if (c # 0E9H) or (n # 2) then Rt.stop("Str.next"); end;
+    c, n := next("é!", 2);
+    if (c # '!') or (n # 3) then Rt.stop("Str.next: !"); end;
+    c, n := next("é!", 3);
+    if (c # 0) or (n # -1) then Rt.stop("Str.next: the end"); end;
+end;
+
+proc testParts;
+var b: Buf.Buf; w, rest, k, v: []U8; ok: BOOL; up: [5]U8;
+begin
+    if not eqFold("Hello", "hELLO") or eqFold("a", "b") or eqFold("a", "ab") or not eqFold("", "")
+        or eqFold("@", "`") then Rt.stop("Str.eqFold"); end;
+    if (findLast("abcabc", "bc") # 4) or (findLast("abc", "x") # -1) or (findLast("abc", "") # 3)
+        or (findLast("ab", "abc") # -1) then Rt.stop("Str.findLast"); end;
+    if not hasSuffix("hello", "lo") or hasSuffix("lo", "hello") or not hasSuffix("x", "")
+        then Rt.stop("Str.hasSuffix"); end;
+    if (trim(" \t a b \r\n") # "a b") or (trimLeft("  a ") # "a ") or (trimRight("  a ") # "  a")
+        or (trim("   ") # "") or (trim("") # "") then Rt.stop("Str.trim"); end;
+    k, v, ok := cut("key=val=ue", "=");
+    if not ok or (k # "key") or (v # "val=ue") then Rt.stop("Str.cut"); end;
+    k, v, ok := cut("none", "=");
+    if ok or (k # "none") or (v # "") then Rt.stop("Str.cut: none"); end;
+    w, rest := field("  one two\tthree ");
+    if (w # "one") or (rest # " two\tthree ") then Rt.stop("Str.field"); end;
+    w, rest := field(rest);
+    w, rest := field(rest);
+    if w # "three" then Rt.stop("Str.field: three"); end;
+    w, rest := field(rest);
+    if (w # "") or (rest # "") then Rt.stop("Str.field: none"); end;
+    up := "aB-z9";
+    upper(up);
+    if up # "AB-Z9" then Rt.stop("Str.upper"); end;
+    lower(up);
+    if up # "ab-z9" then Rt.stop("Str.lower"); end;
+    Buf.init(ADR(b), Heap.heap);
+    join(ADR(b), ["a", "b", "c"], ", ");
+    if Buf.bytes(ADR(b)) # "a, b, c" then Rt.stop("Str.join"); end;
+    Buf.reset(ADR(b));
+    join(ADR(b), [], "-");
+    replace(ADR(b), "a.b..c", ".", "::");
+    if Buf.bytes(ADR(b)) # "a::b::::c" then Rt.stop("Str.replace"); end;
+    Buf.reset(ADR(b));
+    replace(ADR(b), "aaa", "aa", "b");
+    replace(ADR(b), "xy", "", "-");
+    if Buf.bytes(ADR(b)) # "baxy" then Rt.stop("Str.replace: overlapping, empty"); end;
+    Buf.done(ADR(b));
 end;
 
 proc testToInt;
@@ -264,6 +544,29 @@ begin
     if ok then Rt.stop("Str.toInt: a space"); end;
 end;
 
+proc testNumbers;
+var u: U64; ok: BOOL; d: [20]U8; n: INT;
+begin
+    u, ok := toHex("ff");
+    if not ok or (u # 255) then Rt.stop("Str.toHex: ff"); end;
+    u, ok := toHex("FFFFFFFFFFFFFFFF");
+    if not ok or (u # 0FFFFFFFFFFFFFFFFH) then Rt.stop("Str.toHex: the largest"); end;
+    u, ok := toHex("10000000000000000");
+    if ok then Rt.stop("Str.toHex: past the largest"); end;
+    u, ok := toHex("0x1");
+    if ok then Rt.stop("Str.toHex: 0x"); end;
+    u, ok := toHex("");
+    if ok then Rt.stop("Str.toHex: empty"); end;
+    d, n := fromInt(0);
+    if d[0..n] # "0" then Rt.stop("Str.fromInt: 0"); end;
+    d, n := fromInt(-1234);
+    if d[0..n] # "-1234" then Rt.stop("Str.fromInt: -1234"); end;
+    d, n := fromInt(least);
+    if d[0..n] # "-9223372036854775808" then Rt.stop("Str.fromInt: the smallest"); end;
+    d, n := fromInt(9223372036854775807);
+    if d[0..n] # "9223372036854775807" then Rt.stop("Str.fromInt: the largest"); end;
+end;
+
 (* The module's test: stops the program if something is wrong. *)
 proc main*;
 var buf: [3]U8; t: []U8; ok: BOOL;
@@ -279,8 +582,10 @@ begin
     if (find("hello", "ll") # 2) or (find("hello", "x") # -1) or (find("", "") # 0)
         or (find("ab", "abc") # -1) then Rt.stop("Str.find"); end;
     if not hasPrefix("hello", "he") or hasPrefix("he", "hello") then Rt.stop("Str.hasPrefix"); end;
+    testParts;
     testUtf8;
     testToInt;
+    testNumbers;
     testOrder;
 end;
 

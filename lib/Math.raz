@@ -705,6 +705,250 @@ end;
 
 (* The module's test: values C's library gives, to within two units in
    the last place, and the edges. *)
+(* Reading a real from text exactly: the F64 nearest to its digits
+   times 10 to its exponent, ties to the even one, as the compiler
+   reads a constant (src/Scan.raz). The number is a fraction of two big
+   integers, num / den, scaled by 2^e until its whole part has 53 or 54
+   bits; that part and the remainder give the bits and the rounding. *)
+const
+    MaxDigits = 780;   (* significant digits kept; past them, a 1 if any left out isn't 0 *)
+
+type
+    Big = record
+        n: INT;                 (* words in use; 0 is zero *)
+        w: [128]U32;            (* least significant first *)
+    end;
+(* 768 significant digits are as many as can matter to rounding an
+   F64, so the ones past MaxDigits matter only by being 0 or not, which
+   a last digit 1 keeps. Then den is at most 10^(330 + 781), about
+   2^3691, and num below 10^310; the shift that follows makes the
+   larger at most 54 bits longer than den, and the long division
+   shifts den 53 more: under 3,800 bits, of the 4,096 here. *)
+
+(* a := a * m + add *)
+proc bigMul(var a: Big; m, add: U32);
+var i: INT; c: U64;
+begin
+    c := U64(add);
+    for i := 0 to a.n - 1 do
+        c := U64(a.w[i]) * U64(m) + c;
+        a.w[i] := U32(c);
+        c := c shr 32;
+    end;
+    if c # 0 then
+        a.w[a.n] := U32(c);
+        INC(a.n);
+    end;
+end;
+
+proc bigShl(var a: Big; k: INT);
+var i, ws, bits: INT;
+begin
+    if a.n = 0 then return; end;
+    ws := k div 32;
+    bits := k mod 32;
+    a.w[a.n + ws] := 0;
+    for i := a.n - 1 to 0 by -1 do
+        if bits > 0 then a.w[i + ws + 1] := a.w[i + ws + 1] | (a.w[i] shr (32 - bits)); end;
+        a.w[i + ws] := a.w[i] shl bits;
+    end;
+    for i := 0 to ws - 1 do a.w[i] := 0; end;
+    INC(a.n, ws + 1);
+    while (a.n > 0) and (a.w[a.n - 1] = 0) do DEC(a.n); end;
+end;
+
+proc bigShr1(var a: Big);
+var i: INT;
+begin
+    for i := 0 to a.n - 1 do
+        a.w[i] := a.w[i] shr 1;
+        if i + 1 < a.n then a.w[i] := a.w[i] | (a.w[i + 1] shl 31); end;
+    end;
+    while (a.n > 0) and (a.w[a.n - 1] = 0) do DEC(a.n); end;
+end;
+
+(* -1, 0 or 1 as a is below, equal to or above b *)
+proc bigCmp(var a, b: Big): INT;
+var i: INT;
+begin
+    if a.n # b.n then
+        if a.n > b.n then return 1; end;
+        return -1;
+    end;
+    for i := a.n - 1 to 0 by -1 do
+        if a.w[i] # b.w[i] then
+            if a.w[i] > b.w[i] then return 1; end;
+            return -1;
+        end;
+    end;
+    return 0;
+end;
+
+(* a := a - b, b not above a *)
+proc bigSub(var a, b: Big);
+var i: INT; d: I64;
+begin
+    d := 0;
+    for i := 0 to a.n - 1 do
+        d := d + I64(a.w[i]);
+        if i < b.n then d := d - I64(b.w[i]); end;
+        a.w[i] := U32(d);
+        if d < 0 then d := -1; else d := 0; end;    (* a borrow *)
+    end;
+    while (a.n > 0) and (a.w[a.n - 1] = 0) do DEC(a.n); end;
+end;
+
+proc bigBits(var a: Big): INT;
+var t: U32; bits: INT;
+begin
+    if a.n = 0 then return 0; end;
+    bits := (a.n - 1) * 32;
+    t := a.w[a.n - 1];
+    while t # 0 do
+        INC(bits);
+        t := t shr 1;
+    end;
+    return bits;
+end;
+
+(* Whether s[i] is a decimal digit. *)
+proc digitAt(s: []U8; i: INT): BOOL;
+begin
+    return (i < LEN(s)) and (s[i] >= '0') and (s[i] <= '9');
+end;
+
+(* s as a real: a sign if any, digits, a point and digits if any, and E
+   or e, a sign if any and digits if any; nothing else. The F64 nearest
+   it, ties to the even one, and false if s isn't one, or is past the
+   largest F64; one below the smallest is 0. *)
+proc toReal*(s: []U8): (F64, BOOL);
+var
+    num, den, d: Big; i, digits, e, ex: INT; neg, eneg, point, half, sticky: BOOL;
+    q, b: U64; x: F64;
+begin
+    x := 0.0;
+    num.n := 0;
+    den.n := 1;
+    den.w[0] := 1;
+    digits := 0;
+    e := 0;
+    sticky := false;
+    neg := (LEN(s) > 0) and (s[0] = '-');
+    i := 0;
+    if (LEN(s) > 0) and ((s[0] = '-') or (s[0] = '+')) then i := 1; end;
+    if not digitAt(s, i) then return x, false; end;
+    (* the digits: num, and e, the power of 10 it is to be taken to *)
+    point := false;
+    while digitAt(s, i) or not point and (i < LEN(s)) and (s[i] = '.') and digitAt(s, i + 1) do
+        if s[i] = '.' then
+            point := true;
+        elsif digits < MaxDigits then
+            bigMul(num, 10, U32(s[i] - '0'));
+            if num.n > 0 then INC(digits); end;     (* counted from the first that isn't 0 *)
+            if point then DEC(e); end;
+        else
+            (* a digit not kept, which still counts if it is before the point *)
+            if s[i] # '0' then sticky := true; end;
+            if not point then INC(e); end;
+        end;
+        INC(i);
+    end;
+    if sticky then bigMul(num, 10, 1); DEC(e); end;
+    ex := 0;
+    if (i < LEN(s)) and ((s[i] = 'E') or (s[i] = 'e')) then
+        INC(i);
+        eneg := (i < LEN(s)) and (s[i] = '-');
+        if (i < LEN(s)) and ((s[i] = '+') or (s[i] = '-')) then INC(i); end;
+        if not digitAt(s, i) then return x, false; end;
+        while digitAt(s, i) do
+            if ex < 100000 then ex := ex * 10 + INT(s[i]) - '0'; end;
+            INC(i);
+        end;
+        if eneg then ex := -ex; end;
+    end;
+    if i < LEN(s) then return x, false; end;
+    INC(e, ex);
+    if neg then x := -x; end;
+    if num.n = 0 then return x, true; end;
+    if digits + e > 310 then return x, false; end;  (* 10^310 is past every F64 *)
+    if digits + e < -330 then return x, true; end;  (* and 10^-330 below half the least *)
+    for i := 1 to e do bigMul(num, 10, 0); end;
+    for i := 1 to -e do bigMul(den, 10, 0); end;
+    (* num / den 2^-e from 2^52 to 2^54, but not past the least exponent *)
+    e := bigBits(num) - bigBits(den) - 53;
+    if e < -1074 then e := -1074; end;
+    if e < 0 then bigShl(num, -e); else bigShl(den, e); end;
+    (* q, its whole part, by long division; num is left the remainder *)
+    d := den;
+    bigShl(d, 53);
+    q := 0;
+    for i := 53 to 0 by -1 do
+        if bigCmp(num, d) >= 0 then
+            bigSub(num, d);
+            q := q | (U64(1) shl i);
+        end;
+        bigShr1(d);
+    end;
+    if q >= U64(1) shl 53 then                      (* a bit too many: it rounds *)
+        half := (q & 1) # 0;
+        sticky := num.n > 0;
+        q := q shr 1;
+        INC(e);
+    else                                            (* the remainder against half of den *)
+        bigShl(num, 1);
+        i := bigCmp(num, den);
+        half := i >= 0;
+        sticky := i > 0;
+    end;
+    if half and (sticky or ((q & 1) # 0)) then
+        INC(q);
+        if q = U64(1) shl 53 then
+            q := q shr 1;
+            INC(e);
+        end;
+    end;
+    if e > 971 then return x, false; end;
+    if q >= U64(1) shl 52 then
+        b := U64(e + 1075) shl 52 | (q & (U64(1) shl 52 - 1));
+    else
+        b := q;                                     (* below the least normal, e is -1074 *)
+    end;
+    if neg then b := b | (U64(1) shl 63); end;
+    return fromBits(b), true;
+end;
+
+(* Whether toReal reads s as want, exactly, or as nothing if not ok. *)
+proc reads(s: []U8; want: F64; ok: BOOL): BOOL;
+var x: F64; o: BOOL;
+begin
+    x, o := toReal(s);
+    return (o = ok) and (not ok or (bits(x) = bits(want)));
+end;
+
+proc testToReal;
+var b: [900]U8; i: INT;
+begin
+    if not reads("2", 2.0, true) or not reads("-0.5", -0.5, true) or not reads("1.5e-3", 1.5E-3, true)
+        or not reads("+1.25E+2", 125.0, true) or not reads("0.1", 0.1, true)
+        or not reads("1.7976931348623157E308", 1.7976931348623157E308, true)
+        or not reads("4.9e-324", fromBits(1), true) or not reads("1e-400", 0.0, true)
+        or not reads("-0", -0.0, true) or not reads("9007199254740993", 9007199254740992.0, true)
+        or not reads("1e309", 0.0, false) or not reads("1.8E308", 0.0, false)
+        then Rt.stop("Math.toReal"); end;
+    if not reads("", 0.0, false) or not reads("-", 0.0, false) or not reads("1.", 0.0, false)
+        or not reads(".5", 0.0, false) or not reads("1e", 0.0, false) or not reads("1.5.2", 0.0, false)
+        or not reads(" 1", 0.0, false) or not reads("1x", 0.0, false) or not reads("0x10", 0.0, false)
+        then Rt.stop("Math.toReal: not a real"); end;
+    (* 2^53 + 1, then 801 zeros and a 1: just above the half between two
+       F64s, though the 1 is past the digits kept, so it rounds up *)
+    COPY(b[0..16], "9007199254740993");
+    for i := 16 to 816 do b[i] := '0'; end;
+    b[817] := '1';
+    COPY(b[818..823], "e-802");
+    if not reads(b[0..823], 9007199254740994.0, true) or not reads(b[0..817], 0.0, false)
+        then Rt.stop("Math.toReal: many digits"); end;
+end;
+
 proc near(got, want: F64): BOOL;
 var d: F64;
 begin
@@ -762,6 +1006,7 @@ begin
         or not near(acos(-0.2), 1.7721542475852274) or (acos(1.0) # 0.0) or (acos(-1.0) # pi)
         or not near(atan(0.5), 0.4636476090008061) or not near(atan(-1.0E10), -1.5707963266948965)
         or (atan(inf) # pi / 2.0) or not negative(atan(-0.0)) then Rt.stop("Math.asin, acos, atan"); end;
+    testToReal;
 end;
 
 end Math.

@@ -1,7 +1,10 @@
 module Str;
     Operations on strings, which are []U8. = and # compare them; this
-    module orders, searches and hashes them, reads and writes their
-    UTF-8, reads a number from one, and copies one to keep.
+    module orders, searches and hashes them, trims them and takes them
+    apart, changes the case of their ASCII letters, joins them and
+    replaces in them, reads and writes their UTF-8, reads a number from
+    one and writes one, and copies one to keep. A part it gives is a
+    slice of the string it was given, with no memory of its own.
 
 proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);
     s's bytes, copied into memory from a, to keep after s's own are
@@ -13,14 +16,54 @@ proc cmp*(a, b: []U8): INT;
 proc eq*(a, b: []U8): BOOL;
     Whether a and b hold the same bytes: a = b, as a procedure value.
 
+proc eqFold*(a, b: []U8): BOOL;
+    Whether a and b are the same but for the case of ASCII letters.
+
 proc hash*(s: []U8): U64;
     FNV-1a, 64 bits.
 
 proc find*(s, sub: []U8): INT;
     Where sub first starts in s, or -1.
 
+proc findLast*(s, sub: []U8): INT;
+    Where sub last starts in s, or -1.
+
 proc hasPrefix*(s, p: []U8): BOOL;
     Whether s starts with p.
+
+proc hasSuffix*(s, x: []U8): BOOL;
+    Whether s ends with x.
+
+proc trimLeft*(s: []U8): []U8;
+    s without the spaces at its start.
+
+proc trimRight*(s: []U8): []U8;
+    s without the spaces at its end.
+
+proc trim*(s: []U8): []U8;
+    s without the spaces at either end.
+
+proc cut*(s, sep: []U8): ([]U8, []U8, BOOL);
+    What comes before the first sep in s, what comes after it, and true;
+    or s, an empty string and false if s has no sep.
+
+proc field*(s: []U8): ([]U8, []U8);
+    The first word of s, the bytes after the spaces at its start up to
+    the next space or the end, and the rest of s from there; two empty
+    strings if s holds only spaces.
+
+proc lower*(s: []U8);
+    s's ASCII capitals made small, in place.
+
+proc upper*(s: []U8);
+    s's small ASCII letters made capitals, in place.
+
+proc join*(b: ^Buf.Buf; parts: [][]U8; sep: []U8);
+    The parts added to b, with sep between each two.
+
+proc replace*(b: ^Buf.Buf; s, old, new: []U8);
+    s added to b, with new for each old in it, from the left, none
+    overlapping another; s as it is if old is empty.
 
 proc encode*(c: I32): ([4]U8, INT);
     c in UTF-8: its bytes, and how many. A number that isn't a
@@ -33,9 +76,34 @@ proc decode*(s: []U8): (I32, INT);
     or followed by too few continuations, or spelling a surrogate or a
     character in more bytes than it needs; 0 and 0 if s is empty.
 
+proc decodeLast*(s: []U8): (I32, INT);
+    The character s ends with, and its length in bytes, read as decode
+    reads one: FFFDH and 1 if the last byte doesn't end one rightly; 0
+    and 0 if s is empty.
+
+proc next*(s: []U8; i: INT): (I32, INT);
+    The character at i in s, as decode reads it, and where the one after
+    it starts; 0 and -1 if i is at the end or past it.
+
+proc chars*(s: []U8): INT;
+    The characters in s, as decode reads them, each byte that doesn't
+    start one rightly counted as one.
+
+proc valid*(s: []U8): BOOL;
+    Whether s is UTF-8: decode finds no byte that doesn't start a
+    character rightly.
+
 proc toInt*(s: []U8): (I64, BOOL);
     s as a decimal number, with a - or + before it if any, and nothing
     else; false if it isn't one, or an I64 can't hold it.
+
+proc toHex*(s: []U8): (U64, BOOL);
+    s in hexadecimal, digits only, capitals or not; false if it isn't
+    that, or a U64 can't hold it.
+
+proc fromInt*(n: I64): ([20]U8, INT);
+    n in decimal, as Out.int writes it: its bytes, the first of the 20,
+    and how many.
 
 proc le*(s: []U8): U64;
     The bytes of s, at most 8, as an unsigned number, the first byte
