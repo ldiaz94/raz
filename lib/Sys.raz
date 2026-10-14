@@ -94,6 +94,23 @@ type
         a: Sockaddr;
         size: INT;
     end;
+    (* struct msghdr, what sendmsg and recvmsg take: no address, one
+       buffer, and a control message; the sizes and flags are ints
+       with room after them, kept zero *)
+    Msghdr = record
+        name: ^U8; nameSize: INT;
+        iov: ^Iovec; iovLen: INT;
+        control: ^U8; controlSize: INT;
+        flags: INT;
+    end;
+    Iovec = record base: ^U8; size: INT; end;
+    (* struct cmsghdr, SCM_RIGHTS's: its size, counted to the last fd,
+       then the fds, as many as sendFds sends *)
+    Rights = record
+        size: INT;
+        level, kind: I32;
+        fds: [16]I32;
+    end;
     Timespec = record sec, nsec: I64; end;
 
 var
@@ -212,6 +229,33 @@ end;
 proc munmap*(p: ^U8; size: INT);
 begin
     _ := C.munmap(p, UINT(size));
+end;
+
+(* A file in memory, with no name, of size zeroed bytes: its fd, or
+   minus an errno. It is closed in a program exec starts. *)
+proc memFile*(size: INT): INT;
+var name: [4]U8; fd: I32; err: INT;
+begin
+    _ := cstr("raz", name);                     (* the name /proc shows *)
+    fd := C.memfd_create(ADR(name[0]), 1);      (* MFD_CLOEXEC *)
+    if fd < 0 then return failed(); end;
+    if C.ftruncate(fd, I64(size)) # 0 then
+        err := failed();                        (* before close can change errno *)
+        _ := C.close(fd);
+        return err;
+    end;
+    return INT(fd);
+end;
+
+(* The first size bytes of the file fd, mapped to be read and written,
+   and shared: what this program writes there, every program that maps
+   the file sees. nil if it can't be; munmap gives them back. *)
+proc mapFile*(fd, size: INT): ^U8;
+var p: ^U8;
+begin
+    p := C.mmap(nil, UINT(size), 3, 1, I32(fd), 0);   (* read, write; MAP_SHARED *)
+    if INT(p) = -1 then return nil; end;
+    return p;
 end;
 
 (* Renames old to new, replacing what new names: 0, or minus an errno. *)
@@ -664,6 +708,51 @@ begin
     r := C.sendto(I32(fd), bytes(s), UINT(LEN(s)), 4000H, ^U8(ADR(peer.a)), U32(peer.size));   (* MSG_NOSIGNAL *)
     if r < 0 then return failed(); end;
     return r;
+end;
+
+(* Sends s, at least one byte, to the Unix socket fd, as send does, and
+   with it the files fds, at most 16, which the program that receives
+   them then has open too: the bytes sent, or minus an errno. *)
+proc sendFds*(fd: INT; s: []U8; fds: []INT): INT;
+var m: Msghdr; v: Iovec; c: Rights; i, r: INT;
+begin
+    if (LEN(s) = 0) or (LEN(fds) > LEN(c.fds)) then return -22; end;
+    v := {base: ADR(s[0]), size: LEN(s)};
+    m := {iov: ADR(v), iovLen: 1};
+    if LEN(fds) > 0 then
+        c := {size: 16 + 4 * LEN(fds), level: 1, kind: 1};     (* SOL_SOCKET, SCM_RIGHTS *)
+        for i := 0 to LEN(fds) - 1 do c.fds[i] := I32(fds[i]); end;
+        m.control := ^U8(ADR(c));
+        m.controlSize := (c.size + 7) & ~7;              (* CMSG_SPACE: whole quadwords *)
+    end;
+    r := C.sendmsg(I32(fd), ^U8(ADR(m)), 4000H);  (* MSG_NOSIGNAL *)
+    if r < 0 then return failed(); end;
+    return r;
+end;
+
+(* Reads into buf from the Unix socket fd, as read does, and puts the
+   files sent with what it read in fds, as many as fit, closing the
+   rest: the bytes read, or minus an errno, and the files put in fds.
+   Each is closed in a program exec starts. *)
+proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);
+var m: Msghdr; v: Iovec; c: Rights; n, k, i: INT;
+begin
+    v := {base: bytes(buf), size: LEN(buf)};
+    m := {iov: ADR(v), iovLen: 1, control: ^U8(ADR(c)), controlSize: SIZE(Rights)};
+    n := C.recvmsg(I32(fd), ^U8(ADR(m)), 40000000H);   (* MSG_CMSG_CLOEXEC *)
+    if n < 0 then return failed(), 0; end;
+    k := 0;
+    if (m.controlSize >= 16) and (c.level = 1) and (c.kind = 1) then
+        for i := 0 to (c.size - 16) div 4 - 1 do
+            if k < LEN(fds) then
+                fds[k] := INT(c.fds[i]);
+                INC(k);
+            else
+                _ := C.close(c.fds[i]);
+            end;
+        end;
+    end;
+    return n, k;
 end;
 
 (* The value of the environment variable name; "" if it isn't set. *)
@@ -1128,7 +1217,7 @@ end;
    and closed; a directory made, listed and emptied; no terminal; a
    socket, sent to after its end; programs; time and the network. *)
 proc main*;
-var free, total: I64; fd, n, err, w, h, l, c, a: INT; buf: [16]U8; p: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
+var free, total: I64; fd, n, err, w, h, l, c, a, m, k: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
@@ -1227,6 +1316,30 @@ begin
     close(a);
     if (readyOf([c], 1000) # c) or (read(c, buf) # 0) then exit(2); end;   (* its end *)
     if send(c, "x") # -32 then exit(2); end;           (* EPIPE, and no SIGPIPE *)
+    close(c);
+    close(l);
+    _ := remove("/tmp/raz-sys-socket");
+    (* a file in memory, mapped, and passed with a byte down a socket
+       twice, with room for one: what the other side maps is the same *)
+    m := memFile(8192);
+    p := mapFile(m, 8192);
+    if (m < 0) or (p = nil) or (p[8191] # 0) then exit(2); end;
+    p[100] := 42;
+    l := listen("/tmp/raz-sys-socket");
+    c := connect("/tmp/raz-sys-socket");
+    a := accept(l);
+    if (l < 0) or (c < 0) or (a < 0) or (sendFds(c, "", [m]) # -22) or (sendFds(c, "f", [m, m]) # 1) then exit(2); end;
+    n, k := receiveFds(a, buf, got);
+    if (n # 1) or (k # 1) or (buf[0] # 'f') then exit(2); end;
+    q := mapFile(got[0], 8192);
+    if (q = nil) or (q[100] # 42) then exit(2); end;
+    q[200] := 7;
+    if p[200] # 7 then exit(2); end;
+    munmap(p, 8192);
+    munmap(q, 8192);
+    close(got[0]);
+    close(m);
+    close(a);
     close(c);
     close(l);
     _ := remove("/tmp/raz-sys-socket");
