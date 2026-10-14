@@ -380,9 +380,12 @@ def build_home(releases):
     text = text.replace("@SNIPPET@", highlight(snippet.rstrip("\n")))
     text = text.replace("@OUTPUT@", html.escape(stdout.rstrip("\n")))
     version, name, digest = releases[-1]
+    pages = re.search(r"Pages:\s+(\d+)", subprocess.run(
+        ["pdfinfo", os.path.join(ROOT, "build", "raz.pdf")],
+        capture_output=True, text=True, check=True).stdout).group(1)
     earlier = ", ".join('<a href="download/%s">%s</a>' % (n, v)
                         for v, n, _ in reversed(releases[:-1]))
-    text = text.replace("@EARLIER@", earlier)
+    text = text.replace("@EARLIER@", earlier).replace("@PAGES@", pages)
     text = text.replace("@VERSION@", version).replace("@TARBALL@", name)
     text = text.replace("@DIR@", name[:-len(".tar.gz")]).replace("@SHA256@", digest)
     write("index.html", page("raz: a small systems language", text, 0, "home"))
@@ -418,6 +421,8 @@ def main():
         build_tour(tour, lessons, nxt)
         counts.append(len(lessons))
     build_spec()
+    for pdf in ("raz.pdf", "raz-lib.pdf"):       # made by make pdf
+        shutil.copy(os.path.join(ROOT, "build", pdf), OUT)
     build_home(build_download())
     print("site/public: %s lessons" % " + ".join(map(str, counts)))
 

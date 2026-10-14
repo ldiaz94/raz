@@ -114,15 +114,15 @@ build/raz-lib.3: raz tools/Doc.raz tools/Scan.raz lib/*.raz | build
 	./raz -Werror -o build/Doc tools/Doc.raz
 	build/Doc man $(LIBDOC:%=lib/%.raz) > $@
 
-# the report as a PDF, by pandoc and Chromium; not part of check, as
-# CI has neither
-pdf: build/raz.pdf
+# the two volumes of the report as PDFs, by pandoc and Chromium; not
+# part of check, as CI has neither
+pdf: build/raz.pdf build/raz-lib.pdf
 
-build/raz.pdf: doc/raz.md doc/raz-lib.md doc/report.css | build
-	pandoc doc/raz.md doc/raz-lib.md -s --toc --toc-depth=1 --shift-heading-level-by=-1 \
+build/%.pdf: doc/%.md doc/report.css | build
+	pandoc doc/$*.md -s --toc --toc-depth=1 --shift-heading-level-by=-1 \
 	    --syntax-highlighting=none -c ../doc/report.css \
-	    -o build/raz.html
-	chromium --headless --no-pdf-header-footer --print-to-pdf=$@ build/raz.html 2>/dev/null
+	    -o build/$*.html
+	chromium --headless --no-pdf-header-footer --print-to-pdf=$@ build/$*.html 2>/dev/null
 
 # raz, its library and its tools go together under $(PREFIX)/lib/raz,
 # laid out as in the tarball; the link on PATH works since raz finds
@@ -170,7 +170,7 @@ dist:
 # "Raz, Set, Go" (whose programs are run here, so the output shown is
 # real), the report and the latest release's tarball. site/build.py
 # says how; it needs ./raz and pandoc.
-site: raz
+site: raz pdf
 	python3 site/build.py
 
 .PHONY: units tests seed-check seed-bench fixpoint check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall
