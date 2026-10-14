@@ -20,7 +20,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,493 | 1,238 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,471 | 1,778 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 1,763 | 1,458 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 3,842 | 3,353 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 3,846 | 3,355 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 380 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 273 | 214 | The command line |

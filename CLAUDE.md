@@ -1,8 +1,9 @@
 # Working on raz
 
 Read `PLAN.md` (the milestone under way and its steps), `doc/raz.md`
-(the language report) and `doc/compiler.md` (the guide to the
-compiler) first. The report defines the language; where the plan
+(the language report, volume 1) and `doc/compiler.md` (the guide to the
+compiler) first; `doc/raz-lib.md` is volume 2, the library, and
+`doc/report-history.md` what each version of the report changed. The report defines the language; where the plan
 disagrees, the report wins and the plan is fixed.
 
 ## Setup and checks
@@ -108,7 +109,8 @@ the seed in `seed/` is frozen. Next, by `PLAN.md`: what the owner chooses.
 defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes on the list in
 `PLAN.md`, for a later thaw; it isn't built. v0.6.0 was such a thaw,
-by the owner's word: report 2026-10.12; the compiler follows 2026-10.21, whose `match` on an enumeration takes
+by the owner's word: report 2026-10.12; the compiler follows 2026-10.22, an audit of the report (mends, trims,
+two volumes, status 2 for every stop), and 2026-10.21, whose `match` on an enumeration takes
 several names to an arm (10.21), and 2026-10.20, whose `try` returns an error that isn't
 nil from the procedure it stands in (10.20, the owner's word), and 2026-10.19,
 whose `Sys` writes without waiting, for rat's pastes (10.13), and
@@ -130,7 +132,7 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.10.1, report 2026-10.21, the latest: the compiler in raz,
+the first; v0.11.0, report 2026-10.22, the latest: the compiler in raz,
 built by itself, and 1.4 times the Pascal one's time (v0.9.1 was the last
 built by the Pascal seed). The tarball has `tools/`, which the website
 offers from 0.7.1 on.
@@ -187,28 +189,28 @@ otherwise.
 - Past an extern's parameters, a string goes as a C string and an
   integer constant as an `INT`.
 - A real constant is held as an F64; one typed `F32` holds a value an
-  F32 can hold. An `F32` in a register is its low 32 bits; the upper
+  F32 can hold (the report says so, 2). An `F32` in a register is its low 32 bits; the upper
   ones are left as they fall.
 - `Heap` and `Out` lock with `Lock`, a spinlock that yields, since they
   serve C's threads and `Thread`'s alike; `Thread.Mutex` is a futex.
 - A failed check says what failed and with what values, at the place
   of the offending expression. A signal is told at the place of the
   statement it stopped in, or of the procedure for a stack overflow in
-  its prologue. The handlers run on a stack of their own: `Rt`'s for
+  its prologue, and the program ends by `Rt.exit(2)`, after its
+  `atExit` procedures, as a failed check does (report 2026-10.22; a
+  fault inside `Out`'s or `Heap`'s lock would hang there). The handlers run on a stack of their own: `Rt`'s for
   the main thread, and one in each `Thread` thread's mapping. C's
-  threads have none, so a stack overflow in one ends the program by
-  the signal with no message.
+  threads have none, so a stack overflow in one still ends the program
+  by the signal with no message.
 - The smallest value of a signed type divided by -1 stops the program
   (SIGFPE), as 6.1 says, `mod` as `div`; for a type narrower than 64
   bits the code makes the division fault, as the machine wouldn't. In
   a constant it is an error, as dividing by zero is.
 - `INT` widens to `I64` (and `UINT` to `U64`) wherever a value is
   assigned, passed or returned, `return a, b` included; not in `a, b :=
-  f(x)`, `return f(x)`, a `for` or `INC`/`DEC`. An untyped constant
-  converts to a pointer, as an `INT`.
-- Another module's exported variable, or a field or array element of
-  it, is read-only: an `extern` one too. A slice in it may be sliced,
-  since that can't change the variable; an array in it may not.
+  f(x)`, `return f(x)`, a `for` or `INC`/`DEC` (in the report, 5.10).
+- An `extern` module variable is read-only for an importer, as the
+  report says of every exported variable (3).
 - Warnings come only for a module with no errors. A procedure naming
   itself doesn't use it; a type named by a pointer in its own
   declaration does. An enumeration's names are never warned of, nor a
