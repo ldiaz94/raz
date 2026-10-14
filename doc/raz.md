@@ -2008,7 +2008,11 @@ give: `Sys` past writing, ending the program and getting memory,
 `Thread`, `link` and `extern`. What it must have, besides the whole
 language, reals aside, is the core of the library: `Rt`, `Out`, `Mem`,
 `Arena`, `Lock`, `Str` and `Buf`, and of `Sys` what they need. A program
-that keeps to the core runs on every target.
+that keeps to the core runs on every target. The rest of the library
+(`Heap`, `Fmt`, `List`, `Map`, `Sort`, `Math`, `Files`, `Opt` and the
+rest of `Sys`) is the standard library: a target may leave a module
+out, and one that has it gives what section 11 says. `conform/` tests
+the core only.
 
 ## Appendix B. The grammar
 
