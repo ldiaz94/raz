@@ -638,7 +638,7 @@ constants, like a literal.
 `div` rounds toward zero and `mod` takes the sign of the dividend, as
 in C: `-7 div 2` is `-3`, `-7 mod 2` is `-1`. Dividing by zero, and
 dividing the smallest value of a signed type by `-1`, stop the program
-(`SIGFPE`), whatever the type and the target.
+(section 10), whatever the type and the target.
 
 `&` (and), `|` (or), `xor` and `~` (not) work on every bit. `x shl n`
 and `x shr n` shift by `n` modulo the width of `x`'s type, in bits:
@@ -1268,9 +1268,11 @@ must not use C, and the compiler reports an error if it does.
 procedures registered with `Rt.atExit`, the last registered first,
 each at most once; then it ends the program with `status`, through
 C's `exit` in a program that uses C, so that C flushes its own
-buffers. A failed check (section 6.5) runs them too, after its
-message, so that `Out`'s buffer is written out. `Sys.exit` ends the
-program at once, and a program stopped by a signal runs none of them.
+buffers. A program that stops (below), a failed check
+(section 6.5) included, runs them too, after its message, so that
+`Out`'s buffer is written out, and ends with status 2. `Sys.exit` ends
+the program at once, and a program killed by a signal from outside runs
+none of them.
 
 ```
 proc atExit*(p: proc): ERROR;   (* Rt.Full if 32 are registered *)
@@ -1296,7 +1298,8 @@ says `check off;`, writing a string's bytes, a code procedure that
 breaks its rules, and C code can read or write any memory, and what
 follows isn't defined. Dereferencing `nil`, dividing
 by zero, calling a `nil` procedure and running out of stack stop the
-program, on every target. Before it stops, the program prints to
+program, on every target, with status 2, as a failed check does.
+Before it stops, the program prints to
 standard error where it was, as file, line and column, and why, as far
 as it can tell: a `nil` pointer, a `nil` procedure, a stack overflow, a
 bad address or a division fault; then the calls under way, each with
