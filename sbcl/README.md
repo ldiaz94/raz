@@ -1,5 +1,9 @@
 # raz in SBCL
 
+An example, kept as a reference: what an implementation of the report
+looks like when it is written from the report alone. The top-level
+build doesn't make or check it; `src/` is raz's compiler.
+
 A second compiler for raz, written in Common Lisp for SBCL from the
 report alone: `doc/raz.md`, the language, and `doc/raz-lib.md`, the
 library. It shares no code with the compiler in `src/`, and its library,

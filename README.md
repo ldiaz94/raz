@@ -45,6 +45,7 @@ ELF executable itself, with no assembler or linker, and compiles about
 | `site/` | The website: home page, the tours "Raz, Set, Go" and "More Raz", the report and the latest release's tarball, as plain files in `site/public/`; `make site` rebuilds them, with the report's two PDFs (`make pdf`) |
 | `editor/` | Support for vim and emacs |
 | `conform/` | The conformance suite: what every implementation must do |
+| `sbcl/` | An example: a second compiler, in Common Lisp for SBCL, written from the report alone and kept as a reference; it passes `conform/` and builds `src/` into a compiler that makes the same bytes. Not part of the build |
 | `test/` | This compiler's own tests, and the scripts that run them |
 | `PLAN.md` | The plan: the milestone under way and its steps |
 
