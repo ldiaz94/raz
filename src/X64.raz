@@ -751,6 +751,7 @@ begin
     if op = 59H then return Diag.say("mul{}", [Fmt.str(realEnd(single))]); end;
     if op = 5CH then return Diag.say("sub{}", [Fmt.str(realEnd(single))]); end;
     if op = 5EH then return Diag.say("div{}", [Fmt.str(realEnd(single))]); end;
+    if op = 51H then return Diag.say("sqrt{}", [Fmt.str(realEnd(single))]); end;
     return Diag.say("cvt{}2{}", [Fmt.str(realEnd(single)), Fmt.str(realEnd(not single))]);
 end;
 

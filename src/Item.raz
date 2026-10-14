@@ -1378,7 +1378,11 @@ proc endCall*(var c: Gen.CallInfo; var x: Item): ERROR;
 var res: ^Sym.Type;
 begin
     if c.param # nil then try wrongCount(c, Scan.tokPos(), "too few arguments"); end;
-    Gen.call(c);
+    if (c.obj # nil) and (c.obj^.inl # 0) then
+        Gen.realInPlace(c.obj^.inl);   (* Math.sqrt: an instruction, no call *)
+    else
+        Gen.call(c);
+    end;
     res := c.sig^.base;
     x := {};
     if res = nil then

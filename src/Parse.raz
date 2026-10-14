@@ -2448,7 +2448,7 @@ end;
 proc calls(o: PObj): BOOL;
 begin
     if o = nil then return false; end;
-    return (o^.cls = Sym.oProc) or ((o^.cls = Sym.oVar) and (o^.typ^.form = Sym.fProc))
+    return ((o^.cls = Sym.oProc) and (o^.inl = 0)) or ((o^.cls = Sym.oVar) and (o^.typ^.form = Sym.fProc))
         or ((o^.cls = Sym.oBuiltin) and ((o^.val = Sym.bNew) or (o^.val = Sym.bSyscall) or (o^.val = Sym.bCopy)));
 end;
 
@@ -2747,6 +2747,13 @@ begin
         end;
     end;
     try Gen.codeProc(p^.chunk, asmConst);
+    (* a square root of one real, of its own kind, is made in place *)
+    q := sig^.fields;
+    if (q # nil) and (q^.next = nil) and not q^.isVar and (q^.typ^.form = Sym.fReal)
+        and (sig^.base # nil) and Sym.same(sig^.base, q^.typ) then
+        p^.inl := Gen.oneRealOp(p^.chunk);
+        if (p^.inl shr 8 = 0F3H) # (q^.typ^.size = 4) then p^.inl := 0; end;
+    end;
     return expect(Scan.sEnd);
 end;
 

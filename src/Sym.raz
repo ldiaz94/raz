@@ -64,6 +64,9 @@ type
         read*: BOOL;       (* oVar: named other than as what := assigns *)
         fwd*: BOOL;        (* oProc: declared forward, no body yet *)
         isCode*: BOOL;     (* oProc: a code procedure *)
+        inl*: INT;         (* oProc: a code procedure that is a square root of
+                              xmm0, made in place of a call (Gen.oneRealOp);
+                              0 if not *)
         openEnd*: BOOL;    (* oProc: has results, and may reach its end *)
         reg*: INT;         (* oVar: the register it lives in, or 0 if in memory;
                               for a slice, the one its pointer is in *)

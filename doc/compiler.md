@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 10,700 lines of code (the
+The compiler is eleven files of raz, about 10,800 lines of code (the
 budget is a soft 10,000, never past 11,000). It is its own compiler: the
 frozen Pascal compiler in `seed/` builds `src/` the first time, and
 after that a raz builds `src/` (`make fixpoint` checks that it makes
@@ -15,12 +15,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,062 | 886 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 684 | 555 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 687 | 556 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 354 | 272 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,493 | 1,237 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,478 | 1,780 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 1,763 | 1,458 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 3,846 | 3,355 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/X64.raz` | 1,493 | 1,238 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,509 | 1,797 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 1,767 | 1,462 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 3,853 | 3,361 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 380 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -741,6 +741,44 @@ routines (`Gen.drop`, `X64.mem`, `Chunk.put1`, which an inliner
 would remove), the reading of every procedure twice, and
 a record parameter copied at each call that passes it on (`Mem`, in the
 encoder).
+
+## Cheap wins, measured
+
+Each change below was measured on the kernels of `test/bench`, by the
+instructions each runs (valgrind's `cachegrind`, which counts the
+same every time) and by the best of fifteen runs of the old program and
+the new, taken in turn; a kernel whose code didn't change moves by up
+to 2% in time, which is the noise.
+
+1. **A square root in place.** `Math.sqrt` is a code procedure of one
+   instruction, and NBody's `mag := Dt / (d2 * Math.sqrt(d2))` called
+   it, with all that a call costs a real: the reals on the stack
+   spilled, the variables' xmm registers loaded again from their slots
+   after it, as System V keeps none through one, and the procedure no
+   longer a leaf:
+
+   ```
+   movsd [rbp - 64], xmm8    ; d2, spilled under the argument
+   movsd xmm0, [rbp - 32]    ; the argument
+   call Math.sqrt            ;   sqrtsd xmm0, xmm0; ret
+   movsd xmm12, [rbp - 40]   ; mag, dx, dy, dz back from their slots
+   movsd xmm13, [rbp - 8]
+   ...
+   ```
+
+   Now a code procedure of one real whose body is `sqrtsd xmm0, xmm0`
+   and `ret` (or `sqrtss`), as `codeBody` finds from its bytes
+   (`Gen.oneRealOp`, kept in `inl`), is made in place: the argument
+   computed as for a call, then the instruction on its own register
+   (`realInPlace`, from `endCall`), and `chooseRegs` doesn't count it a
+   call:
+
+   ```
+   movsd xmm9, [rbp - 32]
+   sqrtsd xmm9, xmm9
+   ```
+
+   NBody 8.6% fewer instructions, 2.8% faster; the rest unchanged.
 
 ## Diag.raz: messages
 
