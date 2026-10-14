@@ -271,16 +271,18 @@
     (write-bytes 2 (sb-ext:string-to-octets (format nil "  in ~a~%" name)))))
 
 (defmacro catching-faults (&body body)
-  "BODY, where a bad address or an exhausted stack stops the program."
-  `(let ((where nil))
+  "BODY, where a bad address or an exhausted stack stops the program,
+from the bottom of the raz stack, where there is room to stop."
+  `(let ((where nil) (base *sp*))
      (handler-case
          (handler-bind ((sb-sys:memory-fault-error
                           (lambda (c) (declare (ignore c)) (setf where (first (raz-frames))))))
            ,@body)
        (sb-sys:memory-fault-error (c)
+         (setf *sp* base)
          (stop (format nil "in ~a: a nil pointer or a bad address (0x~(~x~))" where
                        (fault-address c))))
-       ((or storage-condition stack-overflow) () (stop "a stack overflow")))))
+       ((or storage-condition stack-overflow) () (setf *sp* base) (stop "a stack overflow")))))
 
 (defun fault-address (c)
   (let ((a (ignore-errors (slot-value c 'sb-kernel::address))))

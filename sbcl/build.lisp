@@ -15,7 +15,11 @@
         (let ((src (format nil "src/~a.lisp" f))
               (fasl (format nil "build/~a.fasl" f)))
           (ensure-directories-exist fasl)
-          (load (compile-file src :output-file (merge-pathnames fasl))))))))
+          (multiple-value-bind (out warnings failure) (compile-file src :output-file (merge-pathnames fasl))
+            (declare (ignore warnings))
+            ;; an error or a full warning in the compiler stops the build
+            (when failure (format t "~a doesn't compile~%" src) (sb-ext:exit :code 1))
+            (load out)))))))
 
 (sb-ext:save-lisp-and-die "raz" :executable t :toplevel (intern "MAIN" :raz)
                           :save-runtime-options t)

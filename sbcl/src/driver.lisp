@@ -11,7 +11,7 @@
 
 (in-package :raz)
 
-(defparameter *version* "raz-sbcl 0.1.0, report 2026-10.22")
+(defparameter *version* "raz-sbcl 0.1.0, report 2026-10.23")
 
 (defun body-order (roots)
   "The modules whose bodies run, in order (section 3): each after those
@@ -78,6 +78,9 @@ it imports, in the order of its imports."
     (let* ((none (make-tok :eof nil 1 1))
            (main (progn (load-module "Rt" none) (load-module name none (namestring path))))
            (modules (all-modules)))
+      (when (module-generic main)
+        (error 'raz-error :text (format nil "~a: ~a is generic: it is compiled where a module imports it"
+                                        file name)))
       (when (and (some #'module-static modules) (some #'module-uses-c modules))
         (error 'raz-error
                :text (format nil "~a: the program uses C (~{~a~^, ~}), which ~{~a~^, ~} doesn't allow by link static"

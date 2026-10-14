@@ -90,4 +90,31 @@ code
     (c-call "atan2" double-float double-float y double-float x);
 end;
 
+(* the bits of x, as IEEE 754 lays them out *)
+proc bits*(x: F64): U64;
+begin
+    return ^U64(ADR(x))^;
+end;
+
+(* the F64 whose bits are u *)
+proc fromBits*(u: U64): F64;
+begin
+    return ^F64(ADR(u))^;
+end;
+
+(* a times b: the low 64 bits of the product, and the high *)
+proc mul*(a, b: U64): (U64, U64);
+var al, ah, bl, bh, lo, mid1, mid2, hi, carry: U64;
+begin
+    (* by halves of 32 bits, as on paper *)
+    al := a & 0FFFFFFFFH; ah := a shr 32;
+    bl := b & 0FFFFFFFFH; bh := b shr 32;
+    lo := al * bl;
+    mid1 := ah * bl;
+    mid2 := al * bh;
+    hi := ah * bh;
+    carry := ((lo shr 32) + (mid1 & 0FFFFFFFFH) + (mid2 & 0FFFFFFFFH)) shr 32;
+    return a * b, hi + (mid1 shr 32) + (mid2 shr 32) + carry;
+end;
+
 end Math.

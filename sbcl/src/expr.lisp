@@ -343,7 +343,6 @@ temporary holding it, or a set's bits."
             ((untyped-p x) (takes x b) b)
             ((untyped-p y) (takes y a) a)
             ((same-type-p a b) a)
-            ((and (is a :literal) nil))
             (t (fail-tok tk "~a and ~a don't mix" (type-name a) (type-name b)))))))
 
 (defun typed-const (item ty)
@@ -654,6 +653,9 @@ address and its length, and its element type."
                                          (+ (ld :u64 ,base)
                                             (* ,(if check `(check-index ,lo (ld :i64 (+ ,base 8)) ,(where tk)) lo)
                                                ,size))))
+                                     ((and (integerp lo) (not (< -1 lo len-form)))
+                                      ;; a constant index out of an array would stop the program
+                                      (fail-tok tk "index ~d is out of range for a length of ~d" lo len-form))
                                      (t `(+ ,base-form (* ,(if check `(check-index ,lo ,len-form ,(where tk)) lo) ,size))))
                          :ro (if (is ty :array) (item-ro item) nil)
                          :vol (and (is ty :array) (item-vol item))

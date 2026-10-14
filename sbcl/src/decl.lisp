@@ -121,7 +121,7 @@ it is exported."
                          :exported *type-exported* :module *module*)))
 
 (defun variant-type ()
-  (let ((cases '()) (ty (make-ty :kind :variant)))
+  (let ((cases '()) (toks '()))
     (loop until (accept :end)
           do (let* ((tk (tok)) (name (ident)) (fields '()))
                (when (accept :|(|)
@@ -130,10 +130,11 @@ it is exported."
                (when (find name cases :key #'vcase-name :test #'string=)
                  (fail-tok tk "the case ~a is declared twice" name))
                (setf cases (append cases (list (make-vcase :name name :index (length cases) :fields fields))))
-               (push tk (ty-names ty)))
+               (push tk toks))
              (expect :|;|))
+    ;; the cases are named in the scope around the type (5.6)
     (let ((v (make-variant-type cases *module*)))
-      (loop for c in cases for tk in (reverse (ty-names ty))
+      (loop for c in cases for tk in (reverse toks)
             do (declare-member (vcase-name c) :case v c tk))
       v)))
 
@@ -305,6 +306,7 @@ it is exported."
       (cond ((accept :forward)
              (when (eq obj old) (fail-tok tk "~a is declared forward twice" name))
              (setf (obj-forward obj) t))
+            (*interface-only* (skip-body) (setf (obj-defined obj) t))
             ((eq (kind) :code) (next-tok) (code-procedure obj))
             (t (procedure-body obj)
                (setf (obj-defined obj) t)))
@@ -313,6 +315,19 @@ it is exported."
           (fail-here "the procedure ends with its own name, ~a" name))
         (next-tok))
       (expect :|;|))))
+
+(defun skip-body ()
+  "Reads past a procedure's body unchecked, for a file read only for its
+interface: its local declarations and statements, or its code."
+  (if (accept :code)
+      (expect :end)
+      (let ((depth 0))
+        (loop (let ((k (kind)))
+                (next-tok)
+                (case k
+                  ((:begin :if :while :for :match :record :variant) (incf depth))
+                  (:end (when (= (decf depth) 0) (return)))
+                  (:eof (fail-here "the procedure never ends"))))))))
 
 (defun procedure-body (obj)
   "Compiles a procedure's declarations and statements into a DEFUN."
@@ -342,12 +357,18 @@ it is exported."
                              (reverse stores) body (zeros-form (sig-results sig)))))))
 
 (defun procedure-defun (sym params dests stores body end)
+  ;; The frame is pushed by moving *SP*, and popped by moving it back as
+  ;; the procedure returns, by RETURN-FROM or by its end. (Binding *SP*
+  ;; with LET would be simpler, but each binding takes room on SBCL's
+  ;; binding stack, which a deep recursion soon fills.)
   `(defun ,sym (,@params ,@dests)
-     (let* ((fp *sp*) (*sp* (+ fp ,(proc-size *proc*))))
+     (let ((fp *sp*))
        (declare (ignorable fp))
        (enter fp ,(proc-size *proc*))
+       (setf *sp* (+ fp ,(proc-size *proc*)))
        ,@stores
-       (block ,(proc-block *proc*) ,@body ,end))))
+       (multiple-value-prog1 (block ,(proc-block *proc*) ,@body ,end)
+         (setf *sp* fp)))))
 
 (defun code-procedure (obj)
   "A code procedure (section 8). This implementation's target is SBCL's
@@ -406,6 +427,7 @@ parameters by their names; the value of the last is the result."
 ;;; Modules (section 3).
 
 (defvar *search-dirs* '() "Where modules are looked for, in order.")
+(defvar *interface-only* nil "Whether the module being read is another target's file, read for its interface.")
 (defvar *target-names* '("linux-sbcl" "linux" "sbcl"))
 
 (defun find-module-file (name tk)
@@ -434,7 +456,7 @@ its parameters."
              (setf (gethash name *modules*) m)
              (if (and (eq (tok-kind (aref toks 2)) :|(|))
                  (read-generic-header m)
-                 (read-module m))))
+                 (progn (read-module m) (check-other-files m)))))
           ((eq (module-state m) :compiling)
            (fail-tok tk "the module ~a imports itself" name)))
     m))
@@ -495,6 +517,7 @@ each list of arguments."
       (next-tok) (expect :|;|)
       (setf (module-check-off m) t))
     (declarations)
+    (when *interface-only* (return-from read-module m))
     (when (eq (kind) :begin)
       (next-tok)
       (let* ((sym (lisp-name "(body)"))
@@ -601,3 +624,85 @@ parameter's with the types put in."
                      (fail-tok tk "~a's signature isn't the parameter ~a's" (obj-name actual) name))
                    (setf (gethash name (scope-table *scope*)) actual)))))
     (expect :|)|)))
+
+;;; One interface to a module's files (section 3): each file of the
+;;; module beside the one taken, Name.*.raz and Name.raz, is read for its
+;;; declarations alone, and must export what the one taken does.
+
+(defun other-files (m)
+  (let* ((file (module-file m)) (dir (directory-namestring file)))
+    (remove-if (lambda (f) (equal (namestring f) file))
+               (append (directory (format nil "~a~a.*.raz" dir (module-name m)))
+                       (directory (format nil "~a~a.raz" dir (module-name m)))))))
+
+(defun check-other-files (m)
+  (loop for f in (other-files m) for i from 1
+        do (let* ((file (namestring f))
+                  (other (make-module :name (module-name m) :file file
+                                      :toks (let ((*file* file)) (scan (read-bytes file)))
+                                      :lisp-name (format nil "~a{~d}" (module-name m) i))))
+             (let ((*interface-only* t)) (read-module other))
+             (compare-interfaces m other))))
+
+(defun iface-type-p (a b)
+  "Whether types A and B, of two files of one module, are built alike, a
+name in one standing for the same name in the other."
+  (cond ((eq a b) t)
+        ((or (ty-name a) (ty-name b))
+         (and (ty-name a) (ty-name b) (string= (ty-name a) (ty-name b))
+              (eq (ty-kind a) (ty-kind b))))
+        ((not (eq (ty-kind a) (ty-kind b))) nil)
+        (t (case (ty-kind a)
+             (:ptr (and (eq (ty-vol a) (ty-vol b)) (iface-type-p (ptr-base a) (ptr-base b))))
+             (:array (and (= (ty-len a) (ty-len b)) (iface-type-p (ty-elem a) (ty-elem b))))
+             (:slice (iface-type-p (ty-elem a) (ty-elem b)))
+             (:set (iface-type-p (ty-enum a) (ty-enum b)))
+             (:proc (iface-sig-p (ty-sig a) (ty-sig b)))
+             (t (iface-shape-p a b))))))
+
+(defun iface-fields-p (as bs)
+  "The exported fields of two records, or the fields of two cases, alike."
+  (and (= (length as) (length bs))
+       (every (lambda (f g) (and (string= (field-name f) (field-name g))
+                                 (iface-type-p (field-type f) (field-type g))))
+              as bs)))
+
+(defun iface-shape-p (a b)
+  "What a record, variant or enumeration shows another module, alike:
+its exported fields, its cases, its names."
+  (ecase (ty-kind a)
+    (:record (iface-fields-p (remove-if-not #'field-exported (ty-fields a))
+                             (remove-if-not #'field-exported (ty-fields b))))
+    (:variant (and (= (length (ty-cases a)) (length (ty-cases b)))
+                   (every (lambda (c d) (and (string= (vcase-name c) (vcase-name d))
+                                             (iface-fields-p (vcase-fields c) (vcase-fields d))))
+                          (ty-cases a) (ty-cases b))))
+    (:enum (equal (ty-names a) (ty-names b)))
+    ((:int :bool :real :error) t)))
+
+(defun iface-sig-p (a b)
+  (and (= (length (sig-params a)) (length (sig-params b)))
+       (= (length (sig-results a)) (length (sig-results b)))
+       (eq (sig-varargs a) (sig-varargs b))
+       (every (lambda (p q) (and (eq (third p) (third q)) (iface-type-p (second p) (second q))))
+              (sig-params a) (sig-params b))
+       (every #'iface-type-p (sig-results a) (sig-results b))))
+
+(defun compare-interfaces (m other)
+  (flet ((differ (name file)
+           (error 'raz-error :text (format nil "~a: ~a isn't exported as in ~a" file name (module-file m)))))
+    (maphash (lambda (name o)
+               (let ((p (gethash name (module-exports other))))
+                 (unless (and p (eq (obj-kind o) (obj-kind p))
+                              (ecase (obj-kind o)
+                                ((:const :var :case) (iface-type-p (obj-type o) (obj-type p)))
+                                (:type (and (eq (ty-kind (obj-type o)) (ty-kind (obj-type p)))
+                                            (if (member (ty-kind (obj-type o)) '(:record :variant :enum))
+                                                (iface-shape-p (obj-type o) (obj-type p))
+                                                (iface-type-p (obj-type o) (obj-type p)))))
+                                (:proc (iface-sig-p (obj-sig o) (obj-sig p)))))
+                   (differ name (module-file other)))))
+             (module-exports m))
+    (maphash (lambda (name p) (declare (ignore p))
+               (unless (gethash name (module-exports m)) (differ name (module-file other))))
+             (module-exports other))))
