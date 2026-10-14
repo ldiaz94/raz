@@ -67,6 +67,7 @@ const
     MaxElements = 1024;   (* elements of an array literal *)
     MaxFixes = 4096;      (* addresses in one constant *)
     MaxPending = 64;      (* modules being compiled at once *)
+    MaxFors = 256;        (* for loops of a procedure whose limit may go in a register *)
     Suffixes: [4][]U8 = [".linux-x86_64", ".linux", ".x86_64", ""];
 
 var
@@ -113,6 +114,13 @@ var
                             their end: each way through them returns *)
     useAt: Diag.Pos;     (* ... which is here *)
     guards: INT;         (* the recovery points open *)
+    (* A variable register no variable took, for the limits of the
+       procedure's innermost for loops that aren't constant: compared
+       each round, they would be read from the frame. limitK is its place
+       in VarRegs, or -1; limitIn says which for loops, by their order
+       in the procedure (chooseRegs); numFors counts them as compiled. *)
+    limitK, numFors: INT;
+    limitIn: [MaxFors]BOOL;
 
 proc expression(var x: TItem; want: PType): ERROR; forward;
 proc parseType: (PType, ERROR); forward;
@@ -1713,9 +1721,11 @@ end;
    so that a round of a loop by 1 takes one compare and one jump. *)
 proc forStatement(start: Diag.Pos; ind: INT): ERROR;
 var
-    o: PObj; v, a, b, s: TItem; step: I64; top, body, bodyL, exitL: INT;
+    o, lim: PObj; v, a, b, s: TItem; step: I64; top, body, bodyL, exitL, n: INT;
     lp: Loop; old: PLoop; f: Sym.Form; slot: I64;
 begin
+    n := numFors;
+    INC(numFors);
     Scan.next;
     if Scan.tok # Scan.sIdent then return expected("a name"); end;
     o := Sym.lookup(Scan.id);
@@ -1738,8 +1748,17 @@ begin
     try expect(Scan.sTo);
     try expression(b, o^.typ);
     try Item.coerceExact(b, o^.typ, "");
-    (* the limit, evaluated once: a constant as it is, else in a slot *)
-    if b.mode # Item.mConst then
+    (* the limit, evaluated once: a constant as it is; else, in an
+       innermost loop, in the register chooseRegs kept for it, as a
+       variable no one can name; else in a slot *)
+    if (b.mode # Item.mConst) and (limitK >= 0) and (n < MaxFors) and limitIn[n] then
+        lim := Sym.newObj(Sym.oVar, o^.name, b.typ);
+        lim^.lev := 1;
+        lim^.reg := Gen.VarRegs[limitK];
+        try Item.makeItem(v, lim);
+        try Item.assign(v, b);
+        b := v;
+    elsif b.mode # Item.mConst then
         slot := try Item.toSlot(b);
         Item.tempItem(b, b.typ, slot);
     end;
@@ -2465,10 +2484,12 @@ end;
 proc chooseRegs(params, before: PObj);
 var
     isLoop: [256]BOOL;
-    i, k, kx, d, loops, best, need: INT; o, q, qual: PObj; st: Scan.State;
+    forAt: [256]INT;   (* the for loop opened at each depth, or -1 *)
+    i, k, kx, d, loops, best, need, nf, inLim: INT; o, q, qual: PObj; st: Scan.State;
     afterDot, wasSkipping, leaf: BOOL;
 begin
     numCand := 0;
+    limitK := -1; nf := 0; inLim := -1;
     o := params;
     while o # nil do addCandidate(o); o := o^.next; end;
     o := firstLocal(before);
@@ -2498,7 +2519,19 @@ begin
                 INC(d);
                 isLoop[d] := (Scan.tok = Scan.sWhile) or (Scan.tok = Scan.sFor) or (Scan.tok = Scan.sRepeat);
                 if isLoop[d] then INC(loops); end;
+                forAt[d] := -1;
+                if (Scan.tok = Scan.sFor) and (nf < MaxFors) then
+                    (* innermost until a for is found inside it; its
+                       limit constant until a name in it isn't one *)
+                    forAt[d] := nf; limitIn[nf] := false;
+                    i := d - 1;
+                    while (i > 0) and (forAt[i] < 0) do DEC(i); end;
+                    if i > 0 then limitIn[forAt[i]] := false; end;
+                    INC(nf);
+                end;
             end;
+        | sTo: if (d > 0) and (forAt[d] >= 0) then inLim := forAt[d]; end;
+        | sDo, sBy: inLim := -1;
         | sEnd, sUntil:
             (* an end with no begin before it, in a body the parser will
                report, leaves d at 0 *)
@@ -2516,6 +2549,10 @@ begin
             elsif not afterDot and (candidate(Scan.id) >= 0) then
                 k := candidate(Scan.id);
                 if loops > 2 then INC(weight[k], 64); else INC(weight[k], 1 shl (2 * loops)); end;
+            end;
+            if (inLim >= 0) and not afterDot then
+                q := Sym.lookup(Scan.id);
+                if (q = nil) or (q^.cls # Sym.oConst) then limitIn[inLim] := true; end;
             end;
         | else:
         end;
@@ -2563,6 +2600,9 @@ begin
             weight[best] := 0;   (* too big for what is left *)
         end;
     until false;
+    for i := 0 to nf - 1 do
+        if limitIn[i] and (k < 5) then limitK := k; end;
+    end;
 end;
 
 (* The registers the variables of the procedure are in, as bits: bit i
@@ -2594,6 +2634,7 @@ begin
         if o^.cls = Sym.oVar then m := m | regBits(o); end;
         o := o^.chain;
     end;
+    if limitK >= 0 then m := m | (1 shl limitK); end;
     return m;
 end;
 
@@ -2663,7 +2704,7 @@ begin
         try expect(Scan.sBegin);
         curResult := sig^.base;
         Gen.enterBody(p^.chunk, line);
-        stray := false; elseIf := false; deferSlot := 0;
+        stray := false; elseIf := false; deferSlot := 0; numFors := 0;
         try statements();
         p^.openEnd := (curResult # nil) and not ends;
         Chunk.noteLine(Scan.curLine(), Scan.curCol());
@@ -2697,6 +2738,7 @@ begin
     end;
     curResult := old;
     curProc := nil;
+    limitK := -1;
     Sym.closeScope();
     return nil;
 end;
@@ -3841,6 +3883,7 @@ begin
 end;
 
 begin
+    limitK := -1;
     nameRt := internName("Rt");
     nameFail := internName("fail");
     nameAdr := internName("ADR");

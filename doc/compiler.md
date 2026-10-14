@@ -20,7 +20,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,506 | 1,794 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 1,767 | 1,462 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 3,853 | 3,361 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 3,896 | 3,395 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -807,6 +807,34 @@ to 2% in time, which is the noise.
    NBody 25% fewer instructions, 16% faster. Grep is 5% slower with
    the same code in its loops, only moved 96 bytes: where a loop falls
    changes its speed, as v0.8.0 found.
+
+3. **A loop's limit in a register.** `for i := 0 to LEN(s) - 1`
+   works out its limit once, in a frame slot, and compared `i` with
+   the slot each round:
+
+   ```
+   add r12, 1
+   add rbx, [rdi + r12 * 8]
+   cmp r12, [rbp - 40]
+   jl top
+   ```
+
+   `chooseRegs`, reading ahead, notes the `for` loops with no `for`
+   inside them whose limit names something not a constant (`limitIn`,
+   by their order in the procedure). If one of the five variable
+   registers is left when the variables have theirs, it is kept for
+   those limits (`limitK`; `regsOf` saves it as a variable's), and
+   `forStatement` puts each such limit in a variable no one can name,
+   in that register, which `forCmp` and `forNext` compare as any:
+
+   ```
+   cmp r12, r13
+   jl top
+   ```
+
+   The sum 15% faster, in the same instructions. Search, whose `for` is
+   compared once a round of its inner `while`, is 4% slower in a loop
+   that didn't change, at the same address; why is not known.
 
 ## Diag.raz: messages
 
