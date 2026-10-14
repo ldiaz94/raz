@@ -146,3 +146,28 @@ The proposal: `proc at*(p: ^Parser): INT;`, the number of the
 argument `operand` would give next, after what options are left; so
 that the arguments from there on are `Files.arg(i)` for `i` from
 `at(p)` to `ARGC() - 1`, as they are. It breaks no program.
+
+## Inlining a procedure that only returns
+
+Not the language's but the compiler's: a call of a procedure whose
+body is `return` and an expression, as `Grep.zeros` and
+`Scan.tokPos` are, made in place of the call. One pass keeps no
+tree to copy, but it can read source again, as `while` reads its
+condition again (`saveScan`, `restoreScan`): the arguments go to
+temporaries, each evaluated once and in order, a scope names the
+parameters as them, and the expression is read again from where the
+procedure's begins, in its own module's scope.
+
+Measured by hand on the kernels: Grep with `zeros` and `lowest`
+written in place is 20% faster, 0.88 times FPC `-O2`'s time where it
+is 1.14 now. The compiler has 78 such procedures and the library 28;
+the compiler's profile names the calls of small routines as what is
+left (doc/compiler.md).
+
+Kept narrow: scalars passed by value, no recursion, no code
+procedure (a square root has its own way), a procedure taken as a
+value still called. What it costs: an inlined procedure is not in
+the trap report's list of procedures, nor in gdb's backtrace, though
+a failed check in it is still told at its line; 60 to 100 lines of
+the 164 left below 11,000; and, across modules, the imported module's
+text kept to be read again, which is to be checked.
