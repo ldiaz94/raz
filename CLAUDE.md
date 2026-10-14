@@ -78,50 +78,26 @@ library's tests: they must have no warnings.
 
 ## Where things stand
 
-Steps 1-18 are done: the language, the tools (`tools/Doc.raz`, and
-the formatter, `tools/Pretty.raz`, over the shared `tools/Scan.raz`),
-`README.md` and the guide to the compiler, `doc/compiler.md`. Stage 5
-made two editors, which now live in repositories of their own, each
-pinning the raz commit it builds with: rmacs (emacs's keys) and
-ravite (vim's). What they needed of the system went into `Sys` (report
-2026-10.2, approved): the terminal, files, directories and the
-environment. `tools/Scan.raz` is theirs to use, as a tool, not part of
-the library. Stage 4, diagnostics (steps 19-27), is done; so are
-stage 6, the language of report 2026-10.3 (steps 42-47), and stage 8,
-one module to a name (report 2026-10.5, step 51), and stage 7, `Sys`
-for rlX11 and rat (reports 2026-10.4 and 10.7, steps 49a-c), with
-`Info`'s `file` and `symlink` for rloc (2026-10.6, step 49d), and
-stage 9, several results in place of var parameters (2026-10.8,
-steps 52-53), and v0.5.0, the library of report 2026-10.9, which the
-compiler says it follows, and v0.7.0, better code, and v0.7.1, the manual: `raz(1)`,
-`raz-tutorial(7)`, `raz(7)` and `raz-lib(3)`, made by `tools/Doc.raz`
-from `lib/`, and v0.8.0, better code again: slices in registers,
-parameters left in rdi and rsi, operands as the machine has them,
-`while` tested at the bottom, and one line table, DWARF's, and
-v0.9.0, better code for reals: reals on the stack and the
-busiest real variables in xmm registers, and an array's element and a
-constant offset as operands, measured on two kernels of reals,
-`Jacobi` and `NBody`. `make kernels` measures `test/bench` against
-FPC `-O2`. Self (`PLAN.md`) is done: `src/` is the compiler in raz, and
-the seed in `seed/` is frozen. Next, by `PLAN.md`: what the owner chooses.
+v0.11.1, report 2026-10.23, is the latest release. `src/` is the
+compiler in raz, built by itself (Self, done); the seed in `seed/` is
+frozen, and v0.9.1 was the last release it built. The compiler takes
+1.4 times the Pascal one's time; `make kernels` measures `test/bench`
+against FPC `-O2`. Next, by `PLAN.md`: what the owner chooses. What
+each version of the report changed is in `doc/report-history.md`, and
+what each step did is in git; don't repeat it here.
+
+rmacs (emacs's keys) and ravite (vim's), the two editors written in
+raz, live in repositories of their own, each pinning the raz commit it
+builds with; they use `tools/Scan.raz` as a tool, not part of the
+library. rat, rlX11 and rloc are other users of `Sys`.
 
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes on the list in
-`PLAN.md`, for a later thaw; it isn't built. v0.6.0 was such a thaw,
-by the owner's word: report 2026-10.12; the compiler follows 2026-10.23, whose `Math` exports `bits`, `fromBits` and `mul` for reading reals exactly, and 2026-10.22, an audit of the report (mends, trims,
-two volumes, status 2 for every stop), and 2026-10.21, whose `match` on an enumeration takes
-several names to an arm (10.21), and 2026-10.20, whose `try` returns an error that isn't
-nil from the procedure it stands in (10.20, the owner's word), and 2026-10.19,
-whose `Sys` writes without waiting, for rat's pastes (10.13), and
-whose blank, `_ := f(x)`, drops a result that is otherwise warned of
-(10.14), and whose `Math` has `pow`, the logarithms to 2 and 10,
-rounding and the inverse functions, and `Sys` `space` (10.15), and
-whose constants may be records and tables of them, with `Str.copy`
-(10.16), and `COPY` (10.17), also by the owner's word, and whose code
-procedures take and return slices (10.18), and whose library has
-`Bytes` (10.19). Its parser
-reaches the machine only through `gen.pas`. Keep
+`PLAN.md`, for a later thaw; it isn't built. Thaws happen only by the
+owner's word (v0.6.0, and reports 2026-10.13 to 10.23).
+
+The parser reaches the machine only through `Gen.raz`. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.
 
@@ -132,10 +108,8 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.11.1, report 2026-10.23, the latest: the compiler in raz,
-built by itself, and 1.4 times the Pascal one's time (v0.9.1 was the last
-built by the Pascal seed). The tarball has `tools/`, which the website
-offers from 0.7.1 on.
+the first. The tarball has `tools/`, which the website offers from
+0.7.1 on.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
 a link in its `mods`. A test or example without `.expect` is only
@@ -149,6 +123,10 @@ ported from, is the **seed**: frozen at its last version, kept to build
 `src/` the first time and as the reference its units are tested
 against, and to be dropped in time. Never edit the seed; a difference
 found goes on the plan, for the owner.
+
+`sbcl/` is an example, not part of the build: a second compiler, in
+Common Lisp, written from the report alone and kept as a reference
+(`sbcl/README.md`).
 
 ## Readings of the report already taken
 

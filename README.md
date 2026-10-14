@@ -166,7 +166,7 @@ The report, `doc/raz.md` and `doc/raz-lib.md`, says all of it in about 2,100 lin
 (buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
 `Heap`, `Arena`, `Str`, `Bytes`, `Buf`, `Fmt`, `Math`, `Files`, `Opt` (a command
 line read through one table), `List(T)`, `Map(K, V; hash, eq)` and
-`Sort(T; less)`. Section 11 of the report gives each one's interface,
+`Sort(T; less)`. Volume 2 of the report, `doc/raz-lib.md`, gives each one's interface,
 and `tools/Doc.raz` prints it from the module's file:
 
     $ ./raz -o Doc tools/Doc.raz && ./Doc lib/Str.raz

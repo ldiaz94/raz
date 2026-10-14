@@ -17,7 +17,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Scan.raz` | 1,062 | 886 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 684 | 555 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 354 | 272 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,493 | 1,238 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/X64.raz` | 1,493 | 1,237 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,471 | 1,778 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 1,763 | 1,458 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 3,846 | 3,355 | Declarations, statements, expressions, built-ins, recovery, warnings |
