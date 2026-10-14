@@ -78,7 +78,7 @@ library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.11.1, report 2026-10.23, is the latest release. `src/` is the
+v0.12.0, report 2026-10.24, is the latest release. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
