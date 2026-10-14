@@ -27,7 +27,7 @@ end Hello.
 The compiler is about 10,700 lines of raz, written in itself: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
 ELF executable itself, with no assembler or linker, and compiles about
-650,000 lines a second.
+500,000 lines a second.
 
 ## What's here
 
