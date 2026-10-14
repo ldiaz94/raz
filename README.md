@@ -76,7 +76,7 @@ emacs is installed.
     make fmt        # the library, examples and tools are formatted
     make loc        # the compiler's lines
     make tests      # tests of the scanner, encoder and linker on their own
-    make pdf        # build/raz.pdf, the report, by pandoc and Chromium
+    make pdf        # build/raz.pdf and build/raz-lib.pdf, the two volumes, by pandoc and Chromium
     make dist       # build/raz-V-linux-x86_64.tar.gz, the release's tarball
     make site       # site/public/, the website, by pandoc and python3
 
