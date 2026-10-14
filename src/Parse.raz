@@ -2500,8 +2500,12 @@ begin
                 if isLoop[d] then INC(loops); end;
             end;
         | sEnd, sUntil:
-            if isLoop[d] then DEC(loops); end;
-            DEC(d);
+            (* an end with no begin before it, in a body the parser will
+               report, leaves d at 0 *)
+            if d > 0 then
+                if isLoop[d] then DEC(loops); end;
+                DEC(d);
+            end;
         | sIdent:
             if Scan.id = nameAdr then
                 Scan.next;
