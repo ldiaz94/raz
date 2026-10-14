@@ -64,7 +64,8 @@ repeat return set shl shr then to try type until var variant VOLATILE
 while xor
 ```
 
-`static`, in `link static;` (section 3), isn't one.
+`static`, in `link static;` (section 3), and `check` and `off`, in
+`check off;` (section 3), aren't reserved.
 
 **Predeclared names** are the basic types (section 5.1), `ERROR`,
 `true`, `false`, `nil` and the built-in procedures (section 6.8). They
@@ -276,8 +277,7 @@ program is sure of them. An index out of range there reads or writes
 whatever memory it reaches, and what follows isn't defined. Every other
 check stays, and the module's callers keep theirs. An instance of a
 generic module follows the generic module's own `check` line, not that
-of the module that made it. `check` and `off` aren't reserved words, as
-`static` isn't.
+of the module that made it.
 
 ## 4. Declarations
 
@@ -576,7 +576,9 @@ conversion between integer types, between integers and reals, or
 between `F32` and `F64`, without a written conversion (section 6.7).
 Results passed on whole need the same types exactly: in `a, b :=
 f(x)` and in `return f(x)`, an `INT` result doesn't pass up as an
-`I64`. Elsewhere, `return n, n` included, an `INT` widens as above.
+`I64`. Elsewhere, `return n, n` included, an `INT` widens as above; the
+bounds of a `for` and the step of `INC` and `DEC` take the type of the
+variable they work on, and an `INT` is not widened to it.
 
 ## 6. Expressions
 
@@ -645,7 +647,8 @@ and `x shr n` shift by `n` modulo the width of `x`'s type, in bits:
 for `x: U8`, `x shl 9` is `x shl 1`. `shr` brings in copies of the
 sign bit for signed types and zeros for unsigned ones. `n` may be of
 any integer type. The result has `x`'s type, cut to its width: in
-`U8`, `0C0H shl 1` is `80H`.
+`U8`, `0C0H shl 1` is `80H`. If `x` is an untyped constant, so is the
+result, and it doesn't wrap: `1 shl 9` is 512, which doesn't fit a `U8`.
 
 Relations compare as signed or unsigned according to the type.
 
@@ -761,9 +764,10 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 
 There are no others: no conversion between `BOOL` and integers, none
 between pointers and integers other than `INT` and `UINT`, and none to
-or from records, arrays, slices, variants or `ERROR`. A
-conversion of a constant is made by the compiler, by the same rules:
-`U8(300)` is 44.
+or from records, arrays, slices, variants or `ERROR`. An untyped integer constant converts to a pointer as an `INT` does, as
+in `^VOLATILE U32(0FEE00000H)`; it isn't assigned to a pointer without
+the conversion. A conversion of a constant is made by the compiler, by
+the same rules: `U8(300)` is 44.
 
 ### 6.8 Built-in procedures
 
@@ -895,7 +899,8 @@ match s of
 end;
 ```
 
-`match` runs the arm of the case `s` holds. An arm may name the case's
+`match` takes a variant, an enumeration or an integer type (a `U8`
+included); other types are an error. It runs the arm of the case `s` holds. An arm may name the case's
 fields, in order, all of them; the names stand for those fields of `s`
 itself, so assigning to one changes `s`; if `s` isn't a variable, they
 stand for the fields of a copy. An arm may also leave the fields
@@ -929,8 +934,9 @@ end;
 ```
 
 A label is a constant, or `lo .. hi`, the constants from `lo` to `hi`,
-both included (unlike a slice, which leaves `hi` out). Each must fit
-the integer's type, and no value may be in two labels. An integer
+both included (unlike a slice, which leaves `hi` out; `lo` may not be
+above `hi`). Each must fit the integer's type, and no value may be in
+two labels. An integer
 `match` must have an `| else:` arm, which may be empty. Whether an arm
 names a case or gives labels is set by the type matched: `| Max:` is a
 case of a variant or an enumeration, and a constant for an integer.
@@ -1004,8 +1010,8 @@ end Head.
 ```
 
 `return e;` evaluates `e` before the deferred statements run. A
-deferred statement can't contain `return`, `break`, `defer` or `try`
-that would leave it. A failed check, `Rt.exit` and `Sys.exit` end the
+deferred statement can't contain `defer`, nor a `return`, `break` or
+`try` that would leave it. A failed check, `Rt.exit` and `Sys.exit` end the
 program without running the deferred statements still pending.
 
 ### 7.8 Try
