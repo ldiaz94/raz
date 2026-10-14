@@ -208,21 +208,22 @@ end;
 proc builtin(c: ^Command): BOOL;
 var dir: []U8; n: I64; pid, _code: INT; ok: BOOL; _st: Sys.Status;
 begin
-    if c^.args[0] = "cd" then
+    match c^.args[0] of
+    | "cd":
         if c^.n > 1 then dir := c^.args[1]; else dir := Sys.env("HOME"); end;
         status := 0;
         if Sys.setWorkDir(dir) < 0 then say("cd: can't go to {}", [Fmt.str(dir)]); status := 1; end;
-    elsif c^.args[0] = "wait" then
+    | "wait":
         repeat pid, _st, _code := Sys.wait(-1, true); until pid < 0;
         status := 0;
-    elsif c^.args[0] = "exit" then
+    | "exit":
         n := status;
         if c^.n > 1 then
             n, ok := Str.toInt(c^.args[1]);
             if not ok then say("exit: {} isn't a number", [Fmt.str(c^.args[1])]); n := 2; end;
         end;
         Rt.exit(INT(n));
-    else
+    | else:
         return false;
     end;
     return true;

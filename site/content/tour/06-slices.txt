@@ -1,6 +1,6 @@
 title: Arrays, slices and strings
 part: Set
-summary: Five in a row, a window onto them, bytes in UTF-8, and checks on every index.
+summary: Five in a row, a window onto them, bytes in UTF-8, raw strings over lines, and checks on every index.
 ---
 ```raz Slices run
 ```
@@ -90,7 +90,7 @@ end Moves.
 
 ## Strings
 
-A string is a slice of bytes, `[]U8`, in UTF-8, and a string constant's bytes are constant. A `[8]U8` made from one is a copy you can change. Arrays and slices of integers compare with `=` and `#`, so strings do too. `Str` has the rest: ordering, finding, hashing, prefixes, UTF-8 and reading a number.
+A string is a slice of bytes, `[]U8`, in UTF-8, and a string constant's bytes are constant. A `[8]U8` made from one is a copy you can change. Arrays and slices of integers compare with `=` and `#`, so strings do too. `Str` has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case, UTF-8, and numbers to and from text.
 
 ```raz Words run
 module Words;
@@ -104,8 +104,12 @@ begin
     if s[0..5] = "hello" then Out.str("it says hello\n"); end;
     Out.int(Str.find(s, "world")); Out.ln;          (* 7 *)
     Out.int(Str.find(s, "xyz")); Out.ln;            (* -1 *)
+    Out.int(Str.findLast("abcabc", "bc")); Out.ln;  (* 4 *)
     if Str.hasPrefix(s, "hell") then Out.str("prefix\n"); end;
+    if Str.hasSuffix(s, "world") then Out.str("suffix\n"); end;
     Out.int(Str.cmp("apple", "banana")); Out.ln;    (* -1 *)
+    if Str.eqFold("RAZ", "raz") then Out.str("the same, but for case\n"); end;
+    Out.str("["); Out.str(Str.trim("  padded \t\n")); Out.str("]\n");
 
     n, ok := Str.toInt("-1234");
     if ok then Out.int(n + 1); Out.ln; end;
@@ -115,47 +119,115 @@ begin
     name := "raz";                  (* a copy, the program's own *)
     name[0] := 'R';
     Out.str(name[0..3]); Out.ln;
+    Str.upper(name[0..3]);          (* in place: name is a variable *)
+    Out.str(name[0..3]); Out.ln;
 end;
 
 end Words.
 ```
 
+## Taking a string apart
+
+`Str.cut` splits a string at the first place a separator is: what comes before it, what comes after, and whether it was there at all. `Str.field` gives the first word, past any spaces, and the rest. Neither copies anything: every part is a slice of the string it came from, so taking a line or a file apart costs no memory.
+
+```raz Parts run
+module Parts;
+import Out, Str;
+
+const Text = "name = raz\nkind = language\nyear = 2026\n";
+
+proc main*;
+var line, rest, key, val, w: []U8; more, ok: BOOL;
+begin
+    (* line by line, then each line at its = *)
+    line, rest, more := Str.cut(Text, "\n");
+    while more do
+        key, val, ok := Str.cut(line, "=");
+        if ok then
+            Out.str(Str.trim(key)); Out.str(" is "); Out.str(Str.trim(val)); Out.ln;
+        end;
+        line, rest, more := Str.cut(rest, "\n");
+    end;
+
+    (* word by word *)
+    w, rest := Str.field("  the quick   brown fox ");
+    while LEN(w) > 0 do
+        Out.str("<"); Out.str(w); Out.str(">");
+        w, rest := Str.field(rest);
+    end;
+    Out.ln;
+end;
+
+end Parts.
+```
+
+When `Str.cut` finds no separator it gives the whole string, an empty one and `false`, so the loop above ends after the last line that has a line feed. Building a string goes the other way, in a `Buf`: `Str.join` adds parts with a separator between them, and `Str.replace` adds a string with every match of one text replaced by another (lesson 9 shows `Buf`).
+
+## Raw strings
+
+A string between backquotes is raw: its bytes are the text as it stands, with no escapes, so a backslash or a double quote is itself, and it may run over lines. When the opening backquote ends its line and the closing one has only spaces and tabs before it, those blanks come off the start of every line between, and the text keeps the indent of the code it sits in. Each line ends in a line feed, the last one too.
+
+```raz Raw run
+module Raw;
+import Out;
+
+const Path = `C:\Users\raz\"notes".txt`;
+
+proc usage;
+begin
+    Out.str(`
+        usage: tool [-v] file ...
+          -v    say what is done
+          file  read this, not standard input
+        `);
+end;
+
+proc main*;
+begin
+    Out.str(Path); Out.ln;
+    usage;
+    Out.str(`a raw string on one line, \n and all`); Out.ln;
+end;
+
+end Raw.
+```
+
+A line of an indented raw string that doesn't start with the closing line's blanks is an error, so a slip in the indent is caught where it is made, not printed. A raw string can't hold a backquote; join one in with `+` and an ordinary string that holds it.
+
 ## UTF-8
 
-A character is an `I32`, its code point. `Str.decode` reads the first character of a string and says how many bytes it took; `Str.encode` goes the other way. Byte length and character count are different things, and the program is the one that says which it wants.
+A character is an `I32`, its code point. A string stays bytes; UTF-8 is how `Str` reads them. `Str.next` walks a string a character at a time, giving each one and where the next starts, -1 at the end. `Str.decode` reads the first character of a string and says how many bytes it took, `Str.decodeLast` the last, and `Str.encode` goes the other way. `Str.chars` counts characters and `Str.valid` says whether a string is UTF-8 at all; a byte that doesn't start a character rightly reads as FFFDH, the character that stands for a wrong one. Byte length and character count are different things, and the program is the one that says which it wants.
 
 ```raz Runes run
 module Runes;
 import Out, Str;
 
-(* the characters of s, not its bytes *)
-proc chars(s: []U8): INT;
-var i, n, size: INT;
-begin
-    i := 0;
-    n := 0;
-    while i < LEN(s) do
-        _, size := Str.decode(s[i..LEN(s)]);
-        INC(i, size);
-        INC(n);
-    end;
-    return n;
-end;
-
 proc main*;
-var s: []U8; c: I32; size: INT; bytes: [4]U8; k: INT;
+var s: []U8; c: I32; i, size: INT; bytes: [4]U8; k: INT;
 begin
     s := "caf\u{E9} \u{3BB}";
     Out.int(LEN(s)); Out.str(" bytes, ");
-    Out.int(chars(s)); Out.str(" characters\n");
-    c, size := Str.decode(s[3..LEN(s)]);
-    Out.int(I64(c)); Out.str(" took "); Out.int(size); Out.str(" bytes\n");
+    Out.int(Str.chars(s)); Out.str(" characters\n");
+
+    (* each character, as its code point *)
+    c, i := Str.next(s, 0);
+    while i >= 0 do
+        Out.int(I64(c)); Out.str(" ");
+        c, i := Str.next(s, i);
+    end;
+    Out.ln;
+
+    c, size := Str.decodeLast(s);
+    Out.int(I64(c)); Out.str(" is last, in "); Out.int(size); Out.str(" bytes\n");
     bytes, k := Str.encode(955);
     Out.str(bytes[0..k]); Out.ln;
+    if not Str.valid(s[0..4]) then Out.str("cut in the middle of a character\n"); end;
 end;
 
 end Runes.
 ```
+
+`Str` knows UTF-8 and no more of Unicode: its case is ASCII's, and it doesn't say how wide a character is on a terminal or which spellings of a text are the same. Those need tables bigger than the rest of the library.
 
 ## Loops over lengths
 

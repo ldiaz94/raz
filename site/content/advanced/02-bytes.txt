@@ -171,33 +171,38 @@ The output is the same on a little-endian and a big-endian machine, because the 
 
 ## Numbers and text
 
-`Str.toInt` reads a decimal number with an optional sign and nothing else, and says whether it was one. `Fmt` goes the other way. `Str.encode` and `Str.decode` move between characters and UTF-8, as the first tour showed.
+`Str.toInt` reads a decimal number with an optional sign and nothing else, and says whether it was one; `Str.toHex` reads hexadecimal digits, and `Math.toReal` a real, as a constant is written but with `e` for `E` too, to the nearest `F64` exactly. `Str.fromInt` goes the other way into an array of 20 bytes, with no allocator, and `Fmt` does the rest. `Str.encode` and `Str.decode` move between characters and UTF-8, as the first tour showed.
 
 ```raz Numbers run
 module Numbers;
-import Out, Str;
+import Out, Str, Math, Fmt;
 
 (* the sum of the numbers in a comma separated list, or -1 if any isn't *)
 proc total(s: []U8): I64;
-var start, i: INT; sum, n: I64; ok: BOOL;
+var part: []U8; sum, n: I64; ok, more: BOOL;
 begin
-    start := 0;
-    for i := 0 to LEN(s) do
-        if (i = LEN(s)) or (s[i] = ',') then
-            n, ok := Str.toInt(s[start..i]);
-            if not ok then return -1; end;
-            sum := sum + n;
-            start := i + 1;
-        end;
+    more := true;
+    while more do
+        part, s, more := Str.cut(s, ",");
+        n, ok := Str.toInt(part);
+        if not ok then return -1; end;
+        sum := sum + n;
     end;
     return sum;
 end;
 
 proc main*;
+var u: U64; x: F64; ok: BOOL; digits: [20]U8; k: INT;
 begin
     Out.int(total("10,20,-5,+7")); Out.ln;
     Out.int(total("10,x,20")); Out.ln;
     Out.int(total("10,,20")); Out.ln;
+    u, ok := Str.toHex("ff00");
+    if ok then Out.hex(u, 1); Out.ln; end;
+    x, ok := Math.toReal("-1.5e3");
+    if ok then Fmt.print("{}\n", [Fmt.real(x, 1)]); end;
+    digits, k := Str.fromInt(-9223372036854775807 - 1);
+    Out.str(digits[0..k]); Out.ln;
 end;
 
 end Numbers.

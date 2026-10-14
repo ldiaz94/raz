@@ -39,6 +39,7 @@ one pass, at about 500,000 lines a second.</p>
       <li>Integers of 8 to 64 bits, signed and unsigned, which wrap; <code>BOOL</code>, <code>F32</code>, <code>F64</code>. Nothing converts unless it is written.</li>
       <li>Arrays, checked slices, pointers, records laid out as C lays them out, packed records, enumerations, sets, and variants with <code>match</code>.</li>
       <li>Every index and slice is checked; a failure says where it was, with the values, and the calls under way.</li>
+      <li>Strings of UTF-8 bytes, raw strings over lines that keep the code's indent, and <code>match</code> on a string.</li>
       <li>Every variable starts at zero. Behaviour is defined everywhere but through pointers.</li>
       <li>No garbage collector: memory comes from an allocator the program chooses and passes.</li>
       <li>Several results, <code>ERROR</code> values and <code>defer</code>, in place of exceptions.</li>

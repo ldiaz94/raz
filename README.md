@@ -150,6 +150,9 @@ by number.
   size, in the order written. `CAS`, `XCHG`, `XADD`, `FENCE`.
 - `and`, `or` and `not` for `BOOL`s; `&`, `|`, `xor` and `~` for bits;
   `=` on arrays and strings.
+- Strings are `[]U8`, in UTF-8; raw strings between backquotes run over
+  lines and keep the indent of the code around them; `match` takes a
+  string.
 - Several results, `ERROR` values compared by identity, `defer`.
 - Modules with bodies; generic modules with type and procedure
   arguments, `Map(K, V; hash, eq)`.
@@ -158,7 +161,7 @@ by number.
 - `extern` procedures and variables from C; code procedures written in
   the target's assembly language; `SYSCALL`.
 
-The report, `doc/raz.md` and `doc/raz-lib.md`, says all of it in about 2,100 lines.
+The report, `doc/raz.md` and `doc/raz-lib.md`, says all of it in about 2,300 lines.
 
 ## The library
 

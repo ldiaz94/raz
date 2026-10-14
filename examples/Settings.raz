@@ -1,0 +1,65 @@
+(* Strings: reads settings from a text of its own, written as a raw
+   string that keeps the indent of the code around it. Each line is a
+   name, =, and a value; # starts a comment. Str takes the lines apart
+   without copying them, and a match on a string picks what each name
+   sets. *)
+module Settings;
+import Out, Fmt, Str, Math;
+
+const
+    Text = `
+        # a window
+        title = raz \ settings
+        width = 80
+        Height=24
+        scale = 1.5
+        colour = "green"
+        depth
+        `;
+
+var
+    title: []U8;
+    width, height: I64;
+    scale: F64;
+
+(* One setting: false if the name isn't known, or its value is wrong. *)
+proc setting(name, value: []U8): BOOL;
+var ok: BOOL; lower: [16]U8;
+begin
+    if LEN(name) > LEN(lower) then return false; end;
+    COPY(lower, name);
+    Str.lower(lower[0..LEN(name)]);
+    ok := true;
+    match lower[0..LEN(name)] of
+    | "title": title := value;
+    | "width": width, ok := Str.toInt(value);
+    | "height": height, ok := Str.toInt(value);
+    | "scale": scale, ok := Math.toReal(value);
+    | else: ok := false;
+    end;
+    return ok;
+end;
+
+proc main*;
+var line, rest, name, value: []U8; more, found: BOOL; n: INT;
+begin
+    rest := Text;
+    more := true;
+    while more do
+        line, rest, more := Str.cut(rest, "\n");
+        line, _, _ := Str.cut(line, "#");
+        line := Str.trim(line);
+        if LEN(line) > 0 then
+            INC(n);
+            name, value, found := Str.cut(line, "=");
+            if not found or not setting(Str.trim(name), Str.trim(value)) then
+                Fmt.print("line {}: {}\n", [Fmt.int(n), Fmt.str(line)]);
+            end;
+        end;
+    end;
+    Fmt.print("{}: {} by {}, at {}\n", [Fmt.str(title), Fmt.int(width), Fmt.int(height),
+        Fmt.real(scale, 1)]);
+    Out.int(Str.chars("naïve")); Out.str(" characters in naïve\n");
+end;
+
+end Settings.

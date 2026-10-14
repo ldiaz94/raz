@@ -306,20 +306,9 @@ begin
     end;
 end;
 
-(* line, without the spaces at its ends *)
-proc trim(line: []U8): []U8;
-var i, j: INT;
-begin
-    i := 0;
-    j := LEN(line);
-    while (i < j) and Scan.isSpace(line[i]) do INC(i); end;
-    while (j > i) and Scan.isSpace(line[j - 1]) do DEC(j); end;
-    return line[i..j];
-end;
-
 (* line, from the report or a manual page's literal block, added to b
-   as the program has it: in a page, \e is a backslash and \& is
-   nothing. *)
+   as the program has it: in a page, \e is a backslash, \(ga a
+   backquote and \& nothing. *)
 proc addLine(b: ^Buf.Buf; line: []U8; page: BOOL);
 var i: INT;
 begin
@@ -328,6 +317,9 @@ begin
         if page and (line[i] = '\\') and (i + 1 < LEN(line)) and (line[i + 1] = 'e') then
             Buf.add(b, '\\');
             INC(i);
+        elsif page and Str.hasPrefix(line[i..LEN(line)], "\\(ga") then
+            Buf.add(b, '`');
+            INC(i, 3);
         elsif page and (line[i] = '\\') and (i + 1 < LEN(line)) and (line[i + 1] = '&') then
             INC(i);
         else Buf.add(b, line[i]);
@@ -368,7 +360,7 @@ begin
         k := i;
         while (k < LEN(s)) and (s[k] # 10) do INC(k); end;
         line := s[i..k];
-        fence := not page and (trim(line) = "```");
+        fence := not page and (Str.trim(line) = "```");
         if inBlock and (fence or page and (line = ".Ed")) then
             if whole and Str.hasPrefix(first, "module ") and Str.hasPrefix(last, "end ") then
                 name := first[7..LEN(first)];
@@ -391,10 +383,10 @@ begin
             whole := true;
         elsif inBlock then
             addLine(ADR(prog), line, page);
-            if trim(line) = "..." then whole := false; end;
-            if LEN(trim(line)) > 0 then
-                if LEN(first) = 0 then first := trim(line); end;
-                last := trim(line);
+            if Str.trim(line) = "..." then whole := false; end;
+            if LEN(Str.trim(line)) > 0 then
+                if LEN(first) = 0 then first := Str.trim(line); end;
+                last := Str.trim(line);
             end;
         end;
         i := k + 1;

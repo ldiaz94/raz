@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 10,800 lines of code (the
+The compiler is eleven files of raz, about 10,900 lines of code (the
 budget is a soft 10,000, never past 11,000). It is its own compiler: the
 frozen Pascal compiler in `seed/` builds `src/` the first time, and
 after that a raz builds `src/` (`make fixpoint` checks that it makes

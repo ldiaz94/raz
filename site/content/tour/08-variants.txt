@@ -163,3 +163,43 @@ end;
 
 end Classify.
 ```
+
+## Matching strings
+
+On a string, `match` takes string constants, several to an arm if need be, and compares them as `=` does. It too must have an `| else:`. It is how a program reads a command, an option or a keyword without a chain of `elsif`s.
+
+```raz Commands run
+module Commands;
+import Out;
+
+type Op = (none, add, sub, show);
+
+proc op(word: []U8): Op;
+begin
+    match word of
+    | "add", "plus", "+": return add;
+    | "sub", "minus", "-": return sub;
+    | "show": return show;
+    | else: return none;
+    end;
+end;
+
+proc main*;
+var total: INT; words: [6][]U8; i: INT;
+begin
+    words := ["add", "plus", "sub", "show", "times", "-"];
+    for i := 0 to 5 do
+        match op(words[i]) of
+        | add: INC(total);
+        | sub: DEC(total);
+        | show: Out.int(total); Out.ln;
+        | none: Out.str(words[i]); Out.str("?\n");
+        end;
+    end;
+    Out.int(total); Out.ln;
+end;
+
+end Commands.
+```
+
+Two labels that are the same string are an error, as two arms for one case are.

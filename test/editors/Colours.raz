@@ -1,6 +1,9 @@
 (* outer (* nested *) still comment *)
 module Colours;
 const big = 0FFH; small = 2.5E-3; q = '\''; s = "a\"b";
+const raw = `C:\`;
+    lines = `begin
+end (* x *)`;
 var x: I64; ok: BOOL;
 begin
     INC(x); ok := true;

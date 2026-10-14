@@ -57,7 +57,7 @@ true false nil LEN ADR NEW SIZE INC DEC MSG XADD CAS XCHG""".split())
 
 TOKEN = re.compile(r"""
     (?P<comment>\(\*.*?\*\)) |
-    (?P<string>"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*') |
+    (?P<string>"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|`[^`]*`) |
     (?P<number>\b\d[0-9A-Fa-f]*(?:\.\d+)?(?:E[-+]?\d+)?H?\b) |
     (?P<word>[A-Za-z_][A-Za-z_0-9]*)
 """, re.X | re.S)
@@ -92,8 +92,9 @@ def tutorial_blocks():
             blocks.append("\n".join(cur) + "\n")
             cur = None
         elif cur is not None:
-            # roff writes a backslash as \e and a dot at a line's start as \&.
-            cur.append(line.replace("\\&", "").replace("\\e", "\\"))
+            # roff writes a backslash as \e, a backquote as \(ga and a dot
+            # at a line's start as \&.
+            cur.append(line.replace("\\&", "").replace("\\(ga", "`").replace("\\e", "\\"))
     return blocks
 
 def tutorial_module(name):

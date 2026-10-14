@@ -37,7 +37,7 @@ The program is a static executable with no run time besides the code it uses, so
 
 ## What `Out` can write
 
-`Out` is the library's buffered output. It writes strings, single characters, numbers in decimal or hexadecimal, and a line feed. A string is written as it is, with `\n` for a line feed, `\t` for a tab, `\"` and `\\`.
+`Out` is the library's buffered output. It writes strings, single characters, numbers in decimal or hexadecimal, and a line feed. A string is written as it is, with `\n` for a line feed, `\t` for a tab, `\"` and `\\`; or between backquotes, as a raw string with no escapes at all, which may run over lines (lesson 6).
 
 ```raz Numbers run
 module Numbers;

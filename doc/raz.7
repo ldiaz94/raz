@@ -1,5 +1,5 @@
 .\" raz(7) - the raz language at a glance
-.Dd October 12, 2026
+.Dd October 14, 2026
 .Dt RAZ 7
 .Os
 .Sh NAME
@@ -45,6 +45,11 @@ the code point, an integer.
 .It Strings
 .Cm \(dqhello\en\(dq ,
 its UTF-8 bytes, ending on its line.
+.It Raw strings
+.Cm \(gaC:\etmp\(ga ,
+the text between backquotes as it stands, no escapes, over lines; if
+the opening backquote ends its line and the closing one has only
+blanks before it, those blanks come off every line.
 .It Escapes
 .Cm \en \et \er \e0 \e\e \e' \e\(dq \eu{E9} ,
 and in strings
@@ -432,6 +437,10 @@ On a variant, an arm for each case, naming its fields; on an
 enumeration, an arm for each name; on an integer, arms of constants
 and ranges,
 .Cm "| '0' .. '9':" ,
+and an
+.Cm "| else:" ;
+on a string, arms of string constants,
+.Cm "| \(dqadd\(dq, \(dqplus\(dq:" ,
 and an
 .Cm "| else:" ,
 which any

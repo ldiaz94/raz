@@ -24,9 +24,6 @@ is a fourth, for strings: raw strings, which may run over lines
 and may be indented with the code around them (section 2), and
 `match` on a string (section 7.4); it breaks no program.
 
-The compiler follows version 2026-10.24 until it has what 2026-10.25
-adds.
-
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
 written for it. What anyone wishes it had waits on a list, for a later

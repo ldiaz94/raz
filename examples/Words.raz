@@ -1,5 +1,6 @@
-(* Generic modules: counts the words of a text in a Map from []U8 to
-   INT, hashed and compared by Str's procedures, keeps them in order of
+(* Generic modules: counts the words of a text, taken apart by
+   Str.field, in a Map from []U8 to INT, hashed and compared by Str's
+   procedures, keeps them in order of
    first sight in a List([]U8), and prints them with Fmt. *)
 module Words;
 import Fmt, Str, Heap, Count := Map([]U8, INT, Str.hash, Str.eq), Names := List([]U8);
@@ -9,20 +10,17 @@ const Text = "the cat and the hat and the bat";
 proc main*;
 var
     counts: Count.Map; order: Names.List; n: ^Names.Node;
-    i, start, k, total: INT; found, _ok: BOOL; w: []U8;
+    k, total: INT; found, _ok: BOOL; w, rest: []U8;
 begin
     Count.init(ADR(counts), Heap.heap);
     Names.init(ADR(order), Heap.heap);
-    start := 0;
-    for i := 0 to LEN(Text) do
-        if (i = LEN(Text)) or (Text[i] = ' ') then
-            w := Text[start..i];
-            INC(total);
-            k, found := Count.get(ADR(counts), w);
-            if not found then _ok := Names.push(ADR(order), w); end;
-            _ok := Count.put(ADR(counts), w, k + 1);
-            start := i + 1;
-        end;
+    w, rest := Str.field(Text);
+    while LEN(w) > 0 do
+        INC(total);
+        k, found := Count.get(ADR(counts), w);
+        if not found then _ok := Names.push(ADR(order), w); end;
+        _ok := Count.put(ADR(counts), w, k + 1);
+        w, rest := Str.field(rest);
     end;
     Names.reverse(ADR(order));
     n := order.head;

@@ -10,7 +10,8 @@ b=build/src
 # so are those whose message says what match takes.
 newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRawIndent.raz
     conform/run/MatchStr.raz conform/err/MatchStrTwice.raz conform/err/MatchStrNoElse.raz
-    conform/err/MatchStrVar.raz conform/err/MatchReal.raz conform/err/AtMatch.raz"
+    conform/err/MatchStrVar.raz conform/err/MatchReal.raz conform/err/AtMatch.raz
+    examples/Sh.raz examples/Settings.raz"
 newer() {
     for g in $newer; do [ $g = $1 ] && return 0; done
     return 1

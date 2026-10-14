@@ -95,7 +95,7 @@ end Free.
 
 ```raz Build run
 module Build;
-import Out, Buf, Heap;
+import Out, Buf, Heap, Str;
 
 proc main*;
 var b: Buf.Buf; i: INT;
@@ -109,10 +109,18 @@ begin
     end;
     Out.str(Buf.bytes(ADR(b))); Out.ln;
     Out.int(b.len); Out.str(" bytes\n");
+    Buf.reset(ADR(b));
+    Str.join(ADR(b), ["red", "green", "blue"], ", ");
+    Out.str(Buf.bytes(ADR(b))); Out.ln;
+    Buf.reset(ADR(b));
+    Str.replace(ADR(b), "a-b-c", "-", " and ");
+    Out.str(Buf.bytes(ADR(b))); Out.ln;
 end;
 
 end Build.
 ```
+
+`Str.join` and `Str.replace` build into a `Buf` too: the parts with a separator between them, or a string with one text replaced by another wherever it is.
 
 ## Pages
 

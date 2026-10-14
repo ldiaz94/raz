@@ -2,7 +2,7 @@
 .\" Every whole module in a literal block here is a program that make
 .\" check compiles and runs, against test/man/Name.expect; see
 .\" tools/Doc.raz.
-.Dd October 12, 2026
+.Dd October 14, 2026
 .Dt RAZ-TUTORIAL 7
 .Os
 .Sh NAME
@@ -308,7 +308,7 @@ begin
 end;
 
 proc main*;
-var a: [5]INT; i: INT; s: []U8; name: [8]U8;
+var a: [5]INT; i: INT; s, val: []U8; name: [8]U8; ok: BOOL;
 begin
     for i := 0 to 4 do a[i] := i * i; end;
     Out.int(sum(a)); Out.ln;        (* the array, as a slice *)
@@ -317,9 +317,15 @@ begin
     Out.str(s[7..LEN(s)]); Out.ln;
     if s[0..5] = "hello" then Out.str("it says hello\en"); end;
     Out.int(Str.find(s, "world")); Out.ln;
+    _, val, ok := Str.cut(" size = 42 ", "=");
+    if ok then Out.str(Str.trim(val)); Out.ln; end;
     name := "raz";                  (* a copy, the program's own *)
     name[0] := 'R';
     Out.str(name[0..3]); Out.ln;
+    Out.str(\(ga
+        C:\etmp\e "as it stands"
+          over lines
+        \(ga);
 end;
 
 end Slices.
@@ -330,7 +336,10 @@ end Slices.
 world
 it says hello
 7
+42
 Raz
+C:\etmp\e "as it stands"
+  over lines
 .Ed
 .Pp
 .Cm [5]INT
@@ -358,7 +367,14 @@ Arrays and slices of integers compare with
 and
 .Cm # ;
 .Cm Str
-has the rest: ordering, finding, hashing, UTF-8 and reading a number.
+has the rest: ordering, finding, trimming, cutting a string into
+parts, which are slices of it, UTF-8, and numbers to and from text.
+.Pp
+A string between backquotes is raw: no escapes, and it may run over
+lines.
+When the opening backquote ends its line and the closing one has
+only blanks before it, those blanks come off every line, so the text
+stands at the indent of the code around it.
 .Pp
 A
 .Cm for
@@ -740,6 +756,15 @@ begin
     end;
 end;
 
+proc colour(name: []U8): Colour;
+begin
+    match name of
+    | "red", "rose": return red;
+    | "green": return green;
+    | else: return blue;
+    end;
+end;
+
 proc main*;
 var shapes: [3]Shape; i: INT; warm: Colours; c: Colour;
 begin
@@ -753,6 +778,7 @@ begin
     for c := red to blue do
         if c in warm then Out.int(I64(c)); Out.ln; end;
     end;
+    Out.int(I64(colour("rose"))); Out.int(I64(colour("green"))); Out.ln;
 end;
 
 end Shapes.
@@ -764,6 +790,7 @@ end Shapes.
 digit letter other
 0
 1
+01
 .Ed
 .Pp
 An enumeration is a list of names, in order; a
@@ -786,7 +813,8 @@ Every case has an arm, unless an
 comes last.
 On an integer,
 .Cm match
-takes constants and ranges, and must have an
+takes constants and ranges, and on a string, string constants; both
+must have an
 .Cm "| else:" .
 .Sh 12. GENERIC MODULES
 A module may take types, and the procedures it needs on them, as

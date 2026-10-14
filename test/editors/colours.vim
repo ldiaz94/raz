@@ -1,6 +1,6 @@
 " Checks each token of Colours.expect has the colour group it should.
 let s:kinds = {'razComment': 'comment', 'razKeyword': 'keyword', 'razNumber': 'number',
-      \ 'razString': 'string', 'razChar': 'string', 'razType': 'type',
+      \ 'razString': 'string', 'razRawString': 'string', 'razChar': 'string', 'razType': 'type',
       \ 'razBuiltin': 'builtin', 'razConstant': 'constant'}
 for s:want in readfile('test/editors/Colours.expect')
   let [s:l, s:c, s:k] = split(s:want)
