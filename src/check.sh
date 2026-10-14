@@ -6,10 +6,13 @@
 set -e
 b=build/src
 # The seed predates raw strings and match on a string (report
-# 2026-10.25): the files that use them are the compiler's alone.
-newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRawIndent.raz"
+# 2026-10.25): the files that use them are the compiler's alone, and
+# so are those whose message says what match takes.
+newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRawIndent.raz
+    conform/run/MatchStr.raz conform/err/MatchStrTwice.raz conform/err/MatchStrNoElse.raz
+    conform/err/MatchStrVar.raz conform/err/MatchReal.raz conform/err/AtMatch.raz"
 newer() {
-    case " $newer " in *" $1 "*) return 0 ;; esac
+    for g in $newer; do [ $g = $1 ] && return 0; done
     return 1
 }
 mkdir -p $b

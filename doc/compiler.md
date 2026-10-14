@@ -19,8 +19,8 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,516 | 1,800 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 1,767 | 1,462 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 3,907 | 3,405 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Item.raz` | 1,782 | 1,473 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 3,949 | 3,441 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -1318,7 +1318,13 @@ picked the same way; a variant's, by its tag, arm by arm).
 `dispatch` makes a jump table (gen's `jumpTable`, whose comment shows
 the code) for four labels or more that lie close together, else
 compares and branches one label after another with `Item.matchRange`, each
-jumping back to its arm. `deferStatement` is worth reading: a deferred statement
+jumping back to its arm. A `match` on a string is tested arm by arm,
+as a variant's is: `Item.matchBegin` puts the string's slice in a slot
+(`seqSlice`, as `=` does), and `strArm` compares each label with it by
+`Item.matchStr`, gen's `compareSeq` and a jump, to the arm if they are
+equal or, for the arm's last label, past it if they aren't. It keeps
+each label's bytes, as their chunk and length, to refuse a second one
+the same. `deferStatement` is worth reading: a deferred statement
 is compiled where it stands, as a little subroutine of the procedure
 that the code jumps over (gen's `deferBegin` and `deferEnd`), and
 `runDefers` emits a call to it at every way out of its statement list:

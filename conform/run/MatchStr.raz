@@ -1,0 +1,42 @@
+(* match on a string: its labels string constants, compared as = compares strings *)
+module MatchStr;
+import Out;
+
+const Plus = "plus";
+
+type Op = (none, add, sub, mul);
+
+proc op(word: []U8): Op;
+begin
+    match word of
+    | "add", Plus, `+`: return add;
+    | "sub", "-":       return sub;
+    | "mul":            return mul;
+    | "":               return none;
+    | else:             return none;
+    end;
+end;
+
+proc main*;
+var a: [3]U8; s: []U8;
+begin
+    Out.int(I64(op("add"))); Out.int(I64(op("plus"))); Out.int(I64(op("+")));
+    Out.int(I64(op("sub"))); Out.int(I64(op("-"))); Out.int(I64(op("mul")));
+    Out.int(I64(op("mu"))); Out.int(I64(op("mull"))); Out.int(I64(op(""))); Out.ln;
+    a := "sub";
+    match a of
+    | "sub": Out.str("array\n");
+    | else:
+    end;
+    s := a[0..2];
+    match s of
+    | "su": Out.str("slice\n");
+    | else: Out.str("no\n");
+    end;
+    match "abc" of
+    | "abc": Out.str("constant\n");
+    | else:
+    end;
+end;
+
+end MatchStr.

@@ -1,0 +1,9 @@
+module MatchStrNoElse;
+proc f(s: []U8; v: []I32);
+var n: INT;
+begin
+    match s of
+    | "a": n := 1;
+    end;
+end;
+end MatchStrNoElse.

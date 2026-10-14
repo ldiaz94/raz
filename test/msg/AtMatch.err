@@ -1,4 +1,4 @@
-conform/err/AtMatch.raz:5:11: error: match needs a variant, an enumeration or an integer, found F64
+conform/err/AtMatch.raz:5:11: error: match needs a variant, an enumeration, an integer or a string, found F64
     5 |     match x + 1.0 of end;
       |           ^^^^^^^
 raz: 1 error

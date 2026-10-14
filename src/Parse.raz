@@ -1848,6 +1848,43 @@ begin
     return nil;
 end;
 
+(* An arm of a match on a string, whose slice is in slot p: its labels,
+   string constants, none equal to another (report section 7.4), each
+   compared in turn as its arm is reached, then its statements. ls
+   keeps each label's chunk in lo and its length in hi, for the
+   comparing of labels. *)
+proc strArm(p: I64; var ls: Labels; var endL: INT): ERROR;
+var x: TItem; i, L, body: INT; last: BOOL; s: []U8;
+begin
+    L := Gen.NoLabel;
+    body := Gen.NoLabel;
+    repeat
+        try expression(x, nil);
+        if x.mode # Item.mStr then
+            return Scan.markAt(x.pos, say1("a label of a match on a string is a string constant, found {}", Item.what(x)));
+        end;
+        s := Chunk.rodata[Chunk.chunks[x.chunk].start..Chunk.chunks[x.chunk].start + INT(x.val)];
+        for i := 0 to ls.n - 1 do
+            if s = Chunk.rodata[Chunk.chunks[ls.lo[i]].start..Chunk.chunks[ls.lo[i]].start + INT(ls.hi[i])] then
+                return Scan.markAt(x.pos, say1("{} is in another label too", Diag.source(x.pos)));
+            end;
+        end;
+        if ls.n >= MaxLabels then return Scan.markAt(x.pos, tooMany(MaxLabels, "labels in one match")); end;
+        ls.lo[ls.n] := x.chunk; ls.hi[ls.n] := x.val;
+        INC(ls.n);
+        last := Scan.tok # Scan.sComma;
+        try Item.matchStr(p, x, last, L, body);
+        if last then break; end;
+        Scan.next;
+    until false;
+    try expect(Scan.sColon);
+    Gen.fix(body);
+    try statements();
+    Gen.jump(endL);
+    Gen.fix(L);
+    return nil;
+end;
+
 const
     MinTable = 4;      (* fewer labels are tested one by one *)
     TableDensity = 8;  (* a table has at most this many entries to a label *)
@@ -1896,13 +1933,14 @@ end;
 proc matchStatement(start: Diag.Pos; ind: INT): ERROR;
 var
     x: TItem; t: PType; c, f, o: PObj; p: I64; L, endL, n, first, disp, elseAt: INT;
-    seen: [256]BOOL; hasElse, all, byValue: BOOL; endAt: Diag.Pos; ls: Labels;
+    seen: [256]BOOL; hasElse, all, byValue, isStr: BOOL; endAt: Diag.Pos; ls: Labels;
 begin
     Scan.next;
     try expression(x, nil);
     if x.typ^.form = Sym.fConst then try Item.coerce(x, Sym.tI64); end;
     p := try Item.matchBegin(x);
     t := x.typ;
+    isStr := t^.form = Sym.fSlice;    (* matchBegin made a string a slice *)
     try expect(Scan.sOf);
     hasElse := false;
     all := true;
@@ -1926,6 +1964,8 @@ begin
             hasElse := true;
         elsif t^.form = Sym.fInt then
             try intArm(t, ls, endL);
+        elsif isStr then
+            try strArm(p, ls, endL);
         else
             first := ls.n;
             L := Gen.NoLabel;
@@ -1990,6 +2030,8 @@ begin
     ends := all;
     if (t^.form = Sym.fInt) and not hasElse then
         return Scan.markHelp(endAt, "a match on an integer needs an else arm", "it may be empty: | else:");
+    elsif isStr and not hasElse then
+        return Scan.markHelp(endAt, "a match on a string needs an else arm", "it may be empty: | else:");
     end;
     if not hasElse then
         c := t^.fields;

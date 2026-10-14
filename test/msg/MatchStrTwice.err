@@ -1,0 +1,4 @@
+conform/err/MatchStrTwice.raz:7:7: error: "b" is in another label too
+    7 |     | "b":      n := 2;
+      |       ^^^
+raz: 1 error

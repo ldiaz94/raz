@@ -1467,14 +1467,18 @@ begin
     return nil;
 end;
 
-(* The slot match tests: a variant's address, or an enumeration's or an
-   integer's value. *)
+(* The slot match tests: a variant's address, an enumeration's or an
+   integer's value, or a string's slice, which x then is. *)
 proc matchBegin*(var x: Item): (I64, ERROR);
 var p: I64;
 begin
     if x.typ^.form in {Sym.fEnum, Sym.fInt} then return toSlot(x); end;
+    if isSeq(x.typ) and Sym.same(elemOf(x.typ), Sym.tU8) then
+        try seqSlice(x);
+        return x.off, nil;
+    end;
     if (x.mode # mVar) or (x.typ^.form # Sym.fVariant) then
-        return 0, Scan.markAt(x.pos, say1("match needs a variant, an enumeration or an integer, found {}", what(x)));
+        return 0, Scan.markAt(x.pos, say1("match needs a variant, an enumeration, an integer or a string, found {}", what(x)));
     end;
     if x.ro then try copyToTemp(x); end;   (* its arms' names stand for a copy's fields *)
     try address(x);
@@ -1492,6 +1496,17 @@ begin
     Gen.pushVar(a, 8, false, Gen.kWord);
     Gen.pushConst(Gen.kWord, tag);
     Gen.jumpCmp(Scan.sNeq, false, L);
+end;
+
+(* For a label s of a match on the string whose slice is in slot p:
+   to body if they are equal, or, for the arm's last label, to L if
+   they aren't. *)
+proc matchStr*(p: I64; var s: Item; last: BOOL; var L, body: INT): ERROR;
+begin
+    try seqSlice(s);
+    Gen.compareSeq(p, s.off, 0, true);
+    if last then Gen.jumpIf(L, false); else Gen.jumpIf(body, true); end;
+    return nil;
 end;
 
 (* To body if the integer in slot p is from lo to hi: less its lo, it is

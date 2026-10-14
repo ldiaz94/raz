@@ -1,0 +1,4 @@
+conform/err/MatchStrVar.raz:6:7: error: a label of a match on a string is a string constant, found []U8
+    6 |     | s: n := 1;
+      |       ^
+raz: 1 error

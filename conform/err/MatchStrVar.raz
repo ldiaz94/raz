@@ -1,0 +1,10 @@
+module MatchStrVar;
+proc f(s: []U8; v: []I32);
+var n: INT;
+begin
+    match s of
+    | s: n := 1;
+    | else:
+    end;
+end;
+end MatchStrVar.

@@ -1,0 +1,5 @@
+conform/err/MatchStrNoElse.raz:7:5: error: a match on a string needs an else arm
+    7 |     end;
+      |     ^^^
+help: it may be empty: | else:
+raz: 1 error

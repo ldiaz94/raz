@@ -1,0 +1,11 @@
+module MatchStrTwice;
+proc f(s: []U8; v: []I32);
+var n: INT;
+begin
+    match s of
+    | "a", "b": n := 1;
+    | "b":      n := 2;
+    | else:
+    end;
+end;
+end MatchStrTwice.
