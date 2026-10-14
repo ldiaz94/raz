@@ -13,7 +13,7 @@ The first line is the place of the offending expression: file, line and column, 
 
 ## Other failures
 
-The same shape of message tells of a `nil` pointer, a division by zero, a bad slice and a stack overflow. Each of them stops the program with status 2, or by the signal if the machine caught it, and never runs on with a wrong value.
+The same shape of message tells of a `nil` pointer, a division by zero, a bad slice and a stack overflow. Each of them stops the program with status 2, and never runs on with a wrong value.
 
 ```raz Nilp fail
 module Nilp;

@@ -84,10 +84,20 @@ pre .err { color: #ff9a85; }
 /* the report */
 .spec { max-width: 46rem; }
 .spec pre { background: var(--code-bg); border-left: 2px solid var(--line); white-space: pre-wrap; }
-.spec table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 1em 0; }
-.spec td, .spec th { border-bottom: 1px solid var(--line); padding: 5px 10px 5px 0;
+.tour article table, .spec table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 1em 0; }
+.tour article td, .tour article th, .spec td, .tour article th, .spec th { border-bottom: 1px solid var(--line); padding: 5px 10px 5px 0;
   text-align: left; vertical-align: top; }
-.spec th { border-bottom-width: 2px; }
+.tour article th, .spec th { border-bottom-width: 2px; }
+/* narrow screens: each row becomes a card, its cells labelled by column */
+@media (max-width: 39.99rem) {
+  .tour article table thead { display: none; }
+  .tour article table, .tour article tbody, .tour article tr, .tour article td { display: block; }
+  .tour article tr { border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; margin: 0 0 10px; }
+  .tour article td { border: 0; padding: 3px 0; }
+  .spec table { display: block; overflow-x: auto; }
+  .tour article td::before { content: attr(data-label); display: block; font: 11px system-ui, sans-serif;
+    text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+}
 @media (min-width: 40rem) { .spec td:first-child { white-space: nowrap; } }
 .spec nav#TOC ul { list-style: none; padding-left: 1em; }
 

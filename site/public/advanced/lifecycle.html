@@ -134,7 +134,7 @@ leaving
 status 3</code></pre>
 <p>Neither the deferred statement nor <code>bye</code> ran. That's the rule, and the reason to keep cleanup that matters (a terminal, a lock file) in <code>atExit</code> and use <code>Rt.exit</code> for ending.</p>
 <h2>Signals</h2>
-<p>A program is stopped by a signal it doesn't catch, with a message that names the place for <code>SIGSEGV</code> and <code>SIGFPE</code>, and without one for the others. A program that wants to handle one, say <code>SIGTERM</code> for a clean shutdown, doesn't write a handler that runs at an arbitrary moment. It asks for the signals to arrive as data: <code>Sys.catch</code> takes a list of signals and gives a descriptor that is ready to read when one comes, and <code>Sys.caught</code> says which. So the program waits for signals the way it waits for input.</p>
+<p>A program is stopped by a signal it doesn't catch, with a message that names the place for <code>SIGSEGV</code> and <code>SIGFPE</code>, and without one for the others, and ends with status 2. A program that wants to handle one, say <code>SIGTERM</code> for a clean shutdown, doesn't write a handler that runs at an arbitrary moment. It asks for the signals to arrive as data: <code>Sys.catch</code> takes a list of signals and gives a descriptor that is ready to read when one comes, and <code>Sys.caught</code> says which. So the program waits for signals the way it waits for input.</p>
 <div class="file"><span>Terms.raz</span></div><pre class="code"><code><span class="kw">module</span> Terms;
 <span class="kw">import</span> Out, Sys;
 

@@ -29,14 +29,15 @@
 <li><a href="#procedures" id="toc-procedures">8. Procedures</a></li>
 <li><a href="#calling-c" id="toc-calling-c">9. Calling C</a></li>
 <li><a href="#programs" id="toc-programs">10. Programs</a></li>
-<li><a href="#the-library" id="toc-the-library">11. The library</a></li>
-<li><a href="#versions" id="toc-versions">12. Versions</a></li>
+<li><a href="#versions" id="toc-versions">11. Versions</a></li>
 <li><a href="#appendix-a.-what-an-implementation-chooses" id="toc-appendix-a.-what-an-implementation-chooses">Appendix A. What an implementation chooses</a></li>
 <li><a href="#appendix-b.-the-grammar" id="toc-appendix-b.-the-grammar">Appendix B. The grammar</a></li>
+<li><a href="#the-library-volume-2" id="toc-the-library-volume-2">The library, volume 2</a></li>
 </ul>
 <p>raz is a small systems language, first made for x86-64 Linux. A raz program can lay a record over a device’s registers, read and write a device’s memory exactly as written, take part in lock-free algorithms, make system calls and call C libraries. It has no garbage collector and no hidden run time: what the program does is what its text says.</p>
+<p>This is the first volume of the report: the language, what an implementation chooses, and the grammar. The second, <code>doc/raz-lib.md</code>, is the library, which sections 3 and 10 and appendix A name.</p>
 <p>This report defines the language. It is short on purpose. Whatever it doesn’t allow, raz doesn’t have.</p>
-<p>This is version 2026-10.21 of the report; section 12 says what each version changed. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>.</p>
+<p>This is version 2026-10.22 of the report; section 11 says where each version’s changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>.</p>
 <p>The language is frozen, softly, from this version on: it changes only to mend a defect, and its library grows only by what breaks no program written for it. What anyone wishes it had waits on a list, for a later thaw.</p>
 <h1 id="a-first-look">1. A first look</h1>
 <pre><code>module Hello;
@@ -50,20 +51,20 @@ end;
 end Hello.</code></pre>
 <p>A program is a set of modules. The one named on the command line is the main module, and it exports a procedure <code>main</code>; the program starts there, once every module’s body has run (section 3). Saved as <code>Hello.raz</code>, it is compiled with <code>raz Hello.raz</code>, which writes the executable <code>Hello</code>.</p>
 <h1 id="words-and-symbols">2. Words and symbols</h1>
-<p>A program is written in UTF-8. The compiler rejects a file that isn’t valid UTF-8: a malformed or overlong sequence, a surrogate, or a code point beyond 10FFFFH. Everything outside strings, characters and comments is ASCII. Spaces, tabs and line breaks separate symbols and are otherwise ignored.</p>
+<p>A program is written in UTF-8. The compiler rejects a file that isn’t valid UTF-8: a malformed or overlong sequence, a surrogate, or a code point beyond 10FFFFH, and a file with a NUL byte. Everything outside strings, characters and comments is ASCII. Spaces, tabs and line breaks separate symbols and are otherwise ignored.</p>
 <p><strong>Identifiers</strong> are an ASCII letter or <code>_</code> followed by letters, digits and <code>_</code>, up to 63 characters. Case matters: <code>count</code> and <code>Count</code> are different names. <code>_</code> alone isn’t a name: it is the blank, which stands only to the left of <code>:=</code> (section 7.1).</p>
 <p><strong>Reserved words</strong> are lowercase, except <code>VOLATILE</code>:</p>
 <pre><code>and begin break by code const defer div do else elsif end extern for
 forward if import in link match mod module not of or packed proc record
 repeat return set shl shr then to try type until var variant VOLATILE
 while xor</code></pre>
-<p><code>static</code>, in <code>link static;</code> (section 3), isn’t one.</p>
+<p><code>static</code>, in <code>link static;</code> (section 3), and <code>check</code> and <code>off</code>, in <code>check off;</code> (section 3), aren’t reserved.</p>
 <p><strong>Predeclared names</strong> are the basic types (section 5.1), <code>ERROR</code>, <code>true</code>, <code>false</code>, <code>nil</code> and the built-in procedures (section 6.8). They belong to a scope around every module, so a module or a procedure may declare the same name for something else, which hides them there.</p>
-<p><strong>Numbers.</strong> <code>123</code> is decimal. <code>0FFH</code> is hexadecimal: it starts with a digit, its digits are <code>0</code> to <code>9</code> and <code>A</code> to <code>F</code>, and it ends in <code>H</code>, all in capitals. <code>1.5</code> and <code>2.0E-3</code> are reals; a real always has a digit on both sides of its point, and its exponent, if it has one, is <code>E</code>, a sign if wanted, and digits. A decimal number above the largest <code>I64</code>, or a hexadecimal one above the largest <code>U64</code>, is an error.</p>
+<p><strong>Numbers.</strong> <code>123</code> is decimal. <code>0FFH</code> is hexadecimal: it starts with a digit, its digits are <code>0</code> to <code>9</code> and <code>A</code> to <code>F</code>, and it ends in <code>H</code>, all in capitals. <code>1.5</code> and <code>2.0E-3</code> are reals; a real always has a digit on both sides of its point, and its exponent, if it has one, is <code>E</code>, a sign if wanted, and digits. A decimal number above the largest <code>I64</code>, or a hexadecimal one above the largest <code>U64</code>, is an error; so is a real above the largest <code>F64</code>. A real below the least <code>F64</code> is 0.</p>
 <p>An integer is an untyped constant, which takes the type it is used as, up to the largest <code>I64</code>. A hexadecimal number above that, such as <code>0FFFFFFFFFFFFFFFFH</code>, has type <code>U64</code>: so <code>-1</code> never fits a <code>U64</code>, and the big number goes nowhere else without a conversion. Arithmetic on untyped constants doesn’t wrap: a result beyond the <code>I64</code>s, such as <code>9223372036854775807 + 1</code>, is an error.</p>
-<p>A real is an untyped constant too, which takes <code>F32</code> or <code>F64</code>, whichever it is used as, rounded to the nearest value of that type; where nothing says which, it is an <code>F64</code>. A real never becomes an integer, nor an integer a real, without a conversion: <code>x := 1;</code> is an error for <code>x: F64</code>, and <code>x := 1.0;</code> is right.</p>
+<p>A real is an untyped constant too. It is read as the nearest <code>F64</code> (a tie goes to the even one), and takes <code>F32</code> or <code>F64</code>, whichever it is used as: an <code>F32</code> is the nearest to that <code>F64</code>. Where nothing says which, it is an <code>F64</code>. A real never becomes an integer, nor an integer a real, without a conversion: <code>x := 1;</code> is an error for <code>x: F64</code>, and <code>x := 1.0;</code> is right.</p>
 <p><strong>Characters.</strong> <code>'a'</code> is the code point of one character, an integer: <code>'a'</code> is 97 and <code>'é'</code> is 233.</p>
-<p><strong>Strings.</strong> <code>"héllo\n"</code> is a sequence of bytes, the UTF-8 of its text: <code>"é"</code> is the two bytes 0C3H, 0A9H. Both characters and strings take the escapes <code>\n</code> (line feed), <code>\t</code> (tab), <code>\r</code> (carriage return), <code>\0</code> (zero), <code>\\</code>, <code>\'</code>, <code>\"</code>, <code>\u{H...}</code> (the code point with hexadecimal value H…, in a string its UTF-8) and, in strings only, <code>\xHH</code> (the byte with hexadecimal value HH, which needn’t make valid UTF-8). In an escape, the hexadecimal digits may be capitals or not. A character or a string ends on the line it starts on.</p>
+<p><strong>Strings.</strong> <code>"héllo\n"</code> is a sequence of bytes, the UTF-8 of its text: <code>"é"</code> is the two bytes 0C3H, 0A9H. Both characters and strings take the escapes <code>\n</code> (line feed), <code>\t</code> (tab), <code>\r</code> (carriage return), <code>\0</code> (zero), <code>\\</code>, <code>\'</code>, <code>\"</code>, <code>\u{H...}</code> (the code point with hexadecimal value H…, up to 10FFFFH, in a string its UTF-8) and, in strings only, <code>\xHH</code> (the byte with hexadecimal value HH, which needn’t make valid UTF-8). In an escape, the hexadecimal digits may be capitals or not. A character or a string ends on the line it starts on.</p>
 <p>Messages give the line and the column, counted in characters (section 10).</p>
 <p><strong>Comments</strong> are <code>(*</code> … <code>*)</code> and nest. By convention, the comment just before an exported declaration is its documentation, and the one before <code>module</code> is the module’s.</p>
 <p><strong>Operators and delimiters:</strong></p>
@@ -100,7 +101,7 @@ var names: Table.Map;   (* the instance is made here *)</code></pre>
 <p>A procedure argument names a procedure, not a variable or an expression, and its signature, with the type arguments put in, must be the parameter’s. Inside the module, <code>hash(k)</code> calls it directly. Two imports make the same instance only if their types and their procedures are the same.</p>
 <p><strong>Finding modules.</strong> The compiler looks for module <code>Name</code> in the main module’s directory, then in each directory given with <code>-I</code>, then in the <code>lib</code> directory beside the compiler. In each directory it takes the first of <code>Name.OS-ARCH.raz</code>, <code>Name.OS.raz</code>, <code>Name.ARCH.raz</code> and <code>Name.raz</code> that exists, where <code>OS-ARCH</code> is the target, for now only <code>linux-x86_64</code>. So a module whose code depends on the machine or the system comes in one file per target, and the modules that import it don’t change. Machine code (section 8) and system calls belong in such files.</p>
 <p><strong>One module to a name.</strong> A program has one module of each name, so the compiler reports an error, naming the files, if a module it looks for has files in more than one of these directories, rather than take the first: a <code>Buf.raz</code> beside a program would otherwise stand in for the library’s <code>Buf</code> in every module that imports it, the library’s own among them. A link is the exception: a file that is a symbolic link to one of the module’s files in a later directory chooses that file, so that a directory holding a link to <code>lib/Sys.raz</code> builds a program over the C library’s <code>Sys</code> on Linux too.</p>
-<p><strong>Names are flat.</strong> The names of a program’s modules are one space, with no packages or paths. So the names of the library’s modules (section 11) are kept for it: a program or another library doesn’t name a module of its own <code>Arena</code>, <code>Buf</code>, <code>C</code>, <code>Files</code>, <code>Fmt</code>, <code>Heap</code>, <code>List</code>, <code>Lock</code>, <code>Map</code>, <code>Math</code>, <code>Mem</code>, <code>Opt</code>, <code>Out</code>, <code>Rt</code>, <code>Sort</code>, <code>Str</code>, <code>Sys</code> or <code>Thread</code>, nor any name the library takes later. The modules of any other library share a prefix of their own, as an X11 library’s <code>Xauth</code> and <code>Xkeys</code> do, and a program that wants a shorter name imports one: <code>import Auth := Xauth;</code>.</p>
+<p><strong>Names are flat.</strong> The names of a program’s modules are one space, with no packages or paths. So the names of the library’s modules (the library, <code>doc/raz-lib.md</code>) are kept for it: a program or another library doesn’t name a module of its own <code>Arena</code>, <code>Buf</code>, <code>C</code>, <code>Files</code>, <code>Fmt</code>, <code>Heap</code>, <code>List</code>, <code>Lock</code>, <code>Map</code>, <code>Math</code>, <code>Mem</code>, <code>Opt</code>, <code>Out</code>, <code>Rt</code>, <code>Sort</code>, <code>Str</code>, <code>Sys</code> or <code>Thread</code>, nor any name the library takes later. The modules of any other library share a prefix of their own, as an X11 library’s <code>Xauth</code> and <code>Xkeys</code> do, and a program that wants a shorter name imports one: <code>import Auth := Xauth;</code>.</p>
 <p>The compiler holds every file of such a module to the same interface. When it takes one of <code>Name.*.raz</code>, it also reads the declarations of the others beside it, and of <code>Name.raz</code> if there is one, and reports an error unless they all export the same names, each the same kind of thing:</p>
 <ul>
 <li>a constant of the same type (its value may differ: a system call number, say);</li>
@@ -111,7 +112,7 @@ var names: Table.Map;   (* the instance is made here *)</code></pre>
 <p>Two types here are the same if they are built alike, a name in one file standing for the same name in another.</p>
 <p><strong>Module bodies.</strong> A module may end with <code>begin</code> and statements, its body. Every module’s body runs once, before the main module’s <code>main</code>: a module’s body runs after the bodies of the modules it imports, in the order of its <code>import</code>s, and once however many modules import it. Each instance of a generic module has its body run once. Module variables are zero before any body runs. <code>return;</code> ends a body early.</p>
 <p><strong><code>link "libX11.so.6";</code></strong> names a shared library to load at run time, for the <code>extern</code> declarations of section 9. <strong><code>link static;</code></strong> says the module needs a program without C (section 10): it makes its own system calls, or its own threads, which the C library wouldn’t know about.</p>
-<p><strong><code>check off;</code></strong>, after the links, leaves out of the module’s own code the checks of indexes and slice bounds of section 6.5, and that a slice of a pointer doesn’t run backwards (section 6.4), for speed where the program is sure of them. An index out of range there reads or writes whatever memory it reaches, and what follows isn’t defined. Every other check stays, and the module’s callers keep theirs. An instance of a generic module follows the generic module’s own <code>check</code> line, not that of the module that made it. <code>check</code> and <code>off</code> aren’t reserved words, as <code>static</code> isn’t.</p>
+<p><strong><code>check off;</code></strong>, after the links, leaves out of the module’s own code the checks of indexes and slice bounds of section 6.5, and that a slice of a pointer doesn’t run backwards (section 6.4), for speed where the program is sure of them. An index out of range there reads or writes whatever memory it reaches, and what follows isn’t defined. Every other check stays, and the module’s callers keep theirs. An instance of a generic module follows the generic module’s own <code>check</code> line, not that of the module that made it.</p>
 <h1 id="declarations">4. Declarations</h1>
 <pre><code>Declaration = &quot;const&quot; { IdentDef [ &quot;:&quot; Type ] &quot;=&quot; Expr &quot;;&quot; }
             | &quot;type&quot; { IdentDef &quot;=&quot; Type &quot;;&quot; }
@@ -210,7 +211,7 @@ QualIdent = [ ident &quot;.&quot; ] ident .</code></pre>
 <pre><code>type Cell = record ch: U8; attr: U8; end;</code></pre>
 <p>Fields are laid out in order as C lays them out: each at the next multiple of its own alignment, and the whole record padded to a multiple of its largest alignment. A record declared like a C struct has the same layout as that struct. A record may have no fields; its size is then 0.</p>
 <p>A <code>packed record</code> has no padding: each field starts at the byte after the field before it, and the record’s alignment is 1. So a field of a packed record may sit at any address. It is read and written like any other, on every target, even one whose machine can’t reach a misaligned word in one access: the compiled code reaches it in parts there. But a field of a packed record whose type is aligned to more than 1 byte, and anything inside it, has no address: <code>ADR</code> of it, a <code>var</code> parameter of it and a slice of it are errors. Nor can it be reached through a <code>^VOLATILE</code> pointer, since a misaligned access can’t be promised as one access (section 7.6). Its value can be copied out and back in.</p>
-<p>The bytes of a value of more than one byte are in the target’s order (appendix A). A file or a message in an order of its own is read and written a byte at a time, as <code>Str.le</code>, <code>Str.be</code>, <code>Str.putLE</code> and <code>Str.putBE</code> do (section 11).</p>
+<p>The bytes of a value of more than one byte are in the target’s order (appendix A). A file or a message in an order of its own is read and written a byte at a time, as <code>Str.le</code>, <code>Str.be</code>, <code>Str.putLE</code> and <code>Str.putBE</code> do (the library, <code>doc/raz-lib.md</code>).</p>
 <h2 id="variants">5.6 Variants</h2>
 <p>A variant holds one of several cases, each with its own fields:</p>
 <pre><code>type
@@ -253,7 +254,7 @@ if err = Table.NotFound then ... end;</code></pre>
 <li><code>A</code> is <code>INT</code> and <code>B</code> is <code>I64</code>, or <code>A</code> is <code>UINT</code> and <code>B</code> is <code>U64</code>, which loses nothing on any target.</li>
 </ul>
 <p>A string’s bytes are constant. A <code>[]U8</code> or <code>^U8</code> made from a string literal, or a slice of a string constant, points at them, and writing through it isn’t defined: on a target with read-only memory, it may stop the program as a bad address (section 10). A <code>[n]U8</code> made from a string is a copy, the program’s to change.</p>
-<p>Nothing else converts silently. In particular, there is no other conversion between integer types, between integers and reals, or between <code>F32</code> and <code>F64</code>, without a written conversion (section 6.7). Results passed on whole need the same types exactly: in <code>a, b := f(x)</code> and in <code>return f(x)</code>, an <code>INT</code> result doesn’t pass up as an <code>I64</code>. Elsewhere, <code>return n, n</code> included, an <code>INT</code> widens as above.</p>
+<p>Nothing else converts silently. In particular, there is no other conversion between integer types, between integers and reals, or between <code>F32</code> and <code>F64</code>, without a written conversion (section 6.7). Results passed on whole need the same types exactly: in <code>a, b := f(x)</code> and in <code>return f(x)</code>, an <code>INT</code> result doesn’t pass up as an <code>I64</code>. Elsewhere, <code>return n, n</code> included, an <code>INT</code> widens as above; the bounds of a <code>for</code> and the step of <code>INC</code> and <code>DEC</code> take the type of the variable they work on, and an <code>INT</code> is not widened to it.</p>
 <h1 id="expressions">6. Expressions</h1>
 <pre><code>Expr       = Conjunct { &quot;or&quot; Conjunct } .
 Conjunct   = Relation { &quot;and&quot; Relation } .
@@ -280,8 +281,8 @@ Selector   = &quot;.&quot; ident | &quot;^&quot; | &quot;[&quot; Expr [ &quot;..
 <p>Both operands of <code>+ - * div mod &amp; | xor</code>, and of a relation, have the same integer type, or one is an untyped constant that takes the other’s type, which it must fit. So do <code>v</code> and <code>k</code> in <code>INC(v, k)</code> and <code>DEC(v, k)</code>. The result has that type and wraps around at its width: in <code>U8</code>, <code>200 + 100</code> is <code>44</code>. A unary minus wraps too: for <code>x</code> of an unsigned type, <code>-x</code> is <code>0 - x</code>. Two integer types are never mixed, whatever their sizes: with <code>i: I64</code>, <code>i &lt; LEN(s)</code> is an error, and <code>i</code> should be an <code>INT</code>.</p>
 <p>Where the report asks for an integer and names no type, as an index, a slice’s bound, a shift’s count, a pointer’s offset <code>i</code> in <code>p + i</code>, or a conversion’s operand, any integer type will do, and its value is taken. On a target whose <code>INT</code> is narrower, a pointer’s offset is cut to an <code>INT</code>.</p>
 <p><code>SIZE(T)</code>, and <code>LEN</code> of an array or a string constant, are untyped constants, like a literal.</p>
-<p><code>div</code> rounds toward zero and <code>mod</code> takes the sign of the dividend, as in C: <code>-7 div 2</code> is <code>-3</code>, <code>-7 mod 2</code> is <code>-1</code>. Dividing by zero, and dividing the smallest value of a signed type by <code>-1</code>, stop the program (<code>SIGFPE</code>), whatever the type and the target.</p>
-<p><code>&amp;</code> (and), <code>|</code> (or), <code>xor</code> and <code>~</code> (not) work on every bit. <code>x shl n</code> and <code>x shr n</code> shift by <code>n</code> modulo the width of <code>x</code>’s type, in bits: for <code>x: U8</code>, <code>x shl 9</code> is <code>x shl 1</code>. <code>shr</code> brings in copies of the sign bit for signed types and zeros for unsigned ones. <code>n</code> may be of any integer type. The result has <code>x</code>’s type, cut to its width: in <code>U8</code>, <code>0C0H shl 1</code> is <code>80H</code>.</p>
+<p><code>div</code> rounds toward zero and <code>mod</code> takes the sign of the dividend, as in C: <code>-7 div 2</code> is <code>-3</code>, <code>-7 mod 2</code> is <code>-1</code>. Dividing by zero, and dividing the smallest value of a signed type by <code>-1</code>, stop the program (section 10), whatever the type and the target.</p>
+<p><code>&amp;</code> (and), <code>|</code> (or), <code>xor</code> and <code>~</code> (not) work on every bit. <code>x shl n</code> and <code>x shr n</code> shift by <code>n</code> modulo the width of <code>x</code>’s type, in bits: for <code>x: U8</code>, <code>x shl 9</code> is <code>x shl 1</code>. <code>shr</code> brings in copies of the sign bit for signed types and zeros for unsigned ones. <code>n</code> may be of any integer type. The result has <code>x</code>’s type, cut to its width: in <code>U8</code>, <code>0C0H shl 1</code> is <code>80H</code>. If <code>x</code> is an untyped constant, so is the result, and it doesn’t wrap: <code>1 shl 9</code> is 512, which doesn’t fit a <code>U8</code>.</p>
 <p>Relations compare as signed or unsigned according to the type.</p>
 <h2 id="booleans">6.2 Booleans</h2>
 <p><code>and</code> and <code>or</code> evaluate their right operand only when it decides the result. <code>not</code> negates, and <code>=</code> and <code>#</code> compare; <code>#</code> is “different”.</p>
@@ -350,7 +351,7 @@ Fmt.print(&quot;{} of {}\n&quot;, [Fmt.int(n), Fmt.int(m)]);</code></pre>
 <tr>
 <td>integer</td>
 <td>enumeration</td>
-<td>the name at that position; a position out of range is a failed check (6.5)</td>
+<td>the name at that position; a position out of range is a failed check (6.5), and in a constant an error</td>
 </tr>
 <tr>
 <td>set</td>
@@ -379,7 +380,7 @@ Fmt.print(&quot;{} of {}\n&quot;, [Fmt.int(n), Fmt.int(m)]);</code></pre>
 </tr>
 </tbody>
 </table>
-<p>There are no others: no conversion between <code>BOOL</code> and integers, none between pointers and integers other than <code>INT</code> and <code>UINT</code>, and none to or from records, arrays, slices, variants or <code>ERROR</code>. A conversion of a constant is made by the compiler, by the same rules: <code>U8(300)</code> is 44.</p>
+<p>There are no others: no conversion between <code>BOOL</code> and integers, none between pointers and integers other than <code>INT</code> and <code>UINT</code>, and none to or from records, arrays, slices, variants or <code>ERROR</code>. An untyped integer constant converts to a pointer as an <code>INT</code> does, as in <code>^VOLATILE U32(0FEE00000H)</code>; it isn’t assigned to a pointer without the conversion. A conversion of a constant is made by the compiler, by the same rules: <code>U8(300)</code> is 44.</p>
 <h2 id="built-in-procedures">6.8 Built-in procedures</h2>
 <table>
 <thead>
@@ -452,7 +453,7 @@ Fmt.print(&quot;{} of {}\n&quot;, [Fmt.int(n), Fmt.int(m)]);</code></pre>
 </tbody>
 </table>
 <p><code>SYSCALL</code> exists only on Linux targets. Other systems have no stable system call interface, and their modules call the C library instead (section 9).</p>
-<p><code>NEW(p, a)</code> calls <code>a^.alloc(a, SIZE(T), A)</code>, where <code>A</code> is the alignment of <code>T</code>, and zeroes the bytes it gets if they aren’t <code>nil</code>. <code>Mem.Allocator</code> (section 11) is the one type of the library the language names.</p>
+<p><code>NEW(p, a)</code> calls <code>a^.alloc(a, SIZE(T), A)</code>, where <code>A</code> is the alignment of <code>T</code>, and zeroes the bytes it gets if they aren’t <code>nil</code>. <code>Mem.Allocator</code> (the library, <code>doc/raz-lib.md</code>) is the one type of the library the language names.</p>
 <p><code>COPY</code> is a statement, as <code>INC</code> is. It copies the bytes of <code>LEN(s)</code> elements as one block, as an assignment of an array does, and is right when <code>d</code> and <code>s</code> overlap, as in <code>COPY(a[1..n], a[0..n - 1])</code>. It is checked as a slice is: past <code>LEN(d)</code>, it stops the program, unless the module says <code>check off;</code>.</p>
 <p><code>INC</code> and <code>DEC</code> evaluate <code>v</code> once, so <code>INC(a[f(i)])</code> calls <code>f</code> once. They read <code>v</code> and then write it: two accesses, even through a <code>^VOLATILE</code> pointer, and not atomic; <code>XADD</code> is the atomic one.</p>
 <p>For <code>CAS</code>, <code>XCHG</code> and <code>XADD</code>, <code>p</code> is a <code>^T</code> or <code>^VOLATILE T</code> where <code>T</code> is <code>INT</code>, <code>UINT</code> or a pointer type (<code>INT</code> or <code>UINT</code> for <code>XADD</code>), on every target. They are sequentially consistent, on every target; how a machine without atomic instructions makes them so is the implementation’s choice (appendix A).</p>
@@ -479,7 +480,7 @@ Target     = Designator | &quot;_&quot; .</code></pre>
 <h2 id="assignment-and-calls">7.1 Assignment and calls</h2>
 <p><code>x := e</code> evaluates <code>e</code> and stores it in <code>x</code>; arrays, records, slices and variants are copied. A designator on its own is a call, and any result it returns is dropped: <code>Out.ln;</code>, <code>write(fd, buf);</code>.</p>
 <p><code>a, b := f(x);</code> assigns the results of a procedure that returns several (section 8), in order.</p>
-<p>The blank, <code>_</code>, drops what would be assigned to it: <code>_ := e;</code> evaluates <code>e</code> and drops it, and <code>n, _ := f(x);</code> keeps the first result and drops the second. What is dropped is still evaluated as any expression is: its calls are made, and a volatile variable in it is read (section 7.6). A result dropped by a call standing on its own is warned of (section 10); one dropped through <code>_</code> isn’t.</p>
+<p>The blank, <code>_</code>, drops what would be assigned to it: <code>_ := e;</code> evaluates <code>e</code> and drops it, and <code>n, _ := f(x);</code> keeps the first result and drops the second. What is dropped is still evaluated as any expression is: its calls are made, and a volatile variable in it is read (section 7.6). A result dropped by a call standing on its own is a lint an implementation may warn of (section 10); one dropped through <code>_</code> says it is meant.</p>
 <h2 id="conditions-and-loops">7.2 Conditions and loops</h2>
 <p><code>if</code>, <code>while</code> and <code>repeat</code> take <code>BOOL</code> expressions. <code>repeat</code> runs its body at least once and stops when the condition is true.</p>
 <p><code>for i := a to b by s do ... end;</code> sets <code>i</code> to <code>a</code>, <code>a + s</code>, … while <code>i &lt;= b</code> (or <code>i &gt;= b</code> if <code>s</code> is negative). <code>i</code> is a variable of an integer or enumeration type, named by its name alone; <code>a</code> and then <code>b</code> are evaluated once, before the first round; <code>s</code> is a constant other than zero, and 1 if left out. <code>a</code> and <code>b</code> have <code>i</code>’s type, or are untyped constants that take it, as with <code>+</code> (section 6.1): so in <code>for i := 0 to LEN(s) - 1</code>, <code>i</code> must be an <code>INT</code>.</p>
@@ -493,7 +494,7 @@ Target     = Designator | &quot;_&quot; .</code></pre>
 | rect(w, h): area := w * h;
 | dot:        area := 0.0;
 end;</code></pre>
-<p><code>match</code> runs the arm of the case <code>s</code> holds. An arm may name the case’s fields, in order, all of them; the names stand for those fields of <code>s</code> itself, so assigning to one changes <code>s</code>; if <code>s</code> isn’t a variable, they stand for the fields of a copy. An arm may also leave the fields unnamed. Every case must have an arm, and only one, unless there is an <code>| else:</code> arm, which must come last.</p>
+<p><code>match</code> takes a variant, an enumeration or an integer type (a <code>U8</code> included); other types are an error. It runs the arm of the case <code>s</code> holds. An arm may name the case’s fields, in order, all of them; the names stand for those fields of <code>s</code> itself, so assigning to one changes <code>s</code>; if <code>s</code> isn’t a variable, they stand for the fields of a copy. An arm may also leave the fields unnamed. Every case must have an arm, and only one, unless there is an <code>| else:</code> arm, which must come last.</p>
 <p><code>match</code> on an enumeration works the same way: each arm names one of the enumeration’s names, or several, separated by commas, for the arm to run when the value is any of them:</p>
 <pre><code>match op of
 | sPlus, sMinus: kind := additive;
@@ -507,12 +508,12 @@ end;</code></pre>
 | &#39;0&#39; .. &#39;9&#39;:     digit := true;
 | else:
 end;</code></pre>
-<p>A label is a constant, or <code>lo .. hi</code>, the constants from <code>lo</code> to <code>hi</code>, both included (unlike a slice, which leaves <code>hi</code> out). Each must fit the integer’s type, and no value may be in two labels. An integer <code>match</code> must have an <code>| else:</code> arm, which may be empty. Whether an arm names a case or gives labels is set by the type matched: <code>| Max:</code> is a case of a variant or an enumeration, and a constant for an integer.</p>
+<p>A label is a constant, or <code>lo .. hi</code>, the constants from <code>lo</code> to <code>hi</code>, both included (unlike a slice, which leaves <code>hi</code> out; <code>lo</code> may not be above <code>hi</code>). Each must fit the integer’s type, and no value may be in two labels. An integer <code>match</code> must have an <code>| else:</code> arm, which may be empty. Whether an arm names a case or gives labels is set by the type matched: <code>| Max:</code> is a case of a variant or an enumeration, and a constant for an integer.</p>
 <h2 id="order-of-evaluation">7.5 Order of evaluation</h2>
 <p>Operands, arguments and the designators of an assignment are evaluated from left to right, and the designators of an assignment before its right side: <code>a[i()] := g()</code> calls <code>i</code> and then <code>g</code>.</p>
 <h2 id="volatile">7.6 Volatile</h2>
 <p>A variable reached through a <code>^VOLATILE T</code> is volatile, and so is any field or element of it. Each read or write of a volatile variable of a basic, enumeration, set or pointer type is exactly one memory access, of exactly its size, and volatile accesses happen in the order the program writes them. Copying a whole record or array through a volatile pointer is not allowed, since it can’t be one access.</p>
-<p>A <code>^VOLATILE T</code> doesn’t convert to <code>^T</code> without a written conversion.</p>
+<p>A <code>^VOLATILE T</code> doesn’t convert to <code>^T</code> without a written conversion, and a volatile variable isn’t passed as a <code>var</code> argument, which would lose its volatility.</p>
 <p><code>FENCE</code> also orders the program’s ordinary accesses against those of other processors and devices.</p>
 <p><strong>Ordinary variables.</strong> Only volatile accesses, <code>CAS</code>, <code>XCHG</code>, <code>XADD</code> and <code>FENCE</code> are exact. Any other access is ordinary: an implementation may keep a variable in a register, leave out a write that nothing reads, and change the order of ordinary accesses, as long as each thread, on its own, does what this report says. A variable that one thread writes while another reads or writes it, unless both use volatile accesses or the atomic built-ins, or a <code>FENCE</code> orders them, holds no particular value then: a read of it gives a value it had or was given, or a mixture of their bytes. Nothing else of the program becomes undefined by it.</p>
 <h2 id="defer">7.7 Defer</h2>
@@ -543,7 +544,7 @@ begin
 end;
 
 end Head.</code></pre>
-<p><code>return e;</code> evaluates <code>e</code> before the deferred statements run. A deferred statement can’t contain <code>return</code>, <code>break</code>, <code>defer</code> or <code>try</code> that would leave it. A failed check, <code>Rt.exit</code> and <code>Sys.exit</code> end the program without running the deferred statements still pending.</p>
+<p><code>return e;</code> evaluates <code>e</code> before the deferred statements run. A deferred statement can’t contain <code>defer</code>, nor a <code>return</code>, <code>break</code> or <code>try</code> that would leave it. A failed check, <code>Rt.exit</code> and <code>Sys.exit</code> end the program without running the deferred statements still pending.</p>
 <h2 id="try">7.8 Try</h2>
 <p>A procedure that can fail returns an <code>ERROR</code> as its last result (section 5.8), <code>nil</code> when it didn’t. A caller that can’t deal with the failure passes it on to its own caller, which <code>try</code> does in a word:</p>
 <pre><code>proc total(words: [][]U8): (INT, ERROR);
@@ -567,7 +568,7 @@ if e # nil then return 0, e; end;</code></pre>
 <li>With one, it is a value of that type, an operand wherever <code>c</code> would be: <code>n := try number(s);</code>, <code>sum + try number(s)</code>, <code>if try ready(fd) then</code>. Like <code>not</code>, it applies to the factor after it: <code>try f(x) + 1</code> is <code>(try f(x)) + 1</code>.</li>
 <li>With several, it stands only on the right of a multiple assignment, as <code>c</code> itself would, with a target for each: <code>a, b := try f(x);</code>.</li>
 </ul>
-<p>As a statement, <code>try c;</code> drops the values of <code>c</code> that it has, and a dropped value is warned of as a call that drops a result is (section 10); <code>_ := try c;</code> and <code>a, _ := try c;</code> say it is meant (section 7.1). The error is never dropped: <code>try</code> is the way of passing it on.</p>
+<p>As a statement, <code>try c;</code> drops the values of <code>c</code> that it has, and a dropped value is a lint, as a call that drops a result is (section 10); <code>_ := try c;</code> and <code>a, _ := try c;</code> say it is meant (section 7.1). The error is never dropped: <code>try</code> is the way of passing it on.</p>
 <p><strong>Where <code>try</code> may stand.</strong> Every use of <code>try</code> is an error unless:</p>
 <ul>
 <li>the procedure it stands in has an <code>ERROR</code> as its last result. A module’s body, and a procedure with no results, such as <code>proc main*;</code>, have none: there an error is dealt with where it is found, by a test;</li>
@@ -607,7 +608,7 @@ begin
 end;
 
 end Divide.</code></pre>
-<p><strong>forward.</strong> <code>proc f(x: I64): I64; forward;</code> declares <code>f</code> so that it can be called before its body appears; the body comes later with the same signature, though its parameters may have other names.</p>
+<p><strong>forward.</strong> <code>proc f(x: I64): I64; forward;</code> declares <code>f</code> so that it can be called before its body appears; the body comes later in the module, with the same signature, though its parameters may have other names; a <code>forward</code> with no body is an error.</p>
 <p>A name after a procedure’s <code>end</code>, if written, is the procedure’s own.</p>
 <p>Procedures don’t nest.</p>
 <p><strong>Code procedures.</strong> A procedure whose body is <code>code</code> is machine code, written by hand in the target’s assembly language (appendix A): one instruction to each <code>;</code>, and labels for jumps, up to <code>end</code>:</p>
@@ -641,17 +642,131 @@ end;</code></pre>
 <p>Every raz procedure uses the System V calling convention, so a raz procedure whose parameters and result are of those types can be given to C as a callback.</p>
 <h1 id="programs">10. Programs</h1>
 <p>Any module may export a procedure <code>main</code>, declared <code>proc main*;</code> or <code>proc main*: INT;</code>. The program runs the bodies of all its modules (section 3), then the main module’s <code>main</code>, if it has one, and ends with status 0, or with the status <code>main</code> returns, by calling <code>Rt.exit</code>. The <code>main</code> of an imported module is an ordinary procedure, which runs only if something calls it; so a library module can carry a <code>main</code> that tests it. A program uses C if any of its modules has an <code>extern</code> declaration or a <code>link</code> of a library; a module’s other files, read only to check its interface (section 3), don’t count. A program that doesn’t is a static executable with no run time besides the code it uses. One that does is linked dynamically and starts through the C library, so that C’s own set-up and clean-up run. A program with a module that says <code>link static;</code> must not use C, and the compiler reports an error if it does.</p>
-<p><strong>Ending.</strong> <code>Rt.exit(status)</code> ends the program. First it runs the procedures registered with <code>Rt.atExit</code>, the last registered first, each at most once; then it ends the program with <code>status</code>, through C’s <code>exit</code> in a program that uses C, so that C flushes its own buffers. A failed check (section 6.5) runs them too, after its message, so that <code>Out</code>’s buffer is written out. <code>Sys.exit</code> ends the program at once, and a program stopped by a signal runs none of them.</p>
+<p><strong>Ending.</strong> <code>Rt.exit(status)</code> ends the program. First it runs the procedures registered with <code>Rt.atExit</code>, the last registered first, each at most once; then it ends the program with <code>status</code>, through C’s <code>exit</code> in a program that uses C, so that C flushes its own buffers. A program that stops (below), a failed check (section 6.5) included, runs them too, after its message, so that <code>Out</code>’s buffer is written out, and ends with status 2. <code>Sys.exit</code> ends the program at once, and a program killed by a signal from outside runs none of them.</p>
 <pre><code>proc atExit*(p: proc): ERROR;   (* Rt.Full if 32 are registered *)
 proc exit*(status: INT);
 proc trace*;                    (* the calls under way, on standard error *)</code></pre>
 <p><code>Rt.trace</code> says on standard error the calls under way, from the one that calls it out, each with its variables, as a program that stops does.</p>
-<p>Only what can be reached from <code>main</code> and the module bodies goes into the executable: unused procedures, variables and strings are left out. The executable names its procedures and carries line numbers, so that gdb can stop at a line of the source and show where it is.</p>
-<p><strong>Defined behaviour.</strong> Every variable starts at zero, integers wrap, and indexing arrays and slices is checked, so a program’s behaviour is defined by this report, with one exception: memory reached other than through a checked variable. Dereferencing a stale or made-up pointer, indexing through a pointer, an index out of range in a module that says <code>check off;</code>, writing a string’s bytes, a code procedure that breaks its rules, and C code can read or write any memory, and what follows isn’t defined. Dereferencing <code>nil</code>, dividing by zero, calling a <code>nil</code> procedure and running out of stack stop the program, on every target. Before it stops, the program prints to standard error where it was, as file, line and column, and why, as far as it can tell: a <code>nil</code> pointer, a <code>nil</code> procedure, a stack overflow, a bad address or a division fault; then the calls under way, each with its variables of a basic, enumeration, set or pointer type. Whether the machine catches these or the compiled code checks for them is the implementation’s choice (appendix A); that they stop the program isn’t.</p>
-<p><strong>Separate compilation.</strong> An importer depends only on a module’s interface: what it exports, as an importer sees it, never its source or its code. So a module can be compiled on its own, and a program made from modules compiled at different times. Whether an implementation does so, and into what, is its own choice (appendix A); one that does makes the same program as if every module were compiled together, and keeps one copy of each instance.</p>
-<p><strong>Messages.</strong> The compiler reports an error with its file, line and column, the line of source with the offending part underlined, and, where they help, notes pointing at other places, such as where a name is declared, and a suggestion, such as a name in reach spelled almost alike. It goes on after an error to find the others, up to 20, and writes no executable. After an error it skips the statement or declaration the error is in and carries on with the next; a name that isn’t declared is reported once, and nothing that follows from it is reported. An error in the text itself, such as a string left open, stops the compile, and so does a module with errors, after it.</p>
-<p>The compiler also warns of what is declared and never used: an import; a constant, type, variable or procedure that isn’t exported; a parameter of a procedure written in raz. It warns of a variable that is assigned but never read, too, and of a call standing on its own that drops a result, as <code>Sys.write(fd, s);</code> does: <code>_ := Sys.write(fd, s);</code> says it is meant. A name that starts with <code>_</code> is never warned about. Warnings don’t stop the compile; <code>raz -Werror</code> makes them errors.</p>
-<h1 id="the-library">11. The library</h1>
+<p><strong>Defined behaviour.</strong> Every variable starts at zero, integers wrap, and indexing arrays and slices is checked, so a program’s behaviour is defined by this report, with one exception: memory reached other than through a checked variable. Dereferencing a stale or made-up pointer, indexing through a pointer, an index out of range in a module that says <code>check off;</code>, writing a string’s bytes, a code procedure that breaks its rules, and C code can read or write any memory, and what follows isn’t defined. Dereferencing <code>nil</code>, dividing by zero, calling a <code>nil</code> procedure and running out of stack stop the program, on every target, with status 2, as a failed check does. Before it stops, the program prints to standard error where it was, as file, line and column, and why, as far as it can tell: a <code>nil</code> pointer, a <code>nil</code> procedure, a stack overflow, a bad address or a division fault; then the calls under way, each with its variables of a basic, enumeration, set or pointer type. Whether the machine catches these or the compiled code checks for them is the implementation’s choice (appendix A); that they stop the program isn’t.</p>
+<p><strong>Separate compilation.</strong> An importer depends only on a module’s interface: what it exports, as an importer sees it, never its source or its code. An implementation that compiles modules on its own makes the same program as if every module were compiled together (appendix A).</p>
+<p><strong>Errors.</strong> A program that breaks a rule of this report that says it is an error isn’t a raz program, and an implementation must reject it: say what is wrong and make no executable. Such a rule is one whose breach would leave the program with no meaning this report can give: a mistake of types, a name that isn’t declared or is declared twice, an assignment to what is read-only, a call with the wrong number of arguments, a type name or a procedure with no result used as a value, type arguments given to a module that isn’t generic, or too many, an import that can’t be found, a procedure declared <code>forward</code> and never defined, a module that imports itself. A fault that is only a lint isn’t an error: a name declared and never used, or a result that a call standing on its own drops (<code>Sys.write(fd, s);</code>, where <code>_ := Sys.write(fd, s);</code> says it is meant). A program with one is valid, and an implementation may warn of it. The text of its messages, how many it reports and which warnings it gives are its own (appendix A).</p>
+<h1 id="versions">11. Versions</h1>
+<p>A version of this report is named by the month it was made in and a count: <code>2026-10.0</code>, then <code>2026-10.1</code> for the next change that month. <code>raz --version</code> says which version the compiler follows.</p>
+<p>The history of the versions, what each changed, is in <code>doc/report-history.md</code>.</p>
+<h1 id="appendix-a.-what-an-implementation-chooses">Appendix A. What an implementation chooses</h1>
+<p>Everything in this report binds every implementation of raz, except what follows, which each chooses for itself and documents. This compiler’s choices are in <code>doc/compiler.md</code>, under “This compiler’s choices”. The programs in <code>conform/</code> are how an implementation shows that it follows this report: it passes them all, its reals aside where its target has none; <code>conform/check.sh</code> runs them.</p>
+<ul>
+<li><strong>The target.</strong> Which machines and systems it compiles for, and the names of their files (<code>linux-x86_64</code>, section 3); for each, the size of an address, and so of <code>INT</code>, and whether it has reals.</li>
+<li><strong>Separate compilation.</strong> Whether modules are compiled on their own, and if so into what: the object file, its format, the form of the code in it, when one is out of date, and how an instance is named so that the program keeps one (section 10). This compiler compiles every module of a program together, and writes no object files.</li>
+<li><strong>Atomics.</strong> How <code>CAS</code>, <code>XCHG</code> and <code>XADD</code> are made sequentially consistent on a machine without atomic instructions (section 6.8): on one with a single processor, by holding off interrupts while they run, for one.</li>
+<li><strong>The calling convention.</strong> On x86-64 Linux it is System V (sections 8 and 9); elsewhere it is the C library’s own, so that <code>extern</code> procedures and callbacks work. How a procedure returns several results, and how its frame is laid out, are the implementation’s.</li>
+<li><strong>What is the target’s.</strong> Code procedures (section 8) hold the target’s machine code, written in its assembly language, and exist only where the implementation says so; <code>SYSCALL</code> exists only on Linux targets (section 6.8). A record’s layout is the target’s C layout (section 5.5), and the order of a value’s bytes is the target’s (little-endian on x86-64).</li>
+<li><strong>The assembly language.</strong> How a code procedure’s instructions are written (section 8). On x86-64 it is Intel’s syntax, as NASM writes it, destination first. Which instructions it knows is the implementation’s; <code>db</code> gives any others.</li>
+<li><strong>Sizes in the library.</strong> How many bytes <code>Out</code> keeps before it writes them, <code>Sys.outSize</code> (the library volume): 4 KB on Linux, fewer on a small machine.</li>
+<li><strong>The executable.</strong> Its format, and the names and line numbers it carries for a debugger (section 10).</li>
+<li><strong>How a failure is caught.</strong> A <code>nil</code> pointer, a division by zero or a stack overflow may be caught by the machine or by checks in the compiled code; either way the program stops with its message (section 10).</li>
+<li><strong>Messages and warnings.</strong> The text of the compiler’s messages, how many errors it reports before it stops, and which warnings it gives, <code>-Werror</code> included (section 10). That a program that is an error in this report is rejected isn’t free; the words that say so are. So is what a program that fails says on standard error: conformance is judged by a program’s standard output and exit status, never by its standard error.</li>
+<li><strong>The command line.</strong> How the compiler is run, its options, and where its library lives (sections 1 and 3).</li>
+</ul>
+<p><strong>The core.</strong> A target may leave out what the system under it can’t give: <code>Sys</code> past writing, ending the program and getting memory, <code>Thread</code>, <code>link</code> and <code>extern</code>. What it must have, besides the whole language, reals aside, is the core of the library: <code>Rt</code>, <code>Out</code>, <code>Mem</code>, <code>Arena</code>, <code>Lock</code>, <code>Str</code> and <code>Buf</code>, and of <code>Sys</code> what they need. A program that keeps to the core runs on every target. The rest of the library (<code>Heap</code>, <code>Fmt</code>, <code>List</code>, <code>Map</code>, <code>Sort</code>, <code>Math</code>, <code>Files</code>, <code>Opt</code> and the rest of <code>Sys</code>) is the standard library: a target may leave a module out, and one that has it gives what <code>doc/raz-lib.md</code> says. <code>conform/</code> tests the core only.</p>
+<h1 id="appendix-b.-the-grammar">Appendix B. The grammar</h1>
+<p>The whole syntax of raz, gathered from the sections above, with the symbols of section 2. <code>{ x }</code> is any number of <code>x</code>, <code>[ x ]</code> is <code>x</code> or nothing, and <code>( x | y )</code> is one of them.</p>
+<pre><code>ident      = letter { letter | digit } .
+letter     = &quot;A&quot; .. &quot;Z&quot; | &quot;a&quot; .. &quot;z&quot; | &quot;_&quot; .
+digit      = &quot;0&quot; .. &quot;9&quot; .
+hexDigit   = digit | &quot;A&quot; .. &quot;F&quot; .
+number     = digit { digit }
+           | digit { hexDigit } &quot;H&quot;
+           | digit { digit } &quot;.&quot; digit { digit } [ &quot;E&quot; [ &quot;+&quot; | &quot;-&quot; ] digit { digit } ] .
+char       = &quot;&#39;&quot; ( character | escape ) &quot;&#39;&quot; .
+string     = &#39;&quot;&#39; { character | escape | &quot;\x&quot; anyHex anyHex } &#39;&quot;&#39; .
+escape     = &quot;\n&quot; | &quot;\t&quot; | &quot;\r&quot; | &quot;\0&quot; | &quot;\\&quot; | &quot;\&#39;&quot; | &#39;\&quot;&#39;
+           | &quot;\u{&quot; anyHex { anyHex } &quot;}&quot; .
+anyHex     = hexDigit | &quot;a&quot; .. &quot;f&quot; .
+
+Module     = &quot;module&quot; ident [ &quot;(&quot; ModParams &quot;)&quot; ] &quot;;&quot;
+             { Import } { Link } [ Check ] { Declaration }
+             [ &quot;begin&quot; Statements ] &quot;end&quot; ident &quot;.&quot; .
+ModParams  = ident { &quot;,&quot; ident } { &quot;;&quot; ident &quot;:&quot; &quot;proc&quot; Signature } .
+Import     = &quot;import&quot; ImportItem { &quot;,&quot; ImportItem } &quot;;&quot; .
+ImportItem = ident [ &quot;:=&quot; ident [ &quot;(&quot; Type { &quot;,&quot; Type } &quot;)&quot; ] ] .
+Link       = &quot;link&quot; ( string | &quot;static&quot; ) &quot;;&quot; .
+Check      = &quot;check&quot; &quot;off&quot; &quot;;&quot; .
+
+Declaration = &quot;const&quot; { IdentDef [ &quot;:&quot; Type ] &quot;=&quot; Expr &quot;;&quot; }
+            | &quot;type&quot; { IdentDef &quot;=&quot; Type &quot;;&quot; }
+            | &quot;var&quot; { IdentList &quot;:&quot; Type &quot;;&quot; }
+            | ProcDeclaration &quot;;&quot;
+            | ExternDeclaration &quot;;&quot; .
+IdentDef    = ident [ &quot;*&quot; ] .
+IdentList   = IdentDef { &quot;,&quot; IdentDef } .
+
+Type      = QualIdent
+          | &quot;[&quot; Expr &quot;]&quot; Type
+          | &quot;[&quot; &quot;]&quot; Type
+          | &quot;^&quot; [ &quot;VOLATILE&quot; ] Type
+          | [ &quot;packed&quot; ] &quot;record&quot; { IdentList &quot;:&quot; Type &quot;;&quot; } &quot;end&quot;
+          | &quot;variant&quot; { Case &quot;;&quot; } &quot;end&quot;
+          | &quot;(&quot; ident { &quot;,&quot; ident } &quot;)&quot;
+          | &quot;set&quot; &quot;of&quot; QualIdent
+          | &quot;proc&quot; Signature .
+Case      = ident [ &quot;(&quot; FieldList { &quot;;&quot; FieldList } &quot;)&quot; ] .
+FieldList = ident { &quot;,&quot; ident } &quot;:&quot; Type .
+QualIdent = [ ident &quot;.&quot; ] ident .
+
+Expr       = Conjunct { &quot;or&quot; Conjunct } .
+Conjunct   = Relation { &quot;and&quot; Relation } .
+Relation   = SimpleExpr [ RelOp SimpleExpr ] .
+RelOp      = &quot;=&quot; | &quot;#&quot; | &quot;&lt;&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&gt;=&quot; | &quot;in&quot; .
+SimpleExpr = [ &quot;-&quot; ] Term { AddOp Term } .
+AddOp      = &quot;+&quot; | &quot;-&quot; | &quot;|&quot; | &quot;xor&quot; .
+Term       = Factor { MulOp Factor } .
+MulOp      = &quot;*&quot; | &quot;/&quot; | &quot;div&quot; | &quot;mod&quot; | &quot;&amp;&quot; | &quot;shl&quot; | &quot;shr&quot; .
+Factor     = number | char | string | Designator | &quot;(&quot; Expr &quot;)&quot;
+           | &quot;not&quot; Factor | &quot;~&quot; Factor
+           | &quot;[&quot; [ Expr { &quot;,&quot; Expr } ] &quot;]&quot;
+           | &quot;{&quot; [ Element { &quot;,&quot; Element } ] &quot;}&quot;
+           | &quot;^&quot; [ &quot;VOLATILE&quot; ] Type &quot;(&quot; Expr &quot;)&quot;
+           | &quot;try&quot; Designator .
+Element    = Expr | ident &quot;:&quot; Expr .
+Designator = QualIdent { Selector } .
+Selector   = &quot;.&quot; ident | &quot;^&quot; | &quot;[&quot; Expr [ &quot;..&quot; Expr ] &quot;]&quot;
+           | &quot;(&quot; [ Expr { &quot;,&quot; Expr } ] &quot;)&quot; .
+
+Statements = { Statement &quot;;&quot; } .
+Statement  = Designator [ &quot;:=&quot; Expr ]
+           | &quot;_&quot; &quot;:=&quot; Expr
+           | Target &quot;,&quot; Target { &quot;,&quot; Target } &quot;:=&quot; Expr
+           | &quot;if&quot; Expr &quot;then&quot; Statements
+             { &quot;elsif&quot; Expr &quot;then&quot; Statements } [ &quot;else&quot; Statements ] &quot;end&quot;
+           | &quot;while&quot; Expr &quot;do&quot; Statements &quot;end&quot;
+           | &quot;repeat&quot; Statements &quot;until&quot; Expr
+           | &quot;for&quot; ident &quot;:=&quot; Expr &quot;to&quot; Expr [ &quot;by&quot; Expr ] &quot;do&quot; Statements &quot;end&quot;
+           | &quot;match&quot; Expr &quot;of&quot; { &quot;|&quot; Arm } &quot;end&quot;
+           | &quot;return&quot; [ Expr { &quot;,&quot; Expr } ]
+           | &quot;break&quot;
+           | &quot;defer&quot; Statement
+           | &quot;try&quot; Designator .
+Arm        = ( ident [ &quot;(&quot; ident { &quot;,&quot; ident } &quot;)&quot; ]
+             | Label { &quot;,&quot; Label } | &quot;else&quot; ) &quot;:&quot; Statements .
+Label      = Expr [ &quot;..&quot; Expr ] .
+Target     = Designator | &quot;_&quot; .
+
+ProcDeclaration   = &quot;proc&quot; IdentDef Signature &quot;;&quot;
+                    ( &quot;forward&quot; | { LocalDeclaration } &quot;begin&quot; Statements &quot;end&quot; [ ident ]
+                    | &quot;code&quot; { [ ident &quot;:&quot; ] [ Instruction ] &quot;;&quot; } &quot;end&quot; [ ident ] ) .
+LocalDeclaration  = &quot;const&quot; { ident [ &quot;:&quot; Type ] &quot;=&quot; Expr &quot;;&quot; }
+                  | &quot;type&quot; { ident &quot;=&quot; Type &quot;;&quot; }
+                  | &quot;var&quot; { ident { &quot;,&quot; ident } &quot;:&quot; Type &quot;;&quot; } .
+Signature         = &quot;(&quot; [ Params { &quot;;&quot; Params } [ &quot;;&quot; &quot;...&quot; ] ] &quot;)&quot; [ &quot;:&quot; Results ]
+                  | [ &quot;:&quot; Results ] .
+Params            = [ &quot;var&quot; ] ident { &quot;,&quot; ident } &quot;:&quot; Type .
+Results           = Type | &quot;(&quot; Type { &quot;,&quot; Type } &quot;)&quot; .
+ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
+                             | &quot;var&quot; IdentDef &quot;:&quot; Type ) .</code></pre>
+<p><code>character</code> is any character but a line break, and in a string any but <code>"</code> and <code>\</code>, in a character any but <code>'</code> and <code>\</code>. A procedure argument of a generic module (section 3) is written as a <code>QualIdent</code>, which is a <code>Type</code> here. <code>...</code> comes last in a <code>Signature</code>, and only in an <code>extern</code>. An <code>Instruction</code> is written in the target’s assembly language (appendix A).</p>
+<h1 id="the-library-volume-2">The library, volume 2</h1>
+<p>The second volume of the report on raz. The first, <code>doc/raz.md</code>, defines the language; this one defines the modules that come with it, and refers to the first’s sections by number, as “section 6.8”. Only the core binds every implementation (appendix A of the first volume); the rest is the standard library.</p>
 <p>Modules written in raz, in the compiler’s <code>lib</code> directory:</p>
 <table>
 <thead>
@@ -771,7 +886,7 @@ end;
 proc init*(ar: ^Arena; size: INT): BOOL;   (* an arena of size bytes; false if the system has none *)
 proc reset*(ar: ^Arena);                   (* every allocation forgotten; the memory used again *)
 proc done*(ar: ^Arena);                    (* its memory given back *)</code></pre>
-<p><code>NEW(p, a)</code> calls <code>a^.alloc</code>. <code>Heap</code> keeps blocks of nine sizes, from 16 to 4096 bytes with their header, each with a list of the free ones; a bigger block gets pages of its own. An arena hands out memory from one block: its <code>free</code> does nothing, and <code>reset</code> forgets everything.</p>
+<p><code>NEW(p, a)</code> calls <code>a^.alloc</code>. <code>Heap</code> is the general allocator. An arena hands out memory from one block: its <code>free</code> does nothing, and <code>reset</code> forgets everything.</p>
 <pre><code>module Lock;
 type Lock* = record ... end;
 proc take*(l: ^Lock);
@@ -910,7 +1025,7 @@ proc listenTcp*(addr: []U8; port: INT): INT;
 proc accept*(fd: INT): INT;        (* the next connection, waiting for one *)
 proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)</code></pre>
 <p><code>info</code> follows a symbolic link: <code>size</code>, <code>dir</code> and <code>file</code> are those of what it names, and <code>symlink</code> says the path was a link, so that a program walking a tree can choose not to follow one back up it. A link to nothing is <code>-ENOENT</code>, as a missing file is. <code>file</code> lets a walk open only what holds data: opening a pipe would wait for a program to write to it.</p>
-<p><code>nextEntry</code> gives every name in the directory except <code>.</code> and <code>..</code>, in no particular order. <code>rawMode</code> turns off what the terminal does with keys before the program reads them: echo, waiting for a whole line, Ctrl-C and Ctrl-Z as signals, Ctrl-S and Ctrl-Q as flow control, and CR to NL; and with output, NL to CR NL. A program that turns it on restores it before it ends: <code>Rt.atExit</code> is the place.</p>
+<p><code>nextEntry</code> gives every name in the directory except <code>.</code> and <code>..</code>, in no particular order. <code>rawMode</code> turns off what the terminal does with keys before the program reads them (echo, line editing, signals, flow control), and NL to CR NL on output. A program that turns it on restores it before it ends: <code>Rt.atExit</code> is the place.</p>
 <p><strong>Files.</strong> <code>open</code> gives a file for what <code>how</code> asks: <code>reading</code>, <code>writing</code> or both; <code>creating</code> it if it is missing, readable by all and writable by its owner; with <code>exclusive</code>, failing with -17 (EEXIST) if it is there, as a program does that makes a lock or a file of its own; <code>truncating</code> it to nothing; <code>appending</code>, each write going to its end, however other programs write it too. <code>seek</code> moves to <code>pos</code> from the start of the file, or from its end if <code>fromEnd</code>, where a negative <code>pos</code> reads back from the end. <code>Info.mtime</code> is what a program checks to see whether a file changed under it; <code>Info.mode</code> holds the nine bits of <code>rwxrwxrwx</code>, and <code>chmod</code> sets them, 1EDH (755) for a program, 1A4H (644) for data.</p>
 <p><strong>Programs.</strong> <code>openPty</code> makes a pseudo-terminal, a terminal that a program, a terminal emulator, plays the screen and the keyboard of: what it writes to the fd is typed, and what the programs on the terminal write it reads.</p>
 <p><code>spawn</code> starts the program at <code>p.path</code>, with <code>p.args</code> as its arguments, the first being its name. Its environment is this program’s with each <code>NAME=value</code> of <code>p.env</code> added or put in place of the old value, or, if <code>p.onlyEnv</code>, <code>p.env</code> alone. It starts in <code>p.dir</code>. Its standard input, output and error are <code>p.fds</code>; a 0 gives it this program’s own, so <code>{path: "/bin/ls", args: ["ls"]}</code> runs <code>ls</code> as a shell runs it, with every other field zero. It gets no other open file, every signal does what it does at first, and none is blocked. If <code>p.tty</code> is a pseudo-terminal’s fd, the program starts a session on that terminal: it is its controlling terminal, and its standard input, output and error, and <code>p.fds</code> and <code>p.group</code> are not used.</p>
@@ -1078,144 +1193,6 @@ job, ok := Opt.operand(ADR(p));</code></pre>
 usage: keep start [-b label] name command [argument ...]</code></pre>
 <p>The sentences are <code>unknown option -x</code> (or <code>--name</code>, up to its <code>=</code>), <code>-b needs a label</code>, <code>--follow takes no value</code> and <code>--wait wants a number from 1 to 600, not '0'</code>. <code>fail</code> writes the program’s own mistakes the same way, but alone, so that the sentence can say where the help is: <code>keep: no command; see keep -h</code>.</p>
 <p>A mistake in the table is the program’s, not its user’s. <code>init</code> checks the table before it reads a word, and ends the program with status 1: <code>keep: option table, row 3: the option is in the scope already</code>. The others are an option with neither a letter nor a long name, a long name with <code>=</code> in it, a letter <code>-</code>, and <code>-h</code> or <code>--help</code> in the table, since they are <code>Opt</code>’s.</p>
-<h1 id="versions">12. Versions</h1>
-<p>A version of this report is named by the month it was made in and a count: <code>2026-10.0</code>, then <code>2026-10.1</code> for the next change that month. <code>raz --version</code> says which version the compiler follows.</p>
-<ul>
-<li><strong>2026-10.0.</strong> The first numbered version: the language of compiler 0.3.0.</li>
-<li><strong>2026-10.1.</strong> Messages: every error in a run, warnings of what is never used and <code>-Werror</code> (section 10); failed checks say what failed, and signals say where (sections 6.5 and 10).</li>
-<li><strong>2026-10.2.</strong> <code>Sys</code> gains files and directories, the terminal, and the environment (section 11).</li>
-<li><strong>2026-10.3.</strong> <code>return f(x);</code> passes on the several results of <code>f</code> (sections 7.3 and 8). <code>and</code>, <code>or</code> and <code>not</code> are for <code>BOOL</code>s, and bind below the relations; <code>&amp;</code>, <code>|</code> and <code>~</code> are the operators on bits, and <code>xor</code> is for integers only (sections 2 and 6). Arrays and slices of integers, <code>BOOL</code>s, enumerations, sets and pointers compare with <code>=</code>, by code where the comparison stands, not by a call into <code>Rt</code> (section 6.5). A generic module’s instance is made where it is first used, so its arguments may name types declared after the imports (section 3).</li>
-<li><strong>2026-10.4.</strong> <code>Sys</code> gains a connection to a Unix socket, waiting on several files at once, pseudo-terminals, and starting, waiting for and stopping programs (section 11).</li>
-<li><strong>2026-10.5.</strong> A module with files in more than one of the directories searched is an error, unless the first is a link to one of the others (section 3).</li>
-<li><strong>2026-10.6.</strong> <code>Sys.Info</code> says whether the path is a regular file, and whether it is a symbolic link (section 11).</li>
-<li><strong>2026-10.7.</strong> <code>Sys.send</code> writes to a socket without SIGPIPE (section 11).</li>
-<li><strong>2026-10.8.</strong> <code>Sys.workDir</code> returns the directory, with no <code>var</code> parameter (section 11).</li>
-<li><strong>2026-10.9.</strong> The language is frozen (the start of the report). <code>Sys</code> gains opening a file for any use, seeking, links, permissions and times; pipes, process groups and the terminal’s foreground; signals caught on a file descriptor; clocks, sleeping and random bytes; and network sockets. <code>Sys.spawn</code> takes a <code>Program</code>, and <code>Sys.wait</code> says which program changed and how. <code>Str</code> gains UTF-8 and reading a number, <code>Map</code> removing and walking, <code>Fmt</code> reals; <code>Sort</code>, <code>Math</code>, <code>Files</code> and <code>Opt</code> are new (section 11).</li>
-<li><strong>2026-10.10.</strong> Said at last: what the compiler did and the report didn’t say, all through; what an implementation chooses, and the core every target has (appendix A); the whole grammar (appendix B); the library’s module names are kept for it (section 3); a record, variant or enumeration is a type of its own wherever it is written (section 5.10); a <code>nil</code> pointer, a division by zero and a stack overflow stop the program on every target (section 10); byte order is the target’s, and <code>Str</code> reads and writes a fixed one (sections 5.5 and 11); <code>Out</code>’s buffer is <code>Sys.outSize</code> bytes (section 11). Changed: a field of a packed record that may be misaligned has no address and no volatile access (section 5.5). Mended: arithmetic on untyped constants that overflows is an error (section 2); a slice of a pointer can’t run backwards (section 6.4). Ordinary accesses are no longer promised to be made exactly as written, only volatile and atomic ones (section 7.6).</li>
-<li><strong>2026-10.11.</strong> <code>INT</code> and <code>UINT</code>, as big as an address, are the integers of lengths, slices, pointer differences, pointer conversions, <code>SYSCALL</code> and <code>ARGC</code>; <code>SIZE</code> and a constant <code>LEN</code> are untyped; <code>INT</code> widens silently to <code>I64</code> and <code>UINT</code> to <code>U64</code>, but neither mixes with them in an expression or a <code>for</code> (sections 5, 6.1 and 7.2); <code>Mem.Allocator</code> takes <code>INT</code> sizes. Pointers, procedures, <code>ERROR</code>s, slices and variants’ tags are sized by the address, and basic types aligned as the target’s C aligns them (section 5). Reals are a target’s to have or not (section 5.1). An exported variable can’t be changed, passed by <code>var</code> or addressed outside its module, nor an array in it sliced (section 3). <code>check off;</code> leaves a module’s index and slice checks out (sections 3, 6.4 and 6.5). An index of any integer type is checked by its value (6.5). A shift counts modulo its operand’s width, and the smallest value of every signed type divided by -1 stops the program (6.1). Writing a string’s bytes isn’t defined (5.10). The atomic built-ins work on <code>INT</code>, <code>UINT</code> and pointers (6.8). An integer constant past an extern’s parameters goes as an <code>INT</code> (9). An importer depends only on a module’s interface, so a module can be compiled on its own; whether it is, and into what, is the implementation’s (sections 3 and 10; appendix A). The library takes and gives <code>INT</code> for lengths, counts, descriptors, process ids and statuses, <code>main</code>’s and <code>Rt.exit</code>’s among them, and <code>I32</code> for a character; <code>I64</code> stays for what may pass an <code>INT</code> on a small target: a file’s size and position, times, and numbers read from text (section 11). An array constant has a type and is used as a variable that can’t be changed; <code>+</code> joins string constants (section 4). <code>match</code> takes an integer, with constants and ranges as labels (7.4).</li>
-<li><strong>2026-10.12.</strong> A code procedure is written in the target’s assembly language, not as bytes (section 8; appendix A). A program that stops says the calls under way and their variables, and <code>Rt.trace</code> says them on demand (sections 10 and 11).</li>
-<li><strong>2026-10.13.</strong> <code>Sys</code> gains writing without waiting, and waiting for room to write (section 11).</li>
-<li><strong>2026-10.14.</strong> The blank, <code>_</code>, drops a value or one of several results (section 7.1); a call that drops a result is warned of (section 10).</li>
-<li><strong>2026-10.15.</strong> <code>Math</code> gains <code>pow</code>, <code>ceil</code>, <code>round</code>, <code>log2</code>, <code>log10</code>, <code>tan</code>, <code>asin</code>, <code>acos</code> and <code>atan</code>; <code>Sys</code> gains <code>space</code> (section 11).</li>
-<li><strong>2026-10.16.</strong> Record constants, and array and record constants of records, strings, procedures and more (section 4); <code>Str</code> gains <code>copy</code> (section 11).</li>
-<li><strong>2026-10.17.</strong> <code>COPY</code> copies the elements of one array or slice to another as a block (section 6.8).</li>
-<li><strong>2026-10.18.</strong> A code procedure takes and returns slices (section 8).</li>
-<li><strong>2026-10.19.</strong> The library gains <code>Bytes</code> (section 11).</li>
-<li><strong>2026-10.20.</strong> <code>try</code>: a call of a procedure whose last result is an <code>ERROR</code>, which makes the procedure it stands in return that error when it isn’t <code>nil</code> (sections 2, 5.8, 6, 7.8 and appendix B). <code>try</code> becomes a reserved word, which breaks a program with a name <code>try</code>.</li>
-<li><strong>2026-10.21.</strong> An arm of a <code>match</code> on an enumeration may name several of its names (section 7.4).</li>
-</ul>
-<h1 id="appendix-a.-what-an-implementation-chooses">Appendix A. What an implementation chooses</h1>
-<p>Everything in this report binds every implementation of raz, except what follows, which each chooses for itself and documents. This compiler’s choices are in <code>doc/compiler.md</code>, under “This compiler’s choices”. The programs in <code>conform/</code> are how an implementation shows that it follows this report: it passes them all, its reals aside where its target has none; <code>conform/check.sh</code> runs them.</p>
-<ul>
-<li><strong>The target.</strong> Which machines and systems it compiles for, and the names of their files (<code>linux-x86_64</code>, section 3); for each, the size of an address, and so of <code>INT</code>, and whether it has reals.</li>
-<li><strong>Separate compilation.</strong> Whether modules are compiled on their own, and if so into what: the object file, its format, the form of the code in it, when one is out of date, and how an instance is named so that the program keeps one (section 10). This compiler compiles every module of a program together, and writes no object files.</li>
-<li><strong>Atomics.</strong> How <code>CAS</code>, <code>XCHG</code> and <code>XADD</code> are made sequentially consistent on a machine without atomic instructions (section 6.8): on one with a single processor, by holding off interrupts while they run, for one.</li>
-<li><strong>The calling convention.</strong> On x86-64 Linux it is System V (sections 8 and 9); elsewhere it is the C library’s own, so that <code>extern</code> procedures and callbacks work. How a procedure returns several results, and how its frame is laid out, are the implementation’s.</li>
-<li><strong>What is the target’s.</strong> Code procedures (section 8) hold the target’s machine code, written in its assembly language, and exist only where the implementation says so; <code>SYSCALL</code> exists only on Linux targets (section 6.8). A record’s layout is the target’s C layout (section 5.5), and the order of a value’s bytes is the target’s (little-endian on x86-64).</li>
-<li><strong>The assembly language.</strong> How a code procedure’s instructions are written (section 8). On x86-64 it is Intel’s syntax, as NASM writes it: the destination first; registers by name (<code>rax</code>, <code>eax</code>, <code>al</code>, <code>xmm0</code>); memory as <code>[base + index * scale + disp]</code>, with <code>byte</code>, <code>word</code>, <code>dword</code> or <code>qword</code> before it where no register says the size; <code>lock</code> before an instruction. Which instructions it knows is the implementation’s; <code>db</code> gives any others.</li>
-<li><strong>Sizes in the library.</strong> How many bytes <code>Out</code> keeps before it writes them, <code>Sys.outSize</code> (section 11): 4 KB on Linux, fewer on a small machine.</li>
-<li><strong>The executable.</strong> Its format, and the names and line numbers it carries for a debugger (section 10).</li>
-<li><strong>How a failure is caught.</strong> A <code>nil</code> pointer, a division by zero or a stack overflow may be caught by the machine or by checks in the compiled code; either way the program stops with its message (section 10).</li>
-<li><strong>Messages and warnings.</strong> The text of the compiler’s messages, how many errors it reports before it stops, and which warnings it gives (section 10). A program that is an error in this report is one in every implementation; the words that say so are free.</li>
-<li><strong>The command line.</strong> How the compiler is run, its options, and where its library lives (sections 1 and 3).</li>
-</ul>
-<p><strong>The core.</strong> A target may leave out what the system under it can’t give: <code>Sys</code> past writing, ending the program and getting memory, <code>Thread</code>, <code>link</code> and <code>extern</code>. What it must have, besides the whole language, reals aside, is the core of the library: <code>Rt</code>, <code>Out</code>, <code>Mem</code>, <code>Arena</code>, <code>Lock</code>, <code>Str</code> and <code>Buf</code>, and of <code>Sys</code> what they need. A program that keeps to the core runs on every target.</p>
-<h1 id="appendix-b.-the-grammar">Appendix B. The grammar</h1>
-<p>The whole syntax of raz, gathered from the sections above, with the symbols of section 2. <code>{ x }</code> is any number of <code>x</code>, <code>[ x ]</code> is <code>x</code> or nothing, and <code>( x | y )</code> is one of them.</p>
-<pre><code>ident      = letter { letter | digit } .
-letter     = &quot;A&quot; .. &quot;Z&quot; | &quot;a&quot; .. &quot;z&quot; | &quot;_&quot; .
-digit      = &quot;0&quot; .. &quot;9&quot; .
-hexDigit   = digit | &quot;A&quot; .. &quot;F&quot; .
-number     = digit { digit }
-           | digit { hexDigit } &quot;H&quot;
-           | digit { digit } &quot;.&quot; digit { digit } [ &quot;E&quot; [ &quot;+&quot; | &quot;-&quot; ] digit { digit } ] .
-char       = &quot;&#39;&quot; ( character | escape ) &quot;&#39;&quot; .
-string     = &#39;&quot;&#39; { character | escape | &quot;\x&quot; anyHex anyHex } &#39;&quot;&#39; .
-escape     = &quot;\n&quot; | &quot;\t&quot; | &quot;\r&quot; | &quot;\0&quot; | &quot;\\&quot; | &quot;\&#39;&quot; | &#39;\&quot;&#39;
-           | &quot;\u{&quot; anyHex { anyHex } &quot;}&quot; .
-anyHex     = hexDigit | &quot;a&quot; .. &quot;f&quot; .
-
-Module     = &quot;module&quot; ident [ &quot;(&quot; ModParams &quot;)&quot; ] &quot;;&quot;
-             { Import } { Link } [ Check ] { Declaration }
-             [ &quot;begin&quot; Statements ] &quot;end&quot; ident &quot;.&quot; .
-ModParams  = ident { &quot;,&quot; ident } { &quot;;&quot; ident &quot;:&quot; &quot;proc&quot; Signature } .
-Import     = &quot;import&quot; ImportItem { &quot;,&quot; ImportItem } &quot;;&quot; .
-ImportItem = ident [ &quot;:=&quot; ident [ &quot;(&quot; Type { &quot;,&quot; Type } &quot;)&quot; ] ] .
-Link       = &quot;link&quot; ( string | &quot;static&quot; ) &quot;;&quot; .
-Check      = &quot;check&quot; &quot;off&quot; &quot;;&quot; .
-
-Declaration = &quot;const&quot; { IdentDef [ &quot;:&quot; Type ] &quot;=&quot; Expr &quot;;&quot; }
-            | &quot;type&quot; { IdentDef &quot;=&quot; Type &quot;;&quot; }
-            | &quot;var&quot; { IdentList &quot;:&quot; Type &quot;;&quot; }
-            | ProcDeclaration &quot;;&quot;
-            | ExternDeclaration &quot;;&quot; .
-IdentDef    = ident [ &quot;*&quot; ] .
-IdentList   = IdentDef { &quot;,&quot; IdentDef } .
-
-Type      = QualIdent
-          | &quot;[&quot; Expr &quot;]&quot; Type
-          | &quot;[&quot; &quot;]&quot; Type
-          | &quot;^&quot; [ &quot;VOLATILE&quot; ] Type
-          | [ &quot;packed&quot; ] &quot;record&quot; { IdentList &quot;:&quot; Type &quot;;&quot; } &quot;end&quot;
-          | &quot;variant&quot; { Case &quot;;&quot; } &quot;end&quot;
-          | &quot;(&quot; ident { &quot;,&quot; ident } &quot;)&quot;
-          | &quot;set&quot; &quot;of&quot; QualIdent
-          | &quot;proc&quot; Signature .
-Case      = ident [ &quot;(&quot; FieldList { &quot;;&quot; FieldList } &quot;)&quot; ] .
-FieldList = ident { &quot;,&quot; ident } &quot;:&quot; Type .
-QualIdent = [ ident &quot;.&quot; ] ident .
-
-Expr       = Conjunct { &quot;or&quot; Conjunct } .
-Conjunct   = Relation { &quot;and&quot; Relation } .
-Relation   = SimpleExpr [ RelOp SimpleExpr ] .
-RelOp      = &quot;=&quot; | &quot;#&quot; | &quot;&lt;&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&gt;=&quot; | &quot;in&quot; .
-SimpleExpr = [ &quot;-&quot; ] Term { AddOp Term } .
-AddOp      = &quot;+&quot; | &quot;-&quot; | &quot;|&quot; | &quot;xor&quot; .
-Term       = Factor { MulOp Factor } .
-MulOp      = &quot;*&quot; | &quot;/&quot; | &quot;div&quot; | &quot;mod&quot; | &quot;&amp;&quot; | &quot;shl&quot; | &quot;shr&quot; .
-Factor     = number | char | string | Designator | &quot;(&quot; Expr &quot;)&quot;
-           | &quot;not&quot; Factor | &quot;~&quot; Factor
-           | &quot;[&quot; [ Expr { &quot;,&quot; Expr } ] &quot;]&quot;
-           | &quot;{&quot; [ Element { &quot;,&quot; Element } ] &quot;}&quot;
-           | &quot;^&quot; [ &quot;VOLATILE&quot; ] Type &quot;(&quot; Expr &quot;)&quot;
-           | &quot;try&quot; Designator .
-Element    = Expr | ident &quot;:&quot; Expr .
-Designator = QualIdent { Selector } .
-Selector   = &quot;.&quot; ident | &quot;^&quot; | &quot;[&quot; Expr [ &quot;..&quot; Expr ] &quot;]&quot;
-           | &quot;(&quot; [ Expr { &quot;,&quot; Expr } ] &quot;)&quot; .
-
-Statements = { Statement &quot;;&quot; } .
-Statement  = Designator [ &quot;:=&quot; Expr ]
-           | &quot;_&quot; &quot;:=&quot; Expr
-           | Target &quot;,&quot; Target { &quot;,&quot; Target } &quot;:=&quot; Expr
-           | &quot;if&quot; Expr &quot;then&quot; Statements
-             { &quot;elsif&quot; Expr &quot;then&quot; Statements } [ &quot;else&quot; Statements ] &quot;end&quot;
-           | &quot;while&quot; Expr &quot;do&quot; Statements &quot;end&quot;
-           | &quot;repeat&quot; Statements &quot;until&quot; Expr
-           | &quot;for&quot; ident &quot;:=&quot; Expr &quot;to&quot; Expr [ &quot;by&quot; Expr ] &quot;do&quot; Statements &quot;end&quot;
-           | &quot;match&quot; Expr &quot;of&quot; { &quot;|&quot; Arm } &quot;end&quot;
-           | &quot;return&quot; [ Expr { &quot;,&quot; Expr } ]
-           | &quot;break&quot;
-           | &quot;defer&quot; Statement
-           | &quot;try&quot; Designator .
-Arm        = ( ident [ &quot;(&quot; ident { &quot;,&quot; ident } &quot;)&quot; ]
-             | Label { &quot;,&quot; Label } | &quot;else&quot; ) &quot;:&quot; Statements .
-Label      = Expr [ &quot;..&quot; Expr ] .
-Target     = Designator | &quot;_&quot; .
-
-ProcDeclaration   = &quot;proc&quot; IdentDef Signature &quot;;&quot;
-                    ( &quot;forward&quot; | { LocalDeclaration } &quot;begin&quot; Statements &quot;end&quot; [ ident ]
-                    | &quot;code&quot; { [ ident &quot;:&quot; ] [ Instruction ] &quot;;&quot; } &quot;end&quot; [ ident ] ) .
-LocalDeclaration  = &quot;const&quot; { ident [ &quot;:&quot; Type ] &quot;=&quot; Expr &quot;;&quot; }
-                  | &quot;type&quot; { ident &quot;=&quot; Type &quot;;&quot; }
-                  | &quot;var&quot; { ident { &quot;,&quot; ident } &quot;:&quot; Type &quot;;&quot; } .
-Signature         = &quot;(&quot; [ Params { &quot;;&quot; Params } [ &quot;;&quot; &quot;...&quot; ] ] &quot;)&quot; [ &quot;:&quot; Results ]
-                  | [ &quot;:&quot; Results ] .
-Params            = [ &quot;var&quot; ] ident { &quot;,&quot; ident } &quot;:&quot; Type .
-Results           = Type | &quot;(&quot; Type { &quot;,&quot; Type } &quot;)&quot; .
-ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
-                             | &quot;var&quot; IdentDef &quot;:&quot; Type ) .</code></pre>
-<p><code>character</code> is any character but a line break, and in a string any but <code>"</code> and <code>\</code>, in a character any but <code>'</code> and <code>\</code>. A procedure argument of a generic module (section 3) is written as a <code>QualIdent</code>, which is a <code>Type</code> here. <code>...</code> comes last in a <code>Signature</code>, and only in an <code>extern</code>. An <code>Instruction</code> is written in the target’s assembly language (appendix A).</p>
 </div>
 </main>
 <footer>raz is under the ISC license.</footer>

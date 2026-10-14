@@ -43,7 +43,7 @@ one pass, at about 650,000 lines a second.</p>
   <span><b>~10,700</b> lines of compiler</span>
   <span><b>~650K</b> lines compiled a second</span>
   <span><b>static</b> executables, no run time to install</span>
-  <span><b>1</b> report, about <b>30</b> pages</span>
+  <span><b>2</b> volumes: the language and the library</span>
 </div>
 
 <div class="cols">
@@ -105,28 +105,28 @@ the library, programs with no run time, procedures in assembly, system calls,
 volatile accesses, atomics and lock-free code, in 18 more.</p>
 
 <h2>The language, in writing</h2>
-<p>The language is defined by <a href="spec.html">the report</a>, which is
+<p>The language is defined by <a href="spec.html">the report</a>, in two volumes (the language, then the library), which is
 short on purpose: whatever it doesn&rsquo;t allow, raz doesn&rsquo;t have.</p>
 
 <h2 id="download">Download</h2>
-<p>raz 0.10.1 is a tarball for x86-64 Linux with the compiler, <code>raz</code>,
+<p>raz 0.11.0 is a tarball for x86-64 Linux with the compiler, <code>raz</code>,
 its library, <code>lib/</code>, which it finds beside itself, the formatter
 and the documentation tool as sources in <code>tools/</code>, and the manual
 pages. It needs nothing else installed.</p>
 <div class="cta">
-  <a class="btn primary" href="download/raz-0.10.1-linux-x86_64.tar.gz">Download raz 0.10.1</a>
-  <a class="btn" href="download/raz-0.10.1-linux-x86_64.tar.gz.sha256">SHA-256</a>
+  <a class="btn primary" href="download/raz-0.11.0-linux-x86_64.tar.gz">Download raz 0.11.0</a>
+  <a class="btn" href="download/raz-0.11.0-linux-x86_64.tar.gz.sha256">SHA-256</a>
 </div>
-<pre class="code"><code>$ tar xzf raz-0.10.1-linux-x86_64.tar.gz
-$ ln -s $PWD/raz-0.10.1-linux-x86_64/raz ~/.local/bin/raz
+<pre class="code"><code>$ tar xzf raz-0.11.0-linux-x86_64.tar.gz
+$ ln -s $PWD/raz-0.11.0-linux-x86_64/raz ~/.local/bin/raz
 $ raz run Hello.raz</code></pre>
 <p>The link works since raz finds <code>lib/</code> beside its real path. The
 manual pages are in <code>man/</code>: <code>man ./man/raz-tutorial.7</code>.
 The address <code>download/latest</code> always leads to the newest release,
-and <code>download/raz-0.10.1-linux-x86_64.tar.gz</code> to this one, for
-good. Earlier releases: <a href="download/raz-0.9.1-linux-x86_64.tar.gz">0.9.1</a>, <a href="download/raz-0.9.0-linux-x86_64.tar.gz">0.9.0</a>, <a href="download/raz-0.8.0-linux-x86_64.tar.gz">0.8.0</a>, <a href="download/raz-0.7.1-linux-x86_64.tar.gz">0.7.1</a>; each has its SHA-256 beside it, with
+and <code>download/raz-0.11.0-linux-x86_64.tar.gz</code> to this one, for
+good. Earlier releases: <a href="download/raz-0.10.1-linux-x86_64.tar.gz">0.10.1</a>, <a href="download/raz-0.10.0-linux-x86_64.tar.gz">0.10.0</a>, <a href="download/raz-0.9.1-linux-x86_64.tar.gz">0.9.1</a>, <a href="download/raz-0.9.0-linux-x86_64.tar.gz">0.9.0</a>, <a href="download/raz-0.8.0-linux-x86_64.tar.gz">0.8.0</a>, <a href="download/raz-0.7.1-linux-x86_64.tar.gz">0.7.1</a>; each has its SHA-256 beside it, with
 <code>.sha256</code> added to its name.</p>
-<p class="sha">SHA-256 <code>d844589a05ba97f25413cbf5befe8f60f33857ecdbc12e049c18fe703ab23097</code></p>
+<p class="sha">SHA-256 <code>21efde9a00f589ff456a44dafb9f49a124e87d22f557965050480ce300c09c97</code></p>
 
 </main>
 <footer>raz is under the ISC license.</footer>

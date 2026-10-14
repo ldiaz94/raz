@@ -17,7 +17,7 @@ TOURS below):
     summary: a line for the contents page
     ---
     Paragraphs, separated by blank lines.  `code`, **bold**,
-    [links](url) and "- " lists are understood, and nothing else.
+    [links](url), "- " lists and pipe tables are understood, and nothing else.
 
     ```raz Name run
     ```
@@ -147,12 +147,26 @@ def inline(s):
     s = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r'<a href="\2">\1</a>', s)
     return s
 
+def table(lines):
+    """A pipe table (header, a |---| rule, rows) as HTML.  Each cell
+    carries its column's name, which the style sheet shows when the
+    screen is too narrow for columns."""
+    cells = lambda l: [c.strip() for c in l.strip().strip("|").split("|")]
+    head = cells(lines[0])
+    rows = "".join("<tr>%s</tr>" % "".join(
+        '<td data-label="%s">%s</td>' % (html.escape(h), inline(c))
+        for h, c in zip(head, cells(l))) for l in lines[2:])
+    return "<table><thead><tr>%s</tr></thead><tbody>%s</tbody></table>" % (
+        "".join("<th>%s</th>" % inline(h) for h in head), rows)
+
 def prose(text):
     out = []
     for para in re.split(r"\n\s*\n", text.strip()):
         lines = para.split("\n")
         if para.startswith("## "):
             out.append("<h2>%s</h2>" % inline(para[3:]))
+        elif all(l.startswith("|") for l in lines):
+            out.append(table(lines))
         elif all(l.startswith("- ") for l in lines):
             out.append("<ul>%s</ul>" % "".join(
                 "<li>%s</li>" % inline(l[2:]) for l in lines))

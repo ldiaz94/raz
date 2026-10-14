@@ -108,7 +108,7 @@ Neither the deferred statement nor `bye` ran. That's the rule, and the reason to
 
 ## Signals
 
-A program is stopped by a signal it doesn't catch, with a message that names the place for `SIGSEGV` and `SIGFPE`, and without one for the others. A program that wants to handle one, say `SIGTERM` for a clean shutdown, doesn't write a handler that runs at an arbitrary moment. It asks for the signals to arrive as data: `Sys.catch` takes a list of signals and gives a descriptor that is ready to read when one comes, and `Sys.caught` says which. So the program waits for signals the way it waits for input.
+A program is stopped by a signal it doesn't catch, with a message that names the place for `SIGSEGV` and `SIGFPE`, and without one for the others, and ends with status 2. A program that wants to handle one, say `SIGTERM` for a clean shutdown, doesn't write a handler that runs at an arbitrary moment. It asks for the signals to arrive as data: `Sys.catch` takes a list of signals and gives a descriptor that is ready to read when one comes, and `Sys.caught` says which. So the program waits for signals the way it waits for input.
 
 ```raz Terms run
 module Terms;

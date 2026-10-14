@@ -68,7 +68,7 @@
 <h2>Reading the message</h2>
 <p>The first line is the place of the offending expression: file, line and column, then what failed and the numbers involved. Each <code>in</code> line after it is a call still under way, innermost first, with the basic-typed variables it held. That is usually enough to see the bug without a debugger.</p>
 <h2>Other failures</h2>
-<p>The same shape of message tells of a <code>nil</code> pointer, a division by zero, a bad slice and a stack overflow. Each of them stops the program with status 2, or by the signal if the machine caught it, and never runs on with a wrong value.</p>
+<p>The same shape of message tells of a <code>nil</code> pointer, a division by zero, a bad slice and a stack overflow. Each of them stops the program with status 2, and never runs on with a wrong value.</p>
 <div class="file"><span>Nilp.raz</span></div><pre class="code"><code><span class="kw">module</span> Nilp;
 <span class="kw">import</span> Out;
 
@@ -90,7 +90,8 @@
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Nilp.</code></pre>
-<pre class="output"><code><span class="err">Nilp.raz:8:11: stopped by a nil pointer
+<pre class="output"><code>2
+<span class="err">Nilp.raz:8:11: stopped by a nil pointer
   in Nilp.last at Nilp.raz:8:11: n = nil
   in Nilp.main at Nilp.raz:18:5
 </span></code></pre>
@@ -110,7 +111,8 @@
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Zero.</code></pre>
-<pre class="output"><code><span class="err">Zero.raz:6:5: stopped by a division fault
+<pre class="output"><code>3
+<span class="err">Zero.raz:6:5: stopped by a division fault
   in Zero.ratio at Zero.raz:6:5: a = 10, b = 0
   in Zero.main at Zero.raz:13:5: n = 0
 </span></code></pre>
