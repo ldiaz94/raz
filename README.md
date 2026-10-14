@@ -47,7 +47,7 @@ ELF executable itself, with no assembler or linker, and compiles about
 | `conform/` | The conformance suite: what every implementation must do |
 | `sbcl/` | An example: a second compiler, in Common Lisp for SBCL, written from the report alone and kept as a reference; it passes `conform/` and builds `src/` into a compiler that makes the same bytes. Not part of the build |
 | `test/` | This compiler's own tests, and the scripts that run them |
-| `PLAN.md` | The plan: the milestone under way and its steps |
+| `PROPOSALS.md` | What the language might have, waiting for a later thaw |
 
 ## Building
 
@@ -223,7 +223,7 @@ last section says what each version changed.
 
 Since v0.5.0 the language is frozen, softly: it changes only to mend a
 defect, and the library grows only by what breaks no program. Wishes
-wait on a list in `PLAN.md`, for a later thaw; v0.6.0 was one, for a
+wait in `PROPOSALS.md`, for a later thaw; v0.6.0 was one, for a
 language anyone can build again from its report.
 
 ## Not here

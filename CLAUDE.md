@@ -1,10 +1,10 @@
 # Working on raz
 
-Read `PLAN.md` (the milestone under way and its steps), `doc/raz.md`
-(the language report, volume 1) and `doc/compiler.md` (the guide to the
-compiler) first; `doc/raz-lib.md` is volume 2, the library, and
-`doc/report-history.md` what each version of the report changed. The report defines the language; where the plan
-disagrees, the report wins and the plan is fixed.
+Read `doc/raz.md` (the language report, volume 1) and
+`doc/compiler.md` (the guide to the compiler) first; `doc/raz-lib.md`
+is volume 2, the library, `doc/report-history.md` what each version of
+the report changed, and `PROPOSALS.md` what waits for a thaw. The
+report defines the language.
 
 ## Setup and checks
 
@@ -53,7 +53,7 @@ library's tests: they must have no warnings.
   no classes, ansistrings, exceptions, dynamic arrays or SysUtils), so
   it uses nothing the seed doesn't know until a release makes a new
   seed.
-- Plans go by milestones, each a release (`PLAN.md`). A milestone
+- Work goes by milestones, each a release, set by the owner. A milestone
   starts only on the owner's explicit go-ahead; within it, one commit
   per step, pushed as it is done, then stop for review. Never start a
   milestone, or change the report's language, without being asked.
@@ -82,7 +82,7 @@ v0.11.1, report 2026-10.23, is the latest release. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
-against FPC `-O2`. Next, by `PLAN.md`: what the owner chooses. What
+against FPC `-O2`. Next: what the owner chooses. What
 each version of the report changed is in `doc/report-history.md`, and
 what each step did is in git; don't repeat it here.
 
@@ -93,8 +93,8 @@ library. rat, rlX11 and rloc are other users of `Sys`.
 
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
-for it. A wish for more, the owner's or yours, goes on the list in
-`PLAN.md`, for a later thaw; it isn't built. Thaws happen only by the
+for it. A wish for more, the owner's or yours, goes in
+`PROPOSALS.md`, for a later thaw; it isn't built. Thaws happen only by the
 owner's word (v0.6.0, and reports 2026-10.13 to 10.23).
 
 The parser reaches the machine only through `Gen.raz`. Keep
@@ -117,12 +117,12 @@ compiled (`examples/Window.raz` needs a display).
 
 ## The compiler and the seed
 
-`src/` is the compiler, in raz (`PLAN.md`, "Self"): one module to a
+`src/` is the compiler, in raz: one module to a
 seed unit, the same names. `seed/`, the Free Pascal compiler it was
 ported from, is the **seed**: frozen at its last version, kept to build
 `src/` the first time and as the reference its units are tested
 against, and to be dropped in time. Never edit the seed; a difference
-found goes on the plan, for the owner.
+found is told to the owner.
 
 `sbcl/` is an example, not part of the build: a second compiler, in
 Common Lisp, written from the report alone and kept as a reference

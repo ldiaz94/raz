@@ -737,8 +737,8 @@ a scope near one another and is faster), putting `scope` next to `name`
 in `Obj`, a cache of the names found by `chooseRegs`' look-ahead, and
 passing `Item` to `adrOf` as a `var` parameter, so as not to copy it.
 What is left is spread thinly: the procedure call overhead of many small
-routines (`Gen.drop`, `X64.mem`, `Chunk.put1`, which an inliner, listed
-in `PLAN.md`, would remove), the reading of every procedure twice, and
+routines (`Gen.drop`, `X64.mem`, `Chunk.put1`, which an inliner
+would remove), the reading of every procedure twice, and
 a record parameter copied at each call that passes it on (`Mem`, in the
 encoder).
 

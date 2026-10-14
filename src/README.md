@@ -1,7 +1,6 @@
 # src: the compiler in raz
 
 The port of the Pascal compiler, the **seed** in `../seed/`, to raz.
-`../PLAN.md`, "Self", says what it is for and the order of its units.
 
 One module to a seed unit, with the seed's name, written to the same
 rules: plain code, each module opening with what it is, what it
@@ -137,7 +136,7 @@ Not the seed's to mend; for the owner to choose.
   same; whether the compiler built from this is slower for it is for
   the speed test of step 4 to say. A `const` parameter (a hint that
   the callee won't change it, so that the caller may pass its address)
-  would be a language change: it goes on the wish list.
+  would be a language change: it is in `../PROPOSALS.md`.
 - **`Parse` and the seed's jumps.** The seed's `Guard`, `setjmp` and
   `longjmp` are `guard`, a record of what to put back, and the `ERROR`
   that comes up through `try` to the statement or declaration that is
