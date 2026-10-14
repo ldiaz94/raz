@@ -1,0 +1,162 @@
+(* Operations on []U8 strings: comparing, hashing, finding, UTF-8,
+   reading a number, and numbers in a fixed byte order. *)
+module Str;
+import Mem, Rt;
+
+(* -1, 0 or 1 as a sorts before, with or after b, byte by byte *)
+proc cmp*(a, b: []U8): INT;
+var i: INT;
+begin
+    while (i < LEN(a)) and (i < LEN(b)) do
+        if a[i] < b[i] then return -1; end;
+        if a[i] > b[i] then return 1; end;
+        INC(i);
+    end;
+    if LEN(a) < LEN(b) then return -1; end;
+    if LEN(a) > LEN(b) then return 1; end;
+    return 0;
+end;
+
+proc eq*(a, b: []U8): BOOL;
+begin
+    return a = b;
+end;
+
+(* s's bytes in memory from a; false if a has none *)
+proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);
+var p: ^U8; d: []U8;
+begin
+    p := Mem.alloc(a, LEN(s), 1);
+    if (p = nil) and (LEN(s) > 0) then return "", false; end;
+    d := p[0..LEN(s)];
+    COPY(d, s);
+    return d, true;
+end;
+
+(* FNV-1a, 64 bits *)
+proc hash*(s: []U8): U64;
+var h: U64; i: INT;
+begin
+    h := 0CBF29CE484222325H;
+    for i := 0 to LEN(s) - 1 do
+        h := (h xor U64(s[i])) * 100000001B3H;
+    end;
+    return h;
+end;
+
+proc hasPrefix*(s, p: []U8): BOOL;
+begin
+    return (LEN(p) <= LEN(s)) and (s[0..LEN(p)] = p);
+end;
+
+(* where sub first starts in s, or -1 *)
+proc find*(s, sub: []U8): INT;
+var i: INT;
+begin
+    for i := 0 to LEN(s) - LEN(sub) do
+        if s[i..i + LEN(sub)] = sub then return i; end;
+    end;
+    return -1;
+end;
+
+(* c in UTF-8: its bytes, and how many *)
+proc encode*(c: I32): ([4]U8, INT);
+var b: [4]U8;
+begin
+    if (c < 0) or (c > 10FFFFH) or ((c >= 0D800H) and (c <= 0DFFFH)) then c := 0FFFDH; end;
+    if c < 80H then
+        b[0] := U8(c);
+        return b, 1;
+    elsif c < 800H then
+        b[0] := U8(0C0H | (c shr 6)); b[1] := U8(80H | (c & 3FH));
+        return b, 2;
+    elsif c < 10000H then
+        b[0] := U8(0E0H | (c shr 12)); b[1] := U8(80H | ((c shr 6) & 3FH));
+        b[2] := U8(80H | (c & 3FH));
+        return b, 3;
+    end;
+    b[0] := U8(0F0H | (c shr 18)); b[1] := U8(80H | ((c shr 12) & 3FH));
+    b[2] := U8(80H | ((c shr 6) & 3FH)); b[3] := U8(80H | (c & 3FH));
+    return b, 4;
+end;
+
+(* the character s starts with, and its length in bytes *)
+proc decode*(s: []U8): (I32, INT);
+var c, least: I32; n, i: INT; b: U8;
+begin
+    if LEN(s) = 0 then return 0, 0; end;
+    b := s[0];
+    if b < 80H then return I32(b), 1;
+    elsif (b >= 0C2H) and (b < 0E0H) then n := 2; c := I32(b & 1FH); least := 80H;
+    elsif (b >= 0E0H) and (b < 0F0H) then n := 3; c := I32(b & 0FH); least := 800H;
+    elsif (b >= 0F0H) and (b < 0F5H) then n := 4; c := I32(b & 7H); least := 10000H;
+    else return 0FFFDH, 1;
+    end;
+    if LEN(s) < n then return 0FFFDH, 1; end;
+    for i := 1 to n - 1 do
+        if s[i] & 0C0H # 80H then return 0FFFDH, 1; end;
+        c := (c shl 6) | I32(s[i] & 3FH);
+    end;
+    if (c < least) or (c > 10FFFFH) or ((c >= 0D800H) and (c <= 0DFFFH)) then return 0FFFDH, 1; end;
+    return c, n;
+end;
+
+(* s, in decimal; false if it isn't a number an I64 holds *)
+proc toInt*(s: []U8): (I64, BOOL);
+var i: INT; neg: BOOL; v: U64; d: U64;
+begin
+    if LEN(s) = 0 then return 0, false; end;
+    if (s[0] = '-') or (s[0] = '+') then neg := s[0] = '-'; i := 1; end;
+    if i = LEN(s) then return 0, false; end;
+    while i < LEN(s) do
+        if (s[i] < '0') or (s[i] > '9') then return 0, false; end;
+        d := U64(s[i] - '0');
+        if v > (8000000000000000H - d) div 10 then return 0, false; end;
+        v := v * 10 + d;
+        INC(i);
+    end;
+    if neg then return I64(0 - v), true; end;
+    if v > 7FFFFFFFFFFFFFFFH then return 0, false; end;
+    return I64(v), true;
+end;
+
+proc tooLong(s: []U8);
+begin
+    if LEN(s) > 8 then Rt.stop("Str: more than 8 bytes for a number"); end;
+end;
+
+(* s, at most 8 bytes, the first the lowest *)
+proc le*(s: []U8): U64;
+var v: U64; i: INT;
+begin
+    tooLong(s);
+    for i := LEN(s) - 1 to 0 by -1 do v := (v shl 8) | U64(s[i]); end;
+    return v;
+end;
+
+(* s, at most 8 bytes, the first the highest *)
+proc be*(s: []U8): U64;
+var v: U64; i: INT;
+begin
+    tooLong(s);
+    for i := 0 to LEN(s) - 1 do v := (v shl 8) | U64(s[i]); end;
+    return v;
+end;
+
+(* v into s, the lowest byte first *)
+proc putLE*(s: []U8; v: U64);
+var i: INT;
+begin
+    tooLong(s);
+    for i := 0 to LEN(s) - 1 do s[i] := U8(v & 0FFH); v := v shr 8; end;
+end;
+
+(* v into s, the highest byte first *)
+proc putBE*(s: []U8; v: U64);
+var i: INT;
+begin
+    tooLong(s);
+    for i := LEN(s) - 1 to 0 by -1 do s[i] := U8(v & 0FFH); v := v shr 8; end;
+end;
+
+end Str.

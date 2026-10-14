@@ -1,0 +1,35 @@
+(* Allocator, the interface of every allocator, and pages from the system. *)
+module Mem;
+import Sys;
+
+type
+    Allocator* = record
+        alloc*: proc(a: ^Allocator; size, align: INT): ^U8;   (* nil if out of room *)
+        free*:  proc(a: ^Allocator; p: ^U8);
+    end;
+
+const Page* = 4096;
+
+(* size bytes, in whole pages, zeroed; or nil *)
+proc pages*(size: INT): ^U8;
+begin
+    return Sys.mmap(size);
+end;
+
+(* pages given back *)
+proc unmap*(p: ^U8; size: INT);
+begin
+    Sys.munmap(p, size);
+end;
+
+proc alloc*(a: ^Allocator; size, align: INT): ^U8;
+begin
+    return a^.alloc(a, size, align);
+end;
+
+proc free*(a: ^Allocator; p: ^U8);
+begin
+    a^.free(a, p);
+end;
+
+end Mem.

@@ -1,0 +1,22 @@
+(* A lock for short sections: a thread that finds it taken tries again,
+   giving up the processor now and then. Zero is free. *)
+module Lock;
+import Sys;
+
+type Lock* = record held: INT; end;
+
+proc take*(l: ^Lock);
+var tries: INT;
+begin
+    while not CAS(ADR(l^.held), 0, 1) do
+        INC(tries);
+        if tries mod 64 = 0 then Sys.yield; end;
+    end;
+end;
+
+proc give*(l: ^Lock);
+begin
+    _ := XCHG(ADR(l^.held), 0);
+end;
+
+end Lock.

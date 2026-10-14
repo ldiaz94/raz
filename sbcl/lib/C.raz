@@ -1,0 +1,14 @@
+(* The parts of the C library that programs use most: printf, fflush,
+   stdout and pthread_create. A program that imports C uses C. *)
+module C;
+
+extern var stdout*: ^U8;     (* C's FILE *stdout *)
+
+extern proc printf*(format: ^U8; ...): I32;
+extern proc fflush*(f: ^U8): I32;
+extern proc malloc*(size: UINT): ^U8;
+extern proc free*(p: ^U8);
+extern proc pthread_create*(thread: ^UINT; attr: ^U8; start: proc(arg: ^U8): ^U8; arg: ^U8): I32;
+extern proc pthread_join*(thread: UINT; result: ^^U8): I32;
+
+end C.

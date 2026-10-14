@@ -1,0 +1,108 @@
+(* Writing text and numbers to standard output, buffered: written out when
+   the buffer is full, at each line feed when standard output is a
+   terminal, at flush, and when the program ends by Rt.exit. A lock keeps
+   what each call writes together. *)
+module Out;
+import Sys, Rt, Lock;
+
+const hexDigits = "0123456789ABCDEF";
+
+var
+    buf: [Sys.outSize]U8;
+    len: INT;
+    lock: Lock.Lock;
+    terminal: BOOL;
+
+(* The buffer written out; the lock is held. *)
+proc drain;
+var n, done: INT;
+begin
+    while done < len do
+        n := Sys.write(Sys.stdout, buf[done..len]);
+        if n <= 0 then len := 0; return; end;
+        done := done + n;
+    end;
+    len := 0;
+end;
+
+(* s added to the buffer; the lock is held *)
+proc put(s: []U8);
+var i, n: INT;
+begin
+    while i < LEN(s) do
+        if len = LEN(buf) then drain; end;
+        n := LEN(s) - i;
+        if n > LEN(buf) - len then n := LEN(buf) - len; end;
+        COPY(buf[len..len + n], s[i..i + n]);
+        len := len + n;
+        i := i + n;
+    end;
+end;
+
+proc str*(s: []U8);
+var i: INT;
+begin
+    Lock.take(ADR(lock));
+    put(s);
+    if terminal then
+        for i := 0 to LEN(s) - 1 do
+            if s[i] = 10 then drain; break; end;
+        end;
+    end;
+    Lock.give(ADR(lock));
+end;
+
+proc char*(c: U8);
+var b: [1]U8;
+begin
+    b[0] := c;
+    str(b);
+end;
+
+(* a line feed *)
+proc ln*;
+begin
+    str("\n");
+end;
+
+(* n in decimal *)
+proc int*(n: I64);
+var digits: [20]U8; i: INT; u: U64;
+begin
+    u := U64(n);
+    if n < 0 then u := 0 - u; end;
+    i := LEN(digits);
+    repeat
+        DEC(i);
+        digits[i] := U8(u mod 10) + '0';
+        u := u div 10;
+    until u = 0;
+    if n < 0 then DEC(i); digits[i] := '-'; end;
+    str(digits[i..LEN(digits)]);
+end;
+
+(* n in hexadecimal, digits digits at least *)
+proc hex*(n: U64; digits: INT);
+var d: [16]U8; i: INT;
+begin
+    i := LEN(d);
+    repeat
+        DEC(i);
+        d[i] := hexDigits[INT(n & 0FH)];
+        n := n shr 4;
+    until n = 0;
+    while i > LEN(d) - digits and i > 0 do DEC(i); d[i] := '0'; end;
+    str(d[i..LEN(d)]);
+end;
+
+proc flush*;
+begin
+    Lock.take(ADR(lock));
+    drain;
+    Lock.give(ADR(lock));
+end;
+
+begin
+    terminal := Sys.isTerminal(Sys.stdout);
+    _ := Rt.atExit(flush);
+end Out.

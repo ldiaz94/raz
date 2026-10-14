@@ -1,0 +1,293 @@
+(* System calls, for Linux on any machine SBCL runs on: through the C
+   library's syscall(), which the run time's SYSCALL calls. The numbers
+   are x86-64's. A result that can fail is a number, minus an errno, as
+   on Linux. *)
+module Sys;
+
+const
+    stdin* = 0; stdout* = 1; stderr* = 2;
+    outSize* = 4096;    (* the bytes Out keeps *)
+    sigHup* = 1; sigInt* = 2; sigQuit* = 3; sigKill* = 9; sigPipe* = 13;
+    sigTerm* = 15; sigChld* = 17; sigCont* = 18; sigStop* = 19;
+    sigTstp* = 20; sigTtin* = 21; sigTtou* = 22; sigWinch* = 28;
+
+    (* system call numbers *)
+    sysRead = 0; sysWrite = 1; sysClose = 3; sysStat = 4; sysLstat = 6;
+    sysLseek = 8; sysMmap = 9; sysMunmap = 11; sysIoctl = 16;
+    sysYield = 24; sysNanosleep = 35; sysGetpid = 39; sysKill = 62;
+    sysGetcwd = 79; sysChdir = 80; sysRename = 82; sysMkdir = 83;
+    sysRmdir = 84; sysUnlink = 87; sysSymlink = 88; sysReadlink = 89;
+    sysChmod = 90; sysClockGettime = 228; sysExitGroup = 231;
+    sysOpenat = 257; sysGetrandom = 318;
+
+    atFdCwd = -100;
+    pathMax = 4096;
+
+type
+    Access* = (reading, writing, creating, exclusive, truncating, appending);
+    Accesses* = set of Access;
+    Info* = record
+        size*: I64;      (* in bytes *)
+        mtime*: I64;     (* when its contents last changed, in nanoseconds since 1970 *)
+        mode*: INT;      (* its permission bits *)
+        dir*: BOOL;      (* a directory *)
+        file*: BOOL;     (* a regular file *)
+        symlink*: BOOL;  (* the path itself is a symbolic link *)
+    end;
+    Path = [pathMax]U8;  (* a path with a zero after it, as Linux takes it *)
+
+var
+    linkBuf: [pathMax]U8;
+    dirBuf: [pathMax]U8;
+    envp: ^^U8;
+
+(* p, ended by a zero, in c; false if it is too long *)
+proc cPath(p: []U8; var c: Path): BOOL;
+begin
+    if LEN(p) >= LEN(c) then return false; end;
+    COPY(c, p);
+    c[LEN(p)] := 0;
+    return true;
+end;
+
+proc write*(fd: INT; s: []U8): INT;
+begin
+    return SYSCALL(sysWrite, fd, ADR(s[0]) , LEN(s));
+end;
+
+proc read*(fd: INT; buf: []U8): INT;
+begin
+    if LEN(buf) = 0 then return 0; end;
+    return SYSCALL(sysRead, fd, ADR(buf[0]), LEN(buf));
+end;
+
+proc open*(path: []U8; how: Accesses): INT;
+var c: Path; flags: INT;
+begin
+    if not cPath(path, c) then return -36; end;
+    if (reading in how) and (writing in how) then flags := 2;
+    elsif writing in how then flags := 1;
+    end;
+    if creating in how then flags := flags | 40H; end;
+    if exclusive in how then flags := flags | 80H; end;
+    if truncating in how then flags := flags | 200H; end;
+    if appending in how then flags := flags | 400H; end;
+    return SYSCALL(sysOpenat, atFdCwd, ADR(c), flags | 80000H, 1A4H);
+end;
+
+proc openRead*(path: []U8): INT;
+begin
+    return open(path, {reading});
+end;
+
+proc create*(path: []U8): INT;
+begin
+    return open(path, {writing, creating, truncating});
+end;
+
+proc seek*(fd: INT; pos: I64; fromEnd: BOOL): I64;
+var whence: INT;
+begin
+    if fromEnd then whence := 2; end;
+    return SYSCALL(sysLseek, fd, pos, whence);
+end;
+
+proc close*(fd: INT);
+begin
+    _ := SYSCALL(sysClose, fd);
+end;
+
+proc isTerminal*(fd: INT): BOOL;
+var termios: [64]U8;
+begin
+    return SYSCALL(sysIoctl, fd, 5401H, ADR(termios)) = 0;
+end;
+
+(* size bytes of zeroed memory, in whole pages; or nil *)
+proc mmap*(size: INT): ^U8;
+var r: INT;
+begin
+    r := SYSCALL(sysMmap, 0, size, 3, 22H, -1, 0);
+    if r < 0 then return nil; end;
+    return ^U8(r);
+end;
+
+proc munmap*(p: ^U8; size: INT);
+begin
+    _ := SYSCALL(sysMunmap, p, size);
+end;
+
+proc yield*;
+begin
+    _ := SYSCALL(sysYield);
+end;
+
+(* the program ended at once, without Rt's atExit *)
+proc exit*(status: INT);
+begin
+    _ := SYSCALL(sysExitGroup, status);
+end;
+
+proc rename*(old, new: []U8): INT;
+var a, b: Path;
+begin
+    if not cPath(old, a) or not cPath(new, b) then return -36; end;
+    return SYSCALL(sysRename, ADR(a), ADR(b));
+end;
+
+proc remove*(path: []U8): INT;
+var c: Path;
+begin
+    if not cPath(path, c) then return -36; end;
+    return SYSCALL(sysUnlink, ADR(c));
+end;
+
+proc removeDir*(path: []U8): INT;
+var c: Path;
+begin
+    if not cPath(path, c) then return -36; end;
+    return SYSCALL(sysRmdir, ADR(c));
+end;
+
+proc makeDir*(path: []U8): INT;
+var c: Path;
+begin
+    if not cPath(path, c) then return -36; end;
+    return SYSCALL(sysMkdir, ADR(c), 1EDH);
+end;
+
+proc chmod*(path: []U8; mode: INT): INT;
+var c: Path;
+begin
+    if not cPath(path, c) then return -36; end;
+    return SYSCALL(sysChmod, ADR(c), mode);
+end;
+
+proc symlink*(target, path: []U8): INT;
+var a, b: Path;
+begin
+    if not cPath(target, a) or not cPath(path, b) then return -36; end;
+    return SYSCALL(sysSymlink, ADR(a), ADR(b));
+end;
+
+(* what the link names, good until the next call *)
+proc readLink*(path: []U8): ([]U8, INT);
+var c: Path; n: INT;
+begin
+    if not cPath(path, c) then return "", -36; end;
+    n := SYSCALL(sysReadlink, ADR(c), ADR(linkBuf), LEN(linkBuf));
+    if n < 0 then return "", n; end;
+    return linkBuf[0..n], 0;
+end;
+
+(* following a symbolic link *)
+proc info*(path: []U8): (Info, INT);
+var c: Path; st: [144]U8; r: INT; i: Info; mode: U32;
+begin
+    if not cPath(path, c) then return i, -36; end;
+    r := SYSCALL(sysLstat, ADR(c), ADR(st));
+    if r < 0 then return i, r; end;
+    i.symlink := ^U32(ADR(st[24]))^ & 0F000H = 0A000H;
+    if i.symlink then
+        r := SYSCALL(sysStat, ADR(c), ADR(st));
+        if r < 0 then return i, r; end;
+    end;
+    mode := ^U32(ADR(st[24]))^;
+    i.size := ^I64(ADR(st[48]))^;
+    i.mtime := ^I64(ADR(st[88]))^ * 1000000000 + ^I64(ADR(st[96]))^;
+    i.mode := INT(mode & 1FFH);
+    i.dir := mode & 0F000H = 4000H;
+    i.file := mode & 0F000H = 8000H;
+    return i, 0;
+end;
+
+(* C's environ, which the run time's C library keeps *)
+proc environ: ^^U8;
+code
+    (ld :u64 (sb-sys:find-foreign-symbol-address "environ"));
+end;
+
+(* the environment variable's value; "" if unset *)
+proc env*(name: []U8): []U8;
+var e: ^U8; i, n: INT;
+begin
+    if envp = nil then envp := environ(); end;
+    i := 0;
+    while envp[i] # nil do
+        e := envp[i];
+        n := 0;
+        while e[n] # 0 do INC(n); end;
+        if n > LEN(name) and e[LEN(name)] = '=' and e[0..LEN(name)] = name then
+            return e[LEN(name) + 1..n];
+        end;
+        INC(i);
+    end;
+    return "";
+end;
+
+(* the working directory, good until the next call *)
+proc workDir*: ([]U8, INT);
+var r: INT;
+begin
+    r := SYSCALL(sysGetcwd, ADR(dirBuf), LEN(dirBuf));
+    if r < 0 then return "", r; end;
+    r := 0;
+    while dirBuf[r] # 0 do INC(r); end;
+    return dirBuf[0..r], 0;
+end;
+
+proc setWorkDir*(path: []U8): INT;
+var c: Path;
+begin
+    if not cPath(path, c) then return -36; end;
+    return SYSCALL(sysChdir, ADR(c));
+end;
+
+proc pid*: INT;
+begin
+    return SYSCALL(sysGetpid);
+end;
+
+proc kill*(pid, signal: INT): INT;
+begin
+    return SYSCALL(sysKill, pid, signal);
+end;
+
+proc clockOf(which: INT): I64;
+var t: [2]I64;
+begin
+    _ := SYSCALL(sysClockGettime, which, ADR(t));
+    return t[0] * 1000000000 + t[1];
+end;
+
+(* nanoseconds, on a clock that only goes forward *)
+proc clock*: I64;
+begin
+    return clockOf(1);
+end;
+
+(* nanoseconds since 1970-01-01, UTC *)
+proc now*: I64;
+begin
+    return clockOf(0);
+end;
+
+proc sleep*(ms: INT);
+var t: [2]I64;
+begin
+    t[0] := ms div 1000;
+    t[1] := (ms mod 1000) * 1000000;
+    while SYSCALL(sysNanosleep, ADR(t), ADR(t)) = -4 do end;
+end;
+
+(* b filled with random bytes *)
+proc random*(b: []U8);
+var done, n: INT;
+begin
+    while done < LEN(b) do
+        n := SYSCALL(sysGetrandom, ADR(b[done]), LEN(b) - done, 0);
+        if n > 0 then done := done + n; end;
+    end;
+end;
+
+end Sys.

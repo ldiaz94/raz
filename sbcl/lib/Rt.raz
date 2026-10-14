@@ -1,0 +1,57 @@
+(* Ending the program: exit, atExit and stop; and trace, the calls under
+   way. The compiler's checks, and the faults the run time catches, end
+   in stop. *)
+module Rt;
+import Sys;
+
+const Full*: ERROR = "too many procedures to run at exit";
+
+var
+    procs: [32]proc;    (* the procedures to run at exit, the last on top *)
+    count: INT;
+
+(* p run when the program ends by exit *)
+proc atExit*(p: proc): ERROR;
+begin
+    if count = LEN(procs) then return Full; end;
+    procs[count] := p;
+    INC(count);
+    return nil;
+end;
+
+(* The end: C's buffers flushed, then the process. *)
+proc quit(status: INT);
+code
+    (exit-now status);
+end;
+
+(* The atExit procedures, the last first, each taken off the list before
+   it runs, so that it runs once even if it stops or calls exit itself;
+   then the end. *)
+proc exit*(status: INT);
+var p: proc;
+begin
+    while count > 0 do
+        DEC(count);
+        p := procs[count];
+        p;
+    end;
+    quit(status);
+end;
+
+(* the calls under way, on standard error *)
+proc trace*;
+code
+    (trace-calls);
+end;
+
+(* msg on standard error, then exit with status 2 *)
+proc stop*(msg: []U8);
+begin
+    _ := Sys.write(Sys.stderr, msg);
+    _ := Sys.write(Sys.stderr, "\n");
+    trace;
+    exit(2);
+end;
+
+end Rt.
