@@ -38,7 +38,7 @@
 <p>raz is a small systems language, first made for x86-64 Linux. A raz program can lay a record over a device’s registers, read and write a device’s memory exactly as written, take part in lock-free algorithms, make system calls and call C libraries. It has no garbage collector and no hidden run time: what the program does is what its text says.</p>
 <p>This is the first volume of the report: the language, what an implementation chooses, and the grammar. The second, <code>doc/raz-lib.md</code>, is the library, which sections 3 and 10 and appendix A name.</p>
 <p>This report defines the language. It is short on purpose. Whatever it doesn’t allow, raz doesn’t have.</p>
-<p>This is version 2026-10.22 of the report; section 11 says where each version’s changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>.</p>
+<p>This is version 2026-10.23 of the report; section 11 says where each version’s changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>.</p>
 <p>The language is frozen, softly, from this version on: it changes only to mend a defect, and its library grows only by what breaks no program written for it. What anyone wishes it had waits on a list, for a later thaw.</p>
 <h1 id="a-first-look">1. A first look</h1>
 <pre><code>module Hello;
@@ -1114,7 +1114,10 @@ proc tan*(x: F64): F64;
 proc asin*(x: F64): F64;              (* from -pi/2 to pi/2 *)
 proc acos*(x: F64): F64;              (* from 0 to pi *)
 proc atan*(x: F64): F64;              (* from -pi/2 to pi/2 *)
-proc atan2*(y, x: F64): F64;          (* the angle of (x, y) from the x axis, from -pi to pi *)</code></pre>
+proc atan2*(y, x: F64): F64;          (* the angle of (x, y) from the x axis, from -pi to pi *)
+proc bits*(x: F64): U64;              (* the bits of x, as IEEE 754 lays them out *)
+proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
+proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)</code></pre>
 <p>A <code>Buf</code>, a <code>List</code> and a <code>Map</code> take their memory from the allocator <code>init</code> gives them. <code>Fmt</code>’s format takes the next argument at each <code>{}</code>; <code>{{</code> and <code>}}</code> stand for <code>{</code> and <code>}</code>. A <code>Map</code> hashes and compares its keys with the procedures it is given: <code>import Count := Map([]U8, INT, Str.hash, Str.eq);</code>.</p>
 <p><code>Str</code> reads and writes UTF-8. <code>encode</code> writes a character, of at most 10FFFFH, in one to four bytes; a number that isn’t one becomes FFFDH, the character that stands for a wrong one. <code>decode</code> reads the first character of <code>s</code>, and gives FFFDH and 1 for a byte that doesn’t start one rightly, and 0 and 0 for an empty <code>s</code>. <code>toInt</code> reads a decimal number, with a <code>-</code> or <code>+</code> before it if any, and nothing else.</p>
 <p><code>le</code> and <code>be</code> read an unsigned number of up to 8 bytes in a fixed order, little-endian or big-endian, whatever the machine’s own, and <code>putLE</code> and <code>putBE</code> write one; more than 8 bytes stops the program. They are how a file format or a network protocol is read and written:</p>
