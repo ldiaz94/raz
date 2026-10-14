@@ -118,11 +118,14 @@ const
     ShownRegs*: [7]INT = [X.RBX, X.R12, X.R13, X.R14, X.R15, X.RDI, X.RSI];
     (* the registers a procedure keeps its busiest reals in, xmm12 to
        xmm15, numbered from XmmVar up so that they aren't taken for r12 to
-       r15 (regAt). Each has a slot too, written as it is, where the trap
+       r15 (regAt); and in a procedure that calls nothing, which has no
+       real parameter in them, xmm4 to xmm7 too, as nothing else uses
+       them there. Each has a slot too, written as it is, where the trap
        report finds it, and from which it is loaded again after a call, as
        System V has no callee-saved xmm register (xHome). *)
     XmmVar* = 16;
-    XVarRegs*: [4]INT = [XmmVar + 12, XmmVar + 13, XmmVar + 14, XmmVar + 15];
+    XVarRegs*: [8]INT = [XmmVar + 12, XmmVar + 13, XmmVar + 14, XmmVar + 15,
+                         XmmVar + 4, XmmVar + 5, XmmVar + 6, XmmVar + 7];
     (* a procedure's registers of variables, as bits: bit i is VarRegs[i],
        bit XBit + i XVarRegs[i] *)
     XBit* = 5;
@@ -217,7 +220,7 @@ var
     regMask: INT;                 (* the registers of variables, as bits (XBit) *)
     kept: INT;                    (* bit r: register r holds a parameter, as it arrived *)
     saveAt: I64;                  (* where they are saved, a quadword each *)
-    homes: [4]I64;                (* the slots of the variables in XVarRegs *)
+    homes: [8]I64;                (* the slots of the variables in XVarRegs *)
     frameAt: [3]I64;              (* frameTop, frameMax, permTop after the declarations *)
     fails: [4096]Fail;
     numFails: INT;
@@ -641,10 +644,17 @@ begin
     computed(kWord);
 end;
 
+(* Where xmm register r is in XVarRegs *)
+proc xIndex(r: INT): INT;
+begin
+    if r >= XVarRegs[0] then return r - XVarRegs[0]; end;
+    return r - XVarRegs[4] + 4;
+end;
+
 (* The slot of the variable in xmm register x *)
 proc homeOf(x: INT): X.Mem;
 begin
-    return X.mem(RBP, homes[x + XmmVar - XVarRegs[0]]);
+    return X.mem(RBP, homes[xIndex(x + XmmVar)]);
 end;
 
 (* Pops a value into the variable at a; an address on the stack is under
@@ -1847,7 +1857,7 @@ begin
     if k + pad > 0 then X.aluI(X.aluAdd, RSP, 8 * (k + pad)); end;
     (* the variables in xmm registers, which the call may have changed,
        from their slots *)
-    for i := 0 to 3 do
+    for i := 0 to LEN(XVarRegs) - 1 do
         if (regMask & (1 shl (XBit + i))) # 0 then
             X.movsXM(XVarRegs[i] - XmmVar, X.mem(RBP, homes[i]), false);
         end;
@@ -2049,7 +2059,7 @@ end;
    slot, kept as it changes *)
 proc xHome*(r: INT; slot: I64);
 begin
-    homes[r - XVarRegs[0]] := slot;
+    homes[xIndex(r)] := slot;
 end;
 
 proc markCode*(var m: CodeMark);
@@ -2137,7 +2147,7 @@ begin
     end;
     (* and each xmm register that holds a variable, zeroed, as its slot
        is: the caller keeps its own *)
-    for i := 0 to 3 do
+    for i := 0 to LEN(XVarRegs) - 1 do
         if (regMask & (1 shl (XBit + i))) # 0 then
             X.movRI(RAX, 0);
             X.movqXR(XVarRegs[i] - XmmVar, RAX);

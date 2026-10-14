@@ -2485,7 +2485,7 @@ proc chooseRegs(params, before: PObj);
 var
     isLoop: [256]BOOL;
     forAt: [256]INT;   (* the for loop opened at each depth, or -1 *)
-    i, k, kx, d, loops, best, need, nf, inLim: INT; o, q, qual: PObj; st: Scan.State;
+    i, k, kx, xmax, d, loops, best, need, nf, inLim: INT; o, q, qual: PObj; st: Scan.State;
     afterDot, wasSkipping, leaf: BOOL;
 begin
     numCand := 0;
@@ -2569,13 +2569,24 @@ begin
             o := o^.next;
         end;
     end;
+    (* xmm4 to xmm7 too, where no call or real parameter needs them *)
+    xmax := 4;
+    if leaf then
+        xmax := 8;
+        o := params; i := 0;
+        while o # nil do
+            if (o^.typ^.form = Sym.fReal) and not o^.isVar then INC(i); end;
+            o := o^.next;
+        end;
+        if i > 4 then xmax := 4; end;
+    end;
     (* a slice's weight is shared by its two registers *)
     for i := 0 to numCand - 1 do
         if cand[i]^.typ^.form = Sym.fSlice then weight[i] := weight[i] div 2; end;
     end;
     (* the heaviest, each used at least three times a register, take the
        five registers in turn, while there are enough for each, and the
-       reals the four xmm registers of XVarRegs *)
+       reals xmax of the xmm registers of XVarRegs *)
     k := 0; kx := 0;
     repeat
         best := -1;
@@ -2586,7 +2597,7 @@ begin
         need := 1;
         if cand[best]^.typ^.form = Sym.fSlice then need := 2; end;
         if cand[best]^.typ^.form = Sym.fReal then
-            if kx < 4 then
+            if kx < xmax then
                 cand[best]^.reg := Gen.XVarRegs[kx];
                 INC(kx);
             else
@@ -2614,7 +2625,7 @@ begin
     for k := 0 to 4 do
         if (o^.reg = Gen.VarRegs[k]) or (o^.reg2 = Gen.VarRegs[k]) then m := m | (1 shl k); end;
     end;
-    for k := 0 to 3 do
+    for k := 0 to LEN(Gen.XVarRegs) - 1 do
         if o^.reg = Gen.XVarRegs[k] then m := m | (1 shl (Gen.XBit + k)); end;
     end;
     return m;

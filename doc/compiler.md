@@ -18,9 +18,9 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Sym.raz` | 687 | 556 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,506 | 1,794 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Gen.raz` | 2,516 | 1,800 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 1,767 | 1,462 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 3,896 | 3,395 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 3,907 | 3,405 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -67,7 +67,8 @@ five, live in registers that calls leave alone: the callee-saved ones
 of System V, the calling convention of x86-64 Linux, which a called
 procedure must give back as it found them (`rbx` and `r12` to `r15`).
 Nothing but their own assignments can change them. Up to four reals
-live in `xmm12` to `xmm15`, each written to the frame as well and
+live in `xmm12` to `xmm15` (eight, with `xmm4` to `xmm7`, in a
+procedure that calls nothing), each written to the frame as well and
 loaded from there after a call, as System V has no xmm register that
 a call leaves alone.
 
@@ -835,6 +836,44 @@ to 2% in time, which is the noise.
    The sum 15% faster, in the same instructions. Search, whose `for` is
    compared once a round of its inner `while`, is 4% slower in a loop
    that didn't change, at the same address; why is not known.
+
+4. **Four more registers for reals, where nothing calls.** NBody's
+   fifth real, `d2`, had no register: XVarRegs had four, `xmm12` to
+   `xmm15`. It was stored and loaded on the chain each round waits on:
+
+   ```
+   addsd xmm8, [literal1024]
+   movsd [rbp - 32], xmm8    ; d2 := ...
+   movsd xmm9, [rbp - 32]    ; Math.sqrt(d2)
+   sqrtsd xmm9, xmm9
+   movsd xmm8, [rbp - 32]    ; d2 * ...
+   ```
+
+   `xmm0` to `xmm7` carry a call's arguments, and nothing else of Gen's
+   but `xmm0`; so in a procedure that calls nothing (`chooseRegs`'s
+   `leaf`) and has at most four real parameters, which arrive in `xmm0`
+   to `xmm3`, the reals may have `xmm4` to `xmm7` as well, the last four
+   of XVarRegs (`xmax`; `xIndex` finds a register's slot):
+
+   ```
+   addsd xmm8, [literal1024]
+   movaps xmm4, xmm8
+   movsd [rbp - 32], xmm4
+   movaps xmm9, xmm4
+   sqrtsd xmm9, xmm9
+   movaps xmm8, xmm4
+   ```
+
+   NBody 4% faster, in 1.4% more instructions: a load is a `movaps`
+   now, and the slot is still written for the trap report.
+
+All told, against v0.12.0, the best of thirty runs each: NBody 1.68
+to 1.16 billion instructions and 202 ms to 151, now 1.05 times FPC
+`-O2`'s time; the sum 163 ms to 148, as fast as FPC's; Lines 6%
+faster; the rest within noise, Grep and Search too, whose losses above
+came with their loops unchanged. Grep (1.14 times FPC's) and Jacobi (1.24) are where FPC is still
+ahead. The compiler, built by itself, runs 0.9% fewer instructions on
+the 348,000-line program, in the same time.
 
 ## Diag.raz: messages
 
