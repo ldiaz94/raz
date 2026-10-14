@@ -1,5 +1,6 @@
 " Vim syntax file for raz: reserved words, basic types, built-in
-" procedures, numbers, characters, strings and nested comments.
+" procedures, numbers, characters, strings, raw strings over lines and
+" nested comments.
 
 if exists("b:current_syntax")
   finish
@@ -25,6 +26,7 @@ syntax match razNumber "\<\d\+\.\d\+\(E[+-]\=\d\+\)\=\>"
 syntax match razEscape contained "\\\([ntr0\\'\"]\|x\x\x\|u{\x\+}\)"
 syntax region razString start=+"+ skip=+\\.+ end=+"+ contains=razEscape oneline
 syntax region razChar start=+'+ skip=+\\.+ end=+'+ contains=razEscape oneline
+syntax region razRawString start=+`+ end=+`+
 
 syntax region razComment start="(\*" end="\*)" contains=razComment,@Spell
 syntax sync fromstart
@@ -35,6 +37,7 @@ highlight default link razBuiltin Function
 highlight default link razConstant Constant
 highlight default link razNumber Number
 highlight default link razString String
+highlight default link razRawString String
 highlight default link razChar Character
 highlight default link razEscape SpecialChar
 highlight default link razComment Comment

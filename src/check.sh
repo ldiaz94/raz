@@ -5,6 +5,13 @@
 # side is built by fpc from seed/.
 set -e
 b=build/src
+# The seed predates raw strings and match on a string (report
+# 2026-10.25): the files that use them are the compiler's alone.
+newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRawIndent.raz"
+newer() {
+    case " $newer " in *" $1 "*) return 0 ;; esac
+    return 1
+}
 mkdir -p $b
 fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fuseed -o$b/scandump.seed src/test/ScanDump.pas >/dev/null
 ./raz -Werror -I src -o $b/scandump.src src/test/ScanDump.raz
@@ -17,6 +24,7 @@ n=0; bad=0
 for f in $b/lex/*.raz lib/*.raz examples/*.raz tools/*.raz src/*.raz src/test/*.raz test/run/*.raz test/err/*.raz \
          conform/*/*.raz $b/reals.raz; do
     [ -f "$f" ] || continue
+    newer $f && continue
     s1=0; s2=0
     $b/scandump.seed $f >$b/seed.out 2>$b/seed.err || s1=$?
     $b/scandump.src $f >$b/src.out 2>$b/src.err || s2=$?
@@ -116,7 +124,7 @@ python3 test/genbench.py 12000 >$c/bench/Bench.raz
 files=
 for f in $c/bench/Bench.raz lib/*.raz examples/*.raz tools/*.raz src/*.raz test/run/*.raz test/libc/*.raz test/bench/*.raz \
          conform/run/*.raz test/err/*.raz conform/err/*.raz; do
-    files="$files $f"
+    newer $f || files="$files $f"
 done
 for side in seed src; do
     rm -rf $c/$side

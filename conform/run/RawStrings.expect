@@ -1,0 +1,27 @@
+14 |C:\tmp\"a b"\n|
+45 |usage: tool [-v] file
+  -v  say what is done
+|
+10 |back`quote|
+3 |two|
+0 ||
+7 |one
+two|
+22 |first
+  second
+
+third
+|
+6 |x
+  y
+|
+13 | a
+    b
+    |
+7 |  kept
+|
+0 ||
+5 |cr
+lf|
+equal
+195

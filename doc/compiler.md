@@ -14,7 +14,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,062 | 886 | Symbols, literals, comments, positions |
+| `src/Scan.raz` | 1,125 | 934 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 687 | 556 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
@@ -902,7 +902,12 @@ already decoded.
 Read `next` first: it skips white space and comments (`comment`, which
 counts nesting), then dispatches on the first character. `number`
 handles decimal, `0FFH`-style hexadecimal and reals; `litChar` handles
-one character of a literal, escapes included. `readReal` turns a real's
+one character of a literal, escapes included. `rawString` reads a raw
+string, between backquotes, which has no escapes: first to the closing
+backquote, counting lines and checking UTF-8 as a comment does, to find
+the blanks before it; then line by line into `sbuf`, taking those
+blanks off the start of each line if the string is indented (the
+report's section 2), and leaving carriage returns out. `readReal` turns a real's
 digits into the nearest `F64` exactly, as a fraction of two big integers
 (`Big`), since a library's reader can be one bit off.
 

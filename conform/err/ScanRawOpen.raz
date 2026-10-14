@@ -1,0 +1,4 @@
+module ScanRawOpen;
+const s = `abc;
+
+end ScanRawOpen.

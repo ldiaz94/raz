@@ -1,0 +1,4 @@
+conform/err/ScanRawIndent.raz:7:1: error: this line doesn't start with the blanks before the closing backquote
+    7 |       b
+      | ^^^^^^^
+raz: 1 error

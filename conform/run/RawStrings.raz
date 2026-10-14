@@ -1,0 +1,61 @@
+(* Raw strings: no escapes, over lines, indented with the code *)
+module RawStrings;
+import Out;
+
+const
+    Path = `C:\tmp\"a b"\n`;
+    Usage = `
+usage: tool [-v] file
+  -v  say what is done
+`;
+    Joined = `back` + "`" + `quote`;
+    Names: [2][]U8 = [`one`, `two`];
+
+proc show(s: []U8);
+begin
+    Out.int(LEN(s)); Out.str(" |"); Out.str(s); Out.str("|\n");
+end;
+
+proc main*;
+var b: [8]U8;
+begin
+    show(Path);
+    show(Usage);
+    show(Joined);
+    show(Names[1]);
+    show(``);
+    show(`one
+two`);
+    (* indented: the closing line's blanks come off every line, and a
+       line of blanks alone is empty *)
+    show(`
+        first
+          second
+ 
+        third
+        `);
+    (* a tab as the indentation *)
+    show(`
+	x
+	  y
+	`);
+    (* not indented: something follows the opening backquote *)
+    show(` a
+    b
+    `);
+    (* the closing backquote at the margin takes nothing off *)
+    show(`
+  kept
+`);
+    (* empty, indented *)
+    show(`
+    `);
+    (* carriage returns are left out *)
+    show(`cr
+lf`);
+    if `abc` = "abc" then Out.str("equal\n"); end;
+    b := `héllo`;
+    Out.int(I64(b[1])); Out.ln;
+end;
+
+end RawStrings.

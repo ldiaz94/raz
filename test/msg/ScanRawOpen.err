@@ -1,0 +1,4 @@
+conform/err/ScanRawOpen.raz:2:11: error: string not closed
+    2 | const s = `abc;
+      |           ^
+raz: 1 error

@@ -2,8 +2,8 @@
 " level in from the word that opens it; end, until, else and elsif at
 " that word's level; match arms at the level of match; procedures,
 " sections (const, type, var) and module bodies at the left margin.
-" The text of a comment, and a line that goes on with the expression
-" of the line before, keep the indent they have.
+" The text of a comment or of a raw string, and a line that goes on with
+" the expression of the line before, keep the indent they have.
 
 if exists("b:did_indent")
   finish
@@ -31,12 +31,17 @@ function! s:Code(lnum)
   if s:InComment(a:lnum)
     let line = line =~ '\*)' ? substitute(line, '^.\{-}\*)', '', '') : ''
   endif
+  " and inside a raw string, after the string
+  if s:InRaw(a:lnum)
+    let line = line =~ '`' ? substitute(line, '^[^`]*`', '0', '') : ''
+  endif
   " one pattern, so that whichever comes first is taken: a " in a
   " character, a ' in a string; strings become 0, comments go
   let line = substitute(line,
-        \ '"\%([^"\\]\|\\.\)*"\|''\%([^''\\]\|\\.\)*''\|(\*.\{-}\*)',
+        \ '"\%([^"\\]\|\\.\)*"\|''\%([^''\\]\|\\.\)*''\|`[^`]*`\|(\*.\{-}\*)',
         \ '\=submatch(0)[0] == "(" ? "" : "0"', 'g')
   let line = substitute(line, '(\*.*$', '', '')
+  let line = substitute(line, '`.*$', '0', '')
   return substitute(line, '^\s*\(.\{-}\)\s*$', '\1', '')
 endfunction
 
@@ -56,7 +61,7 @@ function! s:Start(lnum)
   let l = a:lnum
   while 1
     let p = prevnonblank(l - 1)
-    if p == 0 || !s:Continues(p) && getline(l) !~# s:leading
+    if p == 0 || !s:Continues(p) && getline(l) !~# s:leading && !s:InRaw(l)
       return l
     endif
     let l = p
@@ -96,9 +101,20 @@ function! s:InComment(lnum)
         \ && getline(a:lnum) !~ '^\s*(\*'
 endfunction
 
+" Whether the line starts inside a raw string, which only a raw string
+" can, since it alone runs over lines; a backquote first on the line
+" closes one if what follows it isn't in a string.
+function! s:IsRaw(lnum, col)
+  return synIDattr(synID(a:lnum, a:col, 1), "name") ==# 'razRawString'
+endfunction
+
+function! s:InRaw(lnum)
+  return s:IsRaw(a:lnum, 1) && (getline(a:lnum) !~ '^`' || !s:IsRaw(a:lnum, 2))
+endfunction
+
 function! GetRazIndent(lnum)
   let cur = getline(a:lnum)
-  if s:InComment(a:lnum)
+  if s:InComment(a:lnum) || s:InRaw(a:lnum)
     return -1
   endif
   if cur =~# s:decl && cur !~# '^\s*proc\s*('

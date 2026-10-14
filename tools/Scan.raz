@@ -2,8 +2,8 @@
    compiler's scanner it keeps comments, as symbols of their own, and
    says where each symbol is in the text and whether a line break comes
    before it. It doesn't check what it reads: a malformed number is
-   read as far as it goes, and a string, character or comment left open
-   ends with its line or the text. *)
+   read as far as it goes, and a string or character left open ends
+   with its line, a raw string or comment with the text. *)
 module Scan;
 
 type
@@ -98,14 +98,16 @@ begin
     return p;
 end;
 
-(* Past the string or character that starts at p, or to its line's end. *)
+(* Past the string or character that starts at p, or to its line's end;
+   a raw string, between backquotes, has no escapes and may run over
+   lines. *)
 proc pastLiteral(src: []U8; p: INT): INT;
 var q: U8;
 begin
     q := src[p];
     INC(p);
-    while (p < LEN(src)) and (src[p] # q) and (src[p] # '\n') do
-        if (src[p] = '\\') and (p + 1 < LEN(src)) then INC(p); end;
+    while (p < LEN(src)) and (src[p] # q) and ((src[p] # '\n') or (q = '`')) do
+        if (src[p] = '\\') and (q # '`') and (p + 1 < LEN(src)) then INC(p); end;
         INC(p);
     end;
     if (p < LEN(src)) and (src[p] = q) then INC(p); end;
@@ -141,7 +143,7 @@ begin
         elsif isWord(c) then
             s^.kind := word;
             while (p < LEN(src)) and isWord(src[p]) do INC(p); end;
-        elsif (c = '"') or (c = '\'') then
+        elsif (c = '"') or (c = '\'') or (c = '`') then
             s^.kind := literal; p := pastLiteral(src, p);
         else
             s^.kind := symbol;

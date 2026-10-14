@@ -1,13 +1,14 @@
 ;;; raz-mode.el --- a major mode for raz  -*- lexical-binding: t -*-
 
 ;; Colours raz's reserved words, basic types, built-in procedures,
-;; numbers, characters, strings and nested comments, and indents by
+;; numbers, characters, strings, raw strings over lines and nested
+;; comments, and indents by
 ;; `raz-indent-offset': a block's statements one level in from the
 ;; word that opens it; end, until, else and elsif at that word's
 ;; level; match arms at the level of match; procedures, sections
 ;; (const, type, var) and module bodies at the left margin. The text
-;; of a comment, and a line that goes on with the expression of the
-;; line before, keep the indent they have.
+;; of a comment or of a raw string, and a line that goes on with the
+;; expression of the line before, keep the indent they have.
 ;;
 ;; (add-to-list 'load-path "/path/to/raz/editor/emacs")
 ;; (require 'raz-mode)
@@ -43,6 +44,7 @@
     (modify-syntax-entry ?\" "\"" st)
     (modify-syntax-entry ?\' "\"" st)
     (modify-syntax-entry ?\\ "\\" st)
+    (modify-syntax-entry ?` "." st)
     (modify-syntax-entry ?_ "_" st)
     (dolist (c '(?+ ?- ?/ ?= ?# ?< ?> ?: ?\; ?, ?. ?^ ?| ?& ?~))
       (modify-syntax-entry c "." st))
@@ -58,6 +60,27 @@
     ("\\_<[0-9][0-9A-F]*H\\_>\\|\\_<[0-9]+\\(?:\\.[0-9]+\\(?:E[-+]?[0-9]+\\)?\\)?\\_>"
      . font-lock-constant-face))
   "What `raz-mode' colours, besides strings and comments.")
+
+;;; Raw strings
+
+(defun raz--raw-string ()
+  "Make the backquote just matched open a raw string, if it isn't in a
+comment or string: it and the closing one string fences, and the
+backslashes between them nothing special, since a raw string has no
+escapes."
+  (let ((open (match-beginning 0)))
+    (unless (nth 8 (save-excursion (syntax-ppss open)))
+      (put-text-property open (1+ open) 'syntax-table (string-to-syntax "|"))
+      (when (search-forward "`" nil t)
+        (put-text-property (1- (point)) (point) 'syntax-table (string-to-syntax "|"))
+        (save-excursion
+          (let ((close (1- (point))))
+            (goto-char open)
+            (while (search-forward "\\" close t)
+              (put-text-property (1- (point)) (point) 'syntax-table (string-to-syntax ".")))))))))
+
+(defconst raz--syntax-propertize
+  (syntax-propertize-rules ("`" (0 (ignore (raz--raw-string))))))
 
 ;;; Indenting
 
@@ -86,6 +109,14 @@
     (and (nth 4 (syntax-ppss))
          (not (looking-at "(\\*")))))
 
+(defun raz--in-raw (n)
+  "Whether line N starts inside a raw string, which only a raw string
+can, since it alone runs over lines."
+  (save-excursion
+    (goto-char (point-min))
+    (forward-line (1- n))
+    (eq (nth 3 (syntax-ppss)) t)))
+
 (defun raz--prev (n)
   "The last line before N that isn't blank, or 0."
   (let ((l (1- n)))
@@ -98,11 +129,15 @@
   (let ((line (raz--line n)))
     (when (raz--in-comment n)
       (setq line (if (string-match "\\*)" line) (substring line (match-end 0)) "")))
+    ;; and inside a raw string, after the string
+    (when (raz--in-raw n)
+      (setq line (if (string-match "`" line) (concat "0" (substring line (match-end 0))) "")))
     ;; one pattern, so that whichever comes first is taken
     (setq line (replace-regexp-in-string
-                "\"\\(?:[^\"\\\\]\\|\\\\.\\)*\"\\|'\\(?:[^'\\\\]\\|\\\\.\\)*'\\|(\\*.*?\\*)"
+                "\"\\(?:[^\"\\\\]\\|\\\\.\\)*\"\\|'\\(?:[^'\\\\]\\|\\\\.\\)*'\\|`[^`]*`\\|(\\*.*?\\*)"
                 (lambda (m) (if (string-prefix-p "(" m) "" "0")) line t t))
     (setq line (replace-regexp-in-string "(\\*.*\\'" "" line t t))
+    (setq line (replace-regexp-in-string "`.*\\'" "0" line t t))
     (string-trim line)))
 
 (defun raz--count (re s)
@@ -124,7 +159,8 @@
       (let ((p (raz--prev l)))
         (if (or (= p 0)
                 (and (not (raz--continues p))
-                     (not (string-match-p raz--leading (raz--line l)))))
+                     (not (string-match-p raz--leading (raz--line l)))
+                     (not (raz--in-raw l))))
             (setq done t)
           (setq l p))))
     l))
@@ -166,7 +202,7 @@
          (cur (raz--line n))
          (prev (raz--prev n)))
     (catch 'done
-      (when (raz--in-comment n) (throw 'done nil))
+      (when (or (raz--in-comment n) (raz--in-raw n)) (throw 'done nil))
       (when (and (string-match-p raz--decl cur) (not (string-match-p "^[ \t]*proc[ \t]*(" cur)))
         (throw 'done 0))
       ;; a comment before a declaration goes with it, at the margin
@@ -216,6 +252,7 @@
   "Major mode for editing raz."
   :syntax-table raz-mode-syntax-table
   (setq-local font-lock-defaults '(raz-font-lock-keywords nil nil))
+  (setq-local syntax-propertize-function raz--syntax-propertize)
   (setq-local comment-start "(* ")
   (setq-local comment-end " *)")
   (setq-local comment-start-skip "(\\*+[ \t]*")

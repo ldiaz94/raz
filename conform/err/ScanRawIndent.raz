@@ -1,0 +1,10 @@
+module ScanRawIndent;
+import Out;
+proc main*;
+begin
+    Out.str(`
+        a
+      b
+        `);
+end;
+end ScanRawIndent.

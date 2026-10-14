@@ -907,6 +907,68 @@ begin
     end;
 end;
 
+(* A raw string, between backquotes (report, section 2): its bytes as
+   they stand, with no escapes, over as many lines as it runs; carriage
+   returns are left out. It is indented if the opening backquote ends
+   its line and the closing one has only blanks before it: the lines
+   between are its text, each without those blanks at its start. So
+
+       Out.str(`
+           a
+             b
+           `);
+
+   is "a\n  b\n". The text is read twice: to the closing backquote,
+   for its blanks, then line by line into sbuf. *)
+proc rawString;
+var p, close, last, q, i, j: INT; c: U8; indented: BOOL;
+begin
+    INC(cur.pos);
+    p := cur.pos;
+    while cur.buf[cur.pos] # '`' do
+        c := cur.buf[cur.pos];
+        if c = 0 then
+            if cur.pos >= cur.len then markBytes(cur.tokPos, cur.tokPos + 1, "string not closed"); end;
+            markBytes(cur.pos, cur.pos + 1, "NUL byte in the text");
+        elsif c >= 80H then
+            _ := utf8(cur.pos);
+        else
+            if c = '\n' then INC(cur.line); cur.lineStart := cur.pos + 1; end;
+            INC(cur.pos);
+        end;
+    end;
+    close := cur.pos;
+    q := close;    (* where the blanks before the closing backquote start *)
+    while (q > p) and ((cur.buf[q - 1] = ' ') or (cur.buf[q - 1] = '\t')) do DEC(q); end;
+    i := p;
+    if cur.buf[i] = '\r' then INC(i); end;
+    indented := (cur.buf[i] = '\n') and (q > i) and (cur.buf[q - 1] = '\n');
+    if indented then INC(i); last := q; else i := p; last := close; end;
+    slen := 0;
+    while i < last do
+        (* i is where a line starts *)
+        if indented then
+            j := i;
+            while (cur.buf[j] = ' ') or (cur.buf[j] = '\t') do INC(j); end;
+            if (cur.buf[j] = '\n') or (cur.buf[j] = '\r') then
+                i := j;    (* only blanks: an empty line *)
+            elsif (j - i < close - q) or (cur.buf[i..i + close - q] # cur.buf[q..close]) then
+                markBytes(i, j + 1, "this line doesn't start with the blanks before the closing backquote");
+            else
+                i := i + close - q;
+            end;
+        end;
+        repeat
+            c := cur.buf[i];
+            INC(i);
+            if c # '\r' then put(INT(c)); end;
+        until (c = '\n') or (i >= last);
+    end;
+    cur.pos := close + 1;
+    sbuf[slen] := 0;
+    tok := sString;
+end;
+
 (* Reads the next symbol *)
 proc next*;
 var c: U8; start, h, v, i, p: INT; buf: ^U8;
@@ -989,6 +1051,7 @@ begin
         INC(cur.pos);
         sbuf[slen] := 0;
         tok := sString;
+    | '`': rawString;
     | '=':
         if cur.buf[cur.pos + 1] = '=' then
             slip(2, sEql, "comparing is written =, not ==");

@@ -14,7 +14,8 @@
    module, import, proc, the sections and begin at the margin, with the
    comment just before them. A line that goes on with the expression of
    the line before keeps its indent, moved as far as the statement's
-   first line moved; so does the text of a comment.
+   first line moved; so does the text of a comment. A raw string stays
+   as written, every byte, since its lines are its value.
 
    Within a line, a binary operator has one space on each side, a unary
    minus or ~ none after it, and , and ; none before them and one after. A
@@ -224,13 +225,18 @@ begin
 end;
 
 (* The current symbol as written; each line of a comment after its
-   first is moved as far as the line the comment starts on. *)
+   first is moved as far as the line the comment starts on, and a raw
+   string's lines are left as they are. *)
 proc write;
 var i, k: INT;
 begin
     i := sc.start;
     while i < sc.stop do
-        if src[i] = '\n' then
+        if (src[i] = '\n') and (sc.kind = Scan.literal) then
+            Buf.add(ADR(out), '\n');
+            lineAt := out.len;
+            INC(i);
+        elsif src[i] = '\n' then
             newLine;
             k := i + 1;
             while (k < sc.stop) and (src[k] = ' ') do INC(k); end;
