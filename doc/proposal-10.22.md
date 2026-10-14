@@ -1,6 +1,6 @@
 # Proposal: report 2026-10.22
 
-Two changes that take rules out of the language. Neither adds a feature.
+Three changes that take rules out of the language and the conformance suite. Neither adds a feature.
 Nothing in `doc/raz.md` or the code changes until the owner approves
 this; it is a thaw of the freeze (CLAUDE.md), so it needs the owner's
 word.
@@ -113,14 +113,63 @@ exports a pointer to it, as the report already advises), so
 keeps `Scan.tok` and the compiler's speed, and removes the odd cases,
 for about half the saving.
 
+## 3. Conformance covers valid programs only; warnings leave the report
+
+**Now.** `conform/err/` holds 235 programs the report calls errors, and
+an implementation passes only if each one fails to compile
+(`conform/check.sh`; appendix A: "A program that is an error in this
+report is one in every implementation"). Section 10 also tells the
+compiler what to warn of (unused names, a dropped result) and defines
+`-Werror`.
+
+**Proposed.**
+
+- `conform/` holds `run/` only. An implementation conforms if it
+  compiles every valid program there and each runs as the report
+  says, with the output and status expected. `conform/err/` and the
+  loop that runs it in `check.sh` go; the programs move to `test/err/`
+  with their `.err` files, where this compiler's own tests live, and
+  `test/msg`'s twins merge with them.
+- The report still says what is not valid raz ("is an error"). What an
+  implementation does with an invalid program is its own: it should
+  say so and stop, as this compiler does, but one that compiles it,
+  or compiles it to something else, still conforms. Appendix A's
+  "Messages and warnings" line becomes "What it does with a program
+  that isn't valid, the text of its messages, and which warnings it
+  gives".
+- Section 10's "Messages" paragraph, on the form of an error, the 20
+  errors, skipping to the next statement and "did you mean", and the
+  paragraph on warnings, are moved to `doc/compiler.md` under "This
+  compiler's choices". `-Werror` is an option of this compiler's, not
+  of the language (it is already a command-line matter, appendix A).
+- Failed checks at run time (an index out of range, a nil pointer, a
+  division by zero) stay in the report and in `conform/run`: they are
+  how a valid program behaves, with status 2 and a message on
+  standard error whose text is the implementation's.
+
+**What it costs.** An implementation can no longer be shown to reject
+what the report forbids, so a program valid on one compiler may not
+be on another; this compiler keeps its diagnostics and its tests, and
+that is where portability is held. Nothing changes for a program that
+compiles today.
+
+**What it saves.** For another implementation, the whole checker's
+rejecting half: it needs to resolve names and types of valid programs,
+not to find the fault in an invalid one. In the Ref compiler that
+half (every `error_at`, `suggest`, the warning pass, unused-name
+tracking and `coerce`'s rejections) is a large share of the 3,000
+lines of `expr.c` and `check.c`; I'd put it at a third, but have not
+counted. For this compiler nothing is removed by the change itself.
+
 ## Order, if approved
 
 1. Report: `doc/raz.md` (the sections above and an entry in 12), the
    grammar in appendix B, `doc/compiler.md` where it names the rules.
 2. `conform/` and `test/`: the tests named above.
-3. The compiler: `src/`, one commit per step as CLAUDE.md says; then
+3. `conform/check.sh` and the move of `conform/err` to `test/err`.
+4. The compiler: `src/`, one commit per step as CLAUDE.md says; then
    `make check`, `make fixpoint`, `make bench`.
-4. Library and `src/` rewrites for change 2.
+5. Library and `src/` rewrites for change 2.
 
-Change 1 can go alone; change 2 should wait for a measurement of what
+Changes 1 and 3 can go alone; change 2 should wait for a measurement of what
 the accessors cost the compiler.
