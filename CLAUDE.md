@@ -109,7 +109,7 @@ the seed in `seed/` is frozen. Next, by `PLAN.md`: what the owner chooses.
 defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes on the list in
 `PLAN.md`, for a later thaw; it isn't built. v0.6.0 was such a thaw,
-by the owner's word: report 2026-10.12; the compiler follows 2026-10.22, an audit of the report (mends, trims,
+by the owner's word: report 2026-10.12; the compiler follows 2026-10.23, whose `Math` exports `bits`, `fromBits` and `mul` for reading reals exactly, and 2026-10.22, an audit of the report (mends, trims,
 two volumes, status 2 for every stop), and 2026-10.21, whose `match` on an enumeration takes
 several names to an arm (10.21), and 2026-10.20, whose `try` returns an error that isn't
 nil from the procedure it stands in (10.20, the owner's word), and 2026-10.19,
@@ -132,7 +132,7 @@ describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
 to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
-the first; v0.11.0, report 2026-10.22, the latest: the compiler in raz,
+the first; v0.11.1, report 2026-10.23, the latest: the compiler in raz,
 built by itself, and 1.4 times the Pascal one's time (v0.9.1 was the last
 built by the Pascal seed). The tarball has `tools/`, which the website
 offers from 0.7.1 on.

@@ -197,16 +197,16 @@ with vim's. Both colour raz through `tools/Scan.raz`.
 The compiler says its own version and that of the report it follows:
 
     $ ./raz --version
-    raz 0.11.0, report 2026-10.22
+    raz 0.11.1, report 2026-10.23
 
 The compiler's version is git's name for the commit it was built from:
-`0.11.0` at the tag `v0.11.0`, `0.11.0-5-g38d29a8` five commits past it.
+`0.11.1` at the tag `v0.11.1`, `0.11.1-5-g38d29a8` five commits past it.
 To release, check `main` and tag it; the tag's message is what
 `raz --version` will print:
 
     $ make check
-    $ git tag -a v0.11.0 -m 'raz 0.11.0, report 2026-10.22'
-    $ git push origin v0.11.0
+    $ git tag -a v0.11.1 -m 'raz 0.11.1, report 2026-10.23'
+    $ git push origin v0.11.1
 
 GitHub then builds and checks the tag, and makes a release of it with
 a tarball of `raz`, its `lib/` and its manual pages, made by `make
