@@ -3,7 +3,7 @@
 Work goes by milestones, each a release. A milestone says what it is
 for, what is in it and when it is done; its steps are commits, each
 stopping for the owner's review. A finished milestone is cut from this
-file: git keeps the history, and the report's section 12 the language's.
+file: git keeps the history, and the report's history, `doc/report-history.md`, the language's.
 
 v0.9.1, the latest release, is tagged by the owner's word. All before
 v0.7.1 is approved by the owner; v0.7.1, v0.8.0, v0.9.0 and v0.9.1 wait

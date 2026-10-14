@@ -425,7 +425,7 @@ begin
     control(".Ic main ,");
     control("where it has one, is its test, and is left out.");
     control(".Pp");
-    control("The report, section 11, says what the library promises, and which");
+    control("The report's second volume says what the library promises, and which");
     control("of its modules every target has.");
     control(".Sh MODULES");
     for i := 2 to ARGC() - 1 do document(Files.arg(i)); end;
@@ -436,6 +436,8 @@ begin
     control(".Xr raz-tutorial 7 ;");
     control("the report,");
     control(".Pa doc/raz.md ,");
+    control("and its second volume,");
+    control(".Pa doc/raz-lib.md ,");
     control("in raz's sources.");
 end;
 

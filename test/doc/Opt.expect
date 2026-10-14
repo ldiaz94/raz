@@ -1,6 +1,6 @@
 module Opt;
     A command line read through one table, by the rules of the C
-    library's getopt with GNU's long options (report, section 11). The
+    library's getopt with GNU's long options (report, volume 2). The
     program describes its synopsis lines, subcommands and options once,
     in a slice of Row; the help and the messages for mistakes are made
     from it, so they can't drift from it.

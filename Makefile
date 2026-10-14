@@ -104,7 +104,7 @@ loc:
 	@rloc -c src/*.raz
 
 # raz-lib(3), the library's manual page, made by tools/Doc.raz from
-# its sources, in the order of the report's section 11
+# its sources, in the order of doc/raz-lib.md
 LIBDOC = Rt Mem Heap Arena Lock Thread.linux-x86_64 Out Sys.linux-x86_64 \
 	Str Bytes.x86_64 Buf Fmt List Map Sort Math Files Opt C
 
@@ -118,8 +118,8 @@ build/raz-lib.3: raz tools/Doc.raz tools/Scan.raz lib/*.raz | build
 # CI has neither
 pdf: build/raz.pdf
 
-build/raz.pdf: doc/raz.md doc/report.css | build
-	pandoc doc/raz.md -s --toc --toc-depth=1 --shift-heading-level-by=-1 \
+build/raz.pdf: doc/raz.md doc/raz-lib.md doc/report.css | build
+	pandoc doc/raz.md doc/raz-lib.md -s --toc --toc-depth=1 --shift-heading-level-by=-1 \
 	    --syntax-highlighting=none -c ../doc/report.css \
 	    -o build/raz.html
 	chromium --headless --no-pdf-header-footer --print-to-pdf=$@ build/raz.html 2>/dev/null

@@ -33,7 +33,7 @@ ELF executable itself, with no assembler or linker, and compiles about
 
 | Path | What |
 |---|---|
-| `doc/raz.md` | The language report: the definition of raz |
+| `doc/raz.md`, `doc/raz-lib.md` | The report: the language (volume 1) and the library (volume 2) |
 | `doc/compiler.md` | A guide to reading the compiler, file by file |
 | `doc/raz.1`, `doc/raz.7`, `doc/raz-tutorial.7` | The manual pages: the command, the language at a glance, a tour; `make man` makes the library's, raz-lib(3), from `lib/` |
 | `src/` | The compiler, in raz |
@@ -157,7 +157,7 @@ by number.
 - `extern` procedures and variables from C; code procedures written in
   the target's assembly language; `SYSCALL`.
 
-The report, `doc/raz.md`, says all of it in about 2,000 lines.
+The report, `doc/raz.md` and `doc/raz-lib.md`, says all of it in about 2,100 lines.
 
 ## The library
 

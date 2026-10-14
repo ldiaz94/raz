@@ -305,7 +305,8 @@ def build_spec():
     if not shutil.which("pandoc"):
         sys.exit("pandoc makes the report's page: apt-get install pandoc")
     p = subprocess.run(
-        ["pandoc", os.path.join(ROOT, "doc", "raz.md"), "-s", "--template",
+        ["pandoc", os.path.join(ROOT, "doc", "raz.md"),
+         os.path.join(ROOT, "doc", "raz-lib.md"), "-s", "--template",
          os.path.join(HERE, "content", "spec.tmpl"), "--toc", "--toc-depth=1",
          "--shift-heading-level-by=-1", "--no-highlight", "-t", "html",
          # wide enough that no row of a table is "long": pandoc would

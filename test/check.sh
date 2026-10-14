@@ -152,7 +152,7 @@ if ./raz -Werror -o $out/Doc tools/Doc.raz 2>$out/Doc.cerr; then
     # the report's examples that are whole modules: each compiles, and
     # each with a main runs and ends with status 0
     rm -rf $out/report; mkdir -p $out/report
-    for name in $($out/Doc examples doc/raz.md $out/report); do
+    for name in $($out/Doc examples doc/raz.md $out/report) $($out/Doc examples doc/raz-lib.md $out/report); do
         if ! $raz -o $out/report/$name $out/report/$name.raz 2>$out/report/$name.cerr; then
             echo "FAIL report example $name: $(cat $out/report/$name.cerr)"; fail=$((fail + 1))
         elif grep -q '^proc main\*' $out/report/$name.raz && ! $out/report/$name > /dev/null 2>&1; then
