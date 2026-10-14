@@ -16,12 +16,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,062 | 886 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 687 | 556 | Types, objects, scopes, layout |
-| `src/Chunk.raz` | 354 | 272 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,493 | 1,238 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,509 | 1,797 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
+| `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,506 | 1,794 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 1,767 | 1,462 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 3,853 | 3,361 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/Link.raz` | 380 | 298 | Tree shaking, layout, patching, the places |
+| `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
 
@@ -779,6 +779,34 @@ to 2% in time, which is the noise.
    ```
 
    NBody 8.6% fewer instructions, 2.8% faster; the rest unchanged.
+
+2. **An element of a module's array by its address.** x86 has no
+   `rip + index`, so `x[i]`, of an array in a chunk, made the array's
+   address in a register first, for each element, twice in
+   `x[i] - x[j]`:
+
+   ```
+   lea r8, [NBody.x]
+   lea r9, [NBody.x]
+   movsd xmm8, [r8 + rbx * 8]
+   subsd xmm8, [r9 + r12 * 8]
+   ```
+
+   But the executable is loaded where the linker placed it, below 2 GB,
+   so the array's address fits a 32-bit displacement with no base
+   register at all (`X.memAbs`, a `RIP` base with an index; its fixup
+   holds the address itself, `Chunk.addAbsFixup`, not the distance from
+   the field). `indexArray` notes such an element as it does one in the
+   frame, whatever register its index is in:
+
+   ```
+   movsd xmm8, [NBody.x + rbx * 8]
+   subsd xmm8, [NBody.x + r12 * 8]
+   ```
+
+   NBody 25% fewer instructions, 16% faster. Grep is 5% slower with
+   the same code in its loops, only moved 96 bytes: where a loop falls
+   changes its speed, as v0.8.0 found.
 
 ## Diag.raz: messages
 

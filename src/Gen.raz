@@ -1640,23 +1640,20 @@ end;
    picks of the array at a. An element of 1, 2,
    4 or 8 bytes is only noted, as the operand [base + index * size]
    (lIdx): an array in the frame has rbp as its base, and one in a
-   chunk, if the index is a variable's register, its address made in
-   the value's own register. Any other is added up. *)
+   chunk its address as the displacement (X.memAbs), with no lea. Any
+   other is added up. *)
 proc indexArray*(a: Adr; size: I64);
-var r, b: INT; o: I64;
+var r: INT; o: I64;
 begin
-    if (((size = 1) or (size = 2) or (size = 4) or (size = 8))) and (a.base = bFrame) then
+    if (((size = 1) or (size = 2) or (size = 4) or (size = 8))) and ((a.base = bFrame) or (a.base = bGlobal)) then
         o := indexOff(size, a.off);
         r := peek(depth - 1);
         drop();
-        newMem(lIdx, X.memIdx(RBP, r, INT(size), o), kWord, 8, false);
-    elsif (((size = 1) or (size = 2) or (size = 4) or (size = 8))) and (a.base = bGlobal) and (stack[depth - 1].loc = lHeld) then
-        o := indexOff(size, 0);
-        r := peek(depth - 1);
-        drop();
-        b := target();
-        X.lea(b, X.memRip(a.chunk, INT(a.off)));
-        newMem(lIdx, X.memIdx(b, r, INT(size), o), kWord, 8, false);
+        if a.base = bFrame then
+            newMem(lIdx, X.memIdx(RBP, r, INT(size), o), kWord, 8, false);
+        else
+            newMem(lIdx, X.memAbs(a.chunk, r, INT(size), INT(o)), kWord, 8, false);
+        end;
     else
         mulI(top(), size);
         pushAdr(a);

@@ -35,7 +35,8 @@ const
 
 type
     Mem* = record
-        base*: INT;     (* a register, or RIP *)
+        base*: INT;     (* a register, or RIP; RIP with an index is the
+                           chunk's address itself, as below (memAbs) *)
         index*: INT;    (* a register, or NoIndex *)
         scale*: INT;    (* 1, 2, 4 or 8 *)
         disp*: INT;
@@ -80,6 +81,19 @@ var m: Mem;
 begin
     m.base := RIP; m.index := NoIndex; m.scale := 1;
     m.disp := disp; m.chunk := chunk;
+    return m;
+end;
+
+(* An element of the array in chunk, [chunk + index * scale + disp]. x86
+   has no rip + index, but the executable is loaded where the linker put
+   it, below 2 GB, so the chunk's address fits the 32 bits of a
+   displacement with no base: one instruction, where rip-relative needs a
+   lea of the chunk first. *)
+proc memAbs*(chunk, index, scale, disp: INT): Mem;
+var m: Mem;
+begin
+    m := memRip(chunk, disp);
+    m.index := index; m.scale := scale;
     return m;
 end;
 
@@ -130,7 +144,7 @@ proc opM(pfx: INT; w: BOOL; op, reg: INT; m: Mem; byteReg: BOOL);
 var md, b, sc: INT;
 begin
     byteReg := byteReg and (reg >= 4) and (reg <= 7);
-    if m.base = RIP then
+    if (m.base = RIP) and (m.index = NoIndex) then
         prefix(pfx, w, reg, NoIndex, 0, byteReg);
     else
         prefix(pfx, w, reg, m.index, m.base, byteReg);
@@ -138,6 +152,16 @@ begin
     opcode(op);
     reg := reg & 7;
     if m.base = RIP then
+        if m.index # NoIndex then
+            if m.scale = 1 then sc := 0; elsif m.scale = 2 then sc := 1; elsif m.scale = 4 then sc := 2; else sc := 3; end;
+            (* memAbs: mod 00, r/m 100 for a SIB byte, whose base 101
+               under mod 00 means none, but a disp32: the chunk's address *)
+            Chunk.put1((reg shl 3) | 4);
+            Chunk.put1((sc shl 6) | ((m.index & 7) shl 3) | 5);
+            Chunk.addAbsFixup(Chunk.pc, m.chunk, m.disp);
+            Chunk.put4(0);
+            return;
+        end;
         Chunk.put1((reg shl 3) | 5);
         (* mod 00 with r/m 101 is rip + disp32. The displacement counts
            from the end of the instruction, and the fixup takes it to end
@@ -345,7 +369,7 @@ begin
     else
         n := 4;
     end;
-    if m.base = RIP then m.disp := m.disp - n; end;
+    if (m.base = RIP) and (m.index = NoIndex) then m.disp := m.disp - n; end;
     if size = 1 then
         opM(0, false, 80H, op, m, false);
     elsif n = 1 then
@@ -363,7 +387,7 @@ begin
     if listing then say(text2("mov", mnSized(m, size), num(v))); end;
     n := size;
     if n > 4 then n := 4; end;
-    if m.base = RIP then m.disp := m.disp - n; end;
+    if (m.base = RIP) and (m.index = NoIndex) then m.disp := m.disp - n; end;
     if size = 1 then
         opM(0, false, 0C6H, 0, m, false);
     else

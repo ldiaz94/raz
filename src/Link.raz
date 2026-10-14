@@ -358,9 +358,10 @@ begin
                 COPY(textImg[p..p + Chunk.chunks[c].size], Chunk.text[Chunk.chunks[c].start..Chunk.chunks[c].start + Chunk.chunks[c].size]);
                 for f := Chunk.chunks[c].firstFix to Chunk.chunks[c].firstFix + Chunk.chunks[c].numFix - 1 do
                     at := Chunk.fixups[f].at - Chunk.chunks[c].start;
-                    (* rel32: from the end of the field to the target *)
-                    v := Chunk.chunks[Chunk.fixups[f].chunk].adr + Chunk.fixups[f].addend
-                        - (Chunk.chunks[c].adr + at + 4);
+                    (* rel32: from the end of the field to the target;
+                       or, X64.memAbs's, the target's address *)
+                    v := Chunk.chunks[Chunk.fixups[f].chunk].adr + Chunk.fixups[f].addend;
+                    if not Chunk.fixups[f].abs then v := v - (Chunk.chunks[c].adr + at + 4); end;
                     patch4(textImg, p + at, v);
                 end;
             elsif Chunk.chunks[c].sec = Chunk.secRodata then

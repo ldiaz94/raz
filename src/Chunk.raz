@@ -56,6 +56,7 @@ type
                                          dataFixups, the 64-bit one, from its chunk's start *)
         chunk*: INT;                  (* the chunk it refers to *)
         addend*: INT;                 (* added to the chunk's address *)
+        abs*: BOOL;                   (* text: the address itself, not from the field's end *)
     end;
 
 var
@@ -246,7 +247,15 @@ begin
     fixups[numFixups].at := at;
     fixups[numFixups].chunk := chunk;
     fixups[numFixups].addend := addend;
+    fixups[numFixups].abs := false;
     INC(numFixups);
+end;
+
+(* The same, for X64.memAbs: the field holds the address itself *)
+proc addAbsFixup*(at, chunk, addend: INT);
+begin
+    addFixup(at, chunk, addend);
+    fixups[numFixups - 1].abs := true;
 end;
 
 (* The address of chunk, plus addend, at offset at of rodata chunk c,
