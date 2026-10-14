@@ -1,0 +1,44 @@
+(* In t[i()] := try f(), i is called before f, and if f fails nothing
+   is assigned. *)
+module TryOrder;
+import Out;
+
+const Oops: ERROR = "oops";
+
+var t: [3]I64;
+
+proc idx(): INT;
+begin
+    Out.char('i');
+    return 1;
+end;
+
+proc good(): (I64, ERROR);
+begin
+    Out.char('g');
+    return 9, nil;
+end;
+
+proc bad(): (I64, ERROR);
+begin
+    Out.char('b');
+    return 9, Oops;
+end;
+
+proc run(f: proc(): (I64, ERROR)): ERROR;
+begin
+    t[idx()] := try f();
+    return nil;
+end;
+
+proc main*;
+var e: ERROR;
+begin
+    e := run(good);
+    Out.char(' '); Out.int(t[1]); Out.char(' '); Out.str(MSG(e)); Out.ln;
+    t[1] := 0;
+    e := run(bad);
+    Out.char(' '); Out.int(t[1]); Out.char(' '); Out.str(MSG(e)); Out.ln;
+end;
+
+end TryOrder.

@@ -1,0 +1,21 @@
+(* match on an exported variable: its names stand for the fields of a
+   copy, which the arm may change without changing the variable. *)
+module ExportedMatch;
+import Out, Shared;
+
+proc show;
+begin
+    match Shared.shape of
+    | dot:       Out.str("dot");
+    | circle(r): r := r + 1; Out.int(r);
+    end;
+    Out.ln;
+end;
+
+proc main*;
+begin
+    show;
+    show;
+end;
+
+end ExportedMatch.

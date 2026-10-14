@@ -1,0 +1,7 @@
+1 2 4 8 1 1
+INT is an address yes
+UINT is an address yes
+procedure is an address yes
+ERROR is an address yes
+slice is two yes
+empty record yes

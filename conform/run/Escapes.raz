@@ -1,0 +1,16 @@
+(* The escapes of a string, in capitals or not. *)
+module Escapes;
+import Out;
+
+proc main*;
+var s: []U8; i: INT;
+begin
+    s := "\xaF\xAF\u{1f600}\u{1F600}\x41\u{e9}";
+    for i := 0 to LEN(s) - 1 do
+        if i > 0 then Out.char(' '); end;
+        Out.int(I64(s[i]));
+    end;
+    Out.ln;
+end;
+
+end Escapes.

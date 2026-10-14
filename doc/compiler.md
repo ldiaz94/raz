@@ -1485,7 +1485,7 @@ this one does.
   is told at the place of the statement it stopped in, or of the
   procedure for a stack overflow in its prologue, and then `Rt.exit`
   ends the program with status 2, after the procedures registered with
-  `Rt.atExit`, as for a failed check. The handlers run on a stack
+  `Rt.atExit`, as for a failed check. A fault inside a section that holds the lock of `Out` or `Heap` (a stack overflow in `Out`, say) would leave `atExit`'s flush waiting for it: the program hangs instead of ending. This is rare, and a failed check has the same exposure. The handlers run on a stack
   of their own: `Rt`'s for the main thread, one in each `Thread`
   thread's mapping. C's threads have none, so a stack overflow in one
   ends the program by the signal with no message.

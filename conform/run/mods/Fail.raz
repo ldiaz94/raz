@@ -1,0 +1,6 @@
+(* A generic module with an error: made once for each instance *)
+module Fail(T);
+
+const Oops*: ERROR = "oops";
+
+end Fail.

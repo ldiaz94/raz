@@ -1,0 +1,17 @@
+(* Sys.exit ends the program at once: the atExit procedures don't run. *)
+module ExitSkips;
+import Sys, Rt;
+
+proc bye;
+begin
+    _ := Sys.write(Sys.stdout, "bye\n");
+end;
+
+proc main*;
+begin
+    _ := Rt.atExit(bye);
+    _ := Sys.write(Sys.stdout, "before\n");
+    Sys.exit(3);
+end;
+
+end ExitSkips.

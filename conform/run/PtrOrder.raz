@@ -1,0 +1,21 @@
+(* Pointers compare with = # < <= > >=, as unsigned addresses. *)
+module PtrOrder;
+import Out;
+
+proc yes(b: BOOL);
+begin
+    if b then Out.str("true "); else Out.str("false "); end;
+end;
+
+proc main*;
+var a: [3]I64; p, q: ^I64;
+begin
+    p := ADR(a[0]);
+    q := ADR(a[2]);
+    yes(p < q); yes(p <= q); yes(p > q); yes(p >= q); yes(p = q); yes(p # q);
+    q := ADR(a[0]);
+    yes(p <= q); yes(p >= q); yes(p < q);
+    Out.ln;
+end;
+
+end PtrOrder.

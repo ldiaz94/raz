@@ -1,0 +1,13 @@
+(* Rt.exit ends the program without running the deferred statements
+   still pending. *)
+module DeferExit;
+import Out, Rt;
+
+proc main*;
+begin
+    defer Out.str("deferred\n");
+    Out.str("before\n");
+    Rt.exit(3);
+end;
+
+end DeferExit.

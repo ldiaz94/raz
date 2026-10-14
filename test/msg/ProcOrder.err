@@ -1,0 +1,4 @@
+conform/err/ProcOrder.raz:8:8: error: "<" doesn't apply to proc()
+    8 |     if a < b then end;   (* procedures compare with = and # only *)
+      |        ^^^^^
+raz: 1 error

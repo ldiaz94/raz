@@ -1,0 +1,14 @@
+module GenInstDiff;
+import Table1 := Table(I64, I64, h1, same), Table2 := Table(I64, I64, h2, same);
+
+proc h1(k: I64): U64; begin return U64(k); end;
+proc h2(k: I64): U64; begin return U64(k) + 1; end;
+proc same(a, b: I64): BOOL; begin return a = b; end;
+
+var a: Table1.Table; b: Table2.Table;
+
+proc main*;
+begin
+    a := b;   (* the procedures differ, so the instances do *)
+end;
+end GenInstDiff.

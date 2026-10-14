@@ -1,0 +1,27 @@
+(* Used without parentheses in an expression, a procedure is a value;
+   on its own it is a call. *)
+module ProcValue;
+import Out;
+
+proc hello;
+begin
+    Out.str("hello\n");
+end;
+
+proc five(): I64;
+begin
+    return 5;
+end;
+
+proc main*;
+var f: proc; g: proc(): I64;
+begin
+    f := hello;
+    f();
+    hello;
+    g := five;
+    Out.int(g()); Out.ln;
+    if g = five then Out.str("same\n"); end;
+end;
+
+end ProcValue.

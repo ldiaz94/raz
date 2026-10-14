@@ -1,0 +1,4 @@
+conform/err/SamenessTwo.raz:9:10: error: can't use P2 as P1
+    9 |     a := b;   (* each is the same as ^Node, but they are two declarations *)
+      |          ^
+raz: 1 error

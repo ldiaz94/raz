@@ -1,0 +1,4 @@
+conform/err/ForField.raz:6:9: error: a for loop needs an integer or enumeration variable, found R
+    6 |     for r.x := 1 to 3 do end;   (* the variable is named by its name alone *)
+      |         ^
+raz: 1 error

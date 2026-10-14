@@ -1,0 +1,9 @@
+module AnonRecords;
+var
+    a: record x: I64; end;
+    b: record x: I64; end;
+proc main*;
+begin
+    a := b;   (* records are always types of their own *)
+end;
+end AnonRecords.

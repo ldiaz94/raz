@@ -1,0 +1,28 @@
+(* Sizes the report fixes on every target, and those it ties to the
+   size of an address. *)
+module Sizes;
+import Out;
+
+type Empty = record end;
+
+proc line(name: []U8; b: BOOL);
+begin
+    Out.str(name);
+    if b then Out.str(" yes"); else Out.str(" NO"); end;
+    Out.ln;
+end;
+
+proc main*;
+begin
+    Out.int(SIZE(I8)); Out.char(' '); Out.int(SIZE(I16)); Out.char(' ');
+    Out.int(SIZE(I32)); Out.char(' '); Out.int(SIZE(I64)); Out.char(' ');
+    Out.int(SIZE(U8)); Out.char(' '); Out.int(SIZE(BOOL)); Out.ln;
+    line("INT is an address", SIZE(INT) = SIZE(^U8));
+    line("UINT is an address", SIZE(UINT) = SIZE(^U8));
+    line("procedure is an address", SIZE(proc) = SIZE(^U8));
+    line("ERROR is an address", SIZE(ERROR) = SIZE(^U8));
+    line("slice is two", SIZE([]U8) = 2 * SIZE(^U8));
+    line("empty record", SIZE(Empty) = 0);
+end;
+
+end Sizes.

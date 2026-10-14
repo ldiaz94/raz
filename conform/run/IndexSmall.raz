@@ -1,0 +1,15 @@
+(* An index is checked by its value, whatever its type: -128 in an I8
+   is not 128. *)
+module IndexSmall;
+import Out;
+
+proc main*;
+var a: [200]I64; i: I8;
+begin
+    Out.str("before\n");
+    i := -128;
+    Out.int(a[i]);
+    Out.str("after\n");
+end;
+
+end IndexSmall.

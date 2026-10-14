@@ -1,0 +1,19 @@
+(* Constants of an integer type wrap as the program would; untyped
+   ones don't; a shift of an untyped constant is untyped. *)
+module ConstWrap;
+import Out;
+
+proc main*;
+var a, c: U8; b: I64; d: INT;
+begin
+    a := U8(250) + 10;
+    b := 1 shl 40;
+    d := -16 shr 2;
+    c := U8(0C0H) shl 1;
+    Out.int(I64(a)); Out.ln;
+    Out.int(b); Out.ln;
+    Out.int(d); Out.ln;
+    Out.int(I64(c)); Out.ln;
+end;
+
+end ConstWrap.

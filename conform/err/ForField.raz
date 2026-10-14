@@ -1,0 +1,8 @@
+module ForField;
+type R = record x: INT; end;
+proc main*;
+var r: R;
+begin
+    for r.x := 1 to 3 do end;   (* the variable is named by its name alone *)
+end;
+end ForField.

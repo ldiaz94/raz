@@ -1,0 +1,25 @@
+(* A named type and an anonymous one built alike are the same; of two
+   named types built alike on the right, each is the same as the
+   anonymous one. *)
+module Sameness;
+import Out;
+
+type
+    Node = record v: I64; end;
+    P1 = ^Node;
+    P2 = ^Node;
+    NodePtr = ^Node;
+
+proc main*;
+var r: Node; p1: P1; p2: P2; n: ^Node; q: NodePtr;
+begin
+    r.v := 7;
+    n := ADR(r);
+    p1 := n;
+    n := p1;
+    p2 := n;
+    q := ADR(r);
+    Out.int(p2^.v + q^.v); Out.ln;
+end;
+
+end Sameness.

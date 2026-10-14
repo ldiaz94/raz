@@ -1,0 +1,4 @@
+conform/err/GenInstDiff.raz:12:10: error: can't use Table(I64,I64,GenInstDiff.h2,GenInstDiff.same).Table as Table(I64,I64,GenInstDiff.h1,GenInstDiff.same).Table
+   12 |     a := b;   (* the procedures differ, so the instances do *)
+      |          ^
+raz: 1 error

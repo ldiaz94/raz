@@ -1,0 +1,7 @@
+(* A program need not have a main: its module bodies run. *)
+module BodyOnly;
+import Out;
+
+begin
+    Out.str("body only\n");
+end BodyOnly.

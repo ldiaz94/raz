@@ -1,0 +1,11 @@
+module SamenessTwo;
+type
+    Node = record v: I64; end;
+    P1 = ^Node;
+    P2 = ^Node;
+var a: P1; b: P2;
+proc main*;
+begin
+    a := b;   (* each is the same as ^Node, but they are two declarations *)
+end;
+end SamenessTwo.

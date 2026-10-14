@@ -1,0 +1,4 @@
+conform/err/AnonRecords.raz:7:10: error: can't use record as record
+    7 |     a := b;   (* records are always types of their own *)
+      |          ^
+raz: 1 error

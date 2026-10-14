@@ -1,0 +1,20 @@
+(* Words that aren't reserved are names, and a predeclared name may be
+   declared again, which hides it in its scope. *)
+module Names;
+import Out;
+
+type U8 = I64;
+
+var static, check, off, volatile: INT;
+    big: U8;
+
+proc main*;
+var true: INT;
+begin
+    static := 1; check := 2; off := 3; volatile := 4; true := 5;
+    big := 300;
+    Out.int(static + check + off + volatile + true); Out.ln;
+    Out.int(big); Out.char(' '); Out.int(SIZE(U8)); Out.ln;
+end;
+
+end Names.

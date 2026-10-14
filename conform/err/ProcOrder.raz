@@ -1,0 +1,10 @@
+module ProcOrder;
+proc f; begin end;
+proc g; begin end;
+proc main*;
+var a, b: proc;
+begin
+    a := f; b := g;
+    if a < b then end;   (* procedures compare with = and # only *)
+end;
+end ProcOrder.

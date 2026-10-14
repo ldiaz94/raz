@@ -1,0 +1,6 @@
+One = Two false
+One = One true
+One # nil true
+same same[]
+same instance true
+other instance false

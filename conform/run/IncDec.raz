@@ -1,0 +1,26 @@
+(* INC and DEC evaluate the variable once, and wrap. *)
+module IncDec;
+import Out;
+
+var n: INT; a: [3]U8;
+
+proc next(): INT;
+begin
+    INC(n);
+    return n - 1;
+end;
+
+proc main*;
+var i: INT;
+begin
+    INC(a[next()]);
+    INC(a[next()], 3);
+    DEC(a[next()]);
+    Out.int(n);
+    for i := 0 to 2 do Out.char(' '); Out.int(I64(a[i])); end;
+    Out.ln;
+    INC(a[2]);
+    Out.int(I64(a[2])); Out.ln;
+end;
+
+end IncDec.

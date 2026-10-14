@@ -1,0 +1,29 @@
+(* Each declaration of an error makes one different from every other,
+   whatever its message; a generic module makes its errors once for
+   each instance. *)
+module ErrorValues;
+import Out, A := Fail(I64), B := Fail(I64), C := Fail(U8);
+
+const
+    One: ERROR = "same";
+    Two: ERROR = "same";
+
+proc yes(name: []U8; b: BOOL);
+begin
+    Out.str(name);
+    if b then Out.str(" true"); else Out.str(" false"); end;
+    Out.ln;
+end;
+
+proc main*;
+begin
+    yes("One = Two", One = Two);
+    yes("One = One", One = One);
+    yes("One # nil", One # nil);
+    Out.str(MSG(One)); Out.char(' '); Out.str(MSG(Two)); Out.char('[');
+    Out.str(MSG(nil)); Out.str("]\n");
+    yes("same instance", A.Oops = B.Oops);
+    yes("other instance", A.Oops = C.Oops);
+end;
+
+end ErrorValues.

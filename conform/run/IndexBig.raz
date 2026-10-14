@@ -1,0 +1,15 @@
+(* An index is checked by its value: 4294967297 in a U64 is past the
+   length, not 1. *)
+module IndexBig;
+import Out;
+
+proc main*;
+var a: [3]I64; u: U64;
+begin
+    Out.str("before\n");
+    u := 4294967297;
+    Out.int(a[u]);
+    Out.str("after\n");
+end;
+
+end IndexBig.

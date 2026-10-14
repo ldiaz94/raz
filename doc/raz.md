@@ -91,9 +91,10 @@ the big number goes nowhere else without a conversion. Arithmetic on
 untyped constants doesn't wrap: a result beyond the `I64`s, such as
 `9223372036854775807 + 1`, is an error.
 
-A real is an untyped constant too, which takes `F32` or `F64`,
-whichever it is used as, rounded to the nearest value of that type;
-where nothing says which, it is an `F64`. A real never becomes an
+A real is an untyped constant too. It is read as the nearest `F64`
+(a tie goes to the even one), and takes `F32` or `F64`, whichever it is
+used as: an `F32` is the nearest to that `F64`. Where nothing says
+which, it is an `F64`. A real never becomes an
 integer, nor an integer a real, without a conversion: `x := 1;` is an
 error for `x: F64`, and `x := 1.0;` is right.
 
