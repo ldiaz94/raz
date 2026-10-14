@@ -1432,8 +1432,17 @@ this one does.
   `X.linux.raz`, `X.x86_64.raz` and `X.raz`, in that order, and takes
   the first found (`moduleFile`, `Parse.raz`).
 - **Errors.** Every error in a run is reported, up to 20 (`MaxErrors`,
-  `Diag.raz`); then the compiler stops. Two errors at the same place
-  are told as one. Any error is status 1.
+  `Diag.raz`); then the compiler stops. Each comes with its file, line
+  and column, the line of source with the offending part underlined
+  and, where they help, notes pointing at other places, such as where
+  a name is declared, and a suggestion, such as a name in reach spelled
+  almost alike. After an error the compiler skips the statement or
+  declaration it is in and goes on with the next; a name that isn't
+  declared is reported once, and nothing that follows from it. An error
+  in the text itself, such as a string left open, stops the compile,
+  and so does a module with errors, after it. Two errors at the same
+  place are told as one. Any error is status 1, and no executable is
+  written.
 - **Warnings.** Of a declaration never used, or a variable only
   assigned (`warn`, `Parse.raz`): not of what is exported, a name that
   starts with `_`, an enumeration's names or a generic module's
@@ -1447,7 +1456,8 @@ this one does.
   `else`, a `match`, a `while true` or a `repeat ... until false`
   with no `break`. So is a call standing on its own that drops a
   result (`drops`, kept by `noteDrop` and told by `dropped`);
-  `_ := f(x)` drops one on purpose. `-Werror` makes each an error.
+  `_ := f(x)` drops one on purpose. Warnings don't stop the compile;
+  `raz -Werror`, an option of this compiler's, makes each an error.
 - **Registers for variables.** Up to five of a procedure's single
   values, not reals, whose address is never taken, live in `rbx` and
   `r12` to `r15`, a slice taking two of them, and up to four reals in

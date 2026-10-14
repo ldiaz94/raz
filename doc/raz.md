@@ -850,7 +850,8 @@ evaluates `e` and drops it, and `n, _ := f(x);` keeps the first
 result and drops the second. What is dropped is still evaluated as
 any expression is: its calls are made, and a volatile variable in it
 is read (section 7.6). A result dropped by a call standing on its own
-is warned of (section 10); one dropped through `_` isn't.
+is a lint an implementation may warn of (section 10); one dropped
+through `_` says it is meant.
 
 ### 7.2 Conditions and loops
 
@@ -1071,7 +1072,7 @@ can't be applied to them.
   as `c` itself would, with a target for each: `a, b := try f(x);`.
 
 As a statement, `try c;` drops the values of `c` that it has, and a
-dropped value is warned of as a call that drops a result is (section
+dropped value is a lint, as a call that drops a result is (section
 10); `_ := try c;` and `a, _ := try c;` say it is meant (section 7.1).
 The error is never dropped: `try` is the way of passing it on.
 
@@ -1311,24 +1312,18 @@ implementation does so, and into what, is its own choice (appendix
 A); one that does makes the same program as if every module were
 compiled together, and keeps one copy of each instance.
 
-**Messages.** The compiler reports an error with its file, line and
-column, the line of source with the offending part underlined, and,
-where they help, notes pointing at other places, such as where a name
-is declared, and a suggestion, such as a name in reach spelled almost
-alike. It goes on after an error to find the others, up to 20, and
-writes no executable. After an error it skips the statement or
-declaration the error is in and carries on with the next; a name that
-isn't declared is reported once, and nothing that follows from it is
-reported. An error in the text itself, such as a string left open,
-stops the compile, and so does a module with errors, after it.
-
-The compiler also warns of what is declared and never used: an import;
-a constant, type, variable or procedure that isn't exported; a
-parameter of a procedure written in raz. It warns of a variable that is
-assigned but never read, too, and of a call standing on its own that
-drops a result, as `Sys.write(fd, s);` does: `_ := Sys.write(fd, s);`
-says it is meant. A name that starts with `_` is never warned about.
-Warnings don't stop the compile; `raz -Werror` makes them errors.
+**Errors.** A program that breaks a rule of this report that says it
+is an error isn't a raz program, and an implementation must reject it:
+say what is wrong and make no executable. Such a rule is one whose
+breach would leave the program with no meaning this report can give: a
+mistake of types, a name that isn't declared or is declared twice, an
+assignment to what is read-only, a module that imports itself. A fault
+that is only a lint isn't an error: a name declared and never used, or
+a result that a call standing on its own drops (`Sys.write(fd, s);`,
+where `_ := Sys.write(fd, s);` says it is meant). A program with one is
+valid, and an implementation may warn of it. The text of its messages,
+how many it reports and which warnings it gives are its own (appendix
+A).
 
 ## 11. The library
 
@@ -2037,7 +2032,7 @@ count: `2026-10.0`, then `2026-10.1` for the next change that month.
 - **2026-10.13.** `Sys` gains writing without waiting, and waiting for
   room to write (section 11).
 - **2026-10.14.** The blank, `_`, drops a value or one of several
-  results (section 7.1); a call that drops a result is warned of
+  results (section 7.1); a call that drops a result is a lint
   (section 10).
 - **2026-10.15.** `Math` gains `pow`, `ceil`, `round`, `log2`,
   `log10`, `tan`, `asin`, `acos` and `atan`; `Sys` gains `space`
@@ -2105,11 +2100,12 @@ that it follows this report: it passes them all, its reals aside where its targe
   compiled code; either way the program stops with its message
   (section 10).
 - **Messages and warnings.** The text of the compiler's messages, how
-  many errors it reports before it stops, and which warnings it gives
-  (section 10). A program that is an error in this report is one in
-  every implementation; the words that say so are free. So is what a
-  program that fails says on standard error: conformance is judged by a
-  program's standard output and exit status, never by its standard error.
+  many errors it reports before it stops, and which warnings it gives,
+  `-Werror` included (section 10). That a program that is an error in
+  this report is rejected isn't free; the words that say so are. So is
+  what a program that fails says on standard error: conformance is
+  judged by a program's standard output and exit status, never by its
+  standard error.
 - **The command line.** How the compiler is run, its options, and
   where its library lives (sections 1 and 3).
 
