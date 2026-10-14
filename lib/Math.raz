@@ -16,14 +16,14 @@ const
     ln2lo = 1.90821492927058770002E-10;
 
 (* The bits of x, and the F64 with bits u. *)
-proc bits(x: F64): U64;
+proc bits*(x: F64): U64;
 var p: ^U64;
 begin
     p := ^U64(ADR(x));
     return p^;
 end;
 
-proc fromBits(u: U64): F64;
+proc fromBits*(u: U64): F64;
 var p: ^F64;
 begin
     p := ^F64(ADR(u));
@@ -360,7 +360,7 @@ begin
 end;
 
 (* a times b: the low 64 bits of the product, and the high. *)
-proc mul(a, b: U64): (U64, U64);
+proc mul*(a, b: U64): (U64, U64);
 code
     mov rax, rdi;
     mul rsi;

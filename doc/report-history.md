@@ -125,3 +125,6 @@ at the time.
   `conform/` tests (appendix A); the rest of the library is the standard
   library. The report is in two volumes, `doc/raz.md` and `doc/raz-lib.md`,
   and its history is here.
+- **2026-10.23.** `Math` gains `bits` and `fromBits`, an `F64`'s bits
+  and back, and `mul`, the 128-bit product of two `U64`s, for reading
+  and writing reals exactly (volume 2).

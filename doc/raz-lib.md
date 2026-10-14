@@ -443,6 +443,9 @@ proc asin*(x: F64): F64;              (* from -pi/2 to pi/2 *)
 proc acos*(x: F64): F64;              (* from 0 to pi *)
 proc atan*(x: F64): F64;              (* from -pi/2 to pi/2 *)
 proc atan2*(y, x: F64): F64;          (* the angle of (x, y) from the x axis, from -pi to pi *)
+proc bits*(x: F64): U64;              (* the bits of x, as IEEE 754 lays them out *)
+proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
+proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
 ```
 
 A `Buf`, a `List` and a `Map` take their memory from the allocator

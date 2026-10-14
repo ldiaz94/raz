@@ -29,7 +29,7 @@ module Raz;
 import Sys, Out, Version, Files, Fmt, Diag, Scan, Sym, Chunk, X64, Gen, Parse, Link, Elf;
 
 const
-    Report = "2026-10.22";   (* the version of doc/raz.md it follows *)
+    Report = "2026-10.23";   (* the version of doc/raz.md it follows *)
     MemfdCreate = 319;       (* the system call *)
     MfdCloexec = 1;          (* an ELF still executes: the kernel opens it first *)
     Execve = 59;
