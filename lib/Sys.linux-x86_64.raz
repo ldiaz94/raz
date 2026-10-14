@@ -73,6 +73,12 @@ type
         port: [2]U8;
         data: [24]U8;
     end;
+    (* Whom a datagram came from, as receive says and reply takes: the
+       address recvfrom fills in, and its size. *)
+    Peer* = record
+        a: Sockaddr;
+        size: INT;
+    end;
     Timespec = record sec, nsec: I64; end;
 
 var
@@ -411,7 +417,9 @@ begin
         one := 1;                                       (* so that a server can start again at once *)
         _ := SYSCALL(54, fd, 1, 2, ADR(one), 4);        (* setsockopt: SOL_SOCKET, SO_REUSEADDR *)
         r := SYSCALL(49, fd, a, size);                  (* bind *)
-        if r = 0 then r := SYSCALL(50, fd, 4096); end;  (* listen *)
+        if (r = 0) and (kind = 1) then                  (* a stream socket takes connections; *)
+            r := SYSCALL(50, fd, 4096);                 (* one of datagrams only receives *)
+        end;
     else
         r := SYSCALL(42, fd, a, size);                  (* connect *)
     end;
@@ -567,6 +575,13 @@ begin
     return inet(addr, port, 1, true);
 end;
 
+(* A socket of datagrams on port at addr, from anyone, for receive and
+   reply. *)
+proc listenUdp*(addr: []U8; port: INT): INT;
+begin
+    return inet(addr, port, 2, true);
+end;
+
 (* The next connection to the socket fd, waiting for one: a socket of
    its own, closed in a program exec starts; or minus an errno. *)
 proc accept*(fd: INT): INT;
@@ -629,6 +644,69 @@ begin
     if flags < 0 then return flags; end;
     if yes then flags := flags & ~INT(800H); else flags := flags | 800H; end;   (* O_NONBLOCK *)
     return SYSCALL(72, fd, 4, flags);               (* F_SETFL *)
+end;
+
+(* The address of b's first byte, or nil if it has none, for a system
+   call that takes an address and a length. *)
+proc bytes(b: []U8): ^U8;
+begin
+    if LEN(b) = 0 then return nil; end;
+    return ADR(b[0]);
+end;
+
+(* A stream socket connected to port at addr, as connectTcp makes it,
+   or -110 (ETIMEDOUT) if it isn't connected within ms milliseconds.
+   It starts to connect without waiting, then waits for the socket to
+   be writable, which it is once connected or refused, and asks which. *)
+proc connectTcpWithin*(addr: []U8; port, ms: INT): INT;
+var a: Sockaddr; size, fd, r: INT; err, errSize: I32;
+begin
+    size := inetAddr(addr, port, ADR(a));
+    if size = 0 then return -22; end;
+    fd := SYSCALL(41, INT(a.family), 1 | 80800H, 0);    (* socket: SOCK_STREAM, SOCK_CLOEXEC, SOCK_NONBLOCK *)
+    if fd < 0 then return fd; end;
+    r := SYSCALL(42, fd, ADR(a), size);                 (* connect *)
+    if r = -115 then                                    (* EINPROGRESS *)
+        r := -110;
+        if readyFor([], [fd], ms) = fd then
+            errSize := 4;
+            r := SYSCALL(55, fd, 1, 4, ADR(err), ADR(errSize));   (* getsockopt: SOL_SOCKET, SO_ERROR *)
+            if r = 0 then r := -INT(err); end;
+        end;
+    end;
+    if r = 0 then r := setBlocking(fd, true); end;
+    if r < 0 then close(fd); return r; end;
+    return fd;
+end;
+
+(* The port the socket fd is bound to, or minus an errno: for a socket
+   made on port 0, the one the system chose. *)
+proc localPort*(fd: INT): INT;
+var a: Sockaddr; size: I32; r: INT;
+begin
+    size := I32(SIZE(Sockaddr));
+    r := SYSCALL(51, fd, ADR(a), ADR(size));            (* getsockname *)
+    if r < 0 then return r; end;
+    return (INT(a.port[0]) shl 8) | INT(a.port[1]);
+end;
+
+(* The next datagram to the socket fd, waiting for one: its first
+   LEN(buf) bytes in buf, the rest lost, and who sent it. The number is
+   the bytes in buf, or minus an errno. *)
+proc receive*(fd: INT; buf: []U8): (INT, Peer);
+var p: Peer; size: I32; n: INT;
+begin
+    size := I32(SIZE(Sockaddr));
+    n := SYSCALL(45, fd, bytes(buf), LEN(buf), 0, ADR(p.a), ADR(size));   (* recvfrom *)
+    p.size := INT(size);
+    return n, p;
+end;
+
+(* Sends s, as one datagram, from the socket fd to peer, as receive
+   gave it: the bytes sent, or minus an errno. *)
+proc reply*(fd: INT; peer: Peer; s: []U8): INT;
+begin
+    return SYSCALL(44, fd, bytes(s), LEN(s), 4000H, ADR(peer.a), peer.size);   (* sendto, MSG_NOSIGNAL *)
 end;
 
 (* The value of the environment variable name; "" if it isn't set. The
@@ -1014,9 +1092,10 @@ end;
 
 (* The test of time, random bytes and the network: a sleep the clock
    sees; addresses read and refused; a TCP connection on the loopback;
-   and a datagram to a port where no one listens, refused. *)
+   a datagram to a port where no one listens, refused; servers on
+   ports the system chooses, of streams and of datagrams. *)
 proc testNet;
-var t: I64; l, c, a, u: INT; x, y: [16]U8; s, s6: Sockaddr;
+var t: I64; l, c, a, u, port, n: INT; x, y: [16]U8; s, s6: Sockaddr; peer: Peer;
 begin
     t := clock();
     sleep(20);
@@ -1051,6 +1130,28 @@ begin
     u := connectUdp("127.0.0.1", 47391);
     if (u < 0) or (send(u, "x") # 1) or not ready(u, 1000) or (read(u, x) # -111) then exit(2); end;   (* ECONNREFUSED *)
     close(u);
+    (* a server on a port the system chooses, and a connection to it
+       within a time; then none, where no one listens *)
+    l := listenTcp("127.0.0.1", 0);
+    port := localPort(l);
+    if (l < 0) or (port <= 0) then exit(2); end;
+    c := connectTcpWithin("127.0.0.1", port, 1000);
+    a := accept(l);
+    if (c < 0) or (a < 0) or (send(c, "hi") # 2) or (read(a, x) # 2) then exit(2); end;
+    close(a);
+    close(c);
+    close(l);
+    if connectTcpWithin("127.0.0.1", port, 1000) # -111 then exit(2); end;
+    (* a datagram to a server, and its answer *)
+    l := listenUdp("127.0.0.1", 0);
+    port := localPort(l);
+    u := connectUdp("127.0.0.1", port);
+    if (l < 0) or (port <= 0) or (u < 0) or (send(u, "ping") # 4) then exit(2); end;
+    n, peer := receive(l, x[0..2]);
+    if (n # 2) or (x[0..2] # "pi") or (reply(l, peer, "pong") # 4) then exit(2); end;
+    if (read(u, x) # 4) or (x[0..4] # "pong") then exit(2); end;
+    close(u);
+    close(l);
 end;
 
 (* The module's test: a file written, read back and closed; a

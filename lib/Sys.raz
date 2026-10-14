@@ -88,6 +88,12 @@ type
         port: [2]U8;
         data: [24]U8;
     end;
+    (* Whom a datagram came from, as receive says and reply takes: the
+       address recvfrom fills in, and its size. *)
+    Peer* = record
+        a: Sockaddr;
+        size: INT;
+    end;
     Timespec = record sec, nsec: I64; end;
 
 var
@@ -427,7 +433,9 @@ begin
         one := 1;                                       (* so that a server can start again at once *)
         _ := C.setsockopt(fd, 1, 2, ^U8(ADR(one)), 4);  (* SOL_SOCKET, SO_REUSEADDR *)
         r := C.bind(fd, a, U32(size));
-        if r = 0 then r := C.listen(fd, 4096); end;
+        if (r = 0) and (kind = 1) then                  (* a stream socket takes connections; *)
+            r := C.listen(fd, 4096);                    (* one of datagrams only receives *)
+        end;
     else
         r := C.connect(fd, a, U32(size));
     end;
@@ -509,6 +517,13 @@ begin
     return inet(addr, port, 1, true);
 end;
 
+(* A socket of datagrams on port at addr, from anyone, for receive and
+   reply. *)
+proc listenUdp*(addr: []U8; port: INT): INT;
+begin
+    return inet(addr, port, 2, true);
+end;
+
 (* The next connection to the socket fd, waiting for one: a socket of
    its own, closed in a program exec starts; or minus an errno. *)
 proc accept*(fd: INT): INT;
@@ -579,6 +594,76 @@ begin
     if yes then flags := flags & ~I32(800H); else flags := flags | 800H; end;   (* O_NONBLOCK *)
     if C.fcntl(I32(fd), 4, flags) < 0 then return failed(); end;           (* F_SETFL *)
     return 0;
+end;
+
+(* The address of b's first byte, or nil if it has none, for a call
+   that takes an address and a length. *)
+proc bytes(b: []U8): ^U8;
+begin
+    if LEN(b) = 0 then return nil; end;
+    return ADR(b[0]);
+end;
+
+(* A stream socket connected to port at addr, as connectTcp makes it,
+   or -110 (ETIMEDOUT) if it isn't connected within ms milliseconds.
+   It starts to connect without waiting, then waits for the socket to
+   be writable, which it is once connected or refused, and asks which. *)
+proc connectTcpWithin*(addr: []U8; port, ms: INT): INT;
+var a: Sockaddr; size, r: INT; fd, err: I32; errSize: U32;
+begin
+    size := inetAddr(addr, port, ADR(a));
+    if size = 0 then return -22; end;
+    fd := C.socket(I32(a.family), 1 | 80800H, 0);      (* SOCK_STREAM, SOCK_CLOEXEC, SOCK_NONBLOCK *)
+    if fd < 0 then return failed(); end;
+    r := 0;
+    if C.connect(fd, ^U8(ADR(a)), U32(size)) # 0 then r := failed(); end;
+    if r = -115 then                                    (* EINPROGRESS *)
+        r := -110;
+        if readyFor([], [INT(fd)], ms) = INT(fd) then
+            errSize := 4;
+            if C.getsockopt(fd, 1, 4, ^U8(ADR(err)), ADR(errSize)) = 0 then   (* SOL_SOCKET, SO_ERROR *)
+                r := -INT(err);
+            else
+                r := failed();
+            end;
+        end;
+    end;
+    if r = 0 then r := setBlocking(INT(fd), true); end;
+    if r < 0 then _ := C.close(fd); return r; end;
+    return INT(fd);
+end;
+
+(* The port the socket fd is bound to, or minus an errno: for a socket
+   made on port 0, the one the system chose. *)
+proc localPort*(fd: INT): INT;
+var a: Sockaddr; size: U32;
+begin
+    size := U32(SIZE(Sockaddr));
+    if C.getsockname(I32(fd), ^U8(ADR(a)), ADR(size)) # 0 then return failed(); end;
+    return (INT(a.port[0]) shl 8) | INT(a.port[1]);
+end;
+
+(* The next datagram to the socket fd, waiting for one: its first
+   LEN(buf) bytes in buf, the rest lost, and who sent it. The number is
+   the bytes in buf, or minus an errno. *)
+proc receive*(fd: INT; buf: []U8): (INT, Peer);
+var p: Peer; size: U32; n: INT;
+begin
+    size := U32(SIZE(Sockaddr));
+    n := C.recvfrom(I32(fd), bytes(buf), UINT(LEN(buf)), 0, ^U8(ADR(p.a)), ADR(size));
+    if n < 0 then n := failed(); end;
+    p.size := INT(size);
+    return n, p;
+end;
+
+(* Sends s, as one datagram, from the socket fd to peer, as receive
+   gave it: the bytes sent, or minus an errno. *)
+proc reply*(fd: INT; peer: Peer; s: []U8): INT;
+var r: INT;
+begin
+    r := C.sendto(I32(fd), bytes(s), UINT(LEN(s)), 4000H, ^U8(ADR(peer.a)), U32(peer.size));   (* MSG_NOSIGNAL *)
+    if r < 0 then return failed(); end;
+    return r;
 end;
 
 (* The value of the environment variable name; "" if it isn't set. *)
@@ -977,9 +1062,10 @@ end;
 
 (* The test of time, random bytes and the network: a sleep the clock
    sees; addresses read and refused; a TCP connection on the loopback;
-   and a datagram to a port where no one listens, refused. *)
+   a datagram to a port where no one listens, refused; servers on
+   ports the system chooses, of streams and of datagrams. *)
 proc testNet;
-var t: I64; l, c, a, u: INT; x, y: [16]U8; s, s6: Sockaddr;
+var t: I64; l, c, a, u, port, n: INT; x, y: [16]U8; s, s6: Sockaddr; peer: Peer;
 begin
     t := clock();
     sleep(20);
@@ -1014,6 +1100,28 @@ begin
     u := connectUdp("127.0.0.1", 47391);
     if (u < 0) or (send(u, "x") # 1) or not ready(u, 1000) or (read(u, x) # -111) then exit(2); end;   (* ECONNREFUSED *)
     close(u);
+    (* a server on a port the system chooses, and a connection to it
+       within a time; then none, where no one listens *)
+    l := listenTcp("127.0.0.1", 0);
+    port := localPort(l);
+    if (l < 0) or (port <= 0) then exit(2); end;
+    c := connectTcpWithin("127.0.0.1", port, 1000);
+    a := accept(l);
+    if (c < 0) or (a < 0) or (send(c, "hi") # 2) or (read(a, x) # 2) then exit(2); end;
+    close(a);
+    close(c);
+    close(l);
+    if connectTcpWithin("127.0.0.1", port, 1000) # -111 then exit(2); end;
+    (* a datagram to a server, and its answer *)
+    l := listenUdp("127.0.0.1", 0);
+    port := localPort(l);
+    u := connectUdp("127.0.0.1", port);
+    if (l < 0) or (port <= 0) or (u < 0) or (send(u, "ping") # 4) then exit(2); end;
+    n, peer := receive(l, x[0..2]);
+    if (n # 2) or (x[0..2] # "pi") or (reply(l, peer, "pong") # 4) then exit(2); end;
+    if (read(u, x) # 4) or (x[0..4] # "pong") then exit(2); end;
+    close(u);
+    close(l);
 end;
 
 (* The module's test, as Linux's Sys has it: a file written, read back

@@ -256,7 +256,7 @@ proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a sig
 proc connectTcpWithin*(addr: []U8; port, ms: INT): INT;   (* connectTcp, or -110 (ETIMEDOUT) after ms *)
 proc listenUdp*(addr: []U8; port: INT): INT;   (* a socket of datagrams on port at addr *)
 proc receive*(fd: INT; buf: []U8): (INT, Peer);   (* the next datagram, in buf, and who sent it *)
-proc reply*(fd: INT; to: Peer; s: []U8): INT;     (* s, as one datagram, to to *)
+proc reply*(fd: INT; peer: Peer; s: []U8): INT;   (* s, as one datagram, to peer *)
 proc localPort*(fd: INT): INT;     (* the port the socket fd is bound to *)
 proc sendFds*(fd: INT; s: []U8; fds: []INT): INT;   (* send, and with it fds, to a Unix socket *)
 proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);   (* read, and the fds that came with it *)
