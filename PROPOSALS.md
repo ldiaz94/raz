@@ -154,3 +154,62 @@ the trap report's list of procedures, nor in gdb's backtrace, though
 a failed check in it is still told at its line; 60 to 100 lines of
 the 164 left below 11,000; and, across modules, the imported module's
 text kept to be read again, which is to be checked.
+
+## A var real parameter given an xmm register
+
+Not the language's but the compiler's, and a defect: a procedure
+with a `var` parameter of type `F64` or `F32`, used three times or
+more, may read another variable's value as that parameter's address,
+and stop "by a nil pointer" or reach any memory. 0.12.0 and `main`
+both do it:
+
+```
+module M;
+import Out;
+
+proc show(var v: F64; a, b: INT): INT;
+begin
+    Out.int(a + b); Out.int(a + b); Out.int(a + b);
+    Out.ln;
+    if v > 0.0 then return 1; end;
+    if v < 0.0 then return 2; end;
+    if v = 0.0 then return 3; end;
+    return 0;
+end;
+
+proc main*;
+var x: F64;
+begin
+    Out.int(show(x, 1, 2));
+    Out.ln;
+end;
+
+end M.
+```
+
+stops at the first `if`, where it should print 3.
+
+The cause is in `Parse.chooseRegs`. `regFit` lets a parameter passed
+by its address (`ind`) live in a register, which holds the address;
+but the loop that hands out registers looks only at the type, so a
+real's address is given one of `XVarRegs`, and a slice's address two
+of `VarRegs`. The prologue then moves the address into the integer
+register of the xmm register's number: xmm12, `XVarRegs[0]`, becomes
+r12, which is `VarRegs[1]`, the second busiest integer variable's. In
+the program above, `a` and `b` take rbx and r12, and `v`'s address
+goes to r12 too, under `b`'s value.
+
+The fix, two lines: an `ind` candidate needs one integer register,
+whatever its type.
+
+```
+need := 1;
+if (cand[best]^.typ^.form = Sym.fSlice) and not cand[best]^.ind then need := 2; end;
+if (cand[best]^.typ^.form = Sym.fReal) and not cand[best]^.ind then
+```
+
+Tried on `main`: the program above, and rgui's slider, then run as
+they should, and `make check` passes as it does without it (but for
+the manual pages, which fail alike where groff is missing). Met in
+rgui, whose `Gui.slide` takes its knob's place in and gives it back,
+rather than by a `var`, until this is mended.
