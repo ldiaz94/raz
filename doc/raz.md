@@ -2107,7 +2107,9 @@ that it follows this report: it passes them all, its reals aside where its targe
 - **Messages and warnings.** The text of the compiler's messages, how
   many errors it reports before it stops, and which warnings it gives
   (section 10). A program that is an error in this report is one in
-  every implementation; the words that say so are free.
+  every implementation; the words that say so are free. So is what a
+  program that fails says on standard error: conformance is judged by a
+  program's standard output and exit status, never by its standard error.
 - **The command line.** How the compiler is run, its options, and
   where its library lives (sections 1 and 3).
 
