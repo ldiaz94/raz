@@ -63,11 +63,13 @@ report's grammar, Oberon's, and the compiler is right to refuse it;
 but nearly every other language takes it, and the error ("expected an
 expression, found -") surprises.
 
-The proposal: `"-" Factor` is a factor too. Where the two readings
-both apply, as `-a * b`, they give the same value: an integer's
-negation and product wrap alike, `-(a * b)` and `(-a) * b` are the
-same bits, and so are they for reals. The smallest value of a signed
-type is no exception: it is its own negation.
+The proposal: a factor that follows an operator may be `"-" Factor`.
+The minus at the start of a `SimpleExpr` stays as it is, applying to
+the first term, so no program changes meaning: `-a & b` is still
+`-(a & b)`, which isn't `(-a) & b`, nor is `-a shr n` the same as
+`(-a) shr n`. Only text that is an error today, `x & -8`, gets one.
+The cost is that a minus means two things by where it stands, which
+the report would say in a line.
 
 Met in tery's `aligned`, `(a + 7) & -8`.
 
