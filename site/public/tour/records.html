@@ -160,6 +160,64 @@ INT:   8
 [5]I16: 10
 </code></pre>
 <p>A field of a packed record may sit at any address, and is read and written like any other; but it has no address of its own to take with <code>ADR</code>.</p>
+<h2>Bytes as numbers and records: views</h2>
+<p>A file, a socket or a device hands a program bytes. A view reads and writes them as another type: <code>msg[3].(U32)</code> is the <code>U32</code> whose four bytes start at <code>msg[3]</code>, and <code>msg[0].(Head)</code> the <code>Head</code> whose bytes start at <code>msg[0]</code>.</p>
+<div class="file"><span>Wire.raz</span></div><pre class="code"><code><span class="kw">module</span> Wire;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Head = <span class="kw">packed</span> <span class="kw">record</span> magic: <span class="ty">U16</span>; kind: <span class="ty">U8</span>; len: <span class="ty">U32</span>; <span class="kw">end</span>;   <span class="comment">(* 7 bytes, as sent *)</span>
+
+<span class="kw">var</span> msg: [<span class="number">32</span>]<span class="ty">U8</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> h: Head; i: <span class="ty">INT</span>; sum: <span class="ty">I64</span>;
+<span class="kw">begin</span>
+    <span class="comment">(* what a socket might have handed us *)</span>
+    msg[<span class="number">0</span>] := <span class="number">52H</span>; msg[<span class="number">1</span>] := <span class="number">5AH</span>;
+    msg[<span class="number">2</span>] := <span class="number">1</span>;
+    msg[<span class="number">3</span>].(<span class="ty">U32</span>) := <span class="number">8</span>;
+    msg[<span class="number">7</span>].(<span class="ty">I32</span>) := <span class="number">100</span>;
+    msg[<span class="number">11</span>].(<span class="ty">I32</span>) := <span class="number">200</span>;
+
+    h := msg[<span class="number">0</span>].(Head);
+    Out.hex(<span class="ty">U64</span>(h.magic), <span class="number">4</span>); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.int(<span class="ty">I64</span>(h.kind)); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.int(<span class="ty">I64</span>(h.len)); Out.ln;
+    sum := <span class="number">0</span>;
+    i := <span class="number">7</span>;
+    <span class="kw">while</span> i &lt; <span class="number">7</span> + <span class="ty">INT</span>(h.len) <span class="kw">do</span>
+        sum := sum + <span class="ty">I64</span>(msg[i].(<span class="ty">I32</span>));
+        i := i + <span class="number">4</span>;
+    <span class="kw">end</span>;
+    Out.int(sum); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Wire.</code></pre>
+<pre class="output"><code>5A52 1 8
+300
+</code></pre>
+<p>A view isn't a copy: it *is* those bytes, so <code>msg[3].(U32) := 8</code> writes <code>msg[3]</code> to <code>msg[6]</code>, and a view goes wherever a variable does, with a field after it, in <code>INC</code>, on the left of <code>:=</code>. Nor is it a conversion: <code>I64(x)</code> is a real's number, <code>x.(U64)</code> its bits. The magic number reads <code>5A52</code>, its bytes backwards, because x86-64 keeps a number's low byte first; a format with an order of its own is read with <code>Str.le</code> or <code>Str.be</code>.</p>
+<p>A view of an element must end inside the array, and the program checks it as it checks an index:</p>
+<div class="file"><span>Short.raz</span></div><pre class="code"><code><span class="kw">module</span> Short;
+<span class="kw">import</span> Out;
+
+<span class="kw">var</span> msg: [<span class="number">10</span>]<span class="ty">U8</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    i := <span class="number">0</span>;
+    <span class="kw">while</span> i &lt; <span class="ty">LEN</span>(msg) <span class="kw">do</span>
+        Out.int(<span class="ty">I64</span>(msg[i].(<span class="ty">U32</span>))); Out.char(<span class="string">&#x27; &#x27;</span>);
+        i := i + <span class="number">4</span>;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Short.</code></pre>
+<pre class="output"><code>0 0 <span class="err">Short.raz:11:25: a view at index 8 runs past a length of 10
+  in Short.main at Short.raz:11:25: i = 8
+</span></code></pre>
+<p>The type of a view is an integer, a real or a pointer, or a record or array made of them: types any bytes are a value of, which a <code>BOOL</code> or an enumeration isn't. A view may start at any byte, so, as a packed record's field, it has no address of its own.</p>
 <h2>Pointers</h2>
 <p><code>ADR(x)</code> takes the address of a variable, <code>^T</code> is a pointer to a <code>T</code>, and <code>p^</code> is what it points at. A pointer that points nowhere is <code>nil</code>, and following it stops the program with a message that names the place, so a forgotten check is found at once instead of corrupting memory.</p>
 <div class="file"><span>Pointers.raz</span></div><pre class="code"><code><span class="kw">module</span> Pointers;

@@ -65,7 +65,7 @@ Bare: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, wi
 <span class="cmd">$ ldd Bare</span>
 	not a dynamic executable
 <span class="cmd">$ ls -l Bare | awk &#x27;{print $5, &quot;bytes&quot;}&#x27;</span>
-26032 bytes</code></pre>
+26224 bytes</code></pre>
 <p>It is statically linked: no interpreter, no shared libraries, no <code>libc</code>. <code>ldd</code> says so.</p>
 <h2>What it does when it runs</h2>
 <p><code>strace</code> lists every system call a program makes. This is the whole of it:</p>
@@ -97,8 +97,8 @@ hello from C
 Cprint: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, with debug_info, not stripped
 <span class="cmd">$ ldd Cprint | sed &#x27;s/ (0x[0-9a-f]*)//&#x27;</span>
 	linux-vdso.so.1
-	libc.so.6 =&gt; /lib/x86_64-linux-gnu/libc.so.6
-	/lib64/ld-linux-x86-64.so.2</code></pre>
+	libc.so.6 =&gt; /usr/lib/libc.so.6
+	/lib64/ld-linux-x86-64.so.2 =&gt; /usr/lib64/ld-linux-x86-64.so.2</code></pre>
 <p>Both are fine. The point is that you choose, and the language says which you chose: a program uses C exactly when a module of it has an <code>extern</code> or a <code>link</code> of a library.</p>
 <h2>Only what is reached</h2>
 <p>The compiler keeps only what can be reached from <code>main</code> and the module bodies. Unused procedures, variables and strings are left out. Here are two programs that differ by one large procedure that nothing calls.</p>
@@ -134,15 +134,15 @@ Cprint: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), dynamically linked,
 <pre class="output term"><code><span class="cmd">$ raz Lean.raz</span>
 <span class="cmd">$ raz Heavy.raz</span>
 <span class="cmd">$ ls -l Lean Heavy | awk &#x27;{print $9, $5}&#x27;</span>
-Heavy 28208
-Lean 28200</code></pre>
+Heavy 28408
+Lean 28392</code></pre>
 <p>The sizes differ by a few bytes, not by the hundreds of kilobytes that the table and the procedure would take: they are not in the executable at all. You can link in a library module without worrying what else it offers.</p>
 <h2>Stripping</h2>
 <p><code>-s</code> leaves out what is there for finding faults: the symbols and line numbers, the places a failure is told by, and the profiler. It is for the final build of a size-conscious program; the default keeps them so that gdb and failure messages work.</p>
 <pre class="output term"><code><span class="cmd">$ raz -s -o Lean-stripped Lean.raz</span>
 <span class="cmd">$ ls -l Lean Lean-stripped | awk &#x27;{print $9, $5}&#x27;</span>
-Lean 28200
-Lean-stripped 6688
+Lean 28392
+Lean-stripped 6856
 <span class="cmd">$ ./Lean-stripped</span>
 same program</code></pre>
 <p><code>raz -S Lean.raz</code> is the other direction: it prints the machine code the compiler made, one source line at a time. The next two parts of the tour use it.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="allocators.html">&larr; Writing an allocator</a><a href="index.html">Contents</a><a class="next" href="linkstatic.html">Threads without C, and keeping the two apart &rarr;</a></div></article></div>

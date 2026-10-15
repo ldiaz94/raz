@@ -64,13 +64,13 @@
 <pre class="output"><code>300 4 300 42.857 233 true
 </code></pre>
 <h2>Conversions are written</h2>
-<p>Two types never mix: with <code>i: I64</code> and a slice <code>s</code>, <code>i &lt; LEN(s)</code> is an error. A type's name converts: <code>F64(n)</code>, <code>I64(b)</code>, <code>U8(x)</code>. The one silent conversion between numbers is an <code>INT</code> into an <code>I64</code>, which loses nothing. The <a href="integers.html">lesson on integers</a> says what each width conversion does.</p>
+<p>Two types never mix but for one: an <code>INT</code> goes into an <code>I64</code> wherever it meets one, which loses nothing, so with <code>pos: I64</code>, <code>pos + LEN(s)</code> is an <code>I64</code>. With <code>i: I32</code> and a slice <code>s</code>, <code>i &lt; LEN(s)</code> is an error. A type's name converts: <code>F64(n)</code>, <code>I64(b)</code>, <code>U8(x)</code>; an <code>I64</code> becomes an <code>INT</code> only so, <code>INT(pos)</code>, since an <code>INT</code> may be smaller on another machine. The <a href="integers.html">lesson on integers</a> says what each width conversion does.</p>
 <p>A number written in the program is untyped until it meets a type, and <code>1.5</code> is a real, which an integer never becomes without a conversion.</p>
 <div class="file"><span>Mix.raz</span></div><pre class="code"><code><span class="kw">module</span> Mix;
 <span class="kw">import</span> Out;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> i: <span class="ty">I64</span>; s: []<span class="ty">U8</span>;
+<span class="kw">var</span> i: <span class="ty">I32</span>; s: []<span class="ty">U8</span>;
 <span class="kw">begin</span>
     s := <span class="string">&quot;four&quot;</span>;
     i := <span class="number">3</span>;
@@ -79,12 +79,12 @@
 
 <span class="kw">end</span> Mix.</code></pre>
 <pre class="output term"><code><span class="cmd">$ raz Mix.raz</span>
-Mix.raz:9:8: error: I64 and INT are different types
+Mix.raz:9:8: error: I32 and INT are different types
     9 |     if i &lt; LEN(s) then Out.str(&quot;smaller\n&quot;); end;
       |        ^^^^^^^^^^
-help: convert one to the other&#x27;s type, as in I64(LEN(s))
+help: convert one to the other&#x27;s type, as in INT(i)
 raz: 1 error</code></pre>
-<p>The fix is the conversion, written where it happens: <code>if i &lt; I64(LEN(s))</code>. It costs nothing at run time and says what is meant.</p>
+<p>The fix is the conversion, written where it happens: <code>if INT(i) &lt; LEN(s)</code>. It costs nothing at run time and says what is meant.</p>
 <h2>What converts to what</h2>
 <p>Everything else that converts does so with the type's name, and the rules are short:</p>
 <table><thead><tr><th>From</th><th>To</th><th>Result</th></tr></thead><tbody><tr><td data-label="From">integer</td><td data-label="To">integer</td><td data-label="Result">cut to the new width, or extended by the sign (signed) or zeros (unsigned)</td></tr><tr><td data-label="From">integer</td><td data-label="To"><code>F32</code>, <code>F64</code></td><td data-label="Result">the nearest real</td></tr><tr><td data-label="From"><code>F32</code>, <code>F64</code></td><td data-label="To">integer</td><td data-label="Result">rounded toward zero</td></tr><tr><td data-label="From"><code>F32</code></td><td data-label="To"><code>F64</code></td><td data-label="Result">the same value; the other way, the nearest <code>F32</code></td></tr><tr><td data-label="From">enumeration</td><td data-label="To">integer</td><td data-label="Result">its position; and back, if there is a name at that position</td></tr><tr><td data-label="From">set</td><td data-label="To">integer</td><td data-label="Result">its bits; and back</td></tr><tr><td data-label="From"><code>INT</code>, <code>UINT</code></td><td data-label="To">pointer</td><td data-label="Result">the address; and back</td></tr></tbody></table>
