@@ -40,24 +40,42 @@ begin
     return true;
 end;
 
-(* Adds the byte c at the end; if room for it can't be had, it is
-   dropped and the buffer is as it was. *)
-proc add*(b: ^Buf; c: U8);
+(* Room for n more bytes, or the program stops: a buffer that went on
+   short of what was added to it would be wrong data, and nothing would
+   say so. A program that can do better asks room first. *)
+proc need(b: ^Buf; n: INT);
 begin
-    if room(b, 1) then
-        b^.data[b^.len] := c;
-        INC(b^.len);
+    if not room(b, n) then
+        _ := Sys.write(Sys.stderr, "Buf: out of memory\n");
+        Rt.trace;
+        Rt.exit(2);
     end;
 end;
 
-(* Adds the bytes of s at the end; if room for them can't be had, none
-   is added. *)
+(* Adds the byte c at the end. *)
+proc add*(b: ^Buf; c: U8);
+begin
+    need(b, 1);
+    b^.data[b^.len] := c;
+    INC(b^.len);
+end;
+
+(* Adds the bytes of s at the end. *)
 proc str*(b: ^Buf; s: []U8);
 begin
-    if room(b, LEN(s)) then
-        COPY(b^.data[b^.len..b^.len + LEN(s)], s);
-        INC(b^.len, LEN(s));
-    end;
+    need(b, LEN(s));
+    COPY(b^.data[b^.len..b^.len + LEN(s)], s);
+    INC(b^.len, LEN(s));
+end;
+
+(* Room for n more bytes, and those bytes, for a read to fill: the
+   program then adds to len what it filled. Good until the buffer next
+   grows, as bytes is. *)
+proc spare*(b: ^Buf; n: INT): []U8;
+begin
+    if n = 0 then return ""; end;   (* a new buffer has no data to slice *)
+    need(b, n);
+    return b^.data[b^.len..b^.len + n];
 end;
 
 (* What the buffer holds, until it next grows. *)
@@ -98,6 +116,10 @@ begin
     reset(ADR(b));
     str(ADR(b), "again");
     if bytes(ADR(b)) # "again" then Rt.stop("Buf.reset"); end;
+    s := spare(ADR(b), 3);
+    COPY(s, "abc");
+    INC(b.len, 2);
+    if (LEN(s) # 3) or (bytes(ADR(b)) # "againab") then Rt.stop("Buf.spare"); end;
     done(ADR(b));
     Arena.done(ADR(ar));
 end;

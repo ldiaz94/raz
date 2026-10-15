@@ -469,6 +469,7 @@ proc init*(b: ^Buf; a: ^Mem.Allocator);
 proc room*(b: ^Buf; n: INT): BOOL;    (* room for n more bytes; false if the allocator has none *)
 proc add*(b: ^Buf; c: U8);
 proc str*(b: ^Buf; s: []U8);
+proc spare*(b: ^Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
 proc bytes*(b: ^Buf): []U8;           (* what it holds, until it next grows *)
 proc reset*(b: ^Buf);                 (* emptied, its memory kept *)
 proc done*(b: ^Buf);                  (* its memory given back *)
@@ -532,7 +533,11 @@ proc toReal*(s: []U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false 
 ```
 
 A `Buf`, a `List` and a `Map` take their memory from the allocator
-`init` gives them. `Fmt`'s format takes the next argument at each
+`init` gives them. `Buf.add`, `str` and `spare` stop the program, as a
+failed check does, if the allocator has no room; `room` asks first. A
+program reads into a `Buf` through `spare`, then adds what it read to
+`len`: `s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n > 0 then
+INC(b^.len, n); end;`. `Fmt`'s format takes the next argument at each
 `{}`; `{{` and `}}` stand for `{` and `}`. A `Map` hashes and
 compares its keys with the procedures it is given:
 `import Count := Map([]U8, INT, Str.hash, Str.eq);`.

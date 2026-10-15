@@ -1,4 +1,5 @@
 Buf used before Buf.init
   in Buf.room at lib/Buf.raz:31:9: b = 0x?, n = 5, cap = 64, p = nil
-  in Buf.str at lib/Buf.raz:57:5: b = 0x?
+  in Buf.need at lib/Buf.raz:48:5: b = 0x?, n = 5
+  in Buf.str at lib/Buf.raz:66:5: b = 0x?
   in BufInit.main at test/run/BufInit.raz:9:5
