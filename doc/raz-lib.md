@@ -11,7 +11,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -173,7 +173,9 @@ type
         file*: BOOL;     (* a regular file: not a directory, device, pipe or socket *)
         symlink*: BOOL;  (* the path itself is a symbolic link *)
         ino*: U64;       (* its inode, which a rename keeps and a new file doesn't *)
+        dev*: U64;       (* the file system it is on; with ino, it names the file *)
     end;
+    Kind* = (unknown, isFile, isDir, isLink, isOther);   (* what a directory says a name in it is *)
     Dir* = record ... end;   (* an open directory; its fields are the target's *)
     Program* = record
         path*: []U8;
@@ -222,6 +224,7 @@ proc space*(path: []U8): (I64, I64, INT);   (* the bytes free and in all on path
 
 proc openDir*(d: ^Dir; path: []U8): INT;
 proc nextEntry*(d: ^Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
+proc entryKind*(d: ^Dir): Kind;          (* what the name nextEntry gave last is *)
 proc closeDir*(d: ^Dir);
 
 proc rawMode*(fd: INT): BOOL;      (* the terminal on fd: no echo, no lines, no signals *)
@@ -282,7 +285,12 @@ a tree can choose not to follow one back up it. A link to nothing is
 holds data: opening a pipe would wait for a program to write to it.
 
 `nextEntry` gives every name in the directory except `.` and `..`, in
-no particular order. `rawMode` turns off what the terminal does with
+no particular order. `entryKind` says what the name it gave last is, a
+file, a directory, a symbolic link (whatever it names) or something
+else, as the directory itself records it, so that a program walking a
+tree needn't ask `linkInfo` of every name, a system call each; where
+the file system doesn't record it, it is `unknown`, and `linkInfo`
+must be asked. `rawMode` turns off what the terminal does with
 keys before the program reads them (echo, line editing, signals, flow
 control), and NL to CR NL on output. A program that turns it on
 restores it before it ends: `Rt.atExit` is the place.
@@ -315,7 +323,10 @@ that `symlink` is true, `dir` and `file` false, and `size` the length
 of what it names, which need not be there. `Info.mtime` is what a program checks
 to see whether a file changed under it, and `Info.ino` whether it is
 still the same file, not one renamed over it; 0 on a target whose
-files have none. `Info.mode` holds the nine
+files have none. `Info.dev` is the file system the file is on: two
+files are one only if both `dev` and `ino` agree, which is how a
+program following links finds that one has led it back into a
+directory it is already in. `Info.mode` holds the nine
 bits of `rwxrwxrwx`, and `chmod` sets them, 1EDH (755) for a program,
 1A4H (644) for data.
 

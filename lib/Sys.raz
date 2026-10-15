@@ -23,6 +23,7 @@ const
     sigTerm* = 15; sigChld* = 17; sigCont* = 18; sigStop* = 19;
     sigTstp* = 20; sigTtin* = 21; sigTtou* = 22; sigWinch* = 28;
     DirentName = 19;          (* the offset of d_name in glibc's struct dirent *)
+    DirentType = 18;          (* and of d_type *)
     TIOCGWINSZ = 5413H;       (* glibc's, as the two below *)
     TIOCSWINSZ = 5414H;
     TIOCSCTTY = 540EH;
@@ -43,11 +44,19 @@ type
         file*: BOOL;    (* not a directory, device, pipe or socket *)
         symlink*: BOOL; (* the path itself is a symbolic link *)
         ino*: U64;      (* its inode, which a rename keeps and a new file doesn't *)
+        dev*: U64;      (* the file system it is on; with ino, it names the file *)
     end;
+
+    (* What a directory says a name in it is, without asking the file:
+       a regular file, a directory, a symbolic link, or something else
+       (a device, pipe or socket); unknown where the file system
+       doesn't say, and linkInfo must be asked. *)
+    Kind* = (unknown, isFile, isDir, isLink, isOther);
 
     (* An open directory: C's DIR. *)
     Dir* = record
         d: ^U8;
+        kind: Kind;     (* of the name nextEntry gave last *)
     end;
 
     (* A program for spawn to start. *)
@@ -385,6 +394,7 @@ proc fromStat(st: [18]INT): Info;
 var i: Info;
 begin
     i.size := st[6];                                 (* st_size *)
+    i.dev := U64(st[0]);                             (* st_dev *)
     i.ino := U64(st[1]);                             (* st_ino *)
     i.mtime := st[11] * 1000000000 + st[12];         (* st_mtim *)
     i.mode := st[3] & 1FFH;
@@ -439,10 +449,24 @@ begin
     return st[4] * st[1], st[2] * st[1], 0;          (* f_bavail, f_blocks, in f_frsize *)
 end;
 
+(* The Kind of a d_type, as getdents64 and readdir give it: DT_REG is
+   8, DT_DIR 4, DT_LNK 10, DT_UNKNOWN 0, and the rest (pipes, devices,
+   sockets) other things. *)
+proc kindOf(t: U8): Kind;
+begin
+    if t = 8 then return isFile;
+    elsif t = 4 then return isDir;
+    elsif t = 10 then return isLink;
+    elsif t = 0 then return unknown;
+    end;
+    return isOther;
+end;
+
 (* Opens the directory at path, for nextEntry. *)
 proc openDir*(d: ^Dir; path: []U8): INT;
 var a: [4096]U8;
 begin
+    d^.kind := unknown;
     if not cstr(path, a) then return -36; end;
     d^.d := C.opendir(ADR(a[0]));
     if d^.d = nil then return failed(); end;
@@ -457,12 +481,21 @@ begin
     while true do
         e := C.readdir(d^.d);
         if e = nil then return "", false; end;
+        d^.kind := kindOf(e[DirentType]);
         e := e + DirentName;
         n := 0;
         while e[n] # 0 do INC(n); end;
         if (e[0..n] # ".") and (e[0..n] # "..") then return e[0..n], true; end;
     end;
     return "", false;
+end;
+
+(* What the name nextEntry gave last is, as the directory says, so that
+   a walk needn't ask each file with linkInfo; unknown where the file
+   system doesn't say. A link is isLink, whatever it names. *)
+proc entryKind*(d: ^Dir): Kind;
+begin
+    return d^.kind;
 end;
 
 (* Closes the directory d that openDir opened. *)
@@ -1304,7 +1337,7 @@ end;
    and closed; a directory made, listed and emptied; no terminal; a
    socket, sent to after its end; programs; time and the network. *)
 proc main*;
-var free, total: I64; fd, n, err, w, h, l, c, a, m, k: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
+var free, total: I64; fd, n, err, w, h, l, c, a, m, k: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i, j: Info; d: Dir; name: []U8; ok: BOOL;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
@@ -1402,6 +1435,10 @@ begin
     if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
     name, ok := nextEntry(ADR(d));
     if not ok or (name # "g") then exit(2); end;
+    if (entryKind(ADR(d)) # isFile) and (entryKind(ADR(d)) # unknown) then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/g");
+    j, err := info("/tmp/raz-sys-dir");
+    if (err # 0) or (i.dev # j.dev) or (i.ino = j.ino) then exit(2); end;
     name, ok := nextEntry(ADR(d));
     if ok then exit(2); end;
     closeDir(ADR(d));

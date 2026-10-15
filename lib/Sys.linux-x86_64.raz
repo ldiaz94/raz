@@ -30,11 +30,19 @@ type
         file*: BOOL;    (* not a directory, device, pipe or socket *)
         symlink*: BOOL; (* the path itself is a symbolic link *)
         ino*: U64;      (* its inode, which a rename keeps and a new file doesn't *)
+        dev*: U64;      (* the file system it is on; with ino, it names the file *)
     end;
+
+    (* What a directory says a name in it is, without asking the file:
+       a regular file, a directory, a symbolic link, or something else
+       (a device, pipe or socket); unknown where the file system
+       doesn't say, and linkInfo must be asked. *)
+    Kind* = (unknown, isFile, isDir, isLink, isOther);
 
     (* An open directory: getdents64's records, read a block at a time. *)
     Dir* = record
         fd, pos, len: INT;
+        kind: Kind;             (* of the name nextEntry gave last *)
         buf: [8192]U8;
     end;
 
@@ -342,6 +350,7 @@ proc fromStat(st: [18]INT): Info;
 var i: Info;
 begin
     i.size := st[6];                                (* st_size *)
+    i.dev := U64(st[0]);                            (* st_dev *)
     i.ino := U64(st[1]);                            (* st_ino *)
     i.mtime := st[11] * 1000000000 + st[12];        (* st_mtim *)
     i.mode := st[3] & 1FFH;
@@ -403,10 +412,24 @@ begin
     return st[4] * unit, st[2] * unit, 0;           (* f_bavail, f_blocks *)
 end;
 
+(* The Kind of a d_type, as getdents64 and readdir give it: DT_REG is
+   8, DT_DIR 4, DT_LNK 10, DT_UNKNOWN 0, and the rest (pipes, devices,
+   sockets) other things. *)
+proc kindOf(t: U8): Kind;
+begin
+    if t = 8 then return isFile;
+    elsif t = 4 then return isDir;
+    elsif t = 10 then return isLink;
+    elsif t = 0 then return unknown;
+    end;
+    return isOther;
+end;
+
 (* Opens the directory at path, for nextEntry. *)
 proc openDir*(d: ^Dir; path: []U8): INT;
 var a: [4096]U8;
 begin
+    d^.kind := unknown;
     d^.pos := 0;
     d^.len := 0;
     if not cstr(path, a) then return -36; end;
@@ -431,12 +454,21 @@ begin
         at := d^.pos + 19;
         n := 0;
         while d^.buf[at + n] # 0 do INC(n); end;
+        d^.kind := kindOf(d^.buf[d^.pos + 18]);
         INC(d^.pos, INT(d^.buf[d^.pos + 16]) + INT(d^.buf[d^.pos + 17]) * 256);
         if (d^.buf[at..at + n] # ".") and (d^.buf[at..at + n] # "..") then
             return d^.buf[at..at + n], true;
         end;
     end;
     return "", false;
+end;
+
+(* What the name nextEntry gave last is, as the directory says, so that
+   a walk needn't ask each file with linkInfo; unknown where the file
+   system doesn't say. A link is isLink, whatever it names. *)
+proc entryKind*(d: ^Dir): Kind;
+begin
+    return d^.kind;
 end;
 
 (* Closes the directory d that openDir opened. *)
@@ -1322,7 +1354,7 @@ end;
    directory made, listed and emptied; no terminal; a socket, sent to
    after its end; programs; time and the network. *)
 proc main*;
-var free, total: I64; fd, n, err, w, h, l, c, a, m, k: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i: Info; d: Dir; name: []U8; ok: BOOL;
+var free, total: I64; fd, n, err, w, h, l, c, a, m, k: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i, j: Info; d: Dir; name: []U8; ok: BOOL;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
@@ -1420,6 +1452,10 @@ begin
     if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
     name, ok := nextEntry(ADR(d));
     if not ok or (name # "g") then exit(2); end;
+    if (entryKind(ADR(d)) # isFile) and (entryKind(ADR(d)) # unknown) then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/g");
+    j, err := info("/tmp/raz-sys-dir");
+    if (err # 0) or (i.dev # j.dev) or (i.ino = j.ino) then exit(2); end;
     name, ok := nextEntry(ADR(d));
     if ok then exit(2); end;
     closeDir(ADR(d));
