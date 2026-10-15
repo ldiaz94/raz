@@ -176,6 +176,27 @@ begin
     return SYSCALL(8, fd, pos, 0);                        (* SEEK_SET *)
 end;
 
+(* Where in its file fd is, without moving: the next read or write's
+   position, or minus an errno. *)
+proc position*(fd: INT): I64;
+begin
+    return SYSCALL(8, fd, 0, 1);                          (* lseek, SEEK_CUR *)
+end;
+
+(* The file fd makes size bytes long, cut or filled with zeros; its
+   position stays. 0, or minus an errno. *)
+proc truncate*(fd: INT; size: I64): INT;
+begin
+    return SYSCALL(77, fd, size);                         (* ftruncate *)
+end;
+
+(* Returns once what was written to fd is on the disk: 0, or minus an
+   errno. *)
+proc sync*(fd: INT): INT;
+begin
+    return SYSCALL(74, fd);                               (* fsync *)
+end;
+
 (* Closes the file descriptor fd. *)
 proc close*(fd: INT);
 begin
@@ -290,24 +311,42 @@ begin
     return linked[0..n], 0;
 end;
 
-(* The size of what path names, whether it is a directory or a regular
-   file, following a symbolic link, and whether path is one; and 0, or
-   minus an errno. *)
-proc info*(path: []U8): (Info, INT);
-var a: [4096]U8; st: [18]INT; i: Info; r: INT;    (* struct stat: 144 bytes *)
+(* An Info from a struct stat, all but symlink. *)
+proc fromStat(st: [18]INT): Info;
+var i: Info;
 begin
-    if not cstr(path, a) then return i, -36; end;
-    r := SYSCALL(6, ADR(a), ADR(st));               (* lstat *)
-    if r # 0 then return i, r; end;
-    i.symlink := st[3] & 0F000H = 0A000H;            (* st_mode is S_IFLNK *)
-    r := SYSCALL(4, ADR(a), ADR(st));               (* stat *)
-    if r # 0 then return i, r; end;
     i.size := st[6];                                (* st_size *)
     i.mtime := st[11] * 1000000000 + st[12];        (* st_mtim *)
     i.mode := st[3] & 1FFH;
     i.dir := st[3] & 0F000H = 4000H;              (* S_IFDIR *)
     i.file := st[3] & 0F000H = 8000H;             (* S_IFREG *)
+    return i;
+end;
+
+(* The size of what path names, whether it is a directory or a regular
+   file, following a symbolic link, and whether path is one; and 0, or
+   minus an errno. *)
+proc info*(path: []U8): (Info, INT);
+var a: [4096]U8; st: [18]INT; i: Info; r: INT; isLink: BOOL;   (* struct stat: 144 bytes *)
+begin
+    if not cstr(path, a) then return i, -36; end;
+    r := SYSCALL(6, ADR(a), ADR(st));               (* lstat *)
+    if r # 0 then return i, r; end;
+    isLink := st[3] & 0F000H = 0A000H;                (* st_mode is S_IFLNK *)
+    r := SYSCALL(4, ADR(a), ADR(st));               (* stat *)
+    if r # 0 then return i, r; end;
+    i := fromStat(st);
+    i.symlink := isLink;
     return i, 0;
+end;
+
+(* info of the file open on fd, which is never a link. *)
+proc infoOf*(fd: INT): (Info, INT);
+var st: [18]INT; i: Info; r: INT;
+begin
+    r := SYSCALL(5, fd, ADR(st));                   (* fstat *)
+    if r # 0 then return i, r; end;
+    return fromStat(st), 0;
 end;
 
 (* The bytes free to an ordinary user on path's file system, and the
@@ -1298,7 +1337,15 @@ begin
     if (seek(fd, -2, true) # 3) or (read(fd, buf) # 2) or (buf[0..2] # "de") then exit(2); end;
     if (seek(fd, 1, false) # 1) or (write(fd, "B") # 1) or (seek(fd, 0, false) # 0) then exit(2); end;
     if (read(fd, buf) # 5) or (buf[0..5] # "aBcde") then exit(2); end;
+    (* where it is, its size open, cut short, on the disk *)
+    if (position(fd) # 5) or (seek(fd, 2, false) # 2) or (position(fd) # 2) then exit(2); end;
+    if (truncate(fd, 4) # 0) or (position(fd) # 2) or (sync(fd) # 0) then exit(2); end;
+    i, err := infoOf(fd);
+    if (err # 0) or (i.size # 4) or not i.file or i.symlink then exit(2); end;
     close(fd);
+    if (position(fd) # -9) or (truncate(fd, 0) # -9) or (sync(fd) # -9) then exit(2); end;   (* EBADF *)
+    i, err := infoOf(fd);
+    if err # -9 then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/h");
     if (err # 0) or (i.mode & 1C0H # 180H) or (i.mtime < 1700000000 * 1000000000) then exit(2); end;
     if chmod("/tmp/raz-sys-dir/h", 1EDH) # 0 then exit(2); end;
