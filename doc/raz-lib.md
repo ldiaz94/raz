@@ -11,7 +11,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openRead`, `create`, `read`, `write`, `seek`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `infoOf`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -193,6 +193,9 @@ proc open*(path: []U8; how: Accesses): INT;   (* its fd *)
 proc openRead*(path: []U8): INT;         (* open(path, {reading}) *)
 proc create*(path: []U8): INT;           (* open(path, {writing, creating, truncating}) *)
 proc seek*(fd: INT; pos: I64; fromEnd: BOOL): I64;  (* the new position *)
+proc position*(fd: INT): I64;            (* where the next read or write is *)
+proc truncate*(fd: INT; size: I64): INT; (* the file made size bytes long *)
+proc sync*(fd: INT): INT;                (* what was written to it, on the disk *)
 proc close*(fd: INT);
 proc isTerminal*(fd: INT): BOOL;
 proc mmap*(size: INT): ^U8;              (* size bytes of zeroed memory, in whole pages; or nil *)
@@ -208,6 +211,7 @@ proc chmod*(path: []U8; mode: INT): INT;
 proc symlink*(target, path: []U8): INT;  (* path made a link to target *)
 proc readLink*(path: []U8): ([]U8, INT); (* what the link names, good until the next call *)
 proc info*(path: []U8): (Info, INT);     (* following a symbolic link *)
+proc infoOf*(fd: INT): (Info, INT);      (* the open file's *)
 proc space*(path: []U8): (I64, I64, INT);   (* the bytes free and in all on path's file system *)
 
 proc openDir*(d: ^Dir; path: []U8): INT;
@@ -284,7 +288,12 @@ it is there, as a program does that makes a lock or a file of its
 own; `truncating` it to nothing; `appending`, each write going to its
 end, however other programs write it too. `seek` moves to `pos` from
 the start of the file, or from its end if `fromEnd`, where a negative
-`pos` reads back from the end. `Info.mtime` is what a program checks
+`pos` reads back from the end; `position` says where the file is,
+without moving. `truncate` makes the file `size` bytes long, cutting
+it or adding zeros, and leaves the position where it was. `sync`
+returns once what was written to the file is on the disk, as a
+program needs before it says a file is saved. `infoOf` is `info` of
+an open file: its size is what it holds now, however it was written. `Info.mtime` is what a program checks
 to see whether a file changed under it; `Info.mode` holds the nine
 bits of `rwxrwxrwx`, and `chmod` sets them, 1EDH (755) for a program,
 1A4H (644) for data.
@@ -625,6 +634,7 @@ type
 proc init*(p: ^Parser; name: []U8; table: []Row);  (* the arguments from 1 on, by table *)
 proc next*(p: ^Parser): BOOL;                     (* the next option; false when they end *)
 proc operand*(p: ^Parser): ([]U8, BOOL);          (* the next operand; false when there are no more *)
+proc at*(p: ^Parser): INT;                        (* the argument operand would give next *)
 proc scope*(p: ^Parser; name: []U8);              (* subcommand name's options, from the word after it *)
 proc number*(p: ^Parser; lo, hi: I64): I64;       (* the value just read, a number from lo to hi *)
 proc fail*(p: ^Parser; text: []U8);               (* the program's own mistake *)
@@ -688,7 +698,15 @@ The rules are `getopt`'s:
 - Each scope has its own options. An option given twice is read twice.
 
 `number` reads the value as `Str.toInt` does. `operand` reads what
-options are left first, and the program doesn't see them.
+options are left first, and the program doesn't see them. So does
+`at`, which says where the operands are: the arguments from `operand`'s
+next on are `Files.arg(i)` for `i` from `at(p)` to `ARGC() - 1`, so
+that an interpreter hands a script its arguments as they are:
+
+```
+script, ok := Opt.operand(ADR(p));       (* tery file arg ... *)
+first := Opt.at(ADR(p));                 (* file's own arguments, from here on *)
+```
 
 `-h` or `--help` among a scope's options prints its help on standard
 output and ends the program with status 0. `init` and `scope` answer

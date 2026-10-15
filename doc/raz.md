@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.25 of the report; section 11 says where each
+This is version 2026-10.26 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -22,7 +22,9 @@ procedures written for 2026-10.11. 2026-10.20 is a third, for `try`
 (section 7.8); it breaks a program that has a name `try`. 2026-10.25
 is a fourth, for strings: raw strings, which may run over lines
 and may be indented with the code around them (section 2), and
-`match` on a string (section 7.4); it breaks no program.
+`match` on a string (section 7.4); it breaks no program. 2026-10.26
+is a fifth: an `INT` widens to an `I64` wherever it goes to one, in
+an expression too (sections 5.10 and 6.1); it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -418,8 +420,8 @@ QualIdent = [ ident "." ] ident .
 It is as big as an address, so it is the integer a pointer converts
 to (section 6.7), and a word the atomic built-ins work on (section
 6.8). `INT` and `I64` are two types, even where they have the same
-size: an `INT` goes silently into an `I64` (section 5.10), but the two
-don't mix in an expression (section 6.1), and an `I64` becomes an
+size: an `INT` goes silently into an `I64` wherever it meets one, in
+an expression too (sections 5.10 and 6.1), and an `I64` becomes an
 `INT` only by `INT(x)`, which may drop bits on a smaller target. A
 type bigger than the largest `INT` in bytes is an error.
 
@@ -615,11 +617,14 @@ string is a copy, the program's to change.
 Nothing else converts silently. In particular, there is no other
 conversion between integer types, between integers and reals, or
 between `F32` and `F64`, without a written conversion (section 6.7).
-Results passed on whole need the same types exactly: in `a, b :=
-f(x)` and in `return f(x)`, an `INT` result doesn't pass up as an
-`I64`. Elsewhere, `return n, n` included, an `INT` widens as above; the
-bounds of a `for` and the step of `INC` and `DEC` take the type of the
-variable they work on, and an `INT` is not widened to it.
+An `INT` widens to `I64`, and a `UINT` to `U64`, wherever its value
+goes where an `I64` is wanted: in `a, b := f(x)` and `return f(x)` as
+in any other assignment, to the bounds of a `for` and the step of
+`INC` and `DEC` whose variable is an `I64`, and in an expression, where
+it meets an `I64` (section 6.1). The types themselves stay two: a
+`^INT` isn't a `^I64`, an `INT` variable isn't passed to a `var`
+parameter of type `I64`, and a procedure returning an `INT` isn't of a
+procedure type returning an `I64`.
 
 ## 6. Expressions
 
@@ -662,12 +667,15 @@ statement starts with a name or `try`, so `^T(x)^ := v` isn't one.
 
 Both operands of `+ - * div mod & | xor`, and of a relation, have the
 same integer type, or one is an untyped constant that takes the
-other's type, which it must fit. So do `v` and `k` in `INC(v, k)` and
-`DEC(v, k)`. The result has that type and wraps around at its width:
+other's type, which it must fit, or one is an `INT` and the other an
+`I64` (a `UINT` and a `U64`), and the `INT` widens to `I64` (section
+5.10). So do `v` and `k` in `INC(v, k)` and
+`DEC(v, k)`, where only `k` widens: an `I64` `k` isn't added to an
+`INT` `v`. The result has that type and wraps around at its width:
 in `U8`, `200 + 100` is `44`. A unary minus wraps too: for `x` of an
-unsigned type, `-x` is `0 - x`. Two integer types are never mixed,
-whatever their sizes: with `i: I64`, `i < LEN(s)` is an error, and
-`i` should be an `INT`.
+unsigned type, `-x` is `0 - x`. Other integer types are never mixed,
+whatever their sizes: with `i: I32`, `i < LEN(s)` is an error, and
+`i` should be an `INT`. With `pos: I64`, `pos + LEN(s)` is an `I64`.
 
 Where the report asks for an integer and names no type, as an index, a
 slice's bound, a shift's count, a pointer's offset `i` in `p + i`, or
@@ -908,8 +916,9 @@ body at least once and stops when the condition is true.
 integer or enumeration type, named by its name alone; `a` and then `b`
 are evaluated once, before the first round; `s` is a constant other
 than zero, and 1 if left out. `a` and `b` have `i`'s type, or are
-untyped constants that take it, as with `+` (section 6.1): so in
-`for i := 0 to LEN(s) - 1`, `i` must be an `INT`.
+untyped constants that take it, or are `INT`s that widen to an `I64`
+`i`, as with `+` (section 6.1): so in `for i := 0 to LEN(s) - 1`, `i`
+is an `INT` or an `I64`.
 
 The loop never steps past `b`, so `i` can't wrap: afterwards `i`
 holds the last value it took, or `a` if the body never ran. The body

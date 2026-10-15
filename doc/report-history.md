@@ -142,3 +142,10 @@ at the time.
   `field`, `lower`, `upper`, `join`, `replace`, `decodeLast`,
   `next`, `valid`, `chars`, `toHex` and `fromInt`; `Math` gains
   `toReal` (volume 2).
+- **2026-10.26.** A thaw, for `INT` and `I64`. An `INT` widens to an
+  `I64`, and a `UINT` to a `U64`, wherever its value goes to one: in an
+  expression, where it meets one, and in `a, b := f(x)`, `return
+  f(x)`, a `for`'s bounds and the step of `INC` and `DEC` (sections
+  5.10, 6.1 and 7.2). It breaks no program. `Sys` gains `position`,
+  `truncate`, `sync` and `infoOf`; `Opt` gains `at`, where the
+  operands are (volume 2).
