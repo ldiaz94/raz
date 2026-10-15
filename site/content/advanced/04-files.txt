@@ -136,6 +136,44 @@ end;
 end Tree.
 ```
 
+## Modes, links, and a lock
+
+`Sys.openMode` is `open` with the permissions a file it makes should have, less those the umask takes away: 1EDH (755) for a script, 124H (444) for a file never to be written. `Sys.linkInfo` looks at a symbolic link itself, where `info` follows it, so a link whose target is gone is still seen. `Info.ino` is the file's inode: a file renamed over another has a new one, though its size and time may match, which is how a program knows a file it cached is still the same.
+
+`Sys.lock` takes the lock on an open file, which one open file holds at a time; another that asks for it waits, or with `wait` false gets -11 at once. The lock goes when the file is closed or the program ends, however it ends, so it can't go stale as a lock file can. `Sys.syncAll` puts everything written to a file system on the disk at once, before the one file that names it all is written: a database's or a version control system's commit.
+
+```raz Store run
+module Store;
+import Fmt, Sys;
+
+proc main*;
+var fd, other: INT; named, target: Sys.Info;
+begin
+    fd := Sys.openMode("run.sh", {Sys.writing, Sys.creating, Sys.truncating}, 1EDH);
+    _ := Sys.write(fd, "echo hi\n");
+    _ := Sys.syncAll(fd);
+    Sys.close(fd);
+    target, _ := Sys.info("run.sh");
+    Fmt.print("its owner may run it: {}\n", [Fmt.bool(target.mode & 40H # 0)]);
+
+    _ := Sys.remove("current");
+    _ := Sys.symlink("run.sh", "current");
+    named, _ := Sys.linkInfo("current");
+    Fmt.print("a link: {}, of {} bytes\n", [Fmt.bool(named.symlink), Fmt.int(named.size)]);
+    named, _ := Sys.info("current");
+    Fmt.print("the same file: {}\n", [Fmt.bool(named.ino = target.ino)]);
+
+    fd := Sys.openRead("run.sh");
+    other := Sys.openRead("run.sh");
+    Fmt.print("{} {}\n", [Fmt.int(Sys.lock(fd, false)), Fmt.int(Sys.lock(other, false))]);   (* -11: held *)
+    Sys.close(fd);
+    Fmt.print("{}\n", [Fmt.int(Sys.lock(other, false))]);   (* free again *)
+    Sys.close(other);
+end;
+
+end Store.
+```
+
 ## A command line, from a table
 
 A program describes its options once, in a table of `Opt.Row`s: its synopsis lines, its subcommands and its options. The help and the error messages are made from the table. The parser reads by the rules of the C library's `getopt` with GNU's long options, so `-vn3`, `-n 3`, `--count=3` and `--count 3` all work, and `--` ends the options.

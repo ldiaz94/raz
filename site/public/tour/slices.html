@@ -143,6 +143,7 @@ they differ now
 
 </code></pre>
 <p>Every index and every slice bound is checked, so a slice can never reach past what it was made from; the lesson on failures shows what that looks like.</p>
+<p>A slice of a local array is good only while its procedure runs: the array is gone once it returns. So returning one is an error, <code>return a[0..n]</code> or <code>return a</code> with <code>a</code> a local, a value parameter or an array literal. Take the array as a <code>var</code> parameter instead, and the slice is of the caller's array; or fill a buffer the caller gives.</p>
 <h2><code>COPY</code></h2>
 <p><code>COPY(d, s)</code> copies the elements of <code>s</code> to the start of <code>d</code>, as one block, and is right when they overlap. <code>LEN(s)</code> must be at most <code>LEN(d)</code>.</p>
 <div class="file"><span>Moves.raz</span></div><pre class="code"><code><span class="kw">module</span> Moves;

@@ -1,8 +1,8 @@
-title: Lists, maps and sorting
+title: Lists, arrays, maps and sorting
 part: The library
-summary: List(T), Map(K, V) and Sort(T), put together in a word-frequency program.
+summary: List(T), Vec(T), Map(K, V) and Sort(T), put together in a word-frequency program.
 ---
-The three generic modules are instantiated like any other generic module, with the types and procedures they need. All three take their memory from an allocator you give them; none of them allocates anything you didn't ask for.
+The four generic modules are instantiated like any other generic module, with the types and procedures they need. All four take their memory from an allocator you give them; none of them allocates anything you didn't ask for.
 
 ## `List(T)`
 
@@ -27,6 +27,30 @@ begin
 end;
 
 end Pile.
+```
+
+## `Vec(T)`
+
+A growable array: one block of elements that doubles when it is full, for what a program learns the length of only as it reads. `push` adds at the end, `add` adds a zero element and gives a pointer to fill it in place, `resize` cuts it short or grows it with zeros. `all` gives the elements as a slice, indexed and checked as any slice is; the slice is good until the array next grows. Running out of memory stops the program, as with `Buf`: an element dropped silently would be wrong data. `room` asks first, for a program that can do better.
+
+```raz Squares run
+module Squares;
+import Out, Heap, Ints := Vec(INT);
+
+proc main*;
+var v: Ints.Vec; i: INT; s: []INT;
+begin
+    Ints.init(ADR(v), Heap.heap);
+    defer Ints.done(ADR(v));
+    for i := 1 to 1000 do Ints.push(ADR(v), i * i); end;
+    s := Ints.all(ADR(v));
+    Out.int(v.len); Out.str(" squares, the last "); Out.int(s[LEN(s) - 1]); Out.ln;
+    Ints.resize(ADR(v), 3);
+    for i := 0 to v.len - 1 do Out.int(Ints.all(ADR(v))[i]); Out.char(' '); end;
+    Out.ln;
+end;
+
+end Squares.
 ```
 
 ## `Map(K, V; hash, eq)`
@@ -71,12 +95,13 @@ An in-place sort of a slice, by a `less` procedure, in `n log n` at most and wit
 
 ## Putting them together
 
-Counting words, then listing them by count and then alphabetically: a `Map` for the counts, an array of records to sort, and `Sort` with a two-level `less`.
+Counting words, then listing them by count and then alphabetically: a `Map` for the counts, a `Vec` of records to sort, however many words there are, and `Sort` with a two-level `less`.
 
 ```raz Freq run
 module Freq;
 import Fmt, Str, Heap,
     Count := Map([]U8, INT, Str.hash, Str.eq),
+    Entries := Vec(Entry),
     Rank := Sort(Entry, before);
 
 type Entry = record word: []U8; n: INT; end;
@@ -92,8 +117,8 @@ end;
 
 proc main*;
 var
-    m: Count.Map; entries: [32]Entry; i, k, n, found: INT;
-    w, rest: []U8; key: []U8; v: INT;
+    m: Count.Map; entries: Entries.Vec; i, k, found: INT;
+    w, rest: []U8; key: []U8; v: INT; all: []Entry;
 begin
     Count.init(ADR(m), Heap.heap);
     w, rest := Str.field(Text);
@@ -102,17 +127,16 @@ begin
         _ := Count.put(ADR(m), w, k + 1);
         w, rest := Str.field(rest);
     end;
-    n := 0;
+    Entries.init(ADR(entries), Heap.heap);
     found, key, v := Count.next(ADR(m), 0);
     while found >= 0 do
-        entries[n].word := key;
-        entries[n].n := v;
-        INC(n);
+        Entries.push(ADR(entries), {word: key, n: v});
         found, key, v := Count.next(ADR(m), found);
     end;
-    Rank.sort(entries[0..n]);
-    for i := 0 to n - 1 do
-        Fmt.print("{} {}\n", [Fmt.int(entries[i].n), Fmt.str(entries[i].word)]);
+    all := Entries.all(ADR(entries));
+    Rank.sort(all);
+    for i := 0 to LEN(all) - 1 do
+        Fmt.print("{} {}\n", [Fmt.int(all[i].n), Fmt.str(all[i].word)]);
     end;
 end;
 
@@ -123,4 +147,4 @@ The keys here are slices of the constant text, so they outlive the map; a progra
 
 ## Choosing
 
-Use a `List` when you push and pop at one end and walk it in order. Use a `Map` when you look things up by key. Use an array and `Sort` when you know the size and want an order. When none of them fits, they are each under a hundred lines of raz in `lib/`, and the advanced tour's allocator lesson shows what is underneath.
+Use a `List` when you push and pop at one end and walk it in order. Use a `Vec` when you add at the end and index, and don't know how many will come; an array when you do. Use a `Map` when you look things up by key. Use `Sort` on either's slice when you want an order. When none of them fits, they are each under a hundred lines of raz in `lib/`, and the advanced tour's allocator lesson shows what is underneath.

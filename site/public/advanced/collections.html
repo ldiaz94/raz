@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lists, maps and sorting - More Raz</title>
+<title>Lists, arrays, maps and sorting - More Raz</title>
 <meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
 <meta name="theme-color" content="#E07A5F">
-<meta property="og:title" content="Lists, maps and sorting - More Raz">
+<meta property="og:title" content="Lists, arrays, maps and sorting - More Raz">
 <meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
 <meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -21,7 +21,7 @@
 <div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
 <li><a href="fmt.html">Output and formatting</a></li>
 <li><a href="bytes.html">Strings and bytes</a></li>
-<li><a href="collections.html" aria-current="page">Lists, maps and sorting</a></li>
+<li><a href="collections.html" aria-current="page">Lists, arrays, maps and sorting</a></li>
 <li><a href="files.html">Files and the command line</a></li>
 <li><a href="processes.html">Time, randomness and other programs</a></li>
 <li><a href="allocators.html">Writing an allocator</a></li>
@@ -43,8 +43,8 @@
 <li><a href="ordering.html">Ordering and publication</a></li>
 <li><a href="lockfree.html">A lock-free stack</a></li>
 <li><a href="ring.html">A ring buffer between threads</a></li>
-</ol></aside><article><p class="kicker">The library &middot; lesson 3 of 18</p><h1>Lists, maps and sorting</h1>
-<p>The three generic modules are instantiated like any other generic module, with the types and procedures they need. All three take their memory from an allocator you give them; none of them allocates anything you didn't ask for.</p>
+</ol></aside><article><p class="kicker">The library &middot; lesson 3 of 18</p><h1>Lists, arrays, maps and sorting</h1>
+<p>The four generic modules are instantiated like any other generic module, with the types and procedures they need. All four take their memory from an allocator you give them; none of them allocates anything you didn't ask for.</p>
 <h2><code>List(T)</code></h2>
 <p>A singly linked list with <code>push</code> at the front, <code>pop</code> from the front, and the nodes exported, so a program walks it itself. Both can fail if the allocator is out of room, and say so.</p>
 <div class="file"><span>Pile.raz</span></div><pre class="code"><code><span class="kw">module</span> Pile;
@@ -67,6 +67,28 @@
 <span class="kw">end</span> Pile.</code></pre>
 <pre class="output"><code>1 4 9 16 25 
 1 popped, 4 left
+</code></pre>
+<h2><code>Vec(T)</code></h2>
+<p>A growable array: one block of elements that doubles when it is full, for what a program learns the length of only as it reads. <code>push</code> adds at the end, <code>add</code> adds a zero element and gives a pointer to fill it in place, <code>resize</code> cuts it short or grows it with zeros. <code>all</code> gives the elements as a slice, indexed and checked as any slice is; the slice is good until the array next grows. Running out of memory stops the program, as with <code>Buf</code>: an element dropped silently would be wrong data. <code>room</code> asks first, for a program that can do better.</p>
+<div class="file"><span>Squares.raz</span></div><pre class="code"><code><span class="kw">module</span> Squares;
+<span class="kw">import</span> Out, Heap, Ints := Vec(<span class="ty">INT</span>);
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> v: Ints.Vec; i: <span class="ty">INT</span>; s: []<span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Ints.init(<span class="ty">ADR</span>(v), Heap.heap);
+    <span class="kw">defer</span> Ints.done(<span class="ty">ADR</span>(v));
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">1000</span> <span class="kw">do</span> Ints.push(<span class="ty">ADR</span>(v), i * i); <span class="kw">end</span>;
+    s := Ints.all(<span class="ty">ADR</span>(v));
+    Out.int(v.len); Out.str(<span class="string">&quot; squares, the last &quot;</span>); Out.int(s[<span class="ty">LEN</span>(s) - <span class="number">1</span>]); Out.ln;
+    Ints.resize(<span class="ty">ADR</span>(v), <span class="number">3</span>);
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> v.len - <span class="number">1</span> <span class="kw">do</span> Out.int(Ints.all(<span class="ty">ADR</span>(v))[i]); Out.char(<span class="string">&#x27; &#x27;</span>); <span class="kw">end</span>;
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Squares.</code></pre>
+<pre class="output"><code>1000 squares, the last 1000000
+1 4 9 
 </code></pre>
 <h2><code>Map(K, V; hash, eq)</code></h2>
 <p>A hash map. Its key's hash and equality are procedure arguments, so any type can be a key. <code>put</code> replaces what a key maps to; <code>get</code> says what it maps to and whether it maps to anything; <code>remove</code> says whether the key was there. <code>next</code> walks the map: from 0, it gives the next entry and the number to pass for the one after, and -1 when there are no more.</p>
@@ -106,10 +128,11 @@ linus: 0 (false)
 <h2><code>Sort(T; less)</code></h2>
 <p>An in-place sort of a slice, by a <code>less</code> procedure, in <code>n log n</code> at most and with no memory of its own. Elements equal by <code>less</code> may change places.</p>
 <h2>Putting them together</h2>
-<p>Counting words, then listing them by count and then alphabetically: a <code>Map</code> for the counts, an array of records to sort, and <code>Sort</code> with a two-level <code>less</code>.</p>
+<p>Counting words, then listing them by count and then alphabetically: a <code>Map</code> for the counts, a <code>Vec</code> of records to sort, however many words there are, and <code>Sort</code> with a two-level <code>less</code>.</p>
 <div class="file"><span>Freq.raz</span></div><pre class="code"><code><span class="kw">module</span> Freq;
 <span class="kw">import</span> Fmt, Str, Heap,
     Count := Map([]<span class="ty">U8</span>, <span class="ty">INT</span>, Str.hash, Str.eq),
+    Entries := Vec(Entry),
     Rank := Sort(Entry, before);
 
 <span class="kw">type</span> Entry = <span class="kw">record</span> word: []<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
@@ -125,8 +148,8 @@ linus: 0 (false)
 
 <span class="kw">proc</span> main*;
 <span class="kw">var</span>
-    m: Count.Map; entries: [<span class="number">32</span>]Entry; i, k, n, found: <span class="ty">INT</span>;
-    w, rest: []<span class="ty">U8</span>; key: []<span class="ty">U8</span>; v: <span class="ty">INT</span>;
+    m: Count.Map; entries: Entries.Vec; i, k, found: <span class="ty">INT</span>;
+    w, rest: []<span class="ty">U8</span>; key: []<span class="ty">U8</span>; v: <span class="ty">INT</span>; all: []Entry;
 <span class="kw">begin</span>
     Count.init(<span class="ty">ADR</span>(m), Heap.heap);
     w, rest := Str.field(Text);
@@ -135,17 +158,16 @@ linus: 0 (false)
         _ := Count.put(<span class="ty">ADR</span>(m), w, k + <span class="number">1</span>);
         w, rest := Str.field(rest);
     <span class="kw">end</span>;
-    n := <span class="number">0</span>;
+    Entries.init(<span class="ty">ADR</span>(entries), Heap.heap);
     found, key, v := Count.next(<span class="ty">ADR</span>(m), <span class="number">0</span>);
     <span class="kw">while</span> found &gt;= <span class="number">0</span> <span class="kw">do</span>
-        entries[n].word := key;
-        entries[n].n := v;
-        <span class="ty">INC</span>(n);
+        Entries.push(<span class="ty">ADR</span>(entries), {word: key, n: v});
         found, key, v := Count.next(<span class="ty">ADR</span>(m), found);
     <span class="kw">end</span>;
-    Rank.sort(entries[<span class="number">0</span>..n]);
-    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> n - <span class="number">1</span> <span class="kw">do</span>
-        Fmt.print(<span class="string">&quot;{} {}\n&quot;</span>, [Fmt.int(entries[i].n), Fmt.str(entries[i].word)]);
+    all := Entries.all(<span class="ty">ADR</span>(entries));
+    Rank.sort(all);
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(all) - <span class="number">1</span> <span class="kw">do</span>
+        Fmt.print(<span class="string">&quot;{} {}\n&quot;</span>, [Fmt.int(all[i].n), Fmt.str(all[i].word)]);
     <span class="kw">end</span>;
 <span class="kw">end</span>;
 
@@ -161,7 +183,7 @@ linus: 0 (false)
 </code></pre>
 <p>The keys here are slices of the constant text, so they outlive the map; a program whose keys come from a buffer it will reuse copies them first with <code>Str.copy</code>.</p>
 <h2>Choosing</h2>
-<p>Use a <code>List</code> when you push and pop at one end and walk it in order. Use a <code>Map</code> when you look things up by key. Use an array and <code>Sort</code> when you know the size and want an order. When none of them fits, they are each under a hundred lines of raz in <code>lib/</code>, and the advanced tour's allocator lesson shows what is underneath.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="bytes.html">&larr; Strings and bytes</a><a href="index.html">Contents</a><a class="next" href="files.html">Files and the command line &rarr;</a></div></article></div>
+<p>Use a <code>List</code> when you push and pop at one end and walk it in order. Use a <code>Vec</code> when you add at the end and index, and don't know how many will come; an array when you do. Use a <code>Map</code> when you look things up by key. Use <code>Sort</code> on either's slice when you want an order. When none of them fits, they are each under a hundred lines of raz in <code>lib/</code>, and the advanced tour's allocator lesson shows what is underneath.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="bytes.html">&larr; Strings and bytes</a><a href="index.html">Contents</a><a class="next" href="files.html">Files and the command line &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license.</footer>
 </body>

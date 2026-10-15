@@ -68,6 +68,8 @@ end Windows.
 
 Every index and every slice bound is checked, so a slice can never reach past what it was made from; the lesson on failures shows what that looks like.
 
+A slice of a local array is good only while its procedure runs: the array is gone once it returns. So returning one is an error, `return a[0..n]` or `return a` with `a` a local, a value parameter or an array literal. Take the array as a `var` parameter instead, and the slice is of the caller's array; or fill a buffer the caller gives.
+
 ## `COPY`
 
 `COPY(d, s)` copies the elements of `s` to the start of `d`, as one block, and is right when they overlap. `LEN(s)` must be at most `LEN(d)`.

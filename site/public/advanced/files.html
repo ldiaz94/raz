@@ -21,7 +21,7 @@
 <div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
 <li><a href="fmt.html">Output and formatting</a></li>
 <li><a href="bytes.html">Strings and bytes</a></li>
-<li><a href="collections.html">Lists, maps and sorting</a></li>
+<li><a href="collections.html">Lists, arrays, maps and sorting</a></li>
 <li><a href="files.html" aria-current="page">Files and the command line</a></li>
 <li><a href="processes.html">Time, randomness and other programs</a></li>
 <li><a href="allocators.html">Writing an allocator</a></li>
@@ -175,6 +175,44 @@ missing.txt: not there
 b.txt, 2 bytes
 src/
 </code></pre>
+<h2>Modes, links, and a lock</h2>
+<p><code>Sys.openMode</code> is <code>open</code> with the permissions a file it makes should have, less those the umask takes away: 1EDH (755) for a script, 124H (444) for a file never to be written. <code>Sys.linkInfo</code> looks at a symbolic link itself, where <code>info</code> follows it, so a link whose target is gone is still seen. <code>Info.ino</code> is the file's inode: a file renamed over another has a new one, though its size and time may match, which is how a program knows a file it cached is still the same.</p>
+<p><code>Sys.lock</code> takes the lock on an open file, which one open file holds at a time; another that asks for it waits, or with <code>wait</code> false gets -11 at once. The lock goes when the file is closed or the program ends, however it ends, so it can't go stale as a lock file can. <code>Sys.syncAll</code> puts everything written to a file system on the disk at once, before the one file that names it all is written: a database's or a version control system's commit.</p>
+<div class="file"><span>Store.raz</span></div><pre class="code"><code><span class="kw">module</span> Store;
+<span class="kw">import</span> Fmt, Sys;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> fd, other: <span class="ty">INT</span>; named, target: Sys.Info;
+<span class="kw">begin</span>
+    fd := Sys.openMode(<span class="string">&quot;run.sh&quot;</span>, {Sys.writing, Sys.creating, Sys.truncating}, <span class="number">1EDH</span>);
+    _ := Sys.write(fd, <span class="string">&quot;echo hi\n&quot;</span>);
+    _ := Sys.syncAll(fd);
+    Sys.close(fd);
+    target, _ := Sys.info(<span class="string">&quot;run.sh&quot;</span>);
+    Fmt.print(<span class="string">&quot;its owner may run it: {}\n&quot;</span>, [Fmt.bool(target.mode &amp; <span class="number">40H</span> # <span class="number">0</span>)]);
+
+    _ := Sys.remove(<span class="string">&quot;current&quot;</span>);
+    _ := Sys.symlink(<span class="string">&quot;run.sh&quot;</span>, <span class="string">&quot;current&quot;</span>);
+    named, _ := Sys.linkInfo(<span class="string">&quot;current&quot;</span>);
+    Fmt.print(<span class="string">&quot;a link: {}, of {} bytes\n&quot;</span>, [Fmt.bool(named.symlink), Fmt.int(named.size)]);
+    named, _ := Sys.info(<span class="string">&quot;current&quot;</span>);
+    Fmt.print(<span class="string">&quot;the same file: {}\n&quot;</span>, [Fmt.bool(named.ino = target.ino)]);
+
+    fd := Sys.openRead(<span class="string">&quot;run.sh&quot;</span>);
+    other := Sys.openRead(<span class="string">&quot;run.sh&quot;</span>);
+    Fmt.print(<span class="string">&quot;{} {}\n&quot;</span>, [Fmt.int(Sys.lock(fd, <span class="ty">false</span>)), Fmt.int(Sys.lock(other, <span class="ty">false</span>))]);   <span class="comment">(* -11: held *)</span>
+    Sys.close(fd);
+    Fmt.print(<span class="string">&quot;{}\n&quot;</span>, [Fmt.int(Sys.lock(other, <span class="ty">false</span>))]);   <span class="comment">(* free again *)</span>
+    Sys.close(other);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Store.</code></pre>
+<pre class="output"><code>its owner may run it: true
+a link: true, of 6 bytes
+the same file: true
+0 -11
+0
+</code></pre>
 <h2>A command line, from a table</h2>
 <p>A program describes its options once, in a table of <code>Opt.Row</code>s: its synopsis lines, its subcommands and its options. The help and the error messages are made from the table. The parser reads by the rules of the C library's <code>getopt</code> with GNU's long options, so <code>-vn3</code>, <code>-n 3</code>, <code>--count=3</code> and <code>--count 3</code> all work, and <code>--</code> ends the options.</p>
 <div class="file"><span>Tool.raz</span></div><pre class="code"><code><span class="kw">module</span> Tool;
@@ -229,7 +267,7 @@ status 2
 tool: no words; see tool -h
 status 2</code></pre>
 <p><code>-h</code> and <code>--help</code> are <code>Opt</code>'s: the program never sees them. A mistake on the command line is a sentence on standard error with the program's name first, then the synopsis, and status 2. Nothing in <code>Tool</code> wrote any of that.</p>
-<p>A mistake in the table itself, such as an option given twice, is the program's, and <code>init</code> says so and ends with status 1 before it reads a word.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="collections.html">&larr; Lists, maps and sorting</a><a href="index.html">Contents</a><a class="next" href="processes.html">Time, randomness and other programs &rarr;</a></div></article></div>
+<p>A mistake in the table itself, such as an option given twice, is the program's, and <code>init</code> says so and ends with status 1 before it reads a word.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="collections.html">&larr; Lists, arrays, maps and sorting</a><a href="index.html">Contents</a><a class="next" href="processes.html">Time, randomness and other programs &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license.</footer>
 </body>
