@@ -1,0 +1,50 @@
+module FrameSlice;
+(* a slice of the procedure's own frame can't be returned (report
+   section 7.3); one of a var parameter, a module variable or what a
+   pointer points at can *)
+
+type
+    Hex = [64]U8;
+    Pair = record a: [4]U8; s: []U8; end;
+
+var g: [8]U8;
+
+proc param(h: Hex): []U8;
+begin
+    return h[0..8];                 (* the procedure's copy *)
+end;
+
+proc local: []U8;
+var a: [4]U8;
+begin
+    return a;                       (* the array, silently a slice *)
+end;
+
+proc field(n: INT): ([]U8, INT);
+var p: Pair;
+begin
+    return p.a[0..n], n;            (* one of several results *)
+end;
+
+proc literal: []INT;
+begin
+    return [1, 2, 3];               (* a hidden variable of the call *)
+end;
+
+proc whole: Hex;
+var h: Hex;
+begin
+    return h;                       (* an array, copied out: fine *)
+end;
+
+proc result: []U8;
+begin
+    return whole()[0..2];           (* the array whole returns, a temporary *)
+end;
+
+proc ok(var h: Hex; s: []U8; p: ^Hex; q: Pair): ([]U8, []U8, []U8, []U8, []U8);
+begin
+    return h[0..8], s[1..2], p^[0..2], g, q.s;
+end;
+
+end FrameSlice.

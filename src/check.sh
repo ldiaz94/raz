@@ -12,14 +12,16 @@ b=build/src
 # the messages for an I64 that goes to an INT, and a help that
 # converts the narrower of two integers; and views, v.(T),
 # whose tests are conform/*/View*.raz, and which Math, examples/Elf.raz
-# and, through Math, test/bench/NBody.raz use.
+# and, through Math, test/bench/NBody.raz use; and returning a slice of
+# the frame as an error (report 2026-10.27).
 newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRawIndent.raz
     conform/run/MatchStr.raz conform/err/MatchStrTwice.raz conform/err/MatchStrNoElse.raz
     conform/err/MatchStrVar.raz conform/err/MatchReal.raz conform/err/AtMatch.raz
     examples/Sh.raz examples/Settings.raz
     conform/run/IntWiden.raz conform/err/IntIncNarrow.raz conform/err/IntNarrow.raz conform/err/IntNarrowSum.raz
     conform/err/IntResultsNarrow.raz conform/err/GenIntTypes.raz
-    lib/Math.raz examples/Elf.raz test/bench/NBody.raz"
+    lib/Math.raz examples/Elf.raz test/bench/NBody.raz
+    conform/err/FrameSlice.raz"
 newer() {
     case $1 in conform/*/View*.raz) return 0 ;; esac
     for g in $newer; do [ $g = $1 ] && return 0; done

@@ -1,0 +1,21 @@
+conform/err/FrameSlice.raz:14:12: error: can't return a slice of the procedure's own frame
+   14 |     return h[0..8];                 (* the procedure's copy *)
+      |            ^^^^^^^
+help: it is gone once the procedure returns: take the array as a var parameter, or fill a buffer the caller gives
+conform/err/FrameSlice.raz:20:12: error: can't return a slice of the procedure's own frame
+   20 |     return a;                       (* the array, silently a slice *)
+      |            ^
+help: it is gone once the procedure returns: take the array as a var parameter, or fill a buffer the caller gives
+conform/err/FrameSlice.raz:26:12: error: can't return a slice of the procedure's own frame
+   26 |     return p.a[0..n], n;            (* one of several results *)
+      |            ^^^^^^^^^
+help: it is gone once the procedure returns: take the array as a var parameter, or fill a buffer the caller gives
+conform/err/FrameSlice.raz:31:12: error: can't return a slice of the procedure's own frame
+   31 |     return [1, 2, 3];               (* a hidden variable of the call *)
+      |            ^^^^^^^^^
+help: it is gone once the procedure returns: take the array as a var parameter, or fill a buffer the caller gives
+conform/err/FrameSlice.raz:42:12: error: can't return a slice of the procedure's own frame
+   42 |     return whole()[0..2];           (* the array whole returns, a temporary *)
+      |            ^^^^^^^^^^^^^
+help: it is gone once the procedure returns: take the array as a var parameter, or fill a buffer the caller gives
+raz: 5 errors

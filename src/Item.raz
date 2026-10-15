@@ -55,6 +55,10 @@ type
         deref*: BOOL;        (* mVar: at an address from a pointer, which may be
                                 nil and isn't tested yet (nilTest) *)
         obj*: ^Sym.Obj;      (* mProc, mBuiltin, mCase; mVar: the variable named *)
+        frame*: BOOL;        (* a slice: points into the procedure's own frame,
+                                which returnValue refuses (report section 7.3);
+                                anything else: lies in that frame, a local, a
+                                value parameter or a temporary, or part of one *)
         pos*: Diag.Pos;      (* where it is in the source, for messages *)
     end;
 
@@ -276,6 +280,8 @@ begin
         else
             x.base := Gen.bFrame; x.off := o^.val;
         end;
+        (* a value parameter passed by address (ind) is a copy all the same *)
+        x.frame := (o^.lev > 0) and not o^.isVar and (o^.typ^.form # Sym.fSlice);
     | oProc: x.mode := mProc;
     | oType: x.mode := mType;
     | oBuiltin: x.mode := mBuiltin;
@@ -422,6 +428,7 @@ begin
     x := {};
     x.pos := p;
     x.mode := mVar; x.typ := t; x.base := Gen.bFrame; x.off := off;
+    x.frame := t^.form # Sym.fSlice;   (* a slice made here says where it points *)
 end;
 
 proc toSlot*(var x: Item): (I64, ERROR);
@@ -531,7 +538,7 @@ begin
 end;
 
 proc coerce*(var x: Item; t: ^Sym.Type): ERROR;
-var s: ^Sym.Type; tmp: I64;
+var s: ^Sym.Type; tmp: I64; inFrame: BOOL;
 begin
     if x.mode = mCond then try value(x); end;
     s := x.typ;
@@ -568,8 +575,10 @@ begin
         if x.vol then return Scan.markAt(x.pos, "can't make a slice through a volatile pointer"); end;
         if x.odd then return Scan.markAt(x.pos, "can't make a slice of a field of a packed record"); end;
         if x.view then return noAddress(x, "can't make a slice of a view"); end;
+        inFrame := x.frame;
         try address(x);
         sliceOf(x, t, s^.len);
+        x.frame := inFrame;
     elsif (x.mode = mProc) and (t^.form # Sym.fProc) and (s^.base = nil) then
         return Scan.markAt(x.pos, say1("{} is a procedure, and returns nothing", Diag.source(x.pos)));
     elsif (x.mode = mProc) and (t^.form # Sym.fProc) then
@@ -634,7 +643,7 @@ begin
     try value(x);
     x.mode := mVar; x.base := Gen.bStack; x.off := 0; x.deref := true;
     x.typ := t^.base; x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
-    x.view := false;
+    x.view := false; x.frame := false;
     return nil;
 end;
 
@@ -650,6 +659,7 @@ begin
     end;
     x.off := x.off + f^.val;
     x.typ := f^.typ;
+    if x.typ^.form = Sym.fSlice then x.frame := false; end;   (* a slice kept here points anywhere *)
     return nil;
 end;
 
@@ -710,6 +720,9 @@ begin
         x.base := Gen.bStack; x.off := 0; x.isVar := true; x.vol := false; x.ro := false;
     end;
     x.typ := t^.base;
+    (* an element of an array lies where the array does; one of a slice or
+       through a pointer, and a slice kept in an element, anywhere *)
+    if (t^.form # Sym.fArray) or (x.typ^.form = Sym.fSlice) then x.frame := false; end;
     return nil;
 end;
 
@@ -722,7 +735,7 @@ begin
 end;
 
 proc slice*(var x, lo, hi: Item): ERROR;
-var t, st: ^Sym.Type; tmp: I64;
+var t, st: ^Sym.Type; tmp: I64; inFrame: BOOL;
 begin
     t := x.typ;
     if not Sym.isInt(hi.typ) then
@@ -733,12 +746,14 @@ begin
     if x.view then return noAddress(x, "can't make a slice of a view"); end;
     if t^.form = Sym.fArray then try notReadOnly(x); end;
     try value(hi);
+    inFrame := x.frame and (t^.form # Sym.fPtr);
     tmp := Gen.allocTemp(16, 8);
     if t^.form = Sym.fPtr then Gen.slicePtr(t^.base^.size, tmp, checks, lo.pos);
     else Gen.slice(adrOf(x), t^.form = Sym.fArray, t^.len, t^.base^.size, tmp, checks, lo.pos); end;
     st := Sym.newType(Sym.fSlice, 16, 8);
     st^.base := t^.base;
     tempItem(x, st, tmp);
+    x.frame := inFrame;
     return nil;
 end;
 
@@ -1824,10 +1839,26 @@ end;
 
 (* The result of return x: a value on top, a slice's two words on top,
    or one copied behind the hidden pointer *)
+(* A slice returned must not point into the procedure's own frame,
+   which is gone once it returns (report section 7.3). Only what can be
+   seen in the expression is caught: a local array, a value parameter
+   that is one, an array literal or a temporary, or a slice of one, a
+   field or an element of one included; x.frame says so, set where the
+   variable is named and kept through fields, elements and slices. *)
+proc notOfFrame(x: Item; t: ^Sym.Type): ERROR;
+begin
+    if (t^.form = Sym.fSlice) and x.frame then
+        return Scan.markHelp(x.pos, "can't return a slice of the procedure's own frame",
+            "it is gone once the procedure returns: take the array as a var parameter, or fill a buffer the caller gives");
+    end;
+    return nil;
+end;
+
 proc returnValue*(var x: Item): ERROR;
 begin
     if result = nil then return Scan.markAt(x.pos, "this procedure returns nothing"); end;
     try coerce(x, result);
+    try notOfFrame(x, result);
     if Sym.inTwoRegs(result) then try pushWords(x);
     elsif Sym.isAggregate(result) then
         (* a record literal made behind the hidden pointer is there already *)
@@ -1845,6 +1876,7 @@ end;
 proc returnField*(f: ^Sym.Obj; var x: Item): ERROR;
 begin
     try coerce(x, f^.typ);
+    try notOfFrame(x, f^.typ);
     if Sym.inTwoRegs(result) then try value(x);
     elsif Sym.isScalar(f^.typ) then
         try value(x);

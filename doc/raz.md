@@ -1038,8 +1038,9 @@ as a variable of its type starts (section 4).
 
 A slice returned must not point into the procedure's own frame, which
 is gone once it returns. It is an error to return, as a slice, a local
-array, a value parameter that is an array, or an array literal, or a
-slice of one, a field or an element of one included:
+array, a value parameter that is an array, an array literal, or an
+array a call returns, or a slice of one, a field or an element of one
+included:
 
 ```
 proc short(h: Hex): []U8;      (* Hex = [64]U8 *)
