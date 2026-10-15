@@ -336,11 +336,15 @@ what it writes to the fd is typed, and what the programs on the
 terminal write it reads.
 
 `spawn` starts the program at `p.path`, with `p.args` as its
-arguments, the first being its name. Its environment is this
+arguments, the first being its name. A `p.path` without a `/` is
+looked for as a shell looks for a command, and as C's `execvp` does:
+in each directory of this program's `PATH` in turn, an empty one being
+the working directory, or of `/bin:/usr/bin` if `PATH` is unset or
+empty; the first that runs is the program. Its environment is this
 program's with each `NAME=value` of `p.env` added or put in place of
 the old value, or, if `p.onlyEnv`, `p.env` alone. It starts in
 `p.dir`. Its standard input, output and error are `p.fds`; a 0 gives
-it this program's own, so `{path: "/bin/ls", args: ["ls"]}` runs
+it this program's own, so `{path: "ls", args: ["ls"]}` runs
 `ls` as a shell runs it, with every other field zero. It gets no
 other open file, every signal does what it does at first, and none
 is blocked. If `p.tty` is a pseudo-terminal's fd, the program starts a

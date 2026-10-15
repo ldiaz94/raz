@@ -1060,14 +1060,51 @@ begin
     return INT(g);
 end;
 
-(* Starts the program p describes: its process id, or minus an errno.
-   A program that can't be started ends with status 127. Every signal
-   is blocked from the fork until the program has its own: its group,
-   its terminal's foreground, and signals as they are at first. *)
+(* Where spawn looks for a program named without a /, if PATH is unset
+   or empty: glibc's execvp looks in these. *)
+const defaultPath = "/bin:/usr/bin";
+
+(* Runs the program at name, as execve does; or, for a name without a
+   /, the first program of that name in the directories of search, as
+   execvp does: each in turn, an empty one being the working directory.
+   It returns only if none could be run. It runs in spawn's child, after
+   the fork, so it takes no memory: each path is made in buf. *)
+proc exec(name, search, buf: []U8; argv, envp: ^^U8);
+var dir: []U8; i, j, n: INT;
+begin
+    i := 0;
+    while (i < LEN(name)) and (name[i] # '/') do INC(i); end;
+    if (i < LEN(name)) or (LEN(name) = 0) then
+        if cstr(name, buf) then _ := SYSCALL(59, ADR(buf[0]), argv, envp); end;   (* execve *)
+        return;
+    end;
+    i := 0;
+    while i <= LEN(search) do
+        j := i;
+        while (j < LEN(search)) and (search[j] # ':') do INC(j); end;
+        dir := search[i..j];
+        if LEN(dir) = 0 then dir := "."; end;
+        n := LEN(dir) + 1 + LEN(name);
+        if n < LEN(buf) then
+            COPY(buf, dir);
+            buf[LEN(dir)] := '/';
+            COPY(buf[LEN(dir) + 1..n], name);
+            buf[n] := 0;
+            _ := SYSCALL(59, ADR(buf[0]), argv, envp);    (* execve *)
+        end;
+        i := j + 1;
+    end;
+end;
+
+(* Starts the program p describes, found as exec says: its process id,
+   or minus an errno. A program that can't be started ends with status
+   127. Every signal is blocked from the fork until the program has its
+   own: its group, its terminal's foreground, and signals as they are
+   at first. *)
 proc spawn*(p: Program): INT;
 var
     a, dir: [4096]U8; name: [32]U8; dfl: [4]U64;   (* struct sigaction: SIG_DFL *)
-    argv: ^^U8; none: ^U8; all, old, empty: U64; size, pid, n, i, fd, g: INT;
+    argv: ^^U8; none: ^U8; all, old, empty: U64; size, pid, n, i, fd, g: INT; search: []U8;
 begin
     if not cstr(p.path, a) or not cstr(p.dir, dir) then return -36; end;   (* ENAMETOOLONG *)
     if p.tty # 0 then
@@ -1087,6 +1124,8 @@ begin
         argv, size := argsAndEnv(p.args, p.env, ARGV() + (ARGC() + 1));
     end;
     if argv = nil then return -12; end;                 (* ENOMEM *)
+    search := env("PATH");                              (* read here, before the fork *)
+    if LEN(search) = 0 then search := defaultPath; end;
     all := 0FFFFFFFFFFFFFFFFH;
     _ := SYSCALL(14, 2, ADR(all), ADR(old), 8);         (* rt_sigprocmask: SIG_SETMASK *)
     pid := SYSCALL(57);                                 (* fork *)
@@ -1109,7 +1148,7 @@ begin
         _ := SYSCALL(436, 3, 0FFFFFFFFH, 0);            (* close_range: every fd from 3 *)
         for i := 1 to 64 do _ := SYSCALL(13, i, ADR(dfl), 0, 8); end;   (* rt_sigaction *)
         _ := SYSCALL(14, 2, ADR(empty), 0, 8);          (* no signal blocked *)
-        _ := SYSCALL(59, ADR(a), argv, argv + (LEN(p.args) + 1));   (* execve *)
+        exec(p.path, search, a, argv, argv + (LEN(p.args) + 1));
         _ := SYSCALL(231, 127);                         (* exit *)
     end;
     if (pid > 0) and (p.tty = 0) then
@@ -1268,6 +1307,13 @@ begin
     r, st, c := wait(-1, true);
     if r # -10 then exit(2); end;                   (* ECHILD: none left *)
     child := spawn({path: "/no/such/program", args: ["x"]});
+    r, st, c := wait(child, true);
+    if (r # child) or (st # exited) or (c # 127) then exit(2); end;
+    (* a name without a / is looked for along PATH *)
+    child := spawn({path: "sh", args: ["sh", "-c", "exit 4"]});
+    r, st, c := wait(child, true);
+    if (r # child) or (st # exited) or (c # 4) then exit(2); end;
+    child := spawn({path: "no-such-program-on-path", args: ["x"]});
     r, st, c := wait(child, true);
     if (r # child) or (st # exited) or (c # 127) then exit(2); end;
 
