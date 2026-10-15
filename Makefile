@@ -149,22 +149,33 @@ uninstall:
 # A release's tarball, build/raz-V-linux-x86_64.tar.gz: raz, the lib/
 # it reads beside itself, the tools a program's make may build (the
 # formatter, Doc and the Scan they share) and the manual pages, V being what raz
-# --version says. It is made of the checkout in TREE, this one unless
-# given: CI packs the tag it checked out, and site/build.py the latest
-# tag, which it checks out apart.
-TREE = .
+# --version says. It is made of the commit REV, HEAD unless given: CI
+# packs the tag it checked out, and site/build.py each tag it lacks.
+#
+# The tarball is the same, byte for byte, wherever it is made, so that
+# its SHA-256 can be checked against GitHub's or the website's. raz is
+# built in a checkout at a fixed place, DIST, since the debugging
+# information names the directory it was built in; the archive gives
+# every file the commit's time, owner 0 and plain modes, in order of
+# name, and gzip leaves out its own date.
+REV = HEAD
+DIST = /tmp/raz-dist
 
 dist:
-	$(MAKE) -C $(TREE) raz man
-	v=$$($(TREE)/raz --version | sed 's/^raz \([^,]*\),.*/\1/'); \
+	rm -rf $(DIST) && git worktree prune && git worktree add -q --detach $(DIST) $(REV)
+	$(MAKE) -C $(DIST) raz man
+	v=$$($(DIST)/raz --version | sed 's/^raz \([^,]*\),.*/\1/'); \
 	d=raz-$$v-linux-x86_64; \
 	rm -rf build/$$d && mkdir -p build/$$d/man && \
-	cp -r $(TREE)/raz $(TREE)/lib $(TREE)/LICENSE $(TREE)/README.md build/$$d && \
-	mkdir build/$$d/tools && cp $(TOOLS:%=$(TREE)/tools/%.raz) build/$$d/tools && \
-	cp $(TREE)/doc/raz.1 $(TREE)/doc/raz.7 $(TREE)/doc/raz-tutorial.7 \
-	    $(TREE)/build/raz-lib.3 build/$$d/man && \
-	tar czf build/$$d.tar.gz -C build $$d && rm -rf build/$$d && \
-	echo build/$$d.tar.gz
+	cp -r $(DIST)/raz $(DIST)/lib $(DIST)/LICENSE $(DIST)/README.md build/$$d && \
+	mkdir build/$$d/tools && cp $(TOOLS:%=$(DIST)/tools/%.raz) build/$$d/tools && \
+	cp $(DIST)/doc/raz.1 $(DIST)/doc/raz.7 $(DIST)/doc/raz-tutorial.7 \
+	    $(DIST)/build/raz-lib.3 build/$$d/man && \
+	tar -cf - --format=gnu --sort=name --mtime=@$$(git log -1 --format=%ct $(REV)) \
+	    --owner=0 --group=0 --numeric-owner --mode=a+rX,u+w,go-w \
+	    -C build $$d | gzip -9n > build/$$d.tar.gz && \
+	rm -rf build/$$d && echo build/$$d.tar.gz
+	git worktree remove --force $(DIST)
 
 # The website, plain files in site/public/: its home page, the tour
 # "Raz, Set, Go" (whose programs are run here, so the output shown is

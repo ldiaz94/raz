@@ -340,10 +340,11 @@ def build_download():
     with its SHA-256, and /download/latest leading to the newest; a list
     of (version, file name, SHA-256), oldest first. A program's CI can
     fetch the version it was written for by its name, so none is ever
-    taken away. Each is made of its tag's own checkout, not of the tree
+    taken away. Each is made of its tag by make dist, not of the tree
     at hand. One already in public/download/ is kept as it is, never
-    made again: a new one would differ in its dates, and so its SHA-256,
-    which a program's CI may check."""
+    made again: those before 0.14.0 were made before make dist made the
+    same tarball each time, so a new one would differ, and so its
+    SHA-256, which a program's CI may check."""
     git = lambda *a: subprocess.run(("git", "-C", ROOT) + a, capture_output=True,
                                     text=True, check=True).stdout.strip()
     releases = []
@@ -351,13 +352,8 @@ def build_download():
         name = "raz-%s-linux-x86_64.tar.gz" % tag[1:]
         made = os.path.join(OUT, "download", name)
         if not os.path.exists(made):
-            tree = tempfile.mkdtemp()
-            try:
-                git("worktree", "add", "--detach", tree, tag)
-                subprocess.run(["make", "-s", "-C", ROOT, "dist", "TREE=" + tree],
-                               stdout=subprocess.DEVNULL, check=True)
-            finally:
-                git("worktree", "remove", "--force", tree)
+            subprocess.run(["make", "-s", "-C", ROOT, "dist", "REV=" + tag],
+                           stdout=subprocess.DEVNULL, check=True)
             shutil.copy(os.path.join(ROOT, "build", name), made)
         digest = hashlib.sha256(open(made, "rb").read()).hexdigest()
         write("download/%s.sha256" % name, "%s  %s\n" % (digest, name))

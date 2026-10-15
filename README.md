@@ -220,6 +220,8 @@ tag's tarball to the website's `download/` (it builds it from the tag,
 apart from the tree at hand); commit `site/public/` and push to publish
 it. Every release since 0.7.1 stays there, at its own name, and is
 never made again, so that its SHA-256 holds: programs pin raz by it.
+From 0.15.0 on, `make dist` makes the same tarball, byte for byte,
+wherever it runs, so GitHub's and the website's agree.
 
 A version of the report is named by its month and a count; the report's
 last section says what each version changed.
