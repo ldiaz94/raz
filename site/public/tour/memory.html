@@ -159,7 +159,7 @@ a small arena ran out, and said so
 <h2>Buffers that grow</h2>
 <p><code>Buf</code> is a growable byte buffer; like everything else it takes the allocator it grows from. It is what the program uses to build a string of unknown length.</p>
 <div class="file"><span>Build.raz</span></div><pre class="code"><code><span class="kw">module</span> Build;
-<span class="kw">import</span> Out, Buf, Heap;
+<span class="kw">import</span> Out, Buf, Heap, Str;
 
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> b: Buf.Buf; i: <span class="ty">INT</span>;
@@ -173,12 +173,21 @@ a small arena ran out, and said so
     <span class="kw">end</span>;
     Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
     Out.int(b.len); Out.str(<span class="string">&quot; bytes\n&quot;</span>);
+    Buf.reset(<span class="ty">ADR</span>(b));
+    Str.join(<span class="ty">ADR</span>(b), [<span class="string">&quot;red&quot;</span>, <span class="string">&quot;green&quot;</span>, <span class="string">&quot;blue&quot;</span>], <span class="string">&quot;, &quot;</span>);
+    Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
+    Buf.reset(<span class="ty">ADR</span>(b));
+    Str.replace(<span class="ty">ADR</span>(b), <span class="string">&quot;a-b-c&quot;</span>, <span class="string">&quot;-&quot;</span>, <span class="string">&quot; and &quot;</span>);
+    Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Build.</code></pre>
 <pre class="output"><code>item 1,item 2,item 3,item 4,item 5,
 35 bytes
+red, green, blue
+a and b and c
 </code></pre>
+<p><code>Str.join</code> and <code>Str.replace</code> build into a <code>Buf</code> too: the parts with a separator between them, or a string with one text replaced by another wherever it is.</p>
 <h2>Pages</h2>
 <p>Under the allocators are pages from the system: <code>Mem.pages(size)</code> gives zeroed memory in whole pages, or <code>nil</code>, and <code>Mem.unmap</code> gives it back. Most programs never need to call it directly.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="variants.html">&larr; Enumerations, sets, variants and match</a><a href="index.html">Contents</a><a class="next" href="errors.html">Errors &rarr;</a></div></article></div>
 </main>

@@ -70,6 +70,15 @@
     <span class="kw">end</span>;
 <span class="kw">end</span>;
 
+<span class="kw">proc</span> colour(name: []<span class="ty">U8</span>): Colour;
+<span class="kw">begin</span>
+    <span class="kw">match</span> name <span class="kw">of</span>
+    | <span class="string">&quot;red&quot;</span>, <span class="string">&quot;rose&quot;</span>: <span class="kw">return</span> red;
+    | <span class="string">&quot;green&quot;</span>: <span class="kw">return</span> green;
+    | <span class="kw">else</span>: <span class="kw">return</span> blue;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> shapes: [<span class="number">3</span>]Shape; i: <span class="ty">INT</span>; warm: Colours; c: Colour;
 <span class="kw">begin</span>
@@ -83,6 +92,7 @@
     <span class="kw">for</span> c := red <span class="kw">to</span> blue <span class="kw">do</span>
         <span class="kw">if</span> c <span class="kw">in</span> warm <span class="kw">then</span> Out.int(<span class="ty">I64</span>(c)); Out.ln; <span class="kw">end</span>;
     <span class="kw">end</span>;
+    Out.int(<span class="ty">I64</span>(colour(<span class="string">&quot;rose&quot;</span>))); Out.int(<span class="ty">I64</span>(colour(<span class="string">&quot;green&quot;</span>))); Out.ln;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Shapes.</code></pre>
@@ -92,6 +102,7 @@
 digit letter other
 0
 1
+01
 </code></pre>
 <h2>Enumerations</h2>
 <p>An enumeration is a list of names, in order. They convert to their position and back, and a <code>for</code> loop can run over them. An integer that has no name at its position is a failed check, never a silent wrong value.</p>
@@ -261,7 +272,45 @@ word &#x27;hello&#x27;
   is space
 _ is letter
 y is letter
-</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="records.html">&larr; Records and pointers</a><a href="index.html">Contents</a><a class="next" href="memory.html">Memory and allocators &rarr;</a></div></article></div>
+</code></pre>
+<h2>Matching strings</h2>
+<p>On a string, <code>match</code> takes string constants, several to an arm if need be, and compares them as <code>=</code> does. It too must have an <code>| else:</code>. It is how a program reads a command, an option or a keyword without a chain of <code>elsif</code>s.</p>
+<div class="file"><span>Commands.raz</span></div><pre class="code"><code><span class="kw">module</span> Commands;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Op = (none, add, sub, show);
+
+<span class="kw">proc</span> op(word: []<span class="ty">U8</span>): Op;
+<span class="kw">begin</span>
+    <span class="kw">match</span> word <span class="kw">of</span>
+    | <span class="string">&quot;add&quot;</span>, <span class="string">&quot;plus&quot;</span>, <span class="string">&quot;+&quot;</span>: <span class="kw">return</span> add;
+    | <span class="string">&quot;sub&quot;</span>, <span class="string">&quot;minus&quot;</span>, <span class="string">&quot;-&quot;</span>: <span class="kw">return</span> sub;
+    | <span class="string">&quot;show&quot;</span>: <span class="kw">return</span> show;
+    | <span class="kw">else</span>: <span class="kw">return</span> none;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> total: <span class="ty">INT</span>; words: [<span class="number">6</span>][]<span class="ty">U8</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    words := [<span class="string">&quot;add&quot;</span>, <span class="string">&quot;plus&quot;</span>, <span class="string">&quot;sub&quot;</span>, <span class="string">&quot;show&quot;</span>, <span class="string">&quot;times&quot;</span>, <span class="string">&quot;-&quot;</span>];
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">5</span> <span class="kw">do</span>
+        <span class="kw">match</span> op(words[i]) <span class="kw">of</span>
+        | add: <span class="ty">INC</span>(total);
+        | sub: <span class="ty">DEC</span>(total);
+        | show: Out.int(total); Out.ln;
+        | none: Out.str(words[i]); Out.str(<span class="string">&quot;?\n&quot;</span>);
+        <span class="kw">end</span>;
+    <span class="kw">end</span>;
+    Out.int(total); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Commands.</code></pre>
+<pre class="output"><code>1
+times?
+0
+</code></pre>
+<p>Two labels that are the same string are an error, as two arms for one case are.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="records.html">&larr; Records and pointers</a><a href="index.html">Contents</a><a class="next" href="memory.html">Memory and allocators &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license.</footer>
 </body>

@@ -49,28 +49,28 @@
 <h2>What <code>Thread</code> does</h2>
 <p><code>Thread</code> is a module of raz, in the library, that says <code>link static;</code> and makes the <code>clone</code>, <code>mmap</code> and <code>futex</code> system calls itself. Here is its beginning, printed from the library:</p>
 <pre class="output term"><code><span class="cmd">$ sed -n &#x27;1,22p&#x27; $RAZLIB/Thread.linux-x86_64.raz</span>
-(* Threads for programs without C, made with the clone system call.
+(* Threads, made with the clone system call in a program without C.
    Each runs on a stack of its own, mmaped, with a page below it that
    can&#x27;t be touched, so that running off the stack stops the program
    rather than spoiling what lies below; above it, a little stack for
    Rt&#x27;s signal handlers, so that they can say so. join waits on the
    thread&#x27;s id, which the kernel clears, and wakes it for, when the
-   thread ends; a Mutex sleeps on a futex. A program with C threads
-   uses C&#x27;s, through pthread_create, and so can&#x27;t use these. *)
+   thread ends; a Mutex sleeps on a futex.
+
+   A program that uses C makes them with C&#x27;s pthread_create instead,
+   since C keeps things of each thread&#x27;s own, errno and its buffers,
+   that a thread clone makes wouldn&#x27;t have. The compiler&#x27;s entry point
+   finds cCreate and cJoin by name and stores C&#x27;s calls in them, as it
+   stores C&#x27;s exit in Rt.cExit; so this module uses no C itself, and
+   serves both kinds of program. C&#x27;s thread has a stack and a guard
+   page of C&#x27;s; the mapping here holds only the handlers&#x27; stack and
+   the Thread. *)
 module Thread;
 import Sys, Rt;
-link static;
 
 const
     Failed*: ERROR = &quot;can&#x27;t start a thread&quot;;
-    Stack = 1 shl 20;
-    Alt = 16384;     (* the signal handlers&#x27; stack *)
-    Page = 4096;
-    (* clone: share memory, files, signal handlers, the thread group;
-       write the id to tid, and clear it at the end *)
-    Flags = 350F00H;
-    FutexWait = 0;
-    FutexWake = 1;</code></pre>
+    Stack = 1 shl 20;</code></pre>
 <p>A program that imports it is therefore a static executable, and every thread it spawns is a Linux thread with a stack of its own, mapped with a page below it that can't be touched, so that running off the stack ends the program with a message and not with corruption.</p>
 <div class="file"><span>Hello.raz</span></div><pre class="code"><code><span class="kw">module</span> Hello;
 <span class="kw">import</span> Out, Thread;
@@ -112,8 +112,7 @@ Hello: ELF 64-bit LSB executable, statically linked, with debug_info, not stripp
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Mixed.</code></pre>
-<pre class="output term"><code><span class="cmd">$ raz Mixed.raz</span>
-raz: Thread says link static, but C uses C</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Mixed.raz</span></code></pre>
 <p>Which one you want depends on what the program is for. A program that calls a C library (a window system, a database client) uses C's threads, <code>C.pthread_create</code>, because the library may assume them. A program that talks only to the kernel uses <code>Thread</code>, and is a static executable.</p>
 <h2>The same promise for your own modules</h2>
 <p>The rule isn't special to <code>Thread</code>. A module of yours that makes <code>SYSCALL</code>s directly, or relies on being the only owner of signal handlers, or sets up its own stacks, says <code>link static;</code> too, and then the compiler keeps C away from it for you. The module is documenting a fact about itself, and the compiler checks it where the program is assembled.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="static.html">&larr; A program with no run time</a><a href="index.html">Contents</a><a class="next" href="lifecycle.html">Starting, ending, and signals &rarr;</a></div></article></div>

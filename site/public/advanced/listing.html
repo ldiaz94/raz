@@ -117,55 +117,61 @@ Dot.dot:
              0  push rbp
              1  mov rbp, rsp
              4  sub rsp, 64
-            11  mov [rbp - 48], rbx
+            11  mov [rbp - 56], rbx
             15  xor ebx, ebx
-            17  mov [rbp - 40], r12
+            17  mov [rbp - 48], r12
             21  xor r12d, r12d
-            24  mov [rbp - 32], rdx
-            28  mov [rbp - 24], rcx
+            24  mov [rbp - 40], r13
+            28  xor r13d, r13d
+            31  mov [rbp - 32], rdx
+            35  mov [rbp - 24], rcx
      7      for i := 0 to LEN(a) - 1 do
-            32  xor ebx, ebx
-            34  mov r8, rsi
-            37  lea r8, [r8 - 1]
-            41  mov [rbp - 56], r8
-            45  cmp rbx, [rbp - 56]
-            49  jg 146
-            55  jmp 68
-            60  nop
-            64  add rbx, 1
+            39  xor ebx, ebx
+            41  mov r8, rsi
+            44  lea r8, [r8 - 1]
+            48  mov r13, r8
+            51  cmp rbx, r13
+            54  jg 175
+            60  jmp 100
+            65  nop
+            73  nop
+            81  nop
+            89  nop
+            96  add rbx, 1
      8          sum := sum + a[i] * b[i];
-            68  cmp rbx, rsi
-            71  jae 159
-            77  mov r10, rbx
-            80  cmp r10, [rbp - 24]
-            84  jae 170
-            90  shl r10, 3
-            94  add r10, [rbp - 32]
-            98  mov r10, [r10]
-           101  mov r9, [rdi + rbx * 8]
-           105  imul r9, r10
-           109  add r12, r9
-           112  cmp rbx, [rbp - 56]
-           116  jl 64
-           122  cmp rbx, [rbp - 56]
-           126  je 146
-           132  add rbx, 1
-           136  cmp rbx, [rbp - 56]
-           140  jle 68
+           100  cmp rbx, rsi
+           103  jae 192
+           109  mov r10, rbx
+           112  cmp r10, [rbp - 24]
+           116  jae 203
+           122  shl r10, 3
+           126  add r10, [rbp - 32]
+           130  mov r10, [r10]
+           133  mov r9, [rdi + rbx * 8]
+           137  imul r9, r10
+           141  add r12, r9
+           144  cmp rbx, r13
+           147  jl 96
+           153  cmp rbx, r13
+           156  je 175
+           162  add rbx, 1
+           166  cmp rbx, r13
+           169  jle 100
     10      return sum;
-           146  mov rax, r12
+           175  mov rax, r12
     11  end;
-           149  mov rbx, [rbp - 48]
-           153  mov r12, [rbp - 40]
-           157  leave
-           158  ret
+           178  mov rbx, [rbp - 56]
+           182  mov r12, [rbp - 48]
+           186  mov r13, [rbp - 40]
+           190  leave
+           191  ret
      8          sum := sum + a[i] * b[i];
-           159  mov rax, rbx
-           162  mov rcx, rsi
-           165  call Rt.check0
-           170  mov rax, r10
-           173  mov rcx, [rbp - 24]
-           177  call Rt.check0</code></pre>
+           192  mov rax, rbx
+           195  mov rcx, rsi
+           198  call Rt.check0
+           203  mov rax, r10
+           206  mov rcx, [rbp - 24]
+           210  call Rt.check0</code></pre>
 <p>Read it from the top. <code>a</code> arrives in <code>rdi</code> and <code>rsi</code>, pointer and length; <code>b</code> in <code>rdx</code> and <code>rcx</code>, which the procedure saves in its frame. <code>i</code> and <code>sum</code> live in <code>rbx</code> and <code>r12</code>, which the procedure saves and restores because the convention says they belong to the caller. The loop's test is at the bottom, and its limit, <code>LEN(a) - 1</code>, is taken once.</p>
 <p>In the body, each index has a check: <code>cmp rbx, rsi; jae</code> compares <code>i</code> with <code>a</code>'s length in a single instruction and jumps to a stub at the end of the procedure, which calls <code>Rt.check0</code> with the values it needs to say what failed. When the index is in range, which is nearly always, the cost is one compare and a branch that isn't taken.</p>
 <h2>Taking the checks out</h2>
@@ -197,48 +203,54 @@ Dot2.dot:
              0  push rbp
              1  mov rbp, rsp
              4  sub rsp, 64
-            11  mov [rbp - 48], rbx
+            11  mov [rbp - 56], rbx
             15  xor ebx, ebx
-            17  mov [rbp - 40], r12
+            17  mov [rbp - 48], r12
             21  xor r12d, r12d
-            24  mov [rbp - 32], rdx
-            28  mov [rbp - 24], rcx
+            24  mov [rbp - 40], r13
+            28  xor r13d, r13d
+            31  mov [rbp - 32], rdx
+            35  mov [rbp - 24], rcx
      7      for i := 0 to LEN(a) - 1 do
-            32  xor ebx, ebx
-            34  mov r8, rsi
-            37  lea r8, [r8 - 1]
-            41  mov [rbp - 56], r8
-            45  cmp rbx, [rbp - 56]
-            49  jg 127
-            55  jmp 68
-            60  nop
-            64  add rbx, 1
+            39  xor ebx, ebx
+            41  mov r8, rsi
+            44  lea r8, [r8 - 1]
+            48  mov r13, r8
+            51  cmp rbx, r13
+            54  jg 156
+            60  jmp 100
+            65  nop
+            73  nop
+            81  nop
+            89  nop
+            96  add rbx, 1
      8          sum := sum + a[i] * b[i];
-            68  mov r10, rbx
-            71  shl r10, 3
-            75  add r10, [rbp - 32]
-            79  mov r10, [r10]
-            82  mov r9, [rdi + rbx * 8]
-            86  imul r9, r10
-            90  add r12, r9
-            93  cmp rbx, [rbp - 56]
-            97  jl 64
-           103  cmp rbx, [rbp - 56]
-           107  je 127
-           113  add rbx, 1
-           117  cmp rbx, [rbp - 56]
-           121  jle 68
+           100  mov r10, rbx
+           103  shl r10, 3
+           107  add r10, [rbp - 32]
+           111  mov r10, [r10]
+           114  mov r9, [rdi + rbx * 8]
+           118  imul r9, r10
+           122  add r12, r9
+           125  cmp rbx, r13
+           128  jl 96
+           134  cmp rbx, r13
+           137  je 156
+           143  add rbx, 1
+           147  cmp rbx, r13
+           150  jle 100
     10      return sum;
-           127  mov rax, r12
+           156  mov rax, r12
     11  end;
-           130  mov rbx, [rbp - 48]
-           134  mov r12, [rbp - 40]
-           138  leave
-           139  ret
+           159  mov rbx, [rbp - 56]
+           163  mov r12, [rbp - 48]
+           167  mov r13, [rbp - 40]
+           171  leave
+           172  ret
 <span class="cmd">$ raz -S Dot.raz | sed -n &#x27;/^Dot.dot:/,/^$/p&#x27; | wc -l</span>
-55
+61
 <span class="cmd">$ raz -S Dot2.raz | sed -n &#x27;/^Dot2.dot:/,/^$/p&#x27; | wc -l</span>
-44</code></pre>
+50</code></pre>
 <p>The compares, the branches and the stubs are gone. It is faster, and it is no longer safe: an index out of range reads or writes whatever memory it reaches, and what follows isn't defined. A program turns checks off where it has measured and is sure, and says so at the top of the module, where a reader can see it.</p>
 <h2>Comparing with C</h2>
 <p><code>make kernels</code> in the compiler's sources measures <code>test/bench</code>'s kernels against the same kernels written in Pascal and compiled by Free Pascal at <code>-O2</code>. The compiler's own guide, <code>doc/compiler.md</code>, gives the numbers and says what the compiler does and doesn't do. It is not the fastest code: it is code whose every instruction you can account for.</p>
@@ -246,18 +258,18 @@ Dot2.dot:
 <ul><li><code>gdb</code> finds procedures by name and lines by number, since the executable carries them: <code>break Dot.dot</code> and <code>list</code> work, and so does stepping a line at a time.</li><li><code>RAZ_PROFILE=1</code> samples the program every millisecond and says which procedures and lines took the time.</li><li><code>objdump -d</code> disassembles what is really in the file, if you want to see the bytes behind a listing.</li></ul>
 <pre class="output term"><code><span class="cmd">$ raz -o Dot Dot.raz</span>
 <span class="cmd">$ objdump -d -M intel --no-show-raw-insn Dot | sed -n &#x27;/&lt;Dot.dot&gt;:/,/ret/p&#x27; | head -12</span>
-0000000000403aa0 &lt;Dot.dot&gt;:
-  403aa0:	push   rbp
-  403aa1:	mov    rbp,rsp
-  403aa4:	sub    rsp,0x40
-  403aab:	mov    QWORD PTR [rbp-0x30],rbx
-  403aaf:	xor    ebx,ebx
-  403ab1:	mov    QWORD PTR [rbp-0x28],r12
-  403ab5:	xor    r12d,r12d
-  403ab8:	mov    QWORD PTR [rbp-0x20],rdx
-  403abc:	mov    QWORD PTR [rbp-0x18],rcx
-  403ac0:	xor    ebx,ebx
-  403ac2:	mov    r8,rsi</code></pre>
+0000000000403a60 &lt;Dot.dot&gt;:
+  403a60:	push   rbp
+  403a61:	mov    rbp,rsp
+  403a64:	sub    rsp,0x40
+  403a6b:	mov    QWORD PTR [rbp-0x38],rbx
+  403a6f:	xor    ebx,ebx
+  403a71:	mov    QWORD PTR [rbp-0x30],r12
+  403a75:	xor    r12d,r12d
+  403a78:	mov    QWORD PTR [rbp-0x28],r13
+  403a7c:	xor    r13d,r13d
+  403a7f:	mov    QWORD PTR [rbp-0x20],rdx
+  403a83:	mov    QWORD PTR [rbp-0x18],rcx</code></pre>
 <p>The listing is what the encoder meant; <code>objdump</code> is what the processor will read. They tell the same story.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="syscalls.html">&larr; System calls</a><a href="index.html">Contents</a><a class="next" href="volatile.html">Volatile &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license.</footer>

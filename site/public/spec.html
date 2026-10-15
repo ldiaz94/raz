@@ -38,7 +38,7 @@
 <p>raz is a small systems language, first made for x86-64 Linux. A raz program can lay a record over a device’s registers, read and write a device’s memory exactly as written, take part in lock-free algorithms, make system calls and call C libraries. It has no garbage collector and no hidden run time: what the program does is what its text says.</p>
 <p>This is the first volume of the report: the language, what an implementation chooses, and the grammar. The second, <code>doc/raz-lib.md</code>, is the library, which sections 3 and 10 and appendix A name.</p>
 <p>This report defines the language. It is short on purpose. Whatever it doesn’t allow, raz doesn’t have.</p>
-<p>This is version 2026-10.23 of the report; section 11 says where each version’s changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>.</p>
+<p>This is version 2026-10.25 of the report; section 11 says where each version’s changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>. 2026-10.25 is a fourth, for strings: raw strings, which may run over lines and may be indented with the code around them (section 2), and <code>match</code> on a string (section 7.4); it breaks no program.</p>
 <p>The language is frozen, softly, from this version on: it changes only to mend a defect, and its library grows only by what breaks no program written for it. What anyone wishes it had waits on a list, for a later thaw.</p>
 <h1 id="a-first-look">1. A first look</h1>
 <pre><code>module Hello;
@@ -65,7 +65,18 @@ while xor</code></pre>
 <p>An integer is an untyped constant, which takes the type it is used as, up to the largest <code>I64</code>. A hexadecimal number above that, such as <code>0FFFFFFFFFFFFFFFFH</code>, has type <code>U64</code>: so <code>-1</code> never fits a <code>U64</code>, and the big number goes nowhere else without a conversion. Arithmetic on untyped constants doesn’t wrap: a result beyond the <code>I64</code>s, such as <code>9223372036854775807 + 1</code>, is an error.</p>
 <p>A real is an untyped constant too. It is read as the nearest <code>F64</code> (a tie goes to the even one), and takes <code>F32</code> or <code>F64</code>, whichever it is used as: an <code>F32</code> is the nearest to that <code>F64</code>. Where nothing says which, it is an <code>F64</code>. A real never becomes an integer, nor an integer a real, without a conversion: <code>x := 1;</code> is an error for <code>x: F64</code>, and <code>x := 1.0;</code> is right.</p>
 <p><strong>Characters.</strong> <code>'a'</code> is the code point of one character, an integer: <code>'a'</code> is 97 and <code>'é'</code> is 233.</p>
-<p><strong>Strings.</strong> <code>"héllo\n"</code> is a sequence of bytes, the UTF-8 of its text: <code>"é"</code> is the two bytes 0C3H, 0A9H. Both characters and strings take the escapes <code>\n</code> (line feed), <code>\t</code> (tab), <code>\r</code> (carriage return), <code>\0</code> (zero), <code>\\</code>, <code>\'</code>, <code>\"</code>, <code>\u{H...}</code> (the code point with hexadecimal value H…, up to 10FFFFH, in a string its UTF-8) and, in strings only, <code>\xHH</code> (the byte with hexadecimal value HH, which needn’t make valid UTF-8). In an escape, the hexadecimal digits may be capitals or not. A character or a string ends on the line it starts on.</p>
+<p><strong>Strings.</strong> <code>"héllo\n"</code> is a sequence of bytes, the UTF-8 of its text: <code>"é"</code> is the two bytes 0C3H, 0A9H. Both characters and strings take the escapes <code>\n</code> (line feed), <code>\t</code> (tab), <code>\r</code> (carriage return), <code>\0</code> (zero), <code>\\</code>, <code>\'</code>, <code>\"</code>, <code>\u{H...}</code> (the code point with hexadecimal value H…, up to 10FFFFH, in a string its UTF-8) and, in strings only, <code>\xHH</code> (the byte with hexadecimal value HH, which needn’t make valid UTF-8). In an escape, the hexadecimal digits may be capitals or not. A character, or a string in double quotes, ends on the line it starts on.</p>
+<p><strong>Raw strings.</strong> <code>`C:\tmp\"a b"`</code> is a string written between backquotes: its bytes are the text between them as it stands, with no escapes, so <code>\</code> and <code>"</code> are themselves. A raw string may run over lines, and each line break in it is a line feed, part of the string; a carriage return in it is left out.</p>
+<p>A raw string whose opening backquote ends its line, and whose closing backquote has only blanks (spaces and tabs) before it on its line, is indented: the text is its lines between those two, each without the closing line’s blanks at its start, and each ending in a line feed. So a long text may stand at the indentation of the code around it:</p>
+<pre><code>proc usage;
+begin
+    Out.str(`
+        usage: tool [-v] file ...
+          -v  say what is done
+        `);
+end;</code></pre>
+<p>writes <code>"usage: tool [-v] file ...\n  -v  say what is done\n"</code>. Each line of an indented raw string must start with the closing line’s blanks, the same spaces and tabs in the same order, or it is an error; a line holding only blanks is an empty line of the text. A raw string that isn’t indented is the text between its backquotes as it stands.</p>
+<p>A raw string can’t hold a backquote; a text that needs one joins it with <code>+</code>, as <code>"`"</code>. Everywhere else a raw string is a string, as one in double quotes is.</p>
 <p>Messages give the line and the column, counted in characters (section 10).</p>
 <p><strong>Comments</strong> are <code>(*</code> … <code>*)</code> and nest. By convention, the comment just before an exported declaration is its documentation, and the one before <code>module</code> is the module’s.</p>
 <p><strong>Operators and delimiters:</strong></p>
@@ -495,7 +506,7 @@ Target     = Designator | &quot;_&quot; .</code></pre>
 | rect(w, h): area := w * h;
 | dot:        area := 0.0;
 end;</code></pre>
-<p><code>match</code> takes a variant, an enumeration or an integer type (a <code>U8</code> included); other types are an error. It runs the arm of the case <code>s</code> holds. An arm may name the case’s fields, in order, all of them; the names stand for those fields of <code>s</code> itself, so assigning to one changes <code>s</code>; if <code>s</code> isn’t a variable, they stand for the fields of a copy. An arm may also leave the fields unnamed. Every case must have an arm, and only one, unless there is an <code>| else:</code> arm, which must come last.</p>
+<p><code>match</code> takes a variant, an enumeration, an integer type (a <code>U8</code> included) or a string, a <code>[]U8</code>; other types are an error. It runs the arm of the case <code>s</code> holds. An arm may name the case’s fields, in order, all of them; the names stand for those fields of <code>s</code> itself, so assigning to one changes <code>s</code>; if <code>s</code> isn’t a variable, they stand for the fields of a copy. An arm may also leave the fields unnamed. Every case must have an arm, and only one, unless there is an <code>| else:</code> arm, which must come last.</p>
 <p><code>match</code> on an enumeration works the same way: each arm names one of the enumeration’s names, or several, separated by commas, for the arm to run when the value is any of them:</p>
 <pre><code>match op of
 | sPlus, sMinus: kind := additive;
@@ -509,7 +520,14 @@ end;</code></pre>
 | &#39;0&#39; .. &#39;9&#39;:     digit := true;
 | else:
 end;</code></pre>
-<p>A label is a constant, or <code>lo .. hi</code>, the constants from <code>lo</code> to <code>hi</code>, both included (unlike a slice, which leaves <code>hi</code> out; <code>lo</code> may not be above <code>hi</code>). Each must fit the integer’s type, and no value may be in two labels. An integer <code>match</code> must have an <code>| else:</code> arm, which may be empty. Whether an arm names a case or gives labels is set by the type matched: <code>| Max:</code> is a case of a variant or an enumeration, and a constant for an integer.</p>
+<p>A label is a constant, or <code>lo .. hi</code>, the constants from <code>lo</code> to <code>hi</code>, both included (unlike a slice, which leaves <code>hi</code> out; <code>lo</code> may not be above <code>hi</code>). Each must fit the integer’s type, and no value may be in two labels. An integer <code>match</code> must have an <code>| else:</code> arm, which may be empty.</p>
+<p><code>match</code> on a string, a <code>[]U8</code> or what converts to one (section 5.10), runs the arm one of whose labels it equals, as <code>=</code> compares strings (section 6.5):</p>
+<pre><code>match word of
+| &quot;add&quot;, &quot;plus&quot;: op := add;
+| &quot;sub&quot;:         op := sub;
+| else:          op := none;
+end;</code></pre>
+<p>A label is a string constant, and no two labels may be equal; there are no ranges. A <code>match</code> on a string must have an <code>| else:</code> arm, which may be empty. Whether an arm names a case or gives labels is set by the type matched: <code>| Max:</code> is a case of a variant or an enumeration, and a constant for an integer or a string.</p>
 <h2 id="order-of-evaluation">7.5 Order of evaluation</h2>
 <p>Operands, arguments and the designators of an assignment are evaluated from left to right, and the designators of an assignment before its right side: <code>a[i()] := g()</code> calls <code>i</code> and then <code>g</code>.</p>
 <h2 id="volatile">7.6 Volatile</h2>
@@ -680,7 +698,8 @@ number     = digit { digit }
            | digit { hexDigit } &quot;H&quot;
            | digit { digit } &quot;.&quot; digit { digit } [ &quot;E&quot; [ &quot;+&quot; | &quot;-&quot; ] digit { digit } ] .
 char       = &quot;&#39;&quot; ( character | escape ) &quot;&#39;&quot; .
-string     = &#39;&quot;&#39; { character | escape | &quot;\x&quot; anyHex anyHex } &#39;&quot;&#39; .
+string     = &#39;&quot;&#39; { character | escape | &quot;\x&quot; anyHex anyHex } &#39;&quot;&#39;
+           | &quot;`&quot; { rawChar } &quot;`&quot; .
 escape     = &quot;\n&quot; | &quot;\t&quot; | &quot;\r&quot; | &quot;\0&quot; | &quot;\\&quot; | &quot;\&#39;&quot; | &#39;\&quot;&#39;
            | &quot;\u{&quot; anyHex { anyHex } &quot;}&quot; .
 anyHex     = hexDigit | &quot;a&quot; .. &quot;f&quot; .
@@ -765,7 +784,7 @@ Params            = [ &quot;var&quot; ] ident { &quot;,&quot; ident } &quot;:&qu
 Results           = Type | &quot;(&quot; Type { &quot;,&quot; Type } &quot;)&quot; .
 ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
                              | &quot;var&quot; IdentDef &quot;:&quot; Type ) .</code></pre>
-<p><code>character</code> is any character but a line break, and in a string any but <code>"</code> and <code>\</code>, in a character any but <code>'</code> and <code>\</code>. A procedure argument of a generic module (section 3) is written as a <code>QualIdent</code>, which is a <code>Type</code> here. <code>...</code> comes last in a <code>Signature</code>, and only in an <code>extern</code>. An <code>Instruction</code> is written in the target’s assembly language (appendix A).</p>
+<p><code>character</code> is any character but a line break, and in a string any but <code>"</code> and <code>\</code>, in a character any but <code>'</code> and <code>\</code>. <code>rawChar</code> is any character but <code>`</code>, line breaks included. A procedure argument of a generic module (section 3) is written as a <code>QualIdent</code>, which is a <code>Type</code> here. <code>...</code> comes last in a <code>Signature</code>, and only in an <code>extern</code>. An <code>Instruction</code> is written in the target’s assembly language (appendix A).</p>
 <h1 id="the-library-volume-2">The library, volume 2</h1>
 <p>The second volume of the report on raz. The first, <code>doc/raz.md</code>, defines the language; this one defines the modules that come with it, and refers to the first’s sections by number, as “section 6.8”. Only the core binds every implementation (appendix A of the first volume); the rest is the standard library.</p>
 <p>Modules written in raz, in the compiler’s <code>lib</code> directory:</p>
@@ -783,7 +802,7 @@ ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
 </tr>
 <tr>
 <td><code>Sys</code></td>
-<td>system calls: <code>open</code>, <code>openRead</code>, <code>create</code>, <code>read</code>, <code>write</code>, <code>seek</code>, <code>close</code>, <code>mmap</code>, <code>munmap</code>, <code>isTerminal</code>, <code>yield</code>, <code>exit</code>; files and directories, <code>rename</code>, <code>remove</code>, <code>removeDir</code>, <code>makeDir</code>, <code>chmod</code>, <code>symlink</code>, <code>readLink</code>, <code>info</code>, <code>openDir</code>, <code>nextEntry</code>, <code>closeDir</code>; the terminal, <code>rawMode</code>, <code>restoreMode</code>, <code>termSize</code>, <code>ready</code>; the environment, <code>env</code>, <code>workDir</code>, <code>setWorkDir</code>; programs, pipes and signals; time, <code>clock</code>, <code>now</code>, <code>sleep</code>; <code>random</code>; and sockets. One file per target, and <code>Sys.raz</code> over the C library for the others</td>
+<td>system calls: <code>open</code>, <code>openRead</code>, <code>create</code>, <code>read</code>, <code>write</code>, <code>seek</code>, <code>close</code>, <code>mmap</code>, <code>munmap</code>, <code>isTerminal</code>, <code>yield</code>, <code>exit</code>; files and directories, <code>rename</code>, <code>remove</code>, <code>removeDir</code>, <code>makeDir</code>, <code>chmod</code>, <code>symlink</code>, <code>readLink</code>, <code>info</code>, <code>openDir</code>, <code>nextEntry</code>, <code>closeDir</code>; the terminal, <code>rawMode</code>, <code>restoreMode</code>, <code>termSize</code>, <code>ready</code>; the environment, <code>env</code>, <code>workDir</code>, <code>setWorkDir</code>; programs, pipes and signals; time, <code>clock</code>, <code>now</code>, <code>sleep</code>; <code>random</code>; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and <code>Sys.raz</code> over the C library for the others</td>
 </tr>
 <tr>
 <td><code>Out</code></td>
@@ -799,7 +818,7 @@ ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
 </tr>
 <tr>
 <td><code>Thread</code></td>
-<td>threads for a program without C: <code>spawn</code>, <code>join</code>, and <code>Mutex</code>; it says <code>link static</code></td>
+<td>threads, <code>spawn</code> and <code>join</code>, and <code>Mutex</code>, in any program; in one that uses C, made by C’s <code>pthread_create</code></td>
 </tr>
 <tr>
 <td><code>Mem</code></td>
@@ -815,7 +834,7 @@ ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
 </tr>
 <tr>
 <td><code>Str</code></td>
-<td>operations on <code>[]U8</code> strings: comparing, hashing, finding, UTF-8, reading a number</td>
+<td>operations on <code>[]U8</code> strings: comparing, hashing, finding, trimming and cutting, case, joining and replacing, UTF-8, numbers to and from text</td>
 </tr>
 <tr>
 <td><code>Bytes</code></td>
@@ -902,7 +921,7 @@ proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);   (* p(arg) in a new
 proc join*(t: ^Thread);         (* waits for t to end, then frees its stack *)
 proc lock*(m: ^Mutex);
 proc unlock*(m: ^Mutex);</code></pre>
-<p>A <code>Lock</code> is for short sections: a thread that finds it taken tries again, giving up the processor now and then. A <code>Mutex</code> sleeps. Each of <code>Thread</code>’s threads runs on a stack of its own, with a page below it that can’t be touched, so that running off the stack stops the program. A program that uses C makes its threads with C’s <code>pthread_create</code>, and so can’t use <code>Thread</code>.</p>
+<p>A <code>Lock</code> is for short sections: a thread that finds it taken tries again, giving up the processor now and then. A <code>Mutex</code> sleeps. Each of <code>Thread</code>’s threads runs on a stack of its own, with a page below it that can’t be touched, so that running off the stack stops the program with a message, as in the main thread. In a program that uses C, <code>Thread</code> makes its threads with C’s <code>pthread_create</code>, so that C’s library knows of them; in one that doesn’t, with the system’s own calls. The program is the same either way.</p>
 <pre><code>module Out;
 proc str*(s: []U8);
 proc char*(c: U8);
@@ -958,6 +977,7 @@ type
         tty*: INT;          (* a pseudo-terminal&#39;s fd, to start a session on; 0 for none *)
     end;
     Status* = (running, exited, killed, stopped);
+    Peer* = record ... end;   (* whom a datagram came from *)
 
 proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
 proc read*(fd: INT; buf: []U8): INT;    (* the bytes read; 0 at the end *)
@@ -1024,7 +1044,17 @@ proc connectUdp*(addr: []U8; port: INT): INT;
 proc listen*(path: []U8): INT;     (* a Unix socket made at path, taking connections *)
 proc listenTcp*(addr: []U8; port: INT): INT;
 proc accept*(fd: INT): INT;        (* the next connection, waiting for one *)
-proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)</code></pre>
+proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
+proc connectTcpWithin*(addr: []U8; port, ms: INT): INT;   (* connectTcp, or -110 (ETIMEDOUT) after ms *)
+proc listenUdp*(addr: []U8; port: INT): INT;   (* a socket of datagrams on port at addr *)
+proc receive*(fd: INT; buf: []U8): (INT, Peer);   (* the next datagram, in buf, and who sent it *)
+proc reply*(fd: INT; peer: Peer; s: []U8): INT;   (* s, as one datagram, to peer *)
+proc localPort*(fd: INT): INT;     (* the port the socket fd is bound to *)
+proc sendFds*(fd: INT; s: []U8; fds: []INT): INT;   (* send, and with it fds, to a Unix socket *)
+proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);   (* read, and the fds that came with it *)
+
+proc memFile*(size: INT): INT;     (* a file of size zero bytes, in memory, with no name: its fd *)
+proc mapFile*(fd, size: INT): ^U8; (* the first size bytes of fd, shared; munmap gives them back; or nil *)</code></pre>
 <p><code>info</code> follows a symbolic link: <code>size</code>, <code>dir</code> and <code>file</code> are those of what it names, and <code>symlink</code> says the path was a link, so that a program walking a tree can choose not to follow one back up it. A link to nothing is <code>-ENOENT</code>, as a missing file is. <code>file</code> lets a walk open only what holds data: opening a pipe would wait for a program to write to it.</p>
 <p><code>nextEntry</code> gives every name in the directory except <code>.</code> and <code>..</code>, in no particular order. <code>rawMode</code> turns off what the terminal does with keys before the program reads them (echo, line editing, signals, flow control), and NL to CR NL on output. A program that turns it on restores it before it ends: <code>Rt.atExit</code> is the place.</p>
 <p><strong>Files.</strong> <code>open</code> gives a file for what <code>how</code> asks: <code>reading</code>, <code>writing</code> or both; <code>creating</code> it if it is missing, readable by all and writable by its owner; with <code>exclusive</code>, failing with -17 (EEXIST) if it is there, as a program does that makes a lock or a file of its own; <code>truncating</code> it to nothing; <code>appending</code>, each write going to its end, however other programs write it too. <code>seek</code> moves to <code>pos</code> from the start of the file, or from its end if <code>fromEnd</code>, where a negative <code>pos</code> reads back from the end. <code>Info.mtime</code> is what a program checks to see whether a file changed under it; <code>Info.mode</code> holds the nine bits of <code>rwxrwxrwx</code>, and <code>chmod</code> sets them, 1EDH (755) for a program, 1A4H (644) for data.</p>
@@ -1034,20 +1064,40 @@ proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a sig
 <p><code>wait</code> waits for the program <code>pid</code> to change, or for any of this program’s if <code>pid</code> is -1, and says which one, and how: <code>exited</code>, with its exit status; <code>killed</code>, with the number of the signal that ended it; or <code>stopped</code>, by Ctrl-Z or a signal, with the signal’s number. Without <code>block</code> it doesn’t wait, and is 0 and <code>running</code> if no program changed. A program that has nothing to wait for is -10 (ECHILD). <code>kill</code> sends a program a signal, <code>sigTerm</code> to end it; to a group, if <code>pid</code> is minus its number.</p>
 <p><strong>Signals.</strong> <code>catch</code> takes the signals <code>sigs</code> away from what they would do, ending the program most of them, and gives an fd that is ready to read when one comes, so that a program waits for signals with <code>ready</code> and <code>readyOf</code> as it waits for keys or a server. <code>caught</code> gives each signal that came, in turn. A later <code>catch</code> adds to the signals caught and gives the same fd. Catching <code>sigKill</code> or <code>sigStop</code>, or the signals <code>Rt</code> reports, SIGSEGV and SIGFPE, is -22 (EINVAL). <code>ignore</code> makes a signal do nothing, as a shell ignores <code>sigTtou</code> so that it can take its terminal back, and <code>ignore(sig, false)</code> gives it back what it does at first. A program that <code>spawn</code> starts begins with neither.</p>
 <p><strong>Time.</strong> <code>clock</code> is for measuring how long something takes: it never goes back, and says nothing of the date. <code>now</code> is the date and time, which a person or the network may set back. <code>sleep</code> waits <code>ms</code> milliseconds.</p>
-<p><strong>Sockets.</strong> <code>connect</code> is for talking to a server on the same machine, an X server at <code>/tmp/.X11-unix/X0</code> say; <code>connectTcp</code> for one across the network, given its address as numbers, <code>"127.0.0.1"</code> or <code>"::1"</code>: turning a name into an address is a library’s work over these. <code>connectUdp</code> gives a socket of datagrams, each <code>send</code> one message to that address and each <code>read</code> one message from it, as a program asks a name server. What a socket receives comes by <code>read</code>, what it sends goes by <code>send</code>, and <code>close</code> ends it. <code>send</code> is <code>write</code> for a socket, except when the other end has closed it: <code>write</code> would stop the program with the signal SIGPIPE, where <code>send</code> returns -32 (EPIPE), so that a program learns its server has gone and can end as it wants. <code>listen</code> and <code>listenTcp</code> are the other side: a server’s socket, on <code>path</code>, which must not be there yet, or on <code>port</code> at <code>addr</code>, <code>"0.0.0.0"</code> or <code>"::"</code> for every address the machine has; <code>accept</code> gives each connection that comes, as a socket of its own.</p>
+<p><strong>Sockets.</strong> <code>connect</code> is for talking to a server on the same machine, an X server at <code>/tmp/.X11-unix/X0</code> say; <code>connectTcp</code> for one across the network, given its address as numbers, <code>"127.0.0.1"</code> or <code>"::1"</code>: turning a name into an address is a library’s work over these. <code>connectUdp</code> gives a socket of datagrams, each <code>send</code> one message to that address and each <code>read</code> one message from it, as a program asks a name server. What a socket receives comes by <code>read</code>, what it sends goes by <code>send</code>, and <code>close</code> ends it. <code>send</code> is <code>write</code> for a socket, except when the other end has closed it: <code>write</code> would stop the program with the signal SIGPIPE, where <code>send</code> returns -32 (EPIPE), so that a program learns its server has gone and can end as it wants. <code>listen</code> and <code>listenTcp</code> are the other side: a server’s socket, on <code>path</code>, which must not be there yet, or on <code>port</code> at <code>addr</code>, <code>"0.0.0.0"</code> or <code>"::"</code> for every address the machine has; <code>accept</code> gives each connection that comes, as a socket of its own. A server started on port 0 gets a port the system chooses, which <code>localPort</code> says, as a test does that must not take a port in use. <code>connectTcp</code> waits as long as the system does, minutes for a host that never answers; <code>connectTcpWithin</code> gives up after <code>ms</code> milliseconds, with -110 (ETIMEDOUT).</p>
+<p><code>listenUdp</code> is the server’s side of <code>connectUdp</code>: a socket of datagrams from anyone, as a name server has. <code>receive</code> gives the next datagram, at most <code>LEN(buf)</code> bytes of it, the rest lost, and a <code>Peer</code> that <code>reply</code> sends an answer to.</p>
+<p><strong>Passing files and sharing memory.</strong> A program can give another an open file over a Unix socket: <code>sendFds</code> sends <code>s</code>, at least one byte, and with it <code>fds</code>, at most 16, each a file the other program then has open too; <code>receiveFds</code> reads into <code>buf</code> as <code>read</code> does, puts the fds that came with it in <code>fds</code>, as many as there is room for, closing the rest, and says how many bytes and how many fds. Each is closed in a program exec starts. <code>memFile</code> makes a file that lives in memory, of <code>size</code> zeroed bytes, and <code>mapFile</code> maps it, or any file, so that what one program writes there another sees at once: so a program hands an X server or a Wayland compositor its pixels, by <code>sendFds</code> of a <code>memFile</code> both map, rather than by copying them down a socket.</p>
 <p><code>readyOf</code> waits on several file descriptors at once, as a program does that listens to a server and a terminal both; a descriptor at its end, or failed, counts as ready, since a read of it won’t wait. It looks at the first 64 of <code>fds</code>, and <code>connect</code> and <code>listen</code> take a path of at most 107 bytes, as <code>struct sockaddr_un</code> holds; a longer one is -36 (ENAMETOOLONG).</p>
 <p>A program that both reads from a descriptor and writes much to it, as a terminal writes what is pasted to its program while it reads what the program writes back, must not wait on either: the program may be waiting for its own writes to be read. <code>setBlocking(fd, false)</code> has a read or a write on <code>fd</code> that would wait return -11 (EAGAIN) at once, a write having written what there was room for; <code>readyFor</code> waits, as <code>readyOf</code> does, for something to read on any of <code>reads</code> or for room to write on any of <code>writes</code>. A descriptor in both is given once, when it is ready for either; the 64 it looks at are <code>reads</code>, then <code>writes</code>.</p>
 <p><strong>Strings, buffers and collections.</strong></p>
 <pre><code>module Str;
 proc cmp*(a, b: []U8): INT;           (* -1, 0 or 1 as a sorts before, with or after b, byte by byte *)
 proc eq*(a, b: []U8): BOOL;
+proc eqFold*(a, b: []U8): BOOL;       (* eq, an ASCII letter&#39;s capital and small the same *)
 proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);   (* s&#39;s bytes in memory from a; false if a has none *)
 proc hash*(s: []U8): U64;             (* FNV-1a, 64 bits *)
 proc find*(s, sub: []U8): INT;        (* where sub first starts in s, or -1 *)
+proc findLast*(s, sub: []U8): INT;    (* where sub last starts in s, or -1 *)
 proc hasPrefix*(s, p: []U8): BOOL;
+proc hasSuffix*(s, x: []U8): BOOL;
+proc trim*(s: []U8): []U8;            (* s without the spaces at either end *)
+proc trimLeft*(s: []U8): []U8;        (* s without the spaces at its start *)
+proc trimRight*(s: []U8): []U8;       (* s without the spaces at its end *)
+proc cut*(s, sep: []U8): ([]U8, []U8, BOOL);   (* what comes before the first sep, and after it *)
+proc field*(s: []U8): ([]U8, []U8);   (* the first run of bytes in s that aren&#39;t spaces, and what follows it *)
+proc lower*(s: []U8);                 (* s&#39;s ASCII capitals made small, in place *)
+proc upper*(s: []U8);                 (* s&#39;s ASCII small letters made capitals, in place *)
+proc join*(b: ^Buf.Buf; parts: [][]U8; sep: []U8);   (* the parts added to b, sep between each two *)
+proc replace*(b: ^Buf.Buf; s, old, new: []U8);       (* s added to b, with new for each old in it *)
 proc encode*(c: I32): ([4]U8, INT);   (* c in UTF-8: its bytes, and how many *)
 proc decode*(s: []U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
+proc decodeLast*(s: []U8): (I32, INT);   (* the character s ends with, and its length in bytes *)
+proc next*(s: []U8; i: INT): (I32, INT);  (* the character at i, and where the next starts; -1 at the end *)
+proc valid*(s: []U8): BOOL;           (* s is UTF-8, every character rightly spelled *)
+proc chars*(s: []U8): INT;            (* the characters in s, as decode reads them *)
 proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn&#39;t a number an I64 holds *)
+proc toHex*(s: []U8): (U64, BOOL);    (* s, in hexadecimal; false if it isn&#39;t a number a U64 holds *)
+proc fromInt*(n: I64): ([20]U8, INT); (* n in decimal: its bytes, and how many *)
 proc le*(s: []U8): U64;               (* s, at most 8 bytes, the first the lowest *)
 proc be*(s: []U8): U64;               (* s, at most 8 bytes, the first the highest *)
 proc putLE*(s: []U8; v: U64);         (* v into s, the lowest byte first *)
@@ -1117,12 +1167,30 @@ proc atan*(x: F64): F64;              (* from -pi/2 to pi/2 *)
 proc atan2*(y, x: F64): F64;          (* the angle of (x, y) from the x axis, from -pi to pi *)
 proc bits*(x: F64): U64;              (* the bits of x, as IEEE 754 lays them out *)
 proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
-proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)</code></pre>
+proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
+proc toReal*(s: []U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn&#39;t one *)</code></pre>
 <p>A <code>Buf</code>, a <code>List</code> and a <code>Map</code> take their memory from the allocator <code>init</code> gives them. <code>Fmt</code>’s format takes the next argument at each <code>{}</code>; <code>{{</code> and <code>}}</code> stand for <code>{</code> and <code>}</code>. A <code>Map</code> hashes and compares its keys with the procedures it is given: <code>import Count := Map([]U8, INT, Str.hash, Str.eq);</code>.</p>
-<p><code>Str</code> reads and writes UTF-8. <code>encode</code> writes a character, of at most 10FFFFH, in one to four bytes; a number that isn’t one becomes FFFDH, the character that stands for a wrong one. <code>decode</code> reads the first character of <code>s</code>, and gives FFFDH and 1 for a byte that doesn’t start one rightly, and 0 and 0 for an empty <code>s</code>. <code>toInt</code> reads a decimal number, with a <code>-</code> or <code>+</code> before it if any, and nothing else.</p>
+<p><code>Str</code> reads and writes UTF-8. <code>encode</code> writes a character, of at most 10FFFFH, in one to four bytes; a number that isn’t one becomes FFFDH, the character that stands for a wrong one. <code>decode</code> reads the first character of <code>s</code>, and gives FFFDH and 1 for a byte that doesn’t start one rightly, and 0 and 0 for an empty <code>s</code>: a continuation, a byte followed by too few continuations, a surrogate, a character beyond 10FFFFH or one spelled in more bytes than it needs. <code>decodeLast</code> reads the last character in the same way, to walk a string backwards. <code>valid</code> says that <code>decode</code> finds no such byte in <code>s</code>, and <code>chars</code> counts the characters, each such byte one. <code>next</code> walks a string a character at a time, as <code>decode</code> reads them: from 0, it gives the character at <code>i</code> and where the one after it starts, and 0 and -1 when <code>i</code> is at the end, or past it:</p>
+<pre><code>c, i := Str.next(s, 0);
+while i &gt;= 0 do
+    ...                               (* c is a character of s *)
+    c, i := Str.next(s, i);
+end;</code></pre>
+<p>A string is bytes, and <code>Str</code> takes no more of Unicode than UTF-8: <code>lower</code>, <code>upper</code> and <code>eqFold</code> change and match ASCII letters alone, and nothing says how wide a character is on a terminal, nor which spellings of a text are the same.</p>
+<p>A space, to <code>trim</code>, <code>trimLeft</code>, <code>trimRight</code> and <code>field</code>, is a blank, a tab, a line feed, a carriage return, a vertical tab or a form feed. <code>cut</code> gives what comes before the first <code>sep</code> in <code>s</code>, what comes after it, and <code>true</code>; or <code>s</code>, an empty string and <code>false</code> if <code>s</code> has no <code>sep</code>. <code>field</code> passes the spaces at the start of <code>s</code> and gives the bytes up to the next space or the end, and the rest of <code>s</code> from there; two empty strings if <code>s</code> holds only spaces. They take a string apart without memory of their own, each part a slice of <code>s</code>:</p>
+<pre><code>line, rest, more := Str.cut(text, &quot;\n&quot;);     (* the first line, and the others *)
+key, val, ok := Str.cut(line, &quot;=&quot;);
+w, rest := Str.field(line);                 (* the words of a line *)
+while LEN(w) &gt; 0 do
+    Out.str(w); Out.ln;
+    w, rest := Str.field(rest);
+end;</code></pre>
+<p><code>lower</code> and <code>upper</code> write <code>s</code>’s bytes, so they take a variable’s, not a string literal’s (section 5.10). <code>join</code> and <code>replace</code> add to a <code>Buf</code> as <code>Buf.str</code> does; an empty <code>old</code> adds <code>s</code> as it is.</p>
+<p><code>toInt</code> reads a decimal number, with a <code>-</code> or <code>+</code> before it if any, and nothing else. <code>toHex</code> reads hexadecimal digits, capitals or not, and nothing else: no sign, <code>0x</code> or <code>H</code>. <code>fromInt</code> writes a number as <code>Out.int</code> does, with a <code>-</code> if it is negative, its bytes the first of the 20 it gives.</p>
 <p><code>le</code> and <code>be</code> read an unsigned number of up to 8 bytes in a fixed order, little-endian or big-endian, whatever the machine’s own, and <code>putLE</code> and <code>putBE</code> write one; more than 8 bytes stops the program. They are how a file format or a network protocol is read and written:</p>
 <pre><code>len := U32(Str.le(header[4..8]));
 Str.putBE(packet[0..2], U64(port));</code></pre>
+<p><code>Math.toReal</code> reads a real as a constant is written (section 2), with a <code>-</code> or <code>+</code> before it if any, its point and the digits after it, or its exponent, left out if it has none, and <code>e</code> taken as <code>E</code>: <code>2</code>, <code>-0.5</code> and <code>1.5e-3</code> are reals to it. It gives the <code>F64</code> nearest the number, and <code>false</code> for anything else, or a number too big for an <code>F64</code>.</p>
 <p><code>Map.next</code> walks a map: from 0, it gives the next entry and the number to pass for the one after it, and -1 when there are no more. A walk sees each entry once if the map doesn’t change during it:</p>
 <pre><code>i, k, v := Names.next(ADR(names), 0);
 while i &gt;= 0 do

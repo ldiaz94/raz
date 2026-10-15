@@ -201,37 +201,45 @@ tag DATA, 5 bytes, checksum 214, valid: hello
 </code></pre>
 <p>The output is the same on a little-endian and a big-endian machine, because the bytes are written one at a time in the order the format says.</p>
 <h2>Numbers and text</h2>
-<p><code>Str.toInt</code> reads a decimal number with an optional sign and nothing else, and says whether it was one. <code>Fmt</code> goes the other way. <code>Str.encode</code> and <code>Str.decode</code> move between characters and UTF-8, as the first tour showed.</p>
+<p><code>Str.toInt</code> reads a decimal number with an optional sign and nothing else, and says whether it was one; <code>Str.toHex</code> reads hexadecimal digits, and <code>Math.toReal</code> a real, as a constant is written but with <code>e</code> for <code>E</code> too, to the nearest <code>F64</code> exactly. <code>Str.fromInt</code> goes the other way into an array of 20 bytes, with no allocator, and <code>Fmt</code> does the rest. <code>Str.encode</code> and <code>Str.decode</code> move between characters and UTF-8, as the first tour showed.</p>
 <div class="file"><span>Numbers.raz</span></div><pre class="code"><code><span class="kw">module</span> Numbers;
-<span class="kw">import</span> Out, Str;
+<span class="kw">import</span> Out, Str, Math, Fmt;
 
 <span class="comment">(* the sum of the numbers in a comma separated list, or -1 if any isn&#x27;t *)</span>
 <span class="kw">proc</span> total(s: []<span class="ty">U8</span>): <span class="ty">I64</span>;
-<span class="kw">var</span> start, i: <span class="ty">INT</span>; sum, n: <span class="ty">I64</span>; ok: <span class="ty">BOOL</span>;
+<span class="kw">var</span> part: []<span class="ty">U8</span>; sum, n: <span class="ty">I64</span>; ok, more: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
-    start := <span class="number">0</span>;
-    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(s) <span class="kw">do</span>
-        <span class="kw">if</span> (i = <span class="ty">LEN</span>(s)) <span class="kw">or</span> (s[i] = <span class="string">&#x27;,&#x27;</span>) <span class="kw">then</span>
-            n, ok := Str.toInt(s[start..i]);
-            <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> <span class="kw">return</span> -<span class="number">1</span>; <span class="kw">end</span>;
-            sum := sum + n;
-            start := i + <span class="number">1</span>;
-        <span class="kw">end</span>;
+    more := <span class="ty">true</span>;
+    <span class="kw">while</span> more <span class="kw">do</span>
+        part, s, more := Str.cut(s, <span class="string">&quot;,&quot;</span>);
+        n, ok := Str.toInt(part);
+        <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> <span class="kw">return</span> -<span class="number">1</span>; <span class="kw">end</span>;
+        sum := sum + n;
     <span class="kw">end</span>;
     <span class="kw">return</span> sum;
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
+<span class="kw">var</span> u: <span class="ty">U64</span>; x: <span class="ty">F64</span>; ok: <span class="ty">BOOL</span>; digits: [<span class="number">20</span>]<span class="ty">U8</span>; k: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     Out.int(total(<span class="string">&quot;10,20,-5,+7&quot;</span>)); Out.ln;
     Out.int(total(<span class="string">&quot;10,x,20&quot;</span>)); Out.ln;
     Out.int(total(<span class="string">&quot;10,,20&quot;</span>)); Out.ln;
+    u, ok := Str.toHex(<span class="string">&quot;ff00&quot;</span>);
+    <span class="kw">if</span> ok <span class="kw">then</span> Out.hex(u, <span class="number">1</span>); Out.ln; <span class="kw">end</span>;
+    x, ok := Math.toReal(<span class="string">&quot;-1.5e3&quot;</span>);
+    <span class="kw">if</span> ok <span class="kw">then</span> Fmt.print(<span class="string">&quot;{}\n&quot;</span>, [Fmt.real(x, <span class="number">1</span>)]); <span class="kw">end</span>;
+    digits, k := Str.fromInt(-<span class="number">9223372036854775807</span> - <span class="number">1</span>);
+    Out.str(digits[<span class="number">0</span>..k]); Out.ln;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Numbers.</code></pre>
 <pre class="output"><code>32
 -1
 -1
+FF00
+-1500.0
+-9223372036854775808
 </code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="fmt.html">&larr; Output and formatting</a><a href="index.html">Contents</a><a class="next" href="collections.html">Lists, maps and sorting &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license.</footer>

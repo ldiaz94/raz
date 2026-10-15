@@ -51,7 +51,7 @@
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> a: [<span class="number">5</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>; s: []<span class="ty">U8</span>; name: [<span class="number">8</span>]<span class="ty">U8</span>;
+<span class="kw">var</span> a: [<span class="number">5</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>; s, val: []<span class="ty">U8</span>; name: [<span class="number">8</span>]<span class="ty">U8</span>; ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4</span> <span class="kw">do</span> a[i] := i * i; <span class="kw">end</span>;
     Out.int(sum(a)); Out.ln;        <span class="comment">(* the array, as a slice *)</span>
@@ -60,9 +60,15 @@
     Out.str(s[<span class="number">7</span>..<span class="ty">LEN</span>(s)]); Out.ln;
     <span class="kw">if</span> s[<span class="number">0</span>..<span class="number">5</span>] = <span class="string">&quot;hello&quot;</span> <span class="kw">then</span> Out.str(<span class="string">&quot;it says hello\n&quot;</span>); <span class="kw">end</span>;
     Out.int(Str.find(s, <span class="string">&quot;world&quot;</span>)); Out.ln;
+    _, val, ok := Str.cut(<span class="string">&quot; size = 42 &quot;</span>, <span class="string">&quot;=&quot;</span>);
+    <span class="kw">if</span> ok <span class="kw">then</span> Out.str(Str.trim(val)); Out.ln; <span class="kw">end</span>;
     name := <span class="string">&quot;raz&quot;</span>;                  <span class="comment">(* a copy, the program&#x27;s own *)</span>
     name[<span class="number">0</span>] := <span class="string">&#x27;R&#x27;</span>;
     Out.str(name[<span class="number">0</span>..<span class="number">3</span>]); Out.ln;
+    Out.str(<span class="string">`
+        C:\tmp\ &quot;as it stands&quot;
+          over lines
+        `</span>);
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Slices.</code></pre>
@@ -71,7 +77,10 @@
 world
 it says hello
 7
+42
 Raz
+C:\tmp\ &quot;as it stands&quot;
+  over lines
 </code></pre>
 <h2>Arrays</h2>
 <p><code>[5]INT</code> is an array: five <code>INT</code>s in a row, copied when it is assigned or passed. Its length is part of its type, so <code>[5]INT</code> and <code>[6]INT</code> are different types, and <code>LEN(a)</code> of an array is a constant. Array literals are written in brackets, and need a type from the place they are used.</p>
@@ -152,7 +161,7 @@ they differ now
 <pre class="output"><code>1 1 2 3 4 5 
 </code></pre>
 <h2>Strings</h2>
-<p>A string is a slice of bytes, <code>[]U8</code>, in UTF-8, and a string constant's bytes are constant. A <code>[8]U8</code> made from one is a copy you can change. Arrays and slices of integers compare with <code>=</code> and <code>#</code>, so strings do too. <code>Str</code> has the rest: ordering, finding, hashing, prefixes, UTF-8 and reading a number.</p>
+<p>A string is a slice of bytes, <code>[]U8</code>, in UTF-8, and a string constant's bytes are constant. A <code>[8]U8</code> made from one is a copy you can change. Arrays and slices of integers compare with <code>=</code> and <code>#</code>, so strings do too. <code>Str</code> has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case, UTF-8, and numbers to and from text.</p>
 <div class="file"><span>Words.raz</span></div><pre class="code"><code><span class="kw">module</span> Words;
 <span class="kw">import</span> Out, Str;
 
@@ -164,8 +173,12 @@ they differ now
     <span class="kw">if</span> s[<span class="number">0</span>..<span class="number">5</span>] = <span class="string">&quot;hello&quot;</span> <span class="kw">then</span> Out.str(<span class="string">&quot;it says hello\n&quot;</span>); <span class="kw">end</span>;
     Out.int(Str.find(s, <span class="string">&quot;world&quot;</span>)); Out.ln;          <span class="comment">(* 7 *)</span>
     Out.int(Str.find(s, <span class="string">&quot;xyz&quot;</span>)); Out.ln;            <span class="comment">(* -1 *)</span>
+    Out.int(Str.findLast(<span class="string">&quot;abcabc&quot;</span>, <span class="string">&quot;bc&quot;</span>)); Out.ln;  <span class="comment">(* 4 *)</span>
     <span class="kw">if</span> Str.hasPrefix(s, <span class="string">&quot;hell&quot;</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;prefix\n&quot;</span>); <span class="kw">end</span>;
+    <span class="kw">if</span> Str.hasSuffix(s, <span class="string">&quot;world&quot;</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;suffix\n&quot;</span>); <span class="kw">end</span>;
     Out.int(Str.cmp(<span class="string">&quot;apple&quot;</span>, <span class="string">&quot;banana&quot;</span>)); Out.ln;    <span class="comment">(* -1 *)</span>
+    <span class="kw">if</span> Str.eqFold(<span class="string">&quot;RAZ&quot;</span>, <span class="string">&quot;raz&quot;</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;the same, but for case\n&quot;</span>); <span class="kw">end</span>;
+    Out.str(<span class="string">&quot;[&quot;</span>); Out.str(Str.trim(<span class="string">&quot;  padded \t\n&quot;</span>)); Out.str(<span class="string">&quot;]\n&quot;</span>);
 
     n, ok := Str.toInt(<span class="string">&quot;-1234&quot;</span>);
     <span class="kw">if</span> ok <span class="kw">then</span> Out.int(n + <span class="number">1</span>); Out.ln; <span class="kw">end</span>;
@@ -175,6 +188,8 @@ they differ now
     name := <span class="string">&quot;raz&quot;</span>;                  <span class="comment">(* a copy, the program&#x27;s own *)</span>
     name[<span class="number">0</span>] := <span class="string">&#x27;R&#x27;</span>;
     Out.str(name[<span class="number">0</span>..<span class="number">3</span>]); Out.ln;
+    Str.upper(name[<span class="number">0</span>..<span class="number">3</span>]);          <span class="comment">(* in place: name is a variable *)</span>
+    Out.str(name[<span class="number">0</span>..<span class="number">3</span>]); Out.ln;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Words.</code></pre>
@@ -182,48 +197,119 @@ they differ now
 it says hello
 7
 -1
+4
 prefix
+suffix
 -1
+the same, but for case
+[padded]
 -1233
 not a number
 Raz
+RAZ
 </code></pre>
-<h2>UTF-8</h2>
-<p>A character is an <code>I32</code>, its code point. <code>Str.decode</code> reads the first character of a string and says how many bytes it took; <code>Str.encode</code> goes the other way. Byte length and character count are different things, and the program is the one that says which it wants.</p>
-<div class="file"><span>Runes.raz</span></div><pre class="code"><code><span class="kw">module</span> Runes;
+<h2>Taking a string apart</h2>
+<p><code>Str.cut</code> splits a string at the first place a separator is: what comes before it, what comes after, and whether it was there at all. <code>Str.field</code> gives the first word, past any spaces, and the rest. Neither copies anything: every part is a slice of the string it came from, so taking a line or a file apart costs no memory.</p>
+<div class="file"><span>Parts.raz</span></div><pre class="code"><code><span class="kw">module</span> Parts;
 <span class="kw">import</span> Out, Str;
 
-<span class="comment">(* the characters of s, not its bytes *)</span>
-<span class="kw">proc</span> chars(s: []<span class="ty">U8</span>): <span class="ty">INT</span>;
-<span class="kw">var</span> i, n, size: <span class="ty">INT</span>;
+<span class="kw">const</span> Text = <span class="string">&quot;name = raz\nkind = language\nyear = 2026\n&quot;</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> line, rest, key, val, w: []<span class="ty">U8</span>; more, ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
-    i := <span class="number">0</span>;
-    n := <span class="number">0</span>;
-    <span class="kw">while</span> i &lt; <span class="ty">LEN</span>(s) <span class="kw">do</span>
-        _, size := Str.decode(s[i..<span class="ty">LEN</span>(s)]);
-        <span class="ty">INC</span>(i, size);
-        <span class="ty">INC</span>(n);
+    <span class="comment">(* line by line, then each line at its = *)</span>
+    line, rest, more := Str.cut(Text, <span class="string">&quot;\n&quot;</span>);
+    <span class="kw">while</span> more <span class="kw">do</span>
+        key, val, ok := Str.cut(line, <span class="string">&quot;=&quot;</span>);
+        <span class="kw">if</span> ok <span class="kw">then</span>
+            Out.str(Str.trim(key)); Out.str(<span class="string">&quot; is &quot;</span>); Out.str(Str.trim(val)); Out.ln;
+        <span class="kw">end</span>;
+        line, rest, more := Str.cut(rest, <span class="string">&quot;\n&quot;</span>);
     <span class="kw">end</span>;
-    <span class="kw">return</span> n;
+
+    <span class="comment">(* word by word *)</span>
+    w, rest := Str.field(<span class="string">&quot;  the quick   brown fox &quot;</span>);
+    <span class="kw">while</span> <span class="ty">LEN</span>(w) &gt; <span class="number">0</span> <span class="kw">do</span>
+        Out.str(<span class="string">&quot;&lt;&quot;</span>); Out.str(w); Out.str(<span class="string">&quot;&gt;&quot;</span>);
+        w, rest := Str.field(rest);
+    <span class="kw">end</span>;
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Parts.</code></pre>
+<pre class="output"><code>name is raz
+kind is language
+year is 2026
+&lt;the&gt;&lt;quick&gt;&lt;brown&gt;&lt;fox&gt;
+</code></pre>
+<p>When <code>Str.cut</code> finds no separator it gives the whole string, an empty one and <code>false</code>, so the loop above ends after the last line that has a line feed. Building a string goes the other way, in a <code>Buf</code>: <code>Str.join</code> adds parts with a separator between them, and <code>Str.replace</code> adds a string with every match of one text replaced by another (lesson 9 shows <code>Buf</code>).</p>
+<h2>Raw strings</h2>
+<p>A string between backquotes is raw: its bytes are the text as it stands, with no escapes, so a backslash or a double quote is itself, and it may run over lines. When the opening backquote ends its line and the closing one has only spaces and tabs before it, those blanks come off the start of every line between, and the text keeps the indent of the code it sits in. Each line ends in a line feed, the last one too.</p>
+<div class="file"><span>Raw.raz</span></div><pre class="code"><code><span class="kw">module</span> Raw;
+<span class="kw">import</span> Out;
+
+<span class="kw">const</span> Path = <span class="string">`C:\Users\raz\&quot;notes&quot;.txt`</span>;
+
+<span class="kw">proc</span> usage;
+<span class="kw">begin</span>
+    Out.str(<span class="string">`
+        usage: tool [-v] file ...
+          -v    say what is done
+          file  read this, not standard input
+        `</span>);
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> s: []<span class="ty">U8</span>; c: <span class="ty">I32</span>; size: <span class="ty">INT</span>; bytes: [<span class="number">4</span>]<span class="ty">U8</span>; k: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Out.str(Path); Out.ln;
+    usage;
+    Out.str(<span class="string">`a raw string on one line, \n and all`</span>); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Raw.</code></pre>
+<pre class="output"><code>C:\Users\raz\&quot;notes&quot;.txt
+usage: tool [-v] file ...
+  -v    say what is done
+  file  read this, not standard input
+a raw string on one line, \n and all
+</code></pre>
+<p>A line of an indented raw string that doesn't start with the closing line's blanks is an error, so a slip in the indent is caught where it is made, not printed. A raw string can't hold a backquote; join one in with <code>+</code> and an ordinary string that holds it.</p>
+<h2>UTF-8</h2>
+<p>A character is an <code>I32</code>, its code point. A string stays bytes; UTF-8 is how <code>Str</code> reads them. <code>Str.next</code> walks a string a character at a time, giving each one and where the next starts, -1 at the end. <code>Str.decode</code> reads the first character of a string and says how many bytes it took, <code>Str.decodeLast</code> the last, and <code>Str.encode</code> goes the other way. <code>Str.chars</code> counts characters and <code>Str.valid</code> says whether a string is UTF-8 at all; a byte that doesn't start a character rightly reads as FFFDH, the character that stands for a wrong one. Byte length and character count are different things, and the program is the one that says which it wants.</p>
+<div class="file"><span>Runes.raz</span></div><pre class="code"><code><span class="kw">module</span> Runes;
+<span class="kw">import</span> Out, Str;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> s: []<span class="ty">U8</span>; c: <span class="ty">I32</span>; i, size: <span class="ty">INT</span>; bytes: [<span class="number">4</span>]<span class="ty">U8</span>; k: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     s := <span class="string">&quot;caf\u{E9} \u{3BB}&quot;</span>;
     Out.int(<span class="ty">LEN</span>(s)); Out.str(<span class="string">&quot; bytes, &quot;</span>);
-    Out.int(chars(s)); Out.str(<span class="string">&quot; characters\n&quot;</span>);
-    c, size := Str.decode(s[<span class="number">3</span>..<span class="ty">LEN</span>(s)]);
-    Out.int(<span class="ty">I64</span>(c)); Out.str(<span class="string">&quot; took &quot;</span>); Out.int(size); Out.str(<span class="string">&quot; bytes\n&quot;</span>);
+    Out.int(Str.chars(s)); Out.str(<span class="string">&quot; characters\n&quot;</span>);
+
+    <span class="comment">(* each character, as its code point *)</span>
+    c, i := Str.next(s, <span class="number">0</span>);
+    <span class="kw">while</span> i &gt;= <span class="number">0</span> <span class="kw">do</span>
+        Out.int(<span class="ty">I64</span>(c)); Out.str(<span class="string">&quot; &quot;</span>);
+        c, i := Str.next(s, i);
+    <span class="kw">end</span>;
+    Out.ln;
+
+    c, size := Str.decodeLast(s);
+    Out.int(<span class="ty">I64</span>(c)); Out.str(<span class="string">&quot; is last, in &quot;</span>); Out.int(size); Out.str(<span class="string">&quot; bytes\n&quot;</span>);
     bytes, k := Str.encode(<span class="number">955</span>);
     Out.str(bytes[<span class="number">0</span>..k]); Out.ln;
+    <span class="kw">if</span> <span class="kw">not</span> Str.valid(s[<span class="number">0</span>..<span class="number">4</span>]) <span class="kw">then</span> Out.str(<span class="string">&quot;cut in the middle of a character\n&quot;</span>); <span class="kw">end</span>;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Runes.</code></pre>
 <pre class="output"><code>8 bytes, 6 characters
-233 took 2 bytes
+99 97 102 233 32 955 
+955 is last, in 2 bytes
 λ
+cut in the middle of a character
 </code></pre>
+<p><code>Str</code> knows UTF-8 and no more of Unicode: its case is ASCII's, and it doesn't say how wide a character is on a terminal or which spellings of a text are the same. Those need tables bigger than the rest of the library.</p>
 <h2>Loops over lengths</h2>
 <p>A <code>for</code> loop takes its bounds once, and never steps past the last: with an empty slice, <code>0 to LEN(s) - 1</code> doesn't run at all, and the variable can't wrap. <code>for</code> takes a constant step with <code>by</code>, and <code>while</code> and <code>repeat ... until</code> do the rest.</p>
 <div class="file"><span>Loops.raz</span></div><pre class="code"><code><span class="kw">module</span> Loops;

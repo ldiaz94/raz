@@ -125,18 +125,15 @@ linus: 0 (false)
 
 <span class="kw">proc</span> main*;
 <span class="kw">var</span>
-    m: Count.Map; entries: [<span class="number">32</span>]Entry; i, start, k, n, found: <span class="ty">INT</span>;
-    w: []<span class="ty">U8</span>; key: []<span class="ty">U8</span>; v: <span class="ty">INT</span>;
+    m: Count.Map; entries: [<span class="number">32</span>]Entry; i, k, n, found: <span class="ty">INT</span>;
+    w, rest: []<span class="ty">U8</span>; key: []<span class="ty">U8</span>; v: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     Count.init(<span class="ty">ADR</span>(m), Heap.heap);
-    start := <span class="number">0</span>;
-    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(Text) <span class="kw">do</span>
-        <span class="kw">if</span> (i = <span class="ty">LEN</span>(Text)) <span class="kw">or</span> (Text[i] = <span class="string">&#x27; &#x27;</span>) <span class="kw">then</span>
-            w := Text[start..i];
-            k, _ := Count.get(<span class="ty">ADR</span>(m), w);
-            _ := Count.put(<span class="ty">ADR</span>(m), w, k + <span class="number">1</span>);
-            start := i + <span class="number">1</span>;
-        <span class="kw">end</span>;
+    w, rest := Str.field(Text);
+    <span class="kw">while</span> <span class="ty">LEN</span>(w) &gt; <span class="number">0</span> <span class="kw">do</span>
+        k, _ := Count.get(<span class="ty">ADR</span>(m), w);
+        _ := Count.put(<span class="ty">ADR</span>(m), w, k + <span class="number">1</span>);
+        w, rest := Str.field(rest);
     <span class="kw">end</span>;
     n := <span class="number">0</span>;
     found, key, v := Count.next(<span class="ty">ADR</span>(m), <span class="number">0</span>);
