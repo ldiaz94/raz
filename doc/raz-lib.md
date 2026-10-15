@@ -11,7 +11,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `infoOf`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -171,6 +171,7 @@ type
         dir*: BOOL;      (* a directory *)
         file*: BOOL;     (* a regular file: not a directory, device, pipe or socket *)
         symlink*: BOOL;  (* the path itself is a symbolic link *)
+        ino*: U64;       (* its inode, which a rename keeps and a new file doesn't *)
     end;
     Dir* = record ... end;   (* an open directory; its fields are the target's *)
     Program* = record
@@ -190,12 +191,15 @@ type
 proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
 proc read*(fd: INT; buf: []U8): INT;    (* the bytes read; 0 at the end *)
 proc open*(path: []U8; how: Accesses): INT;   (* its fd *)
+proc openMode*(path: []U8; how: Accesses; mode: INT): INT;   (* open, a file it makes given mode *)
 proc openRead*(path: []U8): INT;         (* open(path, {reading}) *)
 proc create*(path: []U8): INT;           (* open(path, {writing, creating, truncating}) *)
 proc seek*(fd: INT; pos: I64; fromEnd: BOOL): I64;  (* the new position *)
 proc position*(fd: INT): I64;            (* where the next read or write is *)
 proc truncate*(fd: INT; size: I64): INT; (* the file made size bytes long *)
 proc sync*(fd: INT): INT;                (* what was written to it, on the disk *)
+proc syncAll*(fd: INT): INT;             (* all that was written to its file system, on the disk *)
+proc lock*(fd: INT; wait: BOOL): INT;    (* the file's lock, held until fd is closed *)
 proc close*(fd: INT);
 proc isTerminal*(fd: INT): BOOL;
 proc mmap*(size: INT): ^U8;              (* size bytes of zeroed memory, in whole pages; or nil *)
@@ -211,6 +215,7 @@ proc chmod*(path: []U8; mode: INT): INT;
 proc symlink*(target, path: []U8): INT;  (* path made a link to target *)
 proc readLink*(path: []U8): ([]U8, INT); (* what the link names, good until the next call *)
 proc info*(path: []U8): (Info, INT);     (* following a symbolic link *)
+proc linkInfo*(path: []U8): (Info, INT); (* the link itself *)
 proc infoOf*(fd: INT): (Info, INT);      (* the open file's *)
 proc space*(path: []U8): (I64, I64, INT);   (* the bytes free and in all on path's file system *)
 
@@ -286,15 +291,30 @@ restores it before it ends: `Rt.atExit` is the place.
 writable by its owner; with `exclusive`, failing with -17 (EEXIST) if
 it is there, as a program does that makes a lock or a file of its
 own; `truncating` it to nothing; `appending`, each write going to its
-end, however other programs write it too. `seek` moves to `pos` from
+end, however other programs write it too. `openMode` is `open` that
+gives a file it makes the bits `mode`, less those the umask takes
+away: 1EDH (755) for a program, 124H (444) for a file never to be
+written; `open` gives 1A4H (644). `seek` moves to `pos` from
 the start of the file, or from its end if `fromEnd`, where a negative
 `pos` reads back from the end; `position` says where the file is,
 without moving. `truncate` makes the file `size` bytes long, cutting
 it or adding zeros, and leaves the position where it was. `sync`
 returns once what was written to the file is on the disk, as a
-program needs before it says a file is saved. `infoOf` is `info` of
-an open file: its size is what it holds now, however it was written. `Info.mtime` is what a program checks
-to see whether a file changed under it; `Info.mode` holds the nine
+program needs before it says a file is saved; `syncAll` returns once
+everything written to the file system that holds the file is on the
+disk, at once rather than a file at a time, and may flush other file
+systems too. `lock` takes the file's lock, which one open file holds
+at a time: another that asks for it waits if `wait`, and otherwise
+fails with -11 (EAGAIN). The lock goes when the file is closed or the
+program ends, however it ends, so it never goes stale as a file made
+with `exclusive` does. `infoOf` is `info` of
+an open file: its size is what it holds now, however it was written;
+`linkInfo` is `info` of a symbolic link itself, not what it names, so
+that `symlink` is true, `dir` and `file` false, and `size` the length
+of what it names, which need not be there. `Info.mtime` is what a program checks
+to see whether a file changed under it, and `Info.ino` whether it is
+still the same file, not one renamed over it; 0 on a target whose
+files have none. `Info.mode` holds the nine
 bits of `rwxrwxrwx`, and `chmod` sets them, 1EDH (755) for a program,
 1A4H (644) for data.
 
