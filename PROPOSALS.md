@@ -368,38 +368,3 @@ opposite and `ret`; Rust's lifetime elision reads a call's result as
 `ret` does. D's experience is that the corners (fields, generics,
 procedure values) take years; the narrow form here leaves record
 lifetimes out, and so the first false alarm above, on purpose.
-
-## `Vec(T)`, a growable array
-
-The library has `List`, linked, and `Map`, a hash; nothing that grows
-in place and can be indexed. A program that keeps what it learns the
-length of as it reads (lines, entries, changes) writes one: sauce's
-`Svec`, 90 lines, imported four times. Every program of size will.
-
-A generic module of the standard library, not the core: like `List`
-and `Map` it takes its memory from the allocator `init` gives it, and
-a target with no heap to speak of may leave it out. It is `Buf` for
-any `T`, and works as `Buf` does:
-
-```
-module Vec(T);
-type Vec* = record len*: INT; ... end;
-proc init*(v: ^Vec; a: ^Mem.Allocator);
-proc room*(v: ^Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
-proc push*(v: ^Vec; x: T);            (* x added at the end *)
-proc add*(v: ^Vec): ^T;               (* a new element at the end, zero, to fill in place *)
-proc resize*(v: ^Vec; n: INT);        (* n elements, the new ones zero *)
-proc all*(v: ^Vec): []T;              (* the elements, until it next grows *)
-proc reset*(v: ^Vec);                 (* emptied, its memory kept *)
-proc done*(v: ^Vec);                  (* its memory given back *)
-```
-
-`all` gives a slice, so that indexing is checked; `v.len` is its
-length. `push`, `add` and `resize` stop the program when the
-allocator has no room, as `Buf.add` does, rather than returning a
-`BOOL` as `List.push` does: a `push` whose result is dropped loses an
-element silently, and an array is pushed to far more often than a
-list. `room` asks first. No `pop`, `insert` or `remove` until a
-program needs one: `v.len := v.len - 1` and `Sort` cover most.
-
-A new module breaks no program, so it can come with any release.

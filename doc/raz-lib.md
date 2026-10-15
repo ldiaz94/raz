@@ -25,6 +25,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)])`, or into a `Buf` with `Fmt.write` |
 | `List` | a generic singly linked list, `List(T)` |
 | `Map` | a generic hash map, `Map(K, V; hash, eq)` |
+| `Vec` | a generic growable array, `Vec(T)`, indexed as a slice |
 | `Sort` | sorting a slice in place, `Sort(T; less)` |
 | `Math` | roots, powers, logarithms, rounding and trigonometry, and `pi`, for `F64` |
 | `Files` | an argument as a string, and a whole file read or written |
@@ -505,6 +506,17 @@ proc remove*(m: ^Map; k: K): BOOL;            (* false if k wasn't there *)
 proc get*(m: ^Map; k: K): (V, BOOL);          (* what k maps to, and whether it maps to anything *)
 proc next*(m: ^Map; i: INT): (INT, K, V);     (* the entry after i *)
 
+module Vec(T);
+type Vec* = record len*: INT; ... end;
+proc init*(v: ^Vec; a: ^Mem.Allocator);
+proc room*(v: ^Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
+proc push*(v: ^Vec; x: T);            (* x added at the end *)
+proc add*(v: ^Vec): ^T;               (* a new element at the end, zero, to fill in place *)
+proc resize*(v: ^Vec; n: INT);        (* n elements: cut short, or the new ones zero *)
+proc all*(v: ^Vec): []T;              (* the elements, until it next grows *)
+proc reset*(v: ^Vec);                 (* emptied, its memory kept *)
+proc done*(v: ^Vec);                  (* its memory given back *)
+
 module Sort(T; less: proc(a, b: T): BOOL);
 proc sort*(s: []T);
 
@@ -532,12 +544,18 @@ proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the produ
 proc toReal*(s: []U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn't one *)
 ```
 
-A `Buf`, a `List` and a `Map` take their memory from the allocator
-`init` gives them. `Buf.add`, `str` and `spare` stop the program, as a
+A `Buf`, a `List`, a `Map` and a `Vec` take their memory from the
+allocator `init` gives them. `Buf.add`, `str` and `spare` stop the program, as a
 failed check does, if the allocator has no room; `room` asks first. A
 program reads into a `Buf` through `spare`, then adds what it read to
 `len`: `s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n > 0 then
-INC(b^.len, n); end;`. `Fmt`'s format takes the next argument at each
+INC(b^.len, n); end;`. A `Vec` is `Buf` for any `T`: one block, which
+doubles when it is full, so `push` costs the same on average however
+long it grows. `all` gives the elements as a slice, indexed and
+checked as any is, and `v.len` is their number; the slice, and what
+`add` gives, are good until the array next grows. `push`, `add` and
+`resize` stop the program, as `Buf.add` does, if the allocator has no
+room; `room` asks first: `import Lines := Vec([]U8);`. `Fmt`'s format takes the next argument at each
 `{}`; `{{` and `}}` stand for `{` and `}`. A `Map` hashes and
 compares its keys with the procedures it is given:
 `import Count := Map([]U8, INT, Str.hash, Str.eq);`.

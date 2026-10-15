@@ -1,0 +1,4 @@
+Vec: out of memory
+  in Vec(INT).need at lib/Vec.raz:55:9: v = 0x?, n = 1
+  in Vec(INT).push at lib/Vec.raz:63:5: v = 0x?, x = 257
+  in VecFull.main at test/run/VecFull.raz:11:28: i = 257

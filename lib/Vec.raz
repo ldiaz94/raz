@@ -1,0 +1,114 @@
+(* A growable array of T, its memory from an allocator: Buf for any T.
+
+   It keeps its elements in one block, which doubles when it is full,
+   so that a program can add to it without knowing how many will come
+   and index it as a slice. all gives that slice, checked as any is,
+   and good until the array next grows. Running out of memory stops
+   the program, as Buf.add does: an element dropped silently would be
+   wrong data that nothing tells of. room asks first. *)
+module Vec(T);
+import Mem, Rt, Sys;
+
+type
+    Vec* = record
+        a: ^Mem.Allocator;
+        data: ^T;
+        len*: INT;     (* the elements in use *)
+        cap: INT;      (* the elements there is room for *)
+    end;
+
+(* An empty array, which takes its memory from a. *)
+proc init*(v: ^Vec; a: ^Mem.Allocator);
+begin
+    v^ := {a: a};
+end;
+
+(* Room for n more elements; false if the allocator has none. *)
+proc room*(v: ^Vec; n: INT): BOOL;
+var cap: INT; p: ^T;
+begin
+    if v^.len + n <= v^.cap then return true; end;
+    if v^.a = nil then
+        (* as Buf: said plainly, rather than as a nil pointer in Mem.alloc *)
+        _ := Sys.write(Sys.stderr, "Vec used before Vec.init\n");
+        Rt.trace;
+        Rt.exit(2);
+    end;
+    cap := v^.cap * 2;
+    if cap < 16 then cap := 16; end;
+    while cap < v^.len + n do cap := cap * 2; end;
+    (* 8: no type of raz needs its elements aligned more *)
+    p := ^T(Mem.alloc(v^.a, cap * SIZE(T), 8));
+    if p = nil then return false; end;
+    if v^.len > 0 then COPY(p[0..v^.len], v^.data[0..v^.len]); end;
+    if v^.data # nil then Mem.free(v^.a, ^U8(v^.data)); end;
+    v^.data := p;
+    v^.cap := cap;
+    return true;
+end;
+
+(* Room for n more elements, or the program stops. *)
+proc need(v: ^Vec; n: INT);
+begin
+    if not room(v, n) then
+        _ := Sys.write(Sys.stderr, "Vec: out of memory\n");
+        Rt.trace;
+        Rt.exit(2);
+    end;
+end;
+
+(* Adds x at the end. *)
+proc push*(v: ^Vec; x: T);
+begin
+    need(v, 1);
+    v^.data[v^.len] := x;
+    INC(v^.len);
+end;
+
+(* Adds an element at the end, zero, and gives it, to be filled in
+   place: for a big T, which push would copy. Good until the array
+   next grows. *)
+proc add*(v: ^Vec): ^T;
+var zero: T;
+begin
+    need(v, 1);
+    v^.data[v^.len] := zero;
+    INC(v^.len);
+    return v^.data + (v^.len - 1);
+end;
+
+(* Makes the array n elements long: cut short, or grown with zeros. *)
+proc resize*(v: ^Vec; n: INT);
+var zero: T; i: INT;
+begin
+    if n > v^.len then
+        need(v, n - v^.len);
+        for i := v^.len to n - 1 do v^.data[i] := zero; end;
+    end;
+    v^.len := n;
+end;
+
+(* The elements, until the array next grows. *)
+proc all*(v: ^Vec): []T;
+var none: []T;
+begin
+    if v^.len = 0 then return none; end;
+    return v^.data[0..v^.len];
+end;
+
+(* Empties the array, keeping its memory for what comes next. *)
+proc reset*(v: ^Vec);
+begin
+    v^.len := 0;
+end;
+
+(* Gives the array's memory back, leaving it empty. *)
+proc done*(v: ^Vec);
+begin
+    if v^.data # nil then Mem.free(v^.a, ^U8(v^.data)); end;
+    v^.data := nil;
+    v^.len := 0;
+    v^.cap := 0;
+end;
+
+end Vec.
