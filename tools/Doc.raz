@@ -19,7 +19,7 @@
 module Doc;
 import Out, Rt, Str, Buf, Heap, Scan, Files;
 
-const Date = "October 12, 2026";   (* raz-lib(3)'s, when the library last changed *)
+const Date = "October 14, 2026";   (* raz-lib(3)'s, when the library last changed *)
 
 var
     sc: Scan.Scanner;         (* the text being read, at the current symbol *)
@@ -144,9 +144,24 @@ begin
     emit(10);
 end;
 
+(* Whether the space at src[p] ends a sentence: a full stop, ? or !
+   comes before it, maybe behind closing brackets or quotes. mdoc wants
+   each sentence on a line of its own, so that roff knows where one
+   ends and spaces it so. *)
+proc sentenceEnds(start, p: INT): BOOL;
+begin
+    DEC(p);
+    while (p > start) and ((src[p] = ')') or (src[p] = ']') or (src[p] = '"') or (src[p] = '\'')) do
+        DEC(p);
+    end;
+    return (p >= start) and ((src[p] = '.') or (src[p] = '?') or (src[p] = '!'));
+end;
+
 (* The comment from start to stop, without its brackets, each line
-   indented by four; in mdoc, filled, but for the lines indented past
-   its own, which are code, kept as they are. *)
+   indented by four; in mdoc, filled, each sentence starting a line,
+   but for the lines indented past its own, which are code, kept as
+   they are in a literal display. mdoc's displays don't nest, so the
+   filled one ends where the code starts and starts again after. *)
 proc comment(start, stop: INT);
 var i, j, k, m, n, deep, indent: INT;
 begin
@@ -164,23 +179,35 @@ begin
         n := 0;
         while (i + n < k) and (src[i + n] = ' ') do INC(n); end;
         if man and (n > deep) and (indent < 0) then
+            control(".Ed");
             control(".Bd -literal -offset indent -compact");
             indent := n;
         elsif man and (n <= deep) and (indent >= 0) then
             control(".Ed");
+            control(".Bd -filled -offset indent -compact");
             indent := -1;
         end;
         if man and (n = k - i) and (indent < 0) then control(".Pp");
+        elsif man and (indent < 0) then
+            m := i + n;
+            while m < k do
+                if (src[m] = ' ') and sentenceEnds(i + n, m) then
+                    emit(10);
+                    while (m + 1 < k) and (src[m + 1] = ' ') do INC(m); end;
+                else emit(src[m]);
+                end;
+                INC(m);
+            end;
+            emit(10);
         else
             if not man then Out.str("    ");
-            elsif (indent >= 0) and (n > indent) then n := indent;
+            elsif n > indent then n := indent;
             end;
             for m := i + n to k - 1 do emit(src[m]); end;
             emit(10);
         end;
         i := k + 1;
     end;
-    if indent >= 0 then control(".Ed"); end;
     if man then control(".Ed"); end;
 end;
 
