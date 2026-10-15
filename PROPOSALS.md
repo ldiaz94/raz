@@ -81,3 +81,74 @@ the trap report's list of procedures, nor in gdb's backtrace, though
 a failed check in it is still told at its line; 60 to 100 lines of
 the budget; and, across modules, the imported module's
 text kept to be read again, which is to be checked.
+
+## What a version control system needs of `Sys`
+
+Met in porting sauce (`~/r/sauce`) from Free Pascal, where a module of
+its own, `Sos`, makes these calls by `SYSCALL`. Each is library
+growth that breaks no program, so it could come with any release, not
+only a thaw; and each has a C call behind it, for `Sys.raz` over the C
+library.
+
+**Seeing a link itself.** `info` follows a symbolic link, as it should
+for most programs; but a program that tracks or copies a tree must see
+the link: a dangling one is -ENOENT to `info`, and the size it gives is
+the target's, not the link's.
+
+```
+proc linkInfo*(path: []U8): (Info, INT);   (* the path itself, not what a link at its end names *)
+```
+
+For a link, `symlink` is true, `dir` and `file` false, and `size` the
+length of its target, as `readLink` gives it. The C call is `lstat`.
+
+**The inode.** A program that keeps a cache of files, to know one
+unchanged without reading it, keys it by inode, size and time, as git
+and sauce do; a file replaced by a rename has a new inode and may keep
+its size and time. `Info` gains a field:
+
+```
+ino*: U64;     (* the file's inode, on its file system *)
+```
+
+A record literal names its fields, so no program changes. On a target
+whose files have no inode, 0.
+
+**A new file's mode.** `open` with `creating` always asks for 644, so
+a program can't make a file executable as it writes it, nor read-only:
+it must `chmod` after, and between the two the file is there with the
+wrong mode, and the umask is lost (sauce writes 666 or 777 less the
+umask for the working tree, 444 for its objects).
+
+```
+proc openMode*(path: []U8; how: Accesses; mode: INT): INT;   (* open, a file it creates given mode, less the umask *)
+```
+
+`open(path, how)` is `openMode(path, how, 1A4H)`.
+
+**A lock between programs.** Two programs that change the same files
+need to take turns. A lock file made with `exclusive` works until a
+program dies holding it, and then it is stale forever; the kernel's
+lock on an open file goes when the program ends, however it ends.
+
+```
+proc lock*(fd: INT; wait: BOOL): INT;   (* an exclusive lock on the open file fd, until it is closed; -11 if another program holds one and not wait *)
+```
+
+The C call is `flock`; it locks the open file, not a range of it, and
+is enough for a program that only needs one at a time.
+
+**Flushing a file system.** `sync` makes one file durable. A program
+that writes hundreds of files and then one that names them all (a
+commit's objects, then HEAD) wants them all on the disk before the
+last, without a `sync` of each, which is slow:
+
+```
+proc syncAll*(fd: INT): INT;   (* everything written to the file system holding fd, on the disk *)
+```
+
+The Linux call is `syncfs`; where there is none, `sync`, which flushes
+every file system and so does no less.
+
+Not needed: syncing a directory, so that a rename in it is durable, is
+already `sync(open(dir, {reading}))`.
