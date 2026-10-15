@@ -43,6 +43,11 @@ proc operand*(p: ^Parser): ([]U8, BOOL);
     The next operand, after what options are left; false when there are
     no more.
 
+proc at*(p: ^Parser): INT;
+    The number of the argument operand would give next, after what
+    options are left: the operands from there on are Files.arg(i), for
+    i up to ARGC() - 1, as an interpreter hands them to its script.
+
 proc scope*(p: ^Parser; name: []U8);
     The options of the subcommand name, from the word after its own,
     which operand has given.

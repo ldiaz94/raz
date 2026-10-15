@@ -347,6 +347,15 @@ begin
     return Files.arg(p^.at - 1), true;
 end;
 
+(* The number of the argument operand would give next, after what
+   options are left: the operands from there on are Files.arg(i), for
+   i up to ARGC() - 1, as an interpreter hands them to its script. *)
+proc at*(p: ^Parser): INT;
+begin
+    while next(p) do end;
+    return p^.at;
+end;
+
 (* The options of the subcommand name, from the word after its own,
    which operand has given. *)
 proc scope*(p: ^Parser; name: []U8);
@@ -387,7 +396,7 @@ end;
    no synopsis lines; and holds each to what it writes, and its status. *)
 proc keep;
 const wait = 1;
-var p: Parser; verbose, ok: BOOL; secs: I64; bar, job, w: []U8; b: Buf.Buf;
+var p: Parser; verbose, ok: BOOL; secs: I64; bar, job, w: []U8; b: Buf.Buf; i: INT;
 begin
     secs := 10;
     init(ADR(p), "keep", [
@@ -414,16 +423,15 @@ begin
         if p.letter = 'b' then bar := p.value; end;
     end;
     job, ok := operand(ADR(p));
-    w, ok := operand(ADR(p));
-    if not ok then fail(ADR(p), "start needs a name and a command; see keep start -h"); end;
+    (* the command and its arguments, as they are, by at *)
+    if not ok or (at(ADR(p)) >= ARGC()) then
+        fail(ADR(p), "start needs a name and a command; see keep start -h");
+    end;
     if verbose then Fmt.print("waiting {}s\n", [Fmt.int(secs)]); end;
     Fmt.print("job {}", [Fmt.str(job)]);
     if LEN(bar) > 0 then Fmt.print(" [{}]", [Fmt.str(bar)]); end;
     Fmt.print(":", []);
-    while ok do
-        Fmt.print(" {}", [Fmt.str(w)]);
-        w, ok := operand(ADR(p));
-    end;
+    for i := at(ADR(p)) to ARGC() - 1 do Fmt.print(" {}", [Fmt.str(Files.arg(i))]); end;
     Fmt.print("\n", []);
 end;
 
@@ -512,6 +520,7 @@ begin
         {mode: k, args: ["keep", "start", "-", "c", "--", "-h"], out: "job -: c -- -h\n"},
         {mode: k, args: ["keep", "start", "n", "c", "-b", "x"], out: "job n: c -b x\n"},
         {mode: k, args: ["keep", "start", "-bh", "n", "c"], out: "job n [h]: c\n"},
+        {mode: k, args: ["keep", "start", "-b", "x", "n"], err: "keep: start needs a name and a command; see keep start -h\n", status: 2},
         {mode: k, args: ["keep", "-h"], out: keepHelp},
         {mode: k, args: ["keep", "-v", "--help", "-x"], out: keepHelp},
         {mode: k, args: ["keep", "-vh"], out: keepHelp},
