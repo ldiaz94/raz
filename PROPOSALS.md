@@ -82,6 +82,19 @@ a failed check in it is still told at its line; 60 to 100 lines of
 the budget; and, across modules, the imported module's
 text kept to be read again, which is to be checked.
 
+More cases, from sauce (`~/r/sauce`, RAZ-NOTES.md). Its SHA-256, with
+the rotation a procedure, `return (x shr n) | (x shl (32 - n))`, and
+each word read by `Str.be`, ran at 52 MB/s; with both written out in
+the loop, 115 MB/s, where FPC `-O2` does about 200 and `check off`
+adds only 9%. Most of the gap is calls. `ror` is the narrow case
+above; `Str.be` is not, a loop over its bytes, and would want a
+`Str.be32` of four bytes that only returns, or the loop unrolled where
+it is. A rotate of the language's own, an operator or a built-in
+procedure, would serve SHA, the other hashes and checksums without
+any inlining, but it is a language change, for a thaw. On 100 MB of
+new files `sauce commit` takes 1.2 s against the Pascal sauce's 0.7,
+and `verify` 0.95 s against 0.48: the hashing.
+
 ## A slice that outlives what it points at
 
 ```
@@ -114,3 +127,38 @@ says it in section 7.3, Return; the compiler checks it where it
 checks the type of `return`'s expression.
 
 Met in sauce's `Ssha.short`, which takes `var h: Hex` now.
+
+## `Vec(T)`, a growable array
+
+The library has `List`, linked, and `Map`, a hash; nothing that grows
+in place and can be indexed. A program that keeps what it learns the
+length of as it reads (lines, entries, changes) writes one: sauce's
+`Svec`, 90 lines, imported four times. Every program of size will.
+
+A generic module of the standard library, not the core: like `List`
+and `Map` it takes its memory from the allocator `init` gives it, and
+a target with no heap to speak of may leave it out. It is `Buf` for
+any `T`, and works as `Buf` does:
+
+```
+module Vec(T);
+type Vec* = record len*: INT; ... end;
+proc init*(v: ^Vec; a: ^Mem.Allocator);
+proc room*(v: ^Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
+proc push*(v: ^Vec; x: T);            (* x added at the end *)
+proc add*(v: ^Vec): ^T;               (* a new element at the end, zero, to fill in place *)
+proc resize*(v: ^Vec; n: INT);        (* n elements, the new ones zero *)
+proc all*(v: ^Vec): []T;              (* the elements, until it next grows *)
+proc reset*(v: ^Vec);                 (* emptied, its memory kept *)
+proc done*(v: ^Vec);                  (* its memory given back *)
+```
+
+`all` gives a slice, so that indexing is checked; `v.len` is its
+length. `push`, `add` and `resize` stop the program when the
+allocator has no room, as `Buf.add` does, rather than returning a
+`BOOL` as `List.push` does: a `push` whose result is dropped loses an
+element silently, and an array is pushed to far more often than a
+list. `room` asks first. No `pop`, `insert` or `remove` until a
+program needs one: `v.len := v.len - 1` and `Sort` cover most.
+
+A new module breaks no program, so it can come with any release.
