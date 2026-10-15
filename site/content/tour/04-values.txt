@@ -9,7 +9,7 @@ This program uses several of the basic types at once, with each conversion writt
 
 ## Conversions are written
 
-Two types never mix: with `i: I64` and a slice `s`, `i < LEN(s)` is an error. A type's name converts: `F64(n)`, `I64(b)`, `U8(x)`. The one silent conversion between numbers is an `INT` into an `I64`, which loses nothing. The [lesson on integers](integers.html) says what each width conversion does.
+Two types never mix but for one: an `INT` goes into an `I64` wherever it meets one, which loses nothing, so with `pos: I64`, `pos + LEN(s)` is an `I64`. With `i: I32` and a slice `s`, `i < LEN(s)` is an error. A type's name converts: `F64(n)`, `I64(b)`, `U8(x)`; an `I64` becomes an `INT` only so, `INT(pos)`, since an `INT` may be smaller on another machine. The [lesson on integers](integers.html) says what each width conversion does.
 
 A number written in the program is untyped until it meets a type, and `1.5` is a real, which an integer never becomes without a conversion.
 
@@ -18,7 +18,7 @@ module Mix;
 import Out;
 
 proc main*;
-var i: I64; s: []U8;
+var i: I32; s: []U8;
 begin
     s := "four";
     i := 3;
@@ -32,7 +32,7 @@ end Mix.
 $ raz Mix.raz
 ```
 
-The fix is the conversion, written where it happens: `if i < I64(LEN(s))`. It costs nothing at run time and says what is meant.
+The fix is the conversion, written where it happens: `if INT(i) < LEN(s)`. It costs nothing at run time and says what is meant.
 
 ## What converts to what
 

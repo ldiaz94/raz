@@ -184,20 +184,32 @@ and
 Arithmetic wraps at the type's width, and never stops the program,
 except dividing by zero.
 .Pp
-Two types never mix: with
-.Cm "i: I64" ,
-.Cm "i < LEN(s)"
+Two types never mix but for one:
+.Cm INT
+into
+.Cm I64 ,
+which loses nothing, wherever the one meets the other, so with
+.Cm "big: I64" ,
+.Cm "big + n"
+is an
+.Cm I64 .
+With
+.Cm "c: I32" ,
+.Cm "c < n"
 is an error.
 A type's name converts, as
 .Cm F64(n)
 and
 .Cm I64(b)
-do above.
-The one silent conversion between numbers is an
+do above; an
+.Cm I64
+becomes an
 .Cm INT
-into an
-.Cm I64 ,
-which loses nothing.
+only so, as
+.Cm INT(big) ,
+since an
+.Cm INT
+may be smaller on another machine.
 A number written in the program is untyped until it meets a type;
 .Cm 0FFH
 is hexadecimal, and
@@ -438,7 +450,178 @@ A pointer is never the record:
 .Cm b^.lo ,
 never
 .Cm b.lo .
-.Sh 7. MEMORY AND ALLOCATORS
+.Sh 7. BYTES AND VIEWS
+A file, a network packet or a device hands a program bytes, and the
+program wants numbers and records out of them.
+A
+.Em view
+reads and writes bytes as another type.
+.Bd -literal -offset indent
+module Packet;
+import Out;
+
+type Header = record kind: U16; flags: U16; size: U32; end;
+
+var buf: [16]U8;
+
+proc main*;
+var i: INT; n: I64; h: Header; x: F64;
+begin
+    buf[0].(I64) := 258;        (* buf[0] to buf[7] now hold 258 *)
+    for i := 0 to 7 do Out.int(I64(buf[i])); Out.char(' '); end;
+    Out.ln;
+    n := buf[0].(I64);          (* and give it back *)
+    Out.int(n); Out.ln;
+
+    buf[8].(Header) := {kind: 1, size: 4096};
+    h := buf[8].(Header);
+    Out.int(I64(h.size)); Out.ln;
+    INC(buf[8].(Header).size, 4);
+    Out.int(I64(buf[8].(Header).size)); Out.ln;
+
+    x := 1.0;
+    Out.hex(x.(U64), 16); Out.ln;   (* the bits of 1.0 *)
+    Out.int(I64(x)); Out.ln;        (* the number 1.0 *)
+end;
+
+end Packet.
+.Ed
+.Bd -literal -offset indent
+2 1 0 0 0 0 0 0
+258
+4096
+4100
+3FF0000000000000
+1
+.Ed
+.Pp
+Read
+.Cm buf[0].(I64)
+as
+.Dq "the I64 whose bytes start at buf[0]" .
+An
+.Cm I64
+is 8 bytes, so the view is made of
+.Cm buf[0]
+to
+.Cm buf[7] :
+.Bd -literal -offset indent
+buf:   [0] [1] [2] [3] [4] [5] [6] [7] [8] ...
+        2   1   0   0   0   0   0   0
+       \e______ buf[0].(I64) = 258 ______/
+.Ed
+.Pp
+Nothing is copied to make a view: it
+.Em is
+those bytes, as
+.Cm p^
+is the variable
+.Cm p
+points at.
+Assigning it writes them, and so changes
+.Cm buf ;
+reading it reads them.
+So a view goes wherever a variable goes: on the left of
+.Cm := ,
+in
+.Cm INC ,
+and with a field or an index after it, as
+.Cm buf[8].(Header).size
+is the
+.Cm size
+field of the
+.Cm Header
+whose bytes start at
+.Cm buf[8] .
+.Pp
+258 is
+.Cm 102H ,
+and its low byte, 2, comes first: x86-64 puts a number's low byte
+first in memory.
+Another machine may put it last; a format with an order of its own is
+read a byte at a time, with
+.Cm Str.le
+or
+.Cm Str.be ,
+if the program is to run everywhere.
+.Pp
+A view isn't a conversion.
+A conversion works on the value, a view on the bytes:
+.Cm I64(x)
+is 1, the number, while
+.Cm x.(U64)
+is
+.Cm 3FF0000000000000H ,
+the bits that hold 1.0.
+When the program means a number it wants a conversion; when it means
+the bytes as they lie, a view.
+.Pp
+The view must lie inside the variable it is made of.
+For an element, as
+.Cm buf[i].(I64) ,
+that is from
+.Cm buf[i]
+to the end of
+.Cm buf ,
+and the program checks it as it checks an index:
+.Bd -literal -offset indent
+module Overrun;
+import Out;
+
+var buf: [16]U8;
+
+proc main*;
+var i: INT;
+begin
+    i := 0;
+    while i < 16 do
+        buf[i].(I32) := 1;
+        i := i + 3;
+    end;
+    Out.str("done\en");
+end;
+
+end Overrun.
+.Ed
+.Bd -literal -offset indent
+Overrun.raz:11:13: a view at index 15 runs past a length of 16
+  in Overrun.main at Overrun.raz:11:13: i = 15
+.Ed
+.Pp
+The
+.Cm I32
+at
+.Cm buf[15]
+would be
+.Cm buf[15]
+to
+.Cm buf[18] ,
+three bytes past the end.
+An index the compiler knows, it checks itself:
+.Cm buf[14].(I32)
+doesn't compile.
+A view of a whole variable must fit in it:
+.Cm x.(U64)
+needs
+.Cm x
+to have 8 bytes at least.
+.Pp
+A view is an integer, a real or a pointer, or a record or array made
+of them: types that any bytes are a value of.
+A
+.Cm BOOL
+or an enumeration isn't, since some bytes are none of its values:
+view an integer, and compare or convert it.
+A view may start at any byte, so it has no address:
+.Cm ADR
+of it is an error.
+Copy it to a variable first.
+Before views, a program made a pointer for each access, as
+.Cm "p := ^I64(ADR(buf[0]))"
+and then
+.Cm "p^ := 258" ,
+which checks nothing.
+.Sh 8. MEMORY AND ALLOCATORS
 .Bd -literal -offset indent
 module Stack;
 import Out, Mem, Heap, Arena;
@@ -510,7 +693,7 @@ and
 .Cm Map
 take the allocator they use from
 .Cm init .
-.Sh 8. ERRORS
+.Sh 9. ERRORS
 .Bd -literal -offset indent
 module Errors;
 import Out, Str;
@@ -607,7 +790,7 @@ so
 .Cm main ,
 which returns none, tests each error and deals with it.
 raz has no exceptions.
-.Sh 9. DEFER
+.Sh 10. DEFER
 .Bd -literal -offset indent
 module Defers;
 import Out, Sys;
@@ -674,7 +857,7 @@ Deferred statements run the last first, and only those whose
 was reached.
 So a file is closed beside the line that opens it, however the
 procedure ends.
-.Sh 10. CHECKS, AND WHAT A FAILURE SAYS
+.Sh 11. CHECKS, AND WHAT A FAILURE SAYS
 .Bd -literal -offset indent
 module Fail;
 import Out;
@@ -723,7 +906,7 @@ and
 in its environment has it say where its time went;
 .Xr raz 1
 says more.
-.Sh 11. ENUMERATIONS, SETS, VARIANTS AND MATCH
+.Sh 12. ENUMERATIONS, SETS, VARIANTS AND MATCH
 .Bd -literal -offset indent
 module Shapes;
 import Out, Fmt, Math;
@@ -816,7 +999,7 @@ On an integer,
 takes constants and ranges, and on a string, string constants; both
 must have an
 .Cm "| else:" .
-.Sh 12. GENERIC MODULES
+.Sh 13. GENERIC MODULES
 A module may take types, and the procedures it needs on them, as
 parameters.
 .Pa Biggest.raz :
@@ -887,7 +1070,7 @@ are generic modules:
 .Bd -literal -offset indent
 import Count := Map([]U8, INT, Str.hash, Str.eq);
 .Ed
-.Sh 13. TALKING TO C
+.Sh 14. TALKING TO C
 .Bd -literal -offset indent
 module Qsort;
 import Out, Fmt;
@@ -949,7 +1132,7 @@ and C's
 .Xr printf 3
 keep two buffers, so a program that writes with both flushes one
 before it writes with the other.
-.Sh 14. THREADS
+.Sh 15. THREADS
 .Bd -literal -offset indent
 module Hits;
 import Out, Thread;
@@ -1013,7 +1196,7 @@ makes its own threads, without C, so a program that uses it can't use
 C; one that does makes its threads with C's
 .Xr pthread_create 3
 instead.
-.Sh 15. FROM PASCAL AND C TO RAZ
+.Sh 16. FROM PASCAL AND C TO RAZ
 .Bl -column "for (i=0; i<n; i++)" "for i := 0 to n-1 do" "Mem.free(Heap.heap, ^U8(p))"
 .It Sy C Ta Sy Pascal Ta Sy raz
 .It "#include" Ta "uses" Ta "import Out, Str;"

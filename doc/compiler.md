@@ -19,7 +19,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 1,948 | 1,594 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Item.raz` | 1,954 | 1,598 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,000 | 3,478 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |

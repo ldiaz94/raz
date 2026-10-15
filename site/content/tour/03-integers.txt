@@ -39,7 +39,7 @@ end Family.
 
 Lengths, indexes, counts and sizes are `INT`s. `LEN(s)` of a slice is an `INT`, and so is the loop variable that walks it. It is as big as an address, so it is the integer a pointer converts to, and the word the atomics work on. Reach for `INT` unless you have a reason: a byte is a `U8`, a character an `I32`, a file's size an `I64`, a hash a `U64`.
 
-`INT` and `I64` are two types even where they have the same size. An `INT` goes silently into an `I64` (and a `UINT` into a `U64`), which is why `Out.int(n)` and `Fmt.int(n)` take an `I64` and accept any `INT`. Nothing else converts unasked: any other integer is converted where it is written, as `Out.int(I64(b))`.
+`INT` and `I64` are two types even where they have the same size. An `INT` goes silently into an `I64` (and a `UINT` into a `U64`) wherever it meets one, in `pos + LEN(s)` as in a call, which is why `Out.int(n)` and `Fmt.int(n)` take an `I64` and accept any `INT`. The other way is written, `INT(pos)`, since an `INT` may be smaller on another machine. Nothing else converts unasked: any other integer is converted where it is written, as `Out.int(I64(b))`.
 
 ## A number written in the program
 

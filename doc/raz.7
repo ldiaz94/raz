@@ -252,7 +252,10 @@ into
 .Cm I64 ,
 .Cm UINT
 into
-.Cm U64
+.Cm U64 ,
+wherever it goes, results passed on whole and a
+.Cm for Ns 's
+bounds too
 [5.10].
 Anything else is converted by name.
 .Sh OPERATORS
@@ -269,8 +272,15 @@ Anything else is converted by name.
 .Bl -bullet
 .It
 Both operands have one type, or one is an untyped constant that fits
-the other's: with
-.Cm "i: I64" ,
+the other's, or one is an
+.Cm INT
+and the other an
+.Cm I64
+.Pq Cm UINT , U64 ,
+and the result is an
+.Cm I64 :
+with
+.Cm "i: I32" ,
 .Cm "i < LEN(s)"
 is an error.
 Integers wrap at their width.
@@ -344,6 +354,33 @@ There is no other: none between
 .Cm BOOL
 and integers, and none to records, arrays, slices, variants or
 .Cm ERROR .
+.Sh VIEWS
+[6.9]
+.Cm v.(T)
+is the
+.Cm T
+whose bytes start where the variable
+.Cm v
+does: a variable, not a copy, read and written.
+.Bd -literal -offset indent
+mem[16].(I64) := -1;        (* mem[16] to mem[23] *)
+k := buf[0].(Header).count;
+bits := x.(U64);            (* an F64's bits; I64(x) is its number *)
+.Ed
+.Pp
+.Cm T
+is an integer, a real or a pointer, or a record or array of them.
+.Cm "a[i].(T)"
+lies from
+.Cm a[i]
+to the end of
+.Cm a ,
+which is checked as an index is; any other
+.Cm v.(T)
+lies within
+.Cm v .
+A view may be misaligned, so it has no address, and a volatile
+variable can't be viewed.
 .Sh BUILT-IN PROCEDURES
 [6.8]
 .Bl -tag -width "SYSCALL(n, x1, ...)"
@@ -515,6 +552,9 @@ with their variables:
 an index past the length, and a slice out of
 .Cm "0 <= lo <= hi <= length" ,
 unless the module has checks off;
+.It
+a view that runs past the end of what it is made of, with the same
+proviso;
 .It
 a slice of a pointer that runs backwards, and a number that is no
 position of the enumeration it converts to;

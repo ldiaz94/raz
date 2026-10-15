@@ -195,6 +195,13 @@ otherwise.
   f(x)`, a `for`'s bounds, `INC`/`DEC`'s step, and where it meets an
   `I64` in an operator (report 2026-10.26, 5.10 and 6.1). Never to a
   `U64`, nor an `I64` back to an `INT`.
+- A view, `v.(T)`, is `v`'s item with `T` for its type: nothing is
+  copied. A variable kept in a register goes to memory for it, as for
+  `ADR`. Another module's variable may be viewed, and not written. A
+  view that runs past its end fails as kind 7 of `Rt.fail`. `src/`,
+  and the library it imports (`Str`, `Bytes`, ...), use neither views
+  nor the widening of 2026-10.26, since the seed builds them, until a
+  release makes a new seed.
 - An `extern` module variable is read-only for an importer, as the
   report says of every exported variable (3).
 - Warnings come only for a module with no errors. A procedure naming

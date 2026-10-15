@@ -97,6 +97,69 @@ end Layout.
 
 A field of a packed record may sit at any address, and is read and written like any other; but it has no address of its own to take with `ADR`.
 
+## Bytes as numbers and records: views
+
+A file, a socket or a device hands a program bytes. A view reads and writes them as another type: `msg[3].(U32)` is the `U32` whose four bytes start at `msg[3]`, and `msg[0].(Head)` the `Head` whose bytes start at `msg[0]`.
+
+```raz Wire run
+module Wire;
+import Out;
+
+type Head = packed record magic: U16; kind: U8; len: U32; end;   (* 7 bytes, as sent *)
+
+var msg: [32]U8;
+
+proc main*;
+var h: Head; i: INT; sum: I64;
+begin
+    (* what a socket might have handed us *)
+    msg[0] := 52H; msg[1] := 5AH;
+    msg[2] := 1;
+    msg[3].(U32) := 8;
+    msg[7].(I32) := 100;
+    msg[11].(I32) := 200;
+
+    h := msg[0].(Head);
+    Out.hex(U64(h.magic), 4); Out.char(' ');
+    Out.int(I64(h.kind)); Out.char(' ');
+    Out.int(I64(h.len)); Out.ln;
+    sum := 0;
+    i := 7;
+    while i < 7 + INT(h.len) do
+        sum := sum + I64(msg[i].(I32));
+        i := i + 4;
+    end;
+    Out.int(sum); Out.ln;
+end;
+
+end Wire.
+```
+
+A view isn't a copy: it *is* those bytes, so `msg[3].(U32) := 8` writes `msg[3]` to `msg[6]`, and a view goes wherever a variable does, with a field after it, in `INC`, on the left of `:=`. Nor is it a conversion: `I64(x)` is a real's number, `x.(U64)` its bits. The magic number reads `5A52`, its bytes backwards, because x86-64 keeps a number's low byte first; a format with an order of its own is read with `Str.le` or `Str.be`.
+
+A view of an element must end inside the array, and the program checks it as it checks an index:
+
+```raz Short fail
+module Short;
+import Out;
+
+var msg: [10]U8;
+
+proc main*;
+var i: INT;
+begin
+    i := 0;
+    while i < LEN(msg) do
+        Out.int(I64(msg[i].(U32))); Out.char(' ');
+        i := i + 4;
+    end;
+end;
+
+end Short.
+```
+
+The type of a view is an integer, a real or a pointer, or a record or array made of them: types any bytes are a value of, which a `BOOL` or an enumeration isn't. A view may start at any byte, so, as a packed record's field, it has no address of its own.
+
 ## Pointers
 
 `ADR(x)` takes the address of a variable, `^T` is a pointer to a `T`, and `p^` is what it points at. A pointer that points nowhere is `nil`, and following it stops the program with a message that names the place, so a forgotten check is found at once instead of corrupting memory.

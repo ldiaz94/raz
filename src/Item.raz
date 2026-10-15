@@ -214,6 +214,12 @@ proc mismatchOps(x, y: Item; xt, yt: ^Sym.Type): ERROR;
 var text: []U8;
 begin
     text := say2("{} and {} are different types", Sym.typeName(xt), Sym.typeName(yt));
+    (* the help converts the narrower integer to the wider, which loses
+       nothing; else the right operand to the left one's type *)
+    if Sym.isInt(xt) and Sym.isInt(yt) and (xt^.size < yt^.size) and (xt # Sym.tConst) then
+        return Scan.markHelp(Diag.join(x.pos, y.pos), text,
+            say2("convert one to the other's type, as in {}({})", Sym.typeName(yt), Diag.source(x.pos)));
+    end;
     if (Sym.isInt(xt) or (xt^.form = Sym.fReal)) and (Sym.isInt(yt) or (yt^.form = Sym.fReal))
         and (xt # Sym.tConst) and (xt # Sym.tRConst) then
         return Scan.markHelp(Diag.join(x.pos, y.pos), text,

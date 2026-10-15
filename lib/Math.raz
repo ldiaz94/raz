@@ -15,19 +15,16 @@ const
     ln2hi = 6.93147180369123816490E-01;   (* ln 2 in two parts, whose sum is more exact than one F64 *)
     ln2lo = 1.90821492927058770002E-10;
 
-(* The bits of x, and the F64 with bits u. *)
+(* The bits of x, and the F64 with bits u: a view of each, its bytes
+   read as the other type (report section 6.9). *)
 proc bits*(x: F64): U64;
-var p: ^U64;
 begin
-    p := ^U64(ADR(x));
-    return p^;
+    return x.(U64);
 end;
 
 proc fromBits*(u: U64): F64;
-var p: ^F64;
 begin
-    p := ^F64(ADR(u));
-    return p^;
+    return u.(F64);
 end;
 
 (* Whether x has its sign bit set, -0.0 included. *)

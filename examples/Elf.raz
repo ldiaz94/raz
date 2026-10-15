@@ -1,0 +1,77 @@
+(* Views: reads the ELF header of the program itself, and its program
+   headers, which say how the system loads it into memory. The file is
+   read whole into bytes; each header is a record laid over them with a
+   view, b[i].(T), which the program checks lies inside the bytes. *)
+module Elf;
+import Out, Fmt, Buf, Heap, Files;
+
+type
+    (* the file's first 64 bytes, as the ELF specification lays them
+       out: a C struct, so a record lays them out the same way *)
+    Header = record
+        ident: [16]U8;      (* 7FH 'E' 'L' 'F', the class, the byte order, ... *)
+        kind: U16;          (* 2, an executable; 3, a shared object *)
+        machine: U16;       (* 62, x86-64 *)
+        version: U32;
+        entry: U64;         (* where the program starts *)
+        phoff: U64;         (* where the program headers are in the file *)
+        shoff: U64;
+        flags: U32;
+        ehsize: U16;        (* this header's size *)
+        phentsize: U16;     (* a program header's size *)
+        phnum: U16;         (* how many there are *)
+        shentsize, shnum, shstrndx: U16;
+    end;
+    (* one piece of the file, loaded into memory or telling the loader
+       something *)
+    Segment = record
+        kind: U32;          (* 1, loaded *)
+        flags: U32;         (* 1, executable; 2, writable; 4, readable *)
+        offset, vaddr, paddr, filesz, memsz, align: U64;
+    end;
+
+(* "r-x" and the like, for flags *)
+proc rights(flags: U32): [3]U8;
+var r: [3]U8;
+begin
+    r := "---";
+    if flags & 4 # 0 then r[0] := 'r'; end;
+    if flags & 2 # 0 then r[1] := 'w'; end;
+    if flags & 1 # 0 then r[2] := 'x'; end;
+    return r;
+end;
+
+proc main*;
+var b: Buf.Buf; f: []U8; h: Header; i, at, loaded, exec: INT; r: [3]U8;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    defer Buf.done(ADR(b));
+    if not Files.read("/proc/self/exe", ADR(b)) then
+        Out.str("can't read the program\n");
+        return;
+    end;
+    f := Buf.bytes(ADR(b));
+
+    (* the header, copied out of the bytes whole *)
+    h := f[0].(Header);
+    if h.ident[0..4] # "\x7FELF" then Out.str("not ELF\n"); return; end;
+    Fmt.print("class {}, byte order {}, machine {}, header {} bytes\n",
+        [Fmt.int(I64(h.ident[4])), Fmt.int(I64(h.ident[5])), Fmt.int(I64(h.machine)),
+            Fmt.int(I64(h.ehsize))]);
+    if h.phentsize # SIZE(Segment) then Out.str("odd program headers\n"); return; end;
+
+    (* each program header, read in place: no copy of the record *)
+    loaded := 0;
+    exec := 0;
+    for i := 0 to INT(h.phnum) - 1 do
+        at := INT(h.phoff) + i * SIZE(Segment);
+        if f[at].(Segment).kind = 1 then
+            INC(loaded);
+            r := rights(f[at].(Segment).flags);
+            if r = "r-x" then INC(exec); end;
+        end;
+    end;
+    Fmt.print("{} segments loaded, {} of them code\n", [Fmt.int(loaded), Fmt.int(exec)]);
+end;
+
+end Elf.

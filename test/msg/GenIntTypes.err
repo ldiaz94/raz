@@ -1,5 +1,5 @@
 conform/err/GenIntTypes.raz:6:10: error: I32 and I64 are different types
     6 |     b := a + b;
       |          ^^^^^
-help: convert one to the other's type, as in I32(b)
+help: convert one to the other's type, as in I64(a)
 raz: 1 error
