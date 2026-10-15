@@ -78,9 +78,10 @@ library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.14.0, report 2026-10.26, the thaw for `INT` and views (an `INT`
-widens to an `I64` wherever it goes to one; `v.(T)`; `Sys`'s
-`position`, `truncate`, `sync` and `infoOf`; `Opt.at`), is the latest
+v0.15.0, report 2026-10.27 (a slice of the frame returned is an
+error; `Sys`'s `openMode`, `syncAll`, `lock`, `linkInfo` and
+`Info.ino`; `Buf.spare`, and `Buf` stopping when out of memory; `Vec`,
+a growable array), what porting sauce asked for, is the latest
 release. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
@@ -204,6 +205,13 @@ otherwise.
   and the library it imports (`Str`, `Bytes`, ...), use neither views
   nor the widening of 2026-10.26, since the seed builds them, until a
   release makes a new seed.
+- A returned slice of the frame (report 2026-10.27, 7.3) is caught by
+  `Item.frame`, which sees only the expression: a slice held first in a
+  local slice variable or a record, stored, or come back from a call,
+  isn't, and is left undefined (10). `ret` and `keep`, in
+  PROPOSALS.md, would close it; the owner keeps it open for now.
+- `Buf.add`, `str` and `spare`, and `Vec`'s growing, stop the program
+  when the allocator has no room; `room` asks first.
 - An `extern` module variable is read-only for an importer, as the
   report says of every exported variable (3).
 - Warnings come only for a module with no errors. A procedure naming

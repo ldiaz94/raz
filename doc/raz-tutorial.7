@@ -368,6 +368,10 @@ is the slice of the elements from
 up to, but not including,
 .Cm hi ,
 and an array goes silently where a slice is wanted.
+A slice of a local array is good only while its procedure runs, so
+returning one is an error: take the array as a
+.Cm var
+parameter instead.
 .Pp
 A string is a slice of bytes,
 .Cm []U8 ,
@@ -1063,8 +1067,8 @@ The arguments may name what the importing module declares later, as
 .Cm before
 is here.
 The library's
-.Cm List , Map
-and
+.Cm List , Map , Vec ,
+a growable array, and
 .Cm Sort
 are generic modules:
 .Bd -literal -offset indent

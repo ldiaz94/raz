@@ -168,8 +168,8 @@ The report, `doc/raz.md` and `doc/raz-lib.md`, says all of it in about 2,300 lin
 `Rt` (ending the program, failed checks, signals), `Sys` (system calls), `Out`
 (buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
 `Heap`, `Arena`, `Str`, `Bytes`, `Buf`, `Fmt`, `Math`, `Files`, `Opt` (a command
-line read through one table), `List(T)`, `Map(K, V; hash, eq)` and
-`Sort(T; less)`. Volume 2 of the report, `doc/raz-lib.md`, gives each one's interface,
+line read through one table), `List(T)`, `Map(K, V; hash, eq)`,
+`Vec(T)` (a growable array) and `Sort(T; less)`. Volume 2 of the report, `doc/raz-lib.md`, gives each one's interface,
 and `tools/Doc.raz` prints it from the module's file:
 
     $ ./raz -o Doc tools/Doc.raz && ./Doc lib/Str.raz
@@ -201,16 +201,16 @@ with vim's. Both colour raz through `tools/Scan.raz`.
 The compiler says its own version and that of the report it follows:
 
     $ ./raz --version
-    raz 0.14.0, report 2026-10.26
+    raz 0.15.0, report 2026-10.27
 
 The compiler's version is git's name for the commit it was built from:
-`0.14.0` at the tag `v0.14.0`, `0.14.0-5-g38d29a8` five commits past it.
+`0.15.0` at the tag `v0.15.0`, `0.15.0-5-g38d29a8` five commits past it.
 To release, check `main` and tag it; the tag's message is what
 `raz --version` will print:
 
     $ make check
-    $ git tag -a v0.14.0 -m 'raz 0.14.0, report 2026-10.26'
-    $ git push origin v0.14.0
+    $ git tag -a v0.15.0 -m 'raz 0.15.0, report 2026-10.27'
+    $ git push origin v0.15.0
 
 GitHub then builds and checks the tag, and makes a release of it with
 a tarball of `raz`, its `lib/` and its manual pages, made by `make

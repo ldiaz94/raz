@@ -517,6 +517,8 @@ one is the caller's variable, of the parameter's type exactly.
 .It
 .Cm "proc f(x: INT): (INT, ERROR);"
 returns several results.
+Returning a slice of a local array, of a value parameter, or of an
+array literal is an error: the frame it points into is gone [7.3].
 A procedure is a value of its type,
 .Cm "proc(a, b: INT): BOOL" ,
 or nil.
