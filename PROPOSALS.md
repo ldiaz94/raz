@@ -152,3 +152,88 @@ every file system and so does no less.
 
 Not needed: syncing a directory, so that a rename in it is durable, is
 already `sync(open(dir, {reading}))`.
+
+## `Buf` when memory runs out
+
+`Buf.add` and `Buf.str` call `room`, and when it fails they drop the
+bytes and return as if they had added them. The buffer is then short,
+and nothing says so: in sauce a short buffer is an object written to
+disk with bytes missing, a corrupt store. A program must call `room`
+before every `add` to be safe, which no one does.
+
+The proposal: when `room` fails, `add` and `str` stop the program, as a
+failed check does: "Buf: out of memory", the calls under way, status
+2. `room` stays as it is, the way for a program that can do something
+better to ask first.
+
+An `ERROR` result would be raz's usual way, but it would put a `try` or
+an `_ :=` at every call, for a failure almost no program can deal with,
+and it breaks every program that calls them as statements (a dropped
+result, an error under `-Werror`): a thaw. Stopping breaks no program
+whose memory suffices, and changes only what happens when it doesn't,
+from silent damage to a stop, so it can come with any release.
+
+Met in porting sauce, which wraps every `Buf.str` in a `Buf.room`
+(`Sbase.add`).
+
+## Reading into a `Buf`
+
+`Sys.read` fills a `[]U8` it is given. A `Buf`'s free room,
+`data[len..cap]`, is its own, and `bytes` gives only `data[0..len]`, so
+there is no slice of it to read into. A program that reads a file into
+a `Buf` reads into an array on its stack and copies that in with
+`Buf.str`: every byte is handled twice, and the stack holds a buffer as
+big as each read.
+
+```
+proc spare*(b: ^Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, for a read to fill; "" if the allocator has none *)
+```
+
+The program reads into what `spare` gives and adds what it got to
+`len`, which is already exported:
+
+```
+s := Buf.spare(ADR(b), 65536);
+n := Sys.read(fd, s);
+if n > 0 then INC(b.len, n); end;
+```
+
+The slice is good until the buffer next grows, as `bytes` is. It
+breaks no program. `len` past `cap` is still the program's mistake to
+make, as it is today; a `Buf.grow(b, n)` that checks it could stand
+for the `INC`, if wanted.
+
+Met in sauce's `readFd`, which reads every file of the store this way.
+
+## A slice that outlives what it points at
+
+```
+proc short(h: Hex): []U8;    (* Hex = [64]U8 *)
+begin
+    return h[0..8];
+end;
+
+proc word: []U8;
+var a: [4]U8;
+begin
+    ...
+    return a;                (* the array, silently a slice *)
+end;
+```
+
+Both compile without a word, under `-Werror`, and return a slice of
+the procedure's own frame, which the next call overwrites. Section 10
+says a program that reaches memory only through checked variables is
+defined; a slice is checked, so this is a hole in that promise, a
+defect rather than a wish, and it can be mended without a thaw.
+
+The narrow mend, which needs no analysis of where values go: it is an
+error to return, as a slice, a slice of a local array or of a value
+parameter that is an array or holds one, the silent conversion of
+such an array included. It doesn't catch a slice stored in a module
+variable or through a pointer, which is the rarer mistake, nor one of
+an `ADR`, which section 10 already gives no promise for. The report
+says it in section 7.3, Return; the compiler checks it where it
+checks the type of `return`'s expression.
+
+Met in sauce's `Ssha.short`, which takes `var h: Hex` now.
