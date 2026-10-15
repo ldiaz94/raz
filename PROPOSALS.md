@@ -15,28 +15,6 @@ Met in porting the compiler to raz, where the seed's `const x: TItem`
 Measured once the port built: not what stands out, the compiler's
 profile is flat (`Scan.tokPos` is 9%).
 
-## Dereferencing a conversion
-
-`^I64(ADR(mem[a]))^` is an error today ("a conversion can't be
-dereferenced"), and a statement can't start with one, so a program
-that reads and writes typed values in an array of bytes declares a
-pointer variable for each access:
-
-```
-p := ^I64(ADR(mem[a]));
-p^ := v;
-```
-
-The proposal: a conversion to a pointer type may be followed by `^`,
-and the designator it makes may stand where any other does, on the
-left of `:=` too, so that the two lines are `^I64(ADR(mem[a]))^ := v;`.
-The grammar's `Designator` would start with a `QualIdent` or such a
-conversion.
-
-Met in tery, whose memory is an array of bytes holding cells: every
-fetch and store of a cell, and in any program that reads a file
-format or a device's registers through a byte buffer.
-
 ## A minus sign after an operator
 
 `x & -8` and `n * -1` are errors: a unary minus belongs to the start

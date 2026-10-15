@@ -24,7 +24,9 @@ is a fourth, for strings: raw strings, which may run over lines
 and may be indented with the code around them (section 2), and
 `match` on a string (section 7.4); it breaks no program. 2026-10.26
 is a fifth: an `INT` widens to an `I64` wherever it goes to one, in
-an expression too (sections 5.10 and 6.1); it breaks no program.
+an expression too (sections 5.10 and 6.1); and a view, `v.(T)`,
+reads and writes the bytes of a variable as a `T` (section 6.9); it
+breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -646,7 +648,7 @@ Factor     = number | char | string | Designator | "(" Expr ")"
 Element    = Expr | ident ":" Expr .
 Designator = QualIdent { Selector } .
 Selector   = "." ident | "^" | "[" Expr [ ".." Expr ] "]"
-           | "(" [ Expr { "," Expr } ] ")" .
+           | "(" [ Expr { "," Expr } ] ")" | "." "(" Type ")" .
 ```
 
 The operators bind in the order of the grammar: `not`, `~` and `try`
@@ -661,7 +663,8 @@ are for integers only.
 
 A pointer to a record isn't the record: its fields are `p^.f`, never
 `p.f`, and the elements of a pointer to an array are `p^[i]`. A
-statement starts with a name or `try`, so `^T(x)^ := v` isn't one.
+statement starts with a name or `try`, so `^T(x)^ := v` isn't one; a
+view, `mem[a].(I64) := v` (section 6.9), says it without a pointer.
 
 ### 6.1 Integers
 
@@ -862,6 +865,98 @@ is `INT`, `UINT` or a pointer type (`INT` or `UINT` for `XADD`), on
 every target. They are sequentially consistent, on every target; how a
 machine without atomic instructions makes them so is the
 implementation's choice (appendix A).
+### 6.9 Views
+
+A view reads and writes the bytes of a variable as a value of another
+type. `v.(T)`, with `v` a variable, is the `T` whose bytes start where
+`v` starts:
+
+```
+var mem: [4096]U8; n: I64; x: F64; bits: U64;
+
+mem[16].(I64) := -1;     (* the 8 bytes mem[16] to mem[23] now hold -1 *)
+n := mem[16].(I64);      (* and are read back as an I64: n is -1 *)
+bits := x.(U64);         (* the 8 bytes of x, as a U64 *)
+```
+
+A view is a variable, not a value: `mem[16].(I64)` is made of the 8
+bytes `mem[16]` to `mem[23]`, as `p^` is the variable `p` points at.
+Reading it reads those bytes; assigning it writes them, and so changes
+`mem`. Nothing is copied to make it. It stands wherever a variable
+may: on the left of `:=`, as the variable of `INC`, and with selectors
+after it:
+
+```
+type Header = record magic: U32; count: U32; end;
+var buf: [512]U8; k: U32;
+
+k := buf[0].(Header).count;    (* bytes 4 to 7 of buf, as a U32 *)
+buf[0].(Header).count := 0;
+INC(mem[a].(I64), 8);
+```
+
+**A view isn't a conversion.** A conversion works on a value, a view
+on bytes. With `x: F64` holding 1.5, `I64(x)` is 1, the number rounded
+toward zero, while `x.(I64)` is 3FF8000000000000H, the bits that hold
+1.5. With `n: I64` holding 258, `U8(n)` is 2, the number cut to its low
+byte, while `n.(U8)` is the first byte of `n` in memory, which is the
+low one only on a target that puts its low byte first (appendix A).
+When the program means a number, it wants a conversion; when it means
+the bytes as they lie, a view.
+
+**The types.** `T` is an integer type, a real type, a pointer type, or
+a record or array made of these alone, at any depth: the types for
+which any bytes at all are a value. `BOOL`, an enumeration, a set, a
+slice, a variant, a procedure type and `ERROR` are left out, since
+bytes that are none of their values would make the program mean
+nothing. To read one of them from bytes, view the integer and convert
+it: `Colour(mem[a])`. `v` may be of any type, and is a variable: a
+name of one, a field or element of one, or what a pointer points at;
+not a constant, nor the result of a call or of an operator.
+
+**Where its bytes lie.** The `T` lies within the variable `v` is part
+of:
+
+- for an element of an array or a slice, `a[i].(T)`, from that element
+  to the end of `a`: `mem[4088].(I64)` is the last 8 bytes of `mem`,
+  and `mem[4090].(I64)` would run 2 bytes past its end;
+- for anything else, within `v` itself: `x.(U64)` is allowed only if
+  `x` has at least 8 bytes.
+
+This is checked, as an index is: by the compiler when it can tell,
+otherwise while the program runs, where a view that runs past the end
+is a failed check (section 6.5), unless the module says `check off;`.
+An element reached through a pointer, `p[i].(T)`, is checked no more
+than `p[i]` is, since a pointer has no length.
+
+**Any address.** The `T` may start at any byte: `mem[3].(I64)` is an
+`I64` whose first byte is `mem[3]`. As a field of a packed record is
+(section 5.5), it is read and written on every target, in parts where
+the machine needs that; and, as such a field, a view has no address:
+`ADR` of it, a `var` argument of it and a slice of it are errors. Copy
+it out to a variable, and back in. A view of a volatile variable is an
+error too, since its access can't be promised as one (section 7.6): a
+device's registers are reached through a `^VOLATILE` pointer to a
+record of them.
+
+**Byte order.** The bytes are in the target's order (appendix A). A
+file or a message whose format fixes an order of its own is read with
+`Str.le`, `Str.be` and the like (section 5.5), if the program is to
+read it right on every target.
+
+**Before views.** A program used to make a pointer for each access,
+and may still: `mem[a].(I64) := n` does what
+
+```
+p := ^I64(ADR(mem[a]));
+p^ := n;
+```
+
+does, but with `a` checked against the length of `mem`, no pointer
+variable, and no address of a word that may be misaligned.
+
+`v` is evaluated once, and its check made, before the bytes are read
+or written.
 
 ## 7. Statements
 
@@ -1543,7 +1638,7 @@ Factor     = number | char | string | Designator | "(" Expr ")"
 Element    = Expr | ident ":" Expr .
 Designator = QualIdent { Selector } .
 Selector   = "." ident | "^" | "[" Expr [ ".." Expr ] "]"
-           | "(" [ Expr { "," Expr } ] ")" .
+           | "(" [ Expr { "," Expr } ] ")" | "." "(" Type ")" .
 
 Statements = { Statement ";" } .
 Statement  = Designator [ ":=" Expr ]
