@@ -1,6 +1,6 @@
 (* A growable byte buffer, its memory from an allocator. *)
 module Buf;
-import Mem, Arena, Rt;
+import Mem, Arena, Rt, Sys;
 
 type
     Buf* = record
@@ -23,6 +23,14 @@ begin
     cap := b^.cap * 2;
     if cap < 64 then cap := 64; end;
     while cap < b^.len + n do cap := cap * 2; end;
+    if b^.a = nil then
+        (* a zero Buf has no allocator: the core has no heap to assume,
+           so init must give it one. Said plainly, with the calls under
+           way, rather than as a nil pointer in Mem.alloc *)
+        _ := Sys.write(Sys.stderr, "Buf used before Buf.init\n");
+        Rt.trace;
+        Rt.exit(2);
+    end;
     p := Mem.alloc(b^.a, cap, 1);
     if p = nil then return false; end;
     if b^.len > 0 then COPY(p[0..b^.len], b^.data[0..b^.len]); end;

@@ -1,0 +1,12 @@
+module BufInit;
+(* a Buf used before Buf.init says so, with the calls under way, and
+   stops the program with status 2 *)
+import Buf;
+
+proc main*;
+var b: Buf.Buf;
+begin
+    Buf.str(ADR(b), "hello");
+end;
+
+end BufInit.
