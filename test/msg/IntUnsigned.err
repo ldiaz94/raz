@@ -1,0 +1,5 @@
+conform/err/IntUnsigned.raz:5:15: error: U64 and INT are different types
+    5 |     a := 5 + (a - b);
+      |               ^^^^^
+help: convert one to the other's type, as in U64(b)
+raz: 1 error

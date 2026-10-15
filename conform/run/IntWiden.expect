@@ -1,0 +1,14 @@
+a + n 8
+n * a -20
+5 + (a - n) 17
+a + LEN(s) 15
+n * n + a 14
+n < a
+LEN(s) = a - 5
+sum of 0 to LEN(s) - 1 10
+a after INC and DEC 17
+a, b := two() 34
+twoWide 34
+threeWide 567
+0000000000000006
+w > u

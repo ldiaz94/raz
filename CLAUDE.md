@@ -190,9 +190,11 @@ otherwise.
   (SIGFPE), as 6.1 says, `mod` as `div`; for a type narrower than 64
   bits the code makes the division fault, as the machine wouldn't. In
   a constant it is an error, as dividing by zero is.
-- `INT` widens to `I64` (and `UINT` to `U64`) wherever a value is
-  assigned, passed or returned, `return a, b` included; not in `a, b :=
-  f(x)`, `return f(x)`, a `for` or `INC`/`DEC` (in the report, 5.10).
+- `INT` widens to `I64` (and `UINT` to `U64`) wherever its value goes
+  to one: assigned, passed, returned, in `a, b := f(x)` and `return
+  f(x)`, a `for`'s bounds, `INC`/`DEC`'s step, and where it meets an
+  `I64` in an operator (report 2026-10.26, 5.10 and 6.1). Never to a
+  `U64`, nor an `I64` back to an `INT`.
 - An `extern` module variable is read-only for an importer, as the
   report says of every exported variable (3).
 - Warnings come only for a module with no errors. A procedure naming

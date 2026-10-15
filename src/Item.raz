@@ -464,10 +464,27 @@ begin
 end;
 
 (* An INT goes silently into an I64, and a UINT into a U64, losing
-   nothing on any target (report section 5.10). *)
-proc widens(s, t: ^Sym.Type): BOOL;
+   nothing on any target, wherever its value goes to one (report
+   section 5.10). *)
+proc widens*(s, t: ^Sym.Type): BOOL;
 begin
     return ((s = Sym.tInt) and Sym.same(t, Sym.tI64)) or ((s = Sym.tUInt) and Sym.same(t, Sym.tU64));
+end;
+
+(* Whether the several results s may be passed on as t: as many, each
+   of the same type or one that widens to it, as in return f(x) (report
+   section 5.10). An INT and an I64 have one layout here, so the values
+   pass as they are. *)
+proc resultsFit*(s, t: ^Sym.Type): BOOL;
+var f, g: ^Sym.Obj;
+begin
+    if not s^.tuple or not t^.tuple or (s^.len # t^.len) then return false; end;
+    f := s^.fields; g := t^.fields;
+    while f # nil do
+        if not Sym.same(f^.typ, g^.typ) and not widens(f^.typ, g^.typ) then return false; end;
+        f := f^.next; g := g^.next;
+    end;
+    return true;
 end;
 
 (* Another module's exported variable can be read, not changed, nor
@@ -537,26 +554,15 @@ begin
         return Scan.markHelp(x.pos,
             say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
             say1("to call it, write {}()", Diag.source(x.pos)));
+    elsif widens(t, s) then
+        (* the other way, an I64 into an INT, is written: it may drop bits *)
+        return Scan.markHelp(x.pos, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
+            Diag.say("{} becomes {} only as written, {}({})", [Fmt.str(Sym.typeName(s)),
+                Fmt.str(Sym.typeName(t)), Fmt.str(Sym.typeName(t)), Fmt.str(Diag.source(x.pos))]));
     else
         return mismatch(x, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)));
     end;
     return nil;
-end;
-
-(* coerce where the types must be the same, as in a for loop, INC and
-   several results, which don't widen an INT to an I64 (report sections
-   5.10, 6.1 and 7.2); help, if not empty, says why. *)
-proc coerceExact*(var x: Item; t: ^Sym.Type; help: []U8): ERROR;
-var h: []U8;
-begin
-    if widens(x.typ, t) then
-        h := help;
-        if LEN(h) = 0 then
-            h := say2("they don't mix here: write {}({})", Sym.typeName(t), Diag.source(x.pos));
-        end;
-        return Scan.markHelp(x.pos, say2("expected {}, found {}", Sym.typeName(t), what(x)), h);
-    end;
-    return coerce(x, t);
 end;
 
 (* dst := src. The address of dst, if it has to be computed, is on the
@@ -1084,6 +1090,10 @@ begin
             end;
             t := xt;
         elsif Sym.same(xt, yt) then t := xt;
+        (* an INT meeting an I64 widens to it, a UINT to a U64 (report
+           section 6.1): the same 64 bits here, so only the type changes *)
+        elsif widens(xt, yt) then t := yt;
+        elsif widens(yt, xt) then t := xt;
         else return mismatchOps(x, y, xt, yt); end;
         if not intOp(op) then return doesntApply(op, x, y, t); end;
     elsif (xt^.form = Sym.fReal) and (yt^.form = Sym.fReal) then
@@ -1723,7 +1733,7 @@ end;
 (* INC(v, k) or DEC: v's address is on the stack, from address. *)
 proc incDec*(var v, k: Item; dec: BOOL): ERROR;
 begin
-    try coerceExact(k, v.typ, "");
+    try coerce(k, v.typ);
     try value(k);
     if v.base = Gen.bReg then Gen.incDecReg(v.chunk, scalarSize(v.typ), v.typ^.signed, dec);
     else Gen.incDec(scalarSize(v.typ), v.typ^.signed, dec); end;

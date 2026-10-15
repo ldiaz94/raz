@@ -1,5 +1,0 @@
-conform/err/IntResults.raz:6:13: error: expected I64, found INT
-    6 |     a, b := two();
-      |             ^^^^^
-help: several results go to variables of just their types
-raz: 1 error

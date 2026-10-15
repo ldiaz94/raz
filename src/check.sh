@@ -7,11 +7,15 @@ set -e
 b=build/src
 # The seed predates raw strings and match on a string (report
 # 2026-10.25): the files that use them are the compiler's alone, and
-# so are those whose message says what match takes.
+# so are those whose message says what match takes. It predates, too,
+# an INT widened in an expression and the rest (report 2026-10.26),
+# and the messages for an I64 that goes to an INT.
 newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRawIndent.raz
     conform/run/MatchStr.raz conform/err/MatchStrTwice.raz conform/err/MatchStrNoElse.raz
     conform/err/MatchStrVar.raz conform/err/MatchReal.raz conform/err/AtMatch.raz
-    examples/Sh.raz examples/Settings.raz"
+    examples/Sh.raz examples/Settings.raz
+    conform/run/IntWiden.raz conform/err/IntIncNarrow.raz conform/err/IntNarrow.raz conform/err/IntNarrowSum.raz
+    conform/err/IntResultsNarrow.raz"
 newer() {
     for g in $newer; do [ $g = $1 ] && return 0; done
     return 1

@@ -1,7 +1,0 @@
-module IntMix;
-proc main*;
-var i: I64; s: []U8;
-begin
-    if i < LEN(s) then end;
-end;
-end IntMix.

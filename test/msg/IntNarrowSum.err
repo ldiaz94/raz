@@ -1,0 +1,5 @@
+conform/err/IntNarrowSum.raz:5:10: error: can't use I64 as INT
+    5 |     n := a + n;
+      |          ^^^^^
+help: I64 becomes INT only as written, INT(a + n)
+raz: 1 error

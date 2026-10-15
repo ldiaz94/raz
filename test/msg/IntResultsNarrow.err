@@ -1,0 +1,4 @@
+conform/err/IntResultsNarrow.raz:6:13: error: result 1 is I64, which can't go to INT
+    6 |     a, b := two();
+      |             ^^^^^
+raz: 1 error

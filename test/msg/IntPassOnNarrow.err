@@ -1,0 +1,4 @@
+conform/err/IntPassOnNarrow.raz:3:42: error: expected the results (INT, INT), found (I64, I64)
+    3 | proc twoNarrow: (INT, INT); begin return two(); end;
+      |                                          ^^^^^
+raz: 1 error

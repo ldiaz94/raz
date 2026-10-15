@@ -1,0 +1,7 @@
+conform/err/IntVarParam.raz:6:9: error: a var parameter needs exactly I64, found INT
+    6 |     put(n);
+      |         ^
+conform/err/IntVarParam.raz:2:14: note: it goes to x, declared here
+    2 | proc put(var x: I64); begin x := 1; end;
+      |              ^
+raz: 1 error

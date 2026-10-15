@@ -19,8 +19,8 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,516 | 1,800 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 1,782 | 1,473 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 3,949 | 3,441 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Item.raz` | 1,792 | 1,478 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 3,960 | 3,445 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -1274,8 +1274,12 @@ the check of an enumeration's position.
 Assignment and conversion: `coerce` makes a value fit the type it's
 going to, or reports that it can't; it's where a string literal becomes
 a slice, an array a slice, an untyped constant a typed one, and an `INT`
-an `I64` (`widens`). `coerceExact` is for where the types must be the
-same, as in a `for` loop, `INC` and several results. `assign` stores, or
+an `I64` (`widens`), wherever it goes: a `for` loop's bounds, `INC`'s
+step and several results pass through `coerce` too. An `INT` meeting
+an `I64` in an operator is `op2`'s, which gives the result the `I64`;
+`return f(x)` takes results that widen by `resultsFit`. None of it
+makes code: an `INT` and an `I64` are the same 64 bits on x86-64, so
+only the item's type changes. `assign` stores, or
 copies records and arrays. `convert` is the written conversion, `T(x)`.
 
 Calls: `beginCall`, then `passArg` for each argument, then `endCall`,

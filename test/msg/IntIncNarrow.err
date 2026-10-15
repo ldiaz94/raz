@@ -1,0 +1,5 @@
+conform/err/IntIncNarrow.raz:5:12: error: can't use I64 as INT
+    5 |     INC(n, a);
+      |            ^
+help: I64 becomes INT only as written, INT(a)
+raz: 1 error

@@ -1743,11 +1743,11 @@ begin
     try expect(Scan.sBecomes);
     try Item.makeItem(v, o);
     try expression(a, o^.typ);
-    try Item.coerceExact(a, o^.typ, "");
+    try Item.coerce(a, o^.typ);
     try Item.assign(v, a);
     try expect(Scan.sTo);
     try expression(b, o^.typ);
-    try Item.coerceExact(b, o^.typ, "");
+    try Item.coerce(b, o^.typ);
     (* the limit, evaluated once: a constant as it is; else, in an
        innermost loop, in the register chooseRegs kept for it, as a
        variable no one can name; else in a slot *)
@@ -2146,7 +2146,13 @@ begin
         if blanks[i] then
             try Item.discard(z);
         else
-            try Item.coerceExact(z, d[i].typ, "several results go to variables of just their types");
+            (* an INT result widens to an I64 variable; an I64 result
+               into an INT is written, but not here, in the call *)
+            if Item.widens(d[i].typ, z.typ) then
+                return Scan.markAt(y.pos, Diag.say("result {} is {}, which can't go to {}",
+                    [Fmt.int(i + 1), Fmt.str(Sym.typeName(z.typ)), Fmt.str(Sym.typeName(d[i].typ))]));
+            end;
+            try Item.coerce(z, d[i].typ);
             try Item.assign(d[i], z);
         end;
         f := f^.next;
@@ -2163,7 +2169,7 @@ begin
     while f # nil do
         try expression(x, f^.typ);
         if x.typ^.tuple then
-            if not Sym.same(x.typ, curResult) then
+            if not Sym.same(x.typ, curResult) and not Item.resultsFit(x.typ, curResult) then
                 return Scan.markAt(x.pos, say2("expected the results {}, found {}", Sym.typeName(curResult), Sym.typeName(x.typ)));
             end;
             return Item.returnAll(x);

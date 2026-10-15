@@ -1,0 +1,7 @@
+module IntIncNarrow;
+proc main*;
+var n: INT; a: I64;
+begin
+    INC(n, a);
+end;
+end IntIncNarrow.

@@ -1,7 +1,0 @@
-module IntInc;
-proc main*;
-var i: I64; s: []U8;
-begin
-    INC(i, LEN(s));
-end;
-end IntInc.

@@ -1,0 +1,7 @@
+module IntNarrowSum;
+proc main*;
+var n: INT; a: I64;
+begin
+    n := a + n;
+end;
+end IntNarrowSum.

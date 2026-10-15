@@ -1,0 +1,8 @@
+module IntVarParam;
+proc put(var x: I64); begin x := 1; end;
+proc main*;
+var n: INT;
+begin
+    put(n);
+end;
+end IntVarParam.

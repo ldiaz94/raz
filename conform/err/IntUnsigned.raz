@@ -1,0 +1,7 @@
+module IntUnsigned;
+proc main*;
+var a: U64; b: INT;
+begin
+    a := 5 + (a - b);
+end;
+end IntUnsigned.

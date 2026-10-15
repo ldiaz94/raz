@@ -1,0 +1,68 @@
+(* An INT widens to an I64, and a UINT to a U64, wherever its value
+   goes to one: in an expression, a relation, a for loop's bounds, the
+   step of INC and DEC, and several results passed on (report sections
+   5.10, 6.1 and 7.2). *)
+module IntWiden;
+import Out;
+
+proc two: (INT, INT);
+begin
+    return 3, 4;
+end;
+
+proc three: (INT, INT, INT);
+begin
+    return 5, 6, 7;
+end;
+
+(* passed on whole: two results come back in registers, three through
+   memory *)
+proc twoWide: (I64, I64);
+begin
+    return two();
+end;
+
+proc threeWide: (I64, I64, I64);
+begin
+    return three();
+end;
+
+proc show(label: []U8; v: I64);
+begin
+    Out.str(label); Out.str(" "); Out.int(v); Out.str("\n");
+end;
+
+proc main*;
+var
+    a, b, c, i: I64; n: INT; s: []U8; u: U64; w: UINT;
+begin
+    s := "hello";
+    n := -2;
+    a := 10;
+    show("a + n", a + n);
+    show("n * a", n * a);
+    show("5 + (a - n)", 5 + (a - n));
+    show("a + LEN(s)", a + LEN(s));
+    show("n * n + a", n * n + a);
+    if n < a then Out.str("n < a\n"); end;
+    if LEN(s) = a - 5 then Out.str("LEN(s) = a - 5\n"); end;
+    c := 0;
+    for i := 0 to LEN(s) - 1 do c := c + i; end;
+    show("sum of 0 to LEN(s) - 1", c);
+    INC(a, LEN(s));
+    DEC(a, n);
+    show("a after INC and DEC", a);
+    a, b := two();
+    show("a, b := two()", a * 10 + b);
+    a, b := twoWide();
+    show("twoWide", a * 10 + b);
+    a, b, c := threeWide();
+    show("threeWide", a * 100 + b * 10 + c);
+    w := 7;
+    u := 0FFFFFFFFFFFFFFFFH;
+    u := u + w;    (* wraps around, as U64 does *)
+    Out.hex(u, 16); Out.str("\n");
+    if w > u then Out.str("w > u\n"); end;
+end;
+
+end IntWiden.
