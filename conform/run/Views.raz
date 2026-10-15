@@ -1,0 +1,101 @@
+(* Views, v.(T): the bytes of a variable read and written as another
+   type (report section 6.9). The output holds on a target that puts a
+   word's low byte first, as appendix A lets a target choose; the
+   bytes are written here a byte at a time where order matters. *)
+module Views;
+import Out, ViewData;
+
+type
+    Header = record magic: U32; count: U32; end;
+    Pair = packed record tag: U8; value: I32; end;
+
+var
+    mem: [64]U8;      (* a module's array *)
+    regs: [4]U64;
+
+proc show(label: []U8; v: I64);
+begin
+    Out.str(label); Out.str(" "); Out.int(v); Out.ln;
+end;
+
+(* a var parameter, an array reached through a pointer, viewed *)
+proc fill(var b: [16]U8; v: I64);
+begin
+    b[8].(I64) := v;
+end;
+
+(* a slice parameter's element, viewed *)
+proc sum(s: []U8): I64;
+var i, t: INT;
+begin
+    t := 0;
+    i := 0;
+    while i + 4 <= LEN(s) do
+        t := t + INT(s[i].(I32));
+        i := i + 4;
+    end;
+    return t;
+end;
+
+proc main*;
+var
+    n, a: I64; b: [16]U8; s: []U8;
+    p: ^I64; h: Header;
+begin
+    (* an I64 in an array of bytes, at an index known and one not *)
+    mem[16].(I64) := -1;
+    show("mem[16].(I64)", mem[16].(I64));
+    show("mem[23]", I64(mem[23]));
+    a := 3;
+    mem[a].(I64) := 1000;
+    INC(mem[a].(I64), 8);
+    show("mem[3].(I64), misaligned", mem[a].(I64));
+    mem[56].(I64) := 7;
+    show("the last 8 bytes", mem[56].(I64));
+
+    (* a view of a whole variable, a local kept in a register
+       otherwise: the first byte of a number, its low byte, low byte
+       first *)
+    n := 258;
+    show("258's first byte", I64(n.(U8)));
+    show("U8(258)", I64(U8(n)));
+
+    (* a record over bytes, and a field of it, read and written *)
+    b[0] := 1; b[4] := 2;
+    h := b[0].(Header);
+    show("h.count", I64(h.count));
+    b[0].(Header).count := 9;
+    show("b[4]", I64(b[4]));
+
+    (* an array as the type, indexed past the view *)
+    mem[32].([2]I32)[1] := -5;
+    show("mem[36].(I32)", I64(mem[36].(I32)));
+
+    (* a packed record, and a pointer read from bytes, then followed *)
+    mem[40].(Pair) := {tag: 1, value: 300};
+    show("Pair's value", I64(mem[41].(I32)));
+    p := ADR(n);
+    mem[48].(^I64) := p;
+    mem[48].(^I64)^ := 77;
+    show("n through a pointer from bytes", n);
+
+    (* a var parameter's array, a slice parameter, a slice's element *)
+    fill(b, 123456789);
+    show("b[8].(I64)", b[8].(I64));
+    s := mem[0..16];
+    s[0].(I32) := 10; s[4].(I32) := 20; s[8].(I32) := 30; s[12].(I32) := -1;
+    show("sum", sum(s));
+
+    (* a module's array of U64s viewed as bytes, and an element of
+       bigger elements viewed from its start *)
+    regs[1] := 0;
+    regs[0].([32]U8)[8] := 5;
+    show("regs[1]", I64(regs[1]));
+    regs[2].([2]U64)[1] := 6;
+    show("regs[3]", I64(regs[3]));
+
+    (* another module's variable, read through a view *)
+    show("ViewData.bytes[0].(I64)", ViewData.bytes[0].(I64));
+end;
+
+end Views.

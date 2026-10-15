@@ -1,0 +1,5 @@
+conform/err/ViewBool.raz:5:10: error: can't view bytes as BOOL
+    5 |     b := mem[0].(BOOL);
+      |          ^^^^^^^^^^^^^
+help: some bytes are no BOOL: view an integer, and compare it with 0
+raz: 1 error

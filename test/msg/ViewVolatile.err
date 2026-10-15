@@ -1,0 +1,5 @@
+conform/err/ViewVolatile.raz:5:10: error: can't make a view of a volatile variable
+    5 |     n := p^[4].(U32);
+      |          ^^^^^^^^^^^
+help: a view may be misaligned, which can't be one access: reach a device through a ^VOLATILE pointer to a record
+raz: 1 error

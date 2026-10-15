@@ -48,6 +48,8 @@ type
         vol*: BOOL;          (* mVar: reached through ^VOLATILE *)
         isVar*: BOOL;        (* mVar: a variable of the program, not a temporary *)
         odd*: BOOL;          (* mVar: in a packed record, so maybe misaligned *)
+        view*: BOOL;         (* mVar: a view, v.(T), or part of one: maybe
+                                misaligned, and with no address *)
         ro*: BOOL;           (* mVar: another module's exported variable, or part
                                 of one, which only that module changes *)
         deref*: BOOL;        (* mVar: at an address from a pointer, which may be
@@ -363,19 +365,25 @@ begin
     return nil;
 end;
 
-(* The address of the variable or string x, on top of the stack *)
-proc address*(var x: Item): ERROR;
+(* x, a variable kept in a register, is wanted in memory after all, for
+   its address or a view of its bytes: the procedure is compiled again
+   with the variable in memory; till then, this code is thrown away *)
+proc demote(var x: Item);
 begin
-    nilTest(x);
     if (x.mode = mVar) and (x.base = Gen.bReg) then
-        (* its address is wanted after all: the procedure is compiled again
-           with the variable in memory; till then, this code is thrown away *)
         x.obj^.reg := 0;
         x.obj^.reg2 := 0;
         demoted := true;
         x.base := Gen.bFrame;
         x.off := x.obj^.val;
     end;
+end;
+
+(* The address of the variable or string x, on top of the stack *)
+proc address*(var x: Item): ERROR;
+begin
+    nilTest(x);
+    demote(x);
     if x.mode = mStr then Gen.pushAdr(globalAdr(x.chunk));
     elsif x.mode = mVar then
         Gen.pushAdr(adrOf(x));
@@ -509,6 +517,13 @@ begin
     return Scan.Failed;
 end;
 
+(* An error at x, which is a view, or part of one, and so has no
+   address: text, and help that says what to do instead. *)
+proc noAddress*(x: Item; text: []U8): ERROR;
+begin
+    return Scan.markHelp(x.pos, text, "a view has no address, since it may be misaligned: copy it to a variable");
+end;
+
 proc coerce*(var x: Item; t: ^Sym.Type): ERROR;
 var s: ^Sym.Type; tmp: I64;
 begin
@@ -546,6 +561,7 @@ begin
         try notReadOnly(x);
         if x.vol then return Scan.markAt(x.pos, "can't make a slice through a volatile pointer"); end;
         if x.odd then return Scan.markAt(x.pos, "can't make a slice of a field of a packed record"); end;
+        if x.view then return noAddress(x, "can't make a slice of a view"); end;
         try address(x);
         sliceOf(x, t, s^.len);
     elsif (x.mode = mProc) and (t^.form # Sym.fProc) and (s^.base = nil) then
@@ -612,6 +628,7 @@ begin
     try value(x);
     x.mode := mVar; x.base := Gen.bStack; x.off := 0; x.deref := true;
     x.typ := t^.base; x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
+    x.view := false;
     return nil;
 end;
 
@@ -669,7 +686,7 @@ begin
             Gen.op(Scan.sPlus, Gen.kWord, 8, false);
         else Gen.indexPtr(s); end;
         x.mode := mVar; x.base := Gen.bStack; x.off := 0;
-        x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
+        x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false; x.view := false;
     elsif (t^.form = Sym.fArray) and (y.mode = mConst) then
         if (y.val < 0) or (y.val >= t^.len) then
             return Scan.markAt(y.pos, Diag.say("index {} is out of range for a length of {}", [Fmt.int(y.val), Fmt.int(t^.len)]));
@@ -683,7 +700,7 @@ begin
         x.base := Gen.bStack;
     else
         try value(y);
-        Gen.indexSlice(adrOf(x), s, checks, y.pos);
+        Gen.indexSlice(adrOf(x), s, 0, checks, y.pos);
         x.base := Gen.bStack; x.off := 0; x.isVar := true; x.vol := false; x.ro := false;
     end;
     x.typ := t^.base;
@@ -707,6 +724,7 @@ begin
     end;
     if x.vol then return Scan.markAt(x.pos, "can't make a slice through a volatile pointer"); end;
     if x.odd then return Scan.markAt(x.pos, "can't make a slice of a field of a packed record"); end;
+    if x.view then return noAddress(x, "can't make a slice of a view"); end;
     if t^.form = Sym.fArray then try notReadOnly(x); end;
     try value(hi);
     tmp := Gen.allocTemp(16, 8);
@@ -715,6 +733,143 @@ begin
     st := Sym.newType(Sym.fSlice, 16, 8);
     st^.base := t^.base;
     tempItem(x, st, tmp);
+    return nil;
+end;
+
+(* Views, v.(T): the bytes of the variable v read and written as a T
+   (report section 6.9). A view is the item of v with T for its type:
+   the same place, so nothing is copied or computed to make one. What
+   is left is to check the type, and that T's bytes lie where v's room
+   is; and to mark the item a view, which may be misaligned, as a field
+   of a packed record may, so that nothing takes its address. *)
+
+(* Any bytes at all are a value of an integer, a real or a pointer,
+   and of a record or array made of them alone. A BOOL, an enumeration
+   or a set has bytes that are none of its values, and a slice,
+   variant, procedure or ERROR holds more than bytes can say. The type
+   in t that isn't plain data, or nil if all of it is. *)
+proc notPlain(t: ^Sym.Type): ^Sym.Type;
+var f: ^Sym.Obj; u: ^Sym.Type;
+begin
+    match t^.form of
+    | fInt, fReal, fPtr: return nil;
+    | fArray: return notPlain(t^.base);
+    | fRecord:
+        if t^.tuple then return t; end;
+        f := t^.fields;
+        while f # nil do
+            u := notPlain(f^.typ);
+            if u # nil then return u; end;
+            f := f^.next;
+        end;
+        return nil;
+    | else: return t;
+    end;
+end;
+
+(* What x must be to have a view made of it, as a T: a variable, not
+   volatile, and T a type of plain data. *)
+proc viewable(x: Item; t: ^Sym.Type): ERROR;
+var u: ^Sym.Type; text: []U8;
+begin
+    (* another module's variable, ro, is one too, read and not written *)
+    if (x.mode # mVar) or not (x.isVar or x.ro) then
+        return Scan.markHelp(x.pos, "a view needs a variable",
+            "a constant, or the result of a call or an operator, has no bytes to view: copy it to a variable");
+    end;
+    if x.vol then
+        return Scan.markHelp(x.pos, "can't make a view of a volatile variable",
+            "a view may be misaligned, which can't be one access: reach a device through a ^VOLATILE pointer to a record");
+    end;
+    u := notPlain(t);
+    if u = nil then return nil; end;
+    if u # t then
+        text := say2("can't view bytes as {}, which holds {}", Sym.typeName(t), Sym.typeName(u));
+    else
+        text := say1("can't view bytes as {}", Sym.typeName(t));
+    end;
+    if u^.form = Sym.fBool then
+        return Scan.markHelp(x.pos, text, "some bytes are no BOOL: view an integer, and compare it with 0");
+    elsif u^.form in {Sym.fEnum, Sym.fSet} then
+        return Scan.markHelp(x.pos, text,
+            say1("some bytes are no {}: view an integer, and convert it", Sym.typeName(u)));
+    end;
+    return Scan.markHelp(x.pos, text, "a view is an integer, a real or a pointer, or a record or array made of them");
+end;
+
+(* x becomes the view of itself as a T, its type changed and nothing
+   else: the bytes are where x's are. A variable in a register has no
+   bytes to view, so it goes to memory. *)
+proc becomeView(var x: Item; t: ^Sym.Type);
+begin
+    demote(x);
+    x.typ := t;
+    x.view := true;
+end;
+
+(* v.(T), where v is not an element: T must fit in v itself. *)
+proc view*(var x: Item; t: ^Sym.Type): ERROR;
+begin
+    try viewable(x, t);
+    if t^.size > x.typ^.size then
+        return Scan.markAt(x.pos, Diag.say("a view of {} bytes doesn't fit in {}, of {}",
+            [Fmt.int(t^.size), Fmt.str(Sym.typeName(x.typ)), Fmt.int(x.typ^.size)]));
+    end;
+    becomeView(x, t);
+    return nil;
+end;
+
+(* The number of elements of size s that n bytes reach into, at least
+   one: those of a[i] up to a[i + k - 1]. *)
+proc elementsFor(n, s: I64): I64;
+begin
+    if (s = 0) or (n <= s) then return 1; end;
+    return (n + s - 1) div s;
+end;
+
+(* a[i].(T): x is the array, slice or pointer, y the index. T must lie
+   from a[i] to a's end: in an array of n elements, k of them from i on,
+   so i is below n - k + 1; a slice's length is known only as the
+   program runs, which checks that length - i, at least 1 since i is
+   below it, is at least k. Through a pointer, no check: p[i] has none
+   (report section 6.9). *)
+proc indexView*(var x, y: Item; t: ^Sym.Type): ERROR;
+var at: ^Sym.Type; s, k: I64;
+begin
+    at := x.typ;
+    s := at^.base^.size;
+    k := elementsFor(t^.size, s);
+    if not Sym.isInt(y.typ) then
+        return Scan.markAt(y.pos, say1("an index is an integer, found {}", what(y)));
+    end;
+    if (at^.form = Sym.fArray) and (k > at^.len) then
+        return Scan.markAt(Diag.join(x.pos, y.pos), Diag.say("a view of {} bytes doesn't fit in {}, of {}",
+            [Fmt.int(t^.size), Fmt.str(Sym.typeName(at)), Fmt.int(at^.size)]));
+    end;
+    if (at^.form = Sym.fArray) and (y.mode = mConst) then
+        if (y.val < 0) or (y.val > at^.len - k) then
+            return Scan.markAt(y.pos, Diag.say("a view of {} bytes at index {} runs past a length of {}",
+                [Fmt.int(t^.size), Fmt.int(y.val), Fmt.int(at^.len)]));
+        end;
+        try index(x, y);
+    elsif (at^.form = Sym.fArray) and checks then
+        (* as index does, with the view's check in place of i < n *)
+        try value(y);
+        Gen.checkView(at^.len, at^.len - k + 1, y.pos);
+        if x.base = Gen.bStack then scaleBy(s); Gen.op(Scan.sPlus, Gen.kWord, 8, false);
+        else Gen.indexArray(adrOf(x), s); x.off := 0; end;
+        x.base := Gen.bStack;
+        x.typ := at^.base;
+    elsif at^.form = Sym.fSlice then
+        try value(y);
+        Gen.indexSlice(adrOf(x), s, k - 1, checks, y.pos);
+        x.base := Gen.bStack; x.off := 0; x.isVar := true; x.vol := false; x.ro := false;
+        x.typ := at^.base;
+    else
+        try index(x, y);
+    end;
+    try viewable(x, t);
+    becomeView(x, t);
     return nil;
 end;
 
@@ -1090,10 +1245,10 @@ begin
             end;
             t := xt;
         elsif Sym.same(xt, yt) then t := xt;
-        (* an INT meeting an I64 widens to it, a UINT to a U64 (report
-           section 6.1): the same 64 bits here, so only the type changes *)
-        elsif widens(xt, yt) then t := yt;
-        elsif widens(yt, xt) then t := xt;
+        elsif widens(xt, yt) or widens(yt, xt) then
+            (* an INT meeting an I64 widens to it, a UINT to a U64 (report
+               section 6.1): the same 64 bits here, so only the type changes *)
+            if widens(xt, yt) then t := yt; else t := xt; end;
         else return mismatchOps(x, y, xt, yt); end;
         if not intOp(op) then return doesntApply(op, x, y, t); end;
     elsif (xt^.form = Sym.fReal) and (yt^.form = Sym.fReal) then
@@ -1356,6 +1511,7 @@ begin
         try notReadOnly(a);
         if (a.mode # mVar) or not a.isVar then return Scan.markAt(a.pos, "a var parameter needs a variable"); end;
         if a.odd then return Scan.markAt(a.pos, "a field of a packed record can't be a var parameter"); end;
+        if a.view then return noAddress(a, "a view can't be a var parameter"); end;
         if not Sym.same(a.typ, p^.typ) then
             return mismatch(a, say2("a var parameter needs exactly {}, found {}", Sym.typeName(p^.typ), what(a)));
         end;

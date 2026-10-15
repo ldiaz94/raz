@@ -1,0 +1,5 @@
+conform/err/ViewConst.raz:6:10: error: a view needs a variable
+    6 |     n := Table[0].(U32);
+      |          ^^^^^^^^^^^^^^
+help: a constant, or the result of a call or an operator, has no bytes to view: copy it to a variable
+raz: 1 error

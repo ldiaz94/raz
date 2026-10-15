@@ -1,0 +1,5 @@
+conform/err/ViewSliceOf.raz:5:10: error: can't make a slice of a view
+    5 |     s := mem[0].([8]U8)[0..4];
+      |          ^^^^^^^^^^^^^^
+help: a view has no address, since it may be misaligned: copy it to a variable
+raz: 1 error

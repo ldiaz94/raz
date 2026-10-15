@@ -1,0 +1,4 @@
+conform/err/ViewPastEnd.raz:5:14: error: a view of 8 bytes at index 10 runs past a length of 16
+    5 |     n := mem[10].(I64);
+      |              ^^
+raz: 1 error

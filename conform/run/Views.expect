@@ -1,0 +1,16 @@
+mem[16].(I64) -1
+mem[23] 255
+mem[3].(I64), misaligned 1008
+the last 8 bytes 7
+258's first byte 2
+U8(258) 2
+h.count 2
+b[4] 9
+mem[36].(I32) -5
+Pair's value 300
+n through a pointer from bytes 77
+b[8].(I64) 123456789
+sum 59
+regs[1] 5
+regs[3] 6
+ViewData.bytes[0].(I64) 42

@@ -537,7 +537,8 @@ end;
    status 2. what is 0 for an index a and 1 for a slice a..b, of
    something whose length is len; 2 for a, which is no position of
    the enumeration called name; 3 for a slice a..b of a pointer, which
-   runs backwards. What a target's machine doesn't catch the code
+   runs backwards; 7 for a view at index a that runs past the end of
+   something whose length is len. What a target's machine doesn't catch the code
    tests for, and stops at with what 4, a nil pointer; 5, a division
    by zero; 6, a stack overflow; these end the program by exit with
    status 2 too, as the signal handler does. rdi and rsi are the
@@ -547,7 +548,7 @@ begin
     regs[5] := rdi;
     regs[6] := rsi;
     where(at);
-    if what >= 4 then
+    if (what >= 4) and (what <= 6) then
         put("stopped by ");
         if what = 4 then put("a nil pointer");
         elsif what = 5 then put("a division fault");
@@ -560,6 +561,11 @@ begin
     if what = 0 then
         put("index ");
         putInt(a);
+    elsif what = 7 then
+        put("a view at index ");
+        putInt(a);
+        put(" runs past a length of ");
+        putInt(len);
     elsif (what = 1) or (what = 3) then
         put("slice ");
         putInt(a);

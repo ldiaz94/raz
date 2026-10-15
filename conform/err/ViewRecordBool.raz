@@ -1,0 +1,8 @@
+module ViewRecordBool;
+type Flags = record on: BOOL; n: I32; end;
+var mem: [32]U8; f: Flags;
+proc main*;
+begin
+    f := mem[0].(Flags);
+end;
+end ViewRecordBool.

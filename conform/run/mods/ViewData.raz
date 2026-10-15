@@ -1,0 +1,8 @@
+(* An exported variable, which an importer may read through a view *)
+module ViewData;
+
+var bytes*: [8]U8;
+
+begin
+    bytes[0] := 42;
+end ViewData.

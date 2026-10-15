@@ -1,0 +1,7 @@
+module ViewArrayTooSmall;
+var mem: [4]U8; i: INT; n: I64;
+proc main*;
+begin
+    n := mem[i].(I64);
+end;
+end ViewArrayTooSmall.

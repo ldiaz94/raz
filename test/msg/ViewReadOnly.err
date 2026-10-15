@@ -1,0 +1,4 @@
+conform/err/ViewReadOnly.raz:5:5: error: ViewMod.mem[0].(I64) is ViewMod's, and can't be changed outside it
+    5 |     ViewMod.mem[0].(I64) := 1;
+      |     ^^^^^^^^^^^^^^^^^^^^
+raz: 1 error

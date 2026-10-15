@@ -1,0 +1,26 @@
+(* Views of reals: their bits, read and written (report section 6.9) *)
+module ViewReals;
+import Out;
+
+var mem: [16]U8;
+
+proc main*;
+var x: F64; f: F32; u: U64; k: U32;
+begin
+    (* locals kept in registers otherwise *)
+    x := 1.5;
+    u := x.(U64);
+    Out.str("1.5's bits "); Out.hex(u, 16); Out.ln;
+    u := 4004000000000000H;
+    x.(U64) := u;
+    Out.str("x from bits, times 2: "); Out.int(I64(x * 2.0)); Out.ln;
+    f := 1.0;
+    k := f.(U32);
+    Out.str("F32 1.0's bits "); Out.hex(U64(k), 8); Out.ln;
+    (* a real in an array of bytes *)
+    mem[3].(F64) := 0.25;
+    Out.str("mem[3].(F64) times 8: "); Out.int(I64(mem[3].(F64) * 8.0)); Out.ln;
+    Out.str("its bits "); Out.hex(mem[3].(U64), 16); Out.ln;
+end;
+
+end ViewReals.

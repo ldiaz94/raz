@@ -1,0 +1,5 @@
+conform/err/ViewVarParam.raz:6:9: error: a view can't be a var parameter
+    6 |     put(mem[3].(I64));
+      |         ^^^^^^^^^^^^
+help: a view has no address, since it may be misaligned: copy it to a variable
+raz: 1 error

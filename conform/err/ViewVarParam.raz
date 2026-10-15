@@ -1,0 +1,8 @@
+module ViewVarParam;
+var mem: [16]U8;
+proc put(var x: I64); begin x := 1; end;
+proc main*;
+begin
+    put(mem[3].(I64));
+end;
+end ViewVarParam.

@@ -1,0 +1,5 @@
+conform/err/ViewEnum.raz:6:10: error: can't view bytes as Colour
+    6 |     c := mem[0].(Colour);
+      |          ^^^^^^^^^^^^^^^
+help: some bytes are no Colour: view an integer, and convert it
+raz: 1 error

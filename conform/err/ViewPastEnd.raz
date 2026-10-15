@@ -1,0 +1,7 @@
+module ViewPastEnd;
+var mem: [16]U8; n: I64;
+proc main*;
+begin
+    n := mem[10].(I64);
+end;
+end ViewPastEnd.

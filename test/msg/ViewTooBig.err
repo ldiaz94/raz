@@ -1,0 +1,4 @@
+conform/err/ViewTooBig.raz:5:10: error: a view of 8 bytes doesn't fit in I32, of 4
+    5 |     u := n.(U64);
+      |          ^^^^^^^
+raz: 1 error

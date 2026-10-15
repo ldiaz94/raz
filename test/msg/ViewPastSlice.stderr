@@ -1,0 +1,2 @@
+conform/run/ViewPastSlice.raz:11:11: a view at index 7 runs past a length of 10
+  in ViewPastSlice.main at conform/run/ViewPastSlice.raz:11:11: i = 7

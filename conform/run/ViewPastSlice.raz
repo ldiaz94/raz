@@ -1,0 +1,15 @@
+module ViewPastSlice;
+(* A view of a slice's element that runs past the slice's end *)
+import Out;
+
+proc main*;
+var a: [16]U8; s: []U8; i: INT;
+begin
+    s := a[2..12];
+    for i := 0 to 9 do
+        Out.int(i);
+        s[i].(U32) := 1;
+    end;
+end;
+
+end ViewPastSlice.

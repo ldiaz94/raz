@@ -9,7 +9,8 @@ b=build/src
 # 2026-10.25): the files that use them are the compiler's alone, and
 # so are those whose message says what match takes. It predates, too,
 # an INT widened in an expression and the rest (report 2026-10.26),
-# and the messages for an I64 that goes to an INT.
+# and the messages for an I64 that goes to an INT; and views, v.(T),
+# whose tests are conform/*/View*.raz.
 newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRawIndent.raz
     conform/run/MatchStr.raz conform/err/MatchStrTwice.raz conform/err/MatchStrNoElse.raz
     conform/err/MatchStrVar.raz conform/err/MatchReal.raz conform/err/AtMatch.raz
@@ -17,6 +18,7 @@ newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRa
     conform/run/IntWiden.raz conform/err/IntIncNarrow.raz conform/err/IntNarrow.raz conform/err/IntNarrowSum.raz
     conform/err/IntResultsNarrow.raz"
 newer() {
+    case $1 in conform/*/View*.raz) return 0 ;; esac
     for g in $newer; do [ $g = $1 ] && return 0; done
     return 1
 }

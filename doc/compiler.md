@@ -18,9 +18,9 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Sym.raz` | 687 | 556 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,516 | 1,800 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 1,792 | 1,478 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 3,960 | 3,445 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 1,948 | 1,594 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,000 | 3,478 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -1068,7 +1068,7 @@ This is the only unit that knows the machine. The calls it answers:
 - jumps: `jump`, `jumpIf` (on a `BOOL`), `jumpCmp` (on two integers),
   `jumpOut` (`jumpCmp` from within an expression) and `condValue` for
   `and` and `or`, `fix` where the label is, and `joinJumps`;
-- checks: `checkIndex`, `checkEnum`, and `indexSlice`, `slice` and
+- checks: `checkIndex`, `checkView`, `checkEnum`, and `indexSlice`, `slice` and
   `slicePtr`, which check as they make their address or slice; and
   `indexArray`, an element's address in an array in the frame or a
   chunk, the index checked before;
@@ -1282,6 +1282,37 @@ makes code: an `INT` and an `I64` are the same 64 bits on x86-64, so
 only the item's type changes. `assign` stores, or
 copies records and arrays. `convert` is the written conversion, `T(x)`.
 
+Views, `v.(T)` (report section 6.9): a view is the item of `v` with
+`T` for its type. It is at the same place, so nothing is copied or
+computed to make it: `mem[16].(I64) := n` compiles to the store
+`mem[16] := n` would be, but of 8 bytes. What `view` and `indexView`
+add is the checks:
+
+- `viewable`: `v` is a variable (not a constant or a temporary; another
+  module's is read only, by its `ro`), not volatile, and `T` is plain
+  data (`notPlain`: integers, reals, pointers, and records and arrays
+  of them alone);
+- the room: `view` wants `T` to fit in `v`, which the compiler always
+  knows; `indexView`, for `a[i].(T)`, wants `T` from `a[i]` to `a`'s
+  end. `T` takes `k` elements (`elementsFor`), so in an array of `n`
+  the index must be below `n - k + 1`: one unsigned compare
+  (`Gen.checkView`) in place of `index`'s `i < n`, which a negative
+  `i`, huge unsigned, fails too. A slice's length is known only as the
+  program runs: `Gen.indexSlice` checks `i < len` as ever, then, with
+  a view's `room` of `k - 1`, that `len - i`, which can't wrap once `i
+  < len`, is more than `room` (`checkRoom`). A failed one is kind 7 of
+  `Rt.fail`: "a view at index 9 runs past a length of 16".
+
+The item is marked `view`, which keeps `ADR`, a `var` argument and a
+slice from it (`noAddress`), as `odd` does for a field of a packed
+record: a view may be misaligned. A variable kept in a register has no
+bytes to view, so `becomeView` demotes it to memory as `address` does
+(`demote`), and the procedure is compiled again. The parser sees a view
+of an element only after the `]`: `designator` reads the index, then
+looks past the `]` for `.(` (`viewNext`, by `Scan.saveScan` and
+`restoreScan`), so that `indexView` has the index and the array
+together.
+
 Calls: `beginCall`, then `passArg` for each argument, then `endCall`,
 which has Gen's `call` make the call. Each argument is left on Gen's
 stack, a slice as its two words (`pushWords`). `return f(x);` passing on
@@ -1300,7 +1331,8 @@ result, passed up with `try` (see Recovery below).
 
 Start with expressions, bottom up: `factor`, `term`, `simpleExpr`,
 `relation`, `conjunct` (the `and`s), `expression` (the `or`s). Then `designator`, which reads a name and what follows
-it: `.field`, `^`, `[i]`, `[lo..hi]`, a call, a conversion. Each step
+it: `.field`, `^`, `[i]`, `[lo..hi]`, a call, a conversion, a view
+`.(T)`. Each step
 calls the matching routine in `Item.raz` on the item it has. The
 `want` parameter carries the type an expression must have, where it is
 known, so that `[1, 2, 3]`, `{x: 1}` and `{red}` know what to build

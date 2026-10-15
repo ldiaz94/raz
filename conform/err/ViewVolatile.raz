@@ -1,0 +1,7 @@
+module ViewVolatile;
+var p: ^VOLATILE [16]U8; n: U32;
+proc main*;
+begin
+    n := p^[4].(U32);
+end;
+end ViewVolatile.

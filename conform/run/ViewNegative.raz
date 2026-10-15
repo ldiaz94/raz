@@ -1,0 +1,18 @@
+module ViewNegative;
+(* A negative index to a view is past the end too *)
+import Out;
+
+var mem: [16]U8;
+
+proc at(i: INT): I64;
+begin
+    return mem[i].(I64);
+end;
+
+proc main*;
+begin
+    Out.int(at(0)); Out.ln;
+    Out.int(at(-1)); Out.ln;
+end;
+
+end ViewNegative.

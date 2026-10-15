@@ -1,0 +1,7 @@
+module ViewSlice;
+var mem: [32]U8; s: []U8;
+proc main*;
+begin
+    s := mem[0].([]U8);
+end;
+end ViewSlice.

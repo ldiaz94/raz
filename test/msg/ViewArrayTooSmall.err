@@ -1,0 +1,4 @@
+conform/err/ViewArrayTooSmall.raz:5:10: error: a view of 8 bytes doesn't fit in [4]U8, of 4
+    5 |     n := mem[i].(I64);
+      |          ^^^^^
+raz: 1 error

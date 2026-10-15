@@ -1,0 +1,7 @@
+module ViewReadOnly;
+import ViewMod;
+proc main*;
+begin
+    ViewMod.mem[0].(I64) := 1;
+end;
+end ViewReadOnly.

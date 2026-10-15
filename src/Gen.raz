@@ -134,7 +134,7 @@ var
     rtFail*, argcChunk*, argvChunk*: INT;
     (* the stubs that check's code calls, one for each kind of failure,
        made by entryPoint for those used *)
-    failStubs: [6]INT;
+    failStubs: [8]INT;
     lost*: BOOL;         (* a parameter kept where it arrived was wanted
                             for other work: the procedure is compiled again,
                             the parameter in memory *)
@@ -191,7 +191,7 @@ type
     end;
 
 const
-    StubNames: [6][]U8 = ["check0", "check1", "check2", "check3", "check4", "check5"];
+    StubNames: [8][]U8 = ["check0", "check1", "check2", "check3", "check4", "check5", "check6", "check7"];
     (* the registers of the stack: the value at depth d is in Regs[d mod
        NumRegs]. rax, rdx and rcx, which division and shifts need, and rsi
        and rdi, which copying needs, aren't among them. *)
@@ -1451,7 +1451,8 @@ end;
    found by at, which a stub works out from where it was called; what is
    an index a (0), a slice a..b (1), each for a length len, a position a
    of the enumeration called name (2), a slice of a pointer a..b that
-   runs backwards (3), or a nil pointer (4). Rt.fail knows 5 and 6, a
+   runs backwards (3), a nil pointer (4), or a view at index a that runs
+   past a length len (7). Rt.fail knows 5 and 6, a
    division fault and a stack overflow, which this machine catches
    itself, so no check here has them. The arguments go in rdi, rsi, rdx,
    rcx, r8 and r9: a is in register ra, b in RDX; len is in memory at m,
@@ -1528,6 +1529,38 @@ begin
     check(X.ccB, 0, p, r, noMem(), n, -1);
 end;
 
+(* The index on top is the element a view starts at, in an array of n
+   elements: the view needs k elements from there, so the index must be
+   below n - k + 1, which is below. A negative index is a huge one,
+   unsigned, so one comparison does (report section 6.9). *)
+proc checkView*(n, below: I64; p: Diag.Pos);
+var r: INT;
+begin
+    r := peek(depth - 1);
+    cmpI(r, below);
+    check(X.ccB, 7, p, r, noMem(), n, -1);
+end;
+
+(* What a failed index check is: an index past the length (0), or a
+   view that runs past it (7), when the view needs room elements more
+   than the one indexed. *)
+proc kindOfIndex(room: I64): INT;
+begin
+    if room > 0 then return 7; end;
+    return 0;
+end;
+
+(* A view of a slice's element, at the index in r, needs room elements
+   after it: rdx holds the slice's length, which r is below already,
+   so length - r, at least 1, can't wrap, and must be more than room.
+   The length is at m for the message. *)
+proc checkRoom(r: INT; room: I64; p: Diag.Pos; m: X.Mem);
+begin
+    X.alu(X.aluSub, RDX, r);
+    X.aluI(X.aluCmp, RDX, INT(room));
+    check(X.ccA, 7, p, r, m, 0, -1);
+end;
+
 (* The integer on top is a position of an enumeration of n names *)
 proc checkEnum*(n: I64; name: INT; p: Diag.Pos);
 var r: INT;
@@ -1568,7 +1601,7 @@ end;
    compared with and added to them; for an element of 1, 2, 4 or 8
    bytes, its address is only noted, as the operand [pointer + index *
    size], to be read or written where it is used (lIdx). *)
-proc indexSlice*(a: Adr; size: I64; checked: BOOL; p: Diag.Pos);
+proc indexSlice*(a: Adr; size, room: I64; checked: BOOL; p: Diag.Pos);
 var m, ml: X.Mem; r: INT; inRax: BOOL; o: I64;
 begin
     if (a.base = bReg) and (((size = 1) or (size = 2) or (size = 4) or (size = 8))) then
@@ -1577,7 +1610,8 @@ begin
         r := peek(depth - 1);
         if checked then
             X.alu(X.aluCmp, r, a.hi);
-            check(X.ccB, 0, p, r, inRegister(a.hi), 0, -1);
+            check(X.ccB, kindOfIndex(room), p, r, inRegister(a.hi), 0, -1);
+            if room > 0 then X.movRR(RDX, a.hi); checkRoom(r, room, p, inRegister(a.hi)); end;
         end;
         drop();
         newMem(lIdx, X.memIdx(a.chunk, r, INT(size), o), kWord, 8, false);
@@ -1589,7 +1623,8 @@ begin
     if a.base = bReg then
         if checked then
             X.alu(X.aluCmp, r, a.hi);
-            check(X.ccB, 0, p, r, inRegister(a.hi), 0, -1);
+            check(X.ccB, kindOfIndex(room), p, r, inRegister(a.hi), 0, -1);
+            if room > 0 then X.movRR(RDX, a.hi); checkRoom(r, room, p, inRegister(a.hi)); end;
         end;
         mulI(r, size);
         X.alu(X.aluAdd, r, a.chunk);
@@ -1598,7 +1633,8 @@ begin
         ml := m; ml.disp := ml.disp + 8;
         if checked then
             X.aluM(X.aluCmp, r, ml);
-            check(X.ccB, 0, p, r, ml, 0, -1);
+            check(X.ccB, kindOfIndex(room), p, r, ml, 0, -1);
+            if room > 0 then X.load(RDX, ml, 8, false); checkRoom(r, room, p, ml); end;
         end;
         mulI(r, size);
         X.aluM(X.aluAdd, r, m);

@@ -1,0 +1,8 @@
+module ViewEnum;
+type Colour = (red, green);
+var mem: [8]U8; c: Colour;
+proc main*;
+begin
+    c := mem[0].(Colour);
+end;
+end ViewEnum.

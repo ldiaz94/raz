@@ -1,0 +1,7 @@
+module ViewBool;
+var mem: [8]U8; b: BOOL;
+proc main*;
+begin
+    b := mem[0].(BOOL);
+end;
+end ViewBool.

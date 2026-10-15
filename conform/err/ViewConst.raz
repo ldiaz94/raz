@@ -1,0 +1,8 @@
+module ViewConst;
+const Table: [4]U8 = [1, 2, 3, 4];
+var n: U32;
+proc main*;
+begin
+    n := Table[0].(U32);
+end;
+end ViewConst.

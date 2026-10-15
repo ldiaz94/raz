@@ -1,0 +1,16 @@
+module ViewPast;
+(* A view of an array's element that runs past the array's end *)
+import Out;
+
+var mem: [16]U8;
+
+proc main*;
+var i: INT;
+begin
+    for i := 0 to 15 do
+        Out.int(i);
+        mem[i].(I64) := 1;
+    end;
+end;
+
+end ViewPast.

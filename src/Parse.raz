@@ -905,6 +905,7 @@ begin
         try Item.notReadOnly(y);
         if (y.mode # Item.mVar) or not y.isVar then return Scan.markAt(y.pos, "ADR needs a variable"); end;
         if y.odd then return Scan.markAt(y.pos, "a field of a packed record has no address"); end;
+        if y.view then return Item.noAddress(y, "ADR can't take a view"); end;
         t := newPtr(y.typ, y.vol);
         try Item.address(y);
         Item.makeConst(x, t, 0);
@@ -1012,6 +1013,28 @@ end;
 
 (* A designator, with any selectors and calls after it. called tells
    whether the last thing done was a call. *)
+(* Whether a view, ".(", is next: a "." and, past it, a "(". *)
+proc viewNext: BOOL;
+var st: Scan.State; yes: BOOL;
+begin
+    if Scan.tok # Scan.sPeriod then return false; end;
+    Scan.saveScan(st);
+    Scan.next;
+    yes := Scan.tok = Scan.sLparen;
+    Scan.restoreScan(st);
+    return yes;
+end;
+
+(* The "(" T ")" of a view, at the "(": T. *)
+proc viewType: (PType, ERROR);
+var t: PType;
+begin
+    Scan.next;
+    t := try parseType();
+    try expect(Scan.sRparen);
+    return t, nil;
+end;
+
 proc designator(var x: TItem; var called: BOOL): ERROR;
 var o, f: PObj; y, z: TItem; t: PType; start: INT;
 begin
@@ -1033,11 +1056,17 @@ begin
         match Scan.tok of
         | sPeriod:
             Scan.next;
-            if (x.mode # Item.mVar) or (x.typ^.form # Sym.fRecord) then return fieldOfWhat(x); end;
-            if Scan.tok # Scan.sIdent then return expected("a field"); end;
-            f := try fieldOf(x.typ);
-            Scan.next;
-            try Item.field(x, f);
+            if Scan.tok = Scan.sLparen then
+                t := try viewType();
+                x.pos := Scan.spanFromAt(start);
+                try Item.view(x, t);
+            else
+                if (x.mode # Item.mVar) or (x.typ^.form # Sym.fRecord) then return fieldOfWhat(x); end;
+                if Scan.tok # Scan.sIdent then return expected("a field"); end;
+                f := try fieldOf(x.typ);
+                Scan.next;
+                try Item.field(x, f);
+            end;
             called := false;
         | sArrow:
             Scan.next;
@@ -1052,10 +1081,21 @@ begin
                 try Item.sliceLo(y);
                 try expression(z, nil);
                 try Item.slice(x, y, z);
+                try expect(Scan.sRbrak);
             else
-                try Item.index(x, y);
+                (* a[i].(T), a view of an element, is checked against the
+                   end of a, not of the element: so the parser looks past
+                   the "]" for ".(" before the index is made *)
+                try expect(Scan.sRbrak);
+                if viewNext() then
+                    Scan.next;
+                    t := try viewType();
+                    x.pos := Scan.spanFromAt(start);
+                    try Item.indexView(x, y, t);
+                else
+                    try Item.index(x, y);
+                end;
             end;
-            try expect(Scan.sRbrak);
             called := false;
         | sLparen:
             if x.mode = Item.mType then

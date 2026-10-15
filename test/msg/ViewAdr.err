@@ -1,0 +1,5 @@
+conform/err/ViewAdr.raz:5:14: error: ADR can't take a view
+    5 |     p := ADR(mem[0].(I64));
+      |              ^^^^^^^^^^^^
+help: a view has no address, since it may be misaligned: copy it to a variable
+raz: 1 error

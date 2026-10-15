@@ -1,0 +1,5 @@
+conform/err/ViewSlice.raz:5:10: error: can't view bytes as []U8
+    5 |     s := mem[0].([]U8);
+      |          ^^^^^^^^^^^^^
+help: a view is an integer, a real or a pointer, or a record or array made of them
+raz: 1 error

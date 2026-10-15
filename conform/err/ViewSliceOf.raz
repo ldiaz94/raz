@@ -1,0 +1,7 @@
+module ViewSliceOf;
+var mem: [16]U8; s: []U8;
+proc main*;
+begin
+    s := mem[0].([8]U8)[0..4];
+end;
+end ViewSliceOf.

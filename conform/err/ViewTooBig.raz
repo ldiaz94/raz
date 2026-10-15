@@ -1,0 +1,7 @@
+module ViewTooBig;
+var n: I32; u: U64;
+proc main*;
+begin
+    u := n.(U64);
+end;
+end ViewTooBig.
