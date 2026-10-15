@@ -2622,9 +2622,10 @@ begin
         end;
         if i > 4 then xmax := 4; end;
     end;
-    (* a slice's weight is shared by its two registers *)
+    (* a slice's weight is shared by its two registers; one passed by
+       its address has one *)
     for i := 0 to numCand - 1 do
-        if cand[i]^.typ^.form = Sym.fSlice then weight[i] := weight[i] div 2; end;
+        if (cand[i]^.typ^.form = Sym.fSlice) and not cand[i]^.ind then weight[i] := weight[i] div 2; end;
     end;
     (* the heaviest, each used at least three times a register, take the
        five registers in turn, while there are enough for each, and the
@@ -2636,9 +2637,13 @@ begin
             if (cand[i]^.reg = 0) and (weight[i] >= 3) and ((best < 0) or (weight[i] > weight[best])) then best := i; end;
         end;
         if best < 0 then break; end;
+        (* a parameter passed by its address (ind) holds the address, one
+           integer register whatever its type: a var real's address in
+           an xmm register would be moved, by the prologue, into the
+           integer register of the same number, another variable's *)
         need := 1;
-        if cand[best]^.typ^.form = Sym.fSlice then need := 2; end;
-        if cand[best]^.typ^.form = Sym.fReal then
+        if (cand[best]^.typ^.form = Sym.fSlice) and not cand[best]^.ind then need := 2; end;
+        if (cand[best]^.typ^.form = Sym.fReal) and not cand[best]^.ind then
             if kx < xmax then
                 cand[best]^.reg := Gen.XVarRegs[kx];
                 INC(kx);

@@ -1,0 +1,55 @@
+(* A var parameter of a real or a slice, used often, beside integers
+   that are used more: each is read and written through its address. *)
+module VarReal;
+import Out;
+
+proc sign(var v: F64; a, b: INT): INT;
+begin
+    Out.int(a + b); Out.int(a + b); Out.int(a + b);
+    Out.ln;
+    if v > 0.0 then return 1; end;
+    if v < 0.0 then return 2; end;
+    if v = 0.0 then return 3; end;
+    return 0;
+end;
+
+(* a knob's place, kept between lo and hi *)
+proc slide(var x: F32; lo, hi, step: INT);
+begin
+    x := x + F32(step) + F32(step) + F32(step);
+    if x < F32(lo) then x := F32(lo); end;
+    if x > F32(hi) then x := F32(hi); end;
+    Out.int(lo + hi + step); Out.int(lo + hi + step); Out.int(lo + hi + step);
+    Out.ln;
+end;
+
+proc fill(var s: []U8; a, b: INT);
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do s[i] := U8(a + b + i); end;
+    s := s[1..LEN(s)];
+    s[0] := U8(a + b); s[1] := U8(a + b);
+end;
+
+proc main*;
+var
+    x: F64;
+    y: F32;
+    buf: [4]U8;
+    s: []U8;
+begin
+    Out.int(sign(x, 1, 2)); Out.ln;
+    x := -1.5;
+    Out.int(sign(x, 1, 2)); Out.ln;
+    y := 0.5;
+    slide(y, 0, 10, 2);
+    Out.int(INT(y * 10.0)); Out.ln;
+    slide(y, 0, 10, 2);
+    Out.int(INT(y * 10.0)); Out.ln;
+    s := buf[0..4];
+    fill(s, 60, 5);
+    Out.int(LEN(s)); Out.int(INT(buf[0])); Out.int(INT(buf[1])); Out.int(INT(buf[2])); Out.int(INT(buf[3]));
+    Out.ln;
+end;
+
+end VarReal.

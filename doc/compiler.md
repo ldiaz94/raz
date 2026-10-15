@@ -609,6 +609,12 @@ division in its inner loop.
    nothing in the trap report, bought 3% more on that copy and nothing
    on NBody.
 
+   A `var` parameter of a real holds the real's address, an integer:
+   it takes one of `VarRegs`, not of `XVarRegs`, and a `var` slice's
+   one, not two. Through 0.12.0 it was given an xmm register, which the
+   prologue took for the integer register of its number, another
+   variable's (`chooseRegs`).
+
 All told, against v0.8.0: Jacobi 251 ms to 103, 3.1 times FPC
 `-O2`'s time to 1.3; NBody 375 ms to 116, 4.4 times to 1.4; rat and
 the integer kernels as they were. What is left of Jacobi is its index,
