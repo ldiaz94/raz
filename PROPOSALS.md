@@ -95,39 +95,6 @@ any inlining, but it is a language change, for a thaw. On 100 MB of
 new files `sauce commit` takes 1.2 s against the Pascal sauce's 0.7,
 and `verify` 0.95 s against 0.48: the hashing.
 
-## A slice that outlives what it points at
-
-```
-proc short(h: Hex): []U8;    (* Hex = [64]U8 *)
-begin
-    return h[0..8];
-end;
-
-proc word: []U8;
-var a: [4]U8;
-begin
-    ...
-    return a;                (* the array, silently a slice *)
-end;
-```
-
-Both compile without a word, under `-Werror`, and return a slice of
-the procedure's own frame, which the next call overwrites. Section 10
-says a program that reaches memory only through checked variables is
-defined; a slice is checked, so this is a hole in that promise, a
-defect rather than a wish, and it can be mended without a thaw.
-
-The narrow mend, which needs no analysis of where values go: it is an
-error to return, as a slice, a slice of a local array or of a value
-parameter that is an array or holds one, the silent conversion of
-such an array included. It doesn't catch a slice stored in a module
-variable or through a pointer, which is the rarer mistake, nor one of
-an `ADR`, which section 10 already gives no promise for. The report
-says it in section 7.3, Return; the compiler checks it where it
-checks the type of `return`'s expression.
-
-Met in sauce's `Ssha.short`, which takes `var h: Hex` now.
-
 ## Marking what a procedure does with what it is given: `ret` and `keep`
 
 ### The hole

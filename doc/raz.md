@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.26 of the report; section 11 says where each
+This is version 2026-10.27 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -26,7 +26,9 @@ and may be indented with the code around them (section 2), and
 is a fifth: an `INT` widens to an `I64` wherever it goes to one, in
 an expression too (sections 5.10 and 6.1); and a view, `v.(T)`,
 reads and writes the bytes of a variable as a `T` (section 6.9); it
-breaks no program.
+breaks no program. 2026-10.27 mends a defect: returning a slice of the
+procedure's own frame is an error (section 7.3), which breaks only a
+program that read memory already gone.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -1034,6 +1036,26 @@ without results. A
 procedure with results that runs off its end returns zeros, each result
 as a variable of its type starts (section 4).
 
+A slice returned must not point into the procedure's own frame, which
+is gone once it returns. It is an error to return, as a slice, a local
+array, a value parameter that is an array, or an array literal, or a
+slice of one, a field or an element of one included:
+
+```
+proc short(h: Hex): []U8;      (* Hex = [64]U8 *)
+begin
+    return h[0..8];            (* an error: h is the procedure's copy *)
+end;
+```
+
+A slice of a `var` parameter, of a module variable, or of what a
+pointer points at may be returned: none of them is this procedure's
+frame. A slice of a frame that leaves it some other way isn't caught,
+and is the exception of section 10: one held in a local slice
+variable, or in a record, that is returned; one stored in a module
+variable or through a pointer; and one that came back from a call, as
+the slice of a `var` parameter does to the caller whose local it is.
+
 ### 7.4 Match
 
 ```
@@ -1459,8 +1481,9 @@ does.
 and indexing arrays and slices is checked, so a program's behaviour is
 defined by this report, with one exception: memory reached other than
 through a checked variable. Dereferencing a stale or made-up pointer,
-indexing through a pointer, an index out of range in a module that
-says `check off;`, writing a string's bytes, a code procedure that
+indexing through a pointer, a slice kept after the call whose frame
+holds what it points at (section 7.3), an index out of range in a
+module that says `check off;`, writing a string's bytes, a code procedure that
 breaks its rules, and C code can read or write any memory, and what
 follows isn't defined. Dereferencing `nil`, dividing
 by zero, calling a `nil` procedure and running out of stack stop the
@@ -1565,7 +1588,7 @@ give: `Sys` past writing, ending the program and getting memory,
 language, reals aside, is the core of the library: `Rt`, `Out`, `Mem`,
 `Arena`, `Lock`, `Str` and `Buf`, and of `Sys` what they need. A program
 that keeps to the core runs on every target. The rest of the library
-(`Heap`, `Fmt`, `List`, `Map`, `Sort`, `Math`, `Files`, `Opt` and the
+(`Heap`, `Fmt`, `List`, `Map`, `Vec`, `Sort`, `Math`, `Files`, `Opt` and the
 rest of `Sys`) is the standard library: a target may leave a module
 out, and one that has it gives what `doc/raz-lib.md` says. `conform/` tests
 the core only.

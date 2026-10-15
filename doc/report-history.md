@@ -151,3 +151,12 @@ at the time.
   appendix B). It breaks no program. `Sys` gains `position`,
   `truncate`, `sync` and `infoOf`; `Opt` gains `at`, where the
   operands are (volume 2).
+- **2026-10.27.** A defect mended: returning, as a slice, a local
+  array, a value parameter that is an array, an array literal, or a
+  slice, field or element of one, is an error, since the frame it
+  points into is gone once the procedure returns (section 7.3); what
+  isn't caught is named among the exceptions of section 10. `Sys`
+  gains `openMode`, `syncAll`, `lock`, `linkInfo` and `Info.ino`;
+  `Buf` gains `spare`, and its `add` and `str` stop the program when
+  memory runs out rather than dropping bytes; the standard library
+  gains `Vec`, a growable array (volume 2).
