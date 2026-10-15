@@ -78,9 +78,10 @@ library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.13.0, report 2026-10.25, the thaw for strings (raw strings,
-`match` on a string, `Str`'s new procedures, `Math.toReal`), is the
-latest release. `src/` is the
+v0.14.0, report 2026-10.26, the thaw for `INT` and views (an `INT`
+widens to an `I64` wherever it goes to one; `v.(T)`; `Sys`'s
+`position`, `truncate`, `sync` and `infoOf`; `Opt.at`), is the latest
+release. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
@@ -97,7 +98,8 @@ library. rat, rlX11 and rloc are other users of `Sys`.
 defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes in
 `PROPOSALS.md`, for a later thaw; it isn't built. Thaws happen only by the
-owner's word (v0.6.0, reports 2026-10.13 to 10.23, and 10.25 for strings).
+owner's word (v0.6.0, reports 2026-10.13 to 10.23, 10.25 for strings,
+and 10.26 for `INT` and views).
 
 The parser reaches the machine only through `Gen.raz`. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
