@@ -78,9 +78,9 @@ library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.12.0, report 2026-10.24, is the latest release; `main` has report
-2026-10.25, the thaw for strings (raw strings, `match` on a string,
-`Str`'s new procedures, `Math.toReal`), not yet released. `src/` is the
+v0.13.0, report 2026-10.25, the thaw for strings (raw strings,
+`match` on a string, `Str`'s new procedures, `Math.toReal`), is the
+latest release. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
