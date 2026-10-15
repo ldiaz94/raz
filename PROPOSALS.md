@@ -152,7 +152,7 @@ procedure (a square root has its own way), a procedure taken as a
 value still called. What it costs: an inlined procedure is not in
 the trap report's list of procedures, nor in gdb's backtrace, though
 a failed check in it is still told at its line; 60 to 100 lines of
-the 164 left below 11,000; and, across modules, the imported module's
+the budget; and, across modules, the imported module's
 text kept to be read again, which is to be checked.
 
 ## A var real parameter given an xmm register
