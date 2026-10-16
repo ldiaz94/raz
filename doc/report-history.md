@@ -176,3 +176,7 @@ at the time.
   `dupAbove`, `group`, `fork`, `handle` and `came`, and `wait` on a
   group; `Map` gains `done`, `Str` gains `free`, and `Files` gains
   `load`, and tries again after EINTR (volume 2).
+- **2026-10.30.** A defect mended: `[]` used as a slice is the empty
+  slice, `ptr` `nil` and `len` 0, and no hidden variable, so it may be
+  returned (sections 6.5 and 7.3); 7.3 had made returning it an error,
+  which the compiler never was. It breaks no program.

@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.29 of the report; section 11 says where each
+This is version 2026-10.30 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -32,7 +32,9 @@ program that read memory already gone. 2026-10.28 mends another: an
 array a call returns lives to the end of its statement, and a slice of
 it kept past that is undefined (sections 8 and 10). 2026-10.29 is a
 sixth thaw: an array constant typed `[]T` takes its length from its
-literal (section 4); it breaks no program.
+literal (section 4); it breaks no program. 2026-10.30 mends a defect:
+`[]` used as a slice is the empty slice, which may be returned
+(sections 6.5 and 7.3); it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -776,7 +778,9 @@ element type, and an array literal for `[n]T` has exactly `n` of them.
 A record literal names its fields, in any order, each at most once; the
 fields it leaves out are zero, so `{}` is the record with every field
 zero. An array literal used as a slice is a
-hidden variable of the procedure, and lives as long as its call.
+hidden variable of the procedure, and lives as long as its call;
+the empty one, `[]`, is the empty slice, as a slice variable starts
+(section 4), and no variable at all.
 
 ```
 c := {ch: 'A', attr: 7};
@@ -1052,9 +1056,9 @@ as a variable of its type starts (section 4).
 
 A slice returned must not point into the procedure's own frame, which
 is gone once it returns. It is an error to return, as a slice, a local
-array, a value parameter that is an array, an array literal, or an
-array a call returns, or a slice of one, a field or an element of one
-included:
+array, a value parameter that is an array, an array literal other than
+`[]`, or an array a call returns, or a slice of one, a field or an
+element of one included:
 
 ```
 proc short(h: Hex): []U8;      (* Hex = [64]U8 *)
