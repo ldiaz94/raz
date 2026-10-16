@@ -1175,18 +1175,24 @@ begin
     return (n = LEN(name)) and (s[n] = '=');
 end;
 
-(* The value of the environment variable name; "" if it isn't set. *)
+(* The value of the environment variable name; "" if it isn't set.
+   Every program calls it, from Rt, so it reads the environment itself
+   rather than through environment and named, which would add their
+   code to every executable. *)
 proc env*(name: []U8): []U8;
-var e: ^^U8; s: ^U8; i, m: INT;
+var e: ^^U8; s: ^U8; i, n, m: INT;
 begin
-    e := environment();
+    e := envp;
+    if e = nil then e := ARGV() + (ARGC() + 1); end;
     i := 0;
     while e[i] # nil do
-        if named(e[i], name) then
-            s := e[i];
-            m := LEN(name) + 1;
+        s := e[i];
+        n := 0;
+        while (n < LEN(name)) and (s[n] = name[n]) do INC(n); end;
+        if (n = LEN(name)) and (s[n] = '=') then
+            m := n + 1;
             while s[m] # 0 do INC(m); end;
-            return s[LEN(name) + 1..m];
+            return s[n + 1..m];
         end;
         INC(i);
     end;
