@@ -701,3 +701,142 @@ It costs a row in the table of 6.8. A predeclared name can be hidden
 
 Met in concha's `Ccore`, in `bufVal` and `listVal`, and in `Sys` over
 C, before each call that takes a buffer.
+
+## An error told where the wrong token is
+
+A comment that quotes a regular expression, `(* matches (?>x*) *)`,
+ends at the `*)` inside `x*)`, and the rest of it is read as code.
+The compiler is right to refuse what follows; but it told the error
+at the start of an earlier declaration, 40 lines from the token that
+was wrong, and the comment that caused it was hard to find.
+
+The proposal: an error is told at the token where the parse failed,
+as most already are; where the parser reports at the start of a
+declaration instead, it reports the token as well. A comment that has
+just closed on a line with more text after it could add a hint:
+"a comment ended here". Nothing a program means changes.
+
+A comment can't quote `*)` at all. That is the report's rule, and
+Oberon's, and stays; the report could say it in a line, with the
+spelling to use instead (`x* )` or a word).
+
+Met in rrem's parser, documenting `(?>x*)`.
+
+## Adding to a `Vec` without stopping the program
+
+`Vec.push` and `Vec.add` stop the program when memory runs out. A
+library that returns an error such as `NoRoom` instead must call
+`Vec.room(v, 1)` before each one, and the two are apart, so the check
+is easy to leave out: rrem's parser left it out once, and a pattern
+too big for memory would have stopped the program, not returned the
+error.
+
+The proposal, in `Vec`:
+
+```
+proc tryPush*(v: ^Vec; x: T): BOOL;   (* x added at the end; false, and v as it was, if there is no room *)
+proc tryAdd*(v: ^Vec): (^T, BOOL);    (* a new element at the end, to fill; false if there is no room *)
+```
+
+They are `room` and `push` (or `add`) in one call. It breaks no
+program, so it could come with any release.
+
+Met in rrem's parser, which builds its tree in a `Vec`.
+
+## A line to standard error
+
+A message to standard error takes a `Buf`, `Fmt.write` into it,
+`Out.flush` (so what was printed before comes first) and `Sys.write`
+to `Sys.stderr`. Every tool writes its errors so, and each writes the
+same few lines.
+
+The proposal, in `Fmt`, beside `print`:
+
+```
+proc eprint*(f: []U8; args: []Arg);   (* as print, to standard error, after Out is flushed *)
+```
+
+It breaks no program.
+
+Met in rwalk's `Rwfiles` and rrem's `rre`.
+
+## Character tests in `Str`
+
+`Str` has `lower` and `upper`, ASCII, and inside it the private
+`small` and `space`. Every parser writes its own `isDigit`,
+`isLetter`, `isSpace`, `isPunct` and `hexVal` beside them.
+
+The proposal, in `Str`, all ASCII as `lower` and `upper` are:
+
+```
+proc isDigit*(c: U8): BOOL;    (* 0 to 9 *)
+proc isLetter*(c: U8): BOOL;   (* A to Z, a to z *)
+proc isSpace*(c: U8): BOOL;    (* space, tab, line feed, carriage return, form feed, vertical tab *)
+proc isPunct*(c: U8): BOOL;    (* the printable characters that are neither letters, digits nor space *)
+proc hexVal*(c: U8): INT;      (* c's value as a hexadecimal digit, or -1 *)
+```
+
+`isSpace` is today's `space`, exported. It breaks no program.
+
+Met in rrem's parser.
+
+## The text of an errno
+
+`Sys` returns minus an errno, and a tool that tells the user what
+failed must turn it into words: `Rwfiles` maps four by hand, and says
+"error 13" for the rest.
+
+The proposal, in `Sys`:
+
+```
+proc errorText*(err: INT): []U8;   (* what errno err (or minus it) means, as strerror says; "unknown error" otherwise *)
+```
+
+a fixed table of Linux's names, so it needs no C. It breaks no
+program.
+
+Met in rwalk's `Rwfiles`.
+
+## Setting an environment variable
+
+`Sys.env` reads a variable; nothing sets one. A test can't give the
+programs it runs, or the code it tests, an environment of its own:
+rwalk's tests read the user's real global ignore file, since they
+can't point `XDG_CONFIG_HOME` at a directory of their own.
+
+The proposal, in `Sys`:
+
+```
+proc setEnv*(name, value: []U8): INT;   (* sets name to value, for this program and those it starts; 0, or minus an errno *)
+```
+
+It breaks no program.
+
+Met in rwalk's tests.
+
+## Finding from a place
+
+`Str.find(s, sub)` searches the whole of `s`. To search from `i`, a
+program writes `Str.find(s[i..LEN(s)], sub)` and adds `i` back when
+the result isn't -1, which is clumsy and easy to get off by one.
+
+The proposal, in `Str`:
+
+```
+proc findFrom*(s, sub: []U8; from: INT): INT;   (* the first place at or after from where sub is in s, or -1 *)
+```
+
+It breaks no program.
+
+Met in rwalk's `Rwglob`.
+
+## A hint for a hexadecimal name
+
+`FFFDH`, meant as a number, is an identifier, and the error is "FFFDH
+isn't declared". The report is right (a hexadecimal number starts
+with a digit, 2), but the message gives no clue. The proposal: when an
+undeclared name is all hexadecimal digits and ends in `H`, the error
+adds "a hexadecimal number starts with a digit: 0FFFDH". Nothing a
+program means changes.
+
+Met in rrem's parser, writing U+FFFD.
