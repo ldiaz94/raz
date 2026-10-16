@@ -47,10 +47,7 @@ clean:
 check: raz build/raz-lib.3
 	test/check.sh
 
-# the compiler's units, and the whole compiler, tested against the seed's
-seed-check: raz | build
-	src/check.sh
-
+# the scanner's and the compiler's speed against the seed's
 seed-bench: raz | build
 	src/bench.sh
 
@@ -184,4 +181,4 @@ dist:
 site: raz pdf
 	python3 site/build.py
 
-.PHONY: units tests seed-check seed-bench fixpoint check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall
+.PHONY: units tests seed-bench fixpoint check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall

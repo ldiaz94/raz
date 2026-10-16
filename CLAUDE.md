@@ -15,7 +15,7 @@ report defines the language.
     make kernels   # test/bench's kernels against FPC -O2's twins
     make loc       # lines of the compiler, by rloc; the last, code, is the budget
     make tests     # the small Pascal tests of scan, x64, link and elf
-    make seed-check  # src/ against the seed: scan to x64, then the messages and statuses of every program
+    make seed-bench  # the scanner's and the compiler's speed against the seed's
     make fixpoint  # the seed builds src, that builds src, that again: the last two agree
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version
@@ -135,8 +135,10 @@ compiled (`examples/Window.raz` needs a display).
 `src/` is the compiler, in raz: one module to a
 seed unit, the same names. `seed/`, the Free Pascal compiler it was
 ported from, is the **seed**: frozen at its last version, kept to build
-`src/` the first time and as the reference its units are tested
-against, and to be dropped in time. Never edit the seed; a difference
+`src/` the first time (`make raz`, `make fixpoint`), and to be dropped
+in time. `src/` is no longer tested against it unit by unit (the owner
+dropped `seed-check` after v0.17.0): `make check`, the fixpoint and
+`conform/` are its tests. Never edit the seed; a difference
 found is told to the owner.
 
 `sbcl/` is an example, not part of the build: a second compiler, in
@@ -237,9 +239,6 @@ otherwise.
   is written with its type; shared with anything else, the name alone is
   that other declaration. A `match` arm on an enumeration takes the
   type's names alone or with the type, which must be the matched one.
-- `continue` is the last reserved word, so that the others keep the
-  seed's numbers; the seed's dumpers intern it first
-  (`src/test/seedcontinue.pas`).
 - `Width` follows glibc's `wcwidth` but gives a control 0, and 0 to the
   format characters glibc counts as 1 (Egyptian hieroglyph controls,
   interlinear annotation), but for the prepended concatenation marks.

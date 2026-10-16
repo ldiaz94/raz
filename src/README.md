@@ -6,42 +6,19 @@ One module to a seed unit, with the seed's name, written to the same
 rules: plain code, each module opening with what it is, what it
 depends on and what it leaves out. The seed is never edited from here.
 
-    make seed-check        # each unit against the seed's, on the same files
-    make seed-bench  # the scanner's speed against the seed's
+    make seed-bench  # the scanner's and the compiler's speed against the seed's
     make fixpoint    # the seed builds src, that builds src, that builds it again
 
-`Chunk` and `Sym` have no input files to read, so each has a dumper
-pair, `test/ChunkDump` and `test/SymDump`, that runs one fixed
-pseudo-random script of calls on its side and prints all it made or
-answered (`Sym` also ends, as an argument says, in the error of a name
-declared twice or of too many scopes): the output, the messages and
-the status must be the same. `Link` and `Elf` are tested by
-`test/LinkDump`, which makes a program of chunks by a script and writes
-it as a static, a dynamic and a stripped executable, which must be the
-same file; `X64` by `test/X64Dump`, every encoder with operands from a
-script, bytes, fixups and listing, and by `test/AsmDump` on the files
-`test/genasm.py` makes: a long run of every instruction the assembler
-knows, and a file for each of its errors.
-`Gen` and `Item` were tested by `test/GenDump`, a script of calls, valid
-by construction, that compiles 80 procedures with every kind of
-expression, statement, call, check, frame and defer, and the entry
-point, and by `test/ItemDump`, a script of operands and operations with
-mistakes among them, over 60 scripts (the text its messages point into
-is `test/ItemDump.txt`): the bytes, fixups, line notes and listing, and
-the messages, had to be the same as the seed's. They were, until the
-compiler's code was improved (v0.10.1): `src/` makes better code than
-the seed, so the dumpers are kept, as a way to read what `Gen` makes,
-and no longer compared. `src/check.sh` says what is.
-
-`Parse` and `Raz`, the last two units, are tested whole: the seed builds
-`src/Raz.raz` into `build/src/raz.src`, and each compiler, run as
-`build/cmp/raz` (a program holds the paths it was made from, and the
-library is found beside the compiler), compiles the library, the
-examples, the tools, `src/` itself, every test of `test/` and
-`conform/`, and the 348,025-line program of `test/genbench.py`, with the
-options each test has. The messages and the status must be the same
-for every file (the executables no longer are, since v0.10.1): 409 of them, 289 of which are errors.
-`make seed-bench` gives the speed of both.
+While it was ported, each unit was tested against the seed's: a pair
+of dumpers, one over each side's units, read the same files or ran the
+same pseudo-random script of calls, and had to print the same, with
+the same messages and status; the compiler built whole had to give
+every program the messages and status the seed gave. That test was
+dropped after v0.17.0: the two had grown apart, the compiler making
+better code since v0.10.1 and following newer reports since, and
+`make check`, `conform/` and the fixpoint test the compiler as it is.
+`test/Recover.raz`, the pattern of going on after an error, is run by
+`make check`.
 
 `make fixpoint` (`fixpoint.sh`) is the proof that the port is whole:
 the seed builds `Raz.raz` (stage 1), stage 1 builds it (stage 2), and
@@ -50,13 +27,6 @@ file; they are (stage 1 is not, since v0.10.1: the port makes better code
 than the seed's). Stage 3 then stands in for `./raz`, and `make check` and
 `make bench` run on it. Each stage is built by the same command in the
 same place, since a program holds the paths it was made from.
-
-`check.sh` builds a dumper for each side, `test/ScanDump.pas` over the
-seed's units and `test/ScanDump.raz` over these, and has both read the
-library, the examples, every test of the compiler and a file for each
-message the scanner makes (`test/genlex.py`) and for hundreds of reals
-that are hard to read exactly (`test/genreals.py`): the output, the
-messages and the status must be the same.
 
 ## What the port found
 

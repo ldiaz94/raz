@@ -1,9 +1,10 @@
 #!/bin/sh
 # The scanner's speed against the seed's, on the compiler's own
 # benchmark program: the best of seven runs of each. Run from the
-# repository root, after src/check.sh has built the tests.
+# repository root, after make raz.
 set -e
 b=build/src
+mkdir -p $b
 python3 test/genbench.py 12000 >$b/Bench.raz
 fpc -O2 -Mobjfpc -Sh- -vew -FUbuild -Fuseed -o$b/scanbench.seed src/test/ScanBench.pas >/dev/null
 ./raz -Werror -I src -o $b/scanbench.src src/test/ScanBench.raz

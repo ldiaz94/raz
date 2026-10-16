@@ -2,7 +2,7 @@
   against src/Scan.raz (ScanBench.raz). }
 program scanbench;
 {$mode objfpc}{$H-}
-uses diag, scan, seedcontinue;
+uses diag, scan;
 var n: longint;
 begin
   if Open(ParamStr(1)) <> '' then Fatal('no file');

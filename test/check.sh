@@ -252,6 +252,17 @@ done
 if (ulimit -v 60000; $out/lib_Thread.linux-x86_64 fail) > /dev/null 2>&1; then pass=$((pass + 1))
 else echo "FAIL Thread under a memory limit"; fail=$((fail + 1)); fi
 
+# the compiler's way of going on after an error, in small: a parser
+# that reads names, fails on each bad one, and goes on to the next
+if $raz -Werror -I src -o $out/recover src/test/Recover.raz 2>$out/recover.cerr; then
+    printf 'a bad b bad bad c\nd bad\n' >$out/rec.raz
+    r=$($out/recover $out/rec.raz 2>/dev/null) || true
+    if [ "$r" = "8 names, 4 failed, 4 errors" ]; then pass=$((pass + 1))
+    else echo "FAIL src/test/Recover.raz: $r"; fail=$((fail + 1)); fi
+else
+    echo "FAIL src/test/Recover.raz: $(cat $out/recover.cerr)"; fail=$((fail + 1))
+fi
+
 # a module imported and never called leaves nothing of its own in the
 # program, not even Width's tables: the same program, importing it or
 # not, makes a file of the same size (the names the trace shows may

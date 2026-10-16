@@ -14,7 +14,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,127 | 934 | Symbols, literals, comments, positions |
+| `src/Scan.raz` | 1,125 | 934 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 707 | 566 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
@@ -1769,7 +1769,7 @@ this one does.
   instruction, or of calls to gen right there.
 - **An instruction:** a routine in `X64.raz` built on `opM` or `opR`,
   and a line in `test/enctest.pas` to check its encoding (the seed's
-  test; `src/test/X64Dump.raz` is the port's).
+  test), and a program in `conform/` or `test/` that uses it.
 - **A machine:** a new `Gen.raz`, answering the same calls, and an
   encoder and assembler for it in place of `X64.raz`.
 - **A statement:** a reserved word in `Scan.raz` (in `Sym` and `words`,
@@ -1783,12 +1783,7 @@ Pascal compiler in `seed/` (which needs Free Pascal, and is never edited
 to suit `src/`); a raz that already exists could do it as well.
 `make fixpoint` has the seed's build compile `src/`, that compile it
 again, and that again, and checks that the last two are the same file.
-`make seed-check` tests each unit of `src/` against the seed's. The
-seed has no `continue`, the last reserved word of `src/Scan.raz`, so
-the Pascal dumpers in `src/test` use `seedcontinue`, which interns the
-name right after the seed's reserved words: every name then has the
-same number on both sides, and only the end of a file's symbols, one
-higher in `src/`, is renumbered (`ScanDump.raz`'s `seedSym`). A file
-that uses something the seed doesn't know is left out (`src/check.sh`'s
-`newer`). After any change: `make check`, `make bench`,
+`make seed-bench` compares the speed of the two. Each unit of `src/`
+was once tested against the seed's, while it was ported; that test was
+dropped after v0.17.0, as the two had grown apart. After any change: `make check`, `make bench`,
 `make loc`.

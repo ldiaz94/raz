@@ -22,14 +22,12 @@ type
         sBecomes, sColon, sSemicolon, sComma, sPeriod, sUpto, sEllipsis,
         sLparen, sRparen, sLbrak, sRbrak, sLbrace, sRbrace, sArrow, sAmp, sTilde, sBar,
         sBlank,
-        (* the reserved words, in the order of words below: alphabetical
-           but for continue, which came last (report 2026-10.31), so that
-           the others keep the numbers the seed gives them *)
-        sAnd, sBegin, sBreak, sBy, sCode, sConst, sDefer, sDiv, sDo, sElse,
+        (* the reserved words, in the order of words below *)
+        sAnd, sBegin, sBreak, sBy, sCode, sConst, sContinue, sDefer, sDiv, sDo, sElse,
         sElsif, sEnd, sExtern, sFor, sForward, sIf, sImport, sIn, sLink,
         sMatch, sMod, sModule, sNot, sOf, sOr, sPacked, sProc, sRecord,
         sRepeat, sReturn, sSet, sShl, sShr, sThen, sTo, sTry, sType, sUntil, sVar,
-        sVariant, sVolatile, sWhile, sXor, sContinue,
+        sVariant, sVolatile, sWhile, sXor,
         sEof);
 
     (* Where the scanner is. Importing a module compiles it in the middle
@@ -53,12 +51,12 @@ const
     NumWords = 44;
     NumOps = 28;
     words: [NumWords][]U8 = [
-        "and", "begin", "break", "by", "code", "const", "defer", "div", "do",
+        "and", "begin", "break", "by", "code", "const", "continue", "defer", "div", "do",
         "else", "elsif", "end", "extern", "for", "forward", "if", "import",
         "in", "link", "match", "mod", "module", "not", "of", "or", "packed",
         "proc", "record", "repeat", "return", "set", "shl", "shr", "then",
         "to", "try", "type", "until", "var", "variant", "VOLATILE", "while",
-        "xor", "continue"];
+        "xor"];
     (* sPlus to sBlank *)
     ops: [NumOps][]U8 = [
         "+", "-", "*", "/", "=", "#", "<", "<=", ">", ">=",
