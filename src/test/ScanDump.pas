@@ -3,7 +3,7 @@
   so that no formatting library decides what is the same. }
 program scandump;
 {$mode objfpc}{$H-}
-uses diag, scan;
+uses diag, scan, seedcontinue;
 var i: longint; bits: int64;
 begin
   if Open(ParamStr(1)) <> '' then Fatal('no file');

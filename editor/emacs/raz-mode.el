@@ -22,7 +22,7 @@
   :type 'integer :group 'raz)
 
 (defconst raz-keywords
-  '("and" "begin" "break" "by" "code" "const" "defer" "div" "do" "else"
+  '("and" "begin" "break" "by" "code" "const" "continue" "defer" "div" "do" "else"
     "elsif" "end" "extern" "for" "forward" "if" "import" "in" "link"
     "match" "mod" "module" "not" "of" "or" "packed" "proc" "record"
     "repeat" "return" "set" "shl" "shr" "then" "to" "try" "type" "until"

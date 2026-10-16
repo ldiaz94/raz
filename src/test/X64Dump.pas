@@ -4,7 +4,7 @@
   src/X64.raz, whose X64Dump.raz does the same and prints the same. }
 program x64dump;
 {$mode objfpc}{$H-}
-uses diag, scan, chunk, x64;
+uses diag, scan, seedcontinue, chunk, x64;
 var
   seed: int64;
   i, k, op, a, b, c, d, lab1, lab2: longint;

@@ -3,7 +3,7 @@
   ChunkDump.raz does the same and prints the same. }
 program chunkdump;
 {$mode objfpc}{$H-}
-uses diag, scan, chunk;
+uses diag, scan, seedcontinue, chunk;
 var
   seed: int64;
   names: array[0..7] of longint;

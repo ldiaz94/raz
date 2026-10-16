@@ -1,7 +1,17 @@
 (* Prints the symbols of a file, one per line: src/Scan.raz's side of a
-   test against the seed's, ScanDump.pas, which prints the same. *)
+   test against the seed's, ScanDump.pas, which prints the same. The
+   symbols are numbered as the seed numbers them: it has no continue
+   (report 2026-10.31), the last reserved word here, so its end of the
+   file is one lower. A file with continue in it isn't compared. *)
 module ScanDump;
 import Out, Fmt, Files, Diag, Scan;
+
+(* s as the seed numbers it *)
+proc seedSym(s: Scan.Sym): INT;
+begin
+    if s = Scan.sEof then return INT(s) - 1; end;
+    return INT(s);
+end;
 
 proc main*;
 var p: Diag.Pos; bits: ^U64; i: INT; str: []U8; r: F64;
@@ -11,7 +21,7 @@ begin
         Scan.next;
         p := Scan.tokPos();
         Fmt.print("{}:{}:{} {}:{} {}", [Fmt.int(Diag.lineOf(p)), Fmt.int(p.a), Fmt.int(p.b),
-            Fmt.int(Scan.curLine()), Fmt.int(Scan.curCol()), Fmt.int(INT(Scan.tok))]);
+            Fmt.int(Scan.curLine()), Fmt.int(Scan.curCol()), Fmt.int(seedSym(Scan.tok))]);
         match Scan.tok of
         | sIdent: Fmt.print(" {} {}", [Fmt.str(Scan.nameOf(Scan.id)), Fmt.int(Scan.id)]);
         | sInt: Fmt.print(" {}", [Fmt.int(Scan.ival)]);

@@ -5,7 +5,7 @@
   declared twice, or of too many scopes. }
 program symdump;
 {$mode objfpc}{$H-}
-uses diag, scan, sym;
+uses diag, scan, seedcontinue, sym;
 const
   Words: array[0..19] of string = ('alpha', 'alpho', 'beta', 'bet', 'gamma', 'gama', 'delta', 'Delta',
     'eps', 'zeta', 'eta', 'theta', 'iota', 'kappa', 'lambda', 'mu', 'nu', 'xi', 'omicron', 'pi');

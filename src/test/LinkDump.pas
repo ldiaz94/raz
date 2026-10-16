@@ -5,7 +5,7 @@
   the same and writes the same file. }
 program linkdump;
 {$mode objfpc}{$H-}
-uses diag, scan, chunk, link, elf;
+uses diag, scan, seedcontinue, chunk, link, elf;
 const NumC = 200;
 var
   seed: int64;

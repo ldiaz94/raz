@@ -22,12 +22,14 @@ type
         sBecomes, sColon, sSemicolon, sComma, sPeriod, sUpto, sEllipsis,
         sLparen, sRparen, sLbrak, sRbrak, sLbrace, sRbrace, sArrow, sAmp, sTilde, sBar,
         sBlank,
-        (* the reserved words, in the order of words below *)
+        (* the reserved words, in the order of words below: alphabetical
+           but for continue, which came last (report 2026-10.31), so that
+           the others keep the numbers the seed gives them *)
         sAnd, sBegin, sBreak, sBy, sCode, sConst, sDefer, sDiv, sDo, sElse,
         sElsif, sEnd, sExtern, sFor, sForward, sIf, sImport, sIn, sLink,
         sMatch, sMod, sModule, sNot, sOf, sOr, sPacked, sProc, sRecord,
         sRepeat, sReturn, sSet, sShl, sShr, sThen, sTo, sTry, sType, sUntil, sVar,
-        sVariant, sVolatile, sWhile, sXor,
+        sVariant, sVolatile, sWhile, sXor, sContinue,
         sEof);
 
     (* Where the scanner is. Importing a module compiles it in the middle
@@ -48,7 +50,7 @@ const
     Failed*: ERROR = "reported";    (* an error has been shown: the parser returns it *)
     MaxIdent* = 63;
     MaxStr* = 65536;
-    NumWords = 43;
+    NumWords = 44;
     NumOps = 28;
     words: [NumWords][]U8 = [
         "and", "begin", "break", "by", "code", "const", "defer", "div", "do",
@@ -56,7 +58,7 @@ const
         "in", "link", "match", "mod", "module", "not", "of", "or", "packed",
         "proc", "record", "repeat", "return", "set", "shl", "shr", "then",
         "to", "try", "type", "until", "var", "variant", "VOLATILE", "while",
-        "xor"];
+        "xor", "continue"];
     (* sPlus to sBlank *)
     ops: [NumOps][]U8 = [
         "+", "-", "*", "/", "=", "#", "<", "<=", ">", ">=",

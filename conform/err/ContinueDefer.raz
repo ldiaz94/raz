@@ -1,0 +1,11 @@
+module ContinueDefer;
+import Out;
+proc main*;
+var i: INT;
+begin
+    for i := 1 to 3 do
+        defer continue;
+        Out.int(i);
+    end;
+end;
+end ContinueDefer.

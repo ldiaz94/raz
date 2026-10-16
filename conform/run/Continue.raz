@@ -1,0 +1,49 @@
+(* continue ends the round of the innermost loop: a while tests its
+   condition again, a repeat its until, a for steps or ends; and the
+   statements deferred in the round run on the way (report 2026-10.31,
+   sections 7.2 and 7.7). *)
+module Continue;
+import Out;
+
+proc main*;
+var i, j, n: INT; t: []U8;
+begin
+    for i := 1 to 10 do
+        if i mod 3 = 0 then continue; end;              (* a lone continue *)
+        Out.int(i); Out.str(" ");
+    end;
+    Out.ln;
+    for i := 10 to 1 by -2 do
+        if i = 6 then Out.str("six "); continue; end;
+        Out.int(i); Out.str(" ");
+    end;
+    Out.ln;
+    t := "a-b--c";
+    i := 0;
+    while i < LEN(t) do
+        n := i;
+        i := i + 1;                                      (* the step first *)
+        if t[n] = '-' then continue; end;
+        Out.str(t[n..i]);
+    end;
+    Out.ln;
+    i := 0;
+    repeat
+        INC(i);
+        defer Out.str("|");
+        if i = 2 then continue; end;
+        Out.int(i);
+    until i >= 4;
+    Out.ln;
+    for i := 1 to 3 do                                   (* the innermost loop's round *)
+        for j := 1 to 3 do
+            if j = 2 then continue; end;
+            Out.int(10 * i + j); Out.str(" ");
+        end;
+        if i = 2 then continue; end;
+        Out.str("; ");
+    end;
+    Out.ln;
+end;
+
+end Continue.

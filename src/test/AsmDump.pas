@@ -5,7 +5,7 @@
   numbers, with a minus sign, and sums of them. }
 program asmdump;
 {$mode objfpc}{$H-}
-uses diag, scan, chunk, x64;
+uses diag, scan, seedcontinue, chunk, x64;
 var i: longint; path: string;
 
 function ConstVal(whole: boolean): int64;

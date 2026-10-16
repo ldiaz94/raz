@@ -8,7 +8,7 @@
   so several scripts are run. }
 program itemdump;
 {$mode objfpc}{$H-}
-uses diag, scan, sym, chunk, x64, gen, item;
+uses diag, scan, seedcontinue, sym, chunk, x64, gen, item;
 
 const
   FirstProc = 3;

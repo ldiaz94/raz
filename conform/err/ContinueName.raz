@@ -1,0 +1,7 @@
+module ContinueName;
+proc main*;
+var continue: INT;
+begin
+    continue := 1;
+end;
+end ContinueName.

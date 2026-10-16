@@ -8,7 +8,7 @@ endif
 
 syntax case match
 
-syntax keyword razKeyword and begin break by code const defer div do else
+syntax keyword razKeyword and begin break by code const continue defer div do else
 syntax keyword razKeyword elsif end extern for forward if import in link
 syntax keyword razKeyword match mod module not of or packed proc record
 syntax keyword razKeyword repeat return set shl shr then to try type until

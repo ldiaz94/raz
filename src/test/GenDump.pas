@@ -5,7 +5,7 @@
   argument, the entry point is the dynamic one. }
 program gendump;
 {$mode objfpc}{$H-}
-uses diag, scan, sym, chunk, x64, gen;
+uses diag, scan, seedcontinue, sym, chunk, x64, gen;
 
 const
   FirstProc = 3;

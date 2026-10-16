@@ -1,0 +1,6 @@
+module ContinueOutside;
+proc main*;
+begin
+    continue;
+end;
+end ContinueOutside.

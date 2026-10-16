@@ -14,13 +14,13 @@ library, made from `lib/` by `tools/Doc.raz`.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,125 | 934 | Symbols, literals, comments, positions |
+| `src/Scan.raz` | 1,127 | 934 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 687 | 556 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,037 | 1,651 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,049 | 3,518 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,065 | 3,532 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -1384,7 +1384,11 @@ and `oneStatement` dispatches; `ifStatement`,
 with gen's labels. A branch of an `if` that ends, in `return` or
 `break` (`ends`), gets no jump past the others; and `if c then break;
 end` is one jump out of the loop where `c` holds (`thenPart`,
-`loneBreak`, and `Item.condJumpTrue`), not a jump past a jump. A `for` loop
+`loneJump`, and `Item.condJumpTrue`), not a jump past a jump; so is
+`if c then continue; end`, to the end of the round. A loop keeps two
+chains of jumps in its `Loop`: `brk`, fixed after the loop, and
+`cont`, for `continue` (report 2026-10.31), fixed where the round ends:
+a `while`'s test, a `repeat`'s `until`, a `for`'s step (`forNext`). A `for` loop
 steps its variable at the top and tests at the bottom, so that a round
 by 1 is one compare and one jump; its rare case, a body that moves the
 variable past the limit, has code of its own after (`Item.forNext`, whose
@@ -1410,7 +1414,7 @@ the same. `deferStatement` is worth reading: a deferred statement
 is compiled where it stands, as a little subroutine of the procedure
 that the code jumps over (gen's `deferBegin` and `deferEnd`), and
 `runDefers` emits a call to it at every way out of its statement list:
-the end, `return` and `break`. A `return`'s result waits in the frame
+the end, `return`, `break` and `continue`. A `return`'s result waits in the frame
 meanwhile, so that gen's stack is empty when they run.
 
 `try` (report 7.8) is `tryCall`, for the statement, an operand
@@ -1769,5 +1773,12 @@ Pascal compiler in `seed/` (which needs Free Pascal, and is never edited
 to suit `src/`); a raz that already exists could do it as well.
 `make fixpoint` has the seed's build compile `src/`, that compile it
 again, and that again, and checks that the last two are the same file.
-`make seed-check` tests each unit of `src/` against the seed's. After any change: `make check`, `make bench`,
+`make seed-check` tests each unit of `src/` against the seed's. The
+seed has no `continue`, the last reserved word of `src/Scan.raz`, so
+the Pascal dumpers in `src/test` use `seedcontinue`, which interns the
+name right after the seed's reserved words: every name then has the
+same number on both sides, and only the end of a file's symbols, one
+higher in `src/`, is renumbered (`ScanDump.raz`'s `seedSym`). A file
+that uses something the seed doesn't know is left out (`src/check.sh`'s
+`newer`). After any change: `make check`, `make bench`,
 `make loc`.

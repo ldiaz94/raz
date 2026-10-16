@@ -34,10 +34,11 @@ type
     PModule = ^Sym.Module;
     TItem = Item.Item;
 
-    (* The innermost loop: the chain of its breaks and the deferred
-       statements in force outside it *)
+    (* The innermost loop: the chain of its breaks, the chain of its
+       continues, and the deferred statements in force outside it *)
     Loop = record
         brk: INT;
+        cont: INT;
         base: INT;
     end;
     PLoop = ^Loop;
@@ -1598,6 +1599,7 @@ end;
 proc enterLoop(var lp: Loop; var old: PLoop);
 begin
     lp.brk := Gen.NoLabel;
+    lp.cont := Gen.NoLabel;
     lp.base := numDefers;
     old := curLoop;
     curLoop := ADR(lp);
@@ -1610,13 +1612,17 @@ begin
     for i := numDefers - 1 to base by -1 do Gen.runDefer(defers[i]); end;
 end;
 
-(* Whether what follows "then" is a lone "break;", with no deferred
-   statement to run on the way out of the loop: the break must be the
-   branch's last statement, so ";" and then end, elsif or else follow. *)
-proc loneBreak: BOOL;
+(* Whether what follows "then" is a lone "break;" or "continue;", with
+   no deferred statement to run on the way out of the round: it must be
+   the branch's last statement, so ";" and then end, elsif or else
+   follow. *)
+proc loneJump: BOOL;
 var st: Scan.State; lone: BOOL;
 begin
-    if (Scan.tok # Scan.sBreak) or (curLoop = nil) or (numDefers # curLoop^.base) then return false; end;
+    if ((Scan.tok # Scan.sBreak) and (Scan.tok # Scan.sContinue)) or (curLoop = nil)
+            or (numDefers # curLoop^.base) then
+        return false;
+    end;
     Scan.saveScan(st);
     lone := false;
     Scan.next;
@@ -1630,15 +1636,17 @@ end;
 
 (* The condition x of if or elsif, and the statements it guards, which
    L skips when it is false. "if c then break; end" is one jump out of
-   the loop when c holds, not one past a jump out. *)
+   the loop when c holds, not one past a jump out; "if c then continue;
+   end" one jump to the end of the round. *)
 proc thenPart(var x: TItem; var L: INT): ERROR;
 begin
     try expect(Scan.sThen);
-    L := Gen.NoLabel;   (* stays so with a lone break: there is nothing to skip *)
-    if loneBreak() then
-        Chunk.noteLine(Scan.curLine(), Scan.curCol());   (* the jump gets the break's line *)
-        try Item.condJumpTrue(x, curLoop^.brk);
-        Scan.next; Scan.next;   (* skip "break" and ";" *)
+    L := Gen.NoLabel;   (* stays so with a lone break or continue: there is nothing to skip *)
+    if loneJump() then
+        Chunk.noteLine(Scan.curLine(), Scan.curCol());   (* the jump gets the break's or continue's line *)
+        if Scan.tok = Scan.sBreak then try Item.condJumpTrue(x, curLoop^.brk);
+        else try Item.condJumpTrue(x, curLoop^.cont); end;
+        Scan.next; Scan.next;   (* skip "break" or "continue", and ";" *)
         ends := true;
     else
         try Item.condJump(x, L);
@@ -1716,6 +1724,7 @@ begin
     Scan.saveScan(after);
     Scan.restoreScan(cond);
     Gen.fix(test);
+    Gen.fix(lp.cont);   (* a continue goes to the test *)
     Chunk.noteLine(Scan.curLine(), Scan.curCol());
     try expression(x, nil);
     ends := (x.mode = Item.mConst) and (x.val # 0) and (lp.brk = Gen.NoLabel);   (* while true *)
@@ -1741,6 +1750,7 @@ begin
     try statements();
     curLoop := old;
     try expect(Scan.sUntil);
+    Gen.fix(lp.cont);   (* a continue goes to the test *)
     try expression(x, nil);
     ends := (x.mode = Item.mConst) and (x.val = 0) and (lp.brk = Gen.NoLabel);   (* until false *)
     L := Gen.NoLabel;
@@ -1823,6 +1833,7 @@ begin
     try statements();
     curLoop := old;
     try closeEnd(start, ind);
+    Gen.fix(lp.cont);   (* a continue goes to the end of the round *)
     try Item.forNext(o, b, step, exitL, top, body);
     Gen.fix(exitL);
     Gen.fix(lp.brk);
@@ -2385,6 +2396,11 @@ begin
         if curLoop = nil then return Scan.markAt(Scan.spanFrom(start), "break outside a loop"); end;
         runDefers(curLoop^.base);
         Gen.jump(curLoop^.brk);
+    | sContinue:
+        Scan.next;
+        if curLoop = nil then return Scan.markAt(Scan.spanFrom(start), "continue outside a loop"); end;
+        runDefers(curLoop^.base);
+        Gen.jump(curLoop^.cont);
     | sDefer: try deferStatement();
     | sTry:
         try tryCall(x);

@@ -1,0 +1,4 @@
+conform/err/ContinueDefer.raz:7:15: error: continue outside a loop
+    7 |         defer continue;
+      |               ^^^^^^^^
+raz: 1 error

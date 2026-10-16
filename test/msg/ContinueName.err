@@ -1,0 +1,4 @@
+conform/err/ContinueName.raz:3:5: error: expected "begin", found "continue"
+    3 | var continue: INT;
+      |     ^^^^^^^^
+raz: 1 error
