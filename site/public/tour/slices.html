@@ -162,7 +162,7 @@ they differ now
 <pre class="output"><code>1 1 2 3 4 5 
 </code></pre>
 <h2>Strings</h2>
-<p>A string is a slice of bytes, <code>[]U8</code>, in UTF-8, and a string constant's bytes are constant. A <code>[8]U8</code> made from one is a copy you can change. Arrays and slices of integers compare with <code>=</code> and <code>#</code>, so strings do too. <code>Str</code> has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case, UTF-8, and numbers to and from text.</p>
+<p>A string is a slice of bytes, <code>[]U8</code>, in UTF-8, and a string constant's bytes are constant. A <code>[8]U8</code> made from one is a copy you can change. Arrays and slices of integers compare with <code>=</code> and <code>#</code>, so strings do too. <code>Str</code> has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case and kinds of character, UTF-8, and numbers to and from text.</p>
 <div class="file"><span>Words.raz</span></div><pre class="code"><code><span class="kw">module</span> Words;
 <span class="kw">import</span> Out, Str;
 
@@ -175,6 +175,8 @@ they differ now
     Out.int(Str.find(s, <span class="string">&quot;world&quot;</span>)); Out.ln;          <span class="comment">(* 7 *)</span>
     Out.int(Str.find(s, <span class="string">&quot;xyz&quot;</span>)); Out.ln;            <span class="comment">(* -1 *)</span>
     Out.int(Str.findLast(<span class="string">&quot;abcabc&quot;</span>, <span class="string">&quot;bc&quot;</span>)); Out.ln;  <span class="comment">(* 4 *)</span>
+    Out.int(Str.findFrom(s, <span class="string">&quot;o&quot;</span>, <span class="number">5</span>)); Out.ln;       <span class="comment">(* 8: the first o from 5 on *)</span>
+    <span class="kw">if</span> Str.isDigit(<span class="string">&#x27;7&#x27;</span>) <span class="kw">and</span> <span class="kw">not</span> Str.isLetter(<span class="string">&#x27;7&#x27;</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;a digit\n&quot;</span>); <span class="kw">end</span>;
     <span class="kw">if</span> Str.hasPrefix(s, <span class="string">&quot;hell&quot;</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;prefix\n&quot;</span>); <span class="kw">end</span>;
     <span class="kw">if</span> Str.hasSuffix(s, <span class="string">&quot;world&quot;</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;suffix\n&quot;</span>); <span class="kw">end</span>;
     Out.int(Str.cmp(<span class="string">&quot;apple&quot;</span>, <span class="string">&quot;banana&quot;</span>)); Out.ln;    <span class="comment">(* -1 *)</span>
@@ -199,6 +201,8 @@ it says hello
 7
 -1
 4
+8
+a digit
 prefix
 suffix
 -1
