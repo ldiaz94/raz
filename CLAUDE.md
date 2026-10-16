@@ -80,19 +80,17 @@ tools and the library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.17.2, report 2026-10.31, is the latest release: v0.17.0's thaw
-(`INT` at least 16 bits, and `U8`, `I8` and `I16` widening to it; an
-enumeration's name written with its type, and shared; `continue`; `[]`
-as the empty slice; `Width`, the columns of a terminal), and library
-growth that breaks no program (`Str`'s character tests and `findFrom`,
-`Vec.tryPush` and `tryAdd`, `Fmt.eprint`, `Sys.errorText`, `setEnv`
-and `execve`, the kernel's, for a shell), with errors that show a comment that ended early. `src/` is the
+v0.18.0, report 2026-10.32, is the latest release: the eighth thaw (a
+constant typed `[]T` may be `[]`, the empty slice, as may a constant's
+slice part), with `Vec.pop` and `Sys.Info.links`; and a constant's
+slice part may name another module's array constant, a defect mended.
+v0.17.0's thaw before it: `INT` at least 16 bits, and `U8`, `I8` and
+`I16` widening to it; an enumeration's name written with its type, and
+shared; `continue`; `[]` as the empty slice; `Width`. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
-against FPC `-O2`. Since then, not yet released: report 2026-10.32,
-the eighth thaw (a constant typed `[]T` may be `[]`), with `Vec.pop`
-and `Sys.Info.links`. Next: what the owner chooses. What
+against FPC `-O2`. Next: what the owner chooses. What
 each version of the report changed is in `doc/report-history.md`, and
 what each step did is in git; don't repeat it here.
 
