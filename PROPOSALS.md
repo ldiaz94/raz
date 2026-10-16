@@ -601,30 +601,3 @@ lookup of a name where the parser knows it.
 
 Met in mosaico's `Mconfig`, where `MenuAction.run` and a status block's
 kind `run` met; the block's kind was renamed `command`.
-
-## A signal to one thread
-
-`Sys.kill` signals a process, and the kernel gives the signal to any
-of its threads that doesn't block it. A program whose thread waits in
-a system call, a read or a `Sys.ready`, has no way to break into that
-wait from another thread: the signal may land on the thread that sent
-it, or on a third.
-
-The proposal, in the library:
-
-```
-proc signal*(t: ^Thread; sig: INT): INT;   (* sig sent to t alone; 0, or minus an errno *)
-```
-
-in `Thread`, beside `join`: `tgkill(getpid(), t^.tid, sig)` in a
-program without C, `pthread_kill(t^.tid, sig)` in one with C, as
-`Thread` already keeps either id in `tid`. With `Sys.handle(sig)` in
-the program, the wait the thread is in fails with -4, as `^C` makes a
-wait fail on the main thread today. It breaks no program, so it could
-come with any release, not only a thaw.
-
-Met in arno's screen: a turn runs on a thread of its own, reading the
-model's reply with rnet. The human's `C-c` is a key on the loop's
-thread, which can only set a flag that the turn reads after each read
-of the reply; a server that says nothing for a minute, as a model does
-while it thinks, keeps the turn going for that minute.

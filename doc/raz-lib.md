@@ -15,7 +15,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
-| `Thread` | threads, `spawn` and `join`, and `Mutex`, in any program; in one that uses C, made by C's `pthread_create` |
+| `Thread` | threads, `spawn`, `join` and `signal`, and `Mutex`, in any program; in one that uses C, made by C's `pthread_create` |
 | `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
 | `Heap` | a general allocator, `Heap.heap`, safe to call from several threads; freeing a block twice, or one it never gave out, stops the program |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
@@ -100,6 +100,7 @@ type
     Mutex* = record ... end;     (* zero is free *)
 proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);   (* p(arg) in a new thread *)
 proc join*(t: ^Thread);         (* waits for t to end, then frees its stack *)
+proc signal*(t: ^Thread; sig: INT): INT;   (* sig sent to t alone: 0, or minus an errno *)
 proc lock*(m: ^Mutex);
 proc unlock*(m: ^Mutex);
 ```
@@ -112,6 +113,14 @@ with a message, as in the main thread. In a program that uses C,
 `Thread` makes its threads with C's `pthread_create`, so that C's
 library knows of them; in one that doesn't, with the system's own
 calls. The program is the same either way.
+
+`Sys.kill` signals a program, and the system gives the signal to any
+of its threads; `signal` gives it to `t` alone, until `t` is joined,
+and is -3 (ESRCH) once `t` has ended. With `Sys.handle(sig)`, a call
+`t` waits in, a `read` or a `ready`, fails with -4, so that one thread
+can break into another's wait, as `^C` breaks into the main thread's.
+A signal sent before `t` begins its wait is only noted, so a program
+sends it again until `t` says it has stopped.
 
 ```
 module Out;

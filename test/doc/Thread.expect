@@ -20,6 +20,7 @@ const Failed*: ERROR = "can't start a thread";
 
 type Thread* = record
     tid: INT;        (* the kernel's id, until the thread ends; or C's pthread_t *)
+    ktid: INT;       (* in a C thread, the kernel's id: 0 until it starts, -1 once it ends *)
     base: ^U8;       (* its stack's mapping, the guard page first *)
     size: INT;
     fn: proc(arg: ^U8);   (* what it runs, and with what *)
@@ -36,6 +37,14 @@ proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);
 
 proc join*(t: ^Thread);
     Waits for t to end, then frees its stack.
+
+proc signal*(t: ^Thread; sig: INT): INT;
+    Sends the signal sig to t alone, not to any thread of the program
+    as Sys.kill does: 0, or minus an errno, -3 (ESRCH) if t has ended.
+    With Sys.handle(sig), a system call t waits in fails with -4, so
+    another thread can break into a read. tgkill, in a program with C
+    too, since pthread_kill is tgkill with C's id for the thread: a C
+    thread that hasn't noted its id yet is waited for.
 
 proc lock*(m: ^Mutex);
     Takes m, sleeping while another thread holds it.
