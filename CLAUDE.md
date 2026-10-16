@@ -230,6 +230,20 @@ otherwise.
   installed without `SA_RESTART`, so a call it breaks into is -4, which
   `Out` and `Files` try again. Over C, `ready` and `readyFor` try `poll`
   again after EINTR only when no signal `handle` took broke in.
+- `U8`, `I8` and `I16` widen to `INT`, `U8` and `U16` to `UINT`, one
+  step only (a `U8` into an `I64` is written), and not in `return f(x)`
+  (report 2026-10.31). An operator's result on them (`made`) doesn't
+  widen; a conversion's does, `U8(a + b)` too.
+- An enumeration's name shared in its scope with another enumeration's
+  is written with its type; shared with anything else, the name alone is
+  that other declaration. A `match` arm on an enumeration takes the
+  type's names alone or with the type, which must be the matched one.
+- `continue` is the last reserved word, so that the others keep the
+  seed's numbers; the seed's dumpers intern it first
+  (`src/test/seedcontinue.pas`).
+- `Width` follows glibc's `wcwidth` but gives a control 0, and 0 to the
+  format characters glibc counts as 1 (Egyptian hieroglyph controls,
+  interlinear annotation), but for the prepended concatenation marks.
 - An `extern` module variable is read-only for an importer, as the
   report says of every exported variable (3).
 - Warnings come only for a module with no errors. A procedure naming

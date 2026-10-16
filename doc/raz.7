@@ -66,9 +66,9 @@ is its documentation.
 The reserved words, all lowercase but
 .Cm VOLATILE :
 .Bd -literal -offset indent
-and begin break by code const defer div do else elsif end
-extern for forward if import in link match mod module not of
-or packed proc record repeat return set shl shr then to try
+and begin break by code const continue defer div do else elsif
+end extern for forward if import in link match mod module not
+of or packed proc record repeat return set shl shr then to try
 type until var variant VOLATILE while xor
 .Ed
 .Pp
@@ -113,7 +113,7 @@ Stmt     = Designator [ ":=" Expr ] | "_" ":=" Expr
          | "for" Name ":=" Expr "to" Expr [ "by" Expr ]
            "do" Stmts "end"
          | "match" Expr "of" { "|" Arm } "end"
-         | "return" [ Exprs ] | "break" | "defer" Stmt .
+         | "return" [ Exprs ] | "break" | "continue" | "defer" Stmt .
 Arm      = ( Case [ "(" Names ")" ] | Label { "," Label } | "else" )
            ":" Stmts .
 Stmts    = { Stmt ";" } .
@@ -178,7 +178,7 @@ leaves the module's index and slice checks out.
 .It Sy Type Ta Sy Size Ta Sy Values
 .It "I8 I16 I32 I64" Ta "1, 2, 4, 8" Ta "signed, two's complement"
 .It "U8 U16 U32 U64" Ta "1, 2, 4, 8" Ta "unsigned"
-.It "INT, UINT" Ta "8" Ta "as big as an address"
+.It "INT, UINT" Ta "8" Ta "as big as an address, 16 bits at least"
 .It "BOOL" Ta "1" Ta "false, true"
 .It "F32, F64" Ta "4, 8" Ta "IEEE 754"
 .It "ERROR" Ta "8" Ta "nil, or a constant's error"
@@ -188,6 +188,11 @@ leaves the module's index and slice checks out.
 .It "(a, b, c)" Ta "1" Ta "an enumeration, 256 names at most"
 .It "set of E" Ta "1, 2, 4, 8" Ta "bit i for E's name i, 64 at most"
 .El
+.Pp
+An enumeration's name may be written with its type,
+.Cm Color.red ,
+and must be where another declaration of its scope has the name too
+[5.7].
 .Bl -bullet
 .It
 A
@@ -246,7 +251,7 @@ a string into
 .Cm []U8 , ^U8
 (with a zero byte after it) or
 .Cm [n]U8 ,
-a procedure into its type, and
+a procedure into its type,
 .Cm INT
 into
 .Cm I64 ,
@@ -255,7 +260,24 @@ into
 .Cm U64 ,
 wherever it goes, results passed on whole and a
 .Cm for Ns 's
-bounds too
+bounds too, and
+.Cm U8 , I8
+and
+.Cm I16
+into
+.Cm INT ,
+.Cm U8
+and
+.Cm U16
+into
+.Cm UINT ,
+in the same places but for results passed on whole, unless an
+operator made them: with
+.Cm "a, b: U8" ,
+.Cm "n := a + b"
+is an error, and
+.Cm "n := INT(a) + b"
+is the sum
 [5.10].
 Anything else is converted by name.
 .Sh OPERATORS
@@ -494,16 +516,26 @@ Out of the innermost
 .Cm while , repeat
 or
 .Cm for .
+.It Cm continue
+To the end of the innermost loop's round: a
+.Cm while
+or a
+.Cm repeat
+tests again, a
+.Cm for
+steps; so a
+.Cm while Ns 's
+step comes before it.
 There is no
-.Cm goto
-and no
-.Cm continue .
+.Cm goto .
 .It Cm defer
 Runs its statement when the statements it stands in end, by their end,
 a
-.Cm return
+.Cm return ,
+a
+.Cm break
 or a
-.Cm break ;
+.Cm continue ;
 the last first.
 .El
 .Pp

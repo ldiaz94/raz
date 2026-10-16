@@ -184,15 +184,32 @@ and
 Arithmetic wraps at the type's width, and never stops the program,
 except dividing by zero.
 .Pp
-Two types never mix but for one:
+Two types never mix but where nothing can be lost:
 .Cm INT
-into
+goes into
 .Cm I64 ,
-which loses nothing, wherever the one meets the other, so with
+wherever the one meets the other, so with
 .Cm "big: I64" ,
 .Cm "big + n"
 is an
-.Cm I64 .
+.Cm I64 ;
+and
+.Cm U8 , I8
+and
+.Cm I16 ,
+which an
+.Cm INT
+holds on any machine, go into
+.Cm INT ,
+so a digit's value is
+.Cm "n := n * 10 + s[i] - '0'" .
+What an operator made in a small type doesn't, since it may have
+wrapped there: with
+.Cm "a, b: U8" ,
+.Cm "n := a + b"
+is an error, and
+.Cm "INT(a) + b"
+the sum.
 With
 .Cm "c: I32" ,
 .Cm "c < n"
@@ -398,6 +415,19 @@ loop takes its bounds once, and never steps past the last: with an
 empty slice,
 .Cm "0 to LEN(s) - 1"
 doesn't run at all.
+.Cm break
+leaves a loop, and
+.Cm continue
+ends its round: a
+.Cm for
+steps, and a
+.Cm while
+tests again; so a
+.Cm while
+moves on, as
+.Cm "i := i + n" ,
+before it can
+.Cm continue .
 .Sh 6. RECORDS AND POINTERS
 .Bd -literal -offset indent
 module Boxes;
@@ -853,9 +883,11 @@ runs
 when the program leaves the statements the
 .Cm defer
 stands in: at their end, or by a
-.Cm return
+.Cm return ,
+a
+.Cm break
 or a
-.Cm break .
+.Cm continue .
 Deferred statements run the last first, and only those whose
 .Cm defer
 was reached.
@@ -980,7 +1012,11 @@ digit letter other
 01
 .Ed
 .Pp
-An enumeration is a list of names, in order; a
+An enumeration is a list of names, in order, each of which may be
+written with its type,
+.Cm Color.red ;
+two enumerations may share a name, which is then always written so.
+A
 .Cm "set of"
 it holds any choice of them, in the bits of a word, with
 .Cm in ,
@@ -1219,7 +1255,8 @@ instead.
 .It "if (c) {...}" Ta "if c then begin" Ta "if c then ... end;"
 .It "for (i=0; i<n; i++)" Ta "for i := 0 to n-1 do" Ta "for i := 0 to n - 1 do"
 .It "switch (c)" Ta "case c of" Ta "match c of | 1: ..."
-.It "continue, goto" Ta "goto" Ta "none: break only"
+.It "continue" Ta "continue" Ta "continue;"
+.It "goto" Ta "goto" Ta "none"
 .It "union" Ta "variant record" Ta "variant"
 .It "struct p {...}" Ta "record ... end" Ta "record ... end"
 .It "&x" Ta "@x" Ta "ADR(x)"
