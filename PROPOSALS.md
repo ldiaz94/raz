@@ -628,13 +628,3 @@ model's reply with rnet. The human's `C-c` is a key on the loop's
 thread, which can only set a flag that the turn reads after each read
 of the reply; a server that says nothing for a minute, as a model does
 while it thinks, keeps the turn going for that minute.
-
-## An option whose value may be left out
-
-An option takes a value always or never. grep's `--color` is
-`--color[=WHEN]`: bare, it means `auto`. In `Opt`, rre's `--color`
-must have its value, and `rre --color x` reads `x` as the value, not
-the pattern. The proposal: a row's `value` written `[WHEN]` makes the
-value optional, given only as `--color=WHEN` (never as the next
-argument, as getopt's `::` has it), `""` when left out; for a letter,
-only joined, `-cWHEN`. It breaks no program.

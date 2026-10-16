@@ -839,7 +839,10 @@ option has a `letter`, a `long` name, or both. One with a long name
 only has a key of its own below `'!'` for a letter, so that the
 program can tell it from the others. With a `value`, the name the
 help and the messages give it, the option takes a value; with `""` it
-is a flag.
+is a flag. A value written in brackets, `"[when]"`, may be left out,
+and is `""` then: it is given only in the option's own word,
+`--color=always` or `-calways`, never as the next, as `getopt`'s `::`
+has it, and the help shows it as `--color[=when]`.
 
 ```
 const wait = 1;     (* the key of --wait, which has no letter *)
@@ -937,8 +940,8 @@ A mistake in the table is the program's, not its user's. `init` checks
 the table before it reads a word, and ends the program with status 1:
 `keep: option table, row 3: the option is in the scope already`. The
 others are an option with neither a letter nor a long name, a long
-name with `=` in it, a letter `-`, and `--help` in the table, since
-it is `Opt`'s.
+name with `=` in it, a letter `-`, a value with one bracket but not
+the other, and `--help` in the table, since it is `Opt`'s.
 
 **Width** says how many columns of a terminal text takes, for a
 program with a screen that wraps its lines and cuts them at the

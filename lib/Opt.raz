@@ -108,7 +108,17 @@ begin
     return "-";
 end;
 
-(* The left column of a row in the help, as "-b, --bar label". *)
+(* Whether an option's value may be left out, written [name] in its
+   row: given only in the option's own word, --color=when or -cwhen,
+   never as the next word, as getopt's :: has it. *)
+proc optional(value: []U8): BOOL;
+begin
+    return (LEN(value) > 2) and (value[0] = '[') and (value[LEN(value) - 1] = ']');
+end;
+
+(* The left column of a row in the help, as "-b, --bar label", or, for
+   a value that may be left out, "-c, --color[=when]", as grep's help
+   has it. *)
 proc left(b: ^Buf.Buf; r: ^Row);
 begin
     match r^ of
@@ -119,7 +129,10 @@ begin
             if letter >= '!' then Buf.str(b, ", "); else Buf.str(b, "  "); end;
             Fmt.write(b, "--{}", [Fmt.str(long)]);
         end;
-        if LEN(value) > 0 then Fmt.write(b, " {}", [Fmt.str(value)]); end;
+        if optional(value) and (LEN(long) > 0) then Fmt.write(b, "[={}", [Fmt.str(value[1..LEN(value)])]);
+        elsif optional(value) then Buf.str(b, value);
+        elsif LEN(value) > 0 then Fmt.write(b, " {}", [Fmt.str(value)]);
+        end;
     | else:
     end;
 end;
@@ -243,6 +256,8 @@ begin
                 mistake(p, "--{} takes no value", [Fmt.str(p^.spelt)]);
             elsif eq >= 0 then
                 p^.value := w[eq + 1..LEN(w)];
+            elsif optional(val) then
+                (* left out: the next word is not its value *)
             elsif LEN(val) > 0 then
                 if p^.at >= ARGC() then
                     if quiet then return readEnd; end;
@@ -270,6 +285,8 @@ begin
         if LEN(p^.group) > 0 then
             p^.value := p^.group;
             p^.group := "";
+        elsif optional(val) then
+            (* left out *)
         elsif p^.at < ARGC() then
             p^.value := Files.arg(p^.at);
             INC(p^.at);
@@ -311,12 +328,15 @@ begin
         match p^.table[i] of
         | sub(_s, name, _help):
             if LEN(name) = 0 then badTable(p, i, "a subcommand needs a name"); end;
-        | option(s, letter, long, _v, _help):
+        | option(s, letter, long, value, _help):
             if (letter < '!') and (LEN(long) = 0) then
                 badTable(p, i, "an option needs a letter, or a key below ! and a long name");
             end;
             if letter = '-' then badTable(p, i, "no option is -"); end;
             if Str.find(long, "=") >= 0 then badTable(p, i, "a long name has no ="); end;
+            if (LEN(value) > 0) and ((value[0] = '[') or (value[LEN(value) - 1] = ']')) and not optional(value) then
+                badTable(p, i, "a value that may be left out is written [name]");
+            end;
             if long = "help" then badTable(p, i, "--help is Opt's"); end;
             for j := 0 to i - 1 do
                 match p^.table[j] of
@@ -484,12 +504,13 @@ begin
         sub("", "remote", "the remotes"),
         sub("remote", "add", "add one"),
         option("remote.add", 'f', "force", "", "even if it is there"),
-        option("remote.add", 'h', "here", "", "only here")]);
+        option("remote.add", 'h', "here", "", "only here"),
+        option("remote.add", 'c', "color", "[when]", "colour it: always, never or auto")]);
     _w, _ok := operand(ADR(p));
     scope(ADR(p), "remote");
     _w, _ok := operand(ADR(p));
     scope(ADR(p), "remote.add");
-    while next(ADR(p)) do Fmt.print("{} {}\n", [Fmt.char(p.letter), Fmt.str(p.spelt)]); end;
+    while next(ADR(p)) do Fmt.print("{} {}={}\n", [Fmt.char(p.letter), Fmt.str(p.spelt), Fmt.str(p.value)]); end;
 end;
 
 type Case = record
@@ -576,11 +597,15 @@ begin
         {mode: k, args: ["keep", "--jobs=0", "start"], err: "keep: --jobs wants a number from 1 up, not '0'\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
         {mode: k, args: ["keep", "--jobs", "9223372036854775807", "start", "n", "c"], out: "job n: c\n"},
         {mode: "OPTTEST=bad", args: ["bad", "-v"], err: "bad: option table, row 2: the option is in the scope already\n", status: 1},
-        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--force"], out: "f f\nf force\n"},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--force"], out: "f f=\nf force=\n"},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-x"], err: "plain: unknown option -x\nusage: plain remote add\n", status: 2},
-        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-hf"], out: "h h\nf f\n"},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-hf"], out: "h h=\nf f=\n"},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-c", "-f"], out: "c c=\nf f=\n"},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-calways", "-fcnever"], out: "c c=always\nf f=\nc c=never\n"},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "--color", "-f", "--color=auto"], out: "c color=\nf f=\nc color=auto\n"},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "--color", "always", "-f"], out: "c color=\n"},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--help"],
-            out: "usage: plain remote add\n\n  -f, --force   even if it is there\n  -h, --here    only here\n      --help    print this and exit\n"},
+            out: "usage: plain remote add\n\n  -f, --force          even if it is there\n  -h, --here           only here\n  -c, --color[=when]   colour it: always, never or auto\n      --help           print this and exit\n"},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "-h"], out: "usage: plain remote\n\n  add          add one\n  -h, --help   print this and exit\n"}];
     for i := 0 to LEN(cases) - 1 do run(cases[i], i); end;
 end;
