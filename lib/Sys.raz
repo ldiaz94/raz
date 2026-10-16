@@ -2,19 +2,20 @@
    file of their own, with the same exports. A program that imports it
    uses C.
 
-   It keeps to POSIX's names, and raw mode is cfmakeraw's. A terminal's
-   modes, Mode, are its struct termios whole, of whatever layout, and
-   only the two struct timeval that begin struct rusage are read. What
-   is glibc's, on x86-64: where a name lies in struct dirent; struct
-   stat; open's flags; the numbers of the requests TIOCGWINSZ,
-   TIOCSWINSZ and TIOCSCTTY, and of F_DUPFD_CLOEXEC; close_range's
-   system call;
-   SOCK_CLOEXEC, AF_INET6 and SO_REUSEADDR; struct sockaddr_un and sockaddr_in, which on the BSDs
-   start with a byte of length; the numbers of the signals and of the
-   limits, and RLIM_INFINITY, all ones. A C library that differs needs
-   a Sys of its own. *)
+   It keeps to POSIX's names, and raw mode is cfmakeraw's. What the C
+   library fixes for its target, the numbers of flags, requests,
+   signals, limits and errnos, where a field lies in a struct, and the
+   two procedures whose names differ, it takes from CAbi, one file per
+   target, which tools/cabi.c writes; so a struct the C library fills
+   in or reads is bytes here, its fields read and written at CAbi's
+   offsets by field and setField. A failure is minus Linux's errno, on
+   every target: linux maps the C library's, and errorText maps back.
+   A terminal's modes, Mode, are its struct termios whole, which cabi
+   checks fits in 256 bytes. Still Linux's: memfd_create, getrandom,
+   pipe2 and accept4, which glibc and musl have, and what a wait
+   status holds, which every Unix encodes alike. *)
 module Sys;
-import C;
+import C, CAbi;
 
 const
     stdin* = 0;     (* standard input's file descriptor *)
@@ -23,26 +24,32 @@ const
     (* the bytes Out keeps before it writes them; a target with little
        memory keeps fewer *)
     outSize* = 4096;
-    (* signals, by their numbers on Linux; another target has its own *)
-    sigHup* = 1; sigInt* = 2; sigQuit* = 3; sigKill* = 9; sigPipe* = 13;
-    sigTerm* = 15; sigChld* = 17; sigCont* = 18; sigStop* = 19;
-    sigTstp* = 20; sigTtin* = 21; sigTtou* = 22; sigWinch* = 28;
-    sigUsr1* = 10; sigUsr2* = 12; sigAlrm* = 14;
-    (* the limits limit and setLimit take, by their numbers on Linux;
-       another target has its own *)
-    limitCpu* = 0;          (* seconds of the processor *)
-    limitFileSize* = 1;     (* bytes in a file it writes *)
-    limitData* = 2;         (* bytes of its data *)
-    limitStack* = 3;        (* bytes of its stack *)
-    limitCore* = 4;         (* bytes of a core dump *)
-    limitProcs* = 6;        (* processes of its user *)
-    limitFiles* = 7;        (* one more than its highest fd *)
-    limitMemory* = 9;       (* bytes of its address space *)
-    DirentName = 19;          (* the offset of d_name in glibc's struct dirent *)
-    DirentType = 18;          (* and of d_type *)
-    TIOCGWINSZ = 5413H;       (* glibc's, as the two below *)
-    TIOCSWINSZ = 5414H;
-    TIOCSCTTY = 540EH;
+    (* signals, by the target's numbers *)
+    sigHup* = CAbi.sigHup; sigInt* = CAbi.sigInt; sigQuit* = CAbi.sigQuit;
+    sigKill* = CAbi.sigKill; sigPipe* = CAbi.sigPipe; sigTerm* = CAbi.sigTerm;
+    sigChld* = CAbi.sigChld; sigCont* = CAbi.sigCont; sigStop* = CAbi.sigStop;
+    sigTstp* = CAbi.sigTstp; sigTtin* = CAbi.sigTtin; sigTtou* = CAbi.sigTtou;
+    sigWinch* = CAbi.sigWinch; sigUsr1* = CAbi.sigUsr1; sigUsr2* = CAbi.sigUsr2;
+    sigAlrm* = CAbi.sigAlrm;
+    (* the limits limit and setLimit take, by the target's numbers *)
+    limitCpu* = CAbi.rlimitCpu;         (* seconds of the processor *)
+    limitFileSize* = CAbi.rlimitFsize;  (* bytes in a file it writes *)
+    limitData* = CAbi.rlimitData;       (* bytes of its data *)
+    limitStack* = CAbi.rlimitStack;     (* bytes of its stack *)
+    limitCore* = CAbi.rlimitCore;       (* bytes of a core dump *)
+    limitProcs* = CAbi.rlimitNproc;     (* processes of its user *)
+    limitFiles* = CAbi.rlimitNofile;    (* one more than its highest fd *)
+    limitMemory* = CAbi.rlimitAs;       (* bytes of its address space *)
+    (* errors, minus Linux's errnos, as on every target *)
+    errPerm* = -1; errNoEntry* = -2; errNoProcess* = -3; errIntr* = -4;
+    errIo* = -5; errBadFd* = -9; errChild* = -10; errAgain* = -11;
+    errNoMemory* = -12; errDenied* = -13; errExists* = -17;
+    errNotDir* = -20; errIsDir* = -21; errInvalid* = -22;
+    errNotTerminal* = -25; errNoSpace* = -28; errPipe* = -32;
+    errNameTooLong* = -36; errNotEmpty* = -39; errLoop* = -40;
+    errAddrInUse* = -98; errNetUnreach* = -101; errConnReset* = -104;
+    errTimedOut* = -110; errRefused* = -111; errHostUnreach* = -113;
+    errInProgress* = -115;
 
 type
     (* What open is asked for: reading, writing or both, and what else
@@ -92,14 +99,12 @@ type
     (* How a program that wait waited for changed. *)
     Status* = (running, exited, killed, stopped);
 
-    (* glibc's struct sigaction; a handler of 0 is SIG_DFL, 1 SIG_IGN *)
+    (* a signal's handler; nil is SIG_DFL, 1 SIG_IGN *)
     Handler = proc(sig: I32);
-    Sigaction = record
-        handler: Handler;
-        mask: [16]U64;
-        flags: I32;
-        restorer: ^U8;
-    end;
+    (* the C library's struct sigaction and sigset_t, as bytes, kept
+       aligned for the pointers in them *)
+    Sigaction = record b: [(CAbi.sigactionLen + 7) div 8]U64; end;
+    Sigset = [(CAbi.sigsetLen + 7) div 8]U64;
 
     (* A terminal's modes, as getMode reads them and setMode sets them:
        a struct termios, of the C library's size, 256 bytes at most. *)
@@ -107,50 +112,24 @@ type
         t: [256]U8;
     end;
 
-    (* struct rusage: what is read of it, the time used in the program
-       and in the system, each a struct timeval, its microseconds at
-       most an int and little-endian, then room for the rest *)
-    Timeval = record sec: I64; usec: I32; pad: I32; end;
-    Rusage = record user, system: Timeval; rest: [32]I64; end;
-
     Winsize = record rows, cols, xpixel, ypixel: U16; end;
     Pollfd = record fd: I32; events, revents: I16; end;
 
-    (* glibc's struct sockaddr_un: AF_UNIX, then the path and its zero *)
-    SockaddrUn = record
-        family: U16;
-        path: [108]U8;
-    end;
-    (* struct sockaddr_in or sockaddr_in6: AF_INET and the IPv4 address
-       in data[0..4], or AF_INET6 and the IPv6 one in data[4..20] *)
-    Sockaddr = record
-        family: U16;
-        port: [2]U8;
-        data: [24]U8;
-    end;
+    (* a socket's address, struct sockaddr_storage, which holds any:
+       a struct sockaddr_un, sockaddr_in or sockaddr_in6 *)
+    Sockaddr = record b: [(CAbi.sockaddrLen + 7) div 8]U64; end;
     (* Whom a datagram came from, as receive says and reply takes: the
        address recvfrom fills in, and its size. *)
     Peer* = record
         a: Sockaddr;
         size: INT;
     end;
-    (* struct msghdr, what sendmsg and recvmsg take: no address, one
-       buffer, and a control message; the sizes and flags are ints
-       with room after them, kept zero *)
-    Msghdr = record
-        name: ^U8; nameSize: INT;
-        iov: ^Iovec; iovLen: INT;
-        control: ^U8; controlSize: INT;
-        flags: INT;
-    end;
+    (* struct msghdr, what sendmsg and recvmsg take, as bytes: no
+       address, one buffer, and a control message, a struct cmsghdr
+       and the fds sent, at most 16 *)
+    Msghdr = record b: [(CAbi.msghdrLen + 7) div 8]U64; end;
     Iovec = record base: ^U8; size: INT; end;
-    (* struct cmsghdr, SCM_RIGHTS's: its size, counted to the last fd,
-       then the fds, as many as sendFds sends *)
-    Rights = record
-        size: INT;
-        level, kind: I32;
-        fds: [16]I32;
-    end;
+    Control = record b: [(CAbi.cmsgDataAt + 4 * 16 + 7) div 8]U64; end;
     Timespec = record sec, nsec: I64; end;
 
 var
@@ -159,15 +138,48 @@ var
     saved: [256]U8;   (* the terminal as rawMode found it: a struct termios, of the C library's size *)
     host: [256]U8;    (* what hostName gives *)
     sigRead, sigWrite: I32;   (* the pipe the handler of caught signals writes their numbers to, once open *)
-    noted: [65]INT;   (* 1 at sig when a signal handle took has come, until came asks *)
+    noted: [CAbi.sigMax + 1]INT;   (* 1 at sig when a signal handle took has come, until came asks *)
     broke: INT;       (* 1 when one has come since a call that ready or readyFor makes again began *)
 
-(* minus errno, as a system call returns it *)
+(* err, minus an errno of the C library's, as minus Linux's errno of
+   the same name; err itself if it has none *)
+proc linux(err: INT): INT;
+var i: INT;
+begin
+    for i := 0 to LEN(CAbi.errnos) - 2 by 2 do
+        if -INT(CAbi.errnos[i]) = err then return -INT(CAbi.errnos[i + 1]); end;
+    end;
+    return err;
+end;
+
+(* minus errno, Linux's, as a system call returns it *)
 proc failed: INT;
 var e: ^I32;
 begin
-    e := C.__errno_location();
-    return -INT(e^);
+    e := CAbi.errno();
+    return linux(-INT(e^));
+end;
+
+(* The integer of len bytes at p + at, a field of a C struct *)
+proc field(p: ^U8; at, len: INT): I64;
+var q8: ^I64; q4: ^U32; q2: ^U16;
+begin
+    if len = 8 then q8 := ^I64(p + at); return q8^;
+    elsif len = 4 then q4 := ^U32(p + at); return I64(q4^);
+    elsif len = 2 then q2 := ^U16(p + at); return I64(q2^);
+    end;
+    return I64(p[at]);
+end;
+
+(* Writes v to the field of len bytes at p + at, its low bytes *)
+proc setField(p: ^U8; at, len: INT; v: I64);
+var q8: ^I64; q4: ^U32; q2: ^U16;
+begin
+    if len = 8 then q8 := ^I64(p + at); q8^ := v;
+    elsif len = 4 then q4 := ^U32(p + at); q4^ := U32(v & 0FFFFFFFFH);
+    elsif len = 2 then q2 := ^U16(p + at); q2^ := U16(v & 0FFFFH);
+    else p[at] := U8(v & 0FFH);
+    end;
 end;
 
 (* Whether a call that failed is to be made again: when it failed with
@@ -210,19 +222,19 @@ begin
     return true;
 end;
 
-(* open's flags for how; glibc's numbers *)
+(* open's flags for how *)
 proc flags(how: Accesses): I32;
 var f: I32;
 begin
-    f := 0;                                         (* O_RDONLY *)
+    f := CAbi.oRdonly;
     if writing in how then
-        f := 1;                                     (* O_WRONLY *)
-        if reading in how then f := 2; end;         (* O_RDWR *)
+        f := CAbi.oWronly;
+        if reading in how then f := CAbi.oRdwr; end;
     end;
-    if creating in how then f := f | 40H; end;
-    if exclusive in how then f := f | 80H; end;
-    if truncating in how then f := f | 200H; end;
-    if appending in how then f := f | 400H; end;
+    if creating in how then f := f | CAbi.oCreat; end;
+    if exclusive in how then f := f | CAbi.oExcl; end;
+    if truncating in how then f := f | CAbi.oTrunc; end;
+    if appending in how then f := f | CAbi.oAppend; end;
     return f;
 end;
 
@@ -263,8 +275,8 @@ end;
 proc seek*(fd: INT; pos: I64; fromEnd: BOOL): I64;
 var r: I64;
 begin
-    if fromEnd then r := C.lseek(I32(fd), pos, 2);    (* SEEK_END *)
-    else r := C.lseek(I32(fd), pos, 0); end;          (* SEEK_SET *)
+    if fromEnd then r := C.lseek(I32(fd), pos, CAbi.seekEnd);
+    else r := C.lseek(I32(fd), pos, CAbi.seekSet); end;
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -274,7 +286,7 @@ end;
 proc position*(fd: INT): I64;
 var r: I64;
 begin
-    r := C.lseek(I32(fd), 0, 1);                      (* SEEK_CUR *)
+    r := C.lseek(I32(fd), 0, CAbi.seekCur);
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -302,7 +314,7 @@ end;
    syncfs gives one that isn't. *)
 proc syncAll*(fd: INT): INT;
 begin
-    if C.fcntl(I32(fd), 1, 0) < 0 then return failed(); end;   (* F_GETFD *)
+    if C.fcntl(I32(fd), CAbi.fGetfd, 0) < 0 then return failed(); end;
     C.sync;
     return 0;
 end;
@@ -314,8 +326,8 @@ end;
 proc lock*(fd: INT; wait: BOOL): INT;
 var how: I32;
 begin
-    how := 2;                                          (* LOCK_EX *)
-    if not wait then how := how | 4; end;              (* LOCK_NB *)
+    how := CAbi.lockEx;
+    if not wait then how := how | CAbi.lockNb; end;
     if C.flock(I32(fd), how) # 0 then return failed(); end;
     return 0;
 end;
@@ -353,7 +365,7 @@ end;
 proc dupAbove*(fd, least: INT): INT;
 var r: I32;
 begin
-    r := C.fcntl(I32(fd), 1030, I32(least));        (* F_DUPFD_CLOEXEC *)
+    r := C.fcntl(I32(fd), CAbi.fDupfdCloexec, I32(least));
     if r < 0 then return failed(); end;
     return INT(r);
 end;
@@ -364,10 +376,10 @@ end;
 proc keepOnExec*(fd: INT; yes: BOOL): INT;
 var f: I32;
 begin
-    f := C.fcntl(I32(fd), 1, 0);                    (* F_GETFD *)
+    f := C.fcntl(I32(fd), CAbi.fGetfd, 0);
     if f < 0 then return failed(); end;
-    if yes then f := f & ~1; else f := f | 1; end;  (* FD_CLOEXEC *)
-    if C.fcntl(I32(fd), 2, f) < 0 then return failed(); end;   (* F_SETFD *)
+    if yes then f := f & ~I32(CAbi.fdCloexec); else f := f | CAbi.fdCloexec; end;
+    if C.fcntl(I32(fd), CAbi.fSetfd, f) < 0 then return failed(); end;
     return 0;
 end;
 
@@ -376,7 +388,7 @@ end;
 proc mmap*(size: INT): ^U8;
 var p: ^U8;
 begin
-    p := C.mmap(nil, UINT(size), 3, 22H, -1, 0);   (* read, write; private, anonymous *)
+    p := C.mmap(nil, UINT(size), CAbi.protRead | CAbi.protWrite, CAbi.mapPrivate | CAbi.mapAnonymous, -1, 0);
     if INT(p) = -1 then return nil; end;
     return p;
 end;
@@ -393,7 +405,7 @@ proc memFile*(size: INT): INT;
 var name: [4]U8; fd: I32; err: INT;
 begin
     _ := cstr("raz", name);                     (* the name /proc shows *)
-    fd := C.memfd_create(ADR(name[0]), 1);      (* MFD_CLOEXEC *)
+    fd := C.memfd_create(ADR(name[0]), CAbi.mfdCloexec);
     if fd < 0 then return failed(); end;
     if C.ftruncate(fd, I64(size)) # 0 then
         err := failed();                        (* before close can change errno *)
@@ -409,7 +421,7 @@ end;
 proc mapFile*(fd, size: INT): ^U8;
 var p: ^U8;
 begin
-    p := C.mmap(nil, UINT(size), 3, 1, I32(fd), 0);   (* read, write; MAP_SHARED *)
+    p := C.mmap(nil, UINT(size), CAbi.protRead | CAbi.protWrite, CAbi.mapShared, I32(fd), 0);
     if INT(p) = -1 then return nil; end;
     return p;
 end;
@@ -466,10 +478,10 @@ proc access*(path: []U8; how: Accesses): INT;
 var a: [4096]U8; m: I32;
 begin
     if not cstr(path, a) then return -36; end;
-    m := 0;                                         (* F_OK *)
-    if reading in how then m := m | 4; end;         (* R_OK *)
-    if writing in how then m := m | 2; end;         (* W_OK *)
-    if executing in how then m := m | 1; end;       (* X_OK *)
+    m := CAbi.fOk;
+    if reading in how then m := m | CAbi.rOk; end;
+    if writing in how then m := m | CAbi.wOk; end;
+    if executing in how then m := m | CAbi.xOk; end;
     if C.access(ADR(a[0]), m) # 0 then return failed(); end;
     return 0;
 end;
@@ -502,18 +514,27 @@ begin
     return linked[0..n], 0;
 end;
 
-(* An Info from a struct stat, all but symlink. *)
-proc fromStat(st: [18]INT): Info;
-var i: Info;
+type Stat = [(CAbi.statLen + 7) div 8]U64;   (* a struct stat, as bytes *)
+
+(* The type of file a struct stat says, S_IFDIR, S_IFREG or another *)
+proc fileType(st: Stat): INT;
 begin
-    i.size := st[6];                                 (* st_size *)
-    i.dev := U64(st[0]);                             (* st_dev *)
-    i.ino := U64(st[1]);                             (* st_ino *)
-    i.links := U64(st[2]);                           (* st_nlink *)
-    i.mtime := st[11] * 1000000000 + st[12];         (* st_mtim *)
-    i.mode := st[3] & 1FFH;
-    i.dir := st[3] & 0F000H = 4000H;               (* S_IFDIR *)
-    i.file := st[3] & 0F000H = 8000H;              (* S_IFREG *)
+    return INT(field(^U8(ADR(st)), CAbi.stModeAt, CAbi.stModeLen)) & CAbi.sIfmt;
+end;
+
+(* An Info from a struct stat, all but symlink. *)
+proc fromStat(st: Stat): Info;
+var i: Info; p: ^U8;
+begin
+    p := ^U8(ADR(st));
+    i.size := field(p, CAbi.stSizeAt, CAbi.stSizeLen);
+    i.dev := U64(field(p, CAbi.stDevAt, CAbi.stDevLen));
+    i.ino := U64(field(p, CAbi.stInoAt, CAbi.stInoLen));
+    i.links := U64(field(p, CAbi.stNlinkAt, CAbi.stNlinkLen));
+    i.mtime := field(p, CAbi.stMtimeAt, CAbi.stMtimeLen) * 1000000000 + field(p, CAbi.stMtimeNsAt, CAbi.stMtimeNsLen);
+    i.mode := INT(field(p, CAbi.stModeAt, CAbi.stModeLen)) & 1FFH;
+    i.dir := fileType(st) = CAbi.sIfdir;
+    i.file := fileType(st) = CAbi.sIfreg;
     return i;
 end;
 
@@ -521,11 +542,11 @@ end;
    file, following a symbolic link, and whether path is one; and 0, or
    minus an errno. *)
 proc info*(path: []U8): (Info, INT);
-var a: [4096]U8; st: [18]INT; i: Info; isLink: BOOL;   (* glibc's struct stat: 144 bytes *)
+var a: [4096]U8; st: Stat; i: Info; isLink: BOOL;
 begin
     if not cstr(path, a) then return i, -36; end;
     if C.lstat(ADR(a[0]), ^U8(ADR(st))) # 0 then return i, failed(); end;
-    isLink := st[3] & 0F000H = 0A000H;                 (* st_mode is S_IFLNK *)
+    isLink := fileType(st) = CAbi.sIflnk;
     if C.stat(ADR(a[0]), ^U8(ADR(st))) # 0 then return i, failed(); end;
     i := fromStat(st);
     i.symlink := isLink;
@@ -536,18 +557,18 @@ end;
    what it names, so that symlink is true, dir and file false, and the
    size the length of what it names. *)
 proc linkInfo*(path: []U8): (Info, INT);
-var a: [4096]U8; st: [18]INT; i: Info;
+var a: [4096]U8; st: Stat; i: Info;
 begin
     if not cstr(path, a) then return i, -36; end;
     if C.lstat(ADR(a[0]), ^U8(ADR(st))) # 0 then return i, failed(); end;
     i := fromStat(st);
-    i.symlink := st[3] & 0F000H = 0A000H;              (* S_IFLNK *)
+    i.symlink := fileType(st) = CAbi.sIflnk;
     return i, 0;
 end;
 
 (* info of the file open on fd, which is never a link. *)
 proc infoOf*(fd: INT): (Info, INT);
-var st: [18]INT; i: Info;
+var st: Stat; i: Info;
 begin
     if C.fstat(I32(fd), ^U8(ADR(st))) # 0 then return i, failed(); end;
     return fromStat(st), 0;
@@ -556,22 +577,23 @@ end;
 (* The bytes free to an ordinary user on path's file system, and the
    bytes in all. *)
 proc space*(path: []U8): (I64, I64, INT);
-var a: [4096]U8; st: [14]INT;    (* glibc's struct statvfs: 112 bytes *)
+var a: [4096]U8; st: [(CAbi.statvfsLen + 7) div 8]U64; p: ^U8; unit: I64;
 begin
     if not cstr(path, a) then return 0, 0, -36; end;
-    if C.statvfs(ADR(a[0]), ^U8(ADR(st))) # 0 then return 0, 0, failed(); end;
-    return st[4] * st[1], st[2] * st[1], 0;          (* f_bavail, f_blocks, in f_frsize *)
+    p := ^U8(ADR(st));
+    if C.statvfs(ADR(a[0]), p) # 0 then return 0, 0, failed(); end;
+    unit := field(p, CAbi.fFrsizeAt, CAbi.fFrsizeLen);
+    return field(p, CAbi.fBavailAt, CAbi.fBavailLen) * unit, field(p, CAbi.fBlocksAt, CAbi.fBlocksLen) * unit, 0;
 end;
 
-(* The Kind of a d_type, as getdents64 and readdir give it: DT_REG is
-   8, DT_DIR 4, DT_LNK 10, DT_UNKNOWN 0, and the rest (pipes, devices,
-   sockets) other things. *)
+(* The Kind of a d_type, as readdir gives it: DT_REG, DT_DIR, DT_LNK,
+   DT_UNKNOWN, and the rest (pipes, devices, sockets) other things. *)
 proc kindOf(t: U8): Kind;
 begin
-    if t = 8 then return isFile;
-    elsif t = 4 then return isDir;
-    elsif t = 10 then return isLink;
-    elsif t = 0 then return unknown;
+    if t = CAbi.dtReg then return isFile;
+    elsif t = CAbi.dtDir then return isDir;
+    elsif t = CAbi.dtLnk then return isLink;
+    elsif t = CAbi.dtUnknown then return unknown;
     end;
     return isOther;
 end;
@@ -595,8 +617,8 @@ begin
     while true do
         e := C.readdir(d^.d);
         if e = nil then return "", false; end;
-        d^.kind := kindOf(e[DirentType]);
-        e := e + DirentName;
+        d^.kind := kindOf(e[CAbi.dTypeAt]);
+        e := e + CAbi.dNameAt;
         n := 0;
         while e[n] # 0 do INC(n); end;
         if (e[0..n] # ".") and (e[0..n] # "..") then return e[0..n], true; end;
@@ -627,13 +649,13 @@ begin
     if C.tcgetattr(I32(fd), ADR(saved[0])) # 0 then return false; end;
     t := saved;
     C.cfmakeraw(ADR(t[0]));
-    return C.tcsetattr(I32(fd), 0, ADR(t[0])) = 0;   (* TCSANOW *)
+    return C.tcsetattr(I32(fd), CAbi.tcsanow, ADR(t[0])) = 0;
 end;
 
 (* The terminal on fd as rawMode found it. *)
 proc restoreMode*(fd: INT);
 begin
-    _ := C.tcsetattr(I32(fd), 0, ADR(saved[0]));
+    _ := C.tcsetattr(I32(fd), CAbi.tcsanow, ADR(saved[0]));
 end;
 
 (* The modes of the terminal on fd, as a shell keeps them for each job;
@@ -649,7 +671,7 @@ end;
    is sent: 0, or minus an errno. *)
 proc setMode*(fd: INT; m: Mode): INT;
 begin
-    if C.tcsetattr(I32(fd), 1, ADR(m.t[0])) # 0 then return failed(); end;   (* TCSADRAIN *)
+    if C.tcsetattr(I32(fd), CAbi.tcsadrain, ADR(m.t[0])) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -658,7 +680,7 @@ end;
 proc termSize*(fd: INT): (INT, INT);
 var w: Winsize;
 begin
-    if (C.ioctl(I32(fd), TIOCGWINSZ, ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then
+    if (C.ioctl(I32(fd), CAbi.tiocgwinsz, ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then
         return 80, 24;
     end;
     return INT(w.cols), INT(w.rows);
@@ -669,7 +691,7 @@ end;
 proc ready*(fd, ms: INT): BOOL;
 var p: Pollfd; r: I32;
 begin
-    p := {fd: I32(fd), events: 1};                   (* POLLIN *)
+    p := {fd: I32(fd), events: CAbi.pollin};
     _ := XCHG(ADR(broke), 0);
     repeat r := C.poll(^U8(ADR(p)), 1, I32(ms)); until (r >= 0) or not again();
     return r > 0;
@@ -687,13 +709,13 @@ end;
    something takes. *)
 proc clock*: I64;
 begin
-    return time(1);                                     (* CLOCK_MONOTONIC *)
+    return time(CAbi.clockMonotonic);
 end;
 
 (* The time in nanoseconds since 1970-01-01, UTC. *)
 proc now*: I64;
 begin
-    return time(0);                                     (* CLOCK_REALTIME *)
+    return time(CAbi.clockRealtime);
 end;
 
 (* Waits ms milliseconds. *)
@@ -702,7 +724,8 @@ var t: Timespec; at: I64;
 begin
     at := clock() + I64(ms) * 1000000;
     t := {sec: at div 1000000000, nsec: at mod 1000000000};
-    repeat until C.clock_nanosleep(1, 1, ^U8(ADR(t)), nil) # 4;   (* until t, again after EINTR *)
+    (* until t, again after EINTR, which it returns, the C library's *)
+    repeat until C.clock_nanosleep(CAbi.clockMonotonic, CAbi.timerAbstime, ^U8(ADR(t)), nil) # CAbi.eIntr;
 end;
 
 (* Fills b with random bytes, from the kernel. *)
@@ -723,13 +746,13 @@ end;
 proc socket(family, kind: INT; a: ^U8; size: INT; serving: BOOL): INT;
 var fd, r, one: I32; err: INT;
 begin
-    fd := C.socket(I32(family), I32(kind) | 80000H, 0);    (* SOCK_CLOEXEC *)
+    fd := C.socket(I32(family), I32(kind) | CAbi.sockCloexec, 0);
     if fd < 0 then return failed(); end;
     if serving then
         one := 1;                                       (* so that a server can start again at once *)
-        _ := C.setsockopt(fd, 1, 2, ^U8(ADR(one)), 4);  (* SOL_SOCKET, SO_REUSEADDR *)
+        _ := C.setsockopt(fd, CAbi.solSocket, CAbi.soReuseaddr, ^U8(ADR(one)), 4);
         r := C.bind(fd, a, U32(size));
-        if (r = 0) and (kind = 1) then                  (* a stream socket takes connections; *)
+        if (r = 0) and (kind = CAbi.sockStream) then    (* a stream socket takes connections; *)
             r := C.listen(fd, 4096);                    (* one of datagrams only receives *)
         end;
     else
@@ -743,55 +766,83 @@ begin
     return INT(fd);
 end;
 
-(* path as a Unix socket's address in a, or false if it is too long. *)
-proc unixAddr(path: []U8; a: ^SockaddrUn): BOOL;
+(* Gives the address at p the family, and, on a system whose addresses
+   start with their length, size *)
+proc setFamily(p: ^U8; family, size: INT);
 begin
-    if LEN(path) >= LEN(a^.path) then return false; end;
-    a^.family := 1;                                     (* AF_UNIX *)
-    COPY(a^.path, path);
+    setField(p, CAbi.saFamilyAt, CAbi.saFamilyLen, family);
+    if CAbi.saLenAt >= 0 then p[CAbi.saLenAt] := U8(size); end;
+end;
+
+(* The family of the address at p *)
+proc familyOf(p: ^U8): INT;
+begin
+    return INT(field(p, CAbi.saFamilyAt, CAbi.saFamilyLen));
+end;
+
+(* path as a Unix socket's address in a, or false if it is too long. *)
+proc unixAddr(path: []U8; a: ^Sockaddr): BOOL;
+var p: ^U8;
+begin
+    if LEN(path) >= CAbi.sunPathLen then return false; end;
+    p := ^U8(a);
+    setFamily(p, CAbi.afUnix, CAbi.sockaddrUnLen);
+    COPY(p[CAbi.sunPathAt..CAbi.sunPathAt + LEN(path)], path);
     return true;
 end;
 
 (* A stream socket connected to the Unix socket at path. *)
 proc connect*(path: []U8): INT;
-var a: SockaddrUn;
+var a: Sockaddr;
 begin
     if not unixAddr(path, ADR(a)) then return -36; end;    (* ENAMETOOLONG *)
-    return socket(1, 1, ^U8(ADR(a)), SIZE(SockaddrUn), false);   (* SOCK_STREAM *)
+    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(ADR(a)), CAbi.sockaddrUnLen, false);
 end;
 
 (* A stream socket made at path, which must not be there yet, taking
    connections. *)
 proc listen*(path: []U8): INT;
-var a: SockaddrUn;
+var a: Sockaddr;
 begin
     if not unixAddr(path, ADR(a)) then return -36; end;
-    return socket(1, 1, ^U8(ADR(a)), SIZE(SockaddrUn), true);
+    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(ADR(a)), CAbi.sockaddrUnLen, true);
 end;
 
 (* addr, an IPv4 or IPv6 address as numbers, and port, in a: the size
    of its struct sockaddr_in or sockaddr_in6, or 0 if either is
    wrong. *)
 proc inetAddr(addr: []U8; port: INT; a: ^Sockaddr): INT;
-var s: [64]U8; b: [16]U8;
+var s: [64]U8; b: [16]U8; p: ^U8; at, size: INT;
 begin
     if (port < 0) or (port > 65535) or not cstr(addr, s) then return 0; end;
-    a^.port[0] := U8(port shr 8);                       (* in the network's order, the high byte first *)
-    a^.port[1] := U8(port & 255);
+    p := ^U8(a);
     (* into b first, since musl's inet_pton leaves what it read of an
-       address it refuses, and the IPv6 one's first four bytes are its
-       flow, to be zero *)
-    if C.inet_pton(2, ADR(s[0]), ADR(b[0])) = 1 then                    (* AF_INET *)
-        a^.family := 2;
-        COPY(a^.data[0..4], b[0..4]);
-        return 16;
+       address it refuses, and the rest of the address is to be zero *)
+    if C.inet_pton(CAbi.afInet, ADR(s[0]), ADR(b[0])) = 1 then
+        size := CAbi.sockaddrInLen;
+        setFamily(p, CAbi.afInet, size);
+        COPY(p[CAbi.sinAddrAt..CAbi.sinAddrAt + 4], b[0..4]);
+        at := CAbi.sinPortAt;
+    elsif C.inet_pton(CAbi.afInet6, ADR(s[0]), ADR(b[0])) = 1 then
+        size := CAbi.sockaddrIn6Len;
+        setFamily(p, CAbi.afInet6, size);
+        COPY(p[CAbi.sin6AddrAt..CAbi.sin6AddrAt + 16], b);
+        at := CAbi.sin6PortAt;
+    else
+        return 0;
     end;
-    if C.inet_pton(10, ADR(s[0]), ADR(b[0])) = 1 then                   (* AF_INET6 *)
-        a^.family := 10;
-        COPY(a^.data[4..20], b);
-        return 28;
-    end;
-    return 0;
+    p[at] := U8(port shr 8);                            (* in the network's order, the high byte first *)
+    p[at + 1] := U8(port & 255);
+    return size;
+end;
+
+(* The port in the IPv4 or IPv6 address at p *)
+proc portOf(p: ^U8): INT;
+var at: INT;
+begin
+    at := CAbi.sinPortAt;
+    if familyOf(p) = CAbi.afInet6 then at := CAbi.sin6PortAt; end;
+    return (INT(p[at]) shl 8) | INT(p[at + 1]);
 end;
 
 (* A socket of kind at addr and port, as socket makes it; -22 (EINVAL)
@@ -801,34 +852,34 @@ var a: Sockaddr; size: INT;
 begin
     size := inetAddr(addr, port, ADR(a));
     if size = 0 then return -22; end;
-    return socket(INT(a.family), kind, ^U8(ADR(a)), size, serving);
+    return socket(familyOf(^U8(ADR(a))), kind, ^U8(ADR(a)), size, serving);
 end;
 
 (* A stream socket connected to port at addr, an IPv4 or IPv6 address
    as numbers. *)
 proc connectTcp*(addr: []U8; port: INT): INT;
 begin
-    return inet(addr, port, 1, false);                  (* SOCK_STREAM *)
+    return inet(addr, port, CAbi.sockStream, false);
 end;
 
 (* A socket of datagrams to and from port at addr. *)
 proc connectUdp*(addr: []U8; port: INT): INT;
 begin
-    return inet(addr, port, 2, false);                  (* SOCK_DGRAM *)
+    return inet(addr, port, CAbi.sockDgram, false);
 end;
 
 (* A stream socket taking connections on port at addr; "0.0.0.0" or
    "::" is every address the machine has. *)
 proc listenTcp*(addr: []U8; port: INT): INT;
 begin
-    return inet(addr, port, 1, true);
+    return inet(addr, port, CAbi.sockStream, true);
 end;
 
 (* A socket of datagrams on port at addr, from anyone, for receive and
    reply. *)
 proc listenUdp*(addr: []U8; port: INT): INT;
 begin
-    return inet(addr, port, 2, true);
+    return inet(addr, port, CAbi.sockDgram, true);
 end;
 
 (* The next connection to the socket fd, waiting for one: a socket of
@@ -836,7 +887,7 @@ end;
 proc accept*(fd: INT): INT;
 var r: I32;
 begin
-    r := C.accept4(I32(fd), nil, nil, 80000H);          (* SOCK_CLOEXEC *)
+    r := C.accept4(I32(fd), nil, nil, CAbi.sockCloexec);
     if r < 0 then return failed(); end;
     return INT(r);
 end;
@@ -848,7 +899,7 @@ proc send*(fd: INT; s: []U8): INT;
 var r: INT;
 begin
     if LEN(s) = 0 then return 0; end;
-    r := C.send(I32(fd), ADR(s[0]), UINT(LEN(s)), 4000H);   (* MSG_NOSIGNAL, glibc's *)
+    r := C.send(I32(fd), ADR(s[0]), UINT(LEN(s)), CAbi.msgNosignal);
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -864,13 +915,13 @@ begin
     n := 0;
     for i := 0 to LEN(reads) - 1 do
         if n < LEN(p) then
-            p[n] := {fd: I32(reads[i]), events: 1};                         (* POLLIN *)
+            p[n] := {fd: I32(reads[i]), events: CAbi.pollin};
             INC(n);
         end;
     end;
     for i := 0 to LEN(writes) - 1 do
         if n < LEN(p) then
-            p[n] := {fd: I32(writes[i]), events: 4};                        (* POLLOUT *)
+            p[n] := {fd: I32(writes[i]), events: CAbi.pollout};
             INC(n);
         end;
     end;
@@ -897,10 +948,10 @@ end;
 proc setBlocking*(fd: INT; yes: BOOL): INT;
 var flags: I32;
 begin
-    flags := C.fcntl(I32(fd), 3, 0);                (* F_GETFL *)
+    flags := C.fcntl(I32(fd), CAbi.fGetfl, 0);
     if flags < 0 then return failed(); end;
-    if yes then flags := flags & ~I32(800H); else flags := flags | 800H; end;   (* O_NONBLOCK *)
-    if C.fcntl(I32(fd), 4, flags) < 0 then return failed(); end;           (* F_SETFL *)
+    if yes then flags := flags & ~I32(CAbi.oNonblock); else flags := flags | CAbi.oNonblock; end;
+    if C.fcntl(I32(fd), CAbi.fSetfl, flags) < 0 then return failed(); end;
     return 0;
 end;
 
@@ -921,7 +972,7 @@ var a: Sockaddr; size, r: INT; fd, err: I32; errSize: U32;
 begin
     size := inetAddr(addr, port, ADR(a));
     if size = 0 then return -22; end;
-    fd := C.socket(I32(a.family), 1 | 80800H, 0);      (* SOCK_STREAM, SOCK_CLOEXEC, SOCK_NONBLOCK *)
+    fd := C.socket(I32(familyOf(^U8(ADR(a)))), CAbi.sockStream | CAbi.sockCloexec | CAbi.sockNonblock, 0);
     if fd < 0 then return failed(); end;
     r := 0;
     if C.connect(fd, ^U8(ADR(a)), U32(size)) # 0 then r := failed(); end;
@@ -929,8 +980,8 @@ begin
         r := -110;
         if readyFor([], [INT(fd)], ms) = INT(fd) then
             errSize := 4;
-            if C.getsockopt(fd, 1, 4, ^U8(ADR(err)), ADR(errSize)) = 0 then   (* SOL_SOCKET, SO_ERROR *)
-                r := -INT(err);
+            if C.getsockopt(fd, CAbi.solSocket, CAbi.soError, ^U8(ADR(err)), ADR(errSize)) = 0 then
+                r := linux(-INT(err));
             else
                 r := failed();
             end;
@@ -948,7 +999,7 @@ var a: Sockaddr; size: U32;
 begin
     size := U32(SIZE(Sockaddr));
     if C.getsockname(I32(fd), ^U8(ADR(a)), ADR(size)) # 0 then return failed(); end;
-    return (INT(a.port[0]) shl 8) | INT(a.port[1]);
+    return portOf(^U8(ADR(a)));
 end;
 
 (* The next datagram to the socket fd, waiting for one: its first
@@ -969,7 +1020,7 @@ end;
 proc reply*(fd: INT; peer: Peer; s: []U8): INT;
 var r: INT;
 begin
-    r := C.sendto(I32(fd), bytes(s), UINT(LEN(s)), 4000H, ^U8(ADR(peer.a)), U32(peer.size));   (* MSG_NOSIGNAL *)
+    r := C.sendto(I32(fd), bytes(s), UINT(LEN(s)), CAbi.msgNosignal, ^U8(ADR(peer.a)), U32(peer.size));
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -978,18 +1029,27 @@ end;
    with it the files fds, at most 16, which the program that receives
    them then has open too: the bytes sent, or minus an errno. *)
 proc sendFds*(fd: INT; s: []U8; fds: []INT): INT;
-var m: Msghdr; v: Iovec; c: Rights; i, r: INT;
+var m: Msghdr; v: Iovec; c: Control; mp, cp: ^U8; sent: ^I32; i, r, size: INT;
 begin
-    if (LEN(s) = 0) or (LEN(fds) > LEN(c.fds)) then return -22; end;
+    if (LEN(s) = 0) or (LEN(fds) > 16) then return -22; end;
     v := {base: ADR(s[0]), size: LEN(s)};
-    m := {iov: ADR(v), iovLen: 1};
+    mp := ^U8(ADR(m));
+    setField(mp, CAbi.msgIovAt, SIZE(^U8), INT(ADR(v)));
+    setField(mp, CAbi.msgIovlenAt, CAbi.msgIovlenLen, 1);
     if LEN(fds) > 0 then
-        c := {size: 16 + 4 * LEN(fds), level: 1, kind: 1};     (* SOL_SOCKET, SCM_RIGHTS *)
-        for i := 0 to LEN(fds) - 1 do c.fds[i] := I32(fds[i]); end;
-        m.control := ^U8(ADR(c));
-        m.controlSize := (c.size + 7) & ~7;              (* CMSG_SPACE: whole quadwords *)
+        (* a struct cmsghdr, its level and type ints, then the fds *)
+        cp := ^U8(ADR(c));
+        size := CAbi.cmsgDataAt + 4 * LEN(fds);
+        setField(cp, CAbi.cmsgLenAt, CAbi.cmsgLenLen, size);
+        setField(cp, CAbi.cmsgLevelAt, 4, CAbi.solSocket);
+        setField(cp, CAbi.cmsgTypeAt, 4, CAbi.scmRights);
+        sent := ^I32(cp + CAbi.cmsgDataAt);
+        for i := 0 to LEN(fds) - 1 do sent[i] := I32(fds[i]); end;
+        setField(mp, CAbi.msgControlAt, SIZE(^U8), INT(cp));
+        (* CMSG_SPACE: rounded up to the C library's alignment *)
+        setField(mp, CAbi.msgControllenAt, CAbi.msgControllenLen, (size + CAbi.cmsgAlign - 1) & ~(CAbi.cmsgAlign - 1));
     end;
-    r := C.sendmsg(I32(fd), ^U8(ADR(m)), 4000H);  (* MSG_NOSIGNAL *)
+    r := C.sendmsg(I32(fd), mp, CAbi.msgNosignal);
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -999,20 +1059,28 @@ end;
    rest: the bytes read, or minus an errno, and the files put in fds.
    Each is closed in a program exec starts. *)
 proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);
-var m: Msghdr; v: Iovec; c: Rights; n, k, i: INT;
+var m: Msghdr; v: Iovec; c: Control; mp, cp: ^U8; got: ^I32; n, k, i, size: INT;
 begin
     v := {base: bytes(buf), size: LEN(buf)};
-    m := {iov: ADR(v), iovLen: 1, control: ^U8(ADR(c)), controlSize: SIZE(Rights)};
-    n := C.recvmsg(I32(fd), ^U8(ADR(m)), 40000000H);   (* MSG_CMSG_CLOEXEC *)
+    mp := ^U8(ADR(m));
+    cp := ^U8(ADR(c));
+    setField(mp, CAbi.msgIovAt, SIZE(^U8), INT(ADR(v)));
+    setField(mp, CAbi.msgIovlenAt, CAbi.msgIovlenLen, 1);
+    setField(mp, CAbi.msgControlAt, SIZE(^U8), INT(cp));
+    setField(mp, CAbi.msgControllenAt, CAbi.msgControllenLen, SIZE(Control));
+    n := C.recvmsg(I32(fd), mp, CAbi.msgCmsgCloexec);
     if n < 0 then return failed(), 0; end;
     k := 0;
-    if (m.controlSize >= 16) and (c.level = 1) and (c.kind = 1) then
-        for i := 0 to (c.size - 16) div 4 - 1 do
+    if (field(mp, CAbi.msgControllenAt, CAbi.msgControllenLen) >= CAbi.cmsgDataAt)
+            and (field(cp, CAbi.cmsgLevelAt, 4) = CAbi.solSocket) and (field(cp, CAbi.cmsgTypeAt, 4) = CAbi.scmRights) then
+        size := INT(field(cp, CAbi.cmsgLenAt, CAbi.cmsgLenLen));
+        got := ^I32(cp + CAbi.cmsgDataAt);
+        for i := 0 to (size - CAbi.cmsgDataAt) div 4 - 1 do
             if k < LEN(fds) then
-                fds[k] := INT(c.fds[i]);
+                fds[k] := INT(got[i]);
                 INC(k);
             else
-                _ := C.close(c.fds[i]);
+                _ := C.close(got[i]);
             end;
         end;
     end;
@@ -1022,10 +1090,13 @@ end;
 (* What errno err, or minus it, means, as the C library's strerror
    says it. *)
 proc errorText*(err: INT): []U8;
-var s: ^U8; n: INT;
+var s: ^U8; n, i: INT;
 begin
     if err < 0 then err := -err; end;
     if (err < 0) or (err > 7FFFFFFFH) then return "unknown error"; end;   (* the smallest INT, or past an int *)
+    for i := 0 to LEN(CAbi.errnos) - 2 by 2 do       (* Linux's errno as the C library's *)
+        if INT(CAbi.errnos[i + 1]) = err then err := INT(CAbi.errnos[i]); break; end;
+    end;
     s := C.strerror(I32(err));
     if s = nil then return "unknown error"; end;
     n := 0;
@@ -1087,7 +1158,7 @@ end;
 proc openPty*: INT;
 var fd: I32; err: INT;
 begin
-    fd := C.posix_openpt(102H);                       (* O_RDWR, O_NOCTTY: glibc's *)
+    fd := C.posix_openpt(CAbi.oRdwr | CAbi.oNoctty);
     if fd < 0 then return failed(); end;
     if (C.grantpt(fd) # 0) or (C.unlockpt(fd) # 0) then
         err := failed();
@@ -1103,7 +1174,7 @@ proc setTermSize*(fd, cols, rows: INT): INT;
 var w: Winsize;
 begin
     w := {rows: U16(rows), cols: U16(cols)};
-    if C.ioctl(I32(fd), TIOCSWINSZ, ADR(w)) # 0 then return failed(); end;
+    if C.ioctl(I32(fd), CAbi.tiocswinsz, ADR(w)) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -1187,7 +1258,7 @@ end;
 proc pipe*: (INT, INT);
 var fds: [2]I32;
 begin
-    if C.pipe2(ADR(fds[0]), 80000H) # 0 then return failed(), -1; end;   (* O_CLOEXEC, glibc's *)
+    if C.pipe2(ADR(fds[0]), CAbi.oCloexec) # 0 then return failed(), -1; end;
     return INT(fds[0]), INT(fds[1]);
 end;
 
@@ -1222,35 +1293,47 @@ begin
     return host[0..n], 0;
 end;
 
+(* The struct timeval at p, in ns *)
+proc ns(p: ^U8): I64;
+begin
+    return field(p, CAbi.tvSecAt, CAbi.tvSecLen) * 1000000000 + field(p, CAbi.tvUsecAt, CAbi.tvUsecLen) * 1000;
+end;
+
 (* The time on the processor, in ns, that this program has used, or,
    if children, the programs it started and waited for: in the program
    itself, and in the system for it. *)
 proc cpuTime*(children: BOOL): (I64, I64);
-var ru: Rusage;
+var ru: [64]U64; p: ^U8;   (* struct rusage, which cabi checks fits *)
 begin
-    if children then _ := C.getrusage(-1, ^U8(ADR(ru)));   (* RUSAGE_CHILDREN *)
-    else _ := C.getrusage(0, ^U8(ADR(ru)));                (* RUSAGE_SELF *)
+    p := ^U8(ADR(ru));
+    if children then _ := C.getrusage(CAbi.rusageChildren, p);
+    else _ := C.getrusage(CAbi.rusageSelf, p);
     end;
-    return ru.user.sec * 1000000000 + I64(ru.user.usec) * 1000,
-        ru.system.sec * 1000000000 + I64(ru.system.usec) * 1000;
+    return ns(p + CAbi.ruUtimeAt), ns(p + CAbi.ruStimeAt);
 end;
 
 (* The limit which, one of the limit constants: the soft one, which
    this program may raise up to the hard one; -1 for none; and 0, or
    minus an errno. *)
 proc limit*(which: INT): (I64, I64, INT);
-var r: [2]I64;   (* struct rlimit; RLIM_INFINITY is -1 *)
+var r: [2]I64; i: INT;   (* struct rlimit *)
 begin
     if C.getrlimit(I32(which), ^U8(ADR(r))) # 0 then return 0, 0, failed(); end;
+    for i := 0 to 1 do
+        if r[i] = CAbi.rlimInfinity then r[i] := -1; end;
+    end;
     return r[0], r[1], 0;
 end;
 
 (* Sets the limit which to soft and hard, -1 for none: 0, or minus an
    errno. *)
 proc setLimit*(which: INT; soft, hard: I64): INT;
-var r: [2]I64;
+var r: [2]I64; i: INT;
 begin
     r := [soft, hard];
+    for i := 0 to 1 do
+        if r[i] = -1 then r[i] := CAbi.rlimInfinity; end;
+    end;
     if C.setrlimit(I32(which), ^U8(ADR(r))) # 0 then return failed(); end;
     return 0;
 end;
@@ -1390,8 +1473,7 @@ end;
 (* Closes every fd from 3 on but those of keep, which stay open in the
    program exec starts. It runs in spawn's child, after the fork, so it
    takes no memory: it closes the runs between the fds kept, the lowest
-   first, each with one close_range: through syscall, since musl has no
-   close_range of its own. *)
+   first, each with one closeFrom. *)
 proc closeAllBut(keep: []INT);
 var lo, next, i: INT;
 begin
@@ -1402,10 +1484,10 @@ begin
             if (keep[i] >= lo) and ((next < 0) or (keep[i] < next)) then next := keep[i]; end;
         end;
         if next < 0 then
-            _ := C.syscall(436, lo, 0FFFFFFFFH, 0);    (* close_range, the rest *)
+            CAbi.closeFrom(lo, -1);                     (* the rest *)
         else
-            if next > lo then _ := C.syscall(436, lo, next - 1, 0); end;
-            _ := C.fcntl(I32(next), 2, 0);              (* F_SETFD: kept on exec *)
+            if next > lo then CAbi.closeFrom(lo, next - 1); end;
+            _ := C.fcntl(I32(next), CAbi.fSetfd, 0);    (* kept on exec *)
             lo := next + 1;
         end;
     until next < 0;
@@ -1421,9 +1503,9 @@ var fd: I32; i: INT;
 begin
     if p.tty # 0 then
         _ := C.setsid();
-        fd := C.open(ADR(name[0]), 2);                (* O_RDWR *)
+        fd := C.open(ADR(name[0]), CAbi.oRdwr);
         if fd < 0 then return failed(); end;
-        if C.ioctl(fd, TIOCSCTTY, 0) # 0 then return failed(); end;
+        if C.ioctl(fd, CAbi.tiocsctty, 0) # 0 then return failed(); end;
         for i := 0 to 2 do _ := C.dup2(fd, I32(i)); end;
     else
         if p.group = -1 then _ := C.setpgid(0, 0);
@@ -1446,7 +1528,7 @@ end;
 proc spawn*(p: Program): INT;
 var
     a, dir, name: [4096]U8; argv: ^^U8; none: ^U8; size, err, i, g: INT; search: []U8;
-    all, old, empty: [16]U64; dfl: Sigaction; pid: I32;   (* sigset_t: 128 bytes *)
+    all, old, empty: Sigset; dfl: Sigaction; pid: I32;
 begin
     if not cstr(p.path, a) or not cstr(p.dir, dir) then return -36; end;   (* ENAMETOOLONG *)
     if p.tty # 0 then
@@ -1463,13 +1545,13 @@ begin
     search := env("PATH");                            (* read here, before the fork *)
     if LEN(search) = 0 then search := defaultPath; end;
     for i := 0 to LEN(all) - 1 do all[i] := 0FFFFFFFFFFFFFFFFH; end;
-    _ := C.sigprocmask(2, ^U8(ADR(all)), ^U8(ADR(old)));  (* SIG_SETMASK *)
+    _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(all)), ^U8(ADR(old)));
     pid := C.fork();
     if pid = 0 then
         if takeOn(p, name, dir) # 0 then C._exit(127); end;
         closeAllBut(p.more);
-        for i := 1 to 64 do _ := C.sigaction(I32(i), ^U8(ADR(dfl)), nil); end;
-        _ := C.sigprocmask(2, ^U8(ADR(empty)), nil);
+        for i := 1 to CAbi.sigMax do _ := C.sigaction(I32(i), ^U8(ADR(dfl)), nil); end;
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(empty)), nil);
         run(p.path, search, a, argv, argv + (LEN(p.args) + 1));
         C._exit(127);
     end;
@@ -1481,7 +1563,7 @@ begin
         if p.group # 0 then _ := C.setpgid(pid, I32(g)); end;
         if p.foreground then _ := C.tcsetpgrp(0, I32(g)); end;
     end;
-    _ := C.sigprocmask(2, ^U8(ADR(old)), nil);
+    _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(old)), nil);
     munmap(^U8(argv), size);
     if pid < 0 then return err; end;
     return INT(pid);
@@ -1498,7 +1580,7 @@ end;
 proc exec*(p: Program): INT;
 var
     a, dir, name: [4096]U8; argv: ^^U8; none: ^U8; size, r, i: INT; search: []U8;
-    all, old, empty: [16]U64; dfl: Sigaction; acts: [65]Sigaction;
+    all, old, empty: Sigset; dfl: Sigaction; acts: [CAbi.sigMax + 1]Sigaction;
 begin
     if not cstr(p.dir, dir) then return -36; end;    (* ENAMETOOLONG *)
     if p.tty # 0 then
@@ -1524,14 +1606,14 @@ begin
         (* every signal as it is at first and none blocked, as spawn
            gives them, each kept to give back if execve fails *)
         for i := 0 to LEN(all) - 1 do all[i] := 0FFFFFFFFFFFFFFFFH; end;
-        _ := C.sigprocmask(2, ^U8(ADR(all)), ^U8(ADR(old)));  (* SIG_SETMASK *)
-        for i := 1 to 64 do _ := C.sigaction(I32(i), ^U8(ADR(dfl)), ^U8(ADR(acts[i]))); end;
-        _ := C.sigprocmask(2, ^U8(ADR(empty)), nil);
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(all)), ^U8(ADR(old)));
+        for i := 1 to CAbi.sigMax do _ := C.sigaction(I32(i), ^U8(ADR(dfl)), ^U8(ADR(acts[i]))); end;
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(empty)), nil);
         _ := C.execve(ADR(a[0]), argv, argv + (LEN(p.args) + 1));
         r := failed();
-        _ := C.sigprocmask(2, ^U8(ADR(all)), nil);
-        for i := 1 to 64 do _ := C.sigaction(I32(i), ^U8(ADR(acts[i])), nil); end;
-        _ := C.sigprocmask(2, ^U8(ADR(old)), nil);
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(all)), nil);
+        for i := 1 to CAbi.sigMax do _ := C.sigaction(I32(i), ^U8(ADR(acts[i])), nil); end;
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(old)), nil);
     end;
     munmap(^U8(argv), size);
     return r;
@@ -1560,12 +1642,12 @@ end;
    its exit status; killed or stopped, with the signal's number. Without
    block it doesn't wait: 0 and running if none has changed. Minus an
    errno, and running, if there is none to wait for. The status is read
-   as glibc's macros read it. *)
+   as C's macros read it, which every Unix encodes alike. *)
 proc wait*(pid: INT; block: BOOL): (INT, Status, INT);
 var status, options, r: I32;
 begin
-    options := 3;                                     (* WNOHANG, WUNTRACED *)
-    if block then options := 2; end;
+    options := CAbi.wNohang | CAbi.wUntraced;
+    if block then options := CAbi.wUntraced; end;
     r := C.waitpid(I32(pid), ADR(status), options);
     if r < 0 then return failed(), running, 0; end;
     if r = 0 then return 0, running, 0; end;
@@ -1587,11 +1669,30 @@ end;
 proc onSignal(sig: I32);
 var e: ^I32; saved: I32; b: [1]U8;
 begin
-    e := C.__errno_location();
+    e := CAbi.errno();
     saved := e^;                                      (* as the code it stopped left it *)
     b[0] := U8(sig);
     _ := C.write(sigWrite, ADR(b[0]), 1);
     e^ := saved;
+end;
+
+(* A struct sigaction with the handler h, nil for SIG_DFL, and flags,
+   and no signal blocked while it runs *)
+proc action(h: Handler; flags: INT): Sigaction;
+var a: Sigaction; p: ^Handler;
+begin
+    p := ^Handler(^U8(ADR(a)) + CAbi.saHandlerAt);
+    p^ := h;
+    setField(^U8(ADR(a)), CAbi.saFlagsAt, CAbi.saFlagsLen, flags);
+    return a;
+end;
+
+(* Whether sig is a signal a program may take: not SIGKILL or SIGSTOP,
+   which can't be, nor SIGFPE or SIGSEGV, Rt's *)
+proc takable(sig: INT): BOOL;
+begin
+    return (sig >= 1) and (sig <= CAbi.sigMax) and (sig # sigKill) and (sig # sigStop)
+        and (sig # CAbi.sigFpe) and (sig # CAbi.sigSegv);
 end;
 
 (* Catches the signals sigs: they don't do what they would, but give
@@ -1601,17 +1702,14 @@ proc catch*(sigs: []INT): INT;
 var fds: [2]I32; act: Sigaction; i: INT;
 begin
     for i := 0 to LEN(sigs) - 1 do
-        if (sigs[i] < 1) or (sigs[i] > 64) or (sigs[i] = sigKill) or (sigs[i] = sigStop)
-                or (sigs[i] = 8) or (sigs[i] = 11) then  (* SIGFPE and SIGSEGV, Rt's *)
-            return -22;                               (* EINVAL *)
-        end;
+        if not takable(sigs[i]) then return -22; end;    (* EINVAL *)
     end;
     if sigWrite = 0 then
-        if C.pipe2(ADR(fds[0]), 80800H) # 0 then return failed(); end;   (* O_NONBLOCK, O_CLOEXEC *)
+        if C.pipe2(ADR(fds[0]), CAbi.oNonblock | CAbi.oCloexec) # 0 then return failed(); end;
         sigRead := fds[0];
         sigWrite := fds[1];
     end;
-    act := {handler: onSignal, flags: 10000000H};    (* SA_RESTART *)
+    act := action(onSignal, CAbi.saRestart);
     for i := 0 to LEN(sigs) - 1 do
         if C.sigaction(I32(sigs[i]), ^U8(ADR(act)), nil) # 0 then return failed(); end;
     end;
@@ -1631,7 +1729,7 @@ end;
 proc ignore*(sig: INT; yes: BOOL): INT;
 var act: Sigaction;
 begin
-    if yes then act.handler := Handler(1); end;      (* SIG_IGN *)
+    if yes then act := action(Handler(1), 0); end;   (* SIG_IGN *)
     if C.sigaction(I32(sig), ^U8(ADR(act)), nil) # 0 then return failed(); end;
     return 0;
 end;
@@ -1659,11 +1757,8 @@ end;
 proc handle*(sig: INT): INT;
 var act: Sigaction;
 begin
-    if (sig < 1) or (sig > 64) or (sig = sigKill) or (sig = sigStop)
-            or (sig = 8) or (sig = 11) then           (* SIGFPE and SIGSEGV, Rt's *)
-        return -22;                                   (* EINVAL *)
-    end;
-    act := {handler: onNoted};                        (* no SA_RESTART *)
+    if not takable(sig) then return -22; end;         (* EINVAL *)
+    act := action(onNoted, 0);                        (* no SA_RESTART *)
     if C.sigaction(I32(sig), ^U8(ADR(act)), nil) # 0 then return failed(); end;
     return 0;
 end;
@@ -1672,7 +1767,7 @@ end;
    it was asked. *)
 proc came*(sig: INT): BOOL;
 begin
-    if (sig < 1) or (sig > 64) then return false; end;
+    if (sig < 1) or (sig > CAbi.sigMax) then return false; end;
     return XCHG(ADR(noted[sig]), 0) = 1;
 end;
 
@@ -1779,7 +1874,7 @@ begin
     if (r # child) or (st # exited) or (c # 127) then exit(2); end;
 
     sigs := catch([sigChld, sigHup]);
-    if (sigs < 0) or (catch([sigWinch]) # sigs) or (catch([11]) # -22) or (catch([sigKill]) # -22) then exit(2); end;
+    if (sigs < 0) or (catch([sigWinch]) # sigs) or (catch([CAbi.sigSegv]) # -22) or (catch([sigKill]) # -22) then exit(2); end;
     if (caught(sigs) # 0) or (ignore(sigInt, true) # 0) then exit(2); end;
     child := spawn({path: "/bin/sh", args: ["sh", "-c", "kill -INT $$; exit 0"]});
     if not ready(sigs, 5000) or (caught(sigs) # sigChld) then exit(2); end;
@@ -1913,7 +2008,7 @@ end;
    a datagram to a port where no one listens, refused; servers on
    ports the system chooses, of streams and of datagrams. *)
 proc testNet;
-var t: I64; l, c, a, u, port, n: INT; x, y: [16]U8; s, s6: Sockaddr; peer: Peer;
+var t: I64; l, c, a, u, port, n, i: INT; x, y: [16]U8; s, s6: Sockaddr; p, q: ^U8; peer: Peer;
 begin
     t := clock();
     sleep(20);
@@ -1922,16 +2017,21 @@ begin
     random(x);
     random(y);
     if x[0..16] = y[0..16] then exit(2); end;
-    if (inetAddr("10.0.0.255", 80, ADR(s)) # 16) or (s.port[0] # 0) or (s.port[1] # 80)
-            or (s.data[0] # 10) or (s.data[2] # 0) or (s.data[3] # 255) then
+    p := ^U8(ADR(s));
+    q := ^U8(ADR(s6)) + CAbi.sin6AddrAt;
+    if (inetAddr("10.0.0.255", 80, ADR(s)) # CAbi.sockaddrInLen) or (portOf(p) # 80)
+            or (p[CAbi.sinAddrAt] # 10) or (p[CAbi.sinAddrAt + 2] # 0) or (p[CAbi.sinAddrAt + 3] # 255) then
         exit(2);
     end;
-    if (inetAddr("1:aBcd::ff", 258, ADR(s6)) # 28) or (s6.port[0] # 1) or (s6.port[1] # 2)
-            or (s6.data[0] # 0) or (s6.data[5] # 1) or (s6.data[6] # 0ABH) or (s6.data[7] # 0CDH)
-            or (s6.data[18] # 0) or (s6.data[19] # 0FFH) then
+    if (inetAddr("1:aBcd::ff", 258, ADR(s6)) # CAbi.sockaddrIn6Len) or (portOf(^U8(ADR(s6))) # 258)
+            or (q[1] # 1) or (q[2] # 0ABH) or (q[3] # 0CDH) or (q[14] # 0) or (q[15] # 0FFH) then
         exit(2);
     end;
-    if (inetAddr("::", 0, ADR(s6)) # 28) or (inetAddr("1:2:3:4:5:6:7:8", 0, ADR(s6)) # 28) then exit(2); end;
+    q := ^U8(ADR(s6));
+    for i := CAbi.sin6PortAt + 2 to CAbi.sin6AddrAt - 1 do    (* the flow, zero *)
+        if q[i] # 0 then exit(2); end;
+    end;
+    if (inetAddr("::", 0, ADR(s6)) # CAbi.sockaddrIn6Len) or (inetAddr("1:2:3:4:5:6:7:8", 0, ADR(s6)) # CAbi.sockaddrIn6Len) then exit(2); end;
     if (connectTcp("1.2.3", 80) # -22) or (connectTcp("1.2.3.256", 80) # -22) or (connectTcp("1::2::3", 80) # -22)
             or (connectTcp("1:2:3:4:5:6:7:8:9", 80) # -22) or (connectTcp("1:", 80) # -22)
             or (connectTcp("12345::", 80) # -22) or (connectTcp("::1", 65536) # -22) then

@@ -1,0 +1,209 @@
+(* CAbi: what the C library fixes for Sys over C on linux-x86_64: the
+   numbers of its flags, requests, signals and limits, where the
+   fields of its structs lie, an At the offset and a Len the width,
+   its errnos beside Linux's, and errno and closeFrom.
+
+   Written by tools/cabi.c, from the system's own headers; not to be
+   edited, but written again. *)
+module CAbi;
+
+const
+    (* open's flags, fcntl's requests, seek, flock, mmap, access *)
+    oRdonly* = 0;
+    oWronly* = 1;
+    oRdwr* = 2;
+    oCreat* = 64;
+    oExcl* = 128;
+    oTrunc* = 512;
+    oAppend* = 1024;
+    oNonblock* = 2048;
+    oCloexec* = 524288;
+    oNoctty* = 256;
+    fGetfd* = 1;
+    fSetfd* = 2;
+    fGetfl* = 3;
+    fSetfl* = 4;
+    fDupfdCloexec* = 1030;
+    fdCloexec* = 1;
+    seekSet* = 0;
+    seekCur* = 1;
+    seekEnd* = 2;
+    lockEx* = 2;
+    lockNb* = 4;
+    protRead* = 1;
+    protWrite* = 2;
+    mapShared* = 1;
+    mapPrivate* = 2;
+    mapAnonymous* = 32;
+    mfdCloexec* = 1;
+    fOk* = 0;
+    rOk* = 4;
+    wOk* = 2;
+    xOk* = 1;
+    (* struct stat, statvfs and dirent *)
+    statLen* = 144;
+    stDevAt* = 0;
+    stDevLen* = 8;
+    stInoAt* = 8;
+    stInoLen* = 8;
+    stNlinkAt* = 16;
+    stNlinkLen* = 8;
+    stModeAt* = 24;
+    stModeLen* = 4;
+    stSizeAt* = 48;
+    stSizeLen* = 8;
+    stMtimeAt* = 88;
+    stMtimeLen* = 8;
+    stMtimeNsAt* = 96;
+    stMtimeNsLen* = 8;
+    sIfmt* = 61440;
+    sIfdir* = 16384;
+    sIfreg* = 32768;
+    sIflnk* = 40960;
+    statvfsLen* = 112;
+    fFrsizeAt* = 8;
+    fFrsizeLen* = 8;
+    fBlocksAt* = 16;
+    fBlocksLen* = 8;
+    fBavailAt* = 32;
+    fBavailLen* = 8;
+    dNameAt* = 19;
+    dTypeAt* = 18;
+    dtUnknown* = 0;
+    dtDir* = 4;
+    dtReg* = 8;
+    dtLnk* = 10;
+    (* the terminal, poll and the clocks *)
+    tcsanow* = 0;
+    tcsadrain* = 1;
+    tiocgwinsz* = 21523;
+    tiocswinsz* = 21524;
+    tiocsctty* = 21518;
+    pollin* = 1;
+    pollout* = 4;
+    clockRealtime* = 0;
+    clockMonotonic* = 1;
+    timerAbstime* = 1;
+    (* sockets, their addresses, and a message with fds *)
+    afUnix* = 1;
+    afInet* = 2;
+    afInet6* = 10;
+    sockStream* = 1;
+    sockDgram* = 2;
+    sockCloexec* = 524288;
+    sockNonblock* = 2048;
+    solSocket* = 1;
+    soReuseaddr* = 2;
+    soError* = 4;
+    msgNosignal* = 16384;
+    msgCmsgCloexec* = 1073741824;
+    scmRights* = 1;
+    sockaddrLen* = 128;
+    saFamilyAt* = 0;
+    saFamilyLen* = 2;
+    saLenAt* = -1;
+    sockaddrUnLen* = 110;
+    sunPathAt* = 2;
+    sunPathLen* = 108;
+    sockaddrInLen* = 16;
+    sinPortAt* = 2;
+    sinAddrAt* = 4;
+    sockaddrIn6Len* = 28;
+    sin6PortAt* = 2;
+    sin6AddrAt* = 8;
+    msghdrLen* = 56;
+    msgIovAt* = 16;
+    msgIovlenAt* = 24;
+    msgIovlenLen* = 8;
+    msgControlAt* = 32;
+    msgControllenAt* = 40;
+    msgControllenLen* = 8;
+    cmsgLenAt* = 0;
+    cmsgLenLen* = 8;
+    cmsgLevelAt* = 8;
+    cmsgTypeAt* = 12;
+    cmsgDataAt* = 16;
+    cmsgAlign* = 8;
+    (* signals, sigaction and sigprocmask *)
+    sigHup* = 1;
+    sigInt* = 2;
+    sigQuit* = 3;
+    sigFpe* = 8;
+    sigKill* = 9;
+    sigUsr1* = 10;
+    sigSegv* = 11;
+    sigUsr2* = 12;
+    sigPipe* = 13;
+    sigAlrm* = 14;
+    sigTerm* = 15;
+    sigChld* = 17;
+    sigCont* = 18;
+    sigStop* = 19;
+    sigTstp* = 20;
+    sigTtin* = 21;
+    sigTtou* = 22;
+    sigWinch* = 28;
+    sigMax* = 64;
+    sigactionLen* = 152;
+    saHandlerAt* = 0;
+    saMaskAt* = 8;
+    saFlagsAt* = 136;
+    saFlagsLen* = 4;
+    sigsetLen* = 128;
+    saRestart* = 268435456;
+    sigSetmask* = 2;
+    (* limits, time used, and wait *)
+    rlimitCpu* = 0;
+    rlimitFsize* = 1;
+    rlimitData* = 2;
+    rlimitStack* = 3;
+    rlimitCore* = 4;
+    rlimitNproc* = 6;
+    rlimitNofile* = 7;
+    rlimitAs* = 9;
+    rlimInfinity* = -1;
+    rusageSelf* = 0;
+    rusageChildren* = -1;
+    ruUtimeAt* = 0;
+    ruStimeAt* = 16;
+    tvSecAt* = 0;
+    tvSecLen* = 8;
+    tvUsecAt* = 8;
+    tvUsecLen* = 8;
+    wNohang* = 1;
+    wUntraced* = 2;
+    (* errnos: EINTR; and each POSIX names, the C library's number, then Linux's *)
+    eIntr* = 4;
+    errnos*: [152]I32 = [
+        1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+        7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12,
+        13, 13, 14, 14, 16, 16, 17, 17, 18, 18, 19, 19,
+        20, 20, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25,
+        26, 26, 27, 27, 28, 28, 29, 29, 30, 30, 31, 31,
+        32, 32, 33, 33, 34, 34, 35, 35, 36, 36, 37, 37,
+        38, 38, 39, 39, 40, 40, 42, 42, 43, 43, 67, 67,
+        71, 71, 72, 72, 74, 74, 75, 75, 84, 84, 88, 88,
+        89, 89, 90, 90, 91, 91, 92, 92, 93, 93, 95, 95,
+        95, 95, 97, 97, 98, 98, 99, 99, 100, 100, 101, 101,
+        102, 102, 103, 103, 104, 104, 105, 105, 106, 106, 107, 107,
+        110, 110, 111, 111, 113, 113, 114, 114, 115, 115, 116, 116,
+        122, 122, 125, 125, 130, 130, 131, 131];
+
+extern proc __errno_location: ^I32;
+extern proc syscall(n: INT; ...): INT;
+
+(* errno, this thread's *)
+proc errno*: ^I32;
+begin
+    return __errno_location();
+end;
+
+(* Closes the fds from lo to hi, or every one from lo if hi < 0: by
+   close_range's system call, since musl has no close_range. *)
+proc closeFrom*(lo, hi: INT);
+begin
+    if hi < 0 then hi := 0FFFFFFFFH; end;
+    _ := syscall(436, lo, hi, 0);
+end;
+
+end CAbi.

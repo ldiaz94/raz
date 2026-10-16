@@ -23,6 +23,16 @@ const
     limitProcs* = 6;        (* processes of its user *)
     limitFiles* = 7;        (* one more than its highest fd *)
     limitMemory* = 9;       (* bytes of its address space *)
+    (* errors, minus Linux's errnos, as on every target *)
+    errPerm* = -1; errNoEntry* = -2; errNoProcess* = -3; errIntr* = -4;
+    errIo* = -5; errBadFd* = -9; errChild* = -10; errAgain* = -11;
+    errNoMemory* = -12; errDenied* = -13; errExists* = -17;
+    errNotDir* = -20; errIsDir* = -21; errInvalid* = -22;
+    errNotTerminal* = -25; errNoSpace* = -28; errPipe* = -32;
+    errNameTooLong* = -36; errNotEmpty* = -39; errLoop* = -40;
+    errAddrInUse* = -98; errNetUnreach* = -101; errConnReset* = -104;
+    errTimedOut* = -110; errRefused* = -111; errHostUnreach* = -113;
+    errInProgress* = -115;
 
 type
     (* What open is asked for: reading, writing or both, and what else

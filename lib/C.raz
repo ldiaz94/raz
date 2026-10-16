@@ -76,7 +76,6 @@ extern proc setsid*: I32;
 extern proc dup2*(fd, fd2: I32): I32;
 extern proc dup*(fd: I32): I32;
 extern proc close_range*(first, last: U32; flags: I32): I32;
-extern proc syscall*(n: INT; ...): INT;   (* a system call by its number, on Linux *)
 extern proc execve*(path: ^U8; argv, envp: ^^U8): I32;
 extern proc waitpid*(pid: I32; status: ^I32; options: I32): I32;
 extern proc kill*(pid, signal: I32): I32;
