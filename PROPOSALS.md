@@ -583,27 +583,6 @@ spelling to use instead (`x* )` or a word).
 
 Met in rrem's parser, documenting `(?>x*)`.
 
-## Adding to a `Vec` without stopping the program
-
-`Vec.push` and `Vec.add` stop the program when memory runs out. A
-library that returns an error such as `NoRoom` instead must call
-`Vec.room(v, 1)` before each one, and the two are apart, so the check
-is easy to leave out: rrem's parser left it out once, and a pattern
-too big for memory would have stopped the program, not returned the
-error.
-
-The proposal, in `Vec`:
-
-```
-proc tryPush*(v: ^Vec; x: T): BOOL;   (* x added at the end; false, and v as it was, if there is no room *)
-proc tryAdd*(v: ^Vec): (^T, BOOL);    (* a new element at the end, to fill; false if there is no room *)
-```
-
-They are `room` and `push` (or `add`) in one call. It breaks no
-program, so it could come with any release.
-
-Met in rrem's parser, which builds its tree in a `Vec`.
-
 ## A line to standard error
 
 A message to standard error takes a `Buf`, `Fmt.write` into it,

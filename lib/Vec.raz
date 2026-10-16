@@ -5,7 +5,8 @@
    and index it as a slice. all gives that slice, checked as any is,
    and good until the array next grows. Running out of memory stops
    the program, as Buf.add does: an element dropped silently would be
-   wrong data that nothing tells of. room asks first. *)
+   wrong data that nothing tells of. room asks first; tryPush and
+   tryAdd ask and add in one call. *)
 module Vec(T);
 import Mem, Rt, Sys;
 
@@ -75,6 +76,22 @@ begin
     v^.data[v^.len] := zero;
     INC(v^.len);
     return v^.data + (v^.len - 1);
+end;
+
+(* push, or false, and the array as it was, if there is no room. *)
+proc tryPush*(v: ^Vec; x: T): BOOL;
+begin
+    if not room(v, 1) then return false; end;
+    v^.data[v^.len] := x;
+    INC(v^.len);
+    return true;
+end;
+
+(* add, or nil and false, and the array as it was, if there is no room. *)
+proc tryAdd*(v: ^Vec): (^T, BOOL);
+begin
+    if not room(v, 1) then return nil, false; end;
+    return add(v), true;
 end;
 
 (* Makes the array n elements long: cut short, or grown with zeros. *)

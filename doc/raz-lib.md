@@ -618,6 +618,8 @@ proc init*(v: ^Vec; a: ^Mem.Allocator);
 proc room*(v: ^Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
 proc push*(v: ^Vec; x: T);            (* x added at the end *)
 proc add*(v: ^Vec): ^T;               (* a new element at the end, zero, to fill in place *)
+proc tryPush*(v: ^Vec; x: T): BOOL;   (* push; false, and v as it was, if there is no room *)
+proc tryAdd*(v: ^Vec): (^T, BOOL);    (* add; nil and false, and v as it was, if there is no room *)
 proc resize*(v: ^Vec; n: INT);        (* n elements: cut short, or the new ones zero *)
 proc all*(v: ^Vec): []T;              (* the elements, until it next grows *)
 proc reset*(v: ^Vec);                 (* emptied, its memory kept *)
