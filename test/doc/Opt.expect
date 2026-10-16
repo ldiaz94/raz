@@ -54,7 +54,8 @@ proc scope*(p: ^Parser; name: []U8);
 
 proc number*(p: ^Parser; lo, hi: I64): I64;
     The value of the option just read, as a whole number from lo to hi;
-    anything else is a mistake.
+    anything else is a mistake. A number with no top is given the
+    largest I64 for hi, and the mistake says "from lo up".
 
 proc fail*(p: ^Parser; text: []U8);
     The program's own mistake, written as Opt's are but alone, and
