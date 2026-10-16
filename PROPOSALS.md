@@ -536,3 +536,184 @@ walk enters a directory and dropped as it leaves. Without `done` it
 used a `Vec` of rule numbers instead, searched in turn. Library growth
 that breaks no program; about ten lines, with a test in `Map`'s
 `main`.
+
+## A slice of an array a call returns, kept
+
+A defect, of the report or the compiler, not a wish. `f()[0..4]`, a
+slice of the array a call returns, is a slice of a temporary of the
+caller's: the compiler takes the array's place from `allocTemp`, and
+`releaseTemps` gives it back at the end of the statement. Kept in a
+variable, the slice outlives it, and reads what the next statement
+puts there:
+
+```
+proc f(c: U8): [8]U8;
+var a: [8]U8; i: INT;
+begin
+    for i := 0 to 7 do a[i] := c; end;
+    return a;
+end;
+
+proc main*;
+var s, t: []U8; i: INT;
+begin
+    s := f('a')[0..4];
+    for i := 1 to 3 do t := f('b')[0..4]; end;
+    Out.str(s); Out.str(" "); Out.str(t); Out.ln;   (* "bbbb" and four blanks *)
+end;
+```
+
+The report doesn't say how long a returned array lives. 7.3 makes
+returning a slice of one an error, as it is the frame's; section 10
+leaves undefined only "a slice kept after the call whose frame holds
+what it points at", and `main`'s call hasn't ended. So by the report
+`s` is good until `main` returns, and by the compiler it isn't.
+
+Either mend closes it: the report says the array lives to the end of
+the statement, a slice kept past it undefined, with section 10's
+list; or slicing an array a call returns, anywhere but as an argument
+or in the expression it is used in, is an error, as 7.3's return of
+one is. The second is what 7.3 already checks (`Item.frame`), at more
+places; the first changes nothing but the report.
+
+Met writing libro, trying what the report allows; libro doesn't do it.
+
+## Enumerations' names, each its own
+
+An enumeration's names are declared in the scope around its type
+(5.7), so two enumerations of a module can't share a name, nor a
+procedure have one: with `Style = (bold, italic, ...)`, a second
+`Elem = (..., bold, ...)` is "bold is declared twice", and so is
+`proc rule` beside `Kind = (para, rule)`. A module with two lists of
+kinds, a style and the HTML element that makes it, names one of them
+again: libro's `Flow` has `bEl`, `iEl`, `pEl`, ... for it.
+
+The proposal: a name that two enumerations of a scope share is written
+with its type, `Elem.bold`, where the type doesn't already say which
+(`match` on a `Style`, a `Style` assigned, compared or passed, all say
+which); a name only one enumeration has stays as it is. No program
+changes, since every program today has each name once. It is more
+work for the compiler's lookup, which must hold a name that is two
+things until the type is known.
+
+Met in libro's `Flow`.
+
+## `continue`
+
+`break` leaves a loop; nothing goes on to its next round. A loop that
+passes over some of what it reads (a byte to skip, an entry that
+doesn't match) puts the rest of its body in an `if`, or a flag, and a
+loop with several such tests grows a level of `if` for each:
+
+```
+while i < LEN(t) do
+    ch, n := Str.decode(t[i..LEN(t)]);
+    if ch = 0ADH then
+        (* passed over *)
+    elsif ... then
+    end;
+    i := i + n;
+end;
+```
+
+The proposal: `continue`, in a `while`, `repeat` or `for`, ends the
+round, as reaching the end of the body would: a `for` steps its
+variable, `repeat` tests its condition. A deferred statement can't
+hold it, as it can't hold `break`. It breaks a program that has a name
+`continue`, so it waits for a thaw.
+
+Met in libro and rml, more than once each.
+
+## A byte into an `INT`
+
+A `U8` doesn't go into an `INT` without a conversion, though no value
+of one is lost there: `c := keys[at]` is "can't use U8 as INT", and a
+parser of digits writes `INT(s[i]) - '0'` at every digit. 2026-10.26
+made `INT` widen to `I64` wherever it meets one, for the same reason;
+the small types into `INT` are the same, and more common.
+
+The proposal: `U8`, `U16`, `U32`, `I8`, `I16` and `I32` widen to `INT`
+where their value goes to one (assigned, passed, returned, compared,
+in an operator with an `INT`), as `INT` to `I64` does (5.10). Not `U32`
+to an `INT` of 32 bits, on a target that has one, and never a wider
+type to a narrower, nor `INT` back to any. No program changes.
+
+Met in libro's `Term`, `Flow` and `Epub`, and rml's `Rml`, wherever
+a byte is a number.
+
+## An array constant's length, from its literal
+
+A typed array constant states its length, and its literal must have
+that many elements (4, 6.5): `Zero: [357]Range = [...]`. A table a
+program makes, as libro's tables of character widths are made from
+Unicode's data, must be counted, and the count changed with it; one
+written by hand is counted by hand. `const T: []INT = [1, 2, 3]` is
+"only an ERROR, an array or a record constant has a type".
+
+The proposal: `[]T` as the type of an array constant, its length the
+literal's, as a string constant's is the string's; it is used as an
+array constant of that length is, `LEN` a constant. No program
+changes.
+
+Met in libro's `Layout` and rml's entities, 357, 121 and 253 elements.
+
+## `Str.free`
+
+`Str.copy(a, s)` gives a copy from the allocator `a`; giving it back
+is `Mem.free(a, ADR(c[0]))`, and only if `LEN(c) > 0`, since an empty
+copy is `""` and was never the allocator's. Every program that copies
+strings and frees them writes that test.
+
+```
+proc free*(a: ^Mem.Allocator; s: []U8);   (* a copy Str.copy made, given back; "" is none *)
+```
+
+Library growth that breaks no program; three lines. Met in libro's
+`Epub.done`.
+
+## The width of a character on a terminal
+
+`Str` says, rightly, that it doesn't know how wide a character is on a
+terminal; a program with a screen must, to wrap its lines and to cut
+them at the window's edge, and each writes wcwidth again. libro's
+`Layout.width` is one: 0 for the combining marks, format characters
+and Hangul's medial jamo, 2 for East Asian Wide and Fullwidth, emoji
+among them, 1 for the rest, from two sorted tables of ranges (357 and
+121) made with Python's `unicodedata`, Unicode 15.1.
+
+The proposal: that, as `Str.width(c: I32): INT` and
+`Str.columns(s: []U8): INT`, or a module of its own, since the tables
+are about 4 KB that only such programs want. It is the same answer as
+glibc's `wcwidth` for nearly every character; the differences, the
+ambiguous widths among them, are taken as 1, as most terminals take
+them.
+
+Met in libro; every program with a screen, rmacs and ravite among
+them, needs the same.
+
+## Why `Files.read` failed
+
+`Files.read(path, b)` is false if the file can't be read, and says no
+more: libro can say "can't read the file", but not that it is missing,
+a directory, or not allowed. The program that wants to know opens it
+itself, with `Sys.openRead`, and reads it as `Files.read` does.
+
+The proposal: `proc load*(path: []U8; b: ^Buf.Buf): INT`, 0, or minus
+the errno of the open or the read that failed, as `Sys` gives them;
+`read` stays as it is. Library growth that breaks no program.
+
+Met in libro.
+
+## `Rt.stop`'s line feed, said
+
+`Rt.stop(msg)` writes `msg` and then a line feed, but its interface's
+comment, and the library volume's, say "msg on standard error, then
+exit with status 2": a program that ends its message with `\n`, as a
+message to standard error usually is, prints a blank line after it.
+libro's first did.
+
+The mend: the comment says "msg, and a line feed, on standard error,
+then exit with status 2", in `lib/Rt.raz` and `doc/raz-lib.md`. No
+program changes.
+
+Met in libro.
