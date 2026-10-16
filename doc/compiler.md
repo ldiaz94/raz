@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 11,100 lines of code (the
+The compiler is eleven files of raz, about 11,200 lines of code (the
 budget is 14,000). It is its own compiler: the
 frozen Pascal compiler in `seed/` builds `src/` the first time, and
 after that a raz builds `src/` (`make fixpoint` checks that it makes
@@ -20,7 +20,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 1,986 | 1,617 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,000 | 3,478 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,049 | 3,518 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -1267,7 +1267,16 @@ what it points at is. An array or record constant is a variable too, in
 read-only data: `aggregateConst` (`Parse.raz`) reads its literal, part
 by part in `constPart`, into the bytes of a chunk, as a string
 constant's are; an address in it, of a string, an array constant, a
-procedure or an `ERROR`, becomes a data fixup. `makeItem` makes it an
+procedure or an `ERROR`, becomes a data fixup. A constant typed `[]T`
+takes its length from its literal: `literalArray` makes the type
+`[n]T`, as if `n` were written, with `n` counted ahead by
+`literalLength`, which reads the literal once, counting the commas
+outside any inner brackets, and goes back to its `[` (`saveScan`,
+`restoreScan`), so `constPart` reads it as it reads any array's:
+
+    const P: []I64 = [2, 3, 5];    (* read as *)    const P: [3]I64 = [2, 3, 5];
+
+`makeItem` makes it an
 `mVar` there that isn't `isVar`, so it is read, indexed, sliced and
 passed, never changed. `index` and `slice` have Gen make the bounds
 checks, unless the module says `check off;` (`checks`, set by

@@ -1,0 +1,4 @@
+conform/err/ArrayConstLenLiteral.raz:3:16: error: expected a literal of []I64
+    3 |     P: []I64 = Q;
+      |                ^
+raz: 1 error

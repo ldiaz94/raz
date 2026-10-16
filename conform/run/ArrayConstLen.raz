@@ -1,0 +1,46 @@
+module ArrayConstLen;
+import Out, Widths;
+
+type Rule = record class: []U8; tag: INT; end;
+
+const
+    Primes: []I64 = [2, 3, 5, 7, 11];
+    Rules: []Rule = [{class: "firefox", tag: 2}, {class: "mpv", tag: 3}];
+    Names: [][]U8 = ["one", "two", "three"];
+    Count = LEN(Primes);   (* a constant *)
+
+var buf: [Count]I64;
+
+proc sum(a: []I64): I64;
+var s: I64; i: INT;
+begin
+    for i := 0 to LEN(a) - 1 do s := s + a[i]; end;
+    return s;
+end;
+
+proc wide(c: I32): BOOL;
+var i: INT;
+begin
+    for i := 0 to LEN(Widths.Wide) - 1 do
+        if (c >= Widths.Wide[i][0]) and (c <= Widths.Wide[i][1]) then return true; end;
+    end;
+    return false;
+end;
+
+proc main*;
+const Local: []U8 = [1, 2, 3, 4];
+var i: INT;
+begin
+    Out.int(LEN(Primes)); Out.str(" "); Out.int(sum(Primes)); Out.str(" ");
+    Out.int(LEN(buf)); Out.ln;
+    buf := Primes;
+    if buf = Primes then Out.str("same"); end;
+    Out.ln;
+    for i := 0 to LEN(Rules) - 1 do Out.str(Rules[i].class); Out.str(" "); Out.int(Rules[i].tag); Out.ln; end;
+    Out.str(Names[2]); Out.str(" "); Out.int(LEN(Names)); Out.ln;
+    Out.int(LEN(Local)); Out.str(" "); Out.int(I64(Local[3])); Out.ln;
+    if wide(0AC01H) and not wide(41H) then Out.str("wide"); end;
+    Out.str(" "); Out.int(LEN(Widths.Wide)); Out.ln;
+end;
+
+end ArrayConstLen.

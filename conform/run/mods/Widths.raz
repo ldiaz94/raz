@@ -1,0 +1,6 @@
+module Widths;
+
+(* ranges of wide characters, first and last, as a table made by a program would be *)
+const Wide*: [][2]I32 = [[1100H, 115FH], [2E80H, 303EH], [0AC00H, 0D7A3H]];
+
+end Widths.

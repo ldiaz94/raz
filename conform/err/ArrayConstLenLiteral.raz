@@ -1,0 +1,4 @@
+module ArrayConstLenLiteral;
+const Q: [3]I64 = [1, 2, 3];
+    P: []I64 = Q;
+end ArrayConstLenLiteral.

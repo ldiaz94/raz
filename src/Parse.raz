@@ -3130,6 +3130,53 @@ begin
     return c, nil;
 end;
 
+(* The number of elements of the array literal at the scanner, at its
+   "[": read ahead, counting the commas outside any inner brackets,
+   then read again from the "[" (saveScan, restoreScan). Its slips are
+   told when it is read again. *)
+proc literalLength: INT;
+var st: Scan.State; depth, n: INT; wasSkipping: BOOL;
+begin
+    Scan.saveScan(st);
+    wasSkipping := Scan.skipping;
+    Scan.setSkipping(true);
+    Scan.next;
+    n := 0;
+    if Scan.tok # Scan.sRbrak then n := 1; end;
+    depth := 0;
+    while (Scan.tok # Scan.sEof) and ((depth > 0) or (Scan.tok # Scan.sRbrak)) do
+        match Scan.tok of
+        | sLparen, sLbrak, sLbrace: INC(depth);
+        | sRparen, sRbrak, sRbrace: DEC(depth);
+        | sComma: if depth = 0 then INC(n); end;
+        | else:
+        end;
+        Scan.next;
+    end;
+    Scan.setSkipping(wasSkipping);
+    Scan.restoreScan(st);
+    return n;
+end;
+
+(* A constant typed []T is an array constant whose length is its
+   literal's (report, 4): t, the slice type, becomes [n]T, as if n had
+   been written, with n counted ahead (literalLength). *)
+proc literalArray(t: PType; start: Diag.Pos): (PType, ERROR);
+var a: PType; n: INT;
+begin
+    if Scan.tok # Scan.sLbrak then
+        return nil, Scan.markAt(Scan.tokPos(), say1("expected a literal of {}", Sym.typeName(t)));
+    end;
+    n := literalLength();
+    if n = 0 then
+        return nil, Scan.markAt(Scan.spanFrom(start), "an array's length is from 1 to 2^40, found 0");
+    end;
+    a := Sym.newType(Sym.fArray, I64(n) * t^.base^.size, t^.base^.align);
+    a^.len := I64(n);
+    a^.base := t^.base;
+    return a, nil;
+end;
+
 proc constDecl(top: BOOL): ERROR;
 var n, c: INT; exp: BOOL; x: TItem; o: PObj; t: PType; start, at: Diag.Pos;
 begin
@@ -3140,11 +3187,13 @@ begin
         Scan.next;
         start := Scan.tokPos();
         t := try parseType();
-        if (t # Sym.tError) and not ((t^.form = Sym.fArray) or ((t^.form = Sym.fRecord) and not t^.tuple)) then
+        if (t # Sym.tError) and not ((t^.form = Sym.fArray) or (t^.form = Sym.fSlice)
+            or ((t^.form = Sym.fRecord) and not t^.tuple)) then
             return Scan.markAt(Scan.spanFrom(start), "only an ERROR, an array or a record constant has a type");
         end;
     end;
     try expect(Scan.sEql);
+    if (t # nil) and (t^.form = Sym.fSlice) then t := try literalArray(t, start); end;
     if (t # nil) and ((t^.form = Sym.fArray) or (t^.form = Sym.fRecord)) then
         o := Sym.newObj(Sym.oConst, n, t);
         o^.chunk := try aggregateConst(t, n);
