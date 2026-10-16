@@ -1,0 +1,14 @@
+module BufCut;
+(* Buf.cut past what the buffer holds says so, with the calls under
+   way, and stops the program with status 2 *)
+import Buf, Heap;
+
+proc main*;
+var b: Buf.Buf;
+begin
+    Buf.init(ADR(b), Heap.heap);
+    Buf.str(ADR(b), "hello");
+    Buf.cut(ADR(b), 6);
+end;
+
+end BufCut.

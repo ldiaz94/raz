@@ -596,6 +596,7 @@ proc add*(b: ^Buf; c: U8);
 proc str*(b: ^Buf; s: []U8);
 proc spare*(b: ^Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
 proc bytes*(b: ^Buf): []U8;           (* what it holds, until it next grows *)
+proc cut*(b: ^Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
 proc reset*(b: ^Buf);                 (* emptied, its memory kept *)
 proc done*(b: ^Buf);                  (* its memory given back *)
 
@@ -678,7 +679,9 @@ allocator `init` gives them. `Buf.add`, `str` and `spare` stop the program, as a
 failed check does, if the allocator has no room; `room` asks first. A
 program reads into a `Buf` through `spare`, then adds what it read to
 `len`: `s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n > 0 then
-INC(b^.len, n); end;`. A `Vec` is `Buf` for any `T`: one block, which
+INC(b^.len, n); end;`. `cut` takes back what was added, to a length it
+had: `start := b^.len; ...; Buf.cut(b, start);`; a length past `len`
+stops the program, as an index past the end does. A `Vec` is `Buf` for any `T`: one block, which
 doubles when it is full, so `push` costs the same on average however
 long it grows. `all` gives the elements as a slice, indexed and
 checked as any is, and `v.len` is their number; the slice, and what

@@ -85,10 +85,23 @@ begin
     return b^.data[0..b^.len];
 end;
 
+(* Keeps only the first n bytes, and the memory, for what comes next.
+   An n past what the buffer holds is the program's mistake, and stops
+   it, as an index past the end does. *)
+proc cut*(b: ^Buf; n: INT);
+begin
+    if (n < 0) or (n > b^.len) then
+        _ := Sys.write(Sys.stderr, "Buf.cut past the end\n");
+        Rt.trace;
+        Rt.exit(2);
+    end;
+    b^.len := n;
+end;
+
 (* Empties the buffer, keeping its memory for what comes next. *)
 proc reset*(b: ^Buf);
 begin
-    b^.len := 0;
+    cut(b, 0);
 end;
 
 (* Gives the buffer's memory back, leaving it empty. *)
@@ -116,6 +129,10 @@ begin
     reset(ADR(b));
     str(ADR(b), "again");
     if bytes(ADR(b)) # "again" then Rt.stop("Buf.reset"); end;
+    cut(ADR(b), 2);
+    str(ADR(b), "ain");
+    cut(ADR(b), 5);
+    if bytes(ADR(b)) # "again" then Rt.stop("Buf.cut"); end;
     s := spare(ADR(b), 3);
     COPY(s, "abc");
     INC(b.len, 2);
