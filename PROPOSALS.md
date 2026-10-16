@@ -628,3 +628,47 @@ model's reply with rnet. The human's `C-c` is a key on the loop's
 thread, which can only set a flag that the turn reads after each read
 of the reply; a server that says nothing for a minute, as a model does
 while it thinks, keeps the turn going for that minute.
+
+## An empty array constant for a slice
+
+`const Runs: []Run = [];` is an error: "an array's length is from 1
+to 2^40, found 0". A constant typed `[]T` is an array constant whose
+length is its literal's (4), and an array has at least one element
+(5.2), so the empty literal has no array to be. Yet `[]` is the empty
+slice everywhere else (6.5), and a slice of no elements is what such a
+table may well be.
+
+The proposal: a constant typed `[]T` whose literal is `[]` is the empty
+slice, as a slice variable starts, and no array at all; `LEN` of it is
+0. Arrays stay at least one long; only the slice constant changes. A
+program that compiles today means the same, so it breaks none.
+
+It costs a sentence of 4, and in the compiler, `literalArray` giving
+the slice type back for a length of 0 instead of the error.
+
+Met in rrem's `RremUcd`, whose tables `tools/Ucd.raz` writes: before
+the tool's first run, each table needs a placeholder of one element,
+which the code reading it must then not take for a real one.
+
+## `Vec.pop`
+
+`Vec` can push but not pop: taking the last element off is two calls
+and an index written out,
+
+```
+b := Backs.all(ADR(re^.stack))[re^.stack.len - 1];
+Backs.resize(ADR(re^.stack), re^.stack.len - 1);
+```
+
+where a stack wants one. The proposal, in `Vec`, beside `push`:
+
+```
+proc pop*(v: ^Vec): (T, BOOL);   (* the last element, taken off; false if the array is empty *)
+```
+
+as `List.pop` gives the front of a list. It keeps the memory, as
+`resize` does. It breaks no program, so it could come with any
+release, not only a thaw.
+
+Met in rrem's machine, whose backtracking stack is a `Vec` popped in
+`back` and `unwind`.
