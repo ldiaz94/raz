@@ -656,3 +656,72 @@ program, so it could come with any release, not only a thaw.
 Met in rrem's `replace`, which adds each match's replacement to the
 caller's buffer and, when a search stops with `TooCostly` or `NoRoom`,
 leaves the buffer as it was.
+Met again in rre's reading window, which drops the lines it has
+searched by shortening the buffer.
+
+## The spelling of the option just read
+
+`Opt.Parser` keeps how the option just read was written (`spelt`, no
+dashes) to word its own messages, `--budget wants a number from ...`,
+but keeps it private, so a program that refuses a value with
+`Opt.fail` must name the option again itself:
+
+```
+| keyInclude:
+    if not addGlob(p.value) then
+        Opt.fail(ADR(p), "--include wants a glob, not ...");
+    end;
+```
+
+The name is then in two places, the table and the message, which
+`Opt` was made to keep apart; and the message says `--include` even
+when the program has a letter for it and the user wrote that. The
+proposal: `spelt*` exported, read only, beside `letter`, `value` and
+`long`; or `Opt.refuse*(p: ^Parser; wants: []U8)`, which writes
+`{-x or --long} wants {wants}, not '{value}'` as `number` does. It
+breaks no program.
+
+Met in rre's `--include` and `--exclude`, whose globs Rwglob checks.
+
+## `-h` for a program that wants it
+
+`Opt` takes `-h` and `--help` for itself, and a table that names
+either is the program's mistake ("-h and --help are Opt's"). grep's
+`-h`, no file names, can't be written: rre, which follows grep, has
+`--no-filename` without a letter. The proposal: a table may give `-h`
+to an option of its own, and then help is `--help` only, as it is for
+grep. It breaks no program, since no table names `-h` now.
+
+## An option whose value may be left out
+
+An option takes a value always or never. grep's `--color` is
+`--color[=WHEN]`: bare, it means `auto`. In `Opt`, rre's `--color`
+must have its value, and `rre --color x` reads `x` as the value, not
+the pattern. The proposal: a row's `value` written `[WHEN]` makes the
+value optional, given only as `--color=WHEN` (never as the next
+argument, as getopt's `::` has it), `""` when left out; for a letter,
+only joined, `-cWHEN`. It breaks no program.
+
+## `Opt.number` with no top
+
+`Opt.number(p, lo, hi)` refuses a value past `hi` and says so; a
+number that has no top is given `hi` as `I64`'s largest, and the
+message reads `--budget wants a number from 0 to
+9223372036854775807`. The proposal: the message says `a number from
+0 up` when `hi` is the largest `I64`; nothing else changes.
+
+## `Out` a line at a time through a pipe
+
+`Out` writes at each line feed only when standard output is a
+terminal; through a pipe it waits for 4 KB. A command that filters a
+stream that comes slowly, `tail -f log | rre error | less`, shows
+nothing until 4 KB of matches have come. grep has `--line-buffered`
+for this. The proposal, in `Out`:
+
+```
+proc lines*(on: BOOL);   (* write at each line feed, whatever standard output is *)
+```
+
+It breaks no program. Met in rre, which doesn't yet offer
+`--line-buffered` for want of it (or of an `Out.flush` after every
+line, which costs a write per line always).
