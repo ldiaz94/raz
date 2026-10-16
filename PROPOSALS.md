@@ -562,23 +562,3 @@ It costs a row in the table of 6.8. A predeclared name can be hidden
 
 Met in concha's `Ccore`, in `bufVal` and `listVal`, and in `Sys` over
 C, before each call that takes a buffer.
-
-## An error told where the wrong token is
-
-A comment that quotes a regular expression, `(* matches (?>x*) *)`,
-ends at the `*)` inside `x*)`, and the rest of it is read as code.
-The compiler is right to refuse what follows; but it told the error
-at the start of an earlier declaration, 40 lines from the token that
-was wrong, and the comment that caused it was hard to find.
-
-The proposal: an error is told at the token where the parse failed,
-as most already are; where the parser reports at the start of a
-declaration instead, it reports the token as well. A comment that has
-just closed on a line with more text after it could add a hint:
-"a comment ended here". Nothing a program means changes.
-
-A comment can't quote `*)` at all. That is the report's rule, and
-Oberon's, and stays; the report could say it in a line, with the
-spelling to use instead (`x* )` or a word).
-
-Met in rrem's parser, documenting `(?>x*)`.

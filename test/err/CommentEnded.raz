@@ -1,0 +1,22 @@
+module CommentEnded;
+import Out;
+(* a comment that quotes the two characters that end one ends there *)
+
+(* Whether s matches the pattern.
+   Matches (?>x*) as one atom, which never gives back what it took,
+   so that a pattern stays linear. *)
+proc matches(s: []U8): BOOL;
+var i: INT;
+begin
+    i := 0;
+    while i < LEN(s) do
+        INC(i);
+    end;
+    return i > 0;
+end;
+
+proc main*;
+begin
+    if matches("a") then Out.ln; end;
+end;
+end CommentEnded.

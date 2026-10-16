@@ -37,6 +37,7 @@ type
         len, pos, line, lineStart: INT;
         tokPos, tokLine, tokLineStart: INT;
         prevEnd: INT;      (* where the symbol before this one ends *)
+        commentEnd: INT;   (* just after the end of the last comment, or 0 *)
         tok: Sym;
         ival: I64;
         rval: F64;
@@ -258,6 +259,27 @@ begin
         if cur.buf[i] = '\n' then p := afterPrev(); end;
     end;
     return p;
+end;
+
+(* Whether a comment stands between the symbol before the current one
+   and it, which may put many lines between the two *)
+proc commentBetween*: BOOL;
+begin
+    return cur.commentEnd > cur.prevEnd;
+end;
+
+(* The end of a comment that closed just before byte a of the file
+   being read, with only blanks between, and true. A comment that
+   quotes the two characters that end one ends there, and what it went
+   on to say is read as code. *)
+proc commentClosed*(a: INT): (Diag.Pos, BOOL);
+var i: INT;
+begin
+    if (cur.commentEnd = 0) or (cur.commentEnd > a) then return {}, false; end;
+    for i := cur.commentEnd to a - 1 do
+        if (cur.buf[i] # ' ') and (cur.buf[i] # 9) then return {}, false; end;
+    end;
+    return {f: cur.f, a: cur.commentEnd - 2, b: cur.commentEnd}, true;
 end;
 
 (* From the start of p to the end of the symbol before the current one:
@@ -668,6 +690,7 @@ begin
             INC(cur.pos);
         end;
     until depth = 0;
+    cur.commentEnd := cur.pos;
 end;
 
 (* Reading a decimal real exactly: the F64 nearest to digits times 10 to

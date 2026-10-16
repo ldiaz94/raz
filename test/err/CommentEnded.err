@@ -1,0 +1,11 @@
+test/err/CommentEnded.raz:2:12: error: expected "end", found as
+    2 | import Out;
+      |            ^
+test/err/CommentEnded.raz:6:19: note: found here: as
+    6 |    Matches (?>x*) as one atom, which never gives back what it took,
+      |                   ^^
+test/err/CommentEnded.raz:6:16: note: a comment ended here
+    6 |    Matches (?>x*) as one atom, which never gives back what it took,
+      |                ^^
+help: a comment that quotes *) writes it apart: * )
+raz: 1 error

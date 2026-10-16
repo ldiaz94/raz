@@ -1,0 +1,13 @@
+module CommentEndedBody;
+(* the same inside a procedure, where the rest is read as statements *)
+import Out;
+
+proc main*;
+var i: INT;
+begin
+    i := 0;
+    (* skips spaces, as the pattern \s*) would,
+       and stops at the first other byte *)
+    Out.int(i);
+end;
+end CommentEndedBody.

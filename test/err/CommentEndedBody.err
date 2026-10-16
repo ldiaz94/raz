@@ -1,0 +1,8 @@
+test/err/CommentEndedBody.raz:9:42: error: would isn't declared
+    9 |     (* skips spaces, as the pattern \s*) would,
+      |                                          ^^^^^
+test/err/CommentEndedBody.raz:9:39: note: a comment ended here
+    9 |     (* skips spaces, as the pattern \s*) would,
+      |                                       ^^
+help: a comment that quotes *) writes it apart: * )
+raz: 1 error

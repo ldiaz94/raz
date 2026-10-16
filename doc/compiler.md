@@ -937,7 +937,13 @@ goes on from (see Parse.raz). An error with notes is reported with
 `Diag.error` and `Diag.note`, then returns `Failed` itself. A message
 names what it found: `found` describes the current symbol and `symText`
 spells an operator or reserved word, so that the parser's `expect` and
-`expected` say `expected ";", found "end"`. Errors in the text itself
+`expected` say `expected ";", found "end"`. `comment` notes where the
+last comment ended: `commentBetween` says whether one stands between
+the symbol before and the current one, and `commentClosed` whether one
+ended just before a place. With them the parser's `foundNotes` shows
+the symbol found when a comment put lines between it and the missing
+one's place, and `commentNote` the end of a comment that closed just
+before the error, which most likely quoted `*)`. Errors in the text itself
 stop the compiler (`markBytes`, `lexError`): past a string left open,
 the symbols can't be trusted. A slip from another language, such as `!=`
 for `#`, is reported by `slip`, which reads on as if the right symbol

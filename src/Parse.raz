@@ -173,13 +173,43 @@ begin
     return Diag.say("more than {} {}", [Fmt.int(n), Fmt.str(what)]);
 end;
 
+(* After an error at p: if a comment closed just before it, it most
+   likely quoted the characters that end one, and ended early; where it
+   ended is shown. *)
+proc commentNote(p: Diag.Pos);
+var closed: Diag.Pos; ok: BOOL;
+begin
+    if p.f # Scan.tokPos().f then return; end;
+    closed, ok := Scan.commentClosed(p.a);
+    if ok then
+        Diag.note(closed, "a comment ended here");
+        Diag.help("a comment that quotes *) writes it apart: * )");
+    end;
+end;
+
+(* After an error at at about the symbol found: that symbol, if at is
+   above it with a comment between, as a missing symbol's place may
+   be (with only blanks between, the two are seen together); and the
+   comment, if it ended just before the symbol. *)
+proc foundNotes(at: Diag.Pos);
+begin
+    if (at.a # Scan.tokPos().a) and Scan.commentBetween() then
+        Diag.note(Scan.tokPos(), say1("found here: {}", Scan.found()));
+    end;
+    commentNote(Scan.tokPos());
+end;
+
 (* A missing symbol is reported just after the one before it. *)
 proc expected(what: []U8): ERROR;
+var at: Diag.Pos;
 begin
     if Scan.tok = Scan.sBlank then
         return Scan.mark("_ isn't a name: it is the blank, which stands only left of :=");
     end;
-    return Scan.markAt(Scan.missingPos(), say2("expected {}, found {}", what, Scan.found()));
+    at := Scan.missingPos();
+    Diag.error(at, say2("expected {}, found {}", what, Scan.found()));
+    foundNotes(at);
+    return Scan.Failed;
 end;
 
 proc expect(s: Scan.Sym): ERROR;
@@ -211,6 +241,7 @@ end;
 proc endMissing(p: Diag.Pos; msg: []U8): ERROR;
 begin
     Diag.error(p, msg);
+    foundNotes(p);
     if stray then Diag.note(strayAt, "is this statement's \"end\" missing? one further left closes it"); end;
     if elseIf then Diag.help("raz writes elsif: \"else if\" begins an if that needs its own \"end\""); end;
     return Scan.Failed;
@@ -440,6 +471,7 @@ proc notDeclared(p: Diag.Pos; n: INT);
 var found: BOOL; low: []U8;
 begin
     Diag.error(p, say1("{} isn't declared", nameOf(n)));
+    commentNote(p);
     _, _, found := moduleFile(n);
     low := lowerCase(nameOf(n));
     if found then Diag.help(say2("{} is a module: import {}", nameOf(n), nameOf(n)));
