@@ -102,6 +102,12 @@ for it. A wish for more, the owner's or yours, goes in
 owner's word (v0.6.0, reports 2026-10.13 to 10.23, 10.25 for strings,
 and 10.26 for `INT` and views).
 
+**The reserved words are settled.** That a word is reserved, however
+common (`code`, `to`, `packed`, `forward`, `set`, ...), is never brought
+up: not as a defect, a proposal, an awkwardness or a note, in raz or in
+any program or library written in it. A name that is taken is renamed,
+and nothing is said of it.
+
 The parser reaches the machine only through `Gen.raz`. Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.
