@@ -168,4 +168,10 @@ at the time.
   isn't open is -9 (EBADF), as on Linux (volume 2).
 - **2026-10.29.** A thaw, for tables. An array constant typed `[]T`
   takes its length from its literal, and is an array constant of that
-  length in all else (section 4). It breaks no program.
+  length in all else (section 4). It breaks no program. `Sys` gains
+  what a shell needs: `dup`, `dupTo`, `keepOnExec`, `Program.more`,
+  `exec`, `access` and `Access`'s `executing`, `umask`, `envAt`,
+  `getMode` and `setMode`, `cpuTime`, `limit` and `setLimit`, `uid`,
+  `euid`, `hostName`, and `sigUsr1`, `sigUsr2` and `sigAlrm`; `Map`
+  gains `done`, `Str` gains `free`, and `Files` gains `load` (volume
+  2).
