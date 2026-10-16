@@ -165,7 +165,9 @@ double quotes is.
 Messages give the line and the column, counted in characters
 (section 10).
 
-**Comments** are `(*` ... `*)` and nest. By convention, the comment
+**Comments** are `(*` ... `*)` and nest. A comment ends at the `*)`
+that closes it, wherever that stands, so one that quotes `*)`, as in
+`x*)` of a pattern, writes it apart: `x* )`. By convention, the comment
 just before an exported declaration is its documentation, and the one
 before `module` is the module's.
 
