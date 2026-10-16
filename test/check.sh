@@ -254,6 +254,18 @@ for f in lib/*.raz; do
     else pass=$((pass + 1)); fi
 done
 
+# CAbi is tools/cabi.c's output, from the C library's own headers:
+# compiled with cc, and with musl-gcc, each where it is installed, it
+# writes lib/'s file again
+for cc in cc musl-gcc; do
+    command -v $cc >/dev/null || continue
+    if ! $cc -o $out/cabi tools/cabi.c 2>$out/cabi.cerr; then
+        echo "FAIL tools/cabi.c with $cc: $(cat $out/cabi.cerr)"; fail=$((fail + 1))
+    elif ! $out/cabi linux-x86_64 | cmp -s - lib/CAbi.linux-x86_64.raz; then
+        echo "FAIL tools/cabi.c with $cc: lib/CAbi.linux-x86_64.raz differs"; fail=$((fail + 1))
+    else pass=$((pass + 1)); fi
+done
+
 # Thread's test again, with too little memory for all its threads:
 # spawn must fail, with Thread.Failed
 if (ulimit -v 60000; $out/lib_Thread.linux-x86_64 fail) > /dev/null 2>&1; then pass=$((pass + 1))
