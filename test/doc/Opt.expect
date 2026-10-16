@@ -7,8 +7,8 @@ module Opt;
     
     Depends on Files for the words, and writes the help and the
     messages itself, then ends the program.
-    Leaves out: options after operands (GNU's reordering), a program
-    that keeps -h for itself, and completion for concha.
+    Leaves out: options after operands (GNU's reordering), and
+    completion for concha.
 
 type Row* = variant
     usage(scope, line: []U8);           (* a synopsis, without "usage: " *)

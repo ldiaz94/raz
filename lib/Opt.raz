@@ -6,8 +6,8 @@
 
    Depends on Files for the words, and writes the help and the
    messages itself, then ends the program.
-   Leaves out: options after operands (GNU's reordering), a program
-   that keeps -h for itself, and completion for concha. *)
+   Leaves out: options after operands (GNU's reordering), and
+   completion for concha. *)
 module Opt;
 import Files, Str, Buf, Fmt, Heap, Out, Sys, Rt;
 
@@ -108,11 +108,9 @@ begin
     return "-";
 end;
 
-(* The left column of a row in the help, as "-b, --bar label"; the
-   help's own row if r is nil. *)
+(* The left column of a row in the help, as "-b, --bar label". *)
 proc left(b: ^Buf.Buf; r: ^Row);
 begin
-    if r = nil then Buf.str(b, "-h, --help"); return; end;
     match r^ of
     | sub(_s, name, _help): Buf.str(b, name);
     | option(_s, letter, long, value, _help):
@@ -144,7 +142,6 @@ begin
     Buf.str(b, "  ");
     left(b, r);
     for i := leftWidth(r) to width + 2 do Buf.add(b, ' '); end;
-    if r = nil then Buf.str(b, "print this and exit\n"); return; end;
     match r^ of
     | sub(_s, _name, help): Fmt.write(b, "{}\n", [Fmt.str(help)]);
     | option(_s, _l, _long, _v, help): Fmt.write(b, "{}\n", [Fmt.str(help)]);
@@ -152,15 +149,46 @@ begin
     end;
 end;
 
-(* The scope's help: its synopsis lines, then its subcommands, its
-   options and the help itself, each with its line; and status 0. *)
-proc printHelp(p: ^Parser);
-var b: Buf.Buf; i, width: INT; r: ^Row;
+(* The scope's option with the letter c, or with the long name long:
+   its row, or -1, and its letter and the name of its value. *)
+proc find(p: ^Parser; c: U8; long: []U8): (INT, U8, []U8);
+var i: INT;
 begin
+    for i := 0 to LEN(p^.table) - 1 do
+        match p^.table[i] of
+        | option(s, letter, lg, value, _help):
+            if (s = p^.scope) and ((c >= '!') and (letter = c) or (LEN(long) > 0) and (lg = long)) then
+                return i, letter, value;
+            end;
+        | else:
+        end;
+    end;
+    return -1, 0, "";
+end;
+
+(* Whether the scope has an option -h of its own, so that help is
+   --help alone there, as it is for grep, whose -h is "no file names". *)
+proc ownsH(p: ^Parser): BOOL;
+var r: INT; _l: U8; _v: []U8;
+begin
+    r, _l, _v := find(p, 'h', "");
+    return r >= 0;
+end;
+
+(* The scope's help: its synopsis lines, then its subcommands, its
+   options and the help itself, each with its line; and status 0. The
+   help's own row is made as the table's are, with no letter if the
+   scope has -h. *)
+proc printHelp(p: ^Parser);
+var b: Buf.Buf; i, width: INT; r: ^Row; own: Row; h: U8;
+begin
+    h := 'h';
+    if ownsH(p) then h := 0; end;
+    own := option(p^.scope, h, "help", "", "print this and exit");
     Buf.init(ADR(b), Heap.heap);
     usageOf(p, ADR(b));
     Buf.add(ADR(b), 10);
-    width := leftWidth(nil);
+    width := leftWidth(ADR(own));
     for i := 0 to LEN(p^.table) - 1 do
         r := ADR(p^.table[i]);
         if inScope(p, r^) and (leftWidth(r) > width) then width := leftWidth(r); end;
@@ -179,26 +207,9 @@ begin
         | else:
         end;
     end;
-    item(ADR(b), nil, width);
+    item(ADR(b), ADR(own), width);
     say(Sys.stdout, ADR(b));
     Rt.exit(0);
-end;
-
-(* The scope's option with the letter c, or with the long name long:
-   its row, or -1, and its letter and the name of its value. *)
-proc find(p: ^Parser; c: U8; long: []U8): (INT, U8, []U8);
-var i: INT;
-begin
-    for i := 0 to LEN(p^.table) - 1 do
-        match p^.table[i] of
-        | option(s, letter, lg, value, _help):
-            if (s = p^.scope) and ((c >= '!') and (letter = c) or (LEN(long) > 0) and (lg = long)) then
-                return i, letter, value;
-            end;
-        | else:
-        end;
-    end;
-    return -1, 0, "";
 end;
 
 (* The next option, a word or a letter of one, into p: read1, or
@@ -249,8 +260,8 @@ begin
     p^.group := p^.group[1..LEN(p^.group)];
     p^.long := false;
     p^.letter := c;
-    if c = 'h' then p^.help := true; return read1; end;
     r, p^.letter, val := find(p, c, "");
+    if (c = 'h') and (r < 0) then p^.help := true; return read1; end;
     if r < 0 then
         if quiet then return readSkip; end;
         mistake(p, "unknown option -{}", [Fmt.str(p^.spelt)]);
@@ -306,7 +317,7 @@ begin
             end;
             if letter = '-' then badTable(p, i, "no option is -"); end;
             if Str.find(long, "=") >= 0 then badTable(p, i, "a long name has no ="); end;
-            if (letter = 'h') or (long = "help") then badTable(p, i, "-h and --help are Opt's"); end;
+            if long = "help" then badTable(p, i, "--help is Opt's"); end;
             for j := 0 to i - 1 do
                 match p^.table[j] of
                 | option(s2, letter2, long2, _v2, _help2):
@@ -464,14 +475,16 @@ begin
         option("", 'v', "loud", "", "say it again")]);
 end;
 
-(* Subcommands of subcommands, and no synopsis lines. *)
+(* Subcommands of subcommands, no synopsis lines, and a -h of the
+   program's own. *)
 proc plain;
 var p: Parser; _w: []U8; _ok: BOOL;
 begin
     init(ADR(p), "plain", [
         sub("", "remote", "the remotes"),
         sub("remote", "add", "add one"),
-        option("remote.add", 'f', "force", "", "even if it is there")]);
+        option("remote.add", 'f', "force", "", "even if it is there"),
+        option("remote.add", 'h', "here", "", "only here")]);
     _w, _ok := operand(ADR(p));
     scope(ADR(p), "remote");
     _w, _ok := operand(ADR(p));
@@ -565,6 +578,9 @@ begin
         {mode: "OPTTEST=bad", args: ["bad", "-v"], err: "bad: option table, row 2: the option is in the scope already\n", status: 1},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--force"], out: "f f\nf force\n"},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-x"], err: "plain: unknown option -x\nusage: plain remote add\n", status: 2},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-hf"], out: "h h\nf f\n"},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--help"],
+            out: "usage: plain remote add\n\n  -f, --force   even if it is there\n  -h, --here    only here\n      --help    print this and exit\n"},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "-h"], out: "usage: plain remote\n\n  add          add one\n  -h, --help   print this and exit\n"}];
     for i := 0 to LEN(cases) - 1 do run(cases[i], i); end;
 end;

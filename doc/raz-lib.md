@@ -908,6 +908,9 @@ usage: keep start [-b label] name command [argument ...]
 
 A scope with several synopsis lines has the others indented under the
 first; one with none, `usage:` and its words, as `usage: keep start`.
+A scope may give `-h` to an option of its own, as grep's "no file
+names"; help there is `--help` alone, and its row in the help has no
+letter.
 
 A mistake on the command line is a sentence on standard error, the
 program's name first, then the scope's synopsis lines, as the help
@@ -934,8 +937,8 @@ A mistake in the table is the program's, not its user's. `init` checks
 the table before it reads a word, and ends the program with status 1:
 `keep: option table, row 3: the option is in the scope already`. The
 others are an option with neither a letter nor a long name, a long
-name with `=` in it, a letter `-`, and `-h` or `--help` in the table,
-since they are `Opt`'s.
+name with `=` in it, a letter `-`, and `--help` in the table, since
+it is `Opt`'s.
 
 **Width** says how many columns of a terminal text takes, for a
 program with a screen that wraps its lines and cuts them at the

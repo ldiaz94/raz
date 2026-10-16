@@ -629,15 +629,6 @@ thread, which can only set a flag that the turn reads after each read
 of the reply; a server that says nothing for a minute, as a model does
 while it thinks, keeps the turn going for that minute.
 
-## `-h` for a program that wants it
-
-`Opt` takes `-h` and `--help` for itself, and a table that names
-either is the program's mistake ("-h and --help are Opt's"). grep's
-`-h`, no file names, can't be written: rre, which follows grep, has
-`--no-filename` without a letter. The proposal: a table may give `-h`
-to an option of its own, and then help is `--help` only, as it is for
-grep. It breaks no program, since no table names `-h` now.
-
 ## An option whose value may be left out
 
 An option takes a value always or never. grep's `--color` is
