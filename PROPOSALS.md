@@ -514,47 +514,6 @@ used a `Vec` of rule numbers instead, searched in turn. Library growth
 that breaks no program; about ten lines, with a test in `Map`'s
 `main`.
 
-## A slice of an array a call returns, kept
-
-A defect, of the report or the compiler, not a wish. `f()[0..4]`, a
-slice of the array a call returns, is a slice of a temporary of the
-caller's: the compiler takes the array's place from `allocTemp`, and
-`releaseTemps` gives it back at the end of the statement. Kept in a
-variable, the slice outlives it, and reads what the next statement
-puts there:
-
-```
-proc f(c: U8): [8]U8;
-var a: [8]U8; i: INT;
-begin
-    for i := 0 to 7 do a[i] := c; end;
-    return a;
-end;
-
-proc main*;
-var s, t: []U8; i: INT;
-begin
-    s := f('a')[0..4];
-    for i := 1 to 3 do t := f('b')[0..4]; end;
-    Out.str(s); Out.str(" "); Out.str(t); Out.ln;   (* "bbbb" and four blanks *)
-end;
-```
-
-The report doesn't say how long a returned array lives. 7.3 makes
-returning a slice of one an error, as it is the frame's; section 10
-leaves undefined only "a slice kept after the call whose frame holds
-what it points at", and `main`'s call hasn't ended. So by the report
-`s` is good until `main` returns, and by the compiler it isn't.
-
-Either mend closes it: the report says the array lives to the end of
-the statement, a slice kept past it undefined, with section 10's
-list; or slicing an array a call returns, anywhere but as an argument
-or in the expression it is used in, is an error, as 7.3's return of
-one is. The second is what 7.3 already checks (`Item.frame`), at more
-places; the first changes nothing but the report.
-
-Met writing libro, trying what the report allows; libro doesn't do it.
-
 ## Enumerations' names, each its own
 
 An enumeration's names are declared in the scope around its type

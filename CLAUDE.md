@@ -219,6 +219,9 @@ otherwise.
   local slice variable or a record, stored, or come back from a call,
   isn't, and is left undefined (10). `ret` and `keep`, in
   PROPOSALS.md, would close it; the owner keeps it open for now.
+- An array a call returns is a temporary of the statement (report
+  2026-10.28, 8): a slice of it kept past the statement is undefined
+  (10), and isn't caught.
 - `Buf.add`, `str` and `spare`, and `Vec`'s growing, stop the program
   when the allocator has no room; `room` asks first.
 - An `extern` module variable is read-only for an importer, as the

@@ -160,3 +160,9 @@ at the time.
   `Buf` gains `spare`, and its `add` and `str` stop the program when
   memory runs out rather than dropping bytes; the standard library
   gains `Vec`, a growable array (volume 2).
+- **2026-10.28.** A defect mended: an array a call returns lives to the
+  end of the statement the call is in, and a slice of it kept past
+  that is undefined, among the exceptions of section 10 (section 8).
+  `Sys` gains `entryKind` and `Info.dev`; `spawn` finds a name without
+  a `/` along `PATH`; over the C library, `syncAll` of a file that
+  isn't open is -9 (EBADF), as on Linux (volume 2).

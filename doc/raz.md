@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.27 of the report; section 11 says where each
+This is version 2026-10.28 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -28,7 +28,9 @@ an expression too (sections 5.10 and 6.1); and a view, `v.(T)`,
 reads and writes the bytes of a variable as a `T` (section 6.9); it
 breaks no program. 2026-10.27 mends a defect: returning a slice of the
 procedure's own frame is an error (section 7.3), which breaks only a
-program that read memory already gone.
+program that read memory already gone. 2026-10.28 mends another: an
+array a call returns lives to the end of its statement, and a slice of
+it kept past that is undefined (sections 8 and 10).
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -1329,6 +1331,16 @@ which then returns them as they are: `return divmod(n, 2);`. A
 procedure that can fail has an `ERROR` as its last result (section
 5.8), which `try` passes on (section 7.8).
 
+An array a call returns lives to the end of the statement the call is
+in. A slice of it may be used there, indexed, passed or compared; one
+kept past the statement, in a variable or anywhere else, points at
+what is gone, and is the exception of section 10:
+
+```
+s := f('a')[0..4];     (* f returns a [8]U8: s is undefined after this *)
+Out.str(f('a')[0..4]);   (* used in its statement: defined *)
+```
+
 ```
 module Divide;
 import Out;
@@ -1483,7 +1495,8 @@ and indexing arrays and slices is checked, so a program's behaviour is
 defined by this report, with one exception: memory reached other than
 through a checked variable. Dereferencing a stale or made-up pointer,
 indexing through a pointer, a slice kept after the call whose frame
-holds what it points at (section 7.3), an index out of range in a
+holds what it points at (section 7.3), a slice of an array a call
+returned kept past its statement (section 8), an index out of range in a
 module that says `check off;`, writing a string's bytes, a code procedure that
 breaks its rules, and C code can read or write any memory, and what
 follows isn't defined. Dereferencing `nil`, dividing
