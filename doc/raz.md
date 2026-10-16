@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.31 of the report; section 11 says where each
+This is version 2026-10.32 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -39,7 +39,8 @@ thaw: `INT` is at least 16 bits, and `U8`, `I8` and `I16` widen to it
 (sections 5.1, 5.10 and 6.1); an enumeration's name may be written with
 its type, and must be where another declaration shares it (section
 5.7); and `continue` (section 7.2), which breaks a program that has a
-name `continue`.
+name `continue`. 2026-10.32 is an eighth thaw: a constant typed `[]T`
+may be `[]`, the empty slice (section 4); it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -378,8 +379,9 @@ A constant with a type is an `ERROR` (section 5.8), an array or a
 record, and the value of an array or record constant is a literal
 (section 6.5) of constants. Its elements and fields are integers,
 reals, `BOOL`s, enumerations, sets, `ERROR`s, procedures, `nil`, a
-string for a `[]U8`, an array constant for a slice of its element type,
-and arrays and records of these; no variant and no other pointer:
+string for a `[]U8`, an array constant or the empty slice for a slice
+of its element type, and arrays and records of these; no variant and
+no other pointer:
 
 ```
 const Primes: [5]I64 = [2, 3, 5, 7, 11];
@@ -398,12 +400,15 @@ at a constant index.
 
 An array constant may be typed `[]T`, with no length: its length is
 then its literal's, as a string constant's is the string's, and it is
-an array constant of that length, `[n]T`, in all else. Its literal has
-at least one element.
+an array constant of that length, `[n]T`, in all else. If its literal
+is `[]`, it is no array but the empty slice, as a slice variable starts:
+a value of type `[]T`, used as a slice is, and `LEN` of it is 0 but not
+a constant.
 
 ```
 const Wide: [][2]I32 = [[1100H, 115FH], [2E80H, 303EH], [0AC00H, 0D7A3H]];
     Count = LEN(Wide);    (* 3, a constant *)
+    Narrow: [][2]I32 = [];    (* the empty slice *)
 ```
 
 **Variables** of a module live as long as the program; variables of a

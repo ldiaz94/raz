@@ -1,0 +1,4 @@
+conform/err/EmptySliceConstLen.raz:3:9: error: expected a constant
+    3 |     N = LEN(P);    (* P is a slice, so its LEN isn't a constant *)
+      |         ^^^^^^
+raz: 1 error

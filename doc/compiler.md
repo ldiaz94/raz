@@ -20,7 +20,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,037 | 1,651 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,123 | 3,578 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,175 | 3,616 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -1286,6 +1286,14 @@ outside any inner brackets, and goes back to its `[` (`saveScan`,
 `restoreScan`), so `constPart` reads it as it reads any array's:
 
     const P: []I64 = [2, 3, 5];    (* read as *)    const P: [3]I64 = [2, 3, 5];
+
+With no element, `[]`, the type stays `[]T`, and the constant is 16
+zero bytes in read-only data: the empty slice, `ptr` `nil` and `len` 0,
+read as a slice variable is, so its `LEN` is no constant. `constPart`
+takes `[]` for any slice part, and an empty slice constant named there,
+by leaving the part's bytes zero:
+
+    const E: []I64 = [];    (* read as the bytes of *)    var E: []I64;
 
 `makeItem` makes it an
 `mVar` there that isn't `isVar`, so it is read, indexed, sliced and

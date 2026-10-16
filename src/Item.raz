@@ -258,9 +258,9 @@ begin
     | oConst:
         if o^.typ = Sym.tStr then
             x.mode := mStr; x.val := o^.val; x.chunk := o^.chunk;
-        elsif o^.typ^.form in {Sym.fArray, Sym.fRecord} then
-            (* an array or record constant: a variable in read-only data, not one of
-               the program's, so nothing can change it *)
+        elsif o^.typ^.form in {Sym.fArray, Sym.fRecord, Sym.fSlice} then
+            (* an array, record or empty slice constant: a variable in read-only
+               data, not one of the program's, so nothing can change it *)
             x.mode := mVar; x.base := Gen.bGlobal; x.chunk := o^.chunk;
         else
             x.mode := mConst; x.val := o^.val;

@@ -1,0 +1,38 @@
+module EmptySliceConst;
+import Out, Widths;
+
+(* A constant typed []T whose literal is [] is the empty slice, used as
+   a slice is: as a table with nothing in it, or a part of a constant *)
+
+type Prop = record name: []U8; runs: [][2]I32; end;
+
+const
+    None: []I64 = [];
+    Wide: [][2]I32 = [[1100H, 115FH]];
+    Narrow: [][2]I32 = [];
+    Props: []Prop = [{name: "wide", runs: Wide}, {name: "narrow", runs: Narrow}, {name: "none", runs: []}];
+
+proc sum(a: []I64): I64;
+var s: I64; i: INT;
+begin
+    for i := 0 to LEN(a) - 1 do s := s + a[i]; end;
+    return s;
+end;
+
+proc main*;
+var s: []I64; i: INT;
+begin
+    s := None;
+    Out.int(LEN(None)); Out.str(" "); Out.int(sum(None)); Out.str(" "); Out.int(LEN(s)); Out.str(" ");
+    Out.int(LEN(None[0..0])); Out.str(" "); Out.int(LEN(Widths.Narrow)); Out.ln;
+    if s = None then Out.str("same"); end;
+    Out.ln;
+    for i := 0 to LEN(Props) - 1 do
+        Out.str(Props[i].name); Out.str(" "); Out.int(LEN(Props[i].runs)); Out.ln;
+    end;
+    i := 0;
+    Out.int(None[i]);   (* none to index: a failed check *)
+    Out.ln;
+end;
+
+end EmptySliceConst.

@@ -1,0 +1,4 @@
+module EmptySliceConstLen;
+const P: []I64 = [];
+    N = LEN(P);    (* P is a slice, so its LEN isn't a constant *)
+end EmptySliceConstLen.

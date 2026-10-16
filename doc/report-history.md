@@ -191,3 +191,10 @@ at the time.
   7.2 and 7.7). It breaks a program that has a name `continue`. The
   standard library gains `Width`, the columns of a terminal a character
   takes (volume 2).
+- **2026-10.32.** A thaw, the eighth. A constant typed `[]T` whose
+  literal is `[]` is the empty slice, a value of type `[]T`, and no
+  array; `LEN` of it is 0, not a constant. A slice part of a constant
+  may be the empty slice, by `[]` or by such a constant's name (section
+  4). Before, both were errors, since an array has at least one element. It breaks no
+  program. `Sys.Info` gains `links`, how many names a file has
+  (volume 2).

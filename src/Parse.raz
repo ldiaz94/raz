@@ -3148,11 +3148,44 @@ begin
     COPY(constBytes[off..off + n], src[0..n]);
 end;
 
+(* The number of elements of the array literal at the scanner, at its
+   "[": read ahead, counting the commas outside any inner brackets,
+   then read again from the "[" (saveScan, restoreScan). Its slips are
+   told when it is read again. *)
+proc literalLength: INT;
+var st: Scan.State; depth, n: INT; wasSkipping: BOOL;
+begin
+    Scan.saveScan(st);
+    wasSkipping := Scan.skipping;
+    Scan.setSkipping(true);
+    Scan.next;
+    n := 0;
+    if Scan.tok # Scan.sRbrak then n := 1; end;
+    depth := 0;
+    while (Scan.tok # Scan.sEof) and ((depth > 0) or (Scan.tok # Scan.sRbrak)) do
+        match Scan.tok of
+        | sLparen, sLbrak, sLbrace: INC(depth);
+        | sRparen, sRbrak, sRbrace: DEC(depth);
+        | sComma: if depth = 0 then INC(n); end;
+        | else:
+        end;
+        Scan.next;
+    end;
+    Scan.setSkipping(wasSkipping);
+    Scan.restoreScan(st);
+    return n;
+end;
+
 (* The part of type t at offset off of the constant *)
 proc constPart(t: PType; off: INT): ERROR;
 var e: TItem; f: PObj; k: INT; r: F32; start: Diag.Pos; src: ^U8; st: INT;
 begin
     start := Scan.tokPos();
+    if (t^.form = Sym.fSlice) and (Scan.tok = Scan.sLbrak) and (literalLength() = 0) then
+        (* [], the empty slice (report, 4): its bytes stay zero, ptr nil and len 0 *)
+        Scan.next;
+        return expect(Scan.sRbrak);
+    end;
     if (t^.form = Sym.fArray) and (Scan.tok = Scan.sLbrak) then
         Scan.next;
         k := 0;
@@ -3201,12 +3234,15 @@ begin
             COPY(constBytes[off..off + INT(e.val)], Chunk.rodata[st..st + INT(e.val)]);
         end;
     elsif t^.form = Sym.fSlice then
-        if (e.mode # Item.mVar) or (e.obj = nil) or (e.obj^.cls # Sym.oConst) or (e.typ^.form # Sym.fArray)
+        if (e.mode # Item.mVar) or (e.obj = nil) or (e.obj^.cls # Sym.oConst)
+            or not (e.typ^.form in {Sym.fArray, Sym.fSlice})
             or (e.pos.b - e.pos.a # LEN(nameOf(e.obj^.name))) or not Sym.same(e.typ^.base, t^.base) then
-            return Scan.markAt(e.pos, say1("a constant slice is a string or an array constant of its elements, found {}", Item.what(e)));
+            return Scan.markAt(e.pos, say1("a constant slice is a string, an array constant of its elements or [], found {}", Item.what(e)));
         end;
-        try constFix(off, e.chunk);
-        putBytes(off + 8, 8, e.typ^.len);
+        if e.typ^.form = Sym.fArray then   (* else an empty slice constant, whose bytes stay zero *)
+            try constFix(off, e.chunk);
+            putBytes(off + 8, 8, e.typ^.len);
+        end;
     elsif t^.form = Sym.fVariant then
         return Scan.markAt(e.pos, "a constant holds no variant");
     elsif (t^.form = Sym.fArray) or (t^.form = Sym.fRecord) then
@@ -3247,47 +3283,18 @@ begin
     return c, nil;
 end;
 
-(* The number of elements of the array literal at the scanner, at its
-   "[": read ahead, counting the commas outside any inner brackets,
-   then read again from the "[" (saveScan, restoreScan). Its slips are
-   told when it is read again. *)
-proc literalLength: INT;
-var st: Scan.State; depth, n: INT; wasSkipping: BOOL;
-begin
-    Scan.saveScan(st);
-    wasSkipping := Scan.skipping;
-    Scan.setSkipping(true);
-    Scan.next;
-    n := 0;
-    if Scan.tok # Scan.sRbrak then n := 1; end;
-    depth := 0;
-    while (Scan.tok # Scan.sEof) and ((depth > 0) or (Scan.tok # Scan.sRbrak)) do
-        match Scan.tok of
-        | sLparen, sLbrak, sLbrace: INC(depth);
-        | sRparen, sRbrak, sRbrace: DEC(depth);
-        | sComma: if depth = 0 then INC(n); end;
-        | else:
-        end;
-        Scan.next;
-    end;
-    Scan.setSkipping(wasSkipping);
-    Scan.restoreScan(st);
-    return n;
-end;
-
 (* A constant typed []T is an array constant whose length is its
    literal's (report, 4): t, the slice type, becomes [n]T, as if n had
-   been written, with n counted ahead (literalLength). *)
-proc literalArray(t: PType; start: Diag.Pos): (PType, ERROR);
+   been written, with n counted ahead (literalLength). With no element,
+   [], it stays []T: the empty slice, kept as 16 zero bytes. *)
+proc literalArray(t: PType): (PType, ERROR);
 var a: PType; n: INT;
 begin
     if Scan.tok # Scan.sLbrak then
         return nil, Scan.markAt(Scan.tokPos(), say1("expected a literal of {}", Sym.typeName(t)));
     end;
     n := literalLength();
-    if n = 0 then
-        return nil, Scan.markAt(Scan.spanFrom(start), "an array's length is from 1 to 2^40, found 0");
-    end;
+    if n = 0 then return t, nil; end;
     a := Sym.newType(Sym.fArray, I64(n) * t^.base^.size, t^.base^.align);
     a^.len := I64(n);
     a^.base := t^.base;
@@ -3310,8 +3317,8 @@ begin
         end;
     end;
     try expect(Scan.sEql);
-    if (t # nil) and (t^.form = Sym.fSlice) then t := try literalArray(t, start); end;
-    if (t # nil) and ((t^.form = Sym.fArray) or (t^.form = Sym.fRecord)) then
+    if (t # nil) and (t^.form = Sym.fSlice) then t := try literalArray(t); end;
+    if (t # nil) and (t^.form in {Sym.fArray, Sym.fRecord, Sym.fSlice}) then
         o := Sym.newObj(Sym.oConst, n, t);
         o^.chunk := try aggregateConst(t, n);
         o^.pos := at;

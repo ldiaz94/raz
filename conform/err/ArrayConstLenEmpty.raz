@@ -1,3 +1,0 @@
-module ArrayConstLenEmpty;
-const P: []I64 = [];
-end ArrayConstLenEmpty.

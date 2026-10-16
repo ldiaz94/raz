@@ -1,4 +1,0 @@
-conform/err/ArrayConstLenEmpty.raz:2:10: error: an array's length is from 1 to 2^40, found 0
-    2 | const P: []I64 = [];
-      |          ^^^^^^^
-raz: 1 error
