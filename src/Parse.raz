@@ -3234,9 +3234,10 @@ begin
             COPY(constBytes[off..off + INT(e.val)], Chunk.rodata[st..st + INT(e.val)]);
         end;
     elsif t^.form = Sym.fSlice then
-        if (e.mode # Item.mVar) or (e.obj = nil) or (e.obj^.cls # Sym.oConst)
-            or not (e.typ^.form in {Sym.fArray, Sym.fSlice})
-            or (e.pos.b - e.pos.a # LEN(nameOf(e.obj^.name))) or not Sym.same(e.typ^.base, t^.base) then
+        (* the whole constant, here or another module's, not a part of
+           it, which has a type of its own: the element's, or a slice's *)
+        if (e.mode # Item.mVar) or (e.obj = nil) or (e.obj^.cls # Sym.oConst) or (e.typ # e.obj^.typ)
+            or not (e.typ^.form in {Sym.fArray, Sym.fSlice}) or not Sym.same(e.typ^.base, t^.base) then
             return Scan.markAt(e.pos, say1("a constant slice is a string, an array constant of its elements or [], found {}", Item.what(e)));
         end;
         if e.typ^.form = Sym.fArray then   (* else an empty slice constant, whose bytes stay zero *)

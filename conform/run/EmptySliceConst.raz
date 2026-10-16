@@ -10,7 +10,8 @@ const
     None: []I64 = [];
     Wide: [][2]I32 = [[1100H, 115FH]];
     Narrow: [][2]I32 = [];
-    Props: []Prop = [{name: "wide", runs: Wide}, {name: "narrow", runs: Narrow}, {name: "none", runs: []}];
+    Props: []Prop = [{name: "wide", runs: Wide}, {name: "narrow", runs: Narrow}, {name: "none", runs: []},
+        {name: "Widths.Wide", runs: Widths.Wide}, {name: "Widths.Narrow", runs: Widths.Narrow}];
 
 proc sum(a: []I64): I64;
 var s: I64; i: INT;
