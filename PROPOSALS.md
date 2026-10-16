@@ -412,12 +412,38 @@ end;
 ```
 
 The proposal: `continue`, in a `while`, `repeat` or `for`, ends the
-round, as reaching the end of the body would: a `for` steps its
-variable, `repeat` tests its condition. A deferred statement can't
-hold it, as it can't hold `break`. It breaks a program that has a name
-`continue`, so it waits for a thaw.
+round, as reaching the end of the body would: a `while` tests its
+condition again, a `repeat` tests its `until`, a `for` steps its
+variable. A deferred statement can't hold it, as it can't hold
+`break`. With it, the loop above reads:
 
-Met in libro and rml, more than once each.
+```
+while i < LEN(t) do
+    ch, n := Str.decode(t[i..LEN(t)]);
+    i := i + n;                         (* the step first *)
+    if ch = 0ADH then continue; end;    (* passed over *)
+    ...
+end;
+```
+
+The step comes before any `continue`. Put after it, as `i := i + n`
+stood in the first loop, it is skipped, `i` never moves, and the loop
+never ends; a `repeat`'s `until` may likewise read what the skipped
+rest of the body was to set. A `for` steps itself and has neither
+trap. The report's example shows the step first, and the compiler
+can't catch it.
+
+It costs about 15 lines of the compiler (a second chain of jumps
+beside `break`'s, fixed at each loop's test or step), a few lines of
+the report (7.2, the reserved words, the grammar, 7.7), and a word in
+`tools/Scan.raz` and the editors' modes. It breaks a program that has
+a name `continue`; none of the raz programs written so far has one.
+
+Accepted by the owner, for a thaw.
+
+Met in libro and rml, more than once each, and in concha's
+`Csyntax`, whose `interpolate` reads `elsif (c # '$') or not try
+dollar(...)` for want of it.
 
 ## A byte into an `INT`
 
