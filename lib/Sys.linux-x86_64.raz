@@ -122,6 +122,13 @@ type
         fds: [16]I32;
     end;
     Timespec = record sec, nsec: I64; end;
+    (* struct sigaction, as rt_sigaction takes it *)
+    Action = record
+        handler: proc(sig: INT);
+        flags: U64;
+        restorer: proc;
+        mask: U64;
+    end;
 
 var
     cwd: [4096]U8;    (* what workDir gives *)
@@ -129,6 +136,7 @@ var
     saved: Termios;   (* the terminal as rawMode found it *)
     caughtSigs: U64;  (* the signals catch has blocked, bit n - 1 for signal n *)
     sigFd: INT;       (* the signalfd that gives them, once caughtSigs isn't empty *)
+    noted: [65]INT;   (* 1 at sig when a signal handle took has come, until came asks *)
     uts: [390]U8;     (* struct utsname, which hostName gives the nodename of *)
 
 (* Writes s to the file descriptor fd; the number of bytes written, or
@@ -267,6 +275,15 @@ end;
 proc dupTo*(fd, into: INT): INT;
 begin
     return SYSCALL(33, fd, into);                   (* dup2 *)
+end;
+
+(* A new file descriptor for the file fd is open on, the lowest free
+   from least on, and closed on exec: it, or minus an errno. A shell
+   keeps its own at 10 and above, out of the way of those a script
+   names. *)
+proc dupAbove*(fd, least: INT): INT;
+begin
+    return SYSCALL(72, fd, 1030, least);            (* fcntl: F_DUPFD_CLOEXEC *)
 end;
 
 (* Whether fd stays open in the program exec runs in this one's place:
@@ -1194,6 +1211,12 @@ begin
     return SYSCALL(109, pid, group);                    (* setpgid *)
 end;
 
+(* The process group this program is in. *)
+proc group*: INT;
+begin
+    return SYSCALL(111);                                (* getpgrp *)
+end;
+
 (* Gives the keys of the terminal on fd, and its signals, to the process
    group group. *)
 proc foreground*(fd, group: INT): INT;
@@ -1456,8 +1479,8 @@ begin
     return r;
 end;
 
-(* Waits for the program pid, or any of this program's if pid is -1, to
-   change, if block, and says which one changed and how: exited, with
+(* Waits for the program pid, any of this program's if pid is -1, or
+   any of the group g if pid is -g, to change, if block, and says which one changed and how: exited, with
    its exit status; killed or stopped, with the signal's number. Without
    block it doesn't wait: 0 and running if none has changed. Minus an
    errno, and running, if there is none to wait for. *)
@@ -1520,6 +1543,56 @@ var act: [4]U64;   (* struct sigaction: its handler, SIG_IGN or SIG_DFL, first *
 begin
     if yes then act[0] := 1; end;
     return SYSCALL(13, sig, ADR(act), 0, 8);            (* rt_sigaction *)
+end;
+
+(* Returns from a signal handler, as the kernel asks: rt_sigreturn,
+   which sa_restorer names. *)
+proc sigReturn;
+code
+    mov eax, 15;
+    syscall;
+end sigReturn;
+
+(* The handler of the signals handle takes: it notes that sig came, and
+   does nothing else, since it runs between any two instructions of the
+   program, perhaps while Out or Heap holds its lock. *)
+proc onNoted(sig: INT);
+begin
+    _ := XCHG(ADR(noted[sig]), 1);
+end;
+
+(* Takes the signal sig away from what it would do: it is noted, for
+   came to see, and a system call it comes during fails with -4 (EINTR)
+   rather than going on, so that a program waiting for another, or for
+   a key, sees Ctrl-C at once. 0, or minus an errno. ignore(sig, false)
+   gives it back what it does at first. *)
+proc handle*(sig: INT): INT;
+var act: Action;
+begin
+    if (sig < 1) or (sig > 64) or (sig = sigKill) or (sig = sigStop)
+            or (sig = 8) or (sig = 11) then             (* SIGFPE and SIGSEGV, Rt's *)
+        return -22;                                     (* EINVAL *)
+    end;
+    act := {handler: onNoted, flags: 4000000H, restorer: sigReturn};   (* SA_RESTORER, and no SA_RESTART *)
+    return SYSCALL(13, sig, ADR(act), 0, 8);            (* rt_sigaction *)
+end;
+
+(* Whether the signal sig, which handle took, came since the last time
+   it was asked. *)
+proc came*(sig: INT): BOOL;
+begin
+    if (sig < 1) or (sig > 64) then return false; end;
+    return XCHG(ADR(noted[sig]), 0) = 1;
+end;
+
+(* A copy of this program, which goes on from here: 0 in the copy, its
+   process id in this one, or minus an errno. Only the thread that
+   calls it is copied, so a program with threads mustn't; and what Out
+   keeps is copied too, to be written twice, so the program flushes it
+   first. *)
+proc fork*: INT;
+begin
+    return SYSCALL(57);                                 (* fork *)
 end;
 
 (* Gives the processor to another thread. *)
@@ -1634,7 +1707,7 @@ end;
    are caught still. *)
 proc testShell;
 var
-    r, w, fd, n, k, child, c, err, pty, sigs, mask: INT; st: Status; buf: [64]U8;
+    r, w, fd, n, k, child, c, err, pty, sigs, mask, parent: INT; t: I64; st: Status; buf: [64]U8;
     m, raw: Mode; soft, hard, s2, h2, user, system: I64; e: []U8; ok, path: BOOL;
 begin
     r, w := pipe();
@@ -1709,6 +1782,30 @@ begin
     if err # -22 then exit(2); end;                 (* EINVAL *)
     e, err := hostName();
     if (err # 0) or (LEN(e) = 0) or (uid() < 0) or (euid() < 0) then exit(2); end;
+
+    (* a copy of an fd out of the way; this program's group; a copy of
+       this program, waited for by the group; a signal noted, and a wait
+       it breaks into *)
+    r, w := pipe();
+    fd := dupAbove(w, 10);
+    if (fd < 10) or (write(fd, "d") # 1) or (read(r, buf) # 1) or (dupAbove(-1, 10) # -9) then exit(2); end;
+    close(fd);
+    if group() <= 0 then exit(2); end;
+    child := fork();
+    if child = 0 then exit(7); end;
+    k, st, c := wait(-group(), true);
+    if (k # child) or (st # exited) or (c # 7) then exit(2); end;
+    if (handle(sigUsr2) # 0) or came(sigUsr2) or (handle(sigKill) # -22) then exit(2); end;
+    if (kill(pid(), sigUsr2) # 0) or not came(sigUsr2) or came(sigUsr2) then exit(2); end;
+    parent := pid();
+    child := fork();
+    if child = 0 then sleep(100); _ := kill(parent, sigUsr2); exit(0); end;
+    t := clock();
+    if ready(r, 5000) or not came(sigUsr2) or (clock() - t > 4000000000) then exit(2); end;
+    k, st, c := wait(child, true);
+    if (k # child) or (ignore(sigUsr2, false) # 0) then exit(2); end;
+    close(r);
+    close(w);
 
     sigs := catch([sigUsr1]);
     while caught(sigs) # 0 do end;                  (* the sigChld of the programs above *)

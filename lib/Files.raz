@@ -25,7 +25,7 @@ begin
     repeat
         n := Sys.read(fd, Buf.spare(b, 65536));   (* straight into b *)
         if n > 0 then INC(b^.len, n); end;
-    until n <= 0;
+    until (n <= 0) and (n # -4);                  (* -EINTR: a signal Sys.handle took; read again *)
     Sys.close(fd);
     return n;
 end;
@@ -45,8 +45,9 @@ begin
     at := 0;
     while at < LEN(data) do
         n := Sys.write(fd, data[at..LEN(data)]);
-        if n <= 0 then Sys.close(fd); return false; end;
-        at := at + n;
+        if n > 0 then at := at + n;
+        elsif n # -4 then Sys.close(fd); return false;   (* -EINTR: write again *)
+        end;
     end;
     Sys.close(fd);
     return true;

@@ -172,6 +172,7 @@ at the time.
   what a shell needs: `dup`, `dupTo`, `keepOnExec`, `Program.more`,
   `exec`, `access` and `Access`'s `executing`, `umask`, `envAt`,
   `getMode` and `setMode`, `cpuTime`, `limit` and `setLimit`, `uid`,
-  `euid`, `hostName`, and `sigUsr1`, `sigUsr2` and `sigAlrm`; `Map`
-  gains `done`, `Str` gains `free`, and `Files` gains `load` (volume
-  2).
+  `euid`, `hostName`, and `sigUsr1`, `sigUsr2` and `sigAlrm`, then
+  `dupAbove`, `group`, `fork`, `handle` and `came`, and `wait` on a
+  group; `Map` gains `done`, `Str` gains `free`, and `Files` gains
+  `load`, and tries again after EINTR (volume 2).

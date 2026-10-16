@@ -11,7 +11,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `workDir`, `setWorkDir`; programs, `spawn` and `exec`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `workDir`, `setWorkDir`; programs, `spawn` and `exec`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -212,6 +212,7 @@ proc lock*(fd: INT; wait: BOOL): INT;    (* the file's lock, held until fd is cl
 proc close*(fd: INT);
 proc dup*(fd: INT): INT;                 (* a new fd for the same file, the lowest free *)
 proc dupTo*(fd, into: INT): INT;         (* into made the same file as fd, closing what it was *)
+proc dupAbove*(fd, least: INT): INT;     (* a new fd for the same file, the lowest free from least on, closed on exec *)
 proc keepOnExec*(fd: INT; yes: BOOL): INT;   (* fd left open, or not, in the program exec runs *)
 proc isTerminal*(fd: INT): BOOL;
 proc mmap*(size: INT): ^U8;              (* size bytes of zeroed memory, in whole pages; or nil *)
@@ -258,9 +259,11 @@ proc openPty*: INT;                (* a pseudo-terminal: the fd of its controlli
 proc setTermSize*(fd, cols, rows: INT): INT;   (* the size its programs are told of *)
 proc spawn*(p: Program): INT;      (* a program started: its process id *)
 proc exec*(p: Program): INT;       (* p run in this program's place; returns only if it can't *)
+proc fork*: INT;                   (* this program copied: 0 in the copy, its process id in this one *)
 proc wait*(pid: INT; block: BOOL): (INT, Status, INT);   (* which program, how, and its code *)
 proc kill*(pid, signal: INT): INT;
 proc pid*: INT;                    (* this program's process id *)
+proc group*: INT;                  (* the process group this program is in *)
 proc setGroup*(pid, group: INT): INT;    (* pid 0 is this program; group 0 a new one pid leads *)
 proc foreground*(fd, group: INT): INT;   (* the terminal on fd gives its keys to group *)
 proc foregroundOf*(fd: INT): INT;  (* the group the terminal on fd gives its keys to *)
@@ -274,6 +277,8 @@ proc setLimit*(which: INT; soft, hard: I64): INT;
 proc catch*(sigs: []INT): INT;     (* sigs caught: an fd to wait on *)
 proc caught*(fd: INT): INT;        (* the next signal caught, or 0 if none is waiting *)
 proc ignore*(sig: INT; yes: BOOL): INT;  (* sig ignored; or, if not yes, back to what it does at first *)
+proc handle*(sig: INT): INT;       (* sig noted, for came; a system call it comes during is -4 *)
+proc came*(sig: INT): BOOL;        (* whether sig came since the last time it was asked *)
 
 proc clock*: I64;                  (* nanoseconds, on a clock that only goes forward *)
 proc now*: I64;                    (* nanoseconds since 1970-01-01, UTC *)
@@ -400,6 +405,15 @@ A shell moves its own files with `dup` and `dupTo`, for `2>&1` and
 `exec >log` and around a builtin: `dupTo(fd, into)` makes `into` the
 same open file as `fd`, closing what `into` was, and `dup` gives a new
 fd for it, the lowest free, as a shell saves a file to give it back.
+`dupAbove(fd, 10)` gives one at 10 or above, closed on exec, out of
+the way of the fds a script names (`3>log`), as a shell keeps its own.
+`fork` copies this program, which goes on from there in both: it is 0
+in the copy and the copy's process id in this one, as a shell runs a
+builtin or a procedure as a stage of a pipe. Only the thread that
+calls it is copied, so a program with threads mustn't; and what `Out`
+keeps is copied too, to be written twice, so `Out.flush` comes first.
+`group` is the process group this program is in: a shell starting on a
+terminal waits until it is `foregroundOf(0)` before it takes it.
 `access` says whether this user, by its real ids, may read, write or
 execute a file, as `test -r`, `-w` and `-x` ask, which `Info.mode`
 alone can't say; an empty `how` asks only whether it is there.
@@ -420,8 +434,9 @@ and lower either. `uid` is the user this program runs as, `euid` the
 one whose rights it has, 0 for root, as a prompt shows `#`; `hostName`
 is the machine's name.
 
-`wait` waits for the program `pid` to change, or for any of this
-program's if `pid` is -1, and says which one, and how: `exited`, with
+`wait` waits for the program `pid` to change, for any of this
+program's if `pid` is -1, or for any of the group `g` if `pid` is
+`-g`, as a shell waits for a job's programs, and says which one, and how: `exited`, with
 its exit status; `killed`, with the number of the signal that ended
 it; or `stopped`, by Ctrl-Z or a signal, with the signal's number.
 Without `block` it doesn't wait, and is 0 and `running` if no program
@@ -439,6 +454,16 @@ signals `Rt` reports, SIGSEGV and SIGFPE, is -22 (EINVAL). `ignore`
 makes a signal do nothing, as a shell ignores `sigTtou` so that it can
 take its terminal back, and `ignore(sig, false)` gives it back what it
 does at first. A program that `spawn` starts begins with neither.
+
+`handle` is for a program that must see a signal while it waits in a
+system call, as a shell waiting for its foreground program, or for a
+key, sees Ctrl-C: the signal is noted, and the call it comes during,
+`wait`, `read`, `ready` and the rest, fails with -4 (EINTR) rather
+than going on; `sleep` sleeps its time all the same. `came(sig)` says whether it came since the last time it
+was asked. Nothing else runs when the signal comes, so the program
+does what it does after it, in its own time; `Out` and `Files` try
+again after -4. `ignore(sig, false)` gives the signal back what it does
+at first, and the signals `catch` refuses, `handle` refuses too.
 
 **Time.** `clock` is for measuring how long something takes: it never
 goes back, and says nothing of the date. `now` is the date and time,

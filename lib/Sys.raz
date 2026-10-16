@@ -7,8 +7,8 @@
    only the two struct timeval that begin struct rusage are read. What
    is glibc's, on x86-64: where a name lies in struct dirent; struct
    stat; open's flags; the numbers of the requests TIOCGWINSZ,
-   TIOCSWINSZ and TIOCSCTTY; close_range; SOCK_CLOEXEC, AF_INET6 and
-   SO_REUSEADDR; struct sockaddr_un and sockaddr_in, which on the BSDs
+   TIOCSWINSZ and TIOCSCTTY, and of F_DUPFD_CLOEXEC; close_range;
+   SOCK_CLOEXEC, AF_INET6 and SO_REUSEADDR; struct sockaddr_un and sockaddr_in, which on the BSDs
    start with a byte of length; the numbers of the signals and of the
    limits, and RLIM_INFINITY, all ones. A C library that differs needs
    a Sys of its own. *)
@@ -157,6 +157,8 @@ var
     saved: [256]U8;   (* the terminal as rawMode found it: a struct termios, of the C library's size *)
     host: [256]U8;    (* what hostName gives *)
     sigRead, sigWrite: I32;   (* the pipe the handler of caught signals writes their numbers to, once open *)
+    noted: [65]INT;   (* 1 at sig when a signal handle took has come, until came asks *)
+    broke: INT;       (* 1 when one has come since a call that ready or readyFor makes again began *)
 
 (* minus errno, as a system call returns it *)
 proc failed: INT;
@@ -164,6 +166,15 @@ var e: ^I32;
 begin
     e := C.__errno_location();
     return -INT(e^);
+end;
+
+(* Whether a call that failed is to be made again: when it failed with
+   EINTR because a signal catch took broke into it, since on Linux those
+   break into nothing; not when one handle took did, which the program
+   is to see. broke is set to 0 before the call. *)
+proc again: BOOL;
+begin
+    return (failed() = -4) and (XCHG(ADR(broke), 0) = 0);
 end;
 
 (* Writes s to the file descriptor fd; the number of bytes written, or
@@ -329,6 +340,18 @@ proc dupTo*(fd, into: INT): INT;
 var r: I32;
 begin
     r := C.dup2(I32(fd), I32(into));
+    if r < 0 then return failed(); end;
+    return INT(r);
+end;
+
+(* A new file descriptor for the file fd is open on, the lowest free
+   from least on, and closed on exec: it, or minus an errno. A shell
+   keeps its own at 10 and above, out of the way of those a script
+   names. *)
+proc dupAbove*(fd, least: INT): INT;
+var r: I32;
+begin
+    r := C.fcntl(I32(fd), 1030, I32(least));        (* F_DUPFD_CLOEXEC *)
     if r < 0 then return failed(); end;
     return INT(r);
 end;
@@ -644,7 +667,8 @@ proc ready*(fd, ms: INT): BOOL;
 var p: Pollfd; r: I32;
 begin
     p := {fd: I32(fd), events: 1};                   (* POLLIN *)
-    repeat r := C.poll(^U8(ADR(p)), 1, I32(ms)); until (r >= 0) or (failed() # -4);   (* EINTR: a signal caught *)
+    _ := XCHG(ADR(broke), 0);
+    repeat r := C.poll(^U8(ADR(p)), 1, I32(ms)); until (r >= 0) or not again();
     return r > 0;
 end;
 
@@ -836,7 +860,8 @@ begin
             INC(n);
         end;
     end;
-    repeat r := C.poll(^U8(ADR(p)), UINT(n), I32(ms)); until (r >= 0) or (failed() # -4);   (* EINTR *)
+    _ := XCHG(ADR(broke), 0);
+    repeat r := C.poll(^U8(ADR(p)), UINT(n), I32(ms)); until (r >= 0) or not again();
     if r <= 0 then return -1; end;
     for i := 0 to n - 1 do
         if p[i].revents # 0 then return INT(p[i].fd); end;
@@ -1183,6 +1208,12 @@ begin
     return 0;
 end;
 
+(* The process group this program is in. *)
+proc group*: INT;
+begin
+    return INT(C.getpgrp());
+end;
+
 (* Gives the keys of the terminal on fd, and its signals, to the process
    group group. *)
 proc foreground*(fd, group: INT): INT;
@@ -1450,8 +1481,8 @@ begin
     return r;
 end;
 
-(* Waits for the program pid, or any of this program's if pid is -1, to
-   change, if block, and says which one changed and how: exited, with
+(* Waits for the program pid, any of this program's if pid is -1, or
+   any of the group g if pid is -g, to change, if block, and says which one changed and how: exited, with
    its exit status; killed or stopped, with the signal's number. Without
    block it doesn't wait: 0 and running if none has changed. Minus an
    errno, and running, if there is none to wait for. The status is read
@@ -1535,6 +1566,53 @@ end;
 proc isTerminal*(fd: INT): BOOL;
 begin
     return C.isatty(I32(fd)) = 1;
+end;
+
+(* The handler of the signals handle takes: it notes that sig came, and
+   does nothing else, since it runs between any two instructions of the
+   program, perhaps while Out or Heap holds its lock. *)
+proc onNoted(sig: I32);
+begin
+    _ := XCHG(ADR(noted[sig]), 1);
+    _ := XCHG(ADR(broke), 1);
+end;
+
+(* Takes the signal sig away from what it would do: it is noted, for
+   came to see, and a system call it comes during fails with -4 (EINTR)
+   rather than going on, so that a program waiting for another, or for
+   a key, sees Ctrl-C at once. 0, or minus an errno. ignore(sig, false)
+   gives it back what it does at first. *)
+proc handle*(sig: INT): INT;
+var act: Sigaction;
+begin
+    if (sig < 1) or (sig > 64) or (sig = sigKill) or (sig = sigStop)
+            or (sig = 8) or (sig = 11) then           (* SIGFPE and SIGSEGV, Rt's *)
+        return -22;                                   (* EINVAL *)
+    end;
+    act := {handler: onNoted};                        (* no SA_RESTART *)
+    if C.sigaction(I32(sig), ^U8(ADR(act)), nil) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* Whether the signal sig, which handle took, came since the last time
+   it was asked. *)
+proc came*(sig: INT): BOOL;
+begin
+    if (sig < 1) or (sig > 64) then return false; end;
+    return XCHG(ADR(noted[sig]), 0) = 1;
+end;
+
+(* A copy of this program, which goes on from here: 0 in the copy, its
+   process id in this one, or minus an errno. Only the thread that
+   calls it is copied, so a program with threads mustn't; and what Out
+   keeps is copied too, to be written twice, so the program flushes it
+   first. *)
+proc fork*: INT;
+var r: I32;
+begin
+    r := C.fork();
+    if r < 0 then return failed(); end;
+    return INT(r);
 end;
 
 (* Gives the processor to another thread. *)
@@ -1649,7 +1727,7 @@ end;
    are caught still. *)
 proc testShell;
 var
-    r, w, fd, n, k, child, c, err, pty, sigs, mask: INT; st: Status; buf: [64]U8;
+    r, w, fd, n, k, child, c, err, pty, sigs, mask, parent: INT; t: I64; st: Status; buf: [64]U8;
     m, raw: Mode; soft, hard, s2, h2, user, system: I64; e: []U8; ok, path: BOOL;
 begin
     r, w := pipe();
@@ -1724,6 +1802,30 @@ begin
     if err # -22 then exit(2); end;                 (* EINVAL *)
     e, err := hostName();
     if (err # 0) or (LEN(e) = 0) or (uid() < 0) or (euid() < 0) then exit(2); end;
+
+    (* a copy of an fd out of the way; this program's group; a copy of
+       this program, waited for by the group; a signal noted, and a wait
+       it breaks into *)
+    r, w := pipe();
+    fd := dupAbove(w, 10);
+    if (fd < 10) or (write(fd, "d") # 1) or (read(r, buf) # 1) or (dupAbove(-1, 10) # -9) then exit(2); end;
+    close(fd);
+    if group() <= 0 then exit(2); end;
+    child := fork();
+    if child = 0 then exit(7); end;
+    k, st, c := wait(-group(), true);
+    if (k # child) or (st # exited) or (c # 7) then exit(2); end;
+    if (handle(sigUsr2) # 0) or came(sigUsr2) or (handle(sigKill) # -22) then exit(2); end;
+    if (kill(pid(), sigUsr2) # 0) or not came(sigUsr2) or came(sigUsr2) then exit(2); end;
+    parent := pid();
+    child := fork();
+    if child = 0 then sleep(100); _ := kill(parent, sigUsr2); exit(0); end;
+    t := clock();
+    if ready(r, 5000) or not came(sigUsr2) or (clock() - t > 4000000000) then exit(2); end;
+    k, st, c := wait(child, true);
+    if (k # child) or (ignore(sigUsr2, false) # 0) then exit(2); end;
+    close(r);
+    close(w);
 
     sigs := catch([sigUsr1]);
     while caught(sigs) # 0 do end;                  (* the sigChld of the programs above *)
