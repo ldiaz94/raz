@@ -1,0 +1,10 @@
+module EnumShared;
+type
+    Style = (bold, italic);
+    Elem = (para, bold);
+proc main*;
+var s: Style;
+begin
+    s := bold;
+end;
+end EnumShared.

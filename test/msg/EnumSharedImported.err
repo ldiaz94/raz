@@ -1,0 +1,5 @@
+conform/err/EnumSharedImported.raz:6:10: error: bold is a name of EnumKinds.Style and of EnumKinds.Elem
+    6 |     k := EnumKinds.bold;
+      |          ^^^^^^^^^
+help: write it with its type: EnumKinds.Style.bold or EnumKinds.Elem.bold
+raz: 1 error

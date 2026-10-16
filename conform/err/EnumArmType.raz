@@ -1,0 +1,13 @@
+module EnumArmType;
+type
+    Style = (bold, italic);
+    Elem = (para, bold);
+proc main*;
+var e: Elem;
+begin
+    match e of
+    | Style.bold:
+    | else:
+    end;
+end;
+end EnumArmType.

@@ -1,0 +1,4 @@
+conform/err/EnumArmType.raz:9:7: error: the match is on Elem, not Style
+    9 |     | Style.bold:
+      |       ^^^^^
+raz: 1 error

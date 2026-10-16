@@ -77,6 +77,12 @@ type
         home*: ^Module;    (* oModule: the module; others: where declared *)
         chain*: ^Obj;      (* the next declaration of its module, top-level or
                               local *)
+        ofEnum*: BOOL;     (* oConst: a name of its enumeration, which may share
+                              its scope with another declaration of the name
+                              (report section 5.7) *)
+        twin*: ^Obj;       (* an enumeration's name in its scope: another
+                              enumeration's of the same name, which makes the
+                              name alone an error; nil if none *)
     end;
 
     (* The arguments of a generic module's instance: a type, or a
@@ -267,6 +273,12 @@ begin
     Mem.free(Heap.heap, ^U8(old));
 end;
 
+(* Declares obj in the scope s, or reports a name declared twice there.
+   A name of an enumeration may share its scope with another declaration
+   of the name (report section 5.7): it is always reached through its
+   type, Elem.bold, so the scope keeps the other declaration, which the
+   name alone then means; of two enumerations' names, it keeps the first,
+   with the second as its twin, and the name alone is an error. *)
 proc insert*(obj: ^Obj; s: INT): ERROR;
 var i: INT; o: ^Obj;
 begin
@@ -274,6 +286,14 @@ begin
     o := hashTab[i];
     while o # nil do
         if (o^.scope = s) and (o^.name = obj^.name) then
+            obj^.scope := s;
+            if obj^.ofEnum then
+                if o^.ofEnum and (o^.twin = nil) then o^.twin := obj; end;
+                return nil;
+            elsif o^.ofEnum then
+                hashTab[i] := obj;   (* the name alone is obj *)
+                return nil;
+            end;
             Diag.error(obj^.pos, Diag.say("{} is declared twice", [Fmt.str(Scan.nameOf(obj^.name))]));
             Diag.note(o^.pos, "the first one is here");
             return Scan.Failed;

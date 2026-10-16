@@ -1,0 +1,5 @@
+conform/err/EnumShared.raz:8:10: error: bold is a name of Style and of Elem
+    8 |     s := bold;
+      |          ^^^^
+help: write it with its type: Style.bold or Elem.bold
+raz: 1 error

@@ -15,12 +15,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,127 | 934 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 687 | 556 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 707 | 566 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,037 | 1,651 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,065 | 3,532 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,123 | 3,578 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 305 | 238 | The command line |
@@ -979,7 +979,12 @@ different targets agree. The universe, the basic types and built-in
 procedures, is set up in the module's body.
 
 Two routines can find an error: `insert`, for a name declared twice, and
-`openScope`, for too many scopes. Each shows it and returns
+`openScope`, for too many scopes. A name of an enumeration (`ofEnum`)
+may share its scope with another declaration (report 2026-10.31): it is
+reached through its type, `Elem.bold`, so `insert` keeps the other
+declaration in the scope for the name alone; of two enumerations'
+names it keeps the first, and notes the second as its `twin`, which
+makes the name alone an error. Each shows it and returns
 `Scan.Failed`, for the parser to pass up with `try`. A record's module
 and an object's link, which the seed called `module` and `link`, are
 `home` and `chain`, since those are reserved words here; `setCurModule`
@@ -1452,7 +1457,12 @@ two of the six integer registers and a slice result going in rax and
 rdx, and has gen's `codeProc` run
 the target's assembler) and bodies (`body`).
 `parseType` and its helpers (`recordType`, `variantType`, `signature`,
-`enumType`) build `Sym.Type`s.
+`enumType`) build `Sym.Type`s. `qualIdent` reads a name, `M.x` too, and
+`Elem.bold`, a name of an enumeration with its type (`enumName`); it
+refuses a name two enumerations share (`twinError`). An arm of a `match`
+on an enumeration takes its names from the type, written alone or with
+it (`typeFirst`). `compareIface` passes over an enumeration's names,
+which its type's fingerprint has.
 
 Last, modules, at the end of the file. `compileFile` reads one module.
 `importModule` finds a module's file, trying the target's names first,

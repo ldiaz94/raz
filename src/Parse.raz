@@ -441,6 +441,33 @@ proc firstUse(o: PObj; at: Diag.Pos): ERROR; forward;
 proc instancesFor(wholeRest: BOOL): ERROR; forward;
 proc addImport(m, im: PModule); forward;
 
+(* The name of the enumeration t that the current symbol is, after
+   "t.": Elem.bold (report section 5.7). *)
+proc enumName(t: PType): (PObj, ERROR);
+var o: PObj;
+begin
+    if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
+    o := t^.fields;
+    while (o # nil) and (o^.name # Scan.id) do o := o^.next; end;
+    if o = nil then
+        return nil, Scan.mark(say2("{} has no name {}", Sym.typeName(t), nameOf(Scan.id)));
+    end;
+    Scan.next;
+    return o, nil;
+end;
+
+(* An error at at: o, a name of an enumeration, is a name of another of
+   its scope too, so it is written with its type. *)
+proc twinError(o: PObj; at: Diag.Pos): ERROR;
+var a, b: []U8;
+begin
+    a := Sym.typeName(o^.typ); b := Sym.typeName(o^.twin^.typ);
+    return Scan.markHelp(at, Diag.say("{} is a name of {} and of {}",
+            [Fmt.str(nameOf(o^.name)), Fmt.str(a), Fmt.str(b)]),
+        Diag.say("write it with its type: {}.{} or {}.{}",
+            [Fmt.str(a), Fmt.str(nameOf(o^.name)), Fmt.str(b), Fmt.str(nameOf(o^.name))]));
+end;
+
 proc qualIdent: (PObj, ERROR);
 var o: PObj; m: PModule; at: Diag.Pos;
 begin
@@ -471,6 +498,12 @@ begin
             return nil, Scan.Failed;
         end;
         Scan.next;
+    end;
+    if (o^.cls = Sym.oType) and (o^.typ^.form = Sym.fEnum) and (Scan.tok = Scan.sPeriod) then
+        Scan.next;
+        o := try enumName(o^.typ);
+    elsif o^.twin # nil then
+        return nil, twinError(o, at);
     end;
     return o, nil;
 end;
@@ -690,6 +723,7 @@ begin
         if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
         o := Sym.newObj(Sym.oConst, Scan.id, t);
         o^.val := t^.len;
+        o^.ofEnum := true;
         o^.exported := declExported;
         o^.used := true;   (* an enumeration's names are its type's, warned of with it *)
         try declare(o);
@@ -1981,6 +2015,27 @@ begin
     if elseAt # Gen.NoLabel then Gen.jumpBack(elseAt); end;
 end;
 
+(* In an arm of a match on the enumeration t, a name may be written
+   with its type, | Elem.rule: (report section 5.7). If it is, skips the
+   type and the dot, which must name t itself. *)
+proc typeFirst(t: PType): ERROR;
+var st: Scan.State; o: PObj;
+begin
+    o := Sym.lookup(Scan.id);
+    if (o = nil) or (o^.cls # Sym.oType) then return nil; end;
+    Scan.saveScan(st);
+    Scan.next;
+    if Scan.tok # Scan.sPeriod then Scan.restoreScan(st); return nil; end;
+    if not Sym.same(o^.typ, t) then
+        Scan.restoreScan(st);
+        return Scan.mark(say2("the match is on {}, not {}", Sym.typeName(t), Sym.typeName(o^.typ)));
+    end;
+    named(o);
+    Scan.next;
+    if Scan.tok # Scan.sIdent then return expected("a name"); end;
+    return nil;
+end;
+
 proc matchStatement(start: Diag.Pos; ind: INT): ERROR;
 var
     x: TItem; t: PType; c, f, o: PObj; p: I64; L, endL, n, first, disp, elseAt: INT;
@@ -2022,6 +2077,7 @@ begin
             L := Gen.NoLabel;
             repeat
                 if Scan.tok # Scan.sIdent then return expected("a case"); end;
+                if t^.form = Sym.fEnum then try typeFirst(t); end;
                 c := t^.fields;
                 while (c # nil) and (c^.name # Scan.id) do c := c^.next; end;
                 if c = nil then
@@ -3810,9 +3866,11 @@ end;
 proc compareIface(a, b: PModule);
 var o, q: PObj;
 begin
+    (* an enumeration's names are its type's, which the type's
+       fingerprint has, and the name alone may be another's *)
     o := a^.first;
     while o # nil do
-        if o^.exported then
+        if o^.exported and not o^.ofEnum then
             q := Sym.find(b^.scope, o^.name);
             if (q = nil) or not q^.exported or (Sym.fingerprint(o) # Sym.fingerprint(q)) then
                 Diag.fatal(Diag.say("{}: {} isn't exported as in {}", [Fmt.str(b^.path), Fmt.str(nameOf(o^.name)), Fmt.str(a^.path)]));
@@ -3823,7 +3881,7 @@ begin
     q := b^.first;
     while q # nil do
         o := Sym.find(a^.scope, q^.name);
-        if q^.exported and ((o = nil) or not o^.exported) then
+        if q^.exported and not q^.ofEnum and ((o = nil) or not o^.exported) then
             Diag.fatal(Diag.say("{}: {} isn't exported by {}", [Fmt.str(b^.path), Fmt.str(nameOf(q^.name)), Fmt.str(a^.path)]));
         end;
         q := q^.chain;

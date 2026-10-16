@@ -1,0 +1,8 @@
+(* Two enumerations that share a name, exported, for EnumNames. *)
+module EnumKinds;
+
+type
+    Style* = (plain, bold, italic);
+    Elem* = (para, bold, rule);
+
+end EnumKinds.

@@ -1,0 +1,8 @@
+module EnumSharedImported;
+import EnumKinds;
+proc main*;
+var k: EnumKinds.Elem;
+begin
+    k := EnumKinds.bold;
+end;
+end EnumSharedImported.

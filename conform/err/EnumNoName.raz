@@ -1,0 +1,8 @@
+module EnumNoName;
+type Style = (bold, italic);
+proc main*;
+var s: Style;
+begin
+    s := Style.under;
+end;
+end EnumNoName.

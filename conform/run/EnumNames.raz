@@ -1,0 +1,44 @@
+(* A name of an enumeration may be written with its type; two
+   enumerations of a scope may share a name, and an enumeration may share
+   one with another declaration: written alone, the name is that other
+   one (report 2026-10.31, section 5.7). *)
+module EnumNames;
+import Out, EnumKinds;
+
+type
+    Style = (bold, italic);
+    Elem = (para, bold, rule);
+    Light = (red, amber, green);
+
+const Stop = Light.red;
+
+var s: Style; e: Elem; ss: set of Style; k: EnumKinds.Elem;
+
+proc rule;                              (* beside Elem's rule *)
+begin
+    Out.str("the procedure rule\n");
+end;
+
+proc main*;
+begin
+    s := Style.bold; e := Elem.bold;
+    if (s = Style.bold) and (e = Elem.bold) and (INT(e) = 1) then Out.str("Style.bold and Elem.bold\n"); end;
+    e := para;                          (* Elem's alone *)
+    e := Elem.rule;
+    rule;                               (* the procedure *)
+    s := italic;
+    match e of
+    | Elem.rule: Out.str("an arm with its type\n");
+    | para, bold: Out.str("an arm without\n");
+    end;
+    ss := {Style.bold, italic};
+    if Style.bold in ss then Out.str("in the set\n"); end;
+    if (Stop = red) and (Light.green > amber) then Out.str("ordered\n"); end;
+    k := EnumKinds.Elem.bold;
+    if (k = EnumKinds.Elem.bold) and (EnumKinds.Style.bold # EnumKinds.Style.plain) then
+        Out.str("imported, with module and type\n");
+    end;
+    if EnumKinds.para = k then Out.str("no\n"); end;
+end;
+
+end EnumNames.

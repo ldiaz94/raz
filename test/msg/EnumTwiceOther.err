@@ -1,0 +1,7 @@
+conform/err/EnumTwiceOther.raz:4:7: error: bold is declared twice
+    4 | const bold = 2;
+      |       ^^^^
+conform/err/EnumTwiceOther.raz:3:5: note: the first one is here
+    3 | var bold: INT;
+      |     ^^^^
+raz: 1 error

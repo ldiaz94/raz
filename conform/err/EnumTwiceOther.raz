@@ -1,0 +1,8 @@
+module EnumTwiceOther;
+type Style = (bold, italic);
+var bold: INT;
+const bold = 2;
+proc main*;
+begin
+end;
+end EnumTwiceOther.
