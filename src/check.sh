@@ -13,8 +13,9 @@ b=build/src
 # converts the narrower of two integers; and views, v.(T),
 # whose tests are conform/*/View*.raz, and which Math, examples/Elf.raz
 # and, through Math, test/bench/NBody.raz use; and returning a slice of
-# the frame as an error (report 2026-10.27); and an array constant
-# typed []T (report 2026-10.29).
+# the frame as an error (report 2026-10.27); an array constant typed
+# []T (report 2026-10.29); and [] as the empty slice, seen through a
+# view (report 2026-10.30).
 newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRawIndent.raz
     conform/run/MatchStr.raz conform/err/MatchStrTwice.raz conform/err/MatchStrNoElse.raz
     conform/err/MatchStrVar.raz conform/err/MatchReal.raz conform/err/AtMatch.raz
@@ -23,7 +24,8 @@ newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRa
     conform/err/IntResultsNarrow.raz conform/err/GenIntTypes.raz
     lib/Math.raz examples/Elf.raz test/bench/NBody.raz
     conform/err/FrameSlice.raz
-    conform/run/ArrayConstLen.raz conform/err/ArrayConstLenEmpty.raz conform/err/ArrayConstLenLiteral.raz"
+    conform/run/ArrayConstLen.raz conform/err/ArrayConstLenEmpty.raz conform/err/ArrayConstLenLiteral.raz
+    conform/run/EmptySlice.raz"
 newer() {
     case $1 in conform/*/View*.raz) return 0 ;; esac
     for g in $newer; do [ $g = $1 ] && return 0; done

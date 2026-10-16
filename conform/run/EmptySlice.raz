@@ -1,0 +1,43 @@
+(* [] used as a slice is the empty slice, as a slice variable starts,
+   and no variable of the procedure: it may be returned beside an error
+   (report 2026-10.30, sections 6.5 and 7.3). *)
+module EmptySlice;
+import Out;
+
+type Pair = record a, b: INT; end;
+
+const NotFound: ERROR = "not found";
+
+var pairs: [3]Pair;
+
+(* The pairs from the first whose a is key on, or none and NotFound. *)
+proc from(key: INT): ([]Pair, ERROR);
+var i: INT;
+begin
+    for i := 0 to LEN(pairs) - 1 do
+        if pairs[i].a = key then return pairs[i..LEN(pairs)], nil; end;
+    end;
+    return [], NotFound;
+end;
+
+proc none: []INT;
+begin
+    return [];
+end;
+
+proc main*;
+var s: []Pair; e: ERROR; t, u: []INT; w: [2]INT;
+begin
+    pairs := [{a: 1, b: 10}, {a: 2, b: 20}, {a: 3, b: 30}];
+    s, e := from(2);
+    Out.int(LEN(s)); Out.str(" "); Out.int(s[0].b); Out.ln;
+    s, e := from(9);
+    if e = NotFound then Out.str("not found, "); Out.int(LEN(s)); Out.ln; end;
+    t := none();
+    w := t.([2]INT);                        (* ptr and len (5.3) *)
+    if (w[0] = 0) and (w[1] = 0) then Out.str("empty, as a variable starts\n"); end;
+    u := [];
+    Out.int(LEN(u)); Out.ln;
+end;
+
+end EmptySlice.
