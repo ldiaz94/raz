@@ -60,6 +60,7 @@ type
         symlink*: BOOL; (* the path itself is a symbolic link *)
         ino*: U64;      (* its inode, which a rename keeps and a new file doesn't *)
         dev*: U64;      (* the file system it is on; with ino, it names the file *)
+        links*: U64;    (* how many names it has: 1 for a file no hard link shares *)
     end;
 
     (* What a directory says a name in it is, without asking the file:
@@ -507,6 +508,7 @@ begin
     i.size := st[6];                                 (* st_size *)
     i.dev := U64(st[0]);                             (* st_dev *)
     i.ino := U64(st[1]);                             (* st_ino *)
+    i.links := U64(st[2]);                           (* st_nlink *)
     i.mtime := st[11] * 1000000000 + st[12];         (* st_mtim *)
     i.mode := st[3] & 1FFH;
     i.dir := st[3] & 0F000H = 4000H;               (* S_IFDIR *)
@@ -2064,7 +2066,7 @@ begin
     if (entryKind(ADR(d)) # isFile) and (entryKind(ADR(d)) # unknown) then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/g");
     j, err := info("/tmp/raz-sys-dir");
-    if (err # 0) or (i.dev # j.dev) or (i.ino = j.ino) then exit(2); end;
+    if (err # 0) or (i.dev # j.dev) or (i.ino = j.ino) or (i.links # 1) then exit(2); end;
     name, ok := nextEntry(ADR(d));
     if ok then exit(2); end;
     closeDir(ADR(d));

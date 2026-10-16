@@ -179,6 +179,7 @@ type
         symlink*: BOOL;  (* the path itself is a symbolic link *)
         ino*: U64;       (* its inode, which a rename keeps and a new file doesn't *)
         dev*: U64;       (* the file system it is on; with ino, it names the file *)
+        links*: U64;     (* how many names it has: 1 for a file no hard link shares *)
     end;
     Kind* = (unknown, isFile, isDir, isLink, isOther);   (* what a directory says a name in it is *)
     Dir* = record ... end;   (* an open directory; its fields are the target's *)
@@ -357,7 +358,9 @@ still the same file, not one renamed over it; 0 on a target whose
 files have none. `Info.dev` is the file system the file is on: two
 files are one only if both `dev` and `ino` agree, which is how a
 program following links finds that one has led it back into a
-directory it is already in. `Info.mode` holds the nine
+directory it is already in. `Info.links` is how many names the file
+has: more than 1 if a hard link shares it, so that writing to it
+writes to a file named elsewhere too; 0 on a target that doesn't say. `Info.mode` holds the nine
 bits of `rwxrwxrwx`, and `chmod` sets them, 1EDH (755) for a program,
 1A4H (644) for data.
 
