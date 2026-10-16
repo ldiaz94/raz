@@ -180,3 +180,12 @@ at the time.
   slice, `ptr` `nil` and `len` 0, and no hidden variable, so it may be
   returned (sections 6.5 and 7.3); 7.3 had made returning it an error,
   which the compiler never was. It breaks no program.
+- **2026-10.31.** A thaw, the seventh. `INT` and `UINT` are at least
+  16 bits on every target (section 5.1). `U8`, `I8` and `I16` widen to
+  `INT`, and `U8` and `U16` to `UINT`, where they are moved, as an
+  `INT` widens to `I64`; what an operator gives on them doesn't
+  (sections 5.10 and 6.1). An enumeration's name may be written with
+  its type, `Color.red`; two enumerations of a scope may share a name,
+  or one share a name with another declaration, and it is then written
+  with its type (section 5.7). `continue` ends a loop's round (sections
+  7.2 and 7.7). It breaks a program that has a name `continue`.

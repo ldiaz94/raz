@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.30 of the report; section 11 says where each
+This is version 2026-10.31 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -34,7 +34,12 @@ it kept past that is undefined (sections 8 and 10). 2026-10.29 is a
 sixth thaw: an array constant typed `[]T` takes its length from its
 literal (section 4); it breaks no program. 2026-10.30 mends a defect:
 `[]` used as a slice is the empty slice, which may be returned
-(sections 6.5 and 7.3); it breaks no program.
+(sections 6.5 and 7.3); it breaks no program. 2026-10.31 is a seventh
+thaw: `INT` is at least 16 bits, and `U8`, `I8` and `I16` widen to it
+(sections 5.1, 5.10 and 6.1); an enumeration's name may be written with
+its type, and must be where another declaration shares it (section
+5.7); and `continue` (section 7.2), which breaks a program that has a
+name `continue`.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -77,10 +82,10 @@ the left of `:=` (section 7.1).
 **Reserved words** are lowercase, except `VOLATILE`:
 
 ```
-and begin break by code const defer div do else elsif end extern for
-forward if import in link match mod module not of or packed proc record
-repeat return set shl shr then to try type until var variant VOLATILE
-while xor
+and begin break by code const continue defer div do else elsif end
+extern for forward if import in link match mod module not of or packed
+proc record repeat return set shl shr then to try type until var
+variant VOLATILE while xor
 ```
 
 `static`, in `link static;` (section 3), and `check` and `off`, in
@@ -437,8 +442,8 @@ QualIdent = [ ident "." ] ident .
 | `F64` | 8 | IEEE 754 double precision |
 
 `INT` is the everyday integer: lengths, indexes and sizes are `INT`s.
-It is as big as an address, so it is the integer a pointer converts
-to (section 6.7), and a word the atomic built-ins work on (section
+It is as big as an address, and at least 16 bits, as `UINT` is, on
+every target; so it is the integer a pointer converts to (section 6.7), and a word the atomic built-ins work on (section
 6.8). `INT` and `I64` are two types, even where they have the same
 size: an `INT` goes silently into an `I64` wherever it meets one, in
 an expression too (sections 5.10 and 6.1), and an `I64` becomes an
@@ -552,6 +557,30 @@ variant, the names are declared in the scope around the type. An
 enumeration has at most 256 names and takes 1 byte; the first name is
 0, the next 1, and so on.
 
+A name of an enumeration may also be written with its type,
+`Color.red`, and one imported with the type's module, `M.Color.red`.
+Two enumerations of a scope may share a name, and an enumeration may
+have a name that something else of its scope has, a constant, a
+variable or a procedure: such a name is written with its type,
+`Elem.bold`. Written alone, it names the one declaration of it that
+isn't an enumeration's, if there is one, and is an error if there
+isn't:
+
+```
+type
+    Style = (bold, italic);
+    Elem = (para, bold, rule);
+proc rule;                  (* a procedure, beside Elem's rule *)
+...
+s := Style.bold;  e := Elem.bold;  e := Elem.rule;
+e := para;                  (* para is Elem's alone *)
+rule;                       (* the procedure *)
+s := bold;                  (* an error: write Style.bold or Elem.bold *)
+```
+
+The type is never taken from where the name stands: `s := bold` is an
+error though `s` is a `Style`.
+
 `set of E`, for an enumeration `E` of at most 64 names, holds any
 choice of `E`'s names: bit `i` stands for the name at position `i`. It
 takes the smallest of 1, 2, 4 and 8 bytes that has a bit for each name,
@@ -626,7 +655,11 @@ the same type, or if:
   least the string's length (the rest is zero);
 - `A` is a procedure and `B` a procedure type with the same signature;
 - `A` is `INT` and `B` is `I64`, or `A` is `UINT` and `B` is `U64`,
-  which loses nothing on any target.
+  which loses nothing on any target;
+- `A` is `U8`, `I8` or `I16` and `B` is `INT`, or `A` is `U8` or `U16`
+  and `B` is `UINT`, which an `INT` or a `UINT` of 16 bits holds whole,
+  so on every target; unless the value is what an operator gives
+  (below).
 
 A string's bytes are constant. A `[]U8` or `^U8` made from a string
 literal, or a slice of a string constant, points at them, and writing
@@ -645,6 +678,26 @@ it meets an `I64` (section 6.1). The types themselves stay two: a
 `^INT` isn't a `^I64`, an `INT` variable isn't passed to a `var`
 parameter of type `I64`, and a procedure returning an `INT` isn't of a
 procedure type returning an `I64`.
+
+A `U8`, `I8` or `I16` widens to `INT`, and a `U8` or `U16` to `UINT`,
+in the same places, as an `INT` to `I64`: assigned, passed, returned,
+in `a, b := f(x)`, to a `for`'s bounds and `INC` and `DEC`'s step, and
+in an expression, where it meets an `INT` or a `UINT` (section 6.1).
+They widen only that far: a `U8` meets an `I64` only as `INT(b)` or
+`I64(b)`. And they widen only as values that are moved: a variable, an
+element, a field, a call's result or a conversion's. What an operator
+gives on them doesn't: it was computed in their type, and has wrapped
+there. With `a, b: U8` holding 200 and 100, `a + b` is 44, so
+`n := a + b`, for an `INT` `n`, is an error; `n := INT(a) + b` is 300,
+and says where the sum is made.
+
+```
+var s: []U8; n, d: INT;
+n := s[i];                  (* an element: widens *)
+n := n * 10 + s[i] - '0';   (* n * 10 + s[i] is an INT, and so the rest *)
+d := s[i] - '0';            (* an error: a U8, which may have wrapped *)
+d := INT(s[i]) - '0';       (* below '0' too, it is negative *)
+```
 
 ## 6. Expressions
 
@@ -689,14 +742,16 @@ view, `mem[a].(I64) := v` (section 6.9), says it without a pointer.
 Both operands of `+ - * div mod & | xor`, and of a relation, have the
 same integer type, or one is an untyped constant that takes the
 other's type, which it must fit, or one is an `INT` and the other an
-`I64` (a `UINT` and a `U64`), and the `INT` widens to `I64` (section
-5.10). So do `v` and `k` in `INC(v, k)` and
+`I64` (a `UINT` and a `U64`), and the `INT` widens to `I64`, or one is
+an `INT` and the other a `U8`, `I8` or `I16` (a `UINT` and a `U8` or
+`U16`) that no operator gave, and it widens to `INT` (section 5.10). So do `v` and `k` in `INC(v, k)` and
 `DEC(v, k)`, where only `k` widens: an `I64` `k` isn't added to an
 `INT` `v`. The result has that type and wraps around at its width:
 in `U8`, `200 + 100` is `44`. A unary minus wraps too: for `x` of an
 unsigned type, `-x` is `0 - x`. Other integer types are never mixed,
 whatever their sizes: with `i: I32`, `i < LEN(s)` is an error, and
-`i` should be an `INT`. With `pos: I64`, `pos + LEN(s)` is an `I64`.
+`i` should be an `INT`; with `c: U8`, `c < LEN(s)` is an `INT`
+comparison. With `pos: I64`, `pos + LEN(s)` is an `I64`.
 
 Where the report asks for an integer and names no type, as an index, a
 slice's bound, a shift's count, a pointer's offset `i` in `p + i`, or
@@ -993,6 +1048,7 @@ Statement  = Designator [ ":=" Expr ]
            | "match" Expr "of" { "|" Arm } "end"
            | "return" [ Expr { "," Expr } ]
            | "break"
+           | "continue"
            | "defer" Statement
            | "try" Designator .
 Arm        = ( ident [ "(" ident { "," ident } ")" ]
@@ -1043,7 +1099,22 @@ otherwise `i` becomes `i + s`, wrapping, and the loop goes on while
 `i <= b`. A negative `s` is the same, the other way round.
 
 `break` ends the innermost `while`, `repeat` or `for` it stands in,
-and the program goes on after it. There is no `goto`.
+and the program goes on after it. `continue` ends the round of the
+innermost one, as reaching the end of its body would: a `while` tests
+its condition again, a `repeat` tests its `until`, and a `for` steps
+its variable, or ends. There is no `goto`.
+
+A `continue` passes over the rest of the body, the step of a `while`
+or a `repeat` included, if it stands there: so the step comes first.
+
+```
+while i < LEN(t) do
+    ch, n := Str.decode(t[i..LEN(t)]);
+    i := i + n;                         (* before any continue *)
+    if ch = 0ADH then continue; end;    (* a soft hyphen, passed over *)
+    ...
+end;
+```
 
 ### 7.3 Return
 
@@ -1181,7 +1252,7 @@ becomes undefined by it.
 
 `defer s;` runs the statement `s` when the program leaves the statement
 list the `defer` stands in: at its end, or by a `return`, or by a
-`break` out of it. Statements deferred in the same list run in the
+`break` or `continue` out of it. Statements deferred in the same list run in the
 opposite order to their `defer`s, and only those whose `defer` has been
 reached run.
 
@@ -1215,8 +1286,8 @@ end Head.
 ```
 
 `return e;` evaluates `e` before the deferred statements run. A
-deferred statement can't contain `defer`, nor a `return`, `break` or
-`try` that would leave it. A failed check, `Rt.exit` and `Sys.exit` end the
+deferred statement can't contain `defer`, nor a `return`, `break`,
+`continue` or `try` that would leave it. A failed check, `Rt.exit` and `Sys.exit` end the
 program without running the deferred statements still pending.
 
 ### 7.8 Try
@@ -1705,6 +1776,7 @@ Statement  = Designator [ ":=" Expr ]
            | "match" Expr "of" { "|" Arm } "end"
            | "return" [ Expr { "," Expr } ]
            | "break"
+           | "continue"
            | "defer" Statement
            | "try" Designator .
 Arm        = ( ident [ "(" ident { "," ident } ")" ]
