@@ -1648,7 +1648,8 @@ that it follows this report: it passes them all, its reals aside where its targe
 
 - **The target.** Which machines and systems it compiles for, and the
   names of their files (`linux-x86_64`, section 3); for each, the size
-  of an address, and so of `INT`, and whether it has reals.
+  of an address, and so of `INT`, whether it has reals, and which C
+  library a program that uses C is linked against.
 - **Separate compilation.** Whether modules are compiled on their own,
   and if so into what: the object file, its format, the form of the
   code in it, when one is out of date, and how an instance is named so

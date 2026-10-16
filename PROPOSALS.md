@@ -437,69 +437,18 @@ one release a missing `unsafe;` is a warning, then an error.
 Pieces 1 and 2 are small and change no program; 3 is a mend; 4 needs
 a thaw.
 
-## Sys over any C library
+## Windows
 
-`lib/Sys.raz` is the `Sys` of a target with no file of its own, which
-is every target but Linux; it is written over C so that one file
-serves them all. But it holds glibc's facts for x86-64 Linux, as its
-opening comment says: where a name lies in struct dirent, struct stat
-and statvfs, struct sigaction, sockaddr_un and sockaddr_in, open's,
-socket's and send's flags, the terminal's requests, the signals' and
-the limits' numbers. These are the kernel's more than glibc's:
-checked on this machine against musl 1.2, every one Sys uses agrees,
-and musl lacks only `close_range`. On FreeBSD, macOS, or Linux on
-ARM, nearly all differ, so the file meant for other systems serves
-none of them. There is more of the same:
-
-- `C.__errno_location` is glibc's and musl's name; the BSDs and macOS
-  call it `__error`. `close_range`, `memfd_create`, `getrandom`,
-  `accept4` and `cfmakeraw` aren't in every C library.
-- `doc/raz-lib.md` says a failure is "minus an errno, as on Linux",
-  but `Sys` over C gives the C library's numbers, which elsewhere
-  aren't Linux's (EAGAIN is 11 on Linux, 35 on the BSDs); `Files`
-  writes -2 for ENOENT.
-- A program that uses C needs `libc.so.6`, names
-  `/lib64/ld-linux-x86-64.so.2` as its loader, and starts through
-  `__libc_start_main`: constants of `Elf.raz` and `Raz.raz`. musl's
-  loader is `/lib/ld-musl-x86_64.so.1` and its library `libc.so`
-  (`__libc_start_main` is in both), so a raz program that uses C
-  doesn't run on Alpine.
-
-Four pieces, each standing on its own:
-
-**1. The facts in a module of their own.** `Sys.raz` keeps its code,
-over POSIX's names; what C fixes for each system, the layouts, the
-numbers and the names that differ, goes in a new module, `CAbi`, one
-file per target (`CAbi.linux-x86_64.raz`, `CAbi.freebsd-x86_64.raz`),
-as `Sys` has: offsets, sizes and constants, and the externs whose
-names differ behind one raz name (`CAbi.errno(): ^I32`). `Sys` reads
-a struct stat as bytes at `CAbi`'s offsets. Porting `Sys` to a C
-library is then writing that file, about a hundred lines, and nothing
-else. It adds a module and breaks no program.
-
-**2. The facts written by C.** `tools/cabi.c`, a C program that
-prints `CAbi`'s file for the system it is compiled on, from its own
-headers, with `offsetof`, `sizeof` and the constants: no fact is typed
-by hand, and a porter runs it once. `make check`, where there is a C
-compiler, runs it and compares with `lib/`'s file, and does the same
-with `musl-gcc` where that is installed.
-
-**3. Errnos as Linux's.** `Sys` exports names for the errnos programs
-test (`Sys.noEntry = -2`, `again`, `intr`, `exists`, ...), with
-Linux's numbers, and `Sys` over C maps the C library's errno to them
-through a table in `CAbi`, so that "as on Linux" holds everywhere.
-`Files` and the programs use the names. It adds constants and breaks
-no program.
-
-**4. The compiler's C library.** The loader's path, the library's
-name and the start-up symbol become facts of the target, not
-constants: `linux-x86_64` links against glibc or musl, by an option,
-or by default by which loader the machine has. Appendix A says the
-C library is the implementation's to choose under "The target", and
-`test/libc` runs under each one installed.
-
-Piece 4 has a gain today: raz programs that use C run on Alpine.
-Pieces 1 to 3 pay when a second system is ported, and 3 needs 1.
+A Windows target would keep volume 2 as it is: it describes the
+library on a Unix target. Windows has no stable system calls, no
+signals, no fork, no termios, and fds that are handles, so its `Sys`
+can't be the one volume 2 gives. Appendix A's core already lets a
+target leave out all of `Sys` past writing, ending the program and
+getting memory: a Windows target gives the core, and what else it has
+in a module of its own (`Win`), told on a page of its own beside
+volume 2. Volume 1 needs at most a sentence, that `link static;`
+means no C library where there are no system calls to make. The
+compiler needs a PE writer and Microsoft's calling convention.
 
 ## A slice's pointer
 

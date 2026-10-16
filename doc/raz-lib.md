@@ -11,7 +11,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; what an errno means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; errors, by name, and what one means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others, which takes what each C library fixes from `CAbi` |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -164,7 +164,14 @@ end Both.
 **Sys** gives every target the same procedures, so that a program
 that needs only these runs wherever raz does: through system calls on
 Linux, through the C library elsewhere. A result that can fail is a
-number, minus an errno, as on Linux; 0 is success.
+number, minus an errno, as on Linux; 0 is success. The number is
+Linux's on every target: `Sys` over another system's C library gives
+the Linux errno of the same name, and a program tests it by the names
+below; one with no Linux twin keeps its own number. `Sys.raz`, the
+`Sys` over C, keeps to POSIX's names; what a C library fixes for its
+target, the layouts of its structs, its numbers and the names that
+differ, it takes from `CAbi`, one file per target, which
+`tools/cabi.c`, compiled there, writes.
 
 ```
 module Sys;
@@ -179,6 +186,16 @@ const
     (* the limits limit and setLimit take, by their numbers on Linux; each target has its own *)
     limitCpu* = 0; limitFileSize* = 1; limitData* = 2; limitStack* = 3;
     limitCore* = 4; limitProcs* = 6; limitFiles* = 7; limitMemory* = 9;
+    (* errors, minus Linux's errnos on every target *)
+    errPerm* = -1; errNoEntry* = -2; errNoProcess* = -3; errIntr* = -4;
+    errIo* = -5; errBadFd* = -9; errChild* = -10; errAgain* = -11;
+    errNoMemory* = -12; errDenied* = -13; errExists* = -17;
+    errNotDir* = -20; errIsDir* = -21; errInvalid* = -22;
+    errNotTerminal* = -25; errNoSpace* = -28; errPipe* = -32;
+    errNameTooLong* = -36; errNotEmpty* = -39; errLoop* = -40;
+    errAddrInUse* = -98; errNetUnreach* = -101; errConnReset* = -104;
+    errTimedOut* = -110; errRefused* = -111; errHostUnreach* = -113;
+    errInProgress* = -115;
 
 type
     Access* = (reading, writing, creating, exclusive, truncating, appending, executing);
