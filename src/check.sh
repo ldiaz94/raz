@@ -33,7 +33,7 @@ newer="conform/run/RawStrings.raz conform/err/ScanRawOpen.raz conform/err/ScanRa
     conform/err/ContinueName.raz
     conform/run/EnumNames.raz conform/err/EnumShared.raz conform/err/EnumNoName.raz
     conform/err/EnumArmType.raz conform/err/EnumSharedImported.raz conform/err/EnumTwiceOther.raz
-    tools/Widths.raz"
+    tools/Widths.raz lib/Width.raz"
 newer() {
     case $1 in conform/*/View*.raz) return 0 ;; esac
     for g in $newer; do [ $g = $1 ] && return 0; done
