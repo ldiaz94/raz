@@ -562,3 +562,42 @@ It costs a row in the table of 6.8. A predeclared name can be hidden
 
 Met in concha's `Ccore`, in `bufVal` and `listVal`, and in `Sys` over
 C, before each call that takes a buffer.
+
+## An enumeration's name read against the type it is given to
+
+Two enumerations of a scope may share a name, and then the name alone
+is an error: "the type is never taken from where the name stands"
+(5.7). So a table of records, which names its enumerations on every
+row, must write the type out on each row where the name is shared,
+though the field says which enumeration it is:
+
+```
+type
+    MenuAction = (close, run, complete);
+    BlockKind = (time, run, window);
+    MenuKey = record sym: INT; act: MenuAction; end;
+    Block = record kind: BlockKind; arg: []U8; end;
+const
+    MenuKeys: []MenuKey = [{sym: 13, act: run}];   (* an error: MenuAction.run or BlockKind.run *)
+    Blocks: []Block = [{kind: run, arg: "date"}];   (* and so is this *)
+```
+
+Adding `BlockKind`, with its `run`, broke `MenuKeys`, which had
+compiled until then: a name added to one table reaches into the other.
+
+The proposal: where a value is given to a place whose type is an
+enumeration, a name of that enumeration written alone is that name,
+though another enumeration of the scope has it too. The places are the
+right side of an assignment, a field of a record or variant written
+with braces, a value parameter, a `return`, and the other side of a
+relation with a value of the type. Everywhere else, and wherever the
+rule of 5.7 names something already (a constant, a variable or a
+procedure of the scope that isn't an enumeration's name), it stays as
+it is. A program that compiles today means the same; only some of the
+programs refused today compile, so it breaks none.
+
+It costs a line of 5.7, and in the compiler, a type passed down to the
+lookup of a name where the parser knows it.
+
+Met in mosaico's `Mconfig`, where `MenuAction.run` and a status block's
+kind `run` met; the block's kind was renamed `command`.
