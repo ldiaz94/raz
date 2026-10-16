@@ -45,7 +45,7 @@ code
     (trace-calls);
 end;
 
-(* msg on standard error, then exit with status 2 *)
+(* msg, and a line feed, on standard error, then exit with status 2 *)
 proc stop*(msg: []U8);
 begin
     _ := Sys.write(Sys.stderr, msg);

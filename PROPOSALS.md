@@ -680,17 +680,3 @@ the errno of the open or the read that failed, as `Sys` gives them;
 `read` stays as it is. Library growth that breaks no program.
 
 Met in libro.
-
-## `Rt.stop`'s line feed, said
-
-`Rt.stop(msg)` writes `msg` and then a line feed, but its interface's
-comment, and the library volume's, say "msg on standard error, then
-exit with status 2": a program that ends its message with `\n`, as a
-message to standard error usually is, prints a blank line after it.
-libro's first did.
-
-The mend: the comment says "msg, and a line feed, on standard error,
-then exit with status 2", in `lib/Rt.raz` and `doc/raz-lib.md`. No
-program changes.
-
-Met in libro.

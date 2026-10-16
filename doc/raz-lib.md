@@ -46,7 +46,7 @@ module Rt;
 const Full*: ERROR = "too many procedures to run at exit";
 proc atExit*(p: proc): ERROR;   (* p run when the program ends by exit *)
 proc exit*(status: INT);        (* the atExit procedures, the last first, then the end *)
-proc stop*(msg: []U8);          (* msg on standard error, then exit with status 2 *)
+proc stop*(msg: []U8);          (* msg, and a line feed, on standard error, then exit with status 2 *)
 proc trace*;                    (* the calls under way, and their variables, on standard error *)
 ```
 

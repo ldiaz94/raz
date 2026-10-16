@@ -131,8 +131,8 @@ begin
     Sys.exit(status);
 end;
 
-(* Stops the program: says msg on standard error, then ends it by exit
-   with status 2, as a failed check does. *)
+(* Stops the program: says msg, and then a line feed, on standard
+   error, then ends it by exit with status 2, as a failed check does. *)
 proc stop*(msg: []U8);
 begin
     _ := Sys.write(Sys.stderr, msg);
