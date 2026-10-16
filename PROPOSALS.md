@@ -577,22 +577,6 @@ type to a narrower, nor `INT` back to any. No program changes.
 Met in libro's `Term`, `Flow` and `Epub`, and rml's `Rml`, wherever
 a byte is a number.
 
-## An array constant's length, from its literal
-
-A typed array constant states its length, and its literal must have
-that many elements (4, 6.5): `Zero: [357]Range = [...]`. A table a
-program makes, as libro's tables of character widths are made from
-Unicode's data, must be counted, and the count changed with it; one
-written by hand is counted by hand. `const T: []INT = [1, 2, 3]` is
-"only an ERROR, an array or a record constant has a type".
-
-The proposal: `[]T` as the type of an array constant, its length the
-literal's, as a string constant's is the string's; it is used as an
-array constant of that length is, `LEN` a constant. No program
-changes.
-
-Met in libro's `Layout` and rml's entities, 357, 121 and 253 elements.
-
 ## `Str.free`
 
 `Str.copy(a, s)` gives a copy from the allocator `a`; giving it back

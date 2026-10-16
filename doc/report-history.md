@@ -166,3 +166,6 @@ at the time.
   `Sys` gains `entryKind` and `Info.dev`; `spawn` finds a name without
   a `/` along `PATH`; over the C library, `syncAll` of a file that
   isn't open is -9 (EBADF), as on Linux (volume 2).
+- **2026-10.29.** A thaw, for tables. An array constant typed `[]T`
+  takes its length from its literal, and is an array constant of that
+  length in all else (section 4). It breaks no program.

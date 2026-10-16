@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.28 of the report; section 11 says where each
+This is version 2026-10.29 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -30,7 +30,12 @@ breaks no program. 2026-10.27 mends a defect: returning a slice of the
 procedure's own frame is an error (section 7.3), which breaks only a
 program that read memory already gone. 2026-10.28 mends another: an
 array a call returns lives to the end of its statement, and a slice of
-it kept past that is undefined (sections 8 and 10).
+it kept past that is undefined (sections 8 and 10). 2026-10.29 is a
+sixth thaw: an array constant typed `[]T` takes its length from its
+literal (section 4); it breaks no program.
+
+The compiler follows version 2026-10.28 until it has what 2026-10.29
+adds.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -384,6 +389,16 @@ record constant's fields can be read, and either can be assigned,
 compared as its type allows, and passed. Its parts are constant as a
 string's bytes are (section 5.10). A part of it isn't a constant, even
 at a constant index.
+
+An array constant may be typed `[]T`, with no length: its length is
+then its literal's, as a string constant's is the string's, and it is
+an array constant of that length, `[n]T`, in all else. Its literal has
+at least one element.
+
+```
+const Wide: [][2]I32 = [[1100H, 115FH], [2E80H, 303EH], [0AC00H, 0D7A3H]];
+    Count = LEN(Wide);    (* 3, a constant *)
+```
 
 **Variables** of a module live as long as the program; variables of a
 procedure live as long as its call. Both start at zero: every byte of
