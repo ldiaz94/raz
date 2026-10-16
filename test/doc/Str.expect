@@ -1,10 +1,11 @@
 module Str;
     Operations on strings, which are []U8. = and # compare them; this
     module orders, searches and hashes them, trims them and takes them
-    apart, changes the case of their ASCII letters, joins them and
-    replaces in them, reads and writes their UTF-8, reads a number from
-    one and writes one, and copies one to keep. A part it gives is a
-    slice of the string it was given, with no memory of its own.
+    apart, tells an ASCII character's kind and changes a letter's case,
+    joins them and replaces in them, reads and writes their UTF-8, reads
+    a number from one and writes one, and copies one to keep. A part it
+    gives is a slice of the string it was given, with no memory of its
+    own.
 
 proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);
     s's bytes, copied into memory from a, to keep after s's own are
@@ -29,6 +30,10 @@ proc hash*(s: []U8): U64;
 proc find*(s, sub: []U8): INT;
     Where sub first starts in s, or -1.
 
+proc findFrom*(s, sub: []U8; from: INT): INT;
+    Where sub first starts in s at or after from, or -1; from is at
+    most LEN(s).
+
 proc findLast*(s, sub: []U8): INT;
     Where sub last starts in s, or -1.
 
@@ -37,6 +42,23 @@ proc hasPrefix*(s, p: []U8): BOOL;
 
 proc hasSuffix*(s, x: []U8): BOOL;
     Whether s ends with x.
+
+proc isSpace*(c: U8): BOOL;
+    Whether c is a space: a blank, a tab, a line feed, a vertical tab, a
+    form feed or a carriage return.
+
+proc isDigit*(c: U8): BOOL;
+    Whether c is an ASCII digit, 0 to 9.
+
+proc isLetter*(c: U8): BOOL;
+    Whether c is an ASCII letter, A to Z or a to z.
+
+proc isPunct*(c: U8): BOOL;
+    Whether c is printable ASCII and neither a letter, a digit nor the
+    blank: one of !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~.
+
+proc hexVal*(c: U8): INT;
+    c's value as a hexadecimal digit, capital or small; -1 if it isn't one.
 
 proc trimLeft*(s: []U8): []U8;
     s without the spaces at its start.

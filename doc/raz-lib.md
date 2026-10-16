@@ -537,6 +537,7 @@ proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);   (* s's bytes in memory f
 proc free*(a: ^Mem.Allocator; s: []U8);                 (* what copy gave from a, given back; "" is none *)
 proc hash*(s: []U8): U64;             (* FNV-1a, 64 bits *)
 proc find*(s, sub: []U8): INT;        (* where sub first starts in s, or -1 *)
+proc findFrom*(s, sub: []U8; from: INT): INT;   (* where sub first starts in s at or after from, or -1 *)
 proc findLast*(s, sub: []U8): INT;    (* where sub last starts in s, or -1 *)
 proc hasPrefix*(s, p: []U8): BOOL;
 proc hasSuffix*(s, x: []U8): BOOL;
@@ -545,6 +546,11 @@ proc trimLeft*(s: []U8): []U8;        (* s without the spaces at its start *)
 proc trimRight*(s: []U8): []U8;       (* s without the spaces at its end *)
 proc cut*(s, sep: []U8): ([]U8, []U8, BOOL);   (* what comes before the first sep, and after it *)
 proc field*(s: []U8): ([]U8, []U8);   (* the first run of bytes in s that aren't spaces, and what follows it *)
+proc isDigit*(c: U8): BOOL;           (* 0 to 9 *)
+proc isLetter*(c: U8): BOOL;          (* A to Z, a to z *)
+proc isSpace*(c: U8): BOOL;           (* a space, as trim takes it *)
+proc isPunct*(c: U8): BOOL;           (* printable, and neither a letter, a digit nor the blank *)
+proc hexVal*(c: U8): INT;             (* c's value as a hexadecimal digit, or -1 *)
 proc lower*(s: []U8);                 (* s's ASCII capitals made small, in place *)
 proc upper*(s: []U8);                 (* s's ASCII small letters made capitals, in place *)
 proc join*(b: ^Buf.Buf; parts: [][]U8; sep: []U8);   (* the parts added to b, sep between each two *)
@@ -684,10 +690,11 @@ end;
 
 A string is bytes, and `Str` takes no more of Unicode than UTF-8:
 `lower`, `upper` and `eqFold` change and match ASCII letters alone,
+the character tests know ASCII alone,
 and nothing says how wide a character is on a terminal, nor which
 spellings of a text are the same.
 
-A space, to `trim`, `trimLeft`, `trimRight` and `field`, is a blank, a
+A space, to `isSpace`, `trim`, `trimLeft`, `trimRight` and `field`, is a blank, a
 tab, a line feed, a carriage return, a vertical tab or a form feed.
 `cut` gives what comes before the first `sep` in `s`, what comes after
 it, and `true`; or `s`, an empty string and `false` if `s` has no

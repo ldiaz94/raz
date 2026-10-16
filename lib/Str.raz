@@ -1,9 +1,10 @@
 (* Operations on strings, which are []U8. = and # compare them; this
    module orders, searches and hashes them, trims them and takes them
-   apart, changes the case of their ASCII letters, joins them and
-   replaces in them, reads and writes their UTF-8, reads a number from
-   one and writes one, and copies one to keep. A part it gives is a
-   slice of the string it was given, with no memory of its own. *)
+   apart, tells an ASCII character's kind and changes a letter's case,
+   joins them and replaces in them, reads and writes their UTF-8, reads
+   a number from one and writes one, and copies one to keep. A part it
+   gives is a slice of the string it was given, with no memory of its
+   own. *)
 module Str;
 import Mem, Heap, Rt, Bytes, Buf;
 
@@ -86,6 +87,16 @@ begin
     return Bytes.find(s, sub);
 end;
 
+(* Where sub first starts in s at or after from, or -1; from is at
+   most LEN(s). *)
+proc findFrom*(s, sub: []U8; from: INT): INT;
+var i: INT;
+begin
+    i := Bytes.find(s[from..LEN(s)], sub);
+    if i < 0 then return -1; end;
+    return from + i;
+end;
+
 (* Where sub last starts in s, or -1. *)
 proc findLast*(s, sub: []U8): INT;
 var i: INT;
@@ -110,9 +121,39 @@ end;
 
 (* Whether c is a space: a blank, a tab, a line feed, a vertical tab, a
    form feed or a carriage return. *)
-proc space(c: U8): BOOL;
+proc isSpace*(c: U8): BOOL;
 begin
     return (c = ' ') or (c >= 9) and (c <= 13);
+end;
+
+(* Whether c is an ASCII digit, 0 to 9. *)
+proc isDigit*(c: U8): BOOL;
+begin
+    return (c >= '0') and (c <= '9');
+end;
+
+(* Whether c is an ASCII letter, A to Z or a to z. *)
+proc isLetter*(c: U8): BOOL;
+begin
+    return (small(c) >= 'a') and (small(c) <= 'z');
+end;
+
+(* Whether c is printable ASCII and neither a letter, a digit nor the
+   blank: one of !"#$%&'()*+,-./:;<=>?@[\]^_`{|}~. *)
+proc isPunct*(c: U8): BOOL;
+begin
+    return (c > ' ') and (c < 127) and not isLetter(c) and not isDigit(c);
+end;
+
+(* c's value as a hexadecimal digit, capital or small; -1 if it isn't one. *)
+proc hexVal*(c: U8): INT;
+begin
+    match c of
+    | '0'..'9': return INT(c) - '0';
+    | 'A'..'F': return INT(c) - 'A' + 10;
+    | 'a'..'f': return INT(c) - 'a' + 10;
+    | else: return -1;
+    end;
 end;
 
 (* s without the spaces at its start. *)
@@ -120,7 +161,7 @@ proc trimLeft*(s: []U8): []U8;
 var i: INT;
 begin
     i := 0;
-    while (i < LEN(s)) and space(s[i]) do INC(i); end;
+    while (i < LEN(s)) and isSpace(s[i]) do INC(i); end;
     return s[i..LEN(s)];
 end;
 
@@ -129,7 +170,7 @@ proc trimRight*(s: []U8): []U8;
 var n: INT;
 begin
     n := LEN(s);
-    while (n > 0) and space(s[n - 1]) do DEC(n); end;
+    while (n > 0) and isSpace(s[n - 1]) do DEC(n); end;
     return s[0..n];
 end;
 
@@ -157,7 +198,7 @@ var i: INT;
 begin
     s := trimLeft(s);
     i := 0;
-    while (i < LEN(s)) and not space(s[i]) do INC(i); end;
+    while (i < LEN(s)) and not isSpace(s[i]) do INC(i); end;
     return s[0..i], s[i..LEN(s)];
 end;
 
@@ -336,12 +377,8 @@ var v: U64; d, i: INT;
 begin
     if LEN(s) = 0 then return 0, false; end;
     for i := 0 to LEN(s) - 1 do
-        match s[i] of
-        | '0'..'9': d := INT(s[i]) - '0';
-        | 'A'..'F': d := INT(s[i]) - 'A' + 10;
-        | 'a'..'f': d := INT(s[i]) - 'a' + 10;
-        | else: return 0, false;
-        end;
+        d := hexVal(s[i]);
+        if d < 0 then return 0, false; end;
         if v shr 60 # 0 then return 0, false; end;
         v := v shl 4 | U64(d);
     end;
@@ -524,6 +561,22 @@ begin
     Buf.done(ADR(b));
 end;
 
+proc testChars;
+var c: INT;
+begin
+    for c := 0 to 255 do
+        if isDigit(U8(c)) # ((c >= 48) and (c <= 57)) then Rt.stop("Str.isDigit"); end;
+        if isLetter(U8(c)) # ((c >= 65) and (c <= 90) or (c >= 97) and (c <= 122)) then Rt.stop("Str.isLetter"); end;
+        if isPunct(U8(c)) # ((c > 32) and (c < 127) and not isLetter(U8(c)) and not isDigit(U8(c))) then
+            Rt.stop("Str.isPunct");
+        end;
+    end;
+    if not isSpace(' ') or not isSpace(9) or not isSpace(13) or isSpace(14) or isSpace('a') then Rt.stop("Str.isSpace"); end;
+    if isPunct(' ') or not isPunct('~') or not isPunct('!') or isPunct(127) then Rt.stop("Str.isPunct: ends"); end;
+    if (hexVal('0') # 0) or (hexVal('9') # 9) or (hexVal('a') # 10) or (hexVal('F') # 15) or (hexVal('g') # -1)
+        or (hexVal('@') # -1) then Rt.stop("Str.hexVal"); end;
+end;
+
 proc testToInt;
 var n: I64; ok: BOOL;
 begin
@@ -592,6 +645,9 @@ begin
     if (find("hello", "ll") # 2) or (find("hello", "x") # -1) or (find("", "") # 0)
         or (find("ab", "abc") # -1) then Rt.stop("Str.find"); end;
     if not hasPrefix("hello", "he") or hasPrefix("he", "hello") then Rt.stop("Str.hasPrefix"); end;
+    if (findFrom("abcabc", "bc", 1) # 1) or (findFrom("abcabc", "bc", 2) # 4) or (findFrom("abc", "c", 3) # -1)
+        or (findFrom("abc", "", 3) # 3) then Rt.stop("Str.findFrom"); end;
+    testChars;
     testParts;
     testUtf8;
     testToInt;

@@ -621,26 +621,6 @@ It breaks no program.
 
 Met in rwalk's `Rwfiles` and rrem's `rre`.
 
-## Character tests in `Str`
-
-`Str` has `lower` and `upper`, ASCII, and inside it the private
-`small` and `space`. Every parser writes its own `isDigit`,
-`isLetter`, `isSpace`, `isPunct` and `hexVal` beside them.
-
-The proposal, in `Str`, all ASCII as `lower` and `upper` are:
-
-```
-proc isDigit*(c: U8): BOOL;    (* 0 to 9 *)
-proc isLetter*(c: U8): BOOL;   (* A to Z, a to z *)
-proc isSpace*(c: U8): BOOL;    (* space, tab, line feed, carriage return, form feed, vertical tab *)
-proc isPunct*(c: U8): BOOL;    (* the printable characters that are neither letters, digits nor space *)
-proc hexVal*(c: U8): INT;      (* c's value as a hexadecimal digit, or -1 *)
-```
-
-`isSpace` is today's `space`, exported. It breaks no program.
-
-Met in rrem's parser.
-
 ## The text of an errno
 
 `Sys` returns minus an errno, and a tool that tells the user what
@@ -675,22 +655,6 @@ It breaks no program.
 
 Met in rwalk's tests.
 
-## Finding from a place
-
-`Str.find(s, sub)` searches the whole of `s`. To search from `i`, a
-program writes `Str.find(s[i..LEN(s)], sub)` and adds `i` back when
-the result isn't -1, which is clumsy and easy to get off by one.
-
-The proposal, in `Str`:
-
-```
-proc findFrom*(s, sub: []U8; from: INT): INT;   (* the first place at or after from where sub is in s, or -1 *)
-```
-
-It breaks no program.
-
-Met in rwalk's `Rwglob`.
-
 ## A hint for a hexadecimal name
 
 `FFFDH`, meant as a number, is an identifier, and the error is "FFFDH
@@ -701,3 +665,19 @@ adds "a hexadecimal number starts with a digit: 0FFFDH". Nothing a
 program means changes.
 
 Met in rrem's parser, writing U+FFFD.
+
+## Code fences that say they are raz
+
+The report, the library's book and the README fence their code with
+bare lines of ``` (about 200 fences), so nothing that renders them can
+tell raz from a shell session, a program's output or a grammar. rless
+colours a fence marked `raz`, ```` ```raz ````, as the editors colour
+raz; GitHub would too, given a grammar. A bare fence is one colour.
+
+The proposal: a fence around raz code says `raz`; one around anything
+else stays bare. `tools/Doc` finds the report's examples by a fence
+line that is exactly ```, so it takes ```` ```raz ```` as well, and
+finds the same examples as before. Nothing in the language or the
+library changes; the documents read the same as text.
+
+Met in rless, whose pager shows the report.
