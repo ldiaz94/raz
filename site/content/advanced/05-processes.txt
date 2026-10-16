@@ -1,6 +1,6 @@
 title: Time, randomness and other programs
 part: The library
-summary: Clocks, sleeping, random bytes, and running a program with its output piped back.
+summary: Clocks, sleeping, random bytes, running a program with its output piped back, and signals.
 ---
 Everything here is in `Sys`, and is the same procedures on every target raz supports: through system calls on Linux, through the C library elsewhere.
 
@@ -153,4 +153,27 @@ begin
 end;
 
 end Where.
+```
+
+## Signals
+
+A signal, Ctrl-C's `sigInt` or `sigTerm` from `kill`, ends a program unless it says otherwise. `Sys.catch` takes signals away from what they would do and gives an fd that is ready to read when one comes, so a program that waits on fds anyway, with `Sys.readyOf`, waits for signals the same way; `Sys.caught` gives each in turn. `Sys.handle` is for a program that waits inside a system call, as a shell waits for its program: the signal is noted for `Sys.came`, and the call it comes during fails with -4 (EINTR) rather than going on. Nothing of the program runs when the signal comes; it looks after the call returns.
+
+```raz Signals run
+module Signals;
+import Out, Sys;
+
+proc main*;
+var fd: INT;
+begin
+    fd := Sys.catch([Sys.sigUsr1]);
+    _ := Sys.kill(Sys.pid(), Sys.sigUsr1);
+    if Sys.ready(fd, 1000) and (Sys.caught(fd) = Sys.sigUsr1) then Out.str("caught sigUsr1\n"); end;
+    _ := Sys.handle(Sys.sigUsr2);
+    _ := Sys.kill(Sys.pid(), Sys.sigUsr2);
+    if Sys.came(Sys.sigUsr2) then Out.str("sigUsr2 came\n"); end;
+    if not Sys.came(Sys.sigUsr2) then Out.str("and was seen once\n"); end;
+end;
+
+end Signals.
 ```

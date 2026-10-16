@@ -25,10 +25,13 @@ begin
     end;
     ok := Files.read("missing.txt", ADR(b));
     if not ok then Out.str("missing.txt: not there\n"); end;
+    if Files.load("missing.txt", ADR(b)) = -2 then Out.str("missing.txt: ENOENT\n"); end;
 end;
 
 end Notes.
 ```
+
+When the reason matters, `Files.load` says it: 0, or minus the errno of what failed, -2 (ENOENT) for no such file, -13 (EACCES) for one not allowed.
 
 ## Descriptors
 

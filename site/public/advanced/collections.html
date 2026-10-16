@@ -152,6 +152,7 @@ linus: 0 (false)
     w, rest: []<span class="ty">U8</span>; key: []<span class="ty">U8</span>; v: <span class="ty">INT</span>; all: []Entry;
 <span class="kw">begin</span>
     Count.init(<span class="ty">ADR</span>(m), Heap.heap);
+    <span class="kw">defer</span> Count.done(<span class="ty">ADR</span>(m));
     w, rest := Str.field(Text);
     <span class="kw">while</span> <span class="ty">LEN</span>(w) &gt; <span class="number">0</span> <span class="kw">do</span>
         k, _ := Count.get(<span class="ty">ADR</span>(m), w);
@@ -159,6 +160,7 @@ linus: 0 (false)
         w, rest := Str.field(rest);
     <span class="kw">end</span>;
     Entries.init(<span class="ty">ADR</span>(entries), Heap.heap);
+    <span class="kw">defer</span> Entries.done(<span class="ty">ADR</span>(entries));
     found, key, v := Count.next(<span class="ty">ADR</span>(m), <span class="number">0</span>);
     <span class="kw">while</span> found &gt;= <span class="number">0</span> <span class="kw">do</span>
         Entries.push(<span class="ty">ADR</span>(entries), {word: key, n: v});
@@ -181,7 +183,7 @@ linus: 0 (false)
 1 mat
 1 on
 </code></pre>
-<p>The keys here are slices of the constant text, so they outlive the map; a program whose keys come from a buffer it will reuse copies them first with <code>Str.copy</code>.</p>
+<p>The keys here are slices of the constant text, so they outlive the map; a program whose keys come from a buffer it will reuse copies them first with <code>Str.copy</code>, and gives each back with <code>Str.free</code> before <code>Count.done</code> gives back the map's own memory.</p>
 <h2>Choosing</h2>
 <p>Use a <code>List</code> when you push and pop at one end and walk it in order. Use a <code>Vec</code> when you add at the end and index, and don't know how many will come; an array when you do. Use a <code>Map</code> when you look things up by key. Use <code>Sort</code> on either's slice when you want an order. When none of them fits, they are each under a hundred lines of raz in <code>lib/</code>, and the advanced tour's allocator lesson shows what is underneath.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="bytes.html">&larr; Strings and bytes</a><a href="index.html">Contents</a><a class="next" href="files.html">Files and the command line &rarr;</a></div></article></div>
 </main>

@@ -184,6 +184,28 @@ status 7
 <span class="kw">end</span> Where.</code></pre>
 <pre class="output"><code>unset reads as empty
 hello from /tmp
+</code></pre>
+<h2>Signals</h2>
+<p>A signal, Ctrl-C's <code>sigInt</code> or <code>sigTerm</code> from <code>kill</code>, ends a program unless it says otherwise. <code>Sys.catch</code> takes signals away from what they would do and gives an fd that is ready to read when one comes, so a program that waits on fds anyway, with <code>Sys.readyOf</code>, waits for signals the same way; <code>Sys.caught</code> gives each in turn. <code>Sys.handle</code> is for a program that waits inside a system call, as a shell waits for its program: the signal is noted for <code>Sys.came</code>, and the call it comes during fails with -4 (EINTR) rather than going on. Nothing of the program runs when the signal comes; it looks after the call returns.</p>
+<div class="file"><span>Signals.raz</span></div><pre class="code"><code><span class="kw">module</span> Signals;
+<span class="kw">import</span> Out, Sys;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> fd: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    fd := Sys.catch([Sys.sigUsr1]);
+    _ := Sys.kill(Sys.pid(), Sys.sigUsr1);
+    <span class="kw">if</span> Sys.ready(fd, <span class="number">1000</span>) <span class="kw">and</span> (Sys.caught(fd) = Sys.sigUsr1) <span class="kw">then</span> Out.str(<span class="string">&quot;caught sigUsr1\n&quot;</span>); <span class="kw">end</span>;
+    _ := Sys.handle(Sys.sigUsr2);
+    _ := Sys.kill(Sys.pid(), Sys.sigUsr2);
+    <span class="kw">if</span> Sys.came(Sys.sigUsr2) <span class="kw">then</span> Out.str(<span class="string">&quot;sigUsr2 came\n&quot;</span>); <span class="kw">end</span>;
+    <span class="kw">if</span> <span class="kw">not</span> Sys.came(Sys.sigUsr2) <span class="kw">then</span> Out.str(<span class="string">&quot;and was seen once\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Signals.</code></pre>
+<pre class="output"><code>caught sigUsr1
+sigUsr2 came
+and was seen once
 </code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="files.html">&larr; Files and the command line</a><a href="index.html">Contents</a><a class="next" href="allocators.html">Writing an allocator &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license.</footer>

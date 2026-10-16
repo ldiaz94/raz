@@ -114,7 +114,7 @@
 
 <span class="kw">type</span> Planet = <span class="kw">record</span> name: []<span class="ty">U8</span>; moons: <span class="ty">INT</span>; water: <span class="ty">BOOL</span>; <span class="kw">end</span>;
 
-<span class="kw">const</span> Inner: [<span class="number">4</span>]Planet = [
+<span class="kw">const</span> Inner: []Planet = [
     {name: <span class="string">&quot;Mercury&quot;</span>},
     {name: <span class="string">&quot;Venus&quot;</span>},
     {name: <span class="string">&quot;Earth&quot;</span>, moons: <span class="number">1</span>, water: <span class="ty">true</span>},
@@ -135,7 +135,7 @@
 Venus has no moon
 3 moons in all
 </code></pre>
-<p>Fields left out are zero, as in any literal: Mercury's <code>moons</code> is 0 and its <code>water</code> is <code>false</code>.</p>
+<p>Fields left out are zero, as in any literal: Mercury's <code>moons</code> is 0 and its <code>water</code> is <code>false</code>. A constant typed <code>[]Planet</code> takes its length from its literal, here 4, so a planet added to the list needs no count changed.</p>
 <h2>Layout</h2>
 <p>A record's layout is C's: each field at the next multiple of its own alignment, and the whole padded to a multiple of its largest alignment. <code>SIZE(T)</code> says how many bytes. A <code>packed record</code> has no padding, which is what a file format or a wire protocol wants.</p>
 <div class="file"><span>Layout.raz</span></div><pre class="code"><code><span class="kw">module</span> Layout;

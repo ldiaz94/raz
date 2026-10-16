@@ -121,6 +121,7 @@ var
     w, rest: []U8; key: []U8; v: INT; all: []Entry;
 begin
     Count.init(ADR(m), Heap.heap);
+    defer Count.done(ADR(m));
     w, rest := Str.field(Text);
     while LEN(w) > 0 do
         k, _ := Count.get(ADR(m), w);
@@ -128,6 +129,7 @@ begin
         w, rest := Str.field(rest);
     end;
     Entries.init(ADR(entries), Heap.heap);
+    defer Entries.done(ADR(entries));
     found, key, v := Count.next(ADR(m), 0);
     while found >= 0 do
         Entries.push(ADR(entries), {word: key, n: v});
@@ -143,7 +145,7 @@ end;
 end Freq.
 ```
 
-The keys here are slices of the constant text, so they outlive the map; a program whose keys come from a buffer it will reuse copies them first with `Str.copy`.
+The keys here are slices of the constant text, so they outlive the map; a program whose keys come from a buffer it will reuse copies them first with `Str.copy`, and gives each back with `Str.free` before `Count.done` gives back the map's own memory.
 
 ## Choosing
 

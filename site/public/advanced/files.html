@@ -63,13 +63,16 @@
     <span class="kw">end</span>;
     ok := Files.read(<span class="string">&quot;missing.txt&quot;</span>, <span class="ty">ADR</span>(b));
     <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> Out.str(<span class="string">&quot;missing.txt: not there\n&quot;</span>); <span class="kw">end</span>;
+    <span class="kw">if</span> Files.load(<span class="string">&quot;missing.txt&quot;</span>, <span class="ty">ADR</span>(b)) = -<span class="number">2</span> <span class="kw">then</span> Out.str(<span class="string">&quot;missing.txt: ENOENT\n&quot;</span>); <span class="kw">end</span>;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Notes.</code></pre>
 <pre class="output"><code>23 bytes: first line
 second line
 missing.txt: not there
+missing.txt: ENOENT
 </code></pre>
+<p>When the reason matters, <code>Files.load</code> says it: 0, or minus the errno of what failed, -2 (ENOENT) for no such file, -13 (EACCES) for one not allowed.</p>
 <h2>Descriptors</h2>
 <p>Underneath, a file is a descriptor, an <code>INT</code>. <code>Sys.open</code> takes the path and the way to open it as a set; <code>read</code>, <code>write</code>, <code>seek</code> and <code>close</code> do what they say. A result that can fail is a number, and minus an errno if it failed, as on Linux itself. Reading in a loop is the pattern for anything too big to hold at once.</p>
 <div class="file"><span>Count.raz</span></div><pre class="code"><code><span class="kw">module</span> Count;

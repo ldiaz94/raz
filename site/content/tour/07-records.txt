@@ -51,7 +51,7 @@ import Fmt;
 
 type Planet = record name: []U8; moons: INT; water: BOOL; end;
 
-const Inner: [4]Planet = [
+const Inner: []Planet = [
     {name: "Mercury"},
     {name: "Venus"},
     {name: "Earth", moons: 1, water: true},
@@ -70,7 +70,7 @@ end;
 end Planets.
 ```
 
-Fields left out are zero, as in any literal: Mercury's `moons` is 0 and its `water` is `false`.
+Fields left out are zero, as in any literal: Mercury's `moons` is 0 and its `water` is `false`. A constant typed `[]Planet` takes its length from its literal, here 4, so a planet added to the list needs no count changed.
 
 ## Layout
 
