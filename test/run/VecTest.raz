@@ -1,4 +1,4 @@
-(* Vec: pushed, added in place, resized both ways, emptied, given back;
+(* Vec: pushed, added in place, resized both ways, popped, emptied, given back;
    of integers and of records, which grow past the first block. *)
 module VecTest;
 import Fmt, Heap, Ints := Vec(INT), Pts := Vec(Point);
@@ -6,7 +6,7 @@ import Fmt, Heap, Ints := Vec(INT), Pts := Vec(Point);
 type Point = record x, y: INT; name: []U8; end;
 
 proc main*;
-var v: Ints.Vec; w: Pts.Vec; i, sum: INT; p: ^Point; s: []INT;
+var v: Ints.Vec; w: Pts.Vec; i, sum, top: INT; ok: BOOL; p: ^Point; s: []INT;
 begin
     Ints.init(ADR(v), Heap.heap);
     Fmt.print("{} {}\n", [Fmt.int(v.len), Fmt.int(LEN(Ints.all(ADR(v))))]);
@@ -22,6 +22,10 @@ begin
     Ints.reset(ADR(v));
     Ints.push(ADR(v), 7);
     Fmt.print("{} {}\n", [Fmt.int(v.len), Fmt.int(Ints.all(ADR(v))[0])]);
+    top, ok := Ints.pop(ADR(v));
+    Fmt.print("{} {} {}\n", [Fmt.int(top), Fmt.bool(ok), Fmt.int(v.len)]);
+    top, ok := Ints.pop(ADR(v));
+    Fmt.print("{} {}\n", [Fmt.int(top), Fmt.bool(ok)]);
     Ints.done(ADR(v));
     Fmt.print("{}\n", [Fmt.int(v.len)]);
 

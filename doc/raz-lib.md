@@ -634,6 +634,7 @@ type Vec* = record len*: INT; ... end;
 proc init*(v: ^Vec; a: ^Mem.Allocator);
 proc room*(v: ^Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
 proc push*(v: ^Vec; x: T);            (* x added at the end *)
+proc pop*(v: ^Vec): (T, BOOL);        (* the last element, taken off; false if empty *)
 proc add*(v: ^Vec): ^T;               (* a new element at the end, zero, to fill in place *)
 proc tryPush*(v: ^Vec; x: T): BOOL;   (* push; false, and v as it was, if there is no room *)
 proc tryAdd*(v: ^Vec): (^T, BOOL);    (* add; nil and false, and v as it was, if there is no room *)
@@ -678,7 +679,8 @@ INC(b^.len, n); end;`. A `Vec` is `Buf` for any `T`: one block, which
 doubles when it is full, so `push` costs the same on average however
 long it grows. `all` gives the elements as a slice, indexed and
 checked as any is, and `v.len` is their number; the slice, and what
-`add` gives, are good until the array next grows. `push`, `add` and
+`add` gives, are good until the array next grows. `pop` takes the last
+element off, keeping the memory. `push`, `add` and
 `resize` stop the program, as `Buf.add` does, if the allocator has no
 room; `room` asks first: `import Lines := Vec([]U8);`. `Fmt`'s format takes the next argument at each
 `{}`; `{{` and `}}` stand for `{` and `}`. A `Map` hashes and

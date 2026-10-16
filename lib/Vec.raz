@@ -66,6 +66,16 @@ begin
     INC(v^.len);
 end;
 
+(* The last element, taken off; false if the array is empty. It keeps the
+   memory, as resize does. *)
+proc pop*(v: ^Vec): (T, BOOL);
+var x: T;
+begin
+    if v^.len = 0 then return x, false; end;
+    DEC(v^.len);
+    return v^.data[v^.len], true;
+end;
+
 (* Adds an element at the end, zero, and gives it, to be filled in
    place: for a big T, which push would copy. Good until the array
    next grows. *)

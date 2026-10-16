@@ -649,26 +649,3 @@ the slice type back for a length of 0 instead of the error.
 Met in rrem's `RremUcd`, whose tables `tools/Ucd.raz` writes: before
 the tool's first run, each table needs a placeholder of one element,
 which the code reading it must then not take for a real one.
-
-## `Vec.pop`
-
-`Vec` can push but not pop: taking the last element off is two calls
-and an index written out,
-
-```
-b := Backs.all(ADR(re^.stack))[re^.stack.len - 1];
-Backs.resize(ADR(re^.stack), re^.stack.len - 1);
-```
-
-where a stack wants one. The proposal, in `Vec`, beside `push`:
-
-```
-proc pop*(v: ^Vec): (T, BOOL);   (* the last element, taken off; false if the array is empty *)
-```
-
-as `List.pop` gives the front of a list. It keeps the memory, as
-`resize` does. It breaks no program, so it could come with any
-release, not only a thaw.
-
-Met in rrem's machine, whose backtracking stack is a `Vec` popped in
-`back` and `unwind`.
