@@ -629,30 +629,6 @@ thread, which can only set a flag that the turn reads after each read
 of the reply; a server that says nothing for a minute, as a model does
 while it thinks, keeps the turn going for that minute.
 
-## The spelling of the option just read
-
-`Opt.Parser` keeps how the option just read was written (`spelt`, no
-dashes) to word its own messages, `--budget wants a number from ...`,
-but keeps it private, so a program that refuses a value with
-`Opt.fail` must name the option again itself:
-
-```
-| keyInclude:
-    if not addGlob(p.value) then
-        Opt.fail(ADR(p), "--include wants a glob, not ...");
-    end;
-```
-
-The name is then in two places, the table and the message, which
-`Opt` was made to keep apart; and the message says `--include` even
-when the program has a letter for it and the user wrote that. The
-proposal: `spelt*` exported, read only, beside `letter`, `value` and
-`long`; or `Opt.refuse*(p: ^Parser; wants: []U8)`, which writes
-`{-x or --long} wants {wants}, not '{value}'` as `number` does. It
-breaks no program.
-
-Met in rre's `--include` and `--exclude`, whose globs Rwglob checks.
-
 ## `-h` for a program that wants it
 
 `Opt` takes `-h` and `--help` for itself, and a table that names

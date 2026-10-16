@@ -21,13 +21,13 @@ type
         letter*: U8;    (* the option just read *)
         value*: []U8;   (* its value; "" for a flag *)
         long*: BOOL;    (* it was written by its long name *)
+        spelt*: []U8;   (* as it was written, no dashes: "b" or "bar"; the program's to read only *)
         (* the rest are Opt's own *)
         name: []U8;     (* the program's, as the messages begin *)
         table: []Row;
         scope: []U8;
         at: INT;        (* the next word *)
         group: []U8;    (* the letters left of a word of them, as -lw *)
-        spelt: []U8;    (* the option just read, as written, no dashes *)
         ended: BOOL;    (* the scope's options have ended *)
         help: BOOL;     (* the option just read is -h or --help *)
     end;
@@ -90,7 +90,7 @@ end;
 
 (* A mistake on the command line: the sentence f, the scope's synopsis
    lines under it, and status 2. *)
-proc refuse(p: ^Parser; f: []U8; args: []Fmt.Arg);
+proc mistake(p: ^Parser; f: []U8; args: []Fmt.Arg);
 var b: Buf.Buf;
 begin
     Buf.init(ADR(b), Heap.heap);
@@ -225,17 +225,17 @@ begin
             r, p^.letter, val := find(p, 0, p^.spelt);
             if r < 0 then
                 if quiet then return readSkip; end;
-                refuse(p, "unknown option --{}", [Fmt.str(p^.spelt)]);
+                mistake(p, "unknown option --{}", [Fmt.str(p^.spelt)]);
             end;
             if (eq >= 0) and (LEN(val) = 0) then
                 if quiet then return readSkip; end;
-                refuse(p, "--{} takes no value", [Fmt.str(p^.spelt)]);
+                mistake(p, "--{} takes no value", [Fmt.str(p^.spelt)]);
             elsif eq >= 0 then
                 p^.value := w[eq + 1..LEN(w)];
             elsif LEN(val) > 0 then
                 if p^.at >= ARGC() then
                     if quiet then return readEnd; end;
-                    refuse(p, "--{} needs a {}", [Fmt.str(p^.spelt), Fmt.str(val)]);
+                    mistake(p, "--{} needs a {}", [Fmt.str(p^.spelt), Fmt.str(val)]);
                 end;
                 p^.value := Files.arg(p^.at);
                 INC(p^.at);
@@ -253,7 +253,7 @@ begin
     r, p^.letter, val := find(p, c, "");
     if r < 0 then
         if quiet then return readSkip; end;
-        refuse(p, "unknown option -{}", [Fmt.str(p^.spelt)]);
+        mistake(p, "unknown option -{}", [Fmt.str(p^.spelt)]);
     end;
     if LEN(val) > 0 then
         if LEN(p^.group) > 0 then
@@ -264,7 +264,7 @@ begin
             INC(p^.at);
         else
             if quiet then return readEnd; end;
-            refuse(p, "-{} needs a {}", [Fmt.str(p^.spelt), Fmt.str(val)]);
+            mistake(p, "-{} needs a {}", [Fmt.str(p^.spelt), Fmt.str(val)]);
         end;
     end;
     return read1;
@@ -377,13 +377,22 @@ begin
     n, ok := Str.toInt(p^.value);
     if not ok or (n < lo) or (n > hi) then
         if hi = largest then
-            refuse(p, "{}{} wants a number from {} up, not '{}'",
+            mistake(p, "{}{} wants a number from {} up, not '{}'",
                 [Fmt.str(dashes(p)), Fmt.str(p^.spelt), Fmt.int(lo), Fmt.str(p^.value)]);
         end;
-        refuse(p, "{}{} wants a number from {} to {}, not '{}'",
+        mistake(p, "{}{} wants a number from {} to {}, not '{}'",
             [Fmt.str(dashes(p)), Fmt.str(p^.spelt), Fmt.int(lo), Fmt.int(hi), Fmt.str(p^.value)]);
     end;
     return n;
+end;
+
+(* The value of the option just read refused, as number refuses one:
+   "-b wants wants, not 'value'", the option as it was written, with
+   the scope's synopsis lines, and status 2. *)
+proc refuse*(p: ^Parser; wants: []U8);
+begin
+    mistake(p, "{}{} wants {}, not '{}'",
+        [Fmt.str(dashes(p)), Fmt.str(p^.spelt), Fmt.str(wants), Fmt.str(p^.value)]);
 end;
 
 (* The program's own mistake, written as Opt's are but alone, and
@@ -429,7 +438,9 @@ begin
     end;
     scope(ADR(p), "start");
     while next(ADR(p)) do
-        if p.letter = 'b' then bar := p.value; end;
+        if (p.letter = 'b') and (Str.find(p.value, " ") >= 0) then refuse(ADR(p), "a label with no spaces");
+        elsif p.letter = 'b' then bar := p.value;
+        end;
     end;
     job, ok := operand(ADR(p));
     (* the command and its arguments, as they are, by at *)
@@ -465,7 +476,7 @@ begin
     scope(ADR(p), "remote");
     _w, _ok := operand(ADR(p));
     scope(ADR(p), "remote.add");
-    while next(ADR(p)) do Fmt.print("{}\n", [Fmt.char(p.letter)]); end;
+    while next(ADR(p)) do Fmt.print("{} {}\n", [Fmt.char(p.letter), Fmt.str(p.spelt)]); end;
 end;
 
 type Case = record
@@ -545,10 +556,14 @@ begin
         {mode: k, args: ["keep", "--wait", "0", "start", "a", "b"],
             err: "keep: --wait wants a number from 1 to 600, not '0'\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
         {mode: k, args: ["keep", "--wait=9x", "start"], err: "keep: --wait wants a number from 1 to 600, not '9x'\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
+        {mode: k, args: ["keep", "start", "-b", "a b", "n", "c"],
+            err: "keep: -b wants a label with no spaces, not 'a b'\nusage: keep start [-b label] name command [argument ...]\n", status: 2},
+        {mode: k, args: ["keep", "start", "--bar=a b", "n", "c"],
+            err: "keep: --bar wants a label with no spaces, not 'a b'\nusage: keep start [-b label] name command [argument ...]\n", status: 2},
         {mode: k, args: ["keep", "--jobs=0", "start"], err: "keep: --jobs wants a number from 1 up, not '0'\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
         {mode: k, args: ["keep", "--jobs", "9223372036854775807", "start", "n", "c"], out: "job n: c\n"},
         {mode: "OPTTEST=bad", args: ["bad", "-v"], err: "bad: option table, row 2: the option is in the scope already\n", status: 1},
-        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--force"], out: "f\nf\n"},
+        {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--force"], out: "f f\nf force\n"},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-x"], err: "plain: unknown option -x\nusage: plain remote add\n", status: 2},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "-h"], out: "usage: plain remote\n\n  add          add one\n  -h, --help   print this and exit\n"}];
     for i := 0 to LEN(cases) - 1 do run(cases[i], i); end;

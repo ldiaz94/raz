@@ -810,6 +810,7 @@ type
         letter*: U8;    (* the option just read *)
         value*: []U8;   (* its value; "" for a flag *)
         long*: BOOL;    (* it was written by its long name *)
+        spelt*: []U8;   (* as it was written, no dashes: "b" or "bar"; to read only *)
         ...
     end;
 proc init*(p: ^Parser; name: []U8; table: []Row);  (* the arguments from 1 on, by table *)
@@ -818,6 +819,7 @@ proc operand*(p: ^Parser): ([]U8, BOOL);          (* the next operand; false whe
 proc at*(p: ^Parser): INT;                        (* the argument operand would give next *)
 proc scope*(p: ^Parser; name: []U8);              (* subcommand name's options, from the word after it *)
 proc number*(p: ^Parser; lo, hi: I64): I64;       (* the value just read, a number from lo to hi *)
+proc refuse*(p: ^Parser; wants: []U8);            (* the value just read refused, as number refuses one *)
 proc fail*(p: ^Parser; text: []U8);               (* the program's own mistake *)
 ```
 
@@ -919,7 +921,12 @@ usage: keep start [-b label] name command [argument ...]
 The sentences are `unknown option -x` (or `--name`, up to its `=`),
 `-b needs a label`, `--follow takes no value` and `--wait wants a
 number from 1 to 600, not '0'`; for a number with no top, given the
-largest `I64` for `hi`, `--jobs wants a number from 1 up, not '0'`. `fail` writes the program's own
+largest `I64` for `hi`, `--jobs wants a number from 1 up, not '0'`. `refuse` refuses a value
+the program reads itself, as `number` refuses one, naming the option as
+the user wrote it, `-b` or `--bar`: `Opt.refuse(ADR(p), "a label with
+no spaces")` writes `keep: -b wants a label with no spaces, not 'a b'`,
+and the synopsis lines. `p.spelt` is that spelling, for the program's
+own sentences. `fail` writes the program's own
 mistakes the same way, but alone, so that the sentence can say where
 the help is: `keep: no command; see keep -h`.
 
