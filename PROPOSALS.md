@@ -550,3 +550,45 @@ lookup of a name where the parser knows it.
 
 Met in mosaico's `Mconfig`, where `MenuAction.run` and a status block's
 kind `run` met; the block's kind was renamed `command`.
+
+## The library's parameters by `var`, not by pointer
+
+Most of the library's procedures take what they work on as `^T`:
+`Buf.str(ADR(b), s)`, `Vec.push(ADR(v), x)`, `Lock.take(ADR(l))`. None
+keeps it past the call; each reads or changes it and returns. That is
+what `var` is for (8), and with it the call is `Buf.str(b, s)`. As it
+is, `ADR` stands at nearly every call a program makes to the library,
+and says nothing: a reader can't tell the few places where a pointer
+is kept from the many where it isn't. `STANDARDS.md` says how our own
+code chooses; this would bring the library to it.
+
+The proposal, procedure by procedure, from reading each one:
+
+- **To `var`** (it changes what it is given): `Arena.init`, `reset`,
+  `done`; `Buf.init`, `room`, `add`, `str`, `spare`, `cut`, `reset`,
+  `done`, and the `Buf` that `Files.load`, `Files.read`, `Fmt.write`,
+  `Str.join` and `Str.replace` write into; every procedure of `List`;
+  `Lock.take`, `give`; `Map.init`, `put`, `remove`, `done`; every
+  procedure of `Opt` (a `Parser` is many words, so even those that
+  only read it); `Sys.openDir`, `nextEntry`, `closeDir`;
+  `Thread.lock`, `unlock`; `Vec.init`, `room`, `push`, `pop`, `add`,
+  `tryPush`, `tryAdd`, `resize`, `reset`, `done`.
+- **To a value** (it only reads a record of a few words): `Buf.bytes`,
+  `Vec.all`, `Map.get`, `Map.next`, `Sys.entryKind`.
+- **Staying pointers**: an allocator, `^Mem.Allocator`, everywhere
+  (`NEW` takes one, and `^Arena(a)` needs one); `Mem.pages`, `unmap`,
+  `Sys.mmap`, `munmap`, `mapFile`, which are bytes, not variables;
+  `Thread.spawn`'s `arg`, which is kept, and the `^Thread` it gives,
+  which `join` and `signal` take as the program holds it; `Rt.fail`,
+  which the compiler calls.
+
+What it costs: it breaks every program that calls these, `src/`,
+rmacs, ravite, the tools and the library's own tests among them. The
+mending is mechanical, `ADR(x)` to `x` at each such call, and `p` to
+`p^` where a program holds the thing by pointer, and the compiler's
+message for a `^T` given to a `var` can name it. The seed knows `var`
+parameters, so `src/` and the library it imports can take them now.
+The report doesn't change; volume 2 and `raz-lib.3` do.
+
+Met in rpg and rsqlite, whose `Query`, `Result` and `Stmt` went from
+`^T` to `var` and to values, and whose own calls to `Buf` couldn't.

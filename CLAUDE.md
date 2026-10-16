@@ -77,7 +77,9 @@ tools and the library's tests: they must have no warnings.
   and after, and in `doc/compiler.md`.
 - Style: clarity over cleverness; each unit opens with what it is, what
   it depends on and what it leaves out; comments say why. Match the
-  report's plain, short prose in documentation.
+  report's plain, short prose in documentation. `STANDARDS.md` says
+  how raz is written here: a parameter is a value, `var`, or, only
+  when it is kept, a pointer; no `ADR` where `var` serves.
 
 ## Where things stand
 
