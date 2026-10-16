@@ -19,6 +19,7 @@ report defines the language.
     make fixpoint  # the seed builds src, that builds src, that again: the last two agree
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version
+    make alpine    # test/libc in an Alpine container, over musl (docker)
     make fmt       # lib/, examples/ and tools/ are formatted
     make install   # raz on PATH via ~/.local (PREFIX=...); make uninstall
 
@@ -134,7 +135,11 @@ the first. The tarball has `tools/`, which the website offers from
 0.7.1 on.
 
 `test/libc` runs its programs over `lib/Sys.raz`, the C one, through
-a link in its `mods`. A test or example without `.expect` is only
+a link in its `mods`; `make check` runs them again with `-libc musl`
+where musl's loader is installed (`apt-get install -y musl
+musl-tools`), and compares `tools/cabi.c`'s output, with `cc` and
+`musl-gcc`, with `lib/CAbi.linux-x86_64.raz`, which is never edited
+by hand. A test or example without `.expect` is only
 compiled (`examples/Window.raz` needs a display).
 
 ## The compiler and the seed
@@ -183,7 +188,13 @@ otherwise.
   code. Its arguments are read then, in the scope there.
 - A program uses C if a module it uses (not one read only for an
   interface check) has an `extern` or a `link` of a library. `static`
-  in `link static;` is not a reserved word.
+  in `link static;` is not a reserved word. It is linked against
+  glibc, or musl (`/lib/ld-musl-x86_64.so.1`, needing `libc.so`) by
+  `-libc musl` or on a machine with musl's loader and not glibc's.
+  `lib/Sys.raz` and `CAbi` are read by the seed for the interface
+  check, so they keep to the seed's language.
+- `Sys` gives minus Linux's errnos on every target; `Sys.raz` maps the
+  C library's through `CAbi.errnos`.
 - C symbols are reached through quadwords the loader fills in
   (GLOB_DAT), with no PLT; the executable exports nothing. In a C
   program the entry point stores C's `exit` in `Rt.cExit`, found by

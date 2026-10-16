@@ -23,8 +23,10 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0    # git describe needs the tags
-      - run: sudo apt-get update && sudo apt-get install -y fp-compiler
+      # musl and musl-tools: test/libc over musl, and cabi with musl-gcc
+      - run: sudo apt-get update && sudo apt-get install -y fp-compiler musl musl-tools
       - run: make check
+      - run: make alpine
       - name: release
         if: env.TAG != ''
         env:
