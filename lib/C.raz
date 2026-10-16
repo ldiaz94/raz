@@ -55,6 +55,7 @@ extern proc clock_gettime*(clock: I32; t: ^U8): I32;
 extern proc clock_nanosleep*(clock, flags: I32; t, left: ^U8): I32;
 extern proc getrandom*(buf: ^U8; n: UINT; flags: U32): INT;
 extern proc getenv*(name: ^U8): ^U8;
+extern proc setenv*(name, value: ^U8; overwrite: I32): I32;
 extern proc strerror*(err: I32): ^U8;
 extern proc getcwd*(buf: ^U8; n: UINT): ^U8;
 extern proc chdir*(path: ^U8): I32;

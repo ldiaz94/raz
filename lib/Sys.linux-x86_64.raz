@@ -138,6 +138,12 @@ var
     sigFd: INT;       (* the signalfd that gives them, once caughtSigs isn't empty *)
     noted: [65]INT;   (* 1 at sig when a signal handle took has come, until came asks *)
     uts: [390]U8;     (* struct utsname, which hostName gives the nodename of *)
+    (* the environment setEnv made, nil while it is the one the program
+       started with; its variables, and the pointers it has room for *)
+    envp: ^^U8;
+    envLen, envCap: INT;
+    envText: ^U8;     (* where setEnv puts its next NAME=value *)
+    envLeft: INT;     (* and the bytes left there *)
 
 (* Writes s to the file descriptor fd; the number of bytes written, or
    minus an errno. *)
@@ -1151,21 +1157,36 @@ begin
     return errorTexts[err];
 end;
 
-(* The value of the environment variable name; "" if it isn't set. The
-   environment follows the arguments and their nil. *)
-proc env*(name: []U8): []U8;
-var e: ^^U8; s: ^U8; i, n, m: INT;
+(* The environment, its NAME=values as C strings and a nil: the one the
+   program started with, after the arguments and their nil, until
+   setEnv makes one of its own. *)
+proc environment: ^^U8;
 begin
-    e := ARGV() + (ARGC() + 1);
+    if envp # nil then return envp; end;
+    return ARGV() + (ARGC() + 1);
+end;
+
+(* Whether the NAME=value s, a C string, is name's. *)
+proc named(s: ^U8; name: []U8): BOOL;
+var n: INT;
+begin
+    n := 0;
+    while (n < LEN(name)) and (s[n] = name[n]) do INC(n); end;
+    return (n = LEN(name)) and (s[n] = '=');
+end;
+
+(* The value of the environment variable name; "" if it isn't set. *)
+proc env*(name: []U8): []U8;
+var e: ^^U8; s: ^U8; i, m: INT;
+begin
+    e := environment();
     i := 0;
     while e[i] # nil do
-        s := e[i];
-        n := 0;
-        while (n < LEN(name)) and (s[n] = name[n]) do INC(n); end;
-        if (n = LEN(name)) and (s[n] = '=') then
-            m := n + 1;
+        if named(e[i], name) then
+            s := e[i];
+            m := LEN(name) + 1;
             while s[m] # 0 do INC(m); end;
-            return s[n + 1..m];
+            return s[LEN(name) + 1..m];
         end;
         INC(i);
     end;
@@ -1178,7 +1199,7 @@ proc envAt*(i: INT): ([]U8, BOOL);
 var e: ^^U8; s: ^U8; j, n: INT;
 begin
     if i < 0 then return "", false; end;
-    e := ARGV() + (ARGC() + 1);
+    e := environment();
     for j := 0 to i do
         if e[j] = nil then return "", false; end;
     end;
@@ -1278,6 +1299,71 @@ begin
     for i := 0 to LEN(env) - 1 do p[k] := s; s := put(env[i], s); INC(k); end;
     p[k] := nil;
     return p, size;
+end;
+
+(* Sets the environment variable name to value, for env and for the
+   programs this one starts; 0, or minus an errno: -22 if name is empty
+   or holds an = or a 0, or value a 0, and -12 if there is no memory.
+   As C's setenv does, it makes the environment the program's own the
+   first time it adds a variable: an array of pointers that doubles
+   when it is full, the old one given back. A variable set again keeps
+   its place. A NAME=value is never given back, so that what env gave
+   stays good for the rest of the run; they are taken in turn from
+   blocks of 64 KB. It isn't safe while another thread reads the
+   environment or starts a program, as C's setenv isn't. *)
+proc setEnv*(name, value: []U8): INT;
+var e, p: ^^U8; s: ^U8; size, cap, n, i: INT;
+begin
+    if LEN(name) = 0 then return -22; end;                     (* EINVAL *)
+    for i := 0 to LEN(name) - 1 do
+        if (name[i] = '=') or (name[i] = 0) then return -22; end;
+    end;
+    for i := 0 to LEN(value) - 1 do
+        if value[i] = 0 then return -22; end;
+    end;
+    (* NAME=value, written where the next one goes, and taken only once
+       the array has room for it *)
+    size := LEN(name) + LEN(value) + 2;
+    if size > envLeft then
+        n := 10000H;
+        if size > n then n := size; end;
+        s := mmap(n);
+        if s = nil then return -12; end;                       (* ENOMEM *)
+        envText := s;
+        envLeft := n;
+    end;
+    s := envText;
+    COPY(s[0..LEN(name)], name);
+    s[LEN(name)] := '=';
+    COPY(s[LEN(name) + 1..size - 1], value);
+    s[size - 1] := 0;
+    e := environment();
+    if envp = nil then
+        envLen := 0;
+        while e[envLen] # nil do INC(envLen); end;
+    end;
+    i := 0;
+    while (i < envLen) and not named(e[i], name) do INC(i); end;
+    if i = envLen then
+        (* a new variable: the array grows if it is the first, or full *)
+        if (envp = nil) or (envLen + 1 = envCap) then
+            cap := 2 * (envLen + 1);
+            if cap < 32 then cap := 32; end;
+            p := ^^U8(mmap(cap * SIZE(^U8)));
+            if p = nil then return -12; end;
+            if envLen > 0 then COPY(p[0..envLen], e[0..envLen]); end;
+            if envp # nil then munmap(^U8(envp), envCap * SIZE(^U8)); end;
+            envp := p;
+            envCap := cap;
+            e := p;
+        end;
+        INC(envLen);
+        e[envLen] := nil;
+    end;
+    e[i] := s;
+    envText := envText + size;
+    envLeft := envLeft - size;
+    return 0;
 end;
 
 (* A pipe: the fd to read and the fd to write, both closed in a program
@@ -1553,7 +1639,7 @@ begin
     if p.onlyEnv then
         argv, size := argsAndEnv(p.args, p.env, ADR(none));
     else
-        argv, size := argsAndEnv(p.args, p.env, ARGV() + (ARGC() + 1));
+        argv, size := argsAndEnv(p.args, p.env, environment());
     end;
     if argv = nil then return -12; end;                 (* ENOMEM *)
     search := env("PATH");                              (* read here, before the fork *)
@@ -1604,7 +1690,7 @@ begin
     if p.onlyEnv then
         argv, size := argsAndEnv(p.args, p.env, ADR(none));
     else
-        argv, size := argsAndEnv(p.args, p.env, ARGV() + (ARGC() + 1));
+        argv, size := argsAndEnv(p.args, p.env, environment());
     end;
     if argv = nil then return -12; end;                 (* ENOMEM *)
     r := takeOn(p, name, dir);
@@ -2146,6 +2232,26 @@ begin
     if (w # 80) or (h # 24) then exit(2); end;
     (* the environment *)
     if (LEN(env("PATH")) = 0) or (LEN(env("RAZ_NO_SUCH_VARIABLE")) # 0) then exit(2); end;
+    (* the environment set: refused, added, set again, grown past its first array *)
+    if (setEnv("", "x") # -22) or (setEnv("A=B", "x") # -22) or (setEnv("A", "\x00") # -22) then exit(2); end;
+    if (setEnv("RAZ_SYS_TEST", "one") # 0) or (env("RAZ_SYS_TEST") # "one") then exit(2); end;
+    name := env("RAZ_SYS_TEST");
+    if (setEnv("RAZ_SYS_TEST", "") # 0) or (env("RAZ_SYS_TEST") # "") or (name # "one") then exit(2); end;
+    buf := "RAZ_SYS_TEST_..";
+    for k := 0 to 99 do
+        buf[13] := U8('0' + k div 10);
+        buf[14] := U8('0' + k mod 10);
+        if setEnv(buf[0..15], buf[13..15]) # 0 then exit(2); end;
+    end;
+    if (env("RAZ_SYS_TEST_42") # "42") or (env("RAZ_SYS_TEST") # "") or (LEN(env("PATH")) = 0) then exit(2); end;
+    n := 0;
+    k := 0;
+    repeat
+        name, ok := envAt(k);
+        if (LEN(name) > 12) and (name[0..12] = "RAZ_SYS_TEST") then INC(n); end;
+        INC(k);
+    until not ok;
+    if n # 101 then exit(2); end;
     name, err := workDir();
     if (err # 0) or (LEN(name) = 0) or (name[0] # '/') then exit(2); end;
     if (setWorkDir("/tmp/raz-sys-dir") # 0) or (removeDir("/tmp/raz-sys-dir") # 0) then exit(2); end;

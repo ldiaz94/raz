@@ -1141,6 +1141,33 @@ begin
     return p, size;
 end;
 
+(* Sets the environment variable name to value, for env and for the
+   programs this one starts; 0, or minus an errno: -22 if name is empty
+   or holds an = or a 0, or value a 0, and -12 if there is no memory.
+   The C library's setenv keeps the environment. It isn't safe while
+   another thread reads the environment or starts a program. *)
+proc setEnv*(name, value: []U8): INT;
+var p: ^U8; size, i, r: INT;
+begin
+    if LEN(name) = 0 then return -22; end;                     (* EINVAL *)
+    for i := 0 to LEN(name) - 1 do
+        if (name[i] = '=') or (name[i] = 0) then return -22; end;
+    end;
+    for i := 0 to LEN(value) - 1 do
+        if value[i] = 0 then return -22; end;
+    end;
+    (* both as C strings, in memory that comes zeroed *)
+    size := LEN(name) + LEN(value) + 2;
+    p := mmap(size);
+    if p = nil then return -12; end;                           (* ENOMEM *)
+    COPY(p[0..LEN(name)], name);
+    COPY(p[LEN(name) + 1..size - 1], value);
+    r := 0;
+    if C.setenv(p, p + (LEN(name) + 1), 1) # 0 then r := failed(); end;
+    munmap(p, size);
+    return r;
+end;
+
 (* A pipe: the fd to read and the fd to write, both closed in a program
    exec starts; or minus an errno and -1. *)
 proc pipe*: (INT, INT);
@@ -2031,6 +2058,26 @@ begin
     if (w # 80) or (h # 24) then exit(2); end;
     (* the environment *)
     if (LEN(env("PATH")) = 0) or (LEN(env("RAZ_NO_SUCH_VARIABLE")) # 0) then exit(2); end;
+    (* the environment set: refused, added, set again, grown past its first array *)
+    if (setEnv("", "x") # -22) or (setEnv("A=B", "x") # -22) or (setEnv("A", "\x00") # -22) then exit(2); end;
+    if (setEnv("RAZ_SYS_TEST", "one") # 0) or (env("RAZ_SYS_TEST") # "one") then exit(2); end;
+    name := env("RAZ_SYS_TEST");
+    if (setEnv("RAZ_SYS_TEST", "") # 0) or (env("RAZ_SYS_TEST") # "") or (name # "one") then exit(2); end;
+    buf := "RAZ_SYS_TEST_..";
+    for k := 0 to 99 do
+        buf[13] := U8('0' + k div 10);
+        buf[14] := U8('0' + k mod 10);
+        if setEnv(buf[0..15], buf[13..15]) # 0 then exit(2); end;
+    end;
+    if (env("RAZ_SYS_TEST_42") # "42") or (env("RAZ_SYS_TEST") # "") or (LEN(env("PATH")) = 0) then exit(2); end;
+    n := 0;
+    k := 0;
+    repeat
+        name, ok := envAt(k);
+        if (LEN(name) > 12) and (name[0..12] = "RAZ_SYS_TEST") then INC(n); end;
+        INC(k);
+    until not ok;
+    if n # 101 then exit(2); end;
     name, err := workDir();
     if (err # 0) or (LEN(name) = 0) or (name[0] # '/') then exit(2); end;
     if (setWorkDir("/tmp/raz-sys-dir") # 0) or (removeDir("/tmp/raz-sys-dir") # 0) then exit(2); end;

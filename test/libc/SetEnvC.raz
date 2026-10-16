@@ -1,0 +1,26 @@
+(* Sys.setEnv over C: a variable set, then set again, reaches a program this
+   one starts, as one variable; one it named in its own env wins. *)
+module SetEnvC;
+import Out, Rt, Sys;
+
+proc run(env: [][]U8);
+var p: Sys.Program; pid: INT;
+begin
+    p.path := "/bin/sh";
+    p.args := ["sh", "-c", "echo $RAZ_SET_ENV; env | grep -c ^RAZ_SET_ENV="];
+    p.env := env;
+    Out.flush;
+    pid := Sys.spawn(p);
+    if pid < 0 then Rt.stop("SetEnv: no sh"); end;
+    _, _, _ := Sys.wait(pid, true);
+end;
+
+proc main*;
+begin
+    if Sys.setEnv("RAZ_SET_ENV", "first") # 0 then Rt.stop("SetEnv: set"); end;
+    if Sys.setEnv("RAZ_SET_ENV", "second") # 0 then Rt.stop("SetEnv: set again"); end;
+    run([]);
+    run(["RAZ_SET_ENV=given"]);
+end;
+
+end SetEnvC.

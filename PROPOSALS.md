@@ -583,23 +583,6 @@ spelling to use instead (`x* )` or a word).
 
 Met in rrem's parser, documenting `(?>x*)`.
 
-## Setting an environment variable
-
-`Sys.env` reads a variable; nothing sets one. A test can't give the
-programs it runs, or the code it tests, an environment of its own:
-rwalk's tests read the user's real global ignore file, since they
-can't point `XDG_CONFIG_HOME` at a directory of their own.
-
-The proposal, in `Sys`:
-
-```
-proc setEnv*(name, value: []U8): INT;   (* sets name to value, for this program and those it starts; 0, or minus an errno *)
-```
-
-It breaks no program.
-
-Met in rwalk's tests.
-
 ## A hint for a hexadecimal name
 
 `FFFDH`, meant as a number, is an identifier, and the error is "FFFDH

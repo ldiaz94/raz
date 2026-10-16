@@ -11,7 +11,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `workDir`, `setWorkDir`; programs, `spawn` and `exec`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; what an errno means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn` and `exec`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; what an errno means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -254,6 +254,7 @@ proc errorText*(err: INT): []U8;   (* what errno err, or minus it, means, as C's
 
 proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
 proc envAt*(i: INT): ([]U8, BOOL); (* the environment's ith NAME=value, from 0; false past the last *)
+proc setEnv*(name, value: []U8): INT;   (* name set to value, for env and the programs started *)
 proc workDir*: ([]U8, INT);        (* the working directory, good until the next call *)
 proc setWorkDir*(path: []U8): INT;
 
@@ -424,7 +425,10 @@ alone can't say; an empty `how` asks only whether it is there.
 taken away from the mode of every file this program, and those it
 starts, make, and says what they were. `envAt` gives the environment
 one variable at a time, from 0, for a shell to list it and to pass it
-on whole with `onlyEnv`. `getMode` reads a terminal's modes, and
+on whole with `onlyEnv`. `setEnv` refuses a name that is empty or
+holds an `=`, and a 0 in either, with -22; as C's `setenv`, it isn't
+safe while another thread reads the environment, and what `env` gave
+for a variable may be gone once it sets that variable again. `getMode` reads a terminal's modes, and
 `setMode` sets them again once what was written is sent, so that a
 shell keeps them for each job: a program stopped by Ctrl-Z with its
 terminal raw gets it back raw, and the shell its own between.
