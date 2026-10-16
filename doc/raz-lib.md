@@ -676,6 +676,7 @@ nearest; from 1e15 on, with an exponent, as `1.50e17`; and `nan`,
 module Files;
 proc arg*(i: INT): []U8;                     (* argument i; 0 is the program's name *)
 proc read*(path: []U8; b: ^Buf.Buf): BOOL;   (* the whole file added to b *)
+proc load*(path: []U8; b: ^Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
 proc write*(path, data: []U8): BOOL;         (* the file made to hold data *)
 
 module Opt;

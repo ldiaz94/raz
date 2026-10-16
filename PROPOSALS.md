@@ -573,16 +573,3 @@ them.
 
 Met in libro; every program with a screen, rmacs and ravite among
 them, needs the same.
-
-## Why `Files.read` failed
-
-`Files.read(path, b)` is false if the file can't be read, and says no
-more: libro can say "can't read the file", but not that it is missing,
-a directory, or not allowed. The program that wants to know opens it
-itself, with `Sys.openRead`, and reads it as `Files.read` does.
-
-The proposal: `proc load*(path: []U8; b: ^Buf.Buf): INT`, 0, or minus
-the errno of the open or the read that failed, as `Sys` gives them;
-`read` stays as it is. Library growth that breaks no program.
-
-Met in libro.
