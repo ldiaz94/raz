@@ -13,12 +13,22 @@ const
     sigHup* = 1; sigInt* = 2; sigQuit* = 3; sigKill* = 9; sigPipe* = 13;
     sigTerm* = 15; sigChld* = 17; sigCont* = 18; sigStop* = 19;
     sigTstp* = 20; sigTtin* = 21; sigTtou* = 22; sigWinch* = 28;
+    sigUsr1* = 10; sigUsr2* = 12; sigAlrm* = 14;
+    (* the limits limit and setLimit take, by their numbers on Linux *)
+    limitCpu* = 0;          (* seconds of the processor *)
+    limitFileSize* = 1;     (* bytes in a file it writes *)
+    limitData* = 2;         (* bytes of its data *)
+    limitStack* = 3;        (* bytes of its stack *)
+    limitCore* = 4;         (* bytes of a core dump *)
+    limitProcs* = 6;        (* processes of its user *)
+    limitFiles* = 7;        (* one more than its highest fd *)
+    limitMemory* = 9;       (* bytes of its address space *)
 
 type
     (* What open is asked for: reading, writing or both, and what else
        it does to the file. *)
     Access* = (reading, writing, creating, exclusive, truncating,
-        appending);
+        appending, executing);
     Accesses* = set of Access;   (* what open is given *)
 
     (* What info says of a file. *)
@@ -57,6 +67,7 @@ type
         group*: INT;        (* its group: 0 for this program's, -1 a new one *)
         foreground*: BOOL;  (* its group gets the terminal on standard input *)
         tty*: INT;          (* a pseudo-terminal to start a session on, or 0 *)
+        more*: []INT;       (* fds above 2 passed on to it at the same numbers *)
     end;
     (* How a program that wait waited for changed. *)
     Status* = (running, exited, killed, stopped);
@@ -67,6 +78,11 @@ type
         line: U8;
         cc: [19]U8;
     end;
+    (* A terminal's modes, as getMode reads them and setMode sets them. *)
+    Mode* = record
+        t: Termios;
+    end;
+
     Winsize = record rows, cols, xpixel, ypixel: U16; end;
     Pollfd = record fd: I32; events, revents: I16; end;
 
@@ -113,6 +129,7 @@ var
     saved: Termios;   (* the terminal as rawMode found it *)
     caughtSigs: U64;  (* the signals catch has blocked, bit n - 1 for signal n *)
     sigFd: INT;       (* the signalfd that gives them, once caughtSigs isn't empty *)
+    uts: [390]U8;     (* struct utsname, which hostName gives the nodename of *)
 
 (* Writes s to the file descriptor fd; the number of bytes written, or
    minus an errno. *)
@@ -161,6 +178,7 @@ end;
 proc openMode*(path: []U8; how: Accesses; mode: INT): INT;
 var buf: [4096]U8;
 begin
+    if executing in how then return -22; end;        (* EINVAL: access asks it, open can't *)
     if not cstr(path, buf) then return -36; end;   (* ENAMETOOLONG *)
     return SYSCALL(2, ADR(buf), flags(how), mode);
 end;
@@ -235,6 +253,32 @@ end;
 proc close*(fd: INT);
 begin
     _ := SYSCALL(3, fd);
+end;
+
+(* A new file descriptor for the file fd is open on, the lowest free:
+   it, or minus an errno. *)
+proc dup*(fd: INT): INT;
+begin
+    return SYSCALL(32, fd);                         (* dup *)
+end;
+
+(* Makes the file descriptor into stand for the file fd is open on,
+   closing what into was first: into, or minus an errno. *)
+proc dupTo*(fd, into: INT): INT;
+begin
+    return SYSCALL(33, fd, into);                   (* dup2 *)
+end;
+
+(* Whether fd stays open in the program exec runs in this one's place:
+   yes, or no, closed then, as pipe's fds are at first. 0, or minus an
+   errno. *)
+proc keepOnExec*(fd: INT; yes: BOOL): INT;
+var f: INT;
+begin
+    f := SYSCALL(72, fd, 1);                        (* fcntl: F_GETFD *)
+    if f < 0 then return f; end;
+    if yes then f := f & ~1; else f := f | 1; end;  (* FD_CLOEXEC *)
+    return SYSCALL(72, fd, 2, f);                   (* F_SETFD *)
 end;
 
 (* size bytes of fresh, zeroed memory from the system, a multiple of
@@ -323,6 +367,27 @@ var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
     return SYSCALL(90, ADR(a), mode);
+end;
+
+(* 0 if this user, by its real ids, may do with path what how asks:
+   reading, writing and executing; minus an errno, -13 (EACCES) if not.
+   An empty how asks only whether path is there. *)
+proc access*(path: []U8; how: Accesses): INT;
+var a: [4096]U8; m: INT;
+begin
+    if not cstr(path, a) then return -36; end;
+    m := 0;                                         (* F_OK *)
+    if reading in how then m := m | 4; end;         (* R_OK *)
+    if writing in how then m := m | 2; end;         (* W_OK *)
+    if executing in how then m := m | 1; end;         (* X_OK *)
+    return SYSCALL(21, ADR(a), m);                  (* access *)
+end;
+
+(* Sets the bits taken from every file this program, and the programs
+   it starts, make: the mask it was. *)
+proc umask*(mask: INT): INT;
+begin
+    return SYSCALL(95, mask & 1FFH);                (* umask *)
 end;
 
 (* Makes path a symbolic link to target. *)
@@ -498,6 +563,22 @@ end;
 proc restoreMode*(fd: INT);
 begin
     _ := SYSCALL(16, fd, 5402H, ADR(saved));
+end;
+
+(* The modes of the terminal on fd, as a shell keeps them for each job;
+   and 0, or minus an errno, -25 (ENOTTY) if it isn't a terminal. *)
+proc getMode*(fd: INT): (Mode, INT);
+var m: Mode; r: INT;
+begin
+    r := SYSCALL(16, fd, 5401H, ADR(m.t));          (* TCGETS *)
+    return m, r;
+end;
+
+(* Gives the terminal on fd the modes m, once what was written to it
+   is sent: 0, or minus an errno. *)
+proc setMode*(fd: INT; m: Mode): INT;
+begin
+    return SYSCALL(16, fd, 5403H, ADR(m.t));        (* TCSETSW *)
 end;
 
 (* The columns and rows of the terminal on fd; 80 by 24 if it doesn't
@@ -926,6 +1007,22 @@ begin
     return "";
 end;
 
+(* The environment's ith NAME=value, from 0, and true; "" and false
+   past the last. *)
+proc envAt*(i: INT): ([]U8, BOOL);
+var e: ^^U8; s: ^U8; j, n: INT;
+begin
+    if i < 0 then return "", false; end;
+    e := ARGV() + (ARGC() + 1);
+    for j := 0 to i do
+        if e[j] = nil then return "", false; end;
+    end;
+    s := e[i];
+    n := 0;
+    while s[n] # 0 do INC(n); end;
+    return s[0..n], true;
+end;
+
 (* The working directory, good until the next call; and 0, or minus an
    errno. *)
 proc workDir*: ([]U8, INT);
@@ -1034,6 +1131,62 @@ begin
     return SYSCALL(39);                                 (* getpid *)
 end;
 
+(* The user this program runs as: its real id. *)
+proc uid*: INT;
+begin
+    return SYSCALL(102);                                (* getuid *)
+end;
+
+(* The user whose rights this program has, its effective id: 0 is
+   root. *)
+proc euid*: INT;
+begin
+    return SYSCALL(107);                                (* geteuid *)
+end;
+
+(* The name of this machine, good until the next call; and 0, or minus
+   an errno. *)
+proc hostName*: ([]U8, INT);
+var r, n: INT;
+begin
+    r := SYSCALL(63, ADR(uts));                         (* uname *)
+    if r < 0 then return "", r; end;
+    n := 0;
+    while (n < 64) and (uts[65 + n] # 0) do INC(n); end;   (* the nodename, at 65 *)
+    return uts[65..65 + n], 0;
+end;
+
+(* The time on the processor, in ns, that this program has used, or,
+   if children, the programs it started and waited for: in the program
+   itself, and in the system for it. *)
+proc cpuTime*(children: BOOL): (I64, I64);
+var ru: [18]I64;   (* struct rusage: two struct timeval first *)
+begin
+    if children then _ := SYSCALL(98, -1, ADR(ru));    (* getrusage: RUSAGE_CHILDREN *)
+    else _ := SYSCALL(98, 0, ADR(ru));                 (* RUSAGE_SELF *)
+    end;
+    return ru[0] * 1000000000 + ru[1] * 1000, ru[2] * 1000000000 + ru[3] * 1000;
+end;
+
+(* The limit which, one of the limit constants: the soft one, which
+   this program may raise up to the hard one; -1 for none; and 0, or
+   minus an errno. *)
+proc limit*(which: INT): (I64, I64, INT);
+var r: [2]I64; err: INT;
+begin
+    err := SYSCALL(97, which, ADR(r));                  (* getrlimit; RLIM_INFINITY is -1 *)
+    return r[0], r[1], err;
+end;
+
+(* Sets the limit which to soft and hard, -1 for none: 0, or minus an
+   errno. *)
+proc setLimit*(which: INT; soft, hard: I64): INT;
+var r: [2]I64;
+begin
+    r := [soft, hard];
+    return SYSCALL(160, which, ADR(r));                 (* setrlimit *)
+end;
+
 (* Moves the program pid, or this one if pid is 0, to the process group
    group, or to a new one it leads if group is 0. *)
 proc setGroup*(pid, group: INT): INT;
@@ -1064,39 +1217,156 @@ end;
    or empty: glibc's execvp looks in these. *)
 const defaultPath = "/bin:/usr/bin";
 
+(* The ith directory of search, a list of them with : between, as PATH
+   is: dir, "." if it is empty, and where the next starts; -1 past the
+   last. *)
+proc pathDir(search: []U8; i: INT): ([]U8, INT);
+var j: INT;
+begin
+    if i > LEN(search) then return "", -1; end;
+    j := i;
+    while (j < LEN(search)) and (search[j] # ':') do INC(j); end;
+    if j = i then return ".", j + 1; end;
+    return search[i..j], j + 1;
+end;
+
+(* dir, a /, and name, a C string in buf; false if it doesn't fit. *)
+proc joinPath(dir, name, buf: []U8): BOOL;
+var n: INT;
+begin
+    n := LEN(dir) + 1 + LEN(name);
+    if n >= LEN(buf) then return false; end;
+    COPY(buf, dir);
+    buf[LEN(dir)] := '/';
+    COPY(buf[LEN(dir) + 1..n], name);
+    buf[n] := 0;
+    return true;
+end;
+
+(* Whether name holds a /, and so is a path, not a name to look for. *)
+proc isPath(name: []U8): BOOL;
+var i: INT;
+begin
+    for i := 0 to LEN(name) - 1 do
+        if name[i] = '/' then return true; end;
+    end;
+    return false;
+end;
+
 (* Runs the program at name, as execve does; or, for a name without a
    /, the first program of that name in the directories of search, as
    execvp does: each in turn, an empty one being the working directory.
    It returns only if none could be run. It runs in spawn's child, after
    the fork, so it takes no memory: each path is made in buf. *)
-proc exec(name, search, buf: []U8; argv, envp: ^^U8);
-var dir: []U8; i, j, n: INT;
+proc run(name, search, buf: []U8; argv, envp: ^^U8);
+var dir: []U8; i: INT;
 begin
-    i := 0;
-    while (i < LEN(name)) and (name[i] # '/') do INC(i); end;
-    if (i < LEN(name)) or (LEN(name) = 0) then
+    if isPath(name) or (LEN(name) = 0) then
         if cstr(name, buf) then _ := SYSCALL(59, ADR(buf[0]), argv, envp); end;   (* execve *)
         return;
     end;
-    i := 0;
-    while i <= LEN(search) do
-        j := i;
-        while (j < LEN(search)) and (search[j] # ':') do INC(j); end;
-        dir := search[i..j];
-        if LEN(dir) = 0 then dir := "."; end;
-        n := LEN(dir) + 1 + LEN(name);
-        if n < LEN(buf) then
-            COPY(buf, dir);
-            buf[LEN(dir)] := '/';
-            COPY(buf[LEN(dir) + 1..n], name);
-            buf[n] := 0;
-            _ := SYSCALL(59, ADR(buf[0]), argv, envp);    (* execve *)
-        end;
-        i := j + 1;
+    dir, i := pathDir(search, 0);
+    while i >= 0 do
+        if joinPath(dir, name, buf) then _ := SYSCALL(59, ADR(buf[0]), argv, envp); end;   (* execve *)
+        dir, i := pathDir(search, i);
     end;
 end;
 
-(* Starts the program p describes, found as exec says: its process id,
+(* The program exec runs for name, as a C string in buf: name itself
+   if it has a /, or else the first file of that name in the
+   directories of search that is no directory and that this user may
+   run. 0; or -2 (ENOENT) if there is none, or -13 (EACCES) if one is
+   there and can't be run. *)
+proc find(name, search, buf: []U8): INT;
+var dir: []U8; i, err, r: INT; f: Info;
+begin
+    if isPath(name) then
+        if not cstr(name, buf) then return -36; end;
+        return 0;
+    end;
+    r := -2;                                            (* ENOENT *)
+    dir, i := pathDir(search, 0);
+    while (LEN(name) > 0) and (i >= 0) do
+        if joinPath(dir, name, buf) then
+            f, err := info(buf[0..LEN(dir) + 1 + LEN(name)]);
+            if (err = 0) and not f.dir then
+                if SYSCALL(21, ADR(buf[0]), 1) = 0 then return 0; end;   (* access, X_OK *)
+                r := -13;                               (* EACCES *)
+            end;
+        end;
+        dir, i := pathDir(search, i);
+    end;
+    return r;
+end;
+
+(* The name of the terminal of the pseudo-terminal fd, as a C string
+   in name: /dev/pts/ and the number TIOCGPTN gives. 0, or -25
+   (ENOTTY). *)
+proc ptyName(fd: INT; name: []U8): INT;
+var n, i, size: INT;
+begin
+    n := 0;
+    if SYSCALL(16, fd, 80045430H, ADR(n)) # 0 then return -25; end;   (* TIOCGPTN; ENOTTY *)
+    i := put("/dev/pts/", ADR(name[0])) - ADR(name[0]) - 1;   (* at its zero *)
+    size := n;
+    repeat INC(i); size := size div 10; until size = 0;
+    name[i] := 0;
+    repeat DEC(i); name[i] := U8(48 + n mod 10); n := n div 10; until n = 0;
+    return 0;
+end;
+
+(* Closes every fd from 3 on but those of keep, which stay open in the
+   program exec starts. It runs in spawn's child, after the fork, so it
+   takes no memory: it closes the runs between the fds kept, the lowest
+   first, each with one close_range. *)
+proc closeAllBut(keep: []INT);
+var lo, next, i: INT;
+begin
+    lo := 3;
+    repeat
+        next := -1;
+        for i := 0 to LEN(keep) - 1 do
+            if (keep[i] >= lo) and ((next < 0) or (keep[i] < next)) then next := keep[i]; end;
+        end;
+        if next < 0 then
+            _ := SYSCALL(436, lo, 0FFFFFFFFH, 0);       (* close_range: the rest *)
+        else
+            if next > lo then _ := SYSCALL(436, lo, next - 1, 0); end;
+            _ := SYSCALL(72, next, 2, 0);              (* fcntl: F_SETFD, kept on exec *)
+            lo := next + 1;
+        end;
+    until next < 0;
+end;
+
+(* What p asks of the program before it runs, done to this one: a
+   session on the terminal name, if p.tty, or else its group, its
+   terminal's foreground, and its standard input, output and error;
+   then its working directory, the C string dir. 0, or minus an
+   errno. *)
+proc takeOn(p: Program; name, dir: []U8): INT;
+var fd, i, r: INT;
+begin
+    if p.tty # 0 then
+        _ := SYSCALL(112);                              (* setsid *)
+        fd := SYSCALL(2, ADR(name[0]), 2);              (* open, O_RDWR *)
+        if fd < 0 then return fd; end;
+        r := SYSCALL(16, fd, 540EH, 0);                 (* TIOCSCTTY *)
+        if r # 0 then return r; end;
+        for i := 0 to 2 do _ := SYSCALL(33, fd, i); end;   (* dup2 *)
+    else
+        if p.group = -1 then _ := SYSCALL(109, 0, 0);   (* setpgid *)
+        elsif p.group # 0 then _ := SYSCALL(109, 0, p.group);
+        end;
+        if p.foreground then _ := foreground(0, SYSCALL(111)); end;   (* getpgrp *)
+        for i := 0 to 2 do
+            if p.fds[i] # 0 then _ := SYSCALL(33, p.fds[i], i); end;   (* dup2 *)
+        end;
+    end;
+    if LEN(p.dir) > 0 then return SYSCALL(80, ADR(dir[0])); end;   (* chdir *)
+    return 0;
+end;
+
+(* Starts the program p describes, found as run says: its process id,
    or minus an errno. A program that can't be started ends with status
    127. Every signal is blocked from the fork until the program has its
    own: its group, its terminal's foreground, and signals as they are
@@ -1104,19 +1374,10 @@ end;
 proc spawn*(p: Program): INT;
 var
     a, dir: [4096]U8; name: [32]U8; dfl: [4]U64;   (* struct sigaction: SIG_DFL *)
-    argv: ^^U8; none: ^U8; all, old, empty: U64; size, pid, n, i, fd, g: INT; search: []U8;
+    argv: ^^U8; none: ^U8; all, old, empty: U64; size, pid, i, g: INT; search: []U8;
 begin
     if not cstr(p.path, a) or not cstr(p.dir, dir) then return -36; end;   (* ENAMETOOLONG *)
-    if p.tty # 0 then
-        (* its terminal: /dev/pts/ and the number TIOCGPTN gives *)
-        n := 0;
-        if SYSCALL(16, p.tty, 80045430H, ADR(n)) # 0 then return -25; end;   (* ENOTTY *)
-        i := put("/dev/pts/", ADR(name[0])) - ADR(name[0]) - 1;   (* at its zero *)
-        size := n;
-        repeat INC(i); size := size div 10; until size = 0;
-        name[i] := 0;
-        repeat DEC(i); name[i] := U8(48 + n mod 10); n := n div 10; until n = 0;
-    end;
+    if (p.tty # 0) and (ptyName(p.tty, name) # 0) then return -25; end;   (* ENOTTY *)
     none := nil;
     if p.onlyEnv then
         argv, size := argsAndEnv(p.args, p.env, ADR(none));
@@ -1130,25 +1391,11 @@ begin
     _ := SYSCALL(14, 2, ADR(all), ADR(old), 8);         (* rt_sigprocmask: SIG_SETMASK *)
     pid := SYSCALL(57);                                 (* fork *)
     if pid = 0 then
-        if p.tty # 0 then
-            _ := SYSCALL(112);                          (* setsid *)
-            fd := SYSCALL(2, ADR(name), 2);             (* open, O_RDWR *)
-            if (fd < 0) or (SYSCALL(16, fd, 540EH, 0) # 0) then _ := SYSCALL(231, 127); end;   (* TIOCSCTTY; exit *)
-            for i := 0 to 2 do _ := SYSCALL(33, fd, i); end; (* dup2 *)
-        else
-            if p.group = -1 then _ := SYSCALL(109, 0, 0);   (* setpgid *)
-            elsif p.group # 0 then _ := SYSCALL(109, 0, p.group);
-            end;
-            if p.foreground then _ := foreground(0, SYSCALL(111)); end;   (* getpgrp *)
-            for i := 0 to 2 do
-                if p.fds[i] # 0 then _ := SYSCALL(33, p.fds[i], i); end;   (* dup2 *)
-            end;
-        end;
-        if (LEN(p.dir) > 0) and (SYSCALL(80, ADR(dir)) # 0) then _ := SYSCALL(231, 127); end;   (* chdir *)
-        _ := SYSCALL(436, 3, 0FFFFFFFFH, 0);            (* close_range: every fd from 3 *)
+        if takeOn(p, name, dir) # 0 then _ := SYSCALL(231, 127); end;   (* exit *)
+        closeAllBut(p.more);
         for i := 1 to 64 do _ := SYSCALL(13, i, ADR(dfl), 0, 8); end;   (* rt_sigaction *)
         _ := SYSCALL(14, 2, ADR(empty), 0, 8);          (* no signal blocked *)
-        exec(p.path, search, a, argv, argv + (LEN(p.args) + 1));
+        run(p.path, search, a, argv, argv + (LEN(p.args) + 1));
         _ := SYSCALL(231, 127);                         (* exit *)
     end;
     if (pid > 0) and (p.tty = 0) then
@@ -1162,6 +1409,53 @@ begin
     munmap(^U8(argv), size);
     return pid;
 end;
+
+(* Runs the program p describes in this one's place, as spawn would
+   start it, but keeping this program's other fds as they are, open
+   unless keepOnExec said no; the fds of p.more are kept. It returns
+   only if it can't: -2 (ENOENT) or -13 (EACCES) if there is no
+   program to run, before anything is done; or, once the program's
+   terminal, group, fds and working directory are as p asks, which
+   stay so, minus the errno that stopped it, with this program's
+   signals given back as they were. *)
+proc exec*(p: Program): INT;
+var
+    a, dir: [4096]U8; name: [32]U8; dfl: [4]U64; acts: [65][4]U64;   (* struct sigaction *)
+    argv: ^^U8; none: ^U8; all, old, empty: U64; size, r, i: INT; search: []U8;
+begin
+    if not cstr(p.dir, dir) then return -36; end;      (* ENAMETOOLONG *)
+    if (p.tty # 0) and (ptyName(p.tty, name) # 0) then return -25; end;   (* ENOTTY *)
+    search := env("PATH");
+    if LEN(search) = 0 then search := defaultPath; end;
+    r := find(p.path, search, a);
+    if r < 0 then return r; end;
+    none := nil;
+    if p.onlyEnv then
+        argv, size := argsAndEnv(p.args, p.env, ADR(none));
+    else
+        argv, size := argsAndEnv(p.args, p.env, ARGV() + (ARGC() + 1));
+    end;
+    if argv = nil then return -12; end;                 (* ENOMEM *)
+    r := takeOn(p, name, dir);
+    if r = 0 then
+        for i := 0 to LEN(p.more) - 1 do
+            if p.more[i] > 2 then _ := keepOnExec(p.more[i], true); end;
+        end;
+        (* every signal as it is at first and none blocked, as spawn
+           gives them, each kept to give back if execve fails *)
+        all := 0FFFFFFFFFFFFFFFFH;
+        _ := SYSCALL(14, 2, ADR(all), ADR(old), 8);     (* rt_sigprocmask: SIG_SETMASK *)
+        for i := 1 to 64 do _ := SYSCALL(13, i, ADR(dfl), ADR(acts[i]), 8); end;   (* rt_sigaction *)
+        _ := SYSCALL(14, 2, ADR(empty), 0, 8);
+        r := SYSCALL(59, ADR(a), argv, argv + (LEN(p.args) + 1));   (* execve *)
+        _ := SYSCALL(14, 2, ADR(all), 0, 8);
+        for i := 1 to 64 do _ := SYSCALL(13, i, ADR(acts[i]), 0, 8); end;
+        _ := SYSCALL(14, 2, ADR(old), 0, 8);
+    end;
+    munmap(^U8(argv), size);
+    return r;
+end;
+
 (* Waits for the program pid, or any of this program's if pid is -1, to
    change, if block, and says which one changed and how: exited, with
    its exit status; killed or stopped, with the signal's number. Without
@@ -1330,6 +1624,97 @@ begin
     while caught(sigs) # 0 do end;
     if (kill(pid(), sigHup) # 0) or not ready(sigs, 1000) or (caught(sigs) # sigHup) then exit(2); end;
     if ignore(sigInt, false) # 0 then exit(2); end;
+end;
+
+(* The test of what a shell needs: fds copied, moved and kept on
+   exec; a program given an fd at its own number, and one not; access,
+   the umask and the environment by number; a terminal's modes; time
+   used; limits; who and where; and exec, with nothing to run, and
+   with a program that can't be run, after which the signals caught
+   are caught still. *)
+proc testShell;
+var
+    r, w, fd, n, k, child, c, err, pty, sigs, mask: INT; st: Status; buf: [64]U8;
+    m, raw: Mode; soft, hard, s2, h2, user, system: I64; e: []U8; ok, path: BOOL;
+begin
+    r, w := pipe();
+    if w < 0 then exit(2); end;
+    fd := dup(w);
+    if (fd < 0) or (write(fd, "ab") # 2) or (read(r, buf) # 2) then exit(2); end;
+    close(fd);
+    if (dupTo(w, 9) # 9) or (write(9, "c") # 1) or (read(r, buf) # 1) or (buf[0] # 'c') then exit(2); end;
+    if (keepOnExec(9, false) # 0) or (keepOnExec(9, true) # 0) or (keepOnExec(-1, true) # -9) then exit(2); end;
+    child := spawn({path: "/bin/sh", args: ["sh", "-c", "echo more >&9"], more: [9]});
+    close(9);
+    close(w);
+    n := 0;
+    repeat
+        k := read(r, buf[n..LEN(buf)]);
+        if k > 0 then INC(n, k); end;
+    until k <= 0;
+    close(r);
+    if buf[0..n] # "more\n" then exit(2); end;
+    k, st, c := wait(child, true);
+    if (st # exited) or (c # 0) then exit(2); end;
+    r, w := pipe();
+    if (w < 0) or (dupTo(w, 9) # 9) then exit(2); end;
+    child := spawn({path: "/bin/sh", args: ["sh", "-c", "{ echo none >&9; } 2>/dev/null"]});   (* 9 is closed in it *)
+    close(9);
+    close(w);
+    if read(r, buf) # 0 then exit(2); end;
+    close(r);
+    k, st, c := wait(child, true);
+    if (st # exited) or (c = 0) then exit(2); end;
+
+    if (access("/bin/sh", {executing}) # 0) or (access("/", {reading}) # 0)
+        or (access("/no/such/file", {}) # -2) or (open("/bin/sh", {executing}) # -22) then exit(2); end;
+    mask := umask(3FH);                             (* 077 *)
+    if umask(mask) # 3FH then exit(2); end;
+    path := false;
+    n := 0;
+    repeat
+        e, ok := envAt(n);
+        if ok and (LEN(e) > 5) and (e[0..5] = "PATH=") then path := true; end;
+        INC(n);
+    until not ok;
+    e, ok := envAt(-1);
+    if not path or ok or (LEN(e) # 0) then exit(2); end;
+
+    (* a terminal's modes, kept and given back: a new one has lines *)
+    pty := openPty();
+    m, err := getMode(pty);
+    if (err # 0) or (m.t.lflag & 2 = 0) or not rawMode(pty) then exit(2); end;   (* ICANON *)
+    raw, err := getMode(pty);
+    if (err # 0) or (raw.t.lflag & 2 # 0) or (setMode(pty, m) # 0) then exit(2); end;
+    raw, err := getMode(pty);
+    if (err # 0) or (raw.t.lflag & 2 = 0) then exit(2); end;
+    m, err := getMode(-1);
+    if err # -9 then exit(2); end;                  (* EBADF *)
+    r, w := pipe();
+    m, err := getMode(r);
+    if err # -25 then exit(2); end;                 (* ENOTTY *)
+    close(r);
+    close(w);
+    close(pty);
+
+    user, system := cpuTime(false);
+    if (user < 0) or (system < 0) or (user + system = 0) then exit(2); end;
+    user, system := cpuTime(true);
+    if (user < 0) or (system < 0) then exit(2); end;
+    soft, hard, err := limit(limitFiles);
+    if (err # 0) or (soft < 16) or (setLimit(limitFiles, soft - 1, hard) # 0) then exit(2); end;
+    s2, h2, err := limit(limitFiles);
+    if (err # 0) or (s2 # soft - 1) or (h2 # hard) or (setLimit(limitFiles, soft, hard) # 0) then exit(2); end;
+    soft, hard, err := limit(10000);
+    if err # -22 then exit(2); end;                 (* EINVAL *)
+    e, err := hostName();
+    if (err # 0) or (LEN(e) = 0) or (uid() < 0) or (euid() < 0) then exit(2); end;
+
+    sigs := catch([sigUsr1]);
+    while caught(sigs) # 0 do end;                  (* the sigChld of the programs above *)
+    if (sigs < 0) or (exec({path: "no-such-program-on-path", args: ["x"]}) # -2) then exit(2); end;
+    if exec({path: "/etc/passwd", args: ["x"]}) # -13 then exit(2); end;   (* not executable *)
+    if (kill(pid(), sigUsr1) # 0) or not ready(sigs, 1000) or (caught(sigs) # sigUsr1) then exit(2); end;
 end;
 
 (* The test of time, random bytes and the network: a sleep the clock
@@ -1562,6 +1947,7 @@ begin
     close(l);
     _ := remove("/tmp/raz-sys-socket");
     testPrograms;
+    testShell;
     testNet;
 end;
 

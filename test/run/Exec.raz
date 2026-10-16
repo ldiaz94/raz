@@ -1,0 +1,14 @@
+(* Sys.exec: this program replaced by sh, with an fd it keeps, at its
+   own number, and one it doesn't; sh's output and status are its. *)
+module Exec;
+import Sys;
+
+proc main*: INT;
+begin
+    if (Sys.dupTo(Sys.stdout, 7) # 7) or (Sys.dupTo(Sys.stdout, 8) # 8) then return 1; end;
+    if (Sys.keepOnExec(7, false) # 0) or (Sys.keepOnExec(8, false) # 0) then return 1; end;
+    return Sys.exec({path: "sh", env: ["X=replaced"], more: [7],
+        args: ["sh", "-c", "echo $X >&7; { echo kept >&8; } 2>/dev/null || echo closed; exit 5"]});
+end;
+
+end Exec.

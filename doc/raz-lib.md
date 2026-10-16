@@ -11,7 +11,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `termSize`, `ready`; the environment, `env`, `workDir`, `setWorkDir`; programs, pipes and signals; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `workDir`, `setWorkDir`; programs, `spawn` and `exec`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -161,9 +161,13 @@ const
     sigHup* = 1; sigInt* = 2; sigQuit* = 3; sigKill* = 9; sigPipe* = 13;
     sigTerm* = 15; sigChld* = 17; sigCont* = 18; sigStop* = 19;
     sigTstp* = 20; sigTtin* = 21; sigTtou* = 22; sigWinch* = 28;
+    sigUsr1* = 10; sigUsr2* = 12; sigAlrm* = 14;
+    (* the limits limit and setLimit take, by their numbers on Linux; each target has its own *)
+    limitCpu* = 0; limitFileSize* = 1; limitData* = 2; limitStack* = 3;
+    limitCore* = 4; limitProcs* = 6; limitFiles* = 7; limitMemory* = 9;
 
 type
-    Access* = (reading, writing, creating, exclusive, truncating, appending);
+    Access* = (reading, writing, creating, exclusive, truncating, appending, executing);
     Accesses* = set of Access;
     Info* = record
         size*: I64;      (* in bytes *)
@@ -187,8 +191,10 @@ type
         group*: INT;        (* the process group it joins: 0 for this program's, -1 a new one it leads *)
         foreground*: BOOL;  (* its group takes the terminal on standard input *)
         tty*: INT;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
+        more*: []INT;       (* fds above 2 passed on to it, at the same numbers *)
     end;
     Status* = (running, exited, killed, stopped);
+    Mode* = record ... end;   (* a terminal's modes; its fields are the target's *)
     Peer* = record ... end;   (* whom a datagram came from *)
 
 proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
@@ -204,6 +210,9 @@ proc sync*(fd: INT): INT;                (* what was written to it, on the disk 
 proc syncAll*(fd: INT): INT;             (* all that was written to its file system, on the disk *)
 proc lock*(fd: INT; wait: BOOL): INT;    (* the file's lock, held until fd is closed *)
 proc close*(fd: INT);
+proc dup*(fd: INT): INT;                 (* a new fd for the same file, the lowest free *)
+proc dupTo*(fd, into: INT): INT;         (* into made the same file as fd, closing what it was *)
+proc keepOnExec*(fd: INT; yes: BOOL): INT;   (* fd left open, or not, in the program exec runs *)
 proc isTerminal*(fd: INT): BOOL;
 proc mmap*(size: INT): ^U8;              (* size bytes of zeroed memory, in whole pages; or nil *)
 proc munmap*(p: ^U8; size: INT);
@@ -215,6 +224,8 @@ proc remove*(path: []U8): INT;           (* a file, not a directory *)
 proc removeDir*(path: []U8): INT;        (* an empty directory *)
 proc makeDir*(path: []U8): INT;          (* readable by all, writable by its owner *)
 proc chmod*(path: []U8; mode: INT): INT;
+proc access*(path: []U8; how: Accesses): INT;   (* 0 if this user may read, write or execute it *)
+proc umask*(mask: INT): INT;             (* the bits taken from every file made; the mask it was *)
 proc symlink*(target, path: []U8): INT;  (* path made a link to target *)
 proc readLink*(path: []U8): ([]U8, INT); (* what the link names, good until the next call *)
 proc info*(path: []U8): (Info, INT);     (* following a symbolic link *)
@@ -229,6 +240,8 @@ proc closeDir*(d: ^Dir);
 
 proc rawMode*(fd: INT): BOOL;      (* the terminal on fd: no echo, no lines, no signals *)
 proc restoreMode*(fd: INT);        (* as rawMode found it *)
+proc getMode*(fd: INT): (Mode, INT);     (* the terminal's modes, to set again *)
+proc setMode*(fd: INT; m: Mode): INT;    (* once what was written to it is sent *)
 proc termSize*(fd: INT): (INT, INT);   (* columns and rows; 80 and 24 if unknown *)
 proc ready*(fd, ms: INT): BOOL;          (* something to read within ms, or ever if ms < 0 *)
 proc readyOf*(fds: []INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
@@ -236,6 +249,7 @@ proc readyFor*(reads, writes: []INT; ms: INT): INT;   (* readyOf, and the first 
 proc setBlocking*(fd: INT; yes: BOOL): INT;   (* if not yes, a read or write that would wait is -11 at once *)
 
 proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
+proc envAt*(i: INT): ([]U8, BOOL); (* the environment's ith NAME=value, from 0; false past the last *)
 proc workDir*: ([]U8, INT);        (* the working directory, good until the next call *)
 proc setWorkDir*(path: []U8): INT;
 
@@ -243,12 +257,19 @@ proc pipe*: (INT, INT);            (* the fd to read and the fd to write; or min
 proc openPty*: INT;                (* a pseudo-terminal: the fd of its controlling side *)
 proc setTermSize*(fd, cols, rows: INT): INT;   (* the size its programs are told of *)
 proc spawn*(p: Program): INT;      (* a program started: its process id *)
+proc exec*(p: Program): INT;       (* p run in this program's place; returns only if it can't *)
 proc wait*(pid: INT; block: BOOL): (INT, Status, INT);   (* which program, how, and its code *)
 proc kill*(pid, signal: INT): INT;
 proc pid*: INT;                    (* this program's process id *)
 proc setGroup*(pid, group: INT): INT;    (* pid 0 is this program; group 0 a new one pid leads *)
 proc foreground*(fd, group: INT): INT;   (* the terminal on fd gives its keys to group *)
 proc foregroundOf*(fd: INT): INT;  (* the group the terminal on fd gives its keys to *)
+proc uid*: INT;                    (* the user this program runs as *)
+proc euid*: INT;                   (* the user whose rights it has: 0 is root *)
+proc hostName*: ([]U8, INT);       (* this machine's name, good until the next call *)
+proc cpuTime*(children: BOOL): (I64, I64);   (* ns used in the program and in the system; or by its children *)
+proc limit*(which: INT): (I64, I64, INT);    (* the soft limit and the hard; -1 for none *)
+proc setLimit*(which: INT; soft, hard: I64): INT;
 
 proc catch*(sigs: []INT): INT;     (* sigs caught: an fd to wait on *)
 proc caught*(fd: INT): INT;        (* the next signal caught, or 0 if none is waiting *)
@@ -346,8 +367,9 @@ the old value, or, if `p.onlyEnv`, `p.env` alone. It starts in
 `p.dir`. Its standard input, output and error are `p.fds`; a 0 gives
 it this program's own, so `{path: "ls", args: ["ls"]}` runs
 `ls` as a shell runs it, with every other field zero. It gets no
-other open file, every signal does what it does at first, and none
-is blocked. If `p.tty` is a pseudo-terminal's fd, the program starts a
+other open file but those of `p.more`, each at its own number, as a
+shell passes `3<file` on, every signal does what it does at first, and
+none is blocked. If `p.tty` is a pseudo-terminal's fd, the program starts a
 session on that terminal: it is its controlling terminal, and its
 standard input, output and error, and `p.fds` and `p.group` are not
 used.
@@ -362,6 +384,41 @@ group there, as a shell does to take the terminal back. `setGroup`
 moves a program to a group, as the shell does for each program it
 starts, for whichever of the two runs first; a shell runs in a group
 of its own, `setGroup(0, 0)`.
+
+`exec` runs the program `p` describes in this program's place, as a
+shell's `exec cmd` does, found and started as `spawn` would start it,
+`p.tty`, `p.group`, `p.foreground`, `p.fds` and `p.dir` included,
+except that it keeps this program's other open files: each stays open
+in the program unless `keepOnExec(fd, false)` was said of it, as it is
+of `pipe`'s, and those of `p.more` are kept. It returns only if the
+program can't run: -2 (ENOENT) or -13 (EACCES) if there is none to
+run, with nothing done; or, if the program is found but won't start,
+minus the errno, with what `p` asks of the terminal, the group, the
+files and the directory done, and this program's signals as they were.
+
+A shell moves its own files with `dup` and `dupTo`, for `2>&1` and
+`exec >log` and around a builtin: `dupTo(fd, into)` makes `into` the
+same open file as `fd`, closing what `into` was, and `dup` gives a new
+fd for it, the lowest free, as a shell saves a file to give it back.
+`access` says whether this user, by its real ids, may read, write or
+execute a file, as `test -r`, `-w` and `-x` ask, which `Info.mode`
+alone can't say; an empty `how` asks only whether it is there.
+`open` refuses `executing`, with -22 (EINVAL). `umask` sets the bits
+taken away from the mode of every file this program, and those it
+starts, make, and says what they were. `envAt` gives the environment
+one variable at a time, from 0, for a shell to list it and to pass it
+on whole with `onlyEnv`. `getMode` reads a terminal's modes, and
+`setMode` sets them again once what was written is sent, so that a
+shell keeps them for each job: a program stopped by Ctrl-Z with its
+terminal raw gets it back raw, and the shell its own between.
+`cpuTime` says how long the processor ran this program, in its own
+code and in the system for it, or, if `children`, the programs it
+started and has waited for, as `time` and `times` say. `limit` gives a
+limit, `limitFiles` say, soft and hard, and `setLimit` sets them, as
+`ulimit` does: a program may raise its soft limit up to the hard one,
+and lower either. `uid` is the user this program runs as, `euid` the
+one whose rights it has, 0 for root, as a prompt shows `#`; `hostName`
+is the machine's name.
 
 `wait` waits for the program `pid` to change, or for any of this
 program's if `pid` is -1, and says which one, and how: `exited`, with
