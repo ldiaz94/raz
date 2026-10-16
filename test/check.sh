@@ -252,6 +252,19 @@ done
 if (ulimit -v 60000; $out/lib_Thread.linux-x86_64 fail) > /dev/null 2>&1; then pass=$((pass + 1))
 else echo "FAIL Thread under a memory limit"; fail=$((fail + 1)); fi
 
+# a module imported and never called leaves nothing of its own in the
+# program, not even Width's tables: the same program, importing it or
+# not, makes a file of the same size (the names the trace shows may
+# come in another order). Width's own imports, Str and through it Heap,
+# run their bodies, as every module does, so both import Str
+mkdir -p $out/shake
+printf 'module Shake;\nimport Out, Str, Width;\nproc main*;\nbegin\n    Out.int(1); Out.ln;\nend;\nend Shake.\n' >$out/shake/Shake.raz
+$raz -o $out/shake/with $out/shake/Shake.raz 2>/dev/null
+printf 'module Shake;\nimport Out, Str;\nproc main*;\nbegin\n    Out.int(1); Out.ln;\nend;\nend Shake.\n' >$out/shake/Shake.raz
+$raz -o $out/shake/without $out/shake/Shake.raz
+if [ $(wc -c <$out/shake/with) = $(wc -c <$out/shake/without) ]; then pass=$((pass + 1))
+else echo "FAIL an unused import, Width, changes the program"; fail=$((fail + 1)); fi
+
 # the editors' support, headless, where the editors are installed
 if test/editors.sh; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
 

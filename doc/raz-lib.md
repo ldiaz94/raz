@@ -30,6 +30,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Math` | roots, powers, logarithms, rounding and trigonometry, and `pi`, for `F64` |
 | `Files` | an argument as a string, and a whole file read or written |
 | `Opt` | a command line read through one table, by `getopt`'s rules with long options; its help and its mistakes |
+| `Width` | how many columns of a terminal a character, or a string, takes: 0, 1 or 2, as `wcwidth` says |
 
 Lengths, counts, file descriptors, process ids and statuses are
 `INT`s, and a character is an `I32`. What may pass an `INT` on a small
@@ -890,3 +891,25 @@ the table before it reads a word, and ends the program with status 1:
 others are an option with neither a letter nor a long name, a long
 name with `=` in it, a letter `-`, and `-h` or `--help` in the table,
 since they are `Opt`'s.
+
+**Width** says how many columns of a terminal text takes, for a
+program with a screen that wraps its lines and cuts them at the
+window's edge.
+
+```
+module Width;
+proc width*(c: I32): INT;      (* the columns the character c takes: 0, 1 or 2 *)
+proc columns*(s: []U8): INT;   (* the columns the UTF-8 text s takes *)
+```
+
+A combining mark, a format character, a control and Hangul's medial
+and final jamo take 0 columns; an ideograph, a kana, most emoji and
+the rest that Unicode calls East Asian Wide or Fullwidth take 2;
+every other character takes 1, the ambiguous ones among them, as most
+terminals draw them. These are the C library's `wcwidth`'s answers,
+but for a control, which is -1 there. `Width` knows characters, not
+clusters: an emoji joined to another by a zero width joiner, or a flag,
+counts as its parts. Its tables, about 4 KB, come from Unicode's data,
+made again by `tools/Widths.raz` for a new version of Unicode; a
+program that imports `Width` and calls neither procedure carries none
+of them.

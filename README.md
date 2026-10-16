@@ -168,7 +168,7 @@ The report, `doc/raz.md` and `doc/raz-lib.md`, says all of it in about 2,300 lin
 `Rt` (ending the program, failed checks, signals), `Sys` (system calls), `Out`
 (buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
 `Heap`, `Arena`, `Str`, `Bytes`, `Buf`, `Fmt`, `Math`, `Files`, `Opt` (a command
-line read through one table), `List(T)`, `Map(K, V; hash, eq)`,
+line read through one table), `Width` (the columns of a terminal text takes), `List(T)`, `Map(K, V; hash, eq)`,
 `Vec(T)` (a growable array) and `Sort(T; less)`. Volume 2 of the report, `doc/raz-lib.md`, gives each one's interface,
 and `tools/Doc.raz` prints it from the module's file:
 

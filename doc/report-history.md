@@ -188,4 +188,6 @@ at the time.
   its type, `Color.red`; two enumerations of a scope may share a name,
   or one share a name with another declaration, and it is then written
   with its type (section 5.7). `continue` ends a loop's round (sections
-  7.2 and 7.7). It breaks a program that has a name `continue`.
+  7.2 and 7.7). It breaks a program that has a name `continue`. The
+  standard library gains `Width`, the columns of a terminal a character
+  takes (volume 2).

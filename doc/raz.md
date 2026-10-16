@@ -1690,8 +1690,8 @@ give: `Sys` past writing, ending the program and getting memory,
 language, reals aside, is the core of the library: `Rt`, `Out`, `Mem`,
 `Arena`, `Lock`, `Str` and `Buf`, and of `Sys` what they need. A program
 that keeps to the core runs on every target. The rest of the library
-(`Heap`, `Fmt`, `List`, `Map`, `Vec`, `Sort`, `Math`, `Files`, `Opt` and the
-rest of `Sys`) is the standard library: a target may leave a module
+(`Heap`, `Fmt`, `List`, `Map`, `Vec`, `Sort`, `Math`, `Files`, `Opt`, `Width`
+and the rest of `Sys`) is the standard library: a target may leave a module
 out, and one that has it gives what `doc/raz-lib.md` says. `conform/` tests
 the core only.
 

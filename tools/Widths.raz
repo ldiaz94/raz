@@ -1,0 +1,185 @@
+(* Widths: makes the tables of lib/Width.raz from Unicode's data.
+
+       Widths lib/Width.raz EastAsianWidth.txt UnicodeData.txt PropList.txt
+
+   reads three files of Unicode's character database, which
+   https://www.unicode.org/Public/UCD/latest/ucd/ has, and writes the
+   tables of lib/Width.raz again, the lines between (* tables *) and
+   (* end of the tables *), with the version of Unicode they come from.
+   The rest of the file stays as it is. Width's opening comment says
+   what each width is; this program is the same rules, in code. *)
+module Widths;
+import Out, Rt, Str, Buf, Heap, Files;
+
+const
+    Last = 10FFFFH;                     (* the last code point *)
+    Start = "(* tables *)\n";
+    Stop = "(* end of the tables *)";
+
+var
+    w: [Last + 1]U8;    (* each character's width, 1 unless a file says *)
+
+(* The whole file at path. *)
+proc load(path: []U8; b: ^Buf.Buf): []U8;
+begin
+    Buf.init(b, Heap.heap);
+    if not Files.read(path, b) then
+        Out.str(path); Out.str(": can't be read\n");
+        Rt.exit(1);
+    end;
+    return Buf.bytes(b);
+end;
+
+(* s in hexadecimal, a code point; stops the program if it isn't one. *)
+proc point(s: []U8): INT;
+var v: U64; ok: BOOL;
+begin
+    v, ok := Str.toHex(Str.trim(s));
+    if not ok or (v > Last) then
+        Out.str("not a code point: "); Out.str(s); Out.ln;
+        Rt.exit(1);
+    end;
+    return INT(v);
+end;
+
+(* Sets the width of the characters from lo to hi. *)
+proc mark(lo, hi: INT; width: U8);
+var c: INT;
+begin
+    for c := lo to hi do w[c] := width; end;
+end;
+
+(* EastAsianWidth.txt: lines of a code point, or a range lo..hi, ";"
+   and the property; W and F are 2 columns. Its first line names the
+   file, and so the version. *)
+proc eastAsian(text: []U8): []U8;
+var line, rest, r, p, lo, hi, version: []U8; ok: BOOL;
+begin
+    line, rest, ok := Str.cut(text, "\n");
+    _, version, ok := Str.cut(line, "-");
+    version, _, ok := Str.cut(version, ".txt");
+    rest := text;
+    while LEN(rest) > 0 do
+        line, rest, ok := Str.cut(rest, "\n");
+        line, _, ok := Str.cut(line, "#");
+        r, p, ok := Str.cut(line, ";");
+        if ok then
+            p := Str.trim(p);
+            if (p = "W") or (p = "F") then
+                lo, hi, ok := Str.cut(r, "..");
+                if ok then mark(point(lo), point(hi), 2); else mark(point(lo), point(lo), 2); end;
+            end;
+        end;
+    end;
+    return version;
+end;
+
+(* UnicodeData.txt: lines of fields between ";", the code point, the
+   name and the general category first. A range is two lines, its
+   first and last, named "<..., First>" and "<..., Last>". *)
+proc categories(text: []U8);
+var line, rest, c, name, gc: []U8; ok: BOOL; first, n: INT;
+begin
+    rest := text;
+    first := -1;
+    while LEN(rest) > 0 do
+        line, rest, ok := Str.cut(rest, "\n");
+        c, line, ok := Str.cut(line, ";");
+        name, line, ok := Str.cut(line, ";");
+        gc, line, ok := Str.cut(line, ";");
+        if not ok then continue; end;
+        n := point(c);
+        if Str.hasSuffix(name, ", First>") then first := n; continue; end;
+        if not Str.hasSuffix(name, ", Last>") then first := n; end;
+        if ((gc = "Mn") or (gc = "Me") or (gc = "Cf") or (gc = "Cc")) and (n # 0ADH) then
+            mark(first, n, 0);           (* the soft hyphen is seen: 1 *)
+        end;
+    end;
+end;
+
+(* PropList.txt: lines of a code point, or a range lo..hi, ";" and a
+   property; a Prepended_Concatenation_Mark, a sign set over the digits
+   after it, is seen, so 1 column, though a format character. *)
+proc concatenation(text: []U8);
+var line, rest, r, p, lo, hi: []U8; ok: BOOL;
+begin
+    rest := text;
+    while LEN(rest) > 0 do
+        line, rest, ok := Str.cut(rest, "\n");
+        line, _, ok := Str.cut(line, "#");
+        r, p, ok := Str.cut(line, ";");
+        if ok and (Str.trim(p) = "Prepended_Concatenation_Mark") then
+            lo, hi, ok := Str.cut(r, "..");
+            if ok then mark(point(lo), point(hi), 1); else mark(point(lo), point(lo), 1); end;
+        end;
+    end;
+end;
+
+(* c as a constant of raz: 0, six hexadecimal digits and H. *)
+proc hex(b: ^Buf.Buf; c: INT);
+const Digits = "0123456789ABCDEF";
+var i: INT;
+begin
+    Buf.add(b, '0');
+    for i := 5 to 0 by -1 do Buf.add(b, Digits[(c shr (4 * i)) & 15]); end;
+    Buf.add(b, 'H');
+end;
+
+(* The constant name, the ranges of characters whose width is width,
+   each its first and last, four ranges to a line. *)
+proc table(b: ^Buf.Buf; name: []U8; width: U8);
+var c, lo, n: INT;
+begin
+    Buf.str(b, "    "); Buf.str(b, name); Buf.str(b, ": []I32 = [");
+    n := 0;
+    c := 0;
+    while c <= Last do
+        if w[c] # width then INC(c); continue; end;
+        lo := c;
+        while (c < Last) and (w[c + 1] = width) do INC(c); end;
+        if n > 0 then Buf.str(b, ","); end;
+        if n mod 4 = 0 then Buf.str(b, "\n        "); else Buf.str(b, " "); end;
+        hex(b, lo); Buf.str(b, ", "); hex(b, c);
+        INC(n);
+        INC(c);
+    end;
+    Buf.str(b, "];\n");
+end;
+
+proc main*;
+var src, eaw, ucd, props, out: Buf.Buf; s, before, after, version: []U8; ok: BOOL;
+begin
+    if LEN(Files.arg(4)) = 0 then
+        Out.str("usage: Widths lib/Width.raz EastAsianWidth.txt UnicodeData.txt PropList.txt\n");
+        Rt.exit(2);
+    end;
+    s := load(Files.arg(1), ADR(src));
+    before, after, ok := Str.cut(s, Start);
+    if ok then _, after, ok := Str.cut(after, Stop); end;
+    if not ok then
+        Out.str(Files.arg(1)); Out.str(": no (* tables *) and (* end of the tables *)\n");
+        Rt.exit(1);
+    end;
+    mark(0, Last, 1);
+    version := eastAsian(load(Files.arg(2), ADR(eaw)));
+    categories(load(Files.arg(3), ADR(ucd)));
+    concatenation(load(Files.arg(4), ADR(props)));
+    mark(1160H, 11FFH, 0);               (* Hangul's medial and final jamo *)
+    mark(0D7B0H, 0D7FFH, 0);
+    mark(3164H, 3164H, 0);               (* the Hangul fillers, which draw nothing *)
+    mark(0FFA0H, 0FFA0H, 0);
+    Buf.init(ADR(out), Heap.heap);
+    Buf.str(ADR(out), before);
+    Buf.str(ADR(out), Start);
+    Buf.str(ADR(out), "(* Unicode "); Buf.str(ADR(out), version); Buf.str(ADR(out), " *)\nconst\n");
+    table(ADR(out), "Zero", 0);
+    table(ADR(out), "Wide", 2);
+    Buf.str(ADR(out), Stop);
+    Buf.str(ADR(out), after);
+    if not Files.write(Files.arg(1), Buf.bytes(ADR(out))) then
+        Out.str(Files.arg(1)); Out.str(": can't be written\n");
+        Rt.exit(1);
+    end;
+end;
+
+end Widths.
