@@ -10,6 +10,10 @@ proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);
     s's bytes, copied into memory from a, to keep after s's own are
     gone; "" and false if a has no room.
 
+proc free*(a: ^Mem.Allocator; s: []U8);
+    Gives back to a a copy that copy made from it; "", which copy gives
+    for an empty string, was never a's, and is left alone.
+
 proc cmp*(a, b: []U8): INT;
     -1, 0 or 1 as a sorts before, with or after b, byte by byte.
 

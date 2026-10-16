@@ -21,6 +21,13 @@ begin
     return p[0..LEN(s)], true;
 end;
 
+(* Gives back to a a copy that copy made from it; "", which copy gives
+   for an empty string, was never a's, and is left alone. *)
+proc free*(a: ^Mem.Allocator; s: []U8);
+begin
+    if LEN(s) > 0 then Mem.free(a, ADR(s[0])); end;
+end;
+
 (* -1, 0 or 1 as a sorts before, with or after b, byte by byte. *)
 proc cmp*(a, b: []U8): INT;
 var i, n: INT;
@@ -575,6 +582,9 @@ begin
     t, ok := copy(Heap.heap, buf);
     buf[0] := 'x';
     if not ok or (t # "abc") then Rt.stop("Str.copy"); end;
+    free(Heap.heap, t);
+    t, ok := copy(Heap.heap, "");
+    free(Heap.heap, t);   (* Heap would stop the program at a block it never gave *)
     if (cmp("a", "b") # -1) or (cmp("b", "a") # 1) or (cmp("ab", "ab") # 0)
         or (cmp("a", "ab") # -1) or (cmp("", "") # 0) then Rt.stop("Str.cmp"); end;
     if not eq("x", "x") or eq("x", "y") then Rt.stop("Str.eq"); end;

@@ -451,6 +451,7 @@ proc cmp*(a, b: []U8): INT;           (* -1, 0 or 1 as a sorts before, with or a
 proc eq*(a, b: []U8): BOOL;
 proc eqFold*(a, b: []U8): BOOL;       (* eq, an ASCII letter's capital and small the same *)
 proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);   (* s's bytes in memory from a; false if a has none *)
+proc free*(a: ^Mem.Allocator; s: []U8);                 (* what copy gave from a, given back; "" is none *)
 proc hash*(s: []U8): U64;             (* FNV-1a, 64 bits *)
 proc find*(s, sub: []U8): INT;        (* where sub first starts in s, or -1 *)
 proc findLast*(s, sub: []U8): INT;    (* where sub last starts in s, or -1 *)

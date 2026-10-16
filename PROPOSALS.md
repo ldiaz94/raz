@@ -554,20 +554,6 @@ type to a narrower, nor `INT` back to any. No program changes.
 Met in libro's `Term`, `Flow` and `Epub`, and rml's `Rml`, wherever
 a byte is a number.
 
-## `Str.free`
-
-`Str.copy(a, s)` gives a copy from the allocator `a`; giving it back
-is `Mem.free(a, ADR(c[0]))`, and only if `LEN(c) > 0`, since an empty
-copy is `""` and was never the allocator's. Every program that copies
-strings and frees them writes that test.
-
-```
-proc free*(a: ^Mem.Allocator; s: []U8);   (* a copy Str.copy made, given back; "" is none *)
-```
-
-Library growth that breaks no program; three lines. Met in libro's
-`Epub.done`.
-
 ## The width of a character on a terminal
 
 `Str` says, rightly, that it doesn't know how wide a character is on a
