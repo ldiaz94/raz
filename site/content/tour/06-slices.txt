@@ -92,7 +92,7 @@ end Moves.
 
 ## Strings
 
-A string is a slice of bytes, `[]U8`, in UTF-8, and a string constant's bytes are constant. A `[8]U8` made from one is a copy you can change. Arrays and slices of integers compare with `=` and `#`, so strings do too. `Str` has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case, UTF-8, and numbers to and from text.
+A string is a slice of bytes, `[]U8`, in UTF-8, and a string constant's bytes are constant. A `[8]U8` made from one is a copy you can change. Arrays and slices of integers compare with `=` and `#`, so strings do too. `Str` has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case and kinds of character, UTF-8, and numbers to and from text.
 
 ```raz Words run
 module Words;
@@ -107,6 +107,8 @@ begin
     Out.int(Str.find(s, "world")); Out.ln;          (* 7 *)
     Out.int(Str.find(s, "xyz")); Out.ln;            (* -1 *)
     Out.int(Str.findLast("abcabc", "bc")); Out.ln;  (* 4 *)
+    Out.int(Str.findFrom(s, "o", 5)); Out.ln;       (* 8: the first o from 5 on *)
+    if Str.isDigit('7') and not Str.isLetter('7') then Out.str("a digit\n"); end;
     if Str.hasPrefix(s, "hell") then Out.str("prefix\n"); end;
     if Str.hasSuffix(s, "world") then Out.str("suffix\n"); end;
     Out.int(Str.cmp("apple", "banana")); Out.ln;    (* -1 *)

@@ -80,10 +80,13 @@ tools and the library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.17.0, report 2026-10.31 (a thaw: `INT` at least 16 bits, and
-`U8`, `I8` and `I16` widening to it; an enumeration's name written with
-its type, and shared; `continue`; `[]` as the empty slice; `Width`, the
-columns of a terminal), is the latest release. `src/` is the
+v0.17.1, report 2026-10.31, is the latest release: v0.17.0's thaw
+(`INT` at least 16 bits, and `U8`, `I8` and `I16` widening to it; an
+enumeration's name written with its type, and shared; `continue`; `[]`
+as the empty slice; `Width`, the columns of a terminal), and library
+growth that breaks no program (`Str`'s character tests and `findFrom`,
+`Vec.tryPush` and `tryAdd`, `Fmt.eprint`, `Sys.errorText` and
+`setEnv`), with errors that show a comment that ended early. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
