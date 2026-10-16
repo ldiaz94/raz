@@ -583,23 +583,6 @@ spelling to use instead (`x* )` or a word).
 
 Met in rrem's parser, documenting `(?>x*)`.
 
-## A line to standard error
-
-A message to standard error takes a `Buf`, `Fmt.write` into it,
-`Out.flush` (so what was printed before comes first) and `Sys.write`
-to `Sys.stderr`. Every tool writes its errors so, and each writes the
-same few lines.
-
-The proposal, in `Fmt`, beside `print`:
-
-```
-proc eprint*(f: []U8; args: []Arg);   (* as print, to standard error, after Out is flushed *)
-```
-
-It breaks no program.
-
-Met in rwalk's `Rwfiles` and rrem's `rre`.
-
 ## The text of an errno
 
 `Sys` returns minus an errno, and a tool that tells the user what

@@ -1,0 +1,13 @@
+(* Fmt.eprint flushes Out first: with standard error made standard
+   output, what was printed before comes before it. *)
+module Eprint;
+import Fmt, Out, Sys;
+
+proc main*;
+begin
+    _ := Sys.dupTo(Sys.stdout, Sys.stderr);
+    Out.str("printed first, ");
+    Fmt.eprint("{} {}\n", [Fmt.str("then"), Fmt.int(2)]);
+end;
+
+end Eprint.

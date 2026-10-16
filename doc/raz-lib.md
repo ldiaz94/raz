@@ -22,7 +22,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Str` | operations on `[]U8` strings: comparing, hashing, finding, trimming and cutting, case, joining and replacing, UTF-8, numbers to and from text |
 | `Bytes` | searches of bytes, many at a time: `index`, `last`, `count` and `find` in a `[]U8`; one file per target where the target has instructions for it |
 | `Buf` | a growable byte buffer |
-| `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)])`, or into a `Buf` with `Fmt.write` |
+| `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)])`, into a `Buf` with `Fmt.write`, or to standard error with `Fmt.eprint` |
 | `List` | a generic singly linked list, `List(T)` |
 | `Map` | a generic hash map, `Map(K, V; hash, eq)` |
 | `Vec` | a generic growable array, `Vec(T)`, indexed as a slice |
@@ -591,6 +591,7 @@ type Arg* = variant
     real(r: F64; places: INT);
 end;
 proc print*(f: []U8; args: []Arg);              (* to standard output *)
+proc eprint*(f: []U8; args: []Arg);             (* to standard error, once Out is flushed *)
 proc write*(b: ^Buf.Buf; f: []U8; args: []Arg); (* added to b *)
 
 module List(T);

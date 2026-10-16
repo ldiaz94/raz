@@ -3,7 +3,7 @@
    {{ and }} stand for { and }. A {} with no argument left prints
    nothing, and arguments left over are not printed. *)
 module Fmt;
-import Out, Buf, Arena, Rt;
+import Out, Buf, Arena, Rt, Sys;
 
 type
     (* An argument, and how it is printed. A real has places digits
@@ -121,6 +121,30 @@ end;
 proc print*(f: []U8; args: []Arg);
 begin
     format(nil, f, args);
+end;
+
+(* Writes f to standard error as print writes it, after flushing Out,
+   so that what was printed before comes first. The text is made whole
+   in a buffer and written at once, to stay together when threads
+   write at once. The buffer is an arena's, not the heap's, so that a
+   program that doesn't call eprint carries no heap for it; its pages
+   are mapped as they are written, and a text of more than a megabyte
+   stops the program, as a Buf does when it can't grow. *)
+proc eprint*(f: []U8; args: []Arg);
+var ar: Arena.Arena; b: Buf.Buf; s: []U8; n: INT;
+begin
+    Out.flush;
+    if not Arena.init(ADR(ar), 1 shl 20) then Rt.stop("Fmt.eprint: no arena"); end;
+    Buf.init(ADR(b), ADR(ar.base));
+    format(ADR(b), f, args);
+    s := Buf.bytes(ADR(b));
+    while LEN(s) > 0 do
+        n := Sys.write(Sys.stderr, s);
+        if n > 0 then s := s[n..LEN(s)];
+        elsif n # -4 then break;   (* -EINTR: try again *)
+        end;
+    end;
+    Arena.done(ADR(ar));
 end;
 
 (* Appends f to b, each {} replaced by the next of args. *)
