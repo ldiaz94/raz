@@ -886,7 +886,7 @@ ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
 </tr>
 <tr>
 <td><code>Thread</code></td>
-<td>threads, <code>spawn</code> and <code>join</code>, and <code>Mutex</code>, in any program; in one that uses C, made by C’s <code>pthread_create</code></td>
+<td>threads, <code>spawn</code>, <code>join</code> and <code>signal</code>, and <code>Mutex</code>, in any program; in one that uses C, made by C’s <code>pthread_create</code></td>
 </tr>
 <tr>
 <td><code>Mem</code></td>
@@ -995,17 +995,20 @@ type
     Mutex* = record ... end;     (* zero is free *)
 proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);   (* p(arg) in a new thread *)
 proc join*(t: ^Thread);         (* waits for t to end, then frees its stack *)
+proc signal*(t: ^Thread; sig: INT): INT;   (* sig sent to t alone: 0, or minus an errno *)
 proc lock*(m: ^Mutex);
 proc unlock*(m: ^Mutex);</code></pre>
 <p>A <code>Lock</code> is for short sections: a thread that finds it taken tries again, giving up the processor now and then. A <code>Mutex</code> sleeps. Each of <code>Thread</code>’s threads runs on a stack of its own, with a page below it that can’t be touched, so that running off the stack stops the program with a message, as in the main thread. In a program that uses C, <code>Thread</code> makes its threads with C’s <code>pthread_create</code>, so that C’s library knows of them; in one that doesn’t, with the system’s own calls. The program is the same either way.</p>
+<p><code>Sys.kill</code> signals a program, and the system gives the signal to any of its threads; <code>signal</code> gives it to <code>t</code> alone, until <code>t</code> is joined, and is -3 (ESRCH) once <code>t</code> has ended. With <code>Sys.handle(sig)</code>, a call <code>t</code> waits in, a <code>read</code> or a <code>ready</code>, fails with -4, so that one thread can break into another’s wait, as <code>^C</code> breaks into the main thread’s. A signal sent before <code>t</code> begins its wait is only noted, so a program sends it again until <code>t</code> says it has stopped.</p>
 <pre><code>module Out;
 proc str*(s: []U8);
 proc char*(c: U8);
 proc ln*;                        (* a line feed *)
 proc int*(n: I64);               (* n in decimal *)
 proc hex*(n: U64; digits: INT);  (* n in hexadecimal, digits digits at least *)
-proc flush*;</code></pre>
-<p><strong>Out and C’s stdio.</strong> <code>Out</code> keeps a buffer of <code>Sys.outSize</code> bytes, 4 KB on Linux. It writes it out when it is full, at each line feed when standard output is a terminal, at <code>Out.flush</code>, and when the program ends by <code>Rt.exit</code>. A lock keeps what each call writes together when threads write at once. C’s <code>stdio</code> keeps a buffer of its own for the same standard output. A program that writes with both flushes one before writing with the other, or the text comes out of order:</p>
+proc flush*;
+proc lines*(on: BOOL);           (* written at each line feed, or only when full *)</code></pre>
+<p><strong>Out and C’s stdio.</strong> <code>Out</code> keeps a buffer of <code>Sys.outSize</code> bytes, 4 KB on Linux. It writes it out when it is full, at each line feed when standard output is a terminal, at <code>Out.flush</code>, and when the program ends by <code>Rt.exit</code>. <code>lines(true)</code> has it written at each line feed whatever standard output is, as a filter of a stream that comes slowly wants through a pipe, as grep’s <code>--line-buffered</code>; <code>lines(false)</code>, only when full, at a terminal too. A lock keeps what each call writes together when threads write at once. C’s <code>stdio</code> keeps a buffer of its own for the same standard output. A program that writes with both flushes one before writing with the other, or the text comes out of order:</p>
 <pre><code>module Both;
 import Out, C;      (* C: printf, fflush and C&#39;s FILE *stdout *)
 
@@ -1241,6 +1244,7 @@ proc add*(b: ^Buf; c: U8);
 proc str*(b: ^Buf; s: []U8);
 proc spare*(b: ^Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
 proc bytes*(b: ^Buf): []U8;           (* what it holds, until it next grows *)
+proc cut*(b: ^Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
 proc reset*(b: ^Buf);                 (* emptied, its memory kept *)
 proc done*(b: ^Buf);                  (* its memory given back *)
 
@@ -1316,7 +1320,7 @@ proc bits*(x: F64): U64;              (* the bits of x, as IEEE 754 lays them ou
 proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
 proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
 proc toReal*(s: []U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn&#39;t one *)</code></pre>
-<p>A <code>Buf</code>, a <code>List</code>, a <code>Map</code> and a <code>Vec</code> take their memory from the allocator <code>init</code> gives them. <code>Buf.add</code>, <code>str</code> and <code>spare</code> stop the program, as a failed check does, if the allocator has no room; <code>room</code> asks first. A program reads into a <code>Buf</code> through <code>spare</code>, then adds what it read to <code>len</code>: <code>s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n &gt; 0 then INC(b^.len, n); end;</code>. A <code>Vec</code> is <code>Buf</code> for any <code>T</code>: one block, which doubles when it is full, so <code>push</code> costs the same on average however long it grows. <code>all</code> gives the elements as a slice, indexed and checked as any is, and <code>v.len</code> is their number; the slice, and what <code>add</code> gives, are good until the array next grows. <code>pop</code> takes the last element off, keeping the memory. <code>push</code>, <code>add</code> and <code>resize</code> stop the program, as <code>Buf.add</code> does, if the allocator has no room; <code>room</code> asks first: <code>import Lines := Vec([]U8);</code>. <code>Fmt</code>’s format takes the next argument at each <code>{}</code>; <code>{{</code> and <code>}}</code> stand for <code>{</code> and <code>}</code>. A <code>Map</code> hashes and compares its keys with the procedures it is given: <code>import Count := Map([]U8, INT, Str.hash, Str.eq);</code>.</p>
+<p>A <code>Buf</code>, a <code>List</code>, a <code>Map</code> and a <code>Vec</code> take their memory from the allocator <code>init</code> gives them. <code>Buf.add</code>, <code>str</code> and <code>spare</code> stop the program, as a failed check does, if the allocator has no room; <code>room</code> asks first. A program reads into a <code>Buf</code> through <code>spare</code>, then adds what it read to <code>len</code>: <code>s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n &gt; 0 then INC(b^.len, n); end;</code>. <code>cut</code> takes back what was added, to a length it had: <code>start := b^.len; ...; Buf.cut(b, start);</code>; a length past <code>len</code> stops the program, as an index past the end does. A <code>Vec</code> is <code>Buf</code> for any <code>T</code>: one block, which doubles when it is full, so <code>push</code> costs the same on average however long it grows. <code>all</code> gives the elements as a slice, indexed and checked as any is, and <code>v.len</code> is their number; the slice, and what <code>add</code> gives, are good until the array next grows. <code>pop</code> takes the last element off, keeping the memory. <code>push</code>, <code>add</code> and <code>resize</code> stop the program, as <code>Buf.add</code> does, if the allocator has no room; <code>room</code> asks first: <code>import Lines := Vec([]U8);</code>. <code>Fmt</code>’s format takes the next argument at each <code>{}</code>; <code>{{</code> and <code>}}</code> stand for <code>{</code> and <code>}</code>. A <code>Map</code> hashes and compares its keys with the procedures it is given: <code>import Count := Map([]U8, INT, Str.hash, Str.eq);</code>.</p>
 <p><code>Str</code> reads and writes UTF-8. <code>encode</code> writes a character, of at most 10FFFFH, in one to four bytes; a number that isn’t one becomes FFFDH, the character that stands for a wrong one. <code>decode</code> reads the first character of <code>s</code>, and gives FFFDH and 1 for a byte that doesn’t start one rightly, and 0 and 0 for an empty <code>s</code>: a continuation, a byte followed by too few continuations, a surrogate, a character beyond 10FFFFH or one spelled in more bytes than it needs. <code>decodeLast</code> reads the last character in the same way, to walk a string backwards. <code>valid</code> says that <code>decode</code> finds no such byte in <code>s</code>, and <code>chars</code> counts the characters, each such byte one. <code>next</code> walks a string a character at a time, as <code>decode</code> reads them: from 0, it gives the character at <code>i</code> and where the one after it starts, and 0 and -1 when <code>i</code> is at the end, or past it:</p>
 <pre><code>c, i := Str.next(s, 0);
 while i &gt;= 0 do
@@ -1363,6 +1367,7 @@ type
         letter*: U8;    (* the option just read *)
         value*: []U8;   (* its value; &quot;&quot; for a flag *)
         long*: BOOL;    (* it was written by its long name *)
+        spelt*: []U8;   (* as it was written, no dashes: &quot;b&quot; or &quot;bar&quot;; to read only *)
         ...
     end;
 proc init*(p: ^Parser; name: []U8; table: []Row);  (* the arguments from 1 on, by table *)
@@ -1371,9 +1376,10 @@ proc operand*(p: ^Parser): ([]U8, BOOL);          (* the next operand; false whe
 proc at*(p: ^Parser): INT;                        (* the argument operand would give next *)
 proc scope*(p: ^Parser; name: []U8);              (* subcommand name&#39;s options, from the word after it *)
 proc number*(p: ^Parser; lo, hi: I64): I64;       (* the value just read, a number from lo to hi *)
+proc refuse*(p: ^Parser; wants: []U8);            (* the value just read refused, as number refuses one *)
 proc fail*(p: ^Parser; text: []U8);               (* the program&#39;s own mistake *)</code></pre>
 <p><code>Opt</code> reads a command line by the rules of the C library’s <code>getopt</code>, with GNU’s long options, so that a program’s options behave as every other Unix program’s. The program describes itself once, in a table of <code>Row</code>s: its synopsis lines, its subcommands and its options. The help and the messages for mistakes are made from the table, so they can’t drift from it; the program’s test of <code>p.letter</code> is the only other place an option appears. The parser is a record the program owns, and the table a slice it keeps as long as the parser: a literal written in the call to <code>init</code> lives as long as the procedure that makes it.</p>
-<p>A row’s <code>scope</code> is <code>""</code> for the program itself, or a subcommand’s name: <code>"start"</code>, or <code>"remote.add"</code> for a subcommand of <code>remote</code>. An option has a <code>letter</code>, a <code>long</code> name, or both. One with a long name only has a key of its own below <code>'!'</code> for a letter, so that the program can tell it from the others. With a <code>value</code>, the name the help and the messages give it, the option takes a value; with <code>""</code> it is a flag.</p>
+<p>A row’s <code>scope</code> is <code>""</code> for the program itself, or a subcommand’s name: <code>"start"</code>, or <code>"remote.add"</code> for a subcommand of <code>remote</code>. An option has a <code>letter</code>, a <code>long</code> name, or both. One with a long name only has a key of its own below <code>'!'</code> for a letter, so that the program can tell it from the others. With a <code>value</code>, the name the help and the messages give it, the option takes a value; with <code>""</code> it is a flag. A value written in brackets, <code>"[when]"</code>, may be left out, and is <code>""</code> then: it is given only in the option’s own word, <code>--color=always</code> or <code>-calways</code>, never as the next, as <code>getopt</code>’s <code>::</code> has it, and the help shows it as <code>--color[=when]</code>.</p>
 <pre><code>const wait = 1;     (* the key of --wait, which has no letter *)
 ...
 Opt.init(ADR(p), &quot;keep&quot;, [
@@ -1410,12 +1416,12 @@ first := Opt.at(ADR(p));                 (* file&#39;s own arguments, from here 
 
   -b, --bar label   show the job in the bar as label
   -h, --help        print this and exit</code></pre>
-<p>A scope with several synopsis lines has the others indented under the first; one with none, <code>usage:</code> and its words, as <code>usage: keep start</code>.</p>
+<p>A scope with several synopsis lines has the others indented under the first; one with none, <code>usage:</code> and its words, as <code>usage: keep start</code>. A scope may give <code>-h</code> to an option of its own, as grep’s “no file names”; help there is <code>--help</code> alone, and its row in the help has no letter.</p>
 <p>A mistake on the command line is a sentence on standard error, the program’s name first, then the scope’s synopsis lines, as the help begins, and status 2:</p>
 <pre><code>keep: unknown option -x
 usage: keep start [-b label] name command [argument ...]</code></pre>
-<p>The sentences are <code>unknown option -x</code> (or <code>--name</code>, up to its <code>=</code>), <code>-b needs a label</code>, <code>--follow takes no value</code> and <code>--wait wants a number from 1 to 600, not '0'</code>. <code>fail</code> writes the program’s own mistakes the same way, but alone, so that the sentence can say where the help is: <code>keep: no command; see keep -h</code>.</p>
-<p>A mistake in the table is the program’s, not its user’s. <code>init</code> checks the table before it reads a word, and ends the program with status 1: <code>keep: option table, row 3: the option is in the scope already</code>. The others are an option with neither a letter nor a long name, a long name with <code>=</code> in it, a letter <code>-</code>, and <code>-h</code> or <code>--help</code> in the table, since they are <code>Opt</code>’s.</p>
+<p>The sentences are <code>unknown option -x</code> (or <code>--name</code>, up to its <code>=</code>), <code>-b needs a label</code>, <code>--follow takes no value</code> and <code>--wait wants a number from 1 to 600, not '0'</code>; for a number with no top, given the largest <code>I64</code> for <code>hi</code>, <code>--jobs wants a number from 1 up, not '0'</code>. <code>refuse</code> refuses a value the program reads itself, as <code>number</code> refuses one, naming the option as the user wrote it, <code>-b</code> or <code>--bar</code>: <code>Opt.refuse(ADR(p), "a label with no spaces")</code> writes <code>keep: -b wants a label with no spaces, not 'a b'</code>, and the synopsis lines. <code>p.spelt</code> is that spelling, for the program’s own sentences. <code>fail</code> writes the program’s own mistakes the same way, but alone, so that the sentence can say where the help is: <code>keep: no command; see keep -h</code>.</p>
+<p>A mistake in the table is the program’s, not its user’s. <code>init</code> checks the table before it reads a word, and ends the program with status 1: <code>keep: option table, row 3: the option is in the scope already</code>. The others are an option with neither a letter nor a long name, a long name with <code>=</code> in it, a letter <code>-</code>, a value with one bracket but not the other, and <code>--help</code> in the table, since it is <code>Opt</code>’s.</p>
 <p><strong>Width</strong> says how many columns of a terminal text takes, for a program with a screen that wraps its lines and cuts them at the window’s edge.</p>
 <pre><code>module Width;
 proc width*(c: I32): INT;      (* the columns the character c takes: 0, 1 or 2 *)

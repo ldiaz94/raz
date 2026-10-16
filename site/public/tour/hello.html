@@ -70,7 +70,7 @@ hello, again
 <span class="cmd">$ raz run Quiet.raz</span>
 hello, again
 <span class="cmd">$ ls -l Quiet | awk &#x27;{print $5, &quot;bytes&quot;}&#x27;</span>
-28480 bytes</code></pre>
+28472 bytes</code></pre>
 <p>The program is a static executable with no run time besides the code it uses, so it is a few kilobytes, and runs without any library installed.</p>
 <h2>What <code>Out</code> can write</h2>
 <p><code>Out</code> is the library's buffered output. It writes strings, single characters, numbers in decimal or hexadecimal, and a line feed. A string is written as it is, with <code>\n</code> for a line feed, <code>\t</code> for a tab, <code>\"</code> and <code>\\</code>; or between backquotes, as a raw string with no escapes at all, which may run over lines (lesson 6).</p>
