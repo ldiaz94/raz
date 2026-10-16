@@ -334,6 +334,8 @@ an array, and
 a record with its other fields zero, where the type is known;
 .Cm "{red, blue}" ,
 a set.
+.Cm "const Weekend: []Day = [sat, sun];"
+takes its length from its literal [4].
 .El
 .Sh CONVERSIONS
 [6.7] A type's name converts:
@@ -519,6 +521,7 @@ one is the caller's variable, of the parameter's type exactly.
 returns several results.
 Returning a slice of a local array, of a value parameter, or of an
 array literal is an error: the frame it points into is gone [7.3].
+An array a call returns lives to the end of its statement [8].
 A procedure is a value of its type,
 .Cm "proc(a, b: INT): BOOL" ,
 or nil.

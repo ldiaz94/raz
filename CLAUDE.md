@@ -80,11 +80,11 @@ tools and the library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.15.0, report 2026-10.27 (a slice of the frame returned is an
-error; `Sys`'s `openMode`, `syncAll`, `lock`, `linkInfo` and
-`Info.ino`; `Buf.spare`, and `Buf` stopping when out of memory; `Vec`,
-a growable array), what porting sauce asked for, is the latest
-release. `src/` is the
+v0.16.0, report 2026-10.29 (an array a call returns lives to its
+statement's end; an array constant typed `[]T` takes its literal's
+length; `Sys` gains what a shell needs, among it `fork`, `exec`,
+`handle` and `came`; `Map.done`, `Str.free`, `Files.load`), what
+porting concha asked for, is the latest release. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
@@ -226,6 +226,10 @@ otherwise.
   (10), and isn't caught.
 - `Buf.add`, `str` and `spare`, and `Vec`'s growing, stop the program
   when the allocator has no room; `room` asks first.
+- `Sys.handle`'s handler only notes the signal, with `XCHG`; it is
+  installed without `SA_RESTART`, so a call it breaks into is -4, which
+  `Out` and `Files` try again. Over C, `ready` and `readyFor` try `poll`
+  again after EINTR only when no signal `handle` took broke in.
 - An `extern` module variable is read-only for an importer, as the
   report says of every exported variable (3).
 - Warnings come only for a module with no errors. A procedure naming
