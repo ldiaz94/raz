@@ -161,12 +161,12 @@ by number.
 - `extern` procedures and variables from C; code procedures written in
   the target's assembly language; `SYSCALL`.
 
-The report, `doc/raz.md` and `doc/raz-lib.md`, says all of it in about 2,300 lines.
+The report, `doc/raz.md` and `doc/raz-lib.md`, says all of it in about 2,800 lines.
 
 ## The library
 
 `Rt` (ending the program, failed checks, signals), `Sys` (system calls), `Out`
-(buffered output), `C`, `Lock`, `Thread` (threads without C), `Mem`,
+(buffered output), `C`, `Lock`, `Thread` (threads, with C or without), `Mem`,
 `Heap`, `Arena`, `Str`, `Bytes`, `Buf`, `Fmt`, `Math`, `Files`, `Opt` (a command
 line read through one table), `Width` (the columns of a terminal text takes), `List(T)`, `Map(K, V; hash, eq)`,
 `Vec(T)` (a growable array) and `Sort(T; less)`. Volume 2 of the report, `doc/raz-lib.md`, gives each one's interface,
@@ -201,16 +201,16 @@ with vim's. Both colour raz through `tools/Scan.raz`.
 The compiler says its own version and that of the report it follows:
 
     $ ./raz --version
-    raz 0.18.0, report 2026-10.32
+    raz 0.18.1, report 2026-10.32
 
 The compiler's version is git's name for the commit it was built from:
-`0.18.0` at the tag `v0.18.0`, `0.18.0-5-g38d29a8` five commits past it.
+`0.18.1` at the tag `v0.18.1`, `0.18.1-5-g38d29a8` five commits past it.
 To release, check `main` and tag it; the tag's message is what
 `raz --version` will print:
 
     $ make check
-    $ git tag -a v0.18.0 -m 'raz 0.18.0, report 2026-10.32'
-    $ git push origin v0.18.0
+    $ git tag -a v0.18.1 -m 'raz 0.18.1, report 2026-10.32'
+    $ git push origin v0.18.1
 
 GitHub then builds and checks the tag, and makes a release of it with
 a tarball of `raz`, its `lib/` and its manual pages, made by `make

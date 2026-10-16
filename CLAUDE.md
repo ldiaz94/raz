@@ -80,10 +80,14 @@ tools and the library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.18.0, report 2026-10.32, is the latest release: the eighth thaw (a
+v0.18.1, report 2026-10.32, is the latest release: v0.18.0's thaw (a
 constant typed `[]T` may be `[]`, the empty slice, as may a constant's
-slice part), with `Vec.pop` and `Sys.Info.links`; and a constant's
-slice part may name another module's array constant, a defect mended.
+slice part), with `Vec.pop` and `Sys.Info.links`, and a constant's
+slice part naming another module's array constant, a defect mended;
+and library growth that breaks no program: `Buf.cut`, `Out.lines`,
+`Thread.signal`, and in `Opt` `spelt` and `refuse`, a `-h` of a
+scope's own, a value that may be left out (`[name]`) and `number` with
+no top.
 v0.17.0's thaw before it: `INT` at least 16 bits, and `U8`, `I8` and
 `I16` widening to it; an enumeration's name written with its type, and
 shared; `continue`; `[]` as the empty slice; `Width`. `src/` is the

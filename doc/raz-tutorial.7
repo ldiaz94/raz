@@ -1232,10 +1232,14 @@ and
 lock themselves.
 .Pp
 .Cm Thread
-makes its own threads, without C, so a program that uses it can't use
-C; one that does makes its threads with C's
+makes its own threads, without C, in a program that doesn't use C; in
+one that does, it makes them with C's
 .Xr pthread_create 3
-instead.
+instead, and the program is the same.
+.Cm Thread.signal
+sends a signal to one thread alone, so that, with
+.Cm Sys.handle ,
+another thread can break into a read it waits in.
 .Sh 16. FROM PASCAL AND C TO RAZ
 .Bl -column "for (i=0; i<n; i++)" "for i := 0 to n-1 do" "Mem.free(Heap.heap, ^U8(p))"
 .It Sy C Ta Sy Pascal Ta Sy raz
