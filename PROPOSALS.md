@@ -649,3 +649,28 @@ the slice type back for a length of 0 instead of the error.
 Met in rrem's `RremUcd`, whose tables `tools/Ucd.raz` writes: before
 the tool's first run, each table needs a placeholder of one element,
 which the code reading it must then not take for a real one.
+
+## A file's link count
+
+`Sys.Info` names a file (`dev`, `ino`) but doesn't say how many names
+it has. A program that lets a writer loose in a directory of its own
+can't tell a file made there from a hard link to one somewhere else:
+both are regular files inside the directory, and writing to either
+writes to the one file.
+
+The proposal, in `Info`, beside `ino`:
+
+```
+links*: U64;     (* how many names the file has: 1 for a file no hard link shares *)
+```
+
+filled in `fromStat` from `st_nlink`, which is `st[2]` on
+x86_64 Linux, as `st_ino` is `st[1]`. A field more in a record breaks
+only a program that builds an `Info` by a literal of all its fields,
+so it could come with a thaw.
+
+Met in arno: a conversation's scratch directory is the model's own,
+and its `edit`, `move` and `remove` there go ahead without asking. The
+Pascal arno refused that freedom for a file with a second link, which
+shares its contents with a name outside, perhaps one of the human's;
+the raz arno can't, until `Info` says how many links a file has.
