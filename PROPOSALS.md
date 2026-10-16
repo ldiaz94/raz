@@ -671,11 +671,3 @@ the pattern. The proposal: a row's `value` written `[WHEN]` makes the
 value optional, given only as `--color=WHEN` (never as the next
 argument, as getopt's `::` has it), `""` when left out; for a letter,
 only joined, `-cWHEN`. It breaks no program.
-
-## `Opt.number` with no top
-
-`Opt.number(p, lo, hi)` refuses a value past `hi` and says so; a
-number that has no top is given `hi` as `I64`'s largest, and the
-message reads `--budget wants a number from 0 to
-9223372036854775807`. The proposal: the message says `a number from
-0 up` when `hi` is the largest `I64`; nothing else changes.

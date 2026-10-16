@@ -35,6 +35,8 @@ type
 (* What read makes of a word or a letter. *)
 const read1 = 1; readEnd = 0; readSkip = -1;
 
+const largest = 9223372036854775807;   (* the largest I64, a number with no top *)
+
 (* b written whole to fd, then freed. *)
 proc say(fd: INT; b: ^Buf.Buf);
 var s: []U8; n: INT;
@@ -367,12 +369,17 @@ begin
 end;
 
 (* The value of the option just read, as a whole number from lo to hi;
-   anything else is a mistake. *)
+   anything else is a mistake. A number with no top is given the
+   largest I64 for hi, and the mistake says "from lo up". *)
 proc number*(p: ^Parser; lo, hi: I64): I64;
 var n: I64; ok: BOOL;
 begin
     n, ok := Str.toInt(p^.value);
     if not ok or (n < lo) or (n > hi) then
+        if hi = largest then
+            refuse(p, "{}{} wants a number from {} up, not '{}'",
+                [Fmt.str(dashes(p)), Fmt.str(p^.spelt), Fmt.int(lo), Fmt.str(p^.value)]);
+        end;
         refuse(p, "{}{} wants a number from {} to {}, not '{}'",
             [Fmt.str(dashes(p)), Fmt.str(p^.spelt), Fmt.int(lo), Fmt.int(hi), Fmt.str(p^.value)]);
     end;
@@ -395,7 +402,7 @@ end;
    program of getopt's page, or a program with a bad table, or one with
    no synopsis lines; and holds each to what it writes, and its status. *)
 proc keep;
-const wait = 1;
+const wait = 1; jobs = 2;
 var p: Parser; verbose, ok: BOOL; secs: I64; bar, job, w: []U8; b: Buf.Buf; i: INT;
 begin
     secs := 10;
@@ -404,11 +411,13 @@ begin
         sub("", "start", "start a job"),
         option("", 'v', "verbose", "", "say more"),
         option("", wait, "wait", "secs", "give the job secs to start"),
+        option("", jobs, "jobs", "n", "keep n jobs at most"),
         usage("start", "keep start [-b label] name command [argument ...]"),
         option("start", 'b', "bar", "label", "show the job in the bar as label")]);
     while next(ADR(p)) do
         if p.letter = 'v' then verbose := true;
         elsif p.letter = wait then secs := number(ADR(p), 1, 600);
+        elsif p.letter = jobs then _ := number(ADR(p), 1, largest);
         end;
     end;
     w, ok := operand(ADR(p));
@@ -499,7 +508,7 @@ end;
 
 proc main*;
 const
-    keepHelp = "usage: keep [-v] [--wait secs] start ...\n\n  start             start a job\n  -v, --verbose     say more\n      --wait secs   give the job secs to start\n  -h, --help        print this and exit\n";
+    keepHelp = "usage: keep [-v] [--wait secs] start ...\n\n  start             start a job\n  -v, --verbose     say more\n      --wait secs   give the job secs to start\n      --jobs n      keep n jobs at most\n  -h, --help        print this and exit\n";
     startHelp = "usage: keep start [-b label] name command [argument ...]\n\n  -b, --bar label   show the job in the bar as label\n  -h, --help        print this and exit\n";
     k = "OPTTEST=keep";
 var cases: []Case; i: INT; mode: []U8;
@@ -536,6 +545,8 @@ begin
         {mode: k, args: ["keep", "--wait", "0", "start", "a", "b"],
             err: "keep: --wait wants a number from 1 to 600, not '0'\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
         {mode: k, args: ["keep", "--wait=9x", "start"], err: "keep: --wait wants a number from 1 to 600, not '9x'\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
+        {mode: k, args: ["keep", "--jobs=0", "start"], err: "keep: --jobs wants a number from 1 up, not '0'\nusage: keep [-v] [--wait secs] start ...\n", status: 2},
+        {mode: k, args: ["keep", "--jobs", "9223372036854775807", "start", "n", "c"], out: "job n: c\n"},
         {mode: "OPTTEST=bad", args: ["bad", "-v"], err: "bad: option table, row 2: the option is in the scope already\n", status: 1},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--force"], out: "f\nf\n"},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-x"], err: "plain: unknown option -x\nusage: plain remote add\n", status: 2},

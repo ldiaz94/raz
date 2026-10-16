@@ -918,7 +918,8 @@ usage: keep start [-b label] name command [argument ...]
 
 The sentences are `unknown option -x` (or `--name`, up to its `=`),
 `-b needs a label`, `--follow takes no value` and `--wait wants a
-number from 1 to 600, not '0'`. `fail` writes the program's own
+number from 1 to 600, not '0'`; for a number with no top, given the
+largest `I64` for `hi`, `--jobs wants a number from 1 up, not '0'`. `fail` writes the program's own
 mistakes the same way, but alone, so that the sentence can say where
 the help is: `keep: no command; see keep -h`.
 
