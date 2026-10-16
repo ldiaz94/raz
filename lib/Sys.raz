@@ -7,7 +7,8 @@
    only the two struct timeval that begin struct rusage are read. What
    is glibc's, on x86-64: where a name lies in struct dirent; struct
    stat; open's flags; the numbers of the requests TIOCGWINSZ,
-   TIOCSWINSZ and TIOCSCTTY, and of F_DUPFD_CLOEXEC; close_range;
+   TIOCSWINSZ and TIOCSCTTY, and of F_DUPFD_CLOEXEC; close_range's
+   system call;
    SOCK_CLOEXEC, AF_INET6 and SO_REUSEADDR; struct sockaddr_un and sockaddr_in, which on the BSDs
    start with a byte of length; the numbers of the signals and of the
    limits, and RLIM_INFINITY, all ones. A C library that differs needs
@@ -772,13 +773,24 @@ end;
    of its struct sockaddr_in or sockaddr_in6, or 0 if either is
    wrong. *)
 proc inetAddr(addr: []U8; port: INT; a: ^Sockaddr): INT;
-var s: [64]U8;
+var s: [64]U8; b: [16]U8;
 begin
     if (port < 0) or (port > 65535) or not cstr(addr, s) then return 0; end;
     a^.port[0] := U8(port shr 8);                       (* in the network's order, the high byte first *)
     a^.port[1] := U8(port & 255);
-    if C.inet_pton(2, ADR(s[0]), ADR(a^.data[0])) = 1 then a^.family := 2; return 16; end;     (* AF_INET *)
-    if C.inet_pton(10, ADR(s[0]), ADR(a^.data[4])) = 1 then a^.family := 10; return 28; end;   (* AF_INET6 *)
+    (* into b first, since musl's inet_pton leaves what it read of an
+       address it refuses, and the IPv6 one's first four bytes are its
+       flow, to be zero *)
+    if C.inet_pton(2, ADR(s[0]), ADR(b[0])) = 1 then                    (* AF_INET *)
+        a^.family := 2;
+        COPY(a^.data[0..4], b[0..4]);
+        return 16;
+    end;
+    if C.inet_pton(10, ADR(s[0]), ADR(b[0])) = 1 then                   (* AF_INET6 *)
+        a^.family := 10;
+        COPY(a^.data[4..20], b);
+        return 28;
+    end;
     return 0;
 end;
 
@@ -1378,7 +1390,8 @@ end;
 (* Closes every fd from 3 on but those of keep, which stay open in the
    program exec starts. It runs in spawn's child, after the fork, so it
    takes no memory: it closes the runs between the fds kept, the lowest
-   first, each with one close_range. *)
+   first, each with one close_range: through syscall, since musl has no
+   close_range of its own. *)
 proc closeAllBut(keep: []INT);
 var lo, next, i: INT;
 begin
@@ -1389,9 +1402,9 @@ begin
             if (keep[i] >= lo) and ((next < 0) or (keep[i] < next)) then next := keep[i]; end;
         end;
         if next < 0 then
-            _ := C.close_range(U32(lo), 0FFFFFFFFH, 0);    (* the rest *)
+            _ := C.syscall(436, lo, 0FFFFFFFFH, 0);    (* close_range, the rest *)
         else
-            if next > lo then _ := C.close_range(U32(lo), U32(next - 1), 0); end;
+            if next > lo then _ := C.syscall(436, lo, next - 1, 0); end;
             _ := C.fcntl(I32(next), 2, 0);              (* F_SETFD: kept on exec *)
             lo := next + 1;
         end;

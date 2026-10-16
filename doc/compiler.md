@@ -22,8 +22,8 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Item.raz` | 2,037 | 1,651 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,176 | 3,615 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
-| `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Raz.raz` | 305 | 238 | The command line |
+| `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
+| `src/Raz.raz` | 326 | 253 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -1636,8 +1636,15 @@ loader accepts: an interpreter header naming the loader; a dynamic
 section naming the libraries; and, for each C symbol the program uses,
 a symbol and a `GLOB_DAT` relocation that has the loader write the
 symbol's address into the quadword `Chunk.externChunk` made. Code calls C
-through that quadword. There is no PLT and no lazy binding.
-`sizeTables` and `putTables` lay these out in the room `Link.raz` left
+through that quadword. There is no PLT and no lazy binding. The
+loader and the first library are glibc's,
+`/lib64/ld-linux-x86-64.so.2` and `libc.so.6`, or musl's,
+`/lib/ld-musl-x86_64.so.1` and `libc.so`, which musl's loader, being
+the library itself, takes to mean itself (`Elf.setMusl`). `-libc`
+chooses; left out, `Raz.muslHere` chooses musl where the machine has
+its loader and not glibc's, as Alpine does. A symbol that isn't live
+gets no relocation, so a program runs over a C library that lacks a
+procedure it declares but never reaches. `sizeTables` and `putTables` lay these out in the room `Link.raz` left
 at the end of rodata.
 
 Line numbers are DWARF 4: the line table `makeLines` made from the
@@ -1682,7 +1689,9 @@ this one does.
 - **The target.** x86-64 Linux, `linux-x86_64`: `INT` is 64 bits, and
   there are reals. Every module of a program is compiled together, in
   one run, into a static ELF executable, or a dynamic one if the
-  program uses C; no object files.
+  program uses C; no object files. The C library is glibc or musl,
+  as `-libc` says, or by default glibc, and musl where only its
+  loader is there.
 - **Finding modules.** `raz Main.raz` looks for `X`, imported, in
   `Main.raz`'s directory, then in each `-I dir` in the order given
   (16 at most), then in `lib` beside the `raz` executable, following

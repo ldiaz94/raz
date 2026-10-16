@@ -83,7 +83,7 @@ emacs is installed.
 
 ## Using it
 
-    raz [-I dir]... [-o file] [-Werror] [-S] [-s] [-noprofile] Main.raz
+    raz [-I dir]... [-o file] [-Werror] [-S] [-s] [-noprofile] [-libc glibc|musl] Main.raz
     raz run [option]... Main.raz [arg]...
     raz -h
     raz --version

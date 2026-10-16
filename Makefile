@@ -81,6 +81,10 @@ kernels: raz
 # native threads under load: 40,000 spawned and joined, 200 alive at a
 # time, all waiting on one Mutex; then, with little memory, spawn must
 # fail with Thread.Failed. make check runs a small version.
+# test/libc on Alpine, over musl, in docker
+alpine: raz
+	test/alpine.sh
+
 stress: raz | build
 	./raz -o build/Stress lib/Thread.linux-x86_64.raz
 	build/Stress 40000 200
@@ -181,4 +185,4 @@ dist:
 site: raz pdf
 	python3 site/build.py
 
-.PHONY: units tests seed-bench fixpoint check gdb bench kernels stress fmt loc man pdf dist site clean install uninstall
+.PHONY: units tests seed-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site clean install uninstall

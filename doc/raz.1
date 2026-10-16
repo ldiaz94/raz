@@ -103,6 +103,16 @@ smaller: hello, world is 7 KB, against 28 KB.
 Leave out the profiler, which
 .Ev RAZ_PROFILE
 turns on, but keep the rest.
+.It Fl libc Ar name
+Link a program that uses C against
+.Ar name ,
+.Cm glibc
+or
+.Cm musl .
+Left out, it is glibc, or musl on a machine that has musl's loader,
+.Pa /lib/ld-musl-x86_64.so.1 ,
+and not glibc's, as Alpine has.
+A program without C needs no C library, and runs on either.
 .It Fl h , Fl \-help
 Say the options.
 .It Fl \-version

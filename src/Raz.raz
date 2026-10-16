@@ -1,6 +1,6 @@
 (* Raz: the command line.
 
-     raz [-I dir]... [-o file] [-Werror] [-S] Main.raz
+     raz [-I dir]... [-o file] [-Werror] [-S] [-libc glibc|musl] Main.raz
      raz run [-I dir]... Main.raz [arg]...
      raz --version
 
@@ -18,7 +18,9 @@
    status. A static program does this from its entry point. One that
    uses C starts through the C library, __libc_start_main, which sets
    C up and calls this as C's main; first it gives Rt C's exit, which
-   Rt.exit then ends the program with.
+   Rt.exit then ends the program with. The C library is glibc, or musl
+   on a machine that has musl's loader and not glibc's, unless -libc
+   names one.
 
    Depends on: everything else, and Version, a module the build makes
    (build/src/Version.raz) from what git describe says, as the seed's
@@ -72,7 +74,7 @@ var m, st, c: ^Sym.Module; l: ^Sym.Lib;
 begin
     st := nil; c := nil;
     Elf.noLibs();
-    _ := Elf.needLib(internStr("libc.so.6"));
+    _ := Elf.needLib(internStr(Elf.libc));
     m := Parse.firstModule;
     while m # nil do
         if m^.used and m^.linkStatic then st := m; end;
@@ -104,10 +106,21 @@ begin
     Out.str("  -s           strips symbols, line numbers, the places a failure is told\n");
     Out.str("               by and the profiler: a failure says only its address\n");
     Out.str("  -noprofile   leaves out the profiler, which RAZ_PROFILE turns on\n");
+    Out.str("  -libc name   links a program that uses C against glibc or musl; by\n");
+    Out.str("               default glibc, or musl where only its loader is there\n");
     Out.str("  -h, --help   says this\n");
     Out.str("  --version    says the version, and the report it follows\n");
     Out.str("see raz(1), and the report, doc/raz.md\n");
     Out.flush();
+end;
+
+(* Whether a program that uses C is linked against musl when -libc
+   doesn't say: only if the machine has musl's loader and not glibc's,
+   as Alpine has *)
+proc muslHere: BOOL;
+begin
+    return (Sys.access("/lib64/ld-linux-x86-64.so.2", {}) # 0)
+        and (Sys.access("/lib/ld-musl-x86_64.so.1", {}) = 0);
 end;
 
 (* The module named n, or nil if the program has none *)
@@ -159,12 +172,13 @@ var
     path, outPath, s: []U8; dir: []U8;
     i, first, entry, fd, last, errno: INT;
     m, rt, thread: ^Sym.Module; mainObj: ^Sym.Obj;
-    run, noProfile, listing, dynamic: BOOL; err: ERROR;
+    run, noProfile, listing, dynamic, libcSaid: BOOL; err: ERROR;
 begin
     path := "";
     outPath := "";
     noProfile := false;
     listing := false;
+    libcSaid := false;
     run := (ARGC() >= 2) and (Files.arg(1) = "run");
     if run then i := 2; else i := 1; end;
     while i < ARGC() do
@@ -185,6 +199,12 @@ begin
             Elf.setStripped(true);
         elsif s = "-noprofile" then
             noProfile := true;
+        elsif s = "-libc" then
+            INC(i);
+            s := Files.arg(i);
+            if (s # "glibc") and (s # "musl") then Diag.fatal(say1("unknown C library {}: glibc or musl", s)); end;
+            Elf.setMusl(s = "musl");
+            libcSaid := true;
         elsif (s = "-h") or (s = "--help") then
             usage();
             return 0;
@@ -206,6 +226,7 @@ begin
         return 1;
     end;
     if run and (LEN(outPath) > 0) then Diag.fatal("raz run takes no -o"); end;
+    if not libcSaid then Elf.setMusl(muslHere()); end;
     (* where raz is, as the system says, for the library beside it *)
     dir, errno := Sys.readLink("/proc/self/exe");
     if errno # 0 then dir := Files.arg(0); end;

@@ -35,8 +35,8 @@ run() {   # run dir name
     dir=$1; name=$2
     flags=
     [ $dir = examples ] || [ $dir = test/libc ] && flags=-Werror
-    if ! $raz $flags -I $dir/mods -o $out/$name $dir/$name.raz 2>$out/$name.cerr; then
-        echo "FAIL $dir/$name: doesn't compile: $(cat $out/$name.cerr)"
+    if ! $raz $flags $libc -I $dir/mods -o $out/$name $dir/$name.raz 2>$out/$name.cerr; then
+        echo "FAIL $dir/$name$libc: doesn't compile: $(cat $out/$name.cerr)"
         fail=$((fail + 1)); return
     fi
     if [ ! -f $dir/$name.expect ]; then pass=$((pass + 1)); return; fi
@@ -50,15 +50,15 @@ run() {   # run dir name
     want=0
     [ -f $dir/$name.status ] && want=$(cat $dir/$name.status)
     if ! cmp -s $out/$name.out $dir/$name.expect; then
-        echo "FAIL $dir/$name: output differs"
+        echo "FAIL $dir/$name$libc: output differs"
         diff $out/$name.out $dir/$name.expect | head -5
         fail=$((fail + 1))
     elif [ $status != $want ]; then
-        echo "FAIL $dir/$name: status $status, not $want"
+        echo "FAIL $dir/$name$libc: status $status, not $want"
         fail=$((fail + 1))
     elif [ -f $dir/$name.stderr ] && ! sed 's/0x[0-9a-f]*/0x?/g' $out/$name.err |
             cmp -s - $dir/$name.stderr; then
-        echo "FAIL $dir/$name: standard error differs"
+        echo "FAIL $dir/$name$libc: standard error differs"
         diff $out/$name.err $dir/$name.stderr | head -5
         fail=$((fail + 1))
     else
@@ -66,9 +66,16 @@ run() {   # run dir name
     fi
 }
 
+libc=
 for f in examples/*.raz test/run/*.raz test/libc/*.raz test/bench/*.raz; do
     run $(dirname $f) $(basename $f .raz)
 done
+# test/libc again over musl, where its loader is installed
+if [ -e /lib/ld-musl-x86_64.so.1 ]; then
+    libc=' -libc musl'
+    for f in test/libc/*.raz; do run test/libc $(basename $f .raz); done
+    libc=
+fi
 
 # raz run: a static program and one over C, from memory, with their
 # arguments, output and status passed through
