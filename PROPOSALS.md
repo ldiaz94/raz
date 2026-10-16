@@ -582,30 +582,3 @@ Oberon's, and stays; the report could say it in a line, with the
 spelling to use instead (`x* )` or a word).
 
 Met in rrem's parser, documenting `(?>x*)`.
-
-## A hint for a hexadecimal name
-
-`FFFDH`, meant as a number, is an identifier, and the error is "FFFDH
-isn't declared". The report is right (a hexadecimal number starts
-with a digit, 2), but the message gives no clue. The proposal: when an
-undeclared name is all hexadecimal digits and ends in `H`, the error
-adds "a hexadecimal number starts with a digit: 0FFFDH". Nothing a
-program means changes.
-
-Met in rrem's parser, writing U+FFFD.
-
-## Code fences that say they are raz
-
-The report, the library's book and the README fence their code with
-bare lines of ``` (about 200 fences), so nothing that renders them can
-tell raz from a shell session, a program's output or a grammar. rless
-colours a fence marked `raz`, ```` ```raz ````, as the editors colour
-raz; GitHub would too, given a grammar. A bare fence is one colour.
-
-The proposal: a fence around raz code says `raz`; one around anything
-else stays bare. `tools/Doc` finds the report's examples by a fence
-line that is exactly ```, so it takes ```` ```raz ```` as well, and
-finds the same examples as before. Nothing in the language or the
-library changes; the documents read the same as text.
-
-Met in rless, whose pager shows the report.

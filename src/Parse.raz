@@ -423,6 +423,18 @@ begin
     return p[0..LEN(s)];
 end;
 
+(* Whether s is a hexadecimal number but for the digit it must start
+   with, as FFFDH is: capitals A to F and digits, then H *)
+proc hexLike(s: []U8): BOOL;
+var i: INT;
+begin
+    if (LEN(s) < 2) or (s[LEN(s) - 1] # 'H') then return false; end;
+    for i := 0 to LEN(s) - 2 do
+        if (Str.hexVal(s[i]) < 0) or (s[i] >= 'a') then return false; end;
+    end;
+    return true;
+end;
+
 (* Reports name n at p as not declared, with what it may have meant *)
 proc notDeclared(p: Diag.Pos; n: INT);
 var found: BOOL; low: []U8;
@@ -433,6 +445,7 @@ begin
     if found then Diag.help(say2("{} is a module: import {}", nameOf(n), nameOf(n)));
     elsif (nameOf(n) = "elif") or (nameOf(n) = "elseif") then Diag.help("raz writes elsif");
     elsif Scan.reserved(internName(low)) then Diag.help(say1("a reserved word is written in lower case: {}", low));
+    elsif hexLike(nameOf(n)) then Diag.help(say1("a hexadecimal number starts with a digit: 0{}", nameOf(n)));
     else didYouMean(Sym.closest(n, -1));
     end;
 end;

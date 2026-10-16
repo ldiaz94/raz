@@ -1501,7 +1501,8 @@ procedure is skipped by `skipDeclaration`. `guards` counts the recovery
 points open: `giveUp` with none left ends the compile. A routine that
 can't fail has no `ERROR` result (`declarations`, `declaration`). A name not declared is reported by
 `notDeclared`, with what it may have meant: a module to import
-(`moduleFile`) or a name spelled alike (`didYouMean`). It is then
+(`moduleFile`), a hexadecimal number without its first digit
+(`hexLike`), or a name spelled alike (`didYouMean`). It is then
 declared where it is used, with the type `tPoison` (`poison`), as are
 the names of a declaration that had an error; a construct that uses
 poison sets `Diag.quiet` (by `Diag.setQuiet`, since a variable

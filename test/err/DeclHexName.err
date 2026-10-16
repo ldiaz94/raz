@@ -1,0 +1,5 @@
+test/err/DeclHexName.raz:6:13: error: FFFDH isn't declared
+    6 |     Out.int(FFFDH);
+      |             ^^^^^
+help: a hexadecimal number starts with a digit: 0FFFDH
+raz: 1 error

@@ -1,0 +1,8 @@
+module DeclHexName;
+(* FFFDH, meant as a number, is a name; the help says how to write it *)
+import Out;
+proc main*;
+begin
+    Out.int(FFFDH);
+end;
+end DeclHexName.
