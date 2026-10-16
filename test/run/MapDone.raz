@@ -1,0 +1,39 @@
+(* Map.done: the slots given back to the allocator, through one that
+   counts its blocks; the map empty after, and used again. *)
+module MapDone;
+import Fmt, Heap, Mem, Str, Names := Map([]U8, INT, Str.hash, Str.eq);
+
+var counting: Mem.Allocator; live: INT;
+
+proc alloc(_a: ^Mem.Allocator; size, align: INT): ^U8;
+begin
+    INC(live);
+    return Mem.alloc(Heap.heap, size, align);
+end;
+
+proc free(_a: ^Mem.Allocator; p: ^U8);
+begin
+    DEC(live);
+    Mem.free(Heap.heap, p);
+end;
+
+proc main*;
+var m: Names.Map; i, v: INT; found, _ok: BOOL; keys: [3][]U8;
+begin
+    counting := {alloc: alloc, free: free};
+    keys := ["node_modules", "target", "build"];
+    Names.init(ADR(m), ADR(counting));
+    Names.done(ADR(m));   (* nothing taken yet *)
+    for i := 0 to 99 do _ok := Names.put(ADR(m), keys[i mod 3], i); end;
+    Fmt.print("{} entries, {} block\n", [Fmt.int(m.len), Fmt.int(live)]);
+    Names.done(ADR(m));
+    v, found := Names.get(ADR(m), "target");
+    Fmt.print("{} entries, {} blocks, found {}\n", [Fmt.int(m.len), Fmt.int(live), Fmt.bool(found)]);
+    _ok := Names.put(ADR(m), "target", 7);
+    v, found := Names.get(ADR(m), "target");
+    Fmt.print("{} entry, {}\n", [Fmt.int(m.len), Fmt.int(v)]);
+    Names.done(ADR(m));
+    Fmt.print("{} blocks\n", [Fmt.int(live)]);
+end;
+
+end MapDone.

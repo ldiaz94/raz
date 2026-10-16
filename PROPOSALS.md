@@ -491,29 +491,6 @@ by another program (`WCONTINUED`) would need a fifth `Status`, which
 breaks a `match` on `Status` that names all four, so it is left out:
 the shell knows when it continues a job itself.
 
-## `Map.done`
-
-`Map` takes memory from its allocator as it grows and frees the old
-slots, but never gives the last ones back: a map made over `Heap` for
-a while, as a table kept for one directory of a walk, can't be
-emptied of its memory, only dropped, and the memory is lost. `Buf`
-and `Vec` each have a `done`; `Map` has none, and is the odd one out.
-
-```
-proc done*(m: ^Map);   (* its memory given back, leaving it empty *)
-```
-
-As `Vec.done`: free the slots if there are any, then `cap` and `len`
-0, so the map can be used again and grows anew. `init` already leaves
-it so, with no memory taken until the first `put`.
-
-Met in rwalk's `Rwignore`, which keeps a table of the rules that are a
-plain name (`node_modules`, `target`) for each ignore file, made as the
-walk enters a directory and dropped as it leaves. Without `done` it
-used a `Vec` of rule numbers instead, searched in turn. Library growth
-that breaks no program; about ten lines, with a test in `Map`'s
-`main`.
-
 ## Enumerations' names, each its own
 
 An enumeration's names are declared in the scope around its type

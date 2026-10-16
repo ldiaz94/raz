@@ -520,6 +520,7 @@ proc put*(m: ^Map; k: K; v: V): BOOL;         (* k now maps to v; false if there
 proc remove*(m: ^Map; k: K): BOOL;            (* false if k wasn't there *)
 proc get*(m: ^Map; k: K): (V, BOOL);          (* what k maps to, and whether it maps to anything *)
 proc next*(m: ^Map; i: INT): (INT, K, V);     (* the entry after i *)
+proc done*(m: ^Map);                          (* its memory given back, leaving it empty *)
 
 module Vec(T);
 type Vec* = record len*: INT; ... end;
