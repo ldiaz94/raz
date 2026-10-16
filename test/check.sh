@@ -272,7 +272,7 @@ mkdir -p $out/shake
 printf 'module Shake;\nimport Out, Str, Width;\nproc main*;\nbegin\n    Out.int(1); Out.ln;\nend;\nend Shake.\n' >$out/shake/Shake.raz
 $raz -o $out/shake/with $out/shake/Shake.raz 2>/dev/null
 printf 'module Shake;\nimport Out, Str;\nproc main*;\nbegin\n    Out.int(1); Out.ln;\nend;\nend Shake.\n' >$out/shake/Shake.raz
-$raz -o $out/shake/without $out/shake/Shake.raz
+$raz -o $out/shake/without $out/shake/Shake.raz 2>/dev/null
 if [ $(wc -c <$out/shake/with) = $(wc -c <$out/shake/without) ]; then pass=$((pass + 1))
 else echo "FAIL an unused import, Width, changes the program"; fail=$((fail + 1)); fi
 
