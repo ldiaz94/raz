@@ -9,7 +9,7 @@ This program uses several of the basic types at once, with each conversion writt
 
 ## Conversions are written
 
-Two types never mix but for one: an `INT` goes into an `I64` wherever it meets one, which loses nothing, so with `pos: I64`, `pos + LEN(s)` is an `I64`. With `i: I32` and a slice `s`, `i < LEN(s)` is an error. A type's name converts: `F64(n)`, `I64(b)`, `U8(x)`; an `I64` becomes an `INT` only so, `INT(pos)`, since an `INT` may be smaller on another machine. The [lesson on integers](integers.html) says what each width conversion does.
+Two types never mix but where nothing can be lost: an `INT` goes into an `I64` wherever it meets one, so with `pos: I64`, `pos + LEN(s)` is an `I64`; and a `U8`, `I8` or `I16` into an `INT`, unless an operator made it, so `n := s[i]` needs no conversion. With `i: I32` and a slice `s`, `i < LEN(s)` is an error. A type's name converts: `F64(n)`, `I64(b)`, `U8(x)`; an `I64` becomes an `INT` only so, `INT(pos)`, since an `INT` may be smaller on another machine. The [lesson on integers](integers.html) says what each width conversion does.
 
 A number written in the program is untyped until it meets a type, and `1.5` is a real, which an integer never becomes without a conversion.
 

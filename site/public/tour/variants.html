@@ -105,7 +105,7 @@ digit letter other
 01
 </code></pre>
 <h2>Enumerations</h2>
-<p>An enumeration is a list of names, in order. They convert to their position and back, and a <code>for</code> loop can run over them. An integer that has no name at its position is a failed check, never a silent wrong value.</p>
+<p>An enumeration is a list of names, in order. They convert to their position and back, and a <code>for</code> loop can run over them. A name may be written with its type, <code>Day.mon</code>, and two enumerations of a module may share a name, <code>Style.bold</code> and <code>Elem.bold</code>, which is then always written so. An integer that has no name at its position is a failed check, never a silent wrong value.</p>
 <div class="file"><span>Days.raz</span></div><pre class="code"><code><span class="kw">module</span> Days;
 <span class="kw">import</span> Out;
 

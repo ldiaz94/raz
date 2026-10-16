@@ -102,9 +102,9 @@ begin
     (* length 4096; PROT_READ|WRITE = 3; MAP_PRIVATE|ANONYMOUS = 22H; no fd *)
     p := ^U8(SYSCALL(9, 0, 4096, 3, 22H, -1, 0));
     if INT(p) < 0 then Out.str("no memory\n"); return; end;
-    Out.int(INT(p[0]) + INT(p[4095])); Out.str(" (zero, as promised)\n");
+    Out.int(INT(p[0]) + p[4095]); Out.str(" (zero, as promised)\n");
     for i := 0 to 4095 do p[i] := U8(i); end;
-    for i := 0 to 4095 do INC(total, INT(p[i])); end;
+    for i := 0 to 4095 do INC(total, p[i]); end;
     Out.int(total); Out.ln;
     _ := SYSCALL(11, p, 4096);
 end;

@@ -126,9 +126,9 @@ machine: x86_64
     <span class="comment">(* length 4096; PROT_READ|WRITE = 3; MAP_PRIVATE|ANONYMOUS = 22H; no fd *)</span>
     p := ^<span class="ty">U8</span>(SYSCALL(<span class="number">9</span>, <span class="number">0</span>, <span class="number">4096</span>, <span class="number">3</span>, <span class="number">22H</span>, -<span class="number">1</span>, <span class="number">0</span>));
     <span class="kw">if</span> <span class="ty">INT</span>(p) &lt; <span class="number">0</span> <span class="kw">then</span> Out.str(<span class="string">&quot;no memory\n&quot;</span>); <span class="kw">return</span>; <span class="kw">end</span>;
-    Out.int(<span class="ty">INT</span>(p[<span class="number">0</span>]) + <span class="ty">INT</span>(p[<span class="number">4095</span>])); Out.str(<span class="string">&quot; (zero, as promised)\n&quot;</span>);
+    Out.int(<span class="ty">INT</span>(p[<span class="number">0</span>]) + p[<span class="number">4095</span>]); Out.str(<span class="string">&quot; (zero, as promised)\n&quot;</span>);
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4095</span> <span class="kw">do</span> p[i] := <span class="ty">U8</span>(i); <span class="kw">end</span>;
-    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4095</span> <span class="kw">do</span> <span class="ty">INC</span>(total, <span class="ty">INT</span>(p[i])); <span class="kw">end</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4095</span> <span class="kw">do</span> <span class="ty">INC</span>(total, p[i]); <span class="kw">end</span>;
     Out.int(total); Out.ln;
     _ := SYSCALL(<span class="number">11</span>, p, <span class="number">4096</span>);
 <span class="kw">end</span>;

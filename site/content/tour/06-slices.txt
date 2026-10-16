@@ -198,18 +198,19 @@ A line of an indented raw string that doesn't start with the closing line's blan
 
 ## UTF-8
 
-A character is an `I32`, its code point. A string stays bytes; UTF-8 is how `Str` reads them. `Str.next` walks a string a character at a time, giving each one and where the next starts, -1 at the end. `Str.decode` reads the first character of a string and says how many bytes it took, `Str.decodeLast` the last, and `Str.encode` goes the other way. `Str.chars` counts characters and `Str.valid` says whether a string is UTF-8 at all; a byte that doesn't start a character rightly reads as FFFDH, the character that stands for a wrong one. Byte length and character count are different things, and the program is the one that says which it wants.
+A character is an `I32`, its code point. A string stays bytes; UTF-8 is how `Str` reads them. `Str.next` walks a string a character at a time, giving each one and where the next starts, -1 at the end. `Str.decode` reads the first character of a string and says how many bytes it took, `Str.decodeLast` the last, and `Str.encode` goes the other way. `Str.chars` counts characters and `Str.valid` says whether a string is UTF-8 at all; a byte that doesn't start a character rightly reads as FFFDH, the character that stands for a wrong one. Byte length and character count are different things, and the program is the one that says which it wants. On a terminal there is a third: a character takes 0, 1 or 2 columns, a combining accent none and an ideograph two, and `Width.columns` counts those.
 
 ```raz Runes run
 module Runes;
-import Out, Str;
+import Out, Str, Width;
 
 proc main*;
 var s: []U8; c: I32; i, size: INT; bytes: [4]U8; k: INT;
 begin
     s := "caf\u{E9} \u{3BB}";
     Out.int(LEN(s)); Out.str(" bytes, ");
-    Out.int(Str.chars(s)); Out.str(" characters\n");
+    Out.int(Str.chars(s)); Out.str(" characters, ");
+    Out.int(Width.columns("\u{4E2D}\u{6587}")); Out.str(" columns for two ideographs\n");
 
     (* each character, as its code point *)
     c, i := Str.next(s, 0);
@@ -233,7 +234,7 @@ end Runes.
 
 ## Loops over lengths
 
-A `for` loop takes its bounds once, and never steps past the last: with an empty slice, `0 to LEN(s) - 1` doesn't run at all, and the variable can't wrap. `for` takes a constant step with `by`, and `while` and `repeat ... until` do the rest.
+A `for` loop takes its bounds once, and never steps past the last: with an empty slice, `0 to LEN(s) - 1` doesn't run at all, and the variable can't wrap. `for` takes a constant step with `by`, and `while` and `repeat ... until` do the rest. `break` leaves a loop, and `continue` ends its round: a `for` steps, a `while` or a `repeat` tests again. So a `while` moves on before any `continue`, or it never moves at all.
 
 ```raz Loops run
 module Loops;
@@ -249,6 +250,11 @@ begin
     Out.int(i); Out.ln;
     repeat DEC(i, 30); until i < 0;
     Out.int(i); Out.ln;
+    for i := 1 to 10 do
+        if i mod 3 = 0 then continue; end;     (* 3, 6 and 9 passed over *)
+        Out.int(i); Out.char(' ');
+    end;
+    Out.ln;
 end;
 
 end Loops.

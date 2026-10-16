@@ -87,7 +87,7 @@ out
 0
 -1
 </code></pre>
-<p><code>defer s;</code> runs <code>s</code> when the program leaves the statements the <code>defer</code> stands in: at their end, or by a <code>return</code> or a <code>break</code>. Deferred statements run the last first, and only those whose <code>defer</code> was reached. So a file is closed beside the line that opens it, however the procedure ends.</p>
+<p><code>defer s;</code> runs <code>s</code> when the program leaves the statements the <code>defer</code> stands in: at their end, or by a <code>return</code>, a <code>break</code> or a <code>continue</code>. Deferred statements run the last first, and only those whose <code>defer</code> was reached. So a file is closed beside the line that opens it, however the procedure ends.</p>
 <h2>The order, and a <code>return</code> value</h2>
 <p>A <code>return e;</code> evaluates <code>e</code> before the deferred statements run, so the value is what it was at the return.</p>
 <div class="file"><span>Order.raz</span></div><pre class="code"><code><span class="kw">module</span> Order;
@@ -124,7 +124,7 @@ out
 body: 3 2 1 
 </code></pre>
 <h2>In a loop</h2>
-<p>A <code>defer</code> stands in the statement list that holds it, so in a loop body it runs at the end of each pass, and on a <code>break</code>.</p>
+<p>A <code>defer</code> stands in the statement list that holds it, so in a loop body it runs at the end of each pass, and on a <code>break</code> or a <code>continue</code>.</p>
 <div class="file"><span>Passes.raz</span></div><pre class="code"><code><span class="kw">module</span> Passes;
 <span class="kw">import</span> Out;
 

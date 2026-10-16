@@ -277,16 +277,17 @@ a raw string on one line, \n and all
 </code></pre>
 <p>A line of an indented raw string that doesn't start with the closing line's blanks is an error, so a slip in the indent is caught where it is made, not printed. A raw string can't hold a backquote; join one in with <code>+</code> and an ordinary string that holds it.</p>
 <h2>UTF-8</h2>
-<p>A character is an <code>I32</code>, its code point. A string stays bytes; UTF-8 is how <code>Str</code> reads them. <code>Str.next</code> walks a string a character at a time, giving each one and where the next starts, -1 at the end. <code>Str.decode</code> reads the first character of a string and says how many bytes it took, <code>Str.decodeLast</code> the last, and <code>Str.encode</code> goes the other way. <code>Str.chars</code> counts characters and <code>Str.valid</code> says whether a string is UTF-8 at all; a byte that doesn't start a character rightly reads as FFFDH, the character that stands for a wrong one. Byte length and character count are different things, and the program is the one that says which it wants.</p>
+<p>A character is an <code>I32</code>, its code point. A string stays bytes; UTF-8 is how <code>Str</code> reads them. <code>Str.next</code> walks a string a character at a time, giving each one and where the next starts, -1 at the end. <code>Str.decode</code> reads the first character of a string and says how many bytes it took, <code>Str.decodeLast</code> the last, and <code>Str.encode</code> goes the other way. <code>Str.chars</code> counts characters and <code>Str.valid</code> says whether a string is UTF-8 at all; a byte that doesn't start a character rightly reads as FFFDH, the character that stands for a wrong one. Byte length and character count are different things, and the program is the one that says which it wants. On a terminal there is a third: a character takes 0, 1 or 2 columns, a combining accent none and an ideograph two, and <code>Width.columns</code> counts those.</p>
 <div class="file"><span>Runes.raz</span></div><pre class="code"><code><span class="kw">module</span> Runes;
-<span class="kw">import</span> Out, Str;
+<span class="kw">import</span> Out, Str, Width;
 
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> s: []<span class="ty">U8</span>; c: <span class="ty">I32</span>; i, size: <span class="ty">INT</span>; bytes: [<span class="number">4</span>]<span class="ty">U8</span>; k: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     s := <span class="string">&quot;caf\u{E9} \u{3BB}&quot;</span>;
     Out.int(<span class="ty">LEN</span>(s)); Out.str(<span class="string">&quot; bytes, &quot;</span>);
-    Out.int(Str.chars(s)); Out.str(<span class="string">&quot; characters\n&quot;</span>);
+    Out.int(Str.chars(s)); Out.str(<span class="string">&quot; characters, &quot;</span>);
+    Out.int(Width.columns(<span class="string">&quot;\u{4E2D}\u{6587}&quot;</span>)); Out.str(<span class="string">&quot; columns for two ideographs\n&quot;</span>);
 
     <span class="comment">(* each character, as its code point *)</span>
     c, i := Str.next(s, <span class="number">0</span>);
@@ -304,7 +305,7 @@ a raw string on one line, \n and all
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Runes.</code></pre>
-<pre class="output"><code>8 bytes, 6 characters
+<pre class="output"><code>8 bytes, 6 characters, 4 columns for two ideographs
 99 97 102 233 32 955 
 955 is last, in 2 bytes
 λ
@@ -312,7 +313,7 @@ cut in the middle of a character
 </code></pre>
 <p><code>Str</code> knows UTF-8 and no more of Unicode: its case is ASCII's, and it doesn't say how wide a character is on a terminal or which spellings of a text are the same. Those need tables bigger than the rest of the library.</p>
 <h2>Loops over lengths</h2>
-<p>A <code>for</code> loop takes its bounds once, and never steps past the last: with an empty slice, <code>0 to LEN(s) - 1</code> doesn't run at all, and the variable can't wrap. <code>for</code> takes a constant step with <code>by</code>, and <code>while</code> and <code>repeat ... until</code> do the rest.</p>
+<p>A <code>for</code> loop takes its bounds once, and never steps past the last: with an empty slice, <code>0 to LEN(s) - 1</code> doesn't run at all, and the variable can't wrap. <code>for</code> takes a constant step with <code>by</code>, and <code>while</code> and <code>repeat ... until</code> do the rest. <code>break</code> leaves a loop, and <code>continue</code> ends its round: a <code>for</code> steps, a <code>while</code> or a <code>repeat</code> tests again. So a <code>while</code> moves on before any <code>continue</code>, or it never moves at all.</p>
 <div class="file"><span>Loops.raz</span></div><pre class="code"><code><span class="kw">module</span> Loops;
 <span class="kw">import</span> Out;
 
@@ -326,12 +327,18 @@ cut in the middle of a character
     Out.int(i); Out.ln;
     <span class="kw">repeat</span> <span class="ty">DEC</span>(i, <span class="number">30</span>); <span class="kw">until</span> i &lt; <span class="number">0</span>;
     Out.int(i); Out.ln;
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">10</span> <span class="kw">do</span>
+        <span class="kw">if</span> i <span class="kw">mod</span> <span class="number">3</span> = <span class="number">0</span> <span class="kw">then</span> continue; <span class="kw">end</span>;     <span class="comment">(* 3, 6 and 9 passed over *)</span>
+        Out.int(i); Out.char(<span class="string">&#x27; &#x27;</span>);
+    <span class="kw">end</span>;
+    Out.ln;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Loops.</code></pre>
 <pre class="output"><code>10 5 0 
 243
 -27
+1 2 4 5 7 8 10 
 </code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="procedures.html">&larr; Procedures and several results</a><a href="index.html">Contents</a><a class="next" href="records.html">Records and pointers &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license.</footer>

@@ -90,7 +90,7 @@
         <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">return</span>; <span class="kw">end</span>;
     <span class="kw">end</span>;
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span> Thread.join(th[i]); <span class="kw">end</span>;
-    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3999</span> <span class="kw">do</span> taken := taken + <span class="ty">INT</span>(seen[i]); <span class="kw">end</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3999</span> <span class="kw">do</span> taken := taken + seen[i]; <span class="kw">end</span>;
     Out.int(next); Out.char(<span class="string">&#x27; &#x27;</span>); Out.int(taken); Out.ln;
 <span class="kw">end</span>;
 

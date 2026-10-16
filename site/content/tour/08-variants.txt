@@ -7,7 +7,7 @@ summary: Names in order, sets as bits, and cases the compiler makes you handle.
 
 ## Enumerations
 
-An enumeration is a list of names, in order. They convert to their position and back, and a `for` loop can run over them. An integer that has no name at its position is a failed check, never a silent wrong value.
+An enumeration is a list of names, in order. They convert to their position and back, and a `for` loop can run over them. A name may be written with its type, `Day.mon`, and two enumerations of a module may share a name, `Style.bold` and `Elem.bold`, which is then always written so. An integer that has no name at its position is a failed check, never a silent wrong value.
 
 ```raz Days run
 module Days;

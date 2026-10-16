@@ -5,7 +5,7 @@ summary: Clean up beside the line that needs it, in the right order, on every wa
 ```raz Defers run
 ```
 
-`defer s;` runs `s` when the program leaves the statements the `defer` stands in: at their end, or by a `return` or a `break`. Deferred statements run the last first, and only those whose `defer` was reached. So a file is closed beside the line that opens it, however the procedure ends.
+`defer s;` runs `s` when the program leaves the statements the `defer` stands in: at their end, or by a `return`, a `break` or a `continue`. Deferred statements run the last first, and only those whose `defer` was reached. So a file is closed beside the line that opens it, however the procedure ends.
 
 ## The order, and a `return` value
 
@@ -46,7 +46,7 @@ end Order.
 
 ## In a loop
 
-A `defer` stands in the statement list that holds it, so in a loop body it runs at the end of each pass, and on a `break`.
+A `defer` stands in the statement list that holds it, so in a loop body it runs at the end of each pass, and on a `break` or a `continue`.
 
 ```raz Passes run
 module Passes;
