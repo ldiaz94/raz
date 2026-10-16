@@ -11,7 +11,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn` and `exec`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; what an errno means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; what an errno means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -263,6 +263,7 @@ proc openPty*: INT;                (* a pseudo-terminal: the fd of its controlli
 proc setTermSize*(fd, cols, rows: INT): INT;   (* the size its programs are told of *)
 proc spawn*(p: Program): INT;      (* a program started: its process id *)
 proc exec*(p: Program): INT;       (* p run in this program's place; returns only if it can't *)
+proc execve*(path: []U8; args, env: [][]U8): INT;   (* as the kernel's execve: no search *)
 proc fork*: INT;                   (* this program copied: 0 in the copy, its process id in this one *)
 proc wait*(pid: INT; block: BOOL): (INT, Status, INT);   (* which program, how, and its code *)
 proc kill*(pid, signal: INT): INT;
@@ -404,6 +405,15 @@ program can't run: -2 (ENOENT) or -13 (EACCES) if there is none to
 run, with nothing done; or, if the program is found but won't start,
 minus the errno, with what `p` asks of the terminal, the group, the
 files and the directory done, and this program's signals as they were.
+
+`execve(path, args, env)` is the kernel's execve, for a shell, which
+has looked for the program along its own `PATH` and set up the child
+already: the program at `path` is run with `args` and with `env`,
+`NAME=value`, for its whole environment. Nothing is searched for, and
+every fd and signal stays as it is, but that a handled signal does what
+it does at first: an ignored one stays ignored, as `trap '' HUP` wants
+of the command it comes before. It returns only if it can't: minus an
+errno, with nothing changed.
 
 A shell moves its own files with `dup` and `dupTo`, for `2>&1` and
 `exec >log` and around a builtin: `dupTo(fd, into)` makes `into` the

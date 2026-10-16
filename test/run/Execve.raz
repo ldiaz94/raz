@@ -1,0 +1,15 @@
+(* Sys.execve: this program replaced by sh, found by no search,
+   with the environment it is given and no other, a signal ignored
+   still ignored and one handled back to what it does at first. *)
+module Execve;
+import Sys;
+
+proc main*: INT;
+begin
+    if (Sys.ignore(1, true) # 0) or (Sys.handle(10) # 0) then return 1; end;   (* SIGHUP, SIGUSR1 *)
+    return Sys.execve("/bin/sh", ["sh", "-c",
+        "echo $X ${HOME-none}; while read k v; do case $k in SigIgn:) echo ignored $((0x$v & 1));; SigCgt:) echo caught $((0x$v >> 9 & 1));; esac; done </proc/self/status; exit 5"],
+        ["X=only"]);
+end;
+
+end Execve.

@@ -1719,6 +1719,23 @@ begin
     return r;
 end;
 
+(* Runs the program at path in this one's place, with args, the first
+   its name, and env, NAME=value, its whole environment, as the
+   kernel's execve does and a shell wants: no search, and every fd and
+   signal as it is, but that a handled signal does what it does at
+   first. It returns only if it can't: minus an errno. *)
+proc execve*(path: []U8; args, env: [][]U8): INT;
+var a: [4096]U8; argv: ^^U8; none: ^U8; size, r: INT;
+begin
+    if not cstr(path, a) then return -36; end;        (* ENAMETOOLONG *)
+    none := nil;
+    argv, size := argsAndEnv(args, env, ADR(none));
+    if argv = nil then return -12; end;               (* ENOMEM *)
+    r := SYSCALL(59, ADR(a), argv, argv + (LEN(args) + 1));   (* execve *)
+    munmap(^U8(argv), size);
+    return r;
+end;
+
 (* Waits for the program pid, any of this program's if pid is -1, or
    any of the group g if pid is -g, to change, if block, and says which one changed and how: exited, with
    its exit status; killed or stopped, with the signal's number. Without
