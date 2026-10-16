@@ -9,6 +9,8 @@ h2 { font-size: 11.5pt; break-after: avoid; }
 pre, code { font-family: "DejaVu Sans Mono", monospace; font-size: 8.8pt; }
 /* a block of code or grammar is never split across pages */
 pre { background: #f6f6f3; padding: 6px 9px; border-left: 2px solid #bbb; break-inside: avoid; white-space: pre-wrap; }
+/* and stays on the page of the paragraph that leads to it */
+p:has(+ div.sourceCode, + pre) { break-after: avoid; }
 table { border-collapse: collapse; font-size: 9.5pt; }
 td, th { border-bottom: 1px solid #ddd; padding: 2px 8px; text-align: left; }
 nav#TOC { break-after: page; }

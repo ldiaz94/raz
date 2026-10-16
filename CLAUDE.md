@@ -69,7 +69,7 @@ tools and the library's tests: they must have no warnings.
   commented throughout, most of all where it is obscure or needs a
   compiler writer's knowledge; at least 400,000 lines of raz a second;
   the report, `doc/raz.md`, under 40 pages as `make pdf` renders it,
-  checked by hand after each milestone (30 at report 2026-10.31).
+  checked by hand after each milestone (31 at report 2026-10.32).
 - Clarity comes first, before speed and size: the compiler must be a
   model of plain code that a beginner can follow. Every rewrite of the
   code it makes is explained where it is done, with the code before
@@ -90,7 +90,9 @@ and `execve`, the kernel's, for a shell), with errors that show a comment that e
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
-against FPC `-O2`. Next: what the owner chooses. What
+against FPC `-O2`. Since then, not yet released: report 2026-10.32,
+the eighth thaw (a constant typed `[]T` may be `[]`), with `Vec.pop`
+and `Sys.Info.links`. Next: what the owner chooses. What
 each version of the report changed is in `doc/report-history.md`, and
 what each step did is in git; don't repeat it here.
 
@@ -225,6 +227,10 @@ otherwise.
   local slice variable or a record, stored, or come back from a call,
   isn't, and is left undefined (10). `ret` and `keep`, in
   PROPOSALS.md, would close it; the owner keeps it open for now.
+- An empty slice constant, `const E: []T = [];` (report 2026-10.32),
+  is 16 zero bytes in read-only data, read as an array constant is;
+  `LEN` of it is no constant. A constant's slice part takes `[]`, and
+  names a constant whole, of any module, by its type, not its text.
 - An array a call returns is a temporary of the statement (report
   2026-10.28, 8): a slice of it kept past the statement is undefined
   (10), and isn't caught.

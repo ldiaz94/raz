@@ -407,7 +407,7 @@ a constant.
 
 ```
 const Wide: [][2]I32 = [[1100H, 115FH], [2E80H, 303EH], [0AC00H, 0D7A3H]];
-    Count = LEN(Wide);    (* 3, a constant *)
+    Count = LEN(Wide);        (* 3, a constant *)
     Narrow: [][2]I32 = [];    (* the empty slice *)
 ```
 

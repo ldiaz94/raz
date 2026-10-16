@@ -195,6 +195,6 @@ at the time.
   literal is `[]` is the empty slice, a value of type `[]T`, and no
   array; `LEN` of it is 0, not a constant. A slice part of a constant
   may be the empty slice, by `[]` or by such a constant's name (section
-  4). Before, both were errors, since an array has at least one element. It breaks no
-  program. `Sys.Info` gains `links`, how many names a file has
-  (volume 2).
+  4). Before, both were errors, since an array has at least one
+  element. It breaks no program. `Vec` gains `pop`, and `Sys.Info`
+  `links`, how many names a file has (volume 2).

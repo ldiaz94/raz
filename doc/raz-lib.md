@@ -360,9 +360,9 @@ files are one only if both `dev` and `ino` agree, which is how a
 program following links finds that one has led it back into a
 directory it is already in. `Info.links` is how many names the file
 has: more than 1 if a hard link shares it, so that writing to it
-writes to a file named elsewhere too; 0 on a target that doesn't say. `Info.mode` holds the nine
-bits of `rwxrwxrwx`, and `chmod` sets them, 1EDH (755) for a program,
-1A4H (644) for data.
+writes to a file named elsewhere too; 0 on a target that doesn't say.
+`Info.mode` holds the nine bits of `rwxrwxrwx`, and `chmod` sets them,
+1EDH (755) for a program, 1A4H (644) for data.
 
 **Programs.** `openPty` makes a pseudo-terminal, a terminal that a
 program, a terminal emulator, plays the screen and the keyboard of:
@@ -637,7 +637,7 @@ type Vec* = record len*: INT; ... end;
 proc init*(v: ^Vec; a: ^Mem.Allocator);
 proc room*(v: ^Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
 proc push*(v: ^Vec; x: T);            (* x added at the end *)
-proc pop*(v: ^Vec): (T, BOOL);        (* the last element, taken off; false if empty *)
+proc pop*(v: ^Vec): (T, BOOL);        (* the last element, taken off; false if the array is empty *)
 proc add*(v: ^Vec): ^T;               (* a new element at the end, zero, to fill in place *)
 proc tryPush*(v: ^Vec; x: T): BOOL;   (* push; false, and v as it was, if there is no room *)
 proc tryAdd*(v: ^Vec): (^T, BOOL);    (* add; nil and false, and v as it was, if there is no room *)
@@ -683,8 +683,7 @@ doubles when it is full, so `push` costs the same on average however
 long it grows. `all` gives the elements as a slice, indexed and
 checked as any is, and `v.len` is their number; the slice, and what
 `add` gives, are good until the array next grows. `pop` takes the last
-element off, keeping the memory. `push`, `add` and
-`resize` stop the program, as `Buf.add` does, if the allocator has no
+element off, keeping the memory. `push`, `add` and `resize` stop the program, as `Buf.add` does, if the allocator has no
 room; `room` asks first: `import Lines := Vec([]U8);`. `Fmt`'s format takes the next argument at each
 `{}`; `{{` and `}}` stand for `{` and `}`. A `Map` hashes and
 compares its keys with the procedures it is given:
