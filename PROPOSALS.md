@@ -679,19 +679,3 @@ number that has no top is given `hi` as `I64`'s largest, and the
 message reads `--budget wants a number from 0 to
 9223372036854775807`. The proposal: the message says `a number from
 0 up` when `hi` is the largest `I64`; nothing else changes.
-
-## `Out` a line at a time through a pipe
-
-`Out` writes at each line feed only when standard output is a
-terminal; through a pipe it waits for 4 KB. A command that filters a
-stream that comes slowly, `tail -f log | rre error | less`, shows
-nothing until 4 KB of matches have come. grep has `--line-buffered`
-for this. The proposal, in `Out`:
-
-```
-proc lines*(on: BOOL);   (* write at each line feed, whatever standard output is *)
-```
-
-It breaks no program. Met in rre, which doesn't yet offer
-`--line-buffered` for want of it (or of an `Out.flush` after every
-line, which costs a write per line always).

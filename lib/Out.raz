@@ -1,6 +1,7 @@
 (* Writing text and numbers to standard output, through a buffer of
    Sys.outSize bytes. The buffer is written out when it is full, at
-   each line feed when standard output is a terminal, by flush, and
+   each line feed when standard output is a terminal or lines asks it,
+   by flush, and
    when the program ends by Rt.exit. C's stdio keeps a buffer of its
    own: a program that writes with both flushes one before writing
    with the other. A lock keeps what each call writes together when
@@ -11,7 +12,7 @@ import Rt, Sys, Lock;
 var
     buf: [Sys.outSize]U8;
     n: INT;          (* bytes in buf *)
-    tty: BOOL;       (* standard output is a terminal *)
+    eachLine: BOOL;  (* written at each line feed: at first, if standard output is a terminal *)
     lock: Lock.Lock;
 
 (* Writes out the buffer, with the lock held. What can't be written is
@@ -37,6 +38,17 @@ begin
     Lock.give(ADR(lock));
 end;
 
+(* Has the buffer written at each line feed, whatever standard output
+   is, or, if not on, only when it is full: for a program that filters
+   a stream that comes slowly, through a pipe, as grep's
+   --line-buffered. *)
+proc lines*(on: BOOL);
+begin
+    Lock.take(ADR(lock));
+    eachLine := on;
+    Lock.give(ADR(lock));
+end;
+
 (* Writes the bytes of s. *)
 proc str*(s: []U8);
 var i: INT;
@@ -46,7 +58,7 @@ begin
         if n = LEN(buf) then out; end;
         buf[n] := s[i];
         INC(n);
-        if (s[i] = '\n') and tty then out; end;
+        if (s[i] = '\n') and eachLine then out; end;
     end;
     Lock.give(ADR(lock));
 end;
@@ -100,6 +112,6 @@ begin
 end;
 
 begin
-    tty := Sys.isTerminal(Sys.stdout);
+    eachLine := Sys.isTerminal(Sys.stdout);
     _ := Rt.atExit(flush);
 end Out.

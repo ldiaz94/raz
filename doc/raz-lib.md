@@ -121,12 +121,16 @@ proc ln*;                        (* a line feed *)
 proc int*(n: I64);               (* n in decimal *)
 proc hex*(n: U64; digits: INT);  (* n in hexadecimal, digits digits at least *)
 proc flush*;
+proc lines*(on: BOOL);           (* written at each line feed, or only when full *)
 ```
 
 **Out and C's stdio.** `Out` keeps a buffer of `Sys.outSize` bytes,
 4 KB on Linux. It writes it out
 when it is full, at each line feed when standard output is a terminal,
-at `Out.flush`, and when the program ends by `Rt.exit`. A lock keeps
+at `Out.flush`, and when the program ends by `Rt.exit`. `lines(true)`
+has it written at each line feed whatever standard output is, as a
+filter of a stream that comes slowly wants through a pipe, as grep's
+`--line-buffered`; `lines(false)`, only when full, at a terminal too. A lock keeps
 what each call writes together when threads write at once. C's `stdio`
 keeps a buffer of its own for the same standard output. A program that
 writes with both flushes one before writing with the other, or the

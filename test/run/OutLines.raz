@@ -1,0 +1,20 @@
+module OutLines;
+(* Out.lines(true) writes each line as it ends, though standard output
+   is no terminal here: the lines come in order with what is written
+   past Out. lines(false) keeps them until the end. *)
+import Out, Sys;
+
+proc main*;
+begin
+    Out.lines(true);
+    Out.str("first\n");
+    _ := Sys.write(Sys.stdout, "past Out\n");
+    Out.str("second, half");
+    _ := Sys.write(Sys.stdout, "past Out again\n");
+    Out.str(" and the rest\n");
+    Out.lines(false);
+    Out.str("kept\n");
+    _ := Sys.write(Sys.stdout, "past Out, first\n");
+end;
+
+end OutLines.
