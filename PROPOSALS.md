@@ -583,23 +583,6 @@ spelling to use instead (`x* )` or a word).
 
 Met in rrem's parser, documenting `(?>x*)`.
 
-## The text of an errno
-
-`Sys` returns minus an errno, and a tool that tells the user what
-failed must turn it into words: `Rwfiles` maps four by hand, and says
-"error 13" for the rest.
-
-The proposal, in `Sys`:
-
-```
-proc errorText*(err: INT): []U8;   (* what errno err (or minus it) means, as strerror says; "unknown error" otherwise *)
-```
-
-a fixed table of Linux's names, so it needs no C. It breaks no
-program.
-
-Met in rwalk's `Rwfiles`.
-
 ## Setting an environment variable
 
 `Sys.env` reads a variable; nothing sets one. A test can't give the

@@ -1005,6 +1005,20 @@ begin
     return n, k;
 end;
 
+(* What errno err, or minus it, means, as the C library's strerror
+   says it. *)
+proc errorText*(err: INT): []U8;
+var s: ^U8; n: INT;
+begin
+    if err < 0 then err := -err; end;
+    if (err < 0) or (err > 7FFFFFFFH) then return "unknown error"; end;   (* the smallest INT, or past an int *)
+    s := C.strerror(I32(err));
+    if s = nil then return "unknown error"; end;
+    n := 0;
+    while s[n] # 0 do INC(n); end;
+    return s[0..n];
+end;
+
 (* The value of the environment variable name; "" if it isn't set. *)
 proc env*(name: []U8): []U8;
 var a: [4096]U8; s: ^U8; n: INT;
@@ -1914,6 +1928,7 @@ begin
     if (n # 5) or (buf[0..5] # "hello") or (read(fd, buf) # 0) then exit(2); end;
     close(fd);
     if openRead("/no/such/file") >= 0 then exit(2); end;
+    if (errorText(-2) # "No such file or directory") or (errorText(13) # "Permission denied") then exit(2); end;
     if isTerminal(-1) then exit(2); end;
     p := mmap(100);
     if (p = nil) or (p[99] # 0) then exit(2); end;
