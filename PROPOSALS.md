@@ -628,3 +628,31 @@ model's reply with rnet. The human's `C-c` is a key on the loop's
 thread, which can only set a flag that the turn reads after each read
 of the reply; a server that says nothing for a minute, as a model does
 while it thinks, keeps the turn going for that minute.
+
+## `Buf.cut`
+
+`Buf` can grow and be emptied, but not cut back to an earlier length.
+A program that adds to a buffer and must take back what it added, on
+an error, writes the field itself,
+
+```
+start := b^.len;
+...
+b^.len := start;
+```
+
+which works, `len` being exported, but the library doesn't say that a
+program may lower it; it says only that a program raises it after
+`spare` (`INC(b^.len, n)`). The proposal, in `Buf`, beside `reset`:
+
+```
+proc cut*(b: ^Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
+```
+
+as `Vec.resize` does for an array; `reset` is `cut(b, 0)`. An `n`
+past `len` is a defect, as an index past the end is. It breaks no
+program, so it could come with any release, not only a thaw.
+
+Met in rrem's `replace`, which adds each match's replacement to the
+caller's buffer and, when a search stops with `TooCostly` or `NoRoom`,
+leaves the buffer as it was.
