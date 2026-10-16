@@ -1,0 +1,4 @@
+conform/err/SmallWidenU16.raz:5:10: error: can't use U16 as INT
+    5 |     n := a;
+      |          ^
+raz: 1 error

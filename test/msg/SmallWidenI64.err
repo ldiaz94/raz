@@ -1,0 +1,5 @@
+conform/err/SmallWidenI64.raz:5:10: error: can't use U8 as I64
+    5 |     n := a;
+      |          ^
+help: U8 widens to I64 only as written, I64(a)
+raz: 1 error

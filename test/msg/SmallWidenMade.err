@@ -1,0 +1,5 @@
+conform/err/SmallWidenMade.raz:5:10: error: can't use U8 as INT: an operator made it, in U8, where it may have wrapped
+    5 |     n := a + b;
+      |          ^^^^^
+help: convert an operand to INT first, so that the operator works in it
+raz: 1 error

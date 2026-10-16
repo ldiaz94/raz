@@ -19,7 +19,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 1,986 | 1,617 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Item.raz` | 2,037 | 1,651 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,049 | 3,518 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 431 | 344 | Static and dynamic ELF, symbol table, line numbers |
@@ -1303,7 +1303,23 @@ step and several results pass through `coerce` too. An `INT` meeting
 an `I64` in an operator is `op2`'s, which gives the result the `I64`;
 `return f(x)` takes results that widen by `resultsFit`. None of it
 makes code: an `INT` and an `I64` are the same 64 bits on x86-64, so
-only the item's type changes. `assign` stores, or
+only the item's type changes.
+
+A `U8`, `I8` or `I16` goes into an `INT`, and a `U8` or `U16` into a
+`UINT`, by `smallWidens`, in `coerce` and `op2` alike (report 2026-10.31).
+Gen keeps every integer on its stack extended to 64 bits as its type
+says, `movzx` for a `U8` and `movsx` for an `I8`, so `coerce` loads the
+value as its own type (`value`) and then changes only the type:
+
+    before:  x is a U8 variable; the INT it is wanted as is an error
+    after:   value(x) loads it, movzx r8d, byte [...]; x.typ := INT
+
+What an operator gives doesn't widen, since it was computed in the
+narrow type and may have wrapped: `op2`, `neg` and `complement` mark
+their result `made`, which `coerce` and `op2` refuse (`madeNarrow`),
+and `convert` clears, so that `U8(a + b)` widens. `return f(x)` passes
+results on as they are, so `resultsFit` takes only `INT` to `I64`.
+`assign` stores, or
 copies records and arrays. `convert` is the written conversion, `T(x)`.
 
 Views, `v.(T)` (report section 6.9): a view is the item of `v` with

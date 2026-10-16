@@ -1,0 +1,7 @@
+module SmallWidenU16;
+proc main*;
+var n: INT; a: U16;
+begin
+    n := a;
+end;
+end SmallWidenU16.

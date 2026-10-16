@@ -1,0 +1,7 @@
+module SmallWidenMade;
+proc main*;
+var n: INT; a, b: U8;
+begin
+    n := a + b;
+end;
+end SmallWidenMade.

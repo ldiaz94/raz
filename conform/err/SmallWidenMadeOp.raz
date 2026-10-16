@@ -1,0 +1,7 @@
+module SmallWidenMadeOp;
+proc main*;
+var n: INT; a, b: U8;
+begin
+    n := n + (a * b);
+end;
+end SmallWidenMadeOp.

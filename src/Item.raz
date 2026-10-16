@@ -60,6 +60,9 @@ type
                                 anything else: lies in that frame, a local, a
                                 value parameter or a temporary, or part of one *)
         pos*: Diag.Pos;      (* where it is in the source, for messages *)
+        made*: BOOL;         (* an integer an operator gave, computed in its own
+                                type, where it may have wrapped: a U8 made so
+                                doesn't widen to INT (report section 5.10) *)
     end;
 
 const
@@ -492,6 +495,33 @@ begin
     return ((s = Sym.tInt) and Sym.same(t, Sym.tI64)) or ((s = Sym.tUInt) and Sym.same(t, Sym.tU64));
 end;
 
+(* A U8, I8 or I16 goes silently into an INT, and a U8 or U16 into a
+   UINT: an INT or a UINT holds every value of theirs on any target,
+   since it is at least 16 bits (report sections 5.1 and 5.10). Only
+   one step: a U8 doesn't go into an I64. On the stack of values an
+   integer is kept extended to 64 bits as its type says (Gen), so the
+   value a U8 loads as is already the INT; only the type changes. *)
+proc smallWidens*(s, t: ^Sym.Type): BOOL;
+begin
+    if Sym.same(t, Sym.tInt) then
+        return Sym.same(s, Sym.tU8) or Sym.same(s, Sym.tI8) or Sym.same(s, Sym.tI16);
+    elsif Sym.same(t, Sym.tUInt) then
+        return Sym.same(s, Sym.tU8) or Sym.same(s, Sym.tU16);
+    end;
+    return false;
+end;
+
+(* An error at x, a U8, I8, I16 or U16 an operator made, which would
+   otherwise widen to t: the operator worked in x's type, and its
+   result may have wrapped, so the program says where to widen. *)
+proc madeNarrow(x: Item; t: ^Sym.Type): ERROR;
+begin
+    return Scan.markHelp(x.pos,
+        Diag.say("can't use {} as {}: an operator made it, in {}, where it may have wrapped",
+            [Fmt.str(Sym.typeName(x.typ)), Fmt.str(Sym.typeName(t)), Fmt.str(Sym.typeName(x.typ))]),
+        say1("convert an operand to {} first, so that the operator works in it", Sym.typeName(t)));
+end;
+
 (* Whether the several results s may be passed on as t: as many, each
    of the same type or one that widens to it, as in return f(x) (report
    section 5.10). An INT and an I64 have one layout here, so the values
@@ -559,6 +589,10 @@ begin
     if x.mode in {mType, mBuiltin, mNone, mCase} then return notValue(x); end;
     if Sym.same(s, t) then return nil; end;
     if widens(s, t) then x.typ := t;   (* the same bits, on a 64-bit target *)
+    elsif smallWidens(s, t) then
+        if x.made then return madeNarrow(x, t); end;
+        if x.mode # mConst then try value(x); end;   (* loaded as s, extended *)
+        x.typ := t;
     elsif (s = Sym.tRConst) and (t^.form = Sym.fReal) then realTo(x, t);
     elsif (s^.form = Sym.fConst) and (t^.form = Sym.fInt) then
         if (x.mode = mConst) and not Sym.fits(x.val, t) then
@@ -585,6 +619,11 @@ begin
         return Scan.markHelp(x.pos,
             say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
             say1("to call it, write {}()", Diag.source(x.pos)));
+    elsif (widens(Sym.tInt, t) and smallWidens(s, Sym.tInt)) or (widens(Sym.tUInt, t) and smallWidens(s, Sym.tUInt)) then
+        (* a U8 widens one step, to INT, not on to an I64 *)
+        return Scan.markHelp(x.pos, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
+            Diag.say("{} widens to {} only as written, {}({})", [Fmt.str(Sym.typeName(s)),
+                Fmt.str(Sym.typeName(t)), Fmt.str(Sym.typeName(t)), Fmt.str(Diag.source(x.pos))]));
     elsif widens(t, s) then
         (* the other way, an I64 into an INT, is written: it may drop bits *)
         return Scan.markHelp(x.pos, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
@@ -906,6 +945,7 @@ begin
             return Scan.markAt(x.pos, "the constant is too big for I64");
         elsif x.mode = mConst then x.val := cut(-x.val, x.typ);
         else try value(x); Gen.neg(Gen.kWord, intSize(x.typ), signed(x.typ)); end;
+        x.made := true;
     else return Scan.markAt(x.pos, say1("can't negate {}", Sym.typeName(x.typ))); end;
     return nil;
 end;
@@ -937,6 +977,7 @@ begin
     end;
     if x.mode = mConst then x.val := cut(~x.val, x.typ);
     else try value(x); Gen.complement(intSize(x.typ), signed(x.typ)); end;
+    x.made := true;
     return nil;
 end;
 
@@ -1270,6 +1311,13 @@ begin
             (* an INT meeting an I64 widens to it, a UINT to a U64 (report
                section 6.1): the same 64 bits here, so only the type changes *)
             if widens(xt, yt) then t := yt; else t := xt; end;
+        elsif smallWidens(xt, yt) or smallWidens(yt, xt) then
+            (* a U8, I8 or I16 meeting an INT widens to it, unless an
+               operator made it (report section 6.1); each operand is
+               loaded as its own type, extended, so t is all that changes *)
+            if x.made and smallWidens(xt, yt) then return madeNarrow(x, yt); end;
+            if y.made and smallWidens(yt, xt) then return madeNarrow(y, xt); end;
+            if smallWidens(xt, yt) then t := yt; else t := xt; end;
         else return mismatchOps(x, y, xt, yt); end;
         if not intOp(op) then return doesntApply(op, x, y, t); end;
     elsif (xt^.form = Sym.fReal) and (yt^.form = Sym.fReal) then
@@ -1337,6 +1385,7 @@ begin
         else
             v := try foldInt(op, x.val, y.val, t, Diag.join(x.pos, y.pos));
             makeConst(x, t, cut(v, t));
+            x.made := true;
         end;
         return nil;
     end;
@@ -1375,6 +1424,7 @@ begin
     end;
     x.mode := mStack;
     if isRel(op) or (op = Scan.sIn) then x.typ := Sym.tBool; else x.typ := t; end;
+    x.made := true;
     return nil;
 end;
 
@@ -1393,6 +1443,7 @@ begin
         if x.mode = mStr then return Scan.markAt(x.pos, "can't convert a string"); end;
         return notValue(x);
     end;
+    x.made := false;   (* what a conversion gives widens, U8(a + b) too *)
     if Sym.same(s, t) then return nil; end;
     if (Sym.isInt(s) or (s^.form in {Sym.fEnum, Sym.fSet})) and (t^.form = Sym.fInt) then
         if x.mode = mConst then x.val := cut(x.val, t);

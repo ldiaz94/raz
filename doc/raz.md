@@ -682,8 +682,9 @@ procedure type returning an `I64`.
 A `U8`, `I8` or `I16` widens to `INT`, and a `U8` or `U16` to `UINT`,
 in the same places, as an `INT` to `I64`: assigned, passed, returned,
 in `a, b := f(x)`, to a `for`'s bounds and `INC` and `DEC`'s step, and
-in an expression, where it meets an `INT` or a `UINT` (section 6.1).
-They widen only that far: a `U8` meets an `I64` only as `INT(b)` or
+in an expression, where it meets an `INT` or a `UINT` (section 6.1);
+not in `return f(x)`, which passes `f`'s results on as they are. They
+widen only that far: a `U8` meets an `I64` only as `INT(b)` or
 `I64(b)`. And they widen only as values that are moved: a variable, an
 element, a field, a call's result or a conversion's. What an operator
 gives on them doesn't: it was computed in their type, and has wrapped

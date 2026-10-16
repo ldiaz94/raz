@@ -1,0 +1,7 @@
+module SmallWidenNeg;
+proc main*;
+var n: INT; c: I8;
+begin
+    n := -c;
+end;
+end SmallWidenNeg.

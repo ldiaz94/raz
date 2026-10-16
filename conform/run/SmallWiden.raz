@@ -1,0 +1,52 @@
+(* A U8, I8 or I16 widens to INT, and a U8 or U16 to UINT, where it is
+   moved: assigned, passed, returned, as a bound or a step, and where it
+   meets an INT in an operator; a conversion's result too (report
+   2026-10.31, sections 5.10 and 6.1). *)
+module SmallWiden;
+import Out;
+
+var g: U8; h: I16;
+
+proc show(n: INT);
+begin
+    Out.int(n); Out.str(" ");
+end;
+
+proc byte(i: INT): U8;
+begin
+    return U8(i);
+end;
+
+proc twice(n: INT): INT;
+begin
+    return 2 * n;
+end;
+
+proc wide(b: U8): INT;
+begin
+    return b;                           (* returned *)
+end;
+
+proc main*;
+var s: []U8; a, b: U8; c: I8; w: U16; n, i: INT; u: UINT;
+begin
+    s := "7319";
+    for i := 0 to LEN(s) - 1 do n := n * 10 + s[i] - '0'; end;
+    show(n);                            (* an element, met by an INT *)
+    a := 200; b := 100;
+    show(INT(a) + b);                   (* 300: the sum made in INT *)
+    show(U8(a + b));                    (* 44: made in U8, then converted *)
+    c := -5; n := c; show(n);           (* a signed one keeps its sign *)
+    g := 255; h := -30000;
+    show(g); show(h);                   (* passed *)
+    show(twice(byte(300)));             (* a call's result: 88 *)
+    show(wide(a));
+    if (a > n) and (c < n) then Out.str("compared "); end;
+    n := 0; INC(n, a); DEC(n, c); show(n);          (* 205 *)
+    for i := c to c do show(i); end;                (* bounds *)
+    w := 65535; u := w; show(INT(u));
+    u := a; show(INT(u));
+    Out.ln;
+end;
+
+end SmallWiden.

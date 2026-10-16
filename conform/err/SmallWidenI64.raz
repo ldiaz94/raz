@@ -1,0 +1,7 @@
+module SmallWidenI64;
+proc main*;
+var n: I64; a: U8;
+begin
+    n := a;
+end;
+end SmallWidenI64.

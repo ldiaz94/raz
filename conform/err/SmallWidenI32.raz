@@ -1,0 +1,7 @@
+module SmallWidenI32;
+proc main*;
+var n: INT; a: I32;
+begin
+    n := a;
+end;
+end SmallWidenI32.

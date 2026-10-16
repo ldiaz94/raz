@@ -1,0 +1,5 @@
+conform/err/SmallWidenNeg.raz:5:10: error: can't use I8 as INT: an operator made it, in I8, where it may have wrapped
+    5 |     n := -c;
+      |          ^^
+help: convert an operand to INT first, so that the operator works in it
+raz: 1 error
