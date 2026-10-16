@@ -69,7 +69,7 @@ tools and the library's tests: they must have no warnings.
   commented throughout, most of all where it is obscure or needs a
   compiler writer's knowledge; at least 400,000 lines of raz a second;
   the report, `doc/raz.md`, under 40 pages as `make pdf` renders it,
-  checked by hand after each milestone (29 at report 2026-10.29).
+  checked by hand after each milestone (30 at report 2026-10.31).
 - Clarity comes first, before speed and size: the compiler must be a
   model of plain code that a beginner can follow. Every rewrite of the
   code it makes is explained where it is done, with the code before
@@ -80,11 +80,10 @@ tools and the library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.16.0, report 2026-10.29 (an array a call returns lives to its
-statement's end; an array constant typed `[]T` takes its literal's
-length; `Sys` gains what a shell needs, among it `fork`, `exec`,
-`handle` and `came`; `Map.done`, `Str.free`, `Files.load`), what
-porting concha asked for, is the latest release. `src/` is the
+v0.17.0, report 2026-10.31 (a thaw: `INT` at least 16 bits, and
+`U8`, `I8` and `I16` widening to it; an enumeration's name written with
+its type, and shared; `continue`; `[]` as the empty slice; `Width`, the
+columns of a terminal), is the latest release. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
