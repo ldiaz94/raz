@@ -470,13 +470,13 @@ proc open*(path: []U8): []U8;
 var fd, n, got, r, err: INT; info: Sys.Info;
 begin
     info, err := Sys.info(path);
-    if err = -2 then return "there is no such file"; end;
-    if err = -13 then return "permission denied"; end;
+    if err = Sys.errNoEntry then return "there is no such file"; end;
+    if err = Sys.errDenied then return "permission denied"; end;
     if err < 0 then return "it can't be opened"; end;
     if not info.file then return "it isn't a file"; end;
     fd := Sys.openRead(path);
-    if fd = -2 then return "there is no such file"; end;
-    if fd = -13 then return "permission denied"; end;
+    if fd = Sys.errNoEntry then return "there is no such file"; end;
+    if fd = Sys.errDenied then return "permission denied"; end;
     if fd < 0 then return "it can't be opened"; end;
     n := INT(info.size);
     cur.buf := grab(n + 1);

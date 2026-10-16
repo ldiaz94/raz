@@ -25,7 +25,7 @@ begin
     repeat
         n := Sys.read(fd, Buf.spare(b, 65536));   (* straight into b *)
         if n > 0 then INC(b^.len, n); end;
-    until (n <= 0) and (n # -4);                  (* -EINTR: a signal Sys.handle took; read again *)
+    until (n <= 0) and (n # Sys.errIntr);         (* a signal Sys.handle took; read again *)
     Sys.close(fd);
     return n;
 end;
@@ -46,7 +46,7 @@ begin
     while at < LEN(data) do
         n := Sys.write(fd, data[at..LEN(data)]);
         if n > 0 then at := at + n;
-        elsif n # -4 then Sys.close(fd); return false;   (* -EINTR: write again *)
+        elsif n # Sys.errIntr then Sys.close(fd); return false;   (* a signal broke in: write again *)
         end;
     end;
     Sys.close(fd);
@@ -62,7 +62,7 @@ begin
     if (load("/tmp/raz-files-test", ADR(b)) # 0) or (Buf.bytes(ADR(b)) # "abc") then Rt.stop("Files.load"); end;
     if not read("/tmp/raz-files-test", ADR(b)) or (Buf.bytes(ADR(b)) # "abcabc") then Rt.stop("Files.read"); end;
     _ := Sys.remove("/tmp/raz-files-test");
-    if load("/tmp/raz-files-test", ADR(b)) # -2 then Rt.stop("Files.load: no such file"); end;
+    if load("/tmp/raz-files-test", ADR(b)) # Sys.errNoEntry then Rt.stop("Files.load: no such file"); end;
     if load("/", ADR(b)) # -21 then Rt.stop("Files.load: a directory"); end;
     if read("/", ADR(b)) or (b.len # 6) then Rt.stop("Files.read: a directory"); end;
     Buf.done(ADR(b));

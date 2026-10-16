@@ -141,7 +141,7 @@ begin
     while LEN(s) > 0 do
         n := Sys.write(Sys.stderr, s);
         if n > 0 then s := s[n..LEN(s)];
-        elsif n # -4 then break;   (* -EINTR: try again *)
+        elsif n # Sys.errIntr then break;   (* a signal broke in: try again *)
         end;
     end;
     Arena.done(ADR(ar));

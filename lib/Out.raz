@@ -24,7 +24,7 @@ begin
     while i < n do
         k := Sys.write(Sys.stdout, buf[i..n]);
         if k > 0 then i := i + k;
-        elsif k # -4 then break;   (* -EINTR: try again *)
+        elsif k # Sys.errIntr then break;   (* a signal broke in: try again *)
         end;
     end;
     n := 0;
