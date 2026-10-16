@@ -42,8 +42,8 @@ standard error), given the compiler options in `X.args` if there is
 one. `test/msg` holds this compiler's `X.stderr` and `X.err` for the
 programs in `conform/`.
 `test/pretty/X.raz` must format to `X.expect`. Examples in `examples/`
-work the same way, compiled with `-Werror`, as are the tools and the
-library's tests: they must have no warnings.
+work the same way, compiled with `-Werror`, as are `test/libc`, the
+tools and the library's tests: they must have no warnings.
 
 ## How we work
 

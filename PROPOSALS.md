@@ -491,29 +491,6 @@ by another program (`WCONTINUED`) would need a fifth `Status`, which
 breaks a `match` on `Status` that names all four, so it is left out:
 the shell knows when it continues a job itself.
 
-## `Sys.syncAll`'s unused parameter, in the C `Sys`
-
-`lib/Sys.raz`, the `Sys` over the C library, has `syncAll(fd)` call
-C's `sync`, which takes no file and flushes every file system; so `fd`
-is never used, and a program built over it with `-Werror` fails:
-
-```
-lib/Sys.raz:249:15: error: parameter fd is never used
-```
-
-Linux's `Sys` uses `fd` (`syncfs`), so only the C one warns, and only
-for a program that imports `Sys`, which is most. raz's own checks
-build `test/libc` without `-Werror`, so they don't see it.
-
-The proposal: call the parameter `_fd` in `lib/Sys.raz`, as the
-warning says. A parameter's name isn't part of the signature (5.9),
-so the interface check between the two files still holds, and no
-program changes. It is a mend of the library, not a wish: it could
-come with any release.
-
-Met in rless, whose `make rless-c` builds over the C `Sys` without
-`-Werror` for this alone.
-
 ## `Map.done`
 
 `Map` takes memory from its allocator as it grows and frees the old

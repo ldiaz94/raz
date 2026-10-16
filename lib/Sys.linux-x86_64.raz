@@ -1472,6 +1472,7 @@ begin
     m := INT(i.ino);
     i, err := info("/tmp/raz-sys-dir/h");
     if (err # 0) or (INT(i.ino) # m) or (syncAll(fd) # 0) then exit(2); end;
+    if syncAll(-1) # -9 then exit(2); end;   (* EBADF *)
     (* the lock: one open file holds it, another can't take it until
        the first is closed *)
     k := openRead("/tmp/raz-sys-dir/h");

@@ -13,10 +13,10 @@
 # A program without X.expect is compiled, not run. test/libc puts
 # lib/Sys.raz, over the C library, before the system call one.
 # Programs in test/err must not compile, and must print X.err; there
-# X.args holds the compiler's options. The examples, the tools and the
-# library's tests are compiled with -Werror, so warnings fail them. Then
-# the version, tools/Doc.raz, the report's examples, the tutorial's,
-# tools/Pretty.raz, and the library's own tests.
+# X.args holds the compiler's options. The examples, test/libc, the
+# tools and the library's tests are compiled with -Werror, so warnings
+# fail them. Then the version, tools/Doc.raz, the report's examples,
+# the tutorial's, tools/Pretty.raz, and the library's own tests.
 
 raz=./raz
 out=build/check
@@ -34,7 +34,7 @@ pass=$1; fail=$3
 run() {   # run dir name
     dir=$1; name=$2
     flags=
-    [ $dir = examples ] && flags=-Werror
+    [ $dir = examples ] || [ $dir = test/libc ] && flags=-Werror
     if ! $raz $flags -I $dir/mods -o $out/$name $dir/$name.raz 2>$out/$name.cerr; then
         echo "FAIL $dir/$name: doesn't compile: $(cat $out/$name.cerr)"
         fail=$((fail + 1)); return

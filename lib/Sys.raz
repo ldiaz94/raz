@@ -254,9 +254,12 @@ end;
 
 (* Returns once everything written to the file system that holds fd
    is on the disk: 0, or minus an errno. POSIX has no call for one file
-   system, so it is sync's, which flushes them all and does no less. *)
+   system, so it is sync's, which flushes them all and does no less;
+   fd is still asked whether it is open, for the -9 (EBADF) Linux's
+   syncfs gives one that isn't. *)
 proc syncAll*(fd: INT): INT;
 begin
+    if C.fcntl(I32(fd), 1, 0) < 0 then return failed(); end;   (* F_GETFD *)
     C.sync;
     return 0;
 end;
@@ -1455,6 +1458,7 @@ begin
     m := INT(i.ino);
     i, err := info("/tmp/raz-sys-dir/h");
     if (err # 0) or (INT(i.ino) # m) or (syncAll(fd) # 0) then exit(2); end;
+    if syncAll(-1) # -9 then exit(2); end;   (* EBADF *)
     (* the lock: one open file holds it, another can't take it until
        the first is closed *)
     k := openRead("/tmp/raz-sys-dir/h");
