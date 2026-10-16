@@ -67,7 +67,9 @@ tools and the library's tests: they must have no warnings.
   from 11,000, by the owner's word, who dropped the soft limit; blank and
   comment lines not counted), with the compiler documented and
   commented throughout, most of all where it is obscure or needs a
-  compiler writer's knowledge; at least 400,000 lines of raz a second.
+  compiler writer's knowledge; at least 400,000 lines of raz a second;
+  the report, `doc/raz.md`, under 40 pages as `make pdf` renders it,
+  checked by hand after each milestone (29 at report 2026-10.29).
 - Clarity comes first, before speed and size: the compiler must be a
   model of plain code that a beginner can follow. Every rewrite of the
   code it makes is explained where it is done, with the code before

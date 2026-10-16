@@ -379,13 +379,17 @@ procedure have one: with `Style = (bold, italic, ...)`, a second
 kinds, a style and the HTML element that makes it, names one of them
 again: libro's `Flow` has `bEl`, `iEl`, `pEl`, ... for it.
 
-The proposal: a name that two enumerations of a scope share is written
-with its type, `Elem.bold`, where the type doesn't already say which
-(`match` on a `Style`, a `Style` assigned, compared or passed, all say
-which); a name only one enumeration has stays as it is. No program
-changes, since every program today has each name once. It is more
-work for the compiler's lookup, which must hold a name that is two
-things until the type is known.
+The proposal: a name of an enumeration may always be written with its
+type, `Elem.bold`; and a name that two enumerations of a scope share,
+or an enumeration and something else, must be, everywhere. A name only
+one enumeration has stays as it is. The type is never guessed from
+where the name stands, so the compiler's lookup stays a lookup: a name
+it finds twice is an error that says to write the type. Taking the
+type from the place (`match` on a `Style`, a `Style` assigned) could
+come later, and would break nothing. No program changes, since every
+program today has each name once.
+
+Accepted by the owner, for a thaw.
 
 Met in libro's `Flow`.
 
@@ -423,11 +427,29 @@ parser of digits writes `INT(s[i]) - '0'` at every digit. 2026-10.26
 made `INT` widen to `I64` wherever it meets one, for the same reason;
 the small types into `INT` are the same, and more common.
 
-The proposal: `U8`, `U16`, `U32`, `I8`, `I16` and `I32` widen to `INT`
-where their value goes to one (assigned, passed, returned, compared,
-in an operator with an `INT`), as `INT` to `I64` does (5.10). Not `U32`
-to an `INT` of 32 bits, on a target that has one, and never a wider
-type to a narrower, nor `INT` back to any. No program changes.
+The proposal, in three parts:
+
+- `INT` and `UINT` are at least 16 bits, on every target (5.1).
+- `U8`, `I8` and `I16` widen to `INT`, and `U8` and `U16` to `UINT`,
+  where their value goes to one: assigned, passed, returned, in
+  `a, b := f(x)`, a `for`'s bounds, `INC` and `DEC`'s step, and in an
+  operator that meets an `INT`, as `INT` to `I64` does (5.10). These
+  are the types an `INT` holds whole on every target, so a program
+  that compiles on one compiles on all. `U16`, `I32` and `U32` still
+  need `INT(x)`; were `INT` at least 32 bits, `U16` and `I32` would
+  join, and the minimum can be raised later, never lowered.
+- What an operator gives on two narrow operands doesn't widen. raz
+  works in the operands' type, so with `a, b: U8`, `a + b` is a `U8`
+  that wraps: 200 + 100 is 44. Widened silently, `n := a + b` would
+  read as 300 and be 44, so it stays an error, and the program writes
+  `n := INT(a) + b`, saying where the work is done in `INT`.
+  `n := s[i]`, `n * 10 + s[i]` and `f(b)` widen, since a variable, an
+  element, a field or a call's result is only moved.
+
+No program changes. `src/` and the library it imports can't use it
+until a release makes a new seed, as with 2026-10.26.
+
+Accepted by the owner, for a thaw.
 
 Met in libro's `Term`, `Flow` and `Epub`, and rml's `Rml`, wherever
 a byte is a number.
@@ -442,12 +464,214 @@ and Hangul's medial jamo, 2 for East Asian Wide and Fullwidth, emoji
 among them, 1 for the rest, from two sorted tables of ranges (357 and
 121) made with Python's `unicodedata`, Unicode 15.1.
 
-The proposal: that, as `Str.width(c: I32): INT` and
-`Str.columns(s: []U8): INT`, or a module of its own, since the tables
-are about 4 KB that only such programs want. It is the same answer as
-glibc's `wcwidth` for nearly every character; the differences, the
-ambiguous widths among them, are taken as 1, as most terminals take
-them.
+The proposal: a module of the standard library of its own, not `Str`,
+which is in the core every target has, with `width(c: I32): INT` and
+`columns(s: []U8): INT`. Its tables, about 4 KB, are written by a tool
+in `tools/` from Unicode's `EastAsianWidth.txt` and `UnicodeData.txt`,
+so that a new version of Unicode is the tool run again. It is the same
+answer as glibc's `wcwidth` for nearly every character; the
+differences, the ambiguous widths among them, are taken as 1, as most
+terminals take them. It gives a character's width, not a cluster's:
+an emoji joined by ZWJ, or a flag, comes out as its parts, as it does
+in `wcwidth`.
+
+Accepted by the owner, on one condition: a program that doesn't call
+it carries none of it, its tables included. A test shows that first.
+It adds a module and breaks no program, so the freeze allows it.
 
 Met in libro; every program with a screen, rmacs and ravite among
 them, needs the same.
+
+## Less that is undefined
+
+Section 10 lists what isn't defined: a stale or made-up pointer,
+indexing through a pointer, a slice kept after its frame is gone, a
+slice of an array a call returned kept past its statement, an index
+out of range under `check off;`, writing a string's bytes, a code
+procedure that breaks its rules, and C. Some of these can be closed at
+little cost; the rest can be fenced, so that a reader sees which
+modules can reach memory they shouldn't. Four pieces, each standing on
+its own, the cheapest first.
+
+**1. An array a call returns lives to the end of its procedure.**
+Section 8 says it lives to the end of its statement. Its slot in the
+frame would stay reserved for the rest of the procedure instead, as a
+deferred statement's slots already do, so that `s := f('a')[0..4]` is
+defined until the procedure returns; in a loop the slot holds the
+latest call's array. Section 10 loses a case, and what is left of it
+is a slice leaving its frame (7.3), which `ret` and `keep`, above,
+would close. It breaks nothing; the cost is a frame larger by each
+such call's array.
+
+**2. Writing a string's bytes stops the program, or changes them.**
+Two outcomes instead of any: where the target has read-only memory,
+the string constants are in it, and a write stops the program as a
+bad address (section 10), as this compiler's already does, since they
+are in rodata; where it hasn't, the write changes the constant for the
+rest of the run, everywhere its bytes are shared. Which of the two is
+the target's (appendix A). It breaks nothing.
+
+**3. A race tears no slice.** 7.6 says a variable written by one
+thread while another reads it holds a value it had, or a mixture of
+their bytes, and that nothing else becomes undefined. For a slice
+that is a defect: a mixture of one slice's address and another's
+length is indexed, checked, against the wrong length, and reaches any
+memory; a variant's tag torn from its fields is the same. The mend:
+a slice, a variant, or a record holding either, read or written in a
+race, is the exception of section 10, said so in 7.6. A pointer, a
+word on every target, tears into nothing new. This is a defect, which
+the freeze allows mending.
+
+**4. Fencing the rest: `unsafe;`.** A module that does any of the
+following says `unsafe;` after its links and its `check` line, and it
+is an error to do them in one that doesn't:
+
+- `ADR`, and `p + i`, `p - i`, `p[i]` and `p[lo..hi]` on a pointer;
+- converting an integer to a pointer or a procedure, or one pointer
+  or procedure type to another;
+- a view, `v.(T)`, whose `T` holds a pointer, a slice or a procedure
+  (one to integers, reals and their arrays stays safe);
+- `check off;`, `extern`, `link`, code procedures and `SYSCALL`.
+
+`unsafe`, like `static` in `link static;`, is a word only there. In a
+program none of whose modules says it, what is left undefined is
+short: a pointer used after `Heap.free` or an arena's reset gave back
+what it points at, and a slice leaving its frame (7.3). The library's
+modules that need it (`Rt`, `Mem`, `Heap`, `Arena`, `Bytes`, `Sys`,
+`Thread`, ...) say it, as a program trusts them; `grep unsafe` lists
+the rest. It breaks every module that does one of these and doesn't
+say it: rmacs, ravite, the tools and ten of `src/`'s modules (by
+`ADR`), each mended by one line, which
+the compiler's message names. The compiler's cost is a flag on the
+module, checked at each of those places. Since the seed doesn't know
+`unsafe;`, `src/` can't say it until a release makes a new seed: for
+one release a missing `unsafe;` is a warning, then an error.
+
+Pieces 1 and 2 are small and change no program; 3 is a mend; 4 needs
+a thaw.
+
+## Sys over any C library
+
+`lib/Sys.raz` is the `Sys` of a target with no file of its own, which
+is every target but Linux; it is written over C so that one file
+serves them all. But it holds glibc's facts for x86-64 Linux, as its
+opening comment says: where a name lies in struct dirent, struct stat
+and statvfs, struct sigaction, sockaddr_un and sockaddr_in, open's,
+socket's and send's flags, the terminal's requests, the signals' and
+the limits' numbers. These are the kernel's more than glibc's:
+checked on this machine against musl 1.2, every one Sys uses agrees,
+and musl lacks only `close_range`. On FreeBSD, macOS, or Linux on
+ARM, nearly all differ, so the file meant for other systems serves
+none of them. There is more of the same:
+
+- `C.__errno_location` is glibc's and musl's name; the BSDs and macOS
+  call it `__error`. `close_range`, `memfd_create`, `getrandom`,
+  `accept4` and `cfmakeraw` aren't in every C library.
+- `doc/raz-lib.md` says a failure is "minus an errno, as on Linux",
+  but `Sys` over C gives the C library's numbers, which elsewhere
+  aren't Linux's (EAGAIN is 11 on Linux, 35 on the BSDs); `Files`
+  writes -2 for ENOENT.
+- A program that uses C needs `libc.so.6`, names
+  `/lib64/ld-linux-x86-64.so.2` as its loader, and starts through
+  `__libc_start_main`: constants of `Elf.raz` and `Raz.raz`. musl's
+  loader is `/lib/ld-musl-x86_64.so.1` and its library `libc.so`
+  (`__libc_start_main` is in both), so a raz program that uses C
+  doesn't run on Alpine.
+
+Four pieces, each standing on its own:
+
+**1. The facts in a module of their own.** `Sys.raz` keeps its code,
+over POSIX's names; what C fixes for each system, the layouts, the
+numbers and the names that differ, goes in a new module, `CAbi`, one
+file per target (`CAbi.linux-x86_64.raz`, `CAbi.freebsd-x86_64.raz`),
+as `Sys` has: offsets, sizes and constants, and the externs whose
+names differ behind one raz name (`CAbi.errno(): ^I32`). `Sys` reads
+a struct stat as bytes at `CAbi`'s offsets. Porting `Sys` to a C
+library is then writing that file, about a hundred lines, and nothing
+else. It adds a module and breaks no program.
+
+**2. The facts written by C.** `tools/cabi.c`, a C program that
+prints `CAbi`'s file for the system it is compiled on, from its own
+headers, with `offsetof`, `sizeof` and the constants: no fact is typed
+by hand, and a porter runs it once. `make check`, where there is a C
+compiler, runs it and compares with `lib/`'s file, and does the same
+with `musl-gcc` where that is installed.
+
+**3. Errnos as Linux's.** `Sys` exports names for the errnos programs
+test (`Sys.noEntry = -2`, `again`, `intr`, `exists`, ...), with
+Linux's numbers, and `Sys` over C maps the C library's errno to them
+through a table in `CAbi`, so that "as on Linux" holds everywhere.
+`Files` and the programs use the names. It adds constants and breaks
+no program.
+
+**4. The compiler's C library.** The loader's path, the library's
+name and the start-up symbol become facts of the target, not
+constants: `linux-x86_64` links against glibc or musl, by an option,
+or by default by which loader the machine has. Appendix A says the
+C library is the implementation's to choose under "The target", and
+`test/libc` runs under each one installed.
+
+Piece 4 has a gain today: raz programs that use C run on Alpine.
+Pieces 1 to 3 pay when a second system is ported, and 3 needs 1.
+
+## A slice's pointer
+
+A slice is two words: the address its elements start at, and how many
+there are (5.3). `LEN(s)` gives the second; nothing gives the first.
+A program that needs it writes `ADR(s[0])`, the address of the first
+element. That works only when there is a first element: when `s` is
+empty, `s[0]` is an index out of range, and the program stops.
+
+Where it bites is a program that keeps bytes as a pointer and a
+length, as an interpreter keeps a string value:
+
+```
+type Value = record kind: Kind; n: INT; p: ^U8; end;
+
+proc strVal(s: []U8): Value;
+begin
+    return {kind: kStr, n: LEN(s), p: ADR(s[0])};   (* stops when s is "" *)
+end;
+```
+
+It compiles, and passes every test that has no empty string in it;
+the first `""` stops the program. So every place that turns a slice
+into a pointer must test first:
+
+```
+proc strVal(s: []U8): Value;
+begin
+    if LEN(s) = 0 then return {kind: kStr}; end;    (* n is 0, p nil *)
+    return {kind: kStr, n: LEN(s), p: ADR(s[0])};
+end;
+```
+
+The library does the same before each call to C: `Sys.write` over C
+returns 0 for an empty `s` before it writes `C.write(fd, ADR(s[0]),
+LEN(s))`. The test is easy to forget and says nothing about what the
+program means.
+
+The proposal: a built-in `PTR(s)`, the address the slice or array `s`
+starts at, a `^T` for a `[]T` or `[n]T`, with no check. For a slice
+that isn't empty it is `ADR(s[0])`. For an empty one it is what the
+slice holds: `nil` for a slice variable as it starts (section 4), and
+for one cut empty from another, `t[3..3]`, an address that mustn't be
+read through, as the end of an array mustn't. With it:
+
+```
+proc strVal(s: []U8): Value;
+begin
+    return {kind: kStr, n: LEN(s), p: PTR(s)};
+end;
+```
+
+The way back is there already: `v.p[0..v.n]` is the slice again
+(6.4), empty when `v.n` is 0, whatever `v.p` is. Reading through the
+pointer is as unchecked as through any pointer; `PTR` only stops the
+program from failing where nothing is read.
+
+It costs a row in the table of 6.8. A predeclared name can be hidden
+(section 3), so it breaks no program.
+
+Met in concha's `Ccore`, in `bufVal` and `listVal`, and in `Sys` over
+C, before each call that takes a buffer.
