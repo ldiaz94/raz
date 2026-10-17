@@ -211,3 +211,9 @@ at the time.
   `replace`, `Sys`'s directories, `Thread.lock` and `unlock`, `Vec`
   (volume 2). That breaks a program that calls them with `ADR`; it is
   mended by writing `x` for `ADR(x)`, and `p^` for a pointer `p`.
+- **2026-10.34.** A thaw, the tenth, by the owner's word. `PTR(s)` is
+  the address a slice starts at, a `^T` for `s: []T`, with no check:
+  `ADR(s[0])` when `s` isn't empty, and what the slice holds when it
+  is, where `ADR(s[0])` stops the program; of an array, that of the
+  slice of all of it (sections 5.3 and 6.8). A predeclared name may be
+  hidden (section 2), so it breaks no program.

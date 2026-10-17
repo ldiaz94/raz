@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.33 of the report; section 11 says where each
+This is version 2026-10.34 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -46,7 +46,8 @@ in place (section 8), and a variant in a constant (section 4), which
 break no program; and the library's procedures that took a pointer to
 what they work on take a `var` parameter, a `const` one or a value
 instead (the library volume), which breaks a program that calls them
-with `ADR`.
+with `ADR`. 2026-10.34 is a tenth: `PTR(s)`, the address a slice
+starts at, even an empty one (section 6.8); it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -493,7 +494,8 @@ Slice = record ptr: ^T; len: INT; end;    (* its layout *)
 
 A slice is made from an array (`a[2..5]`, or an array used where a
 slice is wanted), from another slice, or from a pointer (`p[0..n]`). It
-doesn't own what it points at.
+doesn't own what it points at. `LEN(s)` is its count, and `PTR(s)` its
+pointer (section 6.8).
 
 ### 5.4 Pointers
 
@@ -920,6 +922,7 @@ the same rules: `U8(300)` is 44.
 | `SIZE(T)` | the size of type `T` in bytes, an untyped constant; `T` is a type, not a variable |
 | `ADR(x)` | the address of variable `x`, a `^T` |
 | `LEN(a)` | the number of elements of an array or a string constant (an untyped constant) or of a slice (an `INT`) |
+| `PTR(s)` | the address the slice `s` starts at, a `^T` for `s: []T`, unchecked; for an array `a`, that of `a[0..LEN(a)]` |
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
 | `MSG(e)` | the message of the error `e`, a `[]U8` |
 | `COPY(d, s)` | copies the elements of `s` to the start of `d`, both arrays or slices of one type `T`; `LEN(s)` must be at most `LEN(d)` |
@@ -941,6 +944,29 @@ system call interface, and their modules call the C library instead
 alignment of `T`, and zeroes the bytes it gets if they aren't `nil`.
 `Mem.Allocator` (the library, `doc/raz-lib.md`) is the one type of the library the
 language names.
+
+`PTR(s)` is the first of the two words of `s` (section 5.3), and is not
+checked. For a slice that isn't empty it is `ADR(s[0])`; for an empty
+one, where `s[0]` would stop the program, it is what the slice holds:
+`nil` for a slice variable as it starts (section 4) and for `[]`, and
+for one cut empty from another, `t[3..3]`, an address that mustn't be
+read through, as the end of an array mustn't. So a slice becomes a
+pointer and a length, for a record or for C, with no test for the
+empty one first:
+
+```
+type Value = record n: INT; p: ^U8; end;
+
+proc valueOf(s: []U8): Value;
+begin
+    return {n: LEN(s), p: PTR(s)};      (* "" too *)
+end;
+```
+
+and `v.p[0..v.n]` is the slice again (section 6.4), empty when `v.n`
+is 0, whatever `v.p` is. Reading through the pointer is as unchecked as
+through any pointer. `PTR(a)` of an array may be taken wherever the
+slice `a[0..LEN(a)]` may be made, and is an error wherever it may not.
 
 `COPY` is a statement, as `INC` is. It copies the bytes of `LEN(s)`
 elements as one block, as an assignment of an array does, and is right
