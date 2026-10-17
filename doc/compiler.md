@@ -20,7 +20,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,091 | 1,682 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,182 | 3,619 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,218 | 3,648 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 326 | 253 | The command line |
@@ -1286,6 +1286,15 @@ outside any inner brackets, and goes back to its `[` (`saveScan`,
 `restoreScan`), so `constPart` reads it as it reads any array's:
 
     const P: []I64 = [2, 3, 5];    (* read as *)    const P: [3]I64 = [2, 3, 5];
+
+A variant in a constant, `const S: Shape = circle(1.0)` or one among
+an array constant's elements, is read by `constCase`, not by
+`expression`, which would make the code that builds a case: it finds
+the case by its name (`qualIdent`), writes its number in the first 8
+bytes, then each field at the offset the case gives it, by `constPart`,
+leaving the rest zero, as a variable starts. A constant of a variant
+type is then a variable in read-only data, as an array or record
+constant is, and a `match` on it gives names that are only read.
 
 With no element, `[]`, the type stays `[]T`, and the constant is 16
 zero bytes in read-only data: the empty slice, `ptr` `nil` and `len` 0,

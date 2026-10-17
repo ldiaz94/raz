@@ -1,0 +1,4 @@
+module VariantConstUntyped;
+type Shape = variant circle(r: INT); dot; end;
+const D = dot;
+end VariantConstUntyped.

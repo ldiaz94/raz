@@ -1,0 +1,38 @@
+module VariantConst;
+import Out;
+
+type
+    Shape = variant circle(r: F64); rect(w, h: INT); dot; named(name: []U8; n: U8); end;
+    Rule = record tag: INT; s: Shape; end;
+
+const
+    Shapes: []Shape = [circle(1.5), rect(2, 3), dot, named("box", 7)];
+    One: Shape = rect(4, 5);
+    Rules: [2]Rule = [{tag: 1, s: dot}, {tag: 2, s: named("x", 1)}];
+
+proc show(const s: Shape);
+begin
+    match s of
+    | circle(r): Out.str("circle "); Out.int(I64(r * 2.0));
+    | rect(w, h): Out.str("rect "); Out.int(w); Out.char(' '); Out.int(h);
+    | dot: Out.str("dot");
+    | named(name, n): Out.str(name); Out.char(' '); Out.int(I64(n));
+    end;
+    Out.ln;
+end;
+
+proc main*;
+var i: INT; s: Shape;
+begin
+    for i := 0 to LEN(Shapes) - 1 do show(Shapes[i]); end;
+    show(One);
+    show(Rules[1].s);
+    s := One;
+    show(s);
+    match One of
+    | rect(w, h): Out.int(w * h); Out.ln;
+    | else:
+    end;
+end;
+
+end VariantConst.

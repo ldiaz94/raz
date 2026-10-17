@@ -1,0 +1,11 @@
+module VariantConstMatch;
+type Shape = variant circle(r: INT); dot; end;
+const C: Shape = circle(1);
+proc main*;
+begin
+    match C of
+    | circle(r): r := 2;
+    | dot:
+    end;
+end;
+end VariantConstMatch.

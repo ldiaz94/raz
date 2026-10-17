@@ -1,0 +1,5 @@
+conform/err/VariantConstMatch.raz:7:18: error: r is only read here, and can't be changed
+    7 |     | circle(r): r := 2;
+      |                  ^
+help: a const parameter, a constant, and the names a match gives their fields, are only read: take a var parameter to change it
+raz: 1 error

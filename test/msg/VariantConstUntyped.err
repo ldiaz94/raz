@@ -1,0 +1,5 @@
+conform/err/VariantConstUntyped.raz:3:11: error: a variant constant needs its type
+    3 | const D = dot;
+      |           ^^^
+help: write const D: Shape = ...
+raz: 1 error

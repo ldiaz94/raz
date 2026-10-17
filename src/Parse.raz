@@ -3182,6 +3182,37 @@ begin
     return n;
 end;
 
+(* A variant's case built from constants, at offset off of the constant
+   (report section 4): its number, then each field where the case lays
+   it out, as constructCase builds one in a program; the rest stays
+   zero. The case is read here, by its name, since expression would
+   make the code that builds one. *)
+proc constPart(t: PType; off: INT): ERROR; forward;
+
+proc constCase(t: PType; off: INT): ERROR;
+var c, f: PObj; at: Diag.Pos;
+begin
+    at := Scan.tokPos();
+    c := try qualIdent();
+    if (c^.cls # Sym.oCase) or (c^.typ # t) then
+        return Scan.markAt(Scan.spanFrom(at), say1("expected a case of {}", Sym.typeName(t)));
+    end;
+    putBytes(off, 8, c^.val);
+    f := c^.fields;
+    if Scan.tok = Scan.sLparen then
+        Scan.next;
+        while f # nil do
+            try constPart(f^.typ, off + INT(f^.val));
+            f := f^.next;
+            if f # nil then try expect(Scan.sComma); end;
+        end;
+        return expect(Scan.sRparen);
+    elsif f # nil then
+        return Scan.markAt(Scan.spanFrom(at), say1("{} needs its fields", nameOf(c^.name)));
+    end;
+    return nil;
+end;
+
 (* The part of type t at offset off of the constant *)
 proc constPart(t: PType; off: INT): ERROR;
 var e: TItem; f: PObj; k: INT; r: F32; start: Diag.Pos; src: ^U8; st: INT;
@@ -3228,6 +3259,7 @@ begin
         end;
         return expect(Scan.sRbrace);
     end;
+    if (t^.form = Sym.fVariant) and (Scan.tok = Scan.sIdent) then return constCase(t, off); end;
     try expression(e, t);
     if (e.mode = Item.mStr) and ((t^.form = Sym.fSlice) or (t^.form = Sym.fArray)) and (t^.base = Sym.tU8) then
         if t^.form = Sym.fSlice then
@@ -3251,7 +3283,7 @@ begin
             putBytes(off + 8, 8, e.typ^.len);
         end;
     elsif t^.form = Sym.fVariant then
-        return Scan.markAt(e.pos, "a constant holds no variant");
+        return Scan.markAt(e.pos, say1("expected a case of {}", Sym.typeName(t)));
     elsif (t^.form = Sym.fArray) or (t^.form = Sym.fRecord) then
         return Scan.markAt(e.pos, say1("expected a literal of {}", Sym.typeName(t)));
     else
@@ -3319,13 +3351,13 @@ begin
         start := Scan.tokPos();
         t := try parseType();
         if (t # Sym.tError) and not ((t^.form = Sym.fArray) or (t^.form = Sym.fSlice)
-            or ((t^.form = Sym.fRecord) and not t^.tuple)) then
-            return Scan.markAt(Scan.spanFrom(start), "only an ERROR, an array or a record constant has a type");
+            or ((t^.form = Sym.fRecord) and not t^.tuple) or (t^.form = Sym.fVariant)) then
+            return Scan.markAt(Scan.spanFrom(start), "only an ERROR, an array, a record or a variant constant has a type");
         end;
     end;
     try expect(Scan.sEql);
     if (t # nil) and (t^.form = Sym.fSlice) then t := try literalArray(t); end;
-    if (t # nil) and (t^.form in {Sym.fArray, Sym.fRecord, Sym.fSlice}) then
+    if (t # nil) and (t^.form in {Sym.fArray, Sym.fRecord, Sym.fSlice, Sym.fVariant}) then
         o := Sym.newObj(Sym.oConst, n, t);
         o^.chunk := try aggregateConst(t, n);
         o^.pos := at;
@@ -3334,6 +3366,10 @@ begin
         return expect(Scan.sSemicolon);
     end;
     try expression(x, nil);
+    if x.typ^.form = Sym.fVariant then
+        return Scan.markHelp(x.pos, "a variant constant needs its type",
+            say2("write const {}: {} = ...", nameOf(n), Sym.typeName(x.typ)));
+    end;
     o := Sym.newObj(Sym.oConst, n, x.typ);
     o^.pos := at;
     o^.exported := exp and top;

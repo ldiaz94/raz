@@ -1,4 +1,5 @@
 module ArrayConstElem;
-type S = variant a; b; end;
-const P: [1]S = [a];
+type S = variant a(n: INT); b; end;
+var v: INT;
+const P: [1]S = [a(v)];
 end ArrayConstElem.

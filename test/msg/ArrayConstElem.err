@@ -1,4 +1,4 @@
-conform/err/ArrayConstElem.raz:3:18: error: a constant holds no variant
-    3 | const P: [1]S = [a];
-      |                  ^
+conform/err/ArrayConstElem.raz:4:20: error: expected a constant, found INT
+    4 | const P: [1]S = [a(v)];
+      |                    ^
 raz: 1 error
