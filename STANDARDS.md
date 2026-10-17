@@ -3,8 +3,8 @@
 How raz is written here: in `src/`, `lib/`, `tools/` and `examples/`,
 and in the programs and libraries that use them (rpg, rsqlite, rmacs,
 ravite, ...). The report says what a program may do; this says what we
-do. New code keeps to it; old code comes to it when it is next changed,
-or, for the library's interfaces, at a thaw (`PROPOSALS.md`).
+do. New code keeps to it; old code comes to it when it is next changed.
+The library came to it in report 2026-10.33.
 
 ## Parameters: a value, `const`, `var`, or a pointer
 
@@ -51,11 +51,3 @@ A pointer is right also where `var` can't serve:
 
 Anything else that takes `^T` and neither keeps it nor needs one of the
 above is a mistake, and its callers' `ADR`s are noise.
-
-## The library until a thaw
-
-The library's interfaces mostly take `^T` (`Buf`, `Vec`, `Map`,
-`List`, `Lock`, `Opt`, ...), though none keeps what it is given. They
-can't change while the freeze holds, since every caller would break;
-`PROPOSALS.md` lists them for the next thaw. Until then a program
-calls them with `ADR`, and its own procedures keep to this file.

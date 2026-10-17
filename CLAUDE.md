@@ -83,7 +83,16 @@ tools and the library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.18.1, report 2026-10.32, is the latest release: v0.18.0's thaw (a
+v0.19.0, report 2026-10.33, is the latest release: the ninth thaw, a
+`const` parameter, a variant in a constant, and the library taking
+`var`, `const` or a value where it took a pointer (`Arena`, `Buf`,
+`Files`, `Fmt`, `List`, `Lock`, `Map`, `Opt`, `Str`, `Sys`'s
+directories, `Thread`'s `Mutex`, `Vec`; and `tools/Scan.raz`), which
+breaks calls written with `ADR`; the compiler's message names the
+mending. Next: v0.20.0, built by v0.19.0, drops the Pascal seed; then
+`Buf.bytes`, `Sys.entryKind` and `src/`'s records only read take
+`const`.
+v0.18.1, report 2026-10.32, before it: v0.18.0's thaw (a
 constant typed `[]T` may be `[]`, the empty slice, as may a constant's
 slice part), with `Vec.pop` and `Sys.Info.links`, and a constant's
 slice part naming another module's array constant, a defect mended;
@@ -97,7 +106,7 @@ shared; `continue`; `[]` as the empty slice; `Width`. `src/` is the
 compiler in raz, built by itself (Self, done); the seed in `seed/` is
 frozen, and v0.9.1 was the last release it built. The compiler takes
 1.4 times the Pascal one's time; `make kernels` measures `test/bench`
-against FPC `-O2`. Next: what the owner chooses. What
+against FPC `-O2`. What
 each version of the report changed is in `doc/report-history.md`, and
 what each step did is in git; don't repeat it here.
 
@@ -111,7 +120,8 @@ defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes in
 `PROPOSALS.md`, for a later thaw; it isn't built. Thaws happen only by the
 owner's word (v0.6.0, reports 2026-10.13 to 10.23, 10.25 for strings,
-and 10.26 for `INT` and views).
+10.26 for `INT` and views, and 10.33 for `const` parameters, variants
+in constants and the library by `var`).
 
 **The reserved words and the module names are settled.** That a word
 is reserved, however common (`code`, `to`, `packed`, `forward`, `set`,
@@ -274,3 +284,20 @@ otherwise.
   generic module's parameters; a generic module is warned of in its
   first instance only. Assigning a variable whole (`x :=`, `a, b :=`)
   doesn't read it; anything else does.
+- A `const` parameter (report 2026-10.33) is a `var` one never changed:
+  passed by address always, its `Obj` `isVar` and `isConst`, an item of
+  it `ro`. A slice of its array may be made, to read; through it the
+  caller's array may be written, which the report says (8). An argument
+  that isn't a variable, or is a packed field, a view or volatile, goes
+  in a temporary of the statement. `match` on a `const` parameter or a
+  constant gives names that are only read. Procedure types compare
+  `const` as `var`. It is unused if never read, as a value parameter.
+- A variant in a constant must be typed; `const D = dot;` is an error
+  that says to write its type. Its case is read by name (`constCase`).
+- The library takes a `var` for what it changes and `const` for a record
+  or array it only reads (report 2026-10.33), but in the modules the
+  seed compiles (`Buf`, `Sys`, ...), which take a value or `var` there
+  until the seed is gone. Measured: a `Map` passed as a value, four
+  words, made a loop of `get` half again as slow as `const`. A trace
+  shows no `var` or `const` parameter. `Fmt`'s `format` and `put` keep
+  `^Buf.Buf`, since `nil` is standard output there.

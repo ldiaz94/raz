@@ -48,8 +48,6 @@ what they work on take a `var` parameter, a `const` one or a value
 instead (the library volume), which breaks a program that calls them
 with `ADR`.
 
-The compiler follows version 2026-10.32 until the library has moved.
-
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
 written for it. What anyone wishes it had waits on a list, for a later

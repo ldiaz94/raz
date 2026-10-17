@@ -956,7 +956,7 @@ The sentences are `unknown option -x` (or `--name`, up to its `=`),
 number from 1 to 600, not '0'`; for a number with no top, given the
 largest `I64` for `hi`, `--jobs wants a number from 1 up, not '0'`. `refuse` refuses a value
 the program reads itself, as `number` refuses one, naming the option as
-the user wrote it, `-b` or `--bar`: `Opt.refuse(ADR(p), "a label with
+the user wrote it, `-b` or `--bar`: `Opt.refuse(p, "a label with
 no spaces")` writes `keep: -b wants a label with no spaces, not 'a b'`,
 and the synopsis lines. `p.spelt` is that spelling, for the program's
 own sentences. `fail` writes the program's own

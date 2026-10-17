@@ -323,6 +323,53 @@ A call that drops a result, as
 does, is warned of;
 .Cm "_ := Sys.write(fd, s);"
 says it is meant.
+.Pp
+A record or an array that a procedure only reads goes as
+.Cm const :
+the caller's variable itself, read in place with nothing copied, which
+the procedure can't change.
+.Bd -literal -offset indent
+module Grids;
+import Out;
+
+type Grid = record cells: [64]INT; w, h: INT; end;
+
+proc fill(var g: Grid; v: INT);    (* changes g *)
+var i: INT;
+begin
+    for i := 0 to g.w * g.h - 1 do g.cells[i] := v; end;
+end;
+
+proc sum(const g: Grid): INT;      (* reads g in place *)
+var i, s: INT;
+begin
+    s := 0;
+    for i := 0 to g.w * g.h - 1 do s := s + g.cells[i]; end;
+    return s;
+end;
+
+proc main*;
+var g: Grid;
+begin
+    g.w := 4;
+    g.h := 2;
+    fill(g, 3);
+    Out.int(sum(g)); Out.ln;
+end;
+
+end Grids.
+.Ed
+.Bd -literal -offset indent
+24
+.Ed
+.Pp
+So a heading says what a procedure does with what it is given: a value
+for a single value or a slice it reads,
+.Cm const
+for a record or an array it reads,
+.Cm var
+for what it changes, and a pointer only for what it keeps past the
+call.
 .Sh 5. ARRAYS, SLICES AND STRINGS
 .Bd -literal -offset indent
 module Slices;
@@ -956,7 +1003,9 @@ type
         dot;
     end;
 
-proc area(s: Shape): F64;
+const Some: []Shape = [circle(1.0), rect(2.0, 3.5), dot];
+
+proc area(const s: Shape): F64;
 begin
     match s of
     | circle(r): return Math.pi * r * r;
@@ -985,11 +1034,10 @@ begin
 end;
 
 proc main*;
-var shapes: [3]Shape; i: INT; warm: Colours; c: Colour;
+var i: INT; warm: Colours; c: Colour;
 begin
-    shapes := [circle(1.0), rect(2.0, 3.5), dot];
-    for i := 0 to 2 do
-        Fmt.print("{}\en", [Fmt.real(area(shapes[i]), 2)]);
+    for i := 0 to LEN(Some) - 1 do
+        Fmt.print("{}\en", [Fmt.real(area(Some[i]), 2)]);
     end;
     Fmt.print("{} {} {}\en", [Fmt.str(kind('7')), Fmt.str(kind('x')),
         Fmt.str(kind('+'))]);
@@ -1031,6 +1079,11 @@ A variant holds one of its cases, each with fields of its own, and
 .Cm match
 is the only way to read them: it runs the arm of the case the variant
 holds, naming its fields.
+A constant may hold variants, each a case built from constants, as
+.Cm Some
+does; a
+.Cm match
+on one names fields that are only read.
 Every case has an arm, unless an
 .Cm "| else:"
 comes last.
@@ -1269,6 +1322,8 @@ another thread can break into a read it waits in.
 .It "malloc(sizeof *p)" Ta "new(p)" Ta "NEW(p, Heap.heap)"
 .It "free(p)" Ta "dispose(p)" Ta "Mem.free(Heap.heap, ^U8(p))"
 .It "int f(int *out)" Ta "function f(var x)" Ta "proc f: (INT, INT);"
+.It "void f(T *p)" Ta "procedure f(var p: T)" Ta "proc f(var p: T);"
+.It "f(const T *p)" Ta "procedure f(const p: T)" Ta "proc f(const p: T);"
 .It "return -1; errno" Ta "exceptions" Ta "return 0, NotFound;"
 .It "(void)f(x);" Ta "f(x);" Ta "_ := f(x);"
 .It "goto cleanup;" Ta "try ... finally" Ta "defer close(fd);"
