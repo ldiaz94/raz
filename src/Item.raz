@@ -1572,6 +1572,28 @@ begin
     return nil;
 end;
 
+(* An address given where a var or const parameter of its type wants the
+   variable itself, as ADR(b) for var b: Buf: an error that says what to
+   write instead, b for ADR(b) and p^ for a pointer p. Mostly met in
+   programs written before the library took var (report 2026-10.33). *)
+proc givenAddress(a: Item; p: ^Sym.Obj): ERROR;
+var s, kind: []U8;
+begin
+    if (a.typ^.form # Sym.fPtr) or (a.typ^.base = nil) or not Sym.same(a.typ^.base, p^.typ) then
+        return nil;
+    end;
+    if p^.isConst then kind := "const"; else kind := "var"; end;
+    s := Diag.source(a.pos);
+    if (LEN(s) > 5) and (s[0..4] = "ADR(") and (s[LEN(s) - 1] = ')') then
+        s := Diag.say("write {} for {}: the parameter is the variable itself, not its address",
+            [Fmt.str(s[4..LEN(s) - 1]), Fmt.str(s)]);
+    else
+        s := Diag.say("write {}^ for {}: the parameter is the variable itself, not a pointer to it",
+            [Fmt.str(s), Fmt.str(s)]);
+    end;
+    return Scan.markHelp(a.pos, say2("a {} parameter takes {}, found its address", kind, Sym.typeName(p^.typ)), s);
+end;
+
 (* A const parameter's argument that isn't a variable, or is one with no
    address of its own (a packed record's field, a view, through ^VOLATILE),
    in a temporary of the statement, whose address then goes (report
@@ -1628,10 +1650,12 @@ begin
                value parameter, a record:  copied to a temporary, its address goes
            after, for const:
                its own address goes; nothing is copied *)
+        try givenAddress(a, p);
         try coerce(a, p^.typ);
         if (a.mode # mVar) or a.odd or a.view or a.vol then try constTemp(a); end;
         try address(a);
     elsif p^.isVar then
+        try givenAddress(a, p);
         try notReadOnly(a);
         if (a.mode # mVar) or not a.isVar then return Scan.markAt(a.pos, "a var parameter needs a variable"); end;
         if a.odd then return Scan.markAt(a.pos, "a field of a packed record can't be a var parameter"); end;

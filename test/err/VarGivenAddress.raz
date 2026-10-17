@@ -1,0 +1,13 @@
+module VarGivenAddress;
+type B = record n: INT; end;
+proc f(var b: B); begin b.n := 1; end;
+proc g(const b: B): INT; begin return b.n; end;
+proc main*;
+var b: B; p: ^B;
+begin
+    p := ADR(b);
+    f(ADR(b));
+    f(p);
+    _ := g(ADR(b));
+end;
+end VarGivenAddress.

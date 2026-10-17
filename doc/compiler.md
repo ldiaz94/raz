@@ -19,7 +19,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,091 | 1,682 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Item.raz` | 2,115 | 1,701 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,218 | 3,648 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
@@ -1401,7 +1401,12 @@ and anything else, a constant number, an expression, a call's result,
 a packed record's field, it puts in a temporary of the statement first
 (`constTemp`). A `match` on something only read gives names that are
 `isConst` too (`matchStatement`), where another module's variable is
-copied first and its names are the copy's. `return f(x);` passing on
+copied first and its names are the copy's.
+
+An address given where a `var` or `const` parameter of its type wants
+the variable, `f(ADR(b))` or `f(p)`, is the commonest slip in a program
+written before the library took `var`; `givenAddress` says what to
+write instead, `b` or `p^`, from the argument's own text. `return f(x);` passing on
 f's several results, with `returnAll`, pushes them from the call's
 temporary if they are two words, or else copies them to the place its
 own hidden pointer names.

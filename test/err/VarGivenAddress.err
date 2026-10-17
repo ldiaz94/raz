@@ -1,0 +1,13 @@
+test/err/VarGivenAddress.raz:9:7: error: a var parameter takes B, found its address
+    9 |     f(ADR(b));
+      |       ^^^^^^
+help: write b for ADR(b): the parameter is the variable itself, not its address
+test/err/VarGivenAddress.raz:10:7: error: a var parameter takes B, found its address
+   10 |     f(p);
+      |       ^
+help: write p^ for p: the parameter is the variable itself, not a pointer to it
+test/err/VarGivenAddress.raz:11:12: error: a const parameter takes B, found its address
+   11 |     _ := g(ADR(b));
+      |            ^^^^^^
+help: write b for ADR(b): the parameter is the variable itself, not its address
+raz: 3 errors
