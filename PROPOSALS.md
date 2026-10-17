@@ -6,8 +6,9 @@ the owner's word, and goes into the report before any code.
 
 ## IMMINENT - APPROVED: what a call does with its arguments, written at the call
 
-**Status.** Approved by the owner, 2026-10-16, for the next thaw. It
-is three parts, made in one thaw so that programs break once:
+**Status.** Approved by the owner, 2026-10-16, for the next thaw, and
+revised on 2026-10-17 after a review of how it reads in real code. It
+is five parts, made in one thaw so that programs break once:
 
 1. **Marks at the call** (this section): an argument for a `var`
    parameter is written `var x`, and one for a `keep` parameter
@@ -16,6 +17,12 @@ is three parts, made in one thaw so that programs break once:
    `ADR` that stands at nearly every call to the library goes.
 3. **`ret` and `keep`** (below): a heading says what a procedure does
    with what it is given, and the compiler holds the body to it.
+4. **A `const` parameter** (below): a record or array only read is
+   passed in place, unmarked, so that `var` at a call always means a
+   change.
+5. **A constant holds a variant** (below): so that a table a procedure
+   keeps, as `Opt.init`'s, can be a constant, not a literal in the
+   frame.
 
 Nothing is built until the owner starts the milestone. The report
 changes first, as always; the documentation listed below comes with
@@ -53,13 +60,21 @@ call means the callee keeps what it is given, but the library takes
 | Heading | The procedure | At the call | Example |
 |---|---|---|---|
 | no mark | reads it while the call runs, then lets go | nothing | `Str.eq(a, b)` |
+| `const x` | reads the caller's variable in place, without a copy, and doesn't change it | nothing | `Opt.at(p)` |
 | `var x` | may change the caller's variable | `var x` | `Buf.add(var b, c)` |
-| `keep x` | may store it where it outlives the call | `keep x` | `Names.put(var table, keep name, 1)` |
+| `keep x` | may store it where it outlives the call | `keep x` | `Names.put(var table, keep name, keep 1)` |
 | `ret x` | its results may point into it | nothing | `s := Str.trim(line[0..n])` |
 | `^T` | keeps a pointer, or takes one for C, an allocator, or what may be `nil` | `ADR(x)`, or a pointer it holds | `Thread.spawn(work, ^U8(ADR(job)))` |
 
-`var` is in the language now; `keep` and `ret` come with part 3. The
-table goes into the report (8), raz(7) and the tutorial as it is here.
+A slice given to an unmarked parameter is a value, two words, but the
+elements it points at are the caller's: the procedure may write them,
+and nothing at the call says so. `Sys.read(fd, line)` fills `line`,
+`COPY(d, s)` fills `d`. A slice is a view of the caller's array, and
+lending it is what it is for; the table says so in a note under it.
+
+`var` is in the language now; `keep` and `ret` come with part 3, `const`
+with part 4. The table, and the note, go into the report (8), raz(7)
+and the tutorial as they are here.
 
 ### The rules
 
@@ -70,11 +85,13 @@ table goes into the report (8), raz(7) and the tutorial as it is here.
    another module's, of a procedure value, of a generic module's
    instance.
 2. **`keep` at the call.** An argument for a `keep` parameter is
-   written `keep` and the argument, when the argument's type carries a
-   slice (part 3, "Words"). For a type that carries none it isn't
-   written, and writing it is an error: `Map(INT, INT).put(var m, 5, 7)`
-   keeps nothing that could end. In a generic module's instance the
-   argument's type is the instance's.
+   written `keep` and the argument, whatever its type, as `var` is:
+   `Counts.put(var counts, keep 5, keep 7)`. The map does keep the 5.
+   Where the argument can't end, an `INT` or a literal, nothing is
+   checked, but the mark stands. So the mark follows the heading alone:
+   a generic module's body reads the same in every instance, as
+   `Bag(T)` calling `L.push(var l, keep x)` must, and a call never
+   hangs on fields of a record it can't see.
 3. **Both.** An argument for a `keep var` parameter is written
    `keep var x`, in the heading's order.
 4. **`ret`** is never written at the call. It is about the result,
@@ -87,12 +104,21 @@ table goes into the report (8), raz(7) and the tutorial as it is here.
    or `keep` parameters, and so take none.
 6. **What follows `keep`.** `keep` is a mark, not a name, when the
    token after it is a name, a number, a string or character literal,
-   or `{`. Otherwise it is the name `keep`: `keep[i]`, `keep(x)` and
-   `keep^` are what they are today. An array literal is never the
-   argument of a `keep` parameter, since it lives in the frame
-   (part 3), so `keep [` is never needed.
-7. **Procedure types** say `var` and `keep` as headings do (5.9), so a
-   call through a procedure value is marked as a call by name.
+   `{`, `[`, `var`, `-`, `not` or `~`: anything that starts an
+   argument and can't follow a name in one. Before `(`, `^`, `.`, `,`,
+   `)` or an operator between two operands it is the name `keep`:
+   `keep(x)`, `keep^`, `keep.f` and `keep + 1` are what they are today.
+   An argument that starts with `(` is written without it: `keep a + b`,
+   not `keep (a + b)`. `keep [` is the mark before an array literal or
+   the empty slice, `keep []`; an array literal lives in the frame
+   (part 3), so a kept one is an error unless it is a constant's.
+7. **Procedure types** say `const`, `var` and `keep` as headings do
+   (5.9), so a call through a procedure value is marked as a call by
+   name.
+8. **`const`** is never written at the call: the procedure neither
+   changes nor keeps what it is given. Its argument is any expression
+   of the parameter's type; a variable is passed in place, and anything
+   else in a temporary of the statement (part 4).
 
 ```
 Arguments  = "(" [ Argument { "," Argument } ] ")" .
@@ -101,7 +127,7 @@ Argument   = [ "keep" ] [ "var" ] Expr .
 
 Each rule looks at the call and the heading only, so a one-pass
 compiler makes them as it reads the call: perhaps 40 lines, beside the
-250 to 400 of part 3.
+250 to 400 of part 3, the 30 to 60 of part 4 and the 20 of part 5.
 
 ### Examples
 
@@ -184,9 +210,11 @@ end;
 (* import Names := Map([]U8, INT, Str.hash, Str.eq);
    table: Names.Map and heap: Heap's allocator, module variables *)
 proc count(name: []U8);
+var k: []U8; ok: BOOL;
 begin
-    _ := Names.put(var table, keep Str.copy(heap, name), 1);   (* a copy, on the heap *)
-    _ := Names.put(var table, keep "main", 1);                 (* a literal never ends *)
+    k, ok := Str.copy(heap, name);                               (* a copy, on the heap *)
+    if ok then _ := Names.put(var table, keep k, keep 1); end;
+    _ := Names.put(var table, keep "main", keep 1);              (* a literal never ends *)
 end;
 
 proc lookup(name: []U8): INT;
@@ -197,12 +225,54 @@ begin
 end;
 ```
 
-**A map that keeps nothing that can end:**
+**A map that keeps nothing that can end.** The marks stand, as the
+heading says, though nothing is checked:
 
 ```
 (* import Counts := Map(INT, INT, hashInt, eqInt) *)
-_ := Counts.put(var counts, 5, 7);         (* INTs carry no slice: no keep *)
+_ := Counts.put(var counts, keep 5, keep 7);
 ```
+
+**A generic module calling another.** One body serves every instance:
+
+```
+module Bag(T);
+import Mem, L := List(T);
+var l: L.List;
+
+proc add*(keep x: T);
+begin
+    _ := L.push(var l, keep x);
+end;
+```
+
+**A table a procedure keeps**, a constant (part 5), as `Sh`'s becomes:
+
+```
+const Rows: []Opt.Row = [
+    Opt.usage("", "Sh [-c script | file]"),
+    Opt.option("", 'c', "command", "script", "run script, not standard input")];
+...
+Opt.init(var p, keep "Sh", keep Rows);
+while Opt.next(var p) do ... end;
+if Opt.at(p) > 1 then ... end;             (* at only reads: const, no mark *)
+```
+
+Today's `Opt.init(ADR(p), "Sh", [...])`, with the literal in the call,
+is an error once `init` is `keep table`: the literal lives in the
+frame, and `keep` can't say "as long as `p`" (part 3, "False alarms").
+
+**A large record only read**, by `const` (part 4), from `tools/Pretty.raz`:
+
+```
+proc is(const sc: Scanner; s: []U8): BOOL;        (* Scan's *)
+
+if Scan.is(sc, "-") or Scan.is(sc, "+") then ... end;
+if Scan.among(Scan.text(sc), binaryWords) then ... end;
+```
+
+Today each of these is `ADR(sc)`; by `var` each would say `var sc`,
+and none changes it.
 
 **A list of names a procedure keeps, passed on.** The parameter is
 `keep` in turn, so the promise travels up:
@@ -251,6 +321,13 @@ XNextEvent(dpy, ADR(ev));                       (* C *)
 p := Sys.mmap(size);                            (* bytes, not a variable *)
 ```
 
+**A slice's elements, lent unmarked:**
+
+```
+n := Sys.read(fd, line);           (* fills line[0..n] *)
+Str.lower(word);                   (* writes word's bytes *)
+```
+
 **`ret`, unmarked:**
 
 ```
@@ -266,8 +343,11 @@ Each message names the mending, at the argument:
 Sh.raz:94:21: b: write `var b`: Buf.add may change it
 Sh.raz:115:23: b: Buf.bytes only reads it: no `var`
 Count.raz:12:27: name: write `keep name`: Names.put keeps it
-Count.raz:14:31: 5: INT carries no slice: no `keep`
+Count.raz:14:34: 7: write `keep 7`: Counts.put keeps it
 Count.raz:9:27: key[0..4]: kept by Names.put, but it points into this procedure's frame
+Sh.raz:60:28: [...]: kept by Opt.init, but an array literal lives in this procedure's frame: make it a constant
+Pretty.raz:123:19: sc: Scan.is only reads it (const): no `var`
+Scan.raz:41:5: sc: a const parameter can't be changed
 Sh.raz:88:14: ADR(b): Buf.init takes `var b`, not a pointer
 Sh.raz:151:14: p: Buf.add takes `var p^`, not a pointer
 ```
@@ -284,8 +364,14 @@ Measured by a search of `src/`, `lib/`, `tools/` and `examples/`, about
   into `var x`: the same count, shorter, and true;
 - about 580 calls of our own procedures with `var` parameters, unmarked
   today: each gains `var`, about one line in 40;
-- `keep`: a few dozen calls (`Map.put`, `List.push`, `Opt.init`, and
-  procedures that pass a kept slice on).
+- `keep`: a few dozen calls (`Map.put`, `List.push`, `Vec.push`,
+  `Opt.init`, `Opt.scope`, and procedures that pass a kept value on).
+  Since it follows the heading, it stands also before values that can't
+  end, `keep 1` in `Names.put(var table, keep name, keep 1)`: a word
+  each, the price of one rule for every instance;
+- `const`: none at the call, and some 40 `var`s and `ADR`s fewer, where
+  a large record is only read (`Opt`, `Scan` in the tools, `Item` in
+  `src/`).
 
 So most of the marks stand where an `ADR` stands today. What is new is
 the 580, and those are the calls, like `utf8(cur.pos)`, that change a
@@ -305,9 +391,11 @@ says "kept, or not a variable", unchecked, as now; with the library on
 The thaw is not done until each of these is:
 
 - **The report, `doc/raz.md`.** 8: the grammar above; "Parameters"
-  becomes "Parameters and arguments", with the table, rules 1 to 7, and
-  the swap and map examples; `keep` and `ret` from part 3. 5.9:
-  procedure types with marks. 7.3: `ret`. 10: the promise, whose
+  becomes "Parameters and arguments", with the table and its note on
+  slices, rules 1 to 8, and the swap, map and `const` examples; `keep`
+  and `ret` from part 3, `const` from part 4. 4: a constant may hold a
+  variant (part 5), with `Opt`'s table as the example. 5.9: procedure
+  types with marks. 7.3: `ret`. 10: the promise, whose
   exceptions shrink to `ADR`, C, code procedures and `check off`.
   1, "A first look": its example marks its calls. Every example in the
   report is marked. About two pages; the report stays under 40 (31
@@ -323,7 +411,8 @@ The thaw is not done until each of these is:
   and says why. A new section after 6, "WHAT A CALL DOES WITH ITS
   ARGUMENTS": the table; a whole program, with its output, that counts
   the words of its input in a `Map([]U8, INT)` with a `Buf`, using
-  `var`, `keep` and `ret`, each said in a sentence where it stands;
+  `var`, `keep`, `ret` and `const`, each said in a sentence where it
+  stands, and taking its options from a constant table of `Opt`;
   then "What the compiler stops", the four mistakes of the messages
   above, each with its message. Section 16, "FROM PASCAL AND C TO RAZ",
   gains: Pascal's `var` is unmarked at the call, raz's is marked, as C#'s
@@ -333,8 +422,10 @@ The thaw is not done until each of these is:
 - **Volume 2, `doc/raz-lib.md`, and raz-lib(3)**: every signature of
   part 2, each module's example marked, and a note in each changed
   module of what changed.
-- **`STANDARDS.md`**: "Parameters: a value, `var`, or a pointer" says
-  that `ADR` no longer marks what is kept, `keep` does; "The library
+- **`STANDARDS.md`**: "Parameters: a value, `var`, or a pointer" becomes
+  "a value, `const`, `var`, or a pointer": a large record or array only
+  read is `const`, not `var`, so that `var` at a call always means a
+  change; `ADR` no longer marks what is kept, `keep` does; "The library
   until a thaw" goes.
 - **`doc/compiler.md`**: where the marks are read and checked, the
   checks of part 3 and the set each value carries, with the code
@@ -368,10 +459,15 @@ Then, one commit each:
 3. The library's signatures (part 2), and every caller in this
    repository mended.
 4. `ret` and `keep` in headings and their checks (part 3), and the
-   library marked (`Str.trim`, `Map.put`, `List.push`, `Opt.init`, ...).
-5. The tutorial, volume 2, raz-lib(3), `STANDARDS.md`,
+   library marked (`Str.trim`, `Map.put`, `List.push`, `Vec.push`,
+   `Opt.init`, `Opt.scope`, ...).
+5. `const` parameters (part 4), and the library's and `src/`'s large
+   records only read moved to it.
+6. Constants holding variants (part 5), and `Sh`'s and `Opt`'s tables
+   made constants.
+7. The tutorial, volume 2, raz-lib(3), `STANDARDS.md`,
    `doc/compiler.md`, `README.md`.
-6. The tests: `conform/`, `test/err`, `test/msg`, `test/pretty`, the
+8. The tests: `conform/`, `test/err`, `test/msg`, `test/pretty`, the
    editors.
 
 The examples of parts 2 and 3 are written as the whole thaw makes
@@ -394,13 +490,16 @@ The proposal, procedure by procedure, from reading each one:
   `done`; `Buf.init`, `room`, `add`, `str`, `spare`, `cut`, `reset`,
   `done`, and the `Buf` that `Files.load`, `Files.read`, `Fmt.write`,
   `Str.join` and `Str.replace` write into; every procedure of `List`;
-  `Lock.take`, `give`; `Map.init`, `put`, `remove`, `done`; every
-  procedure of `Opt` (a `Parser` is many words, so even those that
-  only read it); `Sys.openDir`, `nextEntry`, `closeDir`;
+  `Lock.take`, `give`; `Map.init`, `put`, `remove`, `done`; the
+  procedures of `Opt` that change the `Parser` (`init`, `next`,
+  `operand`, `scope`, ...); `Sys.openDir`, `nextEntry`, `closeDir`;
   `Thread.lock`, `unlock`; `Vec.init`, `room`, `push`, `pop`, `add`,
   `tryPush`, `tryAdd`, `resize`, `reset`, `done`.
 - **To a value** (it only reads a record of a few words): `Buf.bytes`,
   `Vec.all`, `Map.get`, `Map.next`, `Sys.entryKind`.
+- **To `const`** (it only reads a record of many words; part 4):
+  `Opt.at`, and whichever other procedure of `Opt` a reading shows only
+  reads the `Parser`.
 - **Staying pointers**: an allocator, `^Mem.Allocator`, everywhere
   (`NEW` takes one, and `^Arena(a)` needs one); `Mem.pages`, `unmap`,
   `Sys.mmap`, `munmap`, `mapFile`, which are bytes, not variables;
@@ -486,8 +585,12 @@ the compiler, a set of places its slices may point into:
   value parameter's array, or an array literal used as a slice;
 - **a parameter `p`**: what `p` lends. For a value parameter, that is
   what its slices point at, which is the caller's business, not this
-  frame. For a `var` parameter, it is also the caller's variable
-  itself: `h[0..8]` of `var h: Hex` points into `h`.
+  frame. For a `var` or `const` parameter whose type holds an array,
+  it is also the caller's variable itself: `h[0..8]` of `var h: Hex`
+  points into `h`. One whose type holds no array, as a `Scanner`, lends
+  only what its slices point at, as a value parameter does, so
+  `return Scan.text(n)` of a local `n: Scanner` is not frame-bound
+  when `n.src` isn't.
 - **nowhere that ends**: module variables, constants, string literals,
   and anything reached through a pointer.
 
@@ -544,15 +647,16 @@ begin
 end;
 ```
 
-`ret` is allowed on a parameter that carries a slice, or on a `var`
-parameter whose type holds an array (it lends the caller's variable),
-of a procedure with a result that carries a slice. It is an error
-elsewhere:
-
-- `ret n: INT`, `ret a: [4]U8`: nothing to lend. A value array is the
-  procedure's own copy, and a slice of it can never be returned.
-- `ret` on a procedure whose results carry no slice: nothing to lend
-  it to.
+`ret` lends something when the parameter carries a slice, or is a
+`var` or `const` parameter whose type holds an array (it lends the
+caller's variable), of a procedure with a result that carries a slice.
+Elsewhere, `ret n: INT`, `ret a: [4]U8` or on a procedure whose results
+carry no slice, it lends nothing, and is allowed: a mark is leave to
+do something, not a claim that it is done. Two cases need that. A
+generic module's parameter may be any type, and a procedure with two
+bodies, one for each target, has one heading: `Sys.nextEntry`'s `Dir`
+holds the entry's bytes in an array on Linux, where `ret` lends them,
+and a C pointer over C, where it lends nothing.
 
 With several results, `ret` covers them all: in `cut(ret s: []U8;
 sep: []U8): ([]U8, []U8, BOOL)` both slices may point into `s`. With
@@ -563,7 +667,7 @@ arguments do.
 #### `keep`
 
 ```
-proc put(m: ^Map; keep k: K; keep v: V): BOOL;
+proc put(var m: Map; keep k: K; keep v: V): BOOL;
 ```
 
 `keep k` says: what `k` points at may outlive the call; the procedure
@@ -576,18 +680,20 @@ parameters does, that parameter must be `keep` too.
 (* import Names := Map([]U8, INT, Str.hash, Str.eq);
    table: Names.Map and heap: Heap's allocator, module variables *)
 proc count(name: []U8);
-var key: [32]U8;
+var key: [32]U8; k: []U8; ok: BOOL;
 begin
-    _ := Names.put(var table, keep name, 1);           (* an error: name isn't keep here *)
-    _ := Names.put(var table, keep key[0..4], 1);      (* an error: frame-bound to a keep *)
-    _ := Names.put(var table, keep "main", 1);         (* fine: a literal never ends *)
-    _ := Names.put(var table, keep Str.copy(heap, name), 1);  (* fine: copied to the heap *)
+    _ := Names.put(var table, keep name, keep 1);       (* an error: name isn't keep here *)
+    _ := Names.put(var table, keep key[0..4], keep 1);  (* an error: frame-bound to a keep *)
+    _ := Names.put(var table, keep "main", keep 1);     (* fine: a literal never ends *)
+    k, ok := Str.copy(heap, name);
+    if ok then _ := Names.put(var table, keep k, keep 1); end;   (* fine: copied to the heap *)
 end;
 ```
 
-`keep` is allowed on a parameter that carries a slice or is a `var`
-parameter whose type holds an array; on another, `keep n: INT`, it
-is an error, as `ret` is.
+`keep` lends something on a parameter that carries a slice, or a
+`var` parameter whose type holds an array; on another, `keep n: INT`,
+it lends nothing and is allowed, as `ret` is. At the call it is
+written all the same (part 1, rule 2).
 
 One exception keeps the common loop free of marks: a `var` parameter
 may be given a value that points only where it already pointed, so
@@ -610,12 +716,14 @@ In each procedure:
 1. `return e`, each result: `e` must not be frame-bound, and every
    parameter it points at must be `ret`.
 2. A store into a place that outlives the call, `M.x := e`,
-   `p^.f := e`, or `v := e` for a `var` parameter `v`: `e` must not be
+   `p^.f := e`, or `v := e` for a `var` parameter `v` or a part of it
+   (`v.f := e`, `v[i] := e`): `e` must not be
    frame-bound, and every parameter it points at must be `keep`, but
    for the exception above. `COPY` into such a place is no such store:
    it copies bytes, not where they point.
 3. An argument for a call's `keep` parameter, as 2.
-4. A heading's marks are allowed where it says so above.
+4. A `const` parameter, or a part of it, is never assigned, given to
+   a `var` parameter, nor to `ADR` (part 4).
 
 Checks 1 to 3 on a local variable's value wait for the procedure's
 `end`, when everything assigned to it is known.
@@ -623,15 +731,18 @@ Checks 1 to 3 on a local variable's value wait for the procedure's
 #### Procedure values, generic modules, and the rest
 
 **Procedure types** carry the marks, `proc(ret s: []U8): []U8`. A
-procedure may be given where its type has the same marks or more,
-since a mark promises the caller less: a procedure without `ret` can
-stand where `ret` was allowed, not the other way.
+procedure with fewer `ret` and `keep` marks than a procedure type may
+stand where that type is wanted, since it does less than the type
+allows: a procedure without `ret` can stand where `ret` was allowed,
+not the other way. `const` and `var` must match, as `var` must now
+(5.9): they change how the argument is passed.
 
 **Generic modules.** A mark is allowed on a parameter whose type is a
 module parameter, `keep v: T`, whatever `T` will be. The body is
 checked in each instance: `Map(INT, INT)`'s `put` would pass without
 `keep`, `Map([]U8, INT)`'s wouldn't, so the library marks its generic
-modules for the instance that needs it.
+modules for the instance that needs it. Calls write the marks the
+heading has, in every instance (part 1, rule 2).
 
 **`extern` procedures** take no marks: C is outside the promise of
 section 10 already. **Code procedures** take them, and are trusted:
@@ -651,14 +762,15 @@ right.
   `examples/Sh.raz` does
 
   ```
-  Opt.init(var p, "Sh", [Opt.usage(...), Opt.option(...)]);
+  Opt.init(var p, keep "Sh", keep [Opt.usage(...), Opt.option(...)]);
   ```
 
-  `Opt.init` keeps its table in `p^`, so it needs `keep table`, and
+  `Opt.init` keeps its table in `p`, so it needs `keep table`, and
   the array literal is frame-bound: an error, though `p` is a local
-  and dies with the literal. `keep` can't say "as long as `p^`";
+  and dies with the literal. `keep` can't say "as long as `p`";
   saying that needs lifetimes on records, Rust's whole apparatus, which
-  is not proposed. The way out: the table in a module variable.
+  is not proposed. The way out: the table a constant, which part 5
+  allows, as part 1's example shows.
 - **A local variable used twice.** One slice variable that holds a
   slice of a local buffer early on and a result to return later is
   frame-bound throughout. Two variables cure it.
@@ -670,9 +782,11 @@ right.
 Every procedure, in the library or a program, that returns or keeps
 what a parameter points at stops compiling until it is marked: a
 thaw. In the library, by a search of the headings: `Str.trim`,
-`trimLeft`, `trimRight`, `cut` and `field` (`ret`); `Map.put` and
-`List.push` (`keep`); `Opt.init` (`keep`), and `Sh`'s call of it, as
-above. Not marked: `Str.copy` (its result is the allocator's),
+`trimLeft`, `trimRight`, `cut` and `field` (`ret`); `Map.put`,
+`List.push`, `Vec.push` and `Vec.tryPush` (`keep`: they store a `T`);
+`Opt.init` (`keep name` and `keep table`) and `Opt.scope` (`keep
+name`), and `Sh`'s call of `init`, as above; `Sys.nextEntry` (`ret`,
+lending on Linux only). Not marked: `Str.copy` (its result is the allocator's),
 `Sys.env` and `readLink` (their own buffer), `Buf.str` and
 `Fmt.write` (they copy), `Map.get`. In sauce, `Svec.push` and `add`
 (`keep`), and what returns a slice of its argument.
@@ -694,16 +808,79 @@ opposite and `ret`; Rust's lifetime elision reads a call's result as
 procedure values) take years; the narrow form here leaves record
 lifetimes out, and so the first false alarm above, on purpose.
 
-## A `const` parameter
+### Part 4: a `const` parameter
 
-`proc what(const x: Item): []U8;`: the callee may not change `x` (nor
-take its address), so the caller may pass the address of a record or
-array without a copy, and the program means the same.
+```
+proc is*(const sc: Scanner; s: []U8): BOOL;
+proc text*(ret const sc: Scanner): []U8;
+```
+
+A `const` parameter is the caller's variable itself, as a `var` one
+is, and the procedure may only read it: it may not assign it or a
+part of it, give it to a `var` parameter, nor take its `ADR`. Nothing
+is copied, whatever its size. Its argument is any expression of the
+parameter's type: a variable is passed in place; anything else, a
+call's result, a literal, an expression, goes in a temporary of the
+statement, and its address is passed.
+
+It is passed by its address always, so what it means is plain: if the
+variable changes while the procedure runs, through a `var` parameter,
+a pointer or another thread, the procedure sees the change.
+`f(var x, x)`, with `f`'s second parameter `const`, reads `x` as it now
+is. (Ada leaves the choice of copy or address to the compiler, and a
+program that depends on it is wrong; raz fixes the address, which is
+the cheaper and the one a reader expects.)
+
+It is never marked at the call: the procedure neither changes nor
+keeps what it is given (part 1, rule 8). With it, `STANDARDS.md` says:
+a record or array only read is a value when it is a few words, and
+`const` when it is more; `var` is for what is changed. So `var` at a
+call always means a change, and the marks of part 1 stay true.
+
+A `const` parameter whose type holds an array lends the caller's
+variable to `ret`, as a `var` one does (part 3, "Words"). A procedure
+type says `const` where its procedure does, and two signatures are
+alike only if their `const`s are (5.9). A code procedure receives a
+`const` parameter's address in a register, as a `var` one's; `extern`
+procedures take none.
 
 Met in porting the compiler to raz, where the seed's `const x: TItem`
 (about 130 bytes) became a value parameter, copied at every call.
 Measured once the port built: not what stands out, the compiler's
-profile is flat (`Scan.tokPos` is 9%).
+profile is flat (`Scan.tokPos` is 9%). Met again here, where `Opt`'s
+`Parser` and the tools' `Scanner`, many words, are only read by many
+procedures, and `var` for them would be a mark that isn't true.
+
+Costs: the report, 8 and 5.9; the compiler, 30 to 60 lines: the word
+in a heading, passing as `var` does, the temporary, and the checks
+above. The seed knows `const` parameters in Pascal, not in raz; `src/`
+uses them after the new seed, as it does the marks.
+
+### Part 5: a constant holds a variant
+
+Today a typed constant holds no variant (4: "no variant and no other
+pointer"), and `src/Parse.raz` says "a constant holds no variant". So a
+table of `Opt.Row`s, a variant, can't be a constant, and part 3 makes
+the literal table at `Opt.init`'s call an error. The plain place for
+such a table is a constant:
+
+```
+const Rows: []Opt.Row = [
+    Opt.usage("", "Sh [-c script | file]"),
+    Opt.option("", 'c', "command", "script", "run script, not standard input"),
+    Opt.sub("", "run", "run the file named")];
+```
+
+A variant's case built from constants, `Opt.usage("", "...")`, or a
+case without fields, `dot`, is a constant of the variant's type, and a
+variant may stand among a constant's elements and fields as a record
+may. Its bytes are as 5.6 lays them out: the case's number, then its
+fields, the rest zero. Nothing else changes: a constant is still read
+only, and a `match` on one works as on a variable.
+
+Costs: the report, 4, one line; the compiler, the variant's branch of
+the constant writer in `Parse.raz`, which writes the tag and the
+case's fields as it writes a record's: about 20 lines.
 
 ## A minus sign after an operator
 
