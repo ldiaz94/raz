@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Builds the website into site/public/ from site/content/ and the repository.
 
-    python3 site/build.py
+    python3 site/build.py [vX.Y.Z=COMMIT ...]
+
+Each vX.Y.Z=COMMIT is a release whose tag isn't pushed yet: it is
+offered as if the tag were at COMMIT, its tarball made by make dist
+with VERSION, the same tarball the tag will give.
 
 The site is plain files: open public/index.html, or put the folder on
 any web server. Nothing runs in the reader's browser; the code on the
@@ -335,7 +339,7 @@ def build_spec():
 # manual, which make dist packs
 FIRST_RELEASE = "v0.7.1"
 
-def build_download():
+def build_download(untagged):
     """Every release's tarball from FIRST_RELEASE on, in public/download/
     with its SHA-256, and /download/latest leading to the newest; a list
     of (version, file name, SHA-256), oldest first. A program's CI can
@@ -348,11 +352,14 @@ def build_download():
     git = lambda *a: subprocess.run(("git", "-C", ROOT) + a, capture_output=True,
                                     text=True, check=True).stdout.strip()
     releases = []
-    for tag in git("tag", "-l", "v*", "--sort=v:refname", "--contains", FIRST_RELEASE).split():
+    tags = git("tag", "-l", "v*", "--sort=v:refname", "--contains", FIRST_RELEASE).split()
+    revs = [(tag, tag, []) for tag in tags]
+    revs += [(tag, rev, ["VERSION=" + tag[1:]]) for tag, rev in untagged if tag not in tags]
+    for tag, rev, version in revs:
         name = "raz-%s-linux-x86_64.tar.gz" % tag[1:]
         made = os.path.join(OUT, "download", name)
         if not os.path.exists(made):
-            subprocess.run(["make", "-s", "-C", ROOT, "dist", "REV=" + tag],
+            subprocess.run(["make", "-s", "-C", ROOT, "dist", "REV=" + rev] + version,
                            stdout=subprocess.DEVNULL, check=True)
             shutil.copy(os.path.join(ROOT, "build", name), made)
         digest = hashlib.sha256(open(made, "rb").read()).hexdigest()
@@ -420,7 +427,10 @@ def main():
     build_spec()
     for pdf in ("raz.pdf", "raz-lib.pdf"):       # made by make pdf
         shutil.copy(os.path.join(ROOT, "build", pdf), OUT)
-    build_home(build_download())
+    untagged = [a.split("=", 1) for a in sys.argv[1:]]
+    if not all(len(u) == 2 and re.match(r"v\d+\.\d+\.\d+$", u[0]) for u in untagged):
+        sys.exit("usage: build.py [vX.Y.Z=COMMIT ...]")
+    build_home(build_download(untagged))
     print("site/public: %s lessons" % " + ".join(map(str, counts)))
 
 main()

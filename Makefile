@@ -15,10 +15,12 @@ build/src/Version.raz: build/version.inc | build
 	mkdir -p build/src
 	printf 'module Version;\nconst Text* = "%s";\nend Version.\n' "$$(tr -d "'" < build/version.inc)" >$@
 
-# The version is git's name for the commit; the file changes only when
-# that does, so raz isn't rebuilt for nothing.
+# The version is git's name for the commit, or VERSION where it is given
+# (make dist REV=... VERSION=0.20.0 packs a release before its tag is
+# pushed, as the tag will); the file changes only when that does, so
+# raz isn't rebuilt for nothing.
 build/version.inc: FORCE | build
-	@v=$$(git describe --tags --dirty 2>/dev/null || echo unknown); \
+	@v=$(if $(VERSION),$(VERSION),$$(git describe --tags --dirty 2>/dev/null || echo unknown)); \
 	v="'$${v#v}'"; echo "$$v" | cmp -s - $@ || echo "$$v" >$@
 
 FORCE:
@@ -138,7 +140,9 @@ uninstall:
 # it reads beside itself, the tools a program's make may build (the
 # formatter, Doc and the Scan they share) and the manual pages, V being what raz
 # --version says. It is made of the commit REV, HEAD unless given: CI
-# packs the tag it checked out, and site/build.py each tag it lacks.
+# packs the tag it checked out, and site/build.py each tag it lacks. A
+# release whose tag isn't pushed yet is made with VERSION, its version
+# without the v: the same tarball as the tag's, once the tag is at REV.
 #
 # The tarball is the same, byte for byte, wherever it is made, so that
 # its SHA-256 can be checked against GitHub's or the website's. raz is
@@ -168,8 +172,9 @@ dist:
 # The website, plain files in site/public/: its home page, the tour
 # "Raz, Set, Go" (whose programs are run here, so the output shown is
 # real), the report and the latest release's tarball. site/build.py
-# says how; it needs ./raz and pandoc.
+# says how; it needs ./raz and pandoc. RELEASES, "vX.Y.Z=COMMIT ...",
+# names releases whose tags aren't pushed yet.
 site: raz pdf
-	python3 site/build.py
+	python3 site/build.py $(RELEASES)
 
 .PHONY: prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site clean install uninstall

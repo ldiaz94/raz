@@ -531,6 +531,69 @@ A pointer is never the record:
 .Cm b^.lo ,
 never
 .Cm b.lo .
+.Pp
+A slice is a pointer and a length, and a record can keep the two
+apart, as an interpreter keeps a string, or as C wants them:
+.Bd -literal -offset indent
+module Spans;
+import Out;
+
+type Span = record p: ^U8; n: INT; end;
+
+proc spanOf(s: []U8): Span;
+begin
+    return {p: PTR(s), n: LEN(s)};
+end;
+
+proc text(sp: Span): []U8;
+begin
+    return sp.p[0..sp.n];
+end;
+
+proc main*;
+var words: [3]Span; i: INT;
+begin
+    words := [spanOf("one"), spanOf(""), spanOf("three")];
+    for i := 0 to 2 do
+        Out.int(words[i].n); Out.char(' ');
+        Out.str(text(words[i])); Out.ln;
+    end;
+end;
+
+end Spans.
+.Ed
+.Bd -literal -offset indent
+3 one
+0
+5 three
+.Ed
+.Pp
+.Cm LEN(s)
+is the length, and
+.Cm PTR(s)
+the pointer, a
+.Cm ^U8
+for a
+.Cm []U8 ,
+with no check.
+.Cm ADR(s[0])
+looks the same, and passes every test but the one with an empty
+string: there
+.Cm s[0]
+is out of range, and the program stops.
+.Cm PTR
+of an empty slice is what the slice holds, which is
+.Cm nil
+for one never set, so nothing needs testing first.
+.Cm sp.p[0..sp.n]
+is the slice again, empty when
+.Cm sp.n
+is 0, whatever
+.Cm sp.p
+is.
+Of an array,
+.Cm PTR(a)
+is the address of its first element.
 .Sh 7. BYTES AND VIEWS
 A file, a network packet or a device hands a program bytes, and the
 program wants numbers and records out of them.
@@ -1216,6 +1279,11 @@ sees the address
 .Cm a
 as a pointer to an
 .Cm INT .
+A slice goes to C as two arguments,
+.Cm PTR(s)
+and
+.Cm LEN(s) ,
+which an empty slice gives too (section 6).
 .Pp
 A program that uses C is linked against it dynamically, and starts
 through it; one that doesn't is a static executable with nothing in it

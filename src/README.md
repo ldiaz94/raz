@@ -1,13 +1,17 @@
 # src: the compiler in raz
 
-The port of the Pascal compiler, the **seed** in `../seed/`, to raz.
+The port of the Pascal compiler, the **seed**, to raz. The seed built
+`src/` from the port to v0.19.0, and went in v0.20.0; git has it, in
+`seed/` at the tag v0.19.0. Since then the release `../BOOT` names
+builds `src/` (`boot.sh` fetches it), and a comment here that names
+the seed means the Pascal compiler.
 
 One module to a seed unit, with the seed's name, written to the same
 rules: plain code, each module opening with what it is, what it
-depends on and what it leaves out. The seed is never edited from here.
+depends on and what it leaves out.
 
-    make seed-bench  # the scanner's and the compiler's speed against the seed's
-    make fixpoint    # the seed builds src, that builds src, that builds it again
+    make prev-bench  # the compiler's speed against BOOT's: a tenth slower fails
+    make fixpoint    # BOOT's builds src, that builds src, that builds it again
 
 While it was ported, each unit was tested against the seed's: a pair
 of dumpers, one over each side's units, read the same files or ran the
@@ -20,17 +24,17 @@ better code since v0.10.1 and following newer reports since, and
 `test/Recover.raz`, the pattern of going on after an error, is run by
 `make check`.
 
-`make fixpoint` (`fixpoint.sh`) is the proof that the port is whole:
-the seed builds `Raz.raz` (stage 1), stage 1 builds it (stage 2), and
-stage 2 builds it again (stage 3). Stages 2 and 3 must be the same
-file; they are (stage 1 is not, since v0.10.1: the port makes better code
-than the seed's). Stage 3 then stands in for `./raz`, and `make check` and
+`make fixpoint` (`fixpoint.sh`) is the proof that the compiler is
+whole: BOOT's release builds `Raz.raz` (stage 1), stage 1 builds it
+(stage 2), and stage 2 builds it again (stage 3). Stages 2 and 3 must
+be the same file; they are (stage 1 is not, when BOOT's compiler makes
+other code than this one; until v0.19.0 the seed was stage 0). Stage 3 then stands in for `./raz`, and `make check` and
 `make bench` run on it. Each stage is built by the same command in the
 same place, since a program holds the paths it was made from.
 
 ## What the port found
 
-Not the seed's to mend; for the owner to choose.
+What the port found in the seed, which the seed kept; a record now.
 
 - **Names.** An exported variable is read-only outside its module, so
   what the parser sets in the seed's `diag` and `scan` (`quiet`,
@@ -106,7 +110,10 @@ Not the seed's to mend; for the owner to choose.
   same; whether the compiler built from this is slower for it is for
   the speed test of step 4 to say. A `const` parameter (a hint that
   the callee won't change it, so that the caller may pass its address)
-  would be a language change: it is in `../PROPOSALS.md`.
+  would be a language change: it is in `../PROPOSALS.md`. (It came in
+  report 2026-10.33; since v0.20.0, built by v0.19.0, which has it,
+  the routines that every program's compile goes through take their
+  `Item` as `const`, measured, as `doc/compiler.md` says.)
 - **`Parse` and the seed's jumps.** The seed's `Guard`, `setjmp` and
   `longjmp` are `guard`, a record of what to put back, and the `ERROR`
   that comes up through `try` to the statement or declaration that is

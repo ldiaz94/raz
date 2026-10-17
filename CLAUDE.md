@@ -8,15 +8,13 @@ report defines the language.
 
 ## Setup and checks
 
-    apt-get install -y fp-compiler   # Free Pascal 3.2.2, if fpc is missing
-    make raz       # the compiler, ./raz, built from src/ by the seed; its library is lib/
+    make raz       # the compiler, ./raz, built from src/ by the release BOOT names; its library is lib/
     make check     # every example and test against its expected output
     make bench     # must report at least 400,000 lines a second
-    make kernels   # test/bench's kernels against FPC -O2's twins
+    make prev-bench  # the compiler's speed against BOOT's: more than a tenth slower fails
+    make kernels   # test/bench's kernels against FPC -O2's twins (apt-get install -y fp-compiler)
     make loc       # lines of the compiler, by rloc; the last, code, is the budget
-    make tests     # the small Pascal tests of scan, x64, link and elf
-    make seed-bench  # the scanner's and the compiler's speed against the seed's
-    make fixpoint  # the seed builds src, that builds src, that again: the last two agree
+    make fixpoint  # BOOT's release builds src, that builds src, that again: the last two agree
     make gdb       # gdb stops at a line of a test and names it
     make stress    # 40,000 native threads; make check runs a small version
     make alpine    # test/libc in an Alpine container, over musl (docker)
@@ -49,11 +47,10 @@ tools and the library's tests: they must have no warnings.
 ## How we work
 
 - The compiler, `src/`, is raz, in the language of the report and with
-  the library of `lib/`; it must build with the seed (`seed/`, Free
-  Pascal 3.2.2, `{$mode objfpc}{$H-}`: records, pointers, shortstrings;
-  no classes, ansistrings, exceptions, dynamic arrays or SysUtils), so
-  it uses nothing the seed doesn't know until a release makes a new
-  seed.
+  the library of `lib/`; it must build with the release `BOOT` names
+  (v0.19.0), so it, and the modules of `lib/` it imports, use nothing
+  that release doesn't know (`PTR`, report 2026-10.34, not yet) until
+  `BOOT` names a newer one.
 - Work goes by milestones, each a release, set by the owner. A milestone
   starts only on the owner's explicit go-ahead; within it, one commit
   per step, pushed as it is done, then stop for review. Never start a
@@ -70,7 +67,7 @@ tools and the library's tests: they must have no warnings.
   commented throughout, most of all where it is obscure or needs a
   compiler writer's knowledge; at least 400,000 lines of raz a second;
   the report, `doc/raz.md`, under 40 pages as `make pdf` renders it,
-  checked by hand after each milestone (31 at report 2026-10.32).
+  checked by hand after each milestone (32 at report 2026-10.34).
 - Clarity comes first, before speed and size: the compiler must be a
   model of plain code that a beginner can follow. Every rewrite of the
   code it makes is explained where it is done, with the code before
@@ -83,15 +80,20 @@ tools and the library's tests: they must have no warnings.
 
 ## Where things stand
 
-v0.19.0, report 2026-10.33, is the latest release: the ninth thaw, a
-`const` parameter, a variant in a constant, and the library taking
-`var`, `const` or a value where it took a pointer (`Arena`, `Buf`,
-`Files`, `Fmt`, `List`, `Lock`, `Map`, `Opt`, `Str`, `Sys`'s
-directories, `Thread`'s `Mutex`, `Vec`; and `tools/Scan.raz`), which
-breaks calls written with `ADR`; the compiler's message names the
-mending. Next: v0.20.0, built by v0.19.0, drops the Pascal seed; then
-`Buf.bytes`, `Sys.entryKind` and `src/`'s records only read take
-`const`.
+v0.20.0, report 2026-10.34, is made and not yet tagged: v0.19.0 builds
+`src/` (`BOOT`) and the Pascal seed is gone; `Buf.bytes`,
+`Sys.entryKind` and `src/`'s `Item`s only read take `const`; and the
+tenth thaw, by the owner's word, `PTR(s)`, a slice's pointer, with
+messages that point to it. Its tag, and v0.18.1's and v0.19.0's, which
+were never pushed, are the owner's: `HANDOVER.md` says what to tag
+where and how, and what comes next (`Sys`'s private `bytes` gives way
+to `PTR` once `BOOT` names v0.20.0).
+v0.19.0, report 2026-10.33, before it: the ninth thaw, a `const`
+parameter, a variant in a constant, and the library taking `var`,
+`const` or a value where it took a pointer (`Arena`, `Buf`, `Files`,
+`Fmt`, `List`, `Lock`, `Map`, `Opt`, `Str`, `Sys`'s directories,
+`Thread`'s `Mutex`, `Vec`; and `tools/Scan.raz`), which breaks calls
+written with `ADR`; the compiler's message names the mending.
 v0.18.1, report 2026-10.32, before it: v0.18.0's thaw (a
 constant typed `[]T` may be `[]`, the empty slice, as may a constant's
 slice part), with `Vec.pop` and `Sys.Info.links`, and a constant's
@@ -103,10 +105,10 @@ no top.
 v0.17.0's thaw before it: `INT` at least 16 bits, and `U8`, `I8` and
 `I16` widening to it; an enumeration's name written with its type, and
 shared; `continue`; `[]` as the empty slice; `Width`. `src/` is the
-compiler in raz, built by itself (Self, done); the seed in `seed/` is
-frozen, and v0.9.1 was the last release it built. The compiler takes
-1.4 times the Pascal one's time; `make kernels` measures `test/bench`
-against FPC `-O2`. What
+compiler in raz, built by itself (Self, done); the Pascal seed, the
+release compiler to v0.9.1 and what built `src/` to v0.19.0, is in git
+at v0.19.0. The compiler takes 1.4 times the Pascal one's time; `make
+kernels` measures `test/bench` against FPC `-O2`. What
 each version of the report changed is in `doc/report-history.md`, and
 what each step did is in git; don't repeat it here.
 
@@ -120,8 +122,8 @@ defect, and the library grows only by what breaks no program written
 for it. A wish for more, the owner's or yours, goes in
 `PROPOSALS.md`, for a later thaw; it isn't built. Thaws happen only by the
 owner's word (v0.6.0, reports 2026-10.13 to 10.23, 10.25 for strings,
-10.26 for `INT` and views, and 10.33 for `const` parameters, variants
-in constants and the library by `var`).
+10.26 for `INT` and views, 10.33 for `const` parameters, variants
+in constants and the library by `var`, and 10.34 for `PTR`).
 
 **The reserved words and the module names are settled.** That a word
 is reserved, however common (`code`, `to`, `packed`, `forward`, `set`,
@@ -142,7 +144,9 @@ check` passes first. The compiler takes its version from `git
 describe` (`build/version.inc`, made by `make`). Pushing the tag runs
 `.github/workflows/ci.yml`, which checks it and makes the GitHub
 release with a tarball of `raz` and `lib/`; it also checks every push
-to `main`. `README.md`'s "Versions" gives the commands. v0.3.0 is
+to `main`. A release whose tag isn't pushed yet goes to the website
+by `make site RELEASES="vX.Y.Z=COMMIT"`, its tarball made by `make
+dist REV=COMMIT VERSION=X.Y.Z`, the same as the tag's will be. `README.md`'s "Versions" gives the commands. v0.3.0 is
 the first. The tarball has `tools/`, which the website offers from
 0.7.1 on.
 
@@ -154,16 +158,21 @@ musl-tools`), and compares `tools/cabi.c`'s output, with `cc` and
 by hand. A test or example without `.expect` is only
 compiled (`examples/Window.raz` needs a display).
 
-## The compiler and the seed
+## The compiler and BOOT
 
-`src/` is the compiler, in raz: one module to a
-seed unit, the same names. `seed/`, the Free Pascal compiler it was
-ported from, is the **seed**: frozen at its last version, kept to build
-`src/` the first time (`make raz`, `make fixpoint`), and to be dropped
-in time. `src/` is no longer tested against it unit by unit (the owner
-dropped `seed-check` after v0.17.0): `make check`, the fixpoint and
-`conform/` are its tests. Never edit the seed; a difference
-found is told to the owner.
+`src/` is the compiler, in raz: one module to a unit of the Pascal
+compiler it was ported from, the same names. The release `BOOT` names,
+by its tag and its tarball's SHA-256, builds it: `src/boot.sh` fetches
+the tarball into `build/boot/` (curl, or `gh api` for a private
+repository: CI gives it `GH_TOKEN`), checks the sum and puts its `raz`
+there with today's `lib/` beside it. Each release is built by the one
+before it, back to v0.19.0, which the Pascal seed built; the seed is in
+git at v0.19.0 (`seed/`), and a comment in `src/` that names "the
+seed" means it. `make check`, the fixpoint and `conform/` are the
+compiler's tests. Moving `BOOT` to a newer release, once its tag is
+pushed and CI's tarball has the SHA-256 `make dist` gives here, is a
+step of its own, by the owner's word; then `src/` may use what that
+release brought. `fpc` is needed only for `make kernels`' Pascal twins.
 
 `sbcl/` is an example, not part of the build: a second compiler, in
 Common Lisp, written from the report alone and kept as a reference
@@ -203,8 +212,9 @@ otherwise.
   in `link static;` is not a reserved word. It is linked against
   glibc, or musl (`/lib/ld-musl-x86_64.so.1`, needing `libc.so`) by
   `-libc musl` or on a machine with musl's loader and not glibc's.
-  `lib/Sys.raz` and `CAbi` are read by the seed for the interface
-  check, so they keep to the seed's language.
+  `lib/Sys.raz` and `CAbi` are read for the interface check when
+  BOOT's release builds `src/`, so they keep to its language, as the
+  modules `src/` imports do.
 - `Sys` gives minus Linux's errnos on every target; `Sys.raz` maps the
   C library's through `CAbi.errnos`.
 - C symbols are reached through quadwords the loader fills in
@@ -244,9 +254,9 @@ otherwise.
   copied. A variable kept in a register goes to memory for it, as for
   `ADR`. Another module's variable may be viewed, and not written. A
   view that runs past its end fails as kind 7 of `Rt.fail`. `src/`,
-  and the library it imports (`Str`, `Bytes`, ...), use neither views
-  nor the widening of 2026-10.26, since the seed builds them, until a
-  release makes a new seed.
+  and the library it imports (`Str`, `Bytes`, `Sys`, ...), may use
+  views and the widening now that v0.19.0 builds them; they use
+  neither yet.
 - A returned slice of the frame (report 2026-10.27, 7.3) is caught by
   `Item.frame`, which sees only the expression: a slice held first in a
   local slice variable or a record, stored, or come back from a call,
@@ -295,9 +305,20 @@ otherwise.
 - A variant in a constant must be typed; `const D = dot;` is an error
   that says to write its type. Its case is read by name (`constCase`).
 - The library takes a `var` for what it changes and `const` for a record
-  or array it only reads (report 2026-10.33), but in the modules the
-  seed compiles (`Buf`, `Sys`, ...), which take a value or `var` there
-  until the seed is gone. Measured: a `Map` passed as a value, four
+  or array it only reads (report 2026-10.33); `Buf.bytes` and
+  `Sys.entryKind` came to it in v0.20.0, with the seed gone. `src/`
+  takes an `Item` as `const` only where callgrind counts a gain, on the
+  paths every compile goes through; the routines that word an error
+  take a value. Measured: a `Map` passed as a value, four
   words, made a loop of `get` half again as slow as `const`. A trace
   shows no `var` or `const` parameter. `Fmt`'s `format` and `put` keep
   `^Buf.Buf`, since `nil` is standard output there.
+- `PTR(s)` (report 2026-10.34) is a slice's first word, read with no
+  check; of an array or a string constant, its address, refused wherever
+  a slice of all of it is (a packed record's misaligned field, a view,
+  through `^VOLATILE`, another module's array). `PTR("")` is the
+  string's place in read-only data, not `nil`; an empty slice cut from
+  another keeps its place. `PTR([])` is an error, since `[]` has no
+  type there, and its help says it would be `nil`. A slice where its
+  element's pointer is wanted, and a pointer where a slice is, are
+  errors whose help names `PTR(s)` and `LEN(s)`, or `p[0..n]`.

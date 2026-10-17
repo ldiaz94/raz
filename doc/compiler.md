@@ -1,10 +1,13 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 11,400 lines of code (the
-budget is 14,000). It is its own compiler: the
-frozen Pascal compiler in `seed/` builds `src/` the first time, and
-after that a raz builds `src/` (`make fixpoint` checks that it makes
-itself again, byte for byte). This guide walks through the files in the order they are best read: from the
+The compiler is eleven files of raz, about 11,500 lines of code (the
+budget is 14,000). It is its own compiler: a release of it, the one
+`BOOT` names, builds `src/`, and `make fixpoint` checks that what it
+makes makes itself again, byte for byte. Each release was built by the
+one before it, back to v0.19.0, which the Pascal compiler it was ported
+from built; that compiler, the seed, is in git at v0.19.0 (`seed/`),
+and a comment that names "the seed" means it. This guide walks through
+the files in the order they are best read: from the
 characters of a source file to the bytes of an executable. It assumes
 you know the language from `doc/raz.md`, and enough x86-64 to read a
 disassembly. The manual pages say the rest: `raz(1)` the command,
@@ -15,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,148 | 949 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 712 | 570 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 713 | 571 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,115 | 1,701 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,218 | 3,648 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Item.raz` | 2,175 | 1,747 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,251 | 3,676 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 326 | 253 | The command line |
@@ -1026,7 +1029,9 @@ ModRM and SIB bytes and the displacement, for a register and a memory
 operand (`Mem`) or two registers. Everything else (`movRR`, `load`,
 `store`, `alu`, `sse`, ...) is a line or two that calls them with the
 right opcode. Only the instructions the code generator uses are here.
-`test/enctest.pas` emits one of each, with the seed's encoder, for `objdump` to check. `here` is
+Each was checked against `objdump` when it was written (`raz -S`
+lists what the compiler made, and `objdump -d` reads the executable),
+and every program `make check` runs uses them. `here` is
 the address of the code being written, as an operand.
 
 The assembler, `assemble`, reads a code procedure's instructions with
@@ -1848,8 +1853,8 @@ this one does.
   a case in `builtin` in `Parse.raz`, and the code, in `Gen.raz` if it is an
   instruction, or of calls to gen right there.
 - **An instruction:** a routine in `X64.raz` built on `opM` or `opR`,
-  and a line in `test/enctest.pas` to check its encoding (the seed's
-  test), and a program in `conform/` or `test/` that uses it.
+  its encoding checked against `objdump -d` once, and a program in
+  `conform/` or `test/` that uses it.
 - **A machine:** a new `Gen.raz`, answering the same calls, and an
   encoder and assembler for it in place of `X64.raz`.
 - **A statement:** a reserved word in `Scan.raz` (in `Sym` and `words`,
@@ -1858,12 +1863,17 @@ this one does.
 - **A check that fails:** `check` in `Gen.raz`, and the message in
   `lib/Rt.raz`'s `fail`; a reason a signal gives, `onSignal` there.
 
-The compiler is in raz. `make raz` builds it with the seed, the frozen
-Pascal compiler in `seed/` (which needs Free Pascal, and is never edited
-to suit `src/`); a raz that already exists could do it as well.
-`make fixpoint` has the seed's build compile `src/`, that compile it
-again, and that again, and checks that the last two are the same file.
-`make seed-bench` compares the speed of the two. Each unit of `src/`
-was once tested against the seed's, while it was ported; that test was
-dropped after v0.17.0, as the two had grown apart. After any change: `make check`, `make bench`,
-`make loc`.
+The compiler is in raz. `make raz` builds it with the release `BOOT`
+names, by its tag and its tarball's SHA-256: `src/boot.sh` fetches the
+tarball into `build/boot/`, checks the sum, and puts its `raz` there
+with this `lib/` beside it, so that `src/` is built against today's
+library. So `src/`, and the modules of `lib/` it imports, use only what
+that release knows: v0.19.0 has `const` parameters, views and the
+widening, but not `PTR`. `make fixpoint` has BOOT's compiler build
+`src/`, that build it again, and that again, and checks that the last
+two are the same file. `make prev-bench` compares this compiler's speed
+with BOOT's on the same program, and fails if it is more than a tenth
+slower. Each unit of `src/` was once tested against the seed's, while it
+was ported; that test was dropped after v0.17.0, as the two had grown
+apart, and the seed itself after v0.19.0. After any change: `make
+check`, `make bench`, `make loc`.

@@ -431,11 +431,11 @@ tools, the examples, the tests, and rmacs, ravite, rat, rlX11, rloc,
 rpg and rsqlite, each when it moves its pin. The mending is mechanical,
 and the compiler names it at each place.
 
-**The seed first.** The seed, frozen, can't read a marked call, and it
-builds `src/` and reads `Sys` and `CAbi`. So this thaw needs the new
-seed a release makes (CLAUDE.md, "The compiler and the seed") before
-`src/` and that part of the library can be marked: the owner's call,
-and the first step.
+**BOOT first.** The release `BOOT` names can't read a marked call, and
+it builds `src/` and reads `Sys` and `CAbi`. So this thaw needs a
+release that reads the marks, named by `BOOT` (CLAUDE.md, "The compiler
+and BOOT"), before `src/` and that part of the library can be marked:
+the owner's call, and the first step.
 
 Then, one commit each:
 
@@ -461,10 +461,10 @@ the direction sound, and parts 1, 2 and 4 clearly better in `tools/`
 and `Opt`, but mostly noise in `src/Parse.raz`, where `var x` stands
 on nearly every call. Left open, by the owner's word:
 
-1. **The seed.** A release of today's compiler can't read the marks
-   either, so "the seed first" can't work as written: it takes two
+1. **BOOT.** A release of today's compiler can't read the marks
+   either, so "BOOT first" can't work as written: it takes two
    releases, one that accepts every new form without requiring it,
-   made the seed, then one that marks `src/` and requires the marks.
+   named by `BOOT`, then one that marks `src/` and requires the marks.
 2. **An error here.** Part 3's `Names.put(var table, keep buf[0..n], 1)`
    lacks `keep 1`. (The others the review found were in parts 2, 4
    and 5, mended when they went into the report.)
@@ -932,9 +932,9 @@ the rest. It breaks every module that does one of these and doesn't
 say it: rmacs, ravite, the tools and ten of `src/`'s modules (by
 `ADR`), each mended by one line, which
 the compiler's message names. The compiler's cost is a flag on the
-module, checked at each of those places. Since the seed doesn't know
-`unsafe;`, `src/` can't say it until a release makes a new seed: for
-one release a missing `unsafe;` is a warning, then an error.
+module, checked at each of those places. Since BOOT's release doesn't
+know `unsafe;`, `src/` can't say it until `BOOT` names one that does:
+for one release a missing `unsafe;` is a warning, then an error.
 
 Pieces 1 and 2 are small and change no program; 3 is a mend; 4 needs
 a thaw.
@@ -951,68 +951,6 @@ in a module of its own (`Win`), told on a page of its own beside
 volume 2. Volume 1 needs at most a sentence, that `link static;`
 means no C library where there are no system calls to make. The
 compiler needs a PE writer and Microsoft's calling convention.
-
-## A slice's pointer
-
-A slice is two words: the address its elements start at, and how many
-there are (5.3). `LEN(s)` gives the second; nothing gives the first.
-A program that needs it writes `ADR(s[0])`, the address of the first
-element. That works only when there is a first element: when `s` is
-empty, `s[0]` is an index out of range, and the program stops.
-
-Where it bites is a program that keeps bytes as a pointer and a
-length, as an interpreter keeps a string value:
-
-```
-type Value = record kind: Kind; n: INT; p: ^U8; end;
-
-proc strVal(s: []U8): Value;
-begin
-    return {kind: kStr, n: LEN(s), p: ADR(s[0])};   (* stops when s is "" *)
-end;
-```
-
-It compiles, and passes every test that has no empty string in it;
-the first `""` stops the program. So every place that turns a slice
-into a pointer must test first:
-
-```
-proc strVal(s: []U8): Value;
-begin
-    if LEN(s) = 0 then return {kind: kStr}; end;    (* n is 0, p nil *)
-    return {kind: kStr, n: LEN(s), p: ADR(s[0])};
-end;
-```
-
-The library does the same before each call to C: `Sys.write` over C
-returns 0 for an empty `s` before it writes `C.write(fd, ADR(s[0]),
-LEN(s))`. The test is easy to forget and says nothing about what the
-program means.
-
-The proposal: a built-in `PTR(s)`, the address the slice or array `s`
-starts at, a `^T` for a `[]T` or `[n]T`, with no check. For a slice
-that isn't empty it is `ADR(s[0])`. For an empty one it is what the
-slice holds: `nil` for a slice variable as it starts (section 4), and
-for one cut empty from another, `t[3..3]`, an address that mustn't be
-read through, as the end of an array mustn't. With it:
-
-```
-proc strVal(s: []U8): Value;
-begin
-    return {kind: kStr, n: LEN(s), p: PTR(s)};
-end;
-```
-
-The way back is there already: `v.p[0..v.n]` is the slice again
-(6.4), empty when `v.n` is 0, whatever `v.p` is. Reading through the
-pointer is as unchecked as through any pointer; `PTR` only stops the
-program from failing where nothing is read.
-
-It costs a row in the table of 6.8. A predeclared name can be hidden
-(section 3), so it breaks no program.
-
-Met in concha's `Ccore`, in `bufVal` and `listVal`, and in `Sys` over
-C, before each call that takes a buffer.
 
 ## An enumeration's name read against the type it is given to
 

@@ -24,7 +24,7 @@ end Hello.
     $ examples/Hello
     hello, world
 
-The compiler is about 11,400 lines of raz, written in itself: one pass, no
+The compiler is about 11,500 lines of raz, written in itself: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
 ELF executable itself, with no assembler or linker, and compiles about
 500,000 lines a second.
@@ -37,7 +37,7 @@ ELF executable itself, with no assembler or linker, and compiles about
 | `doc/compiler.md` | A guide to reading the compiler, file by file |
 | `doc/raz.1`, `doc/raz.7`, `doc/raz-tutorial.7` | The manual pages: the command, the language at a glance, a tour; `make man` makes the library's, raz-lib(3), from `lib/` |
 | `src/` | The compiler, in raz |
-| `seed/` | The first compiler, in Free Pascal: frozen, kept only to build `src/` the first time |
+| `BOOT` | The release that builds `src/`, by its tag and its tarball's SHA-256 |
 | `lib/` | The library, in raz; the compiler finds it beside itself |
 | `examples/` | Small programs, each with the output it should give |
 | `tools/Doc.raz` | Prints what a module exports, with its comments |
@@ -51,12 +51,17 @@ ELF executable itself, with no assembler or linker, and compiles about
 
 ## Building
 
-The compiler is written in raz, so building it takes a raz. The first
-time there is none, and Free Pascal 3.2.2 (`apt-get install fp-compiler`)
-builds the seed, the Pascal compiler in `seed/`, which builds the
-compiler, `src/`, in the repository's root. Free Pascal is needed for
-nothing else, and `make fixpoint` has the compiler build itself and
-checks that the result is the same file.
+The compiler is written in raz, so building it takes a raz: the
+release `BOOT` names. `make` fetches that release's tarball into
+`build/boot/` (by curl, or by `gh` where the repository is private),
+checks its SHA-256 against `BOOT`'s, and has its `raz` build the
+compiler, `src/`, in the repository's root, against this `lib/`. On a
+machine with no network, put the tarball in `build/boot/` by hand.
+Each release is built by the one before it, back to v0.19.0, which the
+first compiler, in Free Pascal, built; git has that compiler, in
+`seed/` at v0.19.0, so raz can be built again from source alone. `make
+fixpoint` has the compiler build itself and checks that the result is
+the same file.
 
     make            # ./raz
     make install    # ~/.local/bin/raz, its library and tools in
@@ -72,11 +77,12 @@ emacs is installed.
 
     make check      # every example and test, against what it should give
     make bench      # the compiler's speed on a program of 350,000 lines
+    make prev-bench # the same against BOOT's: more than a tenth slower fails
+    make kernels    # the code's speed against FPC -O2's (apt-get install fp-compiler)
     make stress     # 40,000 threads, started and joined
     make gdb        # gdb stops at a line of raz and names it
     make fmt        # the library, examples and tools are formatted
     make loc        # the compiler's lines
-    make tests      # tests of the scanner, encoder and linker on their own
     make pdf        # build/raz.pdf and build/raz-lib.pdf, the two volumes, by pandoc and Chromium
     make dist       # build/raz-V-linux-x86_64.tar.gz, the release's tarball
     make site       # site/public/, the website, by pandoc and python3
@@ -145,7 +151,9 @@ by number.
   `F32`, `F64`. No conversion happens unless it is written.
 - Arrays, slices (`[]T`, checked), pointers (unchecked), records laid
   out as C lays them out, packed records, variants with `match`,
-  enumerations and sets, procedure types.
+  enumerations and sets, procedure types. `LEN(s)` and `PTR(s)` take a
+  slice apart into a length and a pointer, for a record or for C, an
+  empty one too.
 - `^VOLATILE T`: every access through it is one instruction of its
   size, in the order written. `CAS`, `XCHG`, `XADD`, `FENCE`.
 - `and`, `or` and `not` for `BOOL`s; `&`, `|`, `xor` and `~` for bits;
@@ -201,16 +209,16 @@ with vim's. Both colour raz through `tools/Scan.raz`.
 The compiler says its own version and that of the report it follows:
 
     $ ./raz --version
-    raz 0.18.1, report 2026-10.32
+    raz 0.20.0, report 2026-10.34
 
 The compiler's version is git's name for the commit it was built from:
-`0.18.1` at the tag `v0.18.1`, `0.18.1-5-g38d29a8` five commits past it.
+`0.20.0` at the tag `v0.20.0`, `0.20.0-5-g38d29a8` five commits past it.
 To release, check `main` and tag it; the tag's message is what
 `raz --version` will print:
 
     $ make check
-    $ git tag -a v0.18.1 -m 'raz 0.18.1, report 2026-10.32'
-    $ git push origin v0.18.1
+    $ git tag -a v0.20.0 -m 'raz 0.20.0, report 2026-10.34'
+    $ git push origin v0.20.0
 
 GitHub then builds and checks the tag, and makes a release of it with
 a tarball of `raz`, its `lib/` and its manual pages, made by `make
@@ -218,10 +226,14 @@ dist`. A tag pushed before the workflow existed is released from the
 Actions tab: run "ci" with its name. Then `make site` adds the new
 tag's tarball to the website's `download/` (it builds it from the tag,
 apart from the tree at hand); commit `site/public/` and push to publish
-it. Every release since 0.7.1 stays there, at its own name, and is
+it. A release whose tag isn't pushed yet goes there too, by `make site
+RELEASES="v0.20.0=COMMIT"`: `make dist REV=COMMIT VERSION=0.20.0` makes
+the tarball the tag will, byte for byte. Every release since 0.7.1 stays there, at its own name, and is
 never made again, so that its SHA-256 holds: programs pin raz by it.
 From 0.15.0 on, `make dist` makes the same tarball, byte for byte,
-wherever it runs, so GitHub's and the website's agree.
+wherever it runs, so GitHub's and the website's agree. Once a release
+is out, `BOOT` may name it, and the next one is built by it: then
+`src/` may use what it brought.
 
 A version of the report is named by its month and a count; the report's
 last section says what each version changed.

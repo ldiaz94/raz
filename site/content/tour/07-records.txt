@@ -230,3 +230,37 @@ end;
 
 end Chain.
 ```
+
+## A slice's pointer
+
+A slice is a pointer and a length, and a record can keep the two apart: an interpreter keeps a string so, and C takes one so. `LEN(s)` is the length. The pointer looks like `ADR(s[0])`, the address of the first element, and that works until the slice is empty: then there is no first element, `s[0]` is out of range, and the program stops.
+
+```raz Empty fail
+module Empty;
+import Out;
+
+type Span = record p: ^U8; n: INT; end;
+
+proc spanOf(s: []U8): Span;
+begin
+    return {p: ADR(s[0]), n: LEN(s)};
+end;
+
+proc main*;
+var a, b: Span;
+begin
+    a := spanOf("one");
+    Out.int(a.n); Out.ln;
+    b := spanOf("");
+    Out.int(b.n); Out.ln;
+end;
+
+end Empty.
+```
+
+`PTR(s)` is the pointer itself, a `^U8` for a `[]U8`, with no check. For a slice that isn't empty it is `ADR(s[0])`; for an empty one it is what the slice holds, `nil` for one never set. So nothing needs testing first, and `sp.p[0..sp.n]` makes the slice again, empty when `sp.n` is 0, whatever `sp.p` is:
+
+```raz Spans run
+```
+
+Of an array, `PTR(a)` is the address of its first element, a `^T` where `ADR(a)` is a `^[n]T`. Reading through the pointer is as unchecked as through any pointer: the length is yours to keep with it. The compiler says so when the two are mixed up: a slice given where a pointer is wanted is an error whose help says to write `PTR(s)` and `LEN(s)`, and a pointer given where a slice is, `p[0..n]`.

@@ -23,8 +23,8 @@
    names one.
 
    Depends on: everything else, and Version, a module the build makes
-   (build/src/Version.raz) from what git describe says, as the seed's
-   build/version.inc is.
+   (build/src/Version.raz) from build/version.inc: what git describe
+   says, or the make's VERSION.
    Leaves out: the work itself; the other units compile, link and
    write, and this only reads the command line and runs them in order. *)
 module Raz;
