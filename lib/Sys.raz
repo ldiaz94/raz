@@ -599,25 +599,25 @@ begin
 end;
 
 (* Opens the directory at path, for nextEntry. *)
-proc openDir*(d: ^Dir; path: []U8): INT;
+proc openDir*(var d: Dir; path: []U8): INT;
 var a: [4096]U8;
 begin
-    d^.kind := unknown;
+    d.kind := unknown;
     if not cstr(path, a) then return -36; end;
-    d^.d := C.opendir(ADR(a[0]));
-    if d^.d = nil then return failed(); end;
+    d.d := C.opendir(ADR(a[0]));
+    if d.d = nil then return failed(); end;
     return 0;
 end;
 
 (* The next name in the directory, good until the next call, but . and
    .., in no order; false at the end. *)
-proc nextEntry*(d: ^Dir): ([]U8, BOOL);
+proc nextEntry*(var d: Dir): ([]U8, BOOL);
 var e: ^U8; n: INT;
 begin
     while true do
-        e := C.readdir(d^.d);
+        e := C.readdir(d.d);
         if e = nil then return "", false; end;
-        d^.kind := kindOf(e[CAbi.dTypeAt]);
+        d.kind := kindOf(e[CAbi.dTypeAt]);
         e := e + CAbi.dNameAt;
         n := 0;
         while e[n] # 0 do INC(n); end;
@@ -629,15 +629,15 @@ end;
 (* What the name nextEntry gave last is, as the directory says, so that
    a walk needn't ask each file with linkInfo; unknown where the file
    system doesn't say. A link is isLink, whatever it names. *)
-proc entryKind*(d: ^Dir): Kind;
+proc entryKind*(var d: Dir): Kind;
 begin
-    return d^.kind;
+    return d.kind;
 end;
 
 (* Closes the directory d that openDir opened. *)
-proc closeDir*(d: ^Dir);
+proc closeDir*(var d: Dir);
 begin
-    _ := C.closedir(d^.d);
+    _ := C.closedir(d.d);
 end;
 
 (* Puts the terminal on fd into raw mode, as cfmakeraw makes it: no
@@ -2173,18 +2173,18 @@ begin
     _ := remove("/tmp/raz-sys-dir/h");
     i, err := info("/no/such/file");
     if err >= 0 then exit(2); end;
-    if openDir(ADR(d), "/tmp/raz-sys-dir") # 0 then exit(2); end;
-    name, ok := nextEntry(ADR(d));
+    if openDir(d, "/tmp/raz-sys-dir") # 0 then exit(2); end;
+    name, ok := nextEntry(d);
     if not ok or (name # "g") then exit(2); end;
-    if (entryKind(ADR(d)) # isFile) and (entryKind(ADR(d)) # unknown) then exit(2); end;
+    if (entryKind(d) # isFile) and (entryKind(d) # unknown) then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/g");
     j, err := info("/tmp/raz-sys-dir");
     if (err # 0) or (i.dev # j.dev) or (i.ino = j.ino) or (i.links # 1) then exit(2); end;
-    name, ok := nextEntry(ADR(d));
+    name, ok := nextEntry(d);
     if ok then exit(2); end;
-    closeDir(ADR(d));
+    closeDir(d);
     if (remove("/tmp/raz-sys-dir/g") # 0) or (remove("/tmp/raz-sys-dir/g") >= 0) then exit(2); end;
-    if openDir(ADR(d), "/no/such/dir") >= 0 then exit(2); end;
+    if openDir(d, "/no/such/dir") >= 0 then exit(2); end;
     (* the terminal: none here, fd -1 *)
     if rawMode(-1) or ready(-1, 0) then exit(2); end;
     w, h := termSize(-1);

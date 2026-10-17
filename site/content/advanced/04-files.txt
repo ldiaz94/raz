@@ -109,15 +109,15 @@ begin
     _ := Sys.makeDir("proj/src");
     put("proj/b.txt", "bb");
     put("proj/a.txt", "a");
-    if Sys.openDir(ADR(d), "proj") < 0 then return; end;
+    if Sys.openDir(d, "proj") < 0 then return; end;
     n := 0;
-    name, more := Sys.nextEntry(ADR(d));
+    name, more := Sys.nextEntry(d);
     while more do
         copy, ok := Str.copy(Heap.heap, name);
         if ok and (n < 16) then names[n] := copy; INC(n); end;
-        name, more := Sys.nextEntry(ADR(d));
+        name, more := Sys.nextEntry(d);
     end;
-    Sys.closeDir(ADR(d));
+    Sys.closeDir(d);
     Order.sort(names[0..n]);
     Buf.init(path, Heap.heap);
     for i := 0 to n - 1 do

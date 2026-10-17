@@ -3992,9 +3992,9 @@ var
 begin
     prefix := say1("{}.", nameOf(n));
     numOthers := 0;
-    if Sys.openDir(ADR(dp), dir) # 0 then return nil; end;
+    if Sys.openDir(dp, dir) # 0 then return nil; end;
     repeat
-        e, more := Sys.nextEntry(ADR(dp));
+        e, more := Sys.nextEntry(dp);
         if not more then break; end;
         if (LEN(e) > 4) and Str.hasPrefix(e, prefix) and (e[LEN(e) - 4..LEN(e)] = ".raz")
             and (e # chosen) and (numOthers < 32) then
@@ -4002,7 +4002,7 @@ begin
             INC(numOthers);
         end;
     until false;
-    Sys.closeDir(ADR(dp));
+    Sys.closeDir(dp);
     for i := 0 to numOthers - 1 do
         sib := try compileFile(say2("{}/{}", dir, others[i]), n, args, true);
         compareIface(m, sib);

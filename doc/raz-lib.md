@@ -266,10 +266,10 @@ proc linkInfo*(path: []U8): (Info, INT); (* the link itself *)
 proc infoOf*(fd: INT): (Info, INT);      (* the open file's *)
 proc space*(path: []U8): (I64, I64, INT);   (* the bytes free and in all on path's file system *)
 
-proc openDir*(d: ^Dir; path: []U8): INT;
-proc nextEntry*(d: ^Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
-proc entryKind*(d: ^Dir): Kind;          (* what the name nextEntry gave last is *)
-proc closeDir*(d: ^Dir);
+proc openDir*(var d: Dir; path: []U8): INT;
+proc nextEntry*(var d: Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
+proc entryKind*(var d: Dir): Kind;          (* what the name nextEntry gave last is *)
+proc closeDir*(var d: Dir);
 
 proc rawMode*(fd: INT): BOOL;      (* the terminal on fd: no echo, no lines, no signals *)
 proc restoreMode*(fd: INT);        (* as rawMode found it *)
