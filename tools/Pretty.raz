@@ -94,10 +94,10 @@ begin
 end;
 
 (* Whether s ends an operand, so that a - after it subtracts. *)
-proc endsOperand(s: ^Scan.Scanner): BOOL;
+proc endsOperand(const s: Scan.Scanner): BOOL;
 begin
-    if s^.kind = Scan.word then return not Scan.reserved(Scan.text(s)); end;
-    return (s^.kind = Scan.number) or (s^.kind = Scan.literal)
+    if s.kind = Scan.word then return not Scan.reserved(Scan.text(s)); end;
+    return (s.kind = Scan.number) or (s.kind = Scan.literal)
         or Scan.is(s, ")") or Scan.is(s, "]") or Scan.is(s, "}") or Scan.is(s, "^");
 end;
 
@@ -106,7 +106,7 @@ proc following: Scan.Scanner;
 var s: Scan.Scanner;
 begin
     s := sc;
-    repeat Scan.next(ADR(s)); until s.kind # Scan.comment;
+    repeat Scan.next(s); until s.kind # Scan.comment;
     return s;
 end;
 
@@ -115,18 +115,18 @@ end;
 proc binary: BOOL;
 var n: Scan.Scanner;
 begin
-    if sc.kind = Scan.word then return Scan.among(Scan.text(ADR(sc)), binaryWords); end;
-    if (sc.kind # Scan.symbol) or not Scan.among(Scan.text(ADR(sc)), binarySymbols) then
+    if sc.kind = Scan.word then return Scan.among(Scan.text(sc), binaryWords); end;
+    if (sc.kind # Scan.symbol) or not Scan.among(Scan.text(sc), binarySymbols) then
         return false;
     end;
     (* a | after an operand is or; one after anything else starts an arm *)
-    if Scan.is(ADR(sc), "-") or Scan.is(ADR(sc), "+") or Scan.is(ADR(sc), "|") then
-        return endsOperand(ADR(prev));
+    if Scan.is(sc, "-") or Scan.is(sc, "+") or Scan.is(sc, "|") then
+        return endsOperand(prev);
     end;
-    if Scan.is(ADR(sc), "*") and (prev.kind = Scan.word) then
+    if Scan.is(sc, "*") and (prev.kind = Scan.word) then
         n := following();
-        if Scan.among(Scan.text(ADR(n)), "; , : = )") then return false; end;
-        if Scan.is(ADR(n), "(") and Scan.is(ADR(prev2), "proc") then return false; end;
+        if Scan.among(Scan.text(n), "; , : = )") then return false; end;
+        if Scan.is(n, "(") and Scan.is(prev2, "proc") then return false; end;
     end;
     return true;
 end;
@@ -136,10 +136,10 @@ end;
 proc continues: BOOL;
 var t: []U8;
 begin
-    if (brackets > 0) or prevBinary or Scan.is(ADR(prev), ",") then return true; end;
-    t := Scan.text(ADR(sc));
+    if (brackets > 0) or prevBinary or Scan.is(prev, ",") then return true; end;
+    t := Scan.text(sc);
     if sc.kind = Scan.word then return Scan.among(t, binaryWords) or Scan.among(t, "then do of"); end;
-    if Scan.is(ADR(sc), "|") then return endsOperand(ADR(prev)); end;
+    if Scan.is(sc, "|") then return endsOperand(prev); end;
     return (sc.kind = Scan.symbol) and Scan.among(t, binarySymbols);
 end;
 
@@ -147,10 +147,10 @@ end;
    procedure type. *)
 proc declaration(s: Scan.Scanner): BOOL;
 begin
-    if (s.kind # Scan.word) or not Scan.among(Scan.text(ADR(s)), declarations) then return false; end;
-    if not Scan.is(ADR(s), "proc") then return true; end;
-    Scan.next(ADR(s));
-    return not Scan.is(ADR(s), "(");
+    if (s.kind # Scan.word) or not Scan.among(Scan.text(s), declarations) then return false; end;
+    if not Scan.is(s, "proc") then return true; end;
+    Scan.next(s);
+    return not Scan.is(s, "(");
 end;
 
 (* The indent of the block's own lines, or of its end. *)
@@ -182,10 +182,10 @@ begin
     end;
     if declaration(sc) then
         depth := 0;
-        inSection := Scan.among(Scan.text(ADR(sc)), "const type var");
+        inSection := Scan.among(Scan.text(sc), "const type var");
         return 0;
     end;
-    if Scan.among(Scan.text(ADR(sc)), "end until else elsif |") then
+    if Scan.among(Scan.text(sc), "end until else elsif |") then
         return outer();
     end;
     return inner();
@@ -216,8 +216,8 @@ begin
         spaces(n);
     elsif afterComment then
         Buf.str(out, src[last..sc.start]);
-    elsif Scan.is(ADR(sc), ",") or Scan.is(ADR(sc), ";") then
-    elsif Scan.is(ADR(prev), ",") or Scan.is(ADR(prev), ";") or binaryNow or prevBinary then
+    elsif Scan.is(sc, ",") or Scan.is(sc, ";") then
+    elsif Scan.is(prev, ",") or Scan.is(prev, ";") or binaryNow or prevBinary then
         if not prevUnary then spaces(1); end;
     elsif not prevUnary then
         Buf.str(out, src[last..sc.start]);
@@ -254,7 +254,7 @@ end;
 proc track(binaryNow: BOOL);
 var t: []U8;
 begin
-    t := Scan.text(ADR(sc));
+    t := Scan.text(sc);
     if sc.kind = Scan.word then
         if Scan.among(t, openers) then
             if depth = LEN(bases) then Rt.stop("Pretty: blocks nested too deep"); end;
@@ -268,8 +268,8 @@ begin
         elsif Scan.among(t, ") ] }") and (brackets > 0) then DEC(brackets);
         end;
     end;
-    prevUnary := (Scan.is(ADR(sc), "-") or Scan.is(ADR(sc), "+")) and not binaryNow
-        or Scan.is(ADR(sc), "~");
+    prevUnary := (Scan.is(sc, "-") or Scan.is(sc, "+")) and not binaryNow
+        or Scan.is(sc, "~");
     prevBinary := binaryNow;
     prev2 := prev;
     prev := sc;
@@ -296,14 +296,14 @@ begin
     inSection := false;
     stmtIndent := 0;
     stmtDelta := 0;
-    Scan.init(ADR(sc), src);
+    Scan.init(sc, src);
     prev := sc;
     prev2 := sc;
     prevBinary := false;
     prevUnary := false;
     afterComment := false;
     last := 0;
-    Scan.next(ADR(sc));
+    Scan.next(sc);
     while sc.kind # Scan.eof do
         b := (sc.kind # Scan.comment) and binary();
         if sc.lineBreak then
@@ -316,7 +316,7 @@ begin
         afterComment := sc.kind = Scan.comment;
         if not afterComment then track(b); end;
         last := sc.stop;
-        Scan.next(ADR(sc));
+        Scan.next(sc);
     end;
     lineBreaks(last, LEN(src));
     trim;

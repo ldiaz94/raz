@@ -60,9 +60,9 @@ begin
 end;
 
 (* The scanner at the start of src; next gives the first symbol. *)
-proc init*(s: ^Scanner; src: []U8);
+proc init*(var s: Scanner; src: []U8);
 begin
-    s^ := {src: src, kind: eof};
+    s := {src: src, kind: eof};
 end;
 
 (* Past the comment that starts at p, its nested comments with it. *)
@@ -121,32 +121,32 @@ begin
 end;
 
 (* On to the next symbol. *)
-proc next*(s: ^Scanner);
+proc next*(var s: Scanner);
 var src: []U8; p: INT; c: U8;
 begin
-    src := s^.src;
-    p := s^.pos;
-    s^.lineBreak := p = 0;
+    src := s.src;
+    p := s.pos;
+    s.lineBreak := p = 0;
     while (p < LEN(src)) and isSpace(src[p]) do
-        if src[p] = '\n' then s^.lineBreak := true; end;
+        if src[p] = '\n' then s.lineBreak := true; end;
         INC(p);
     end;
-    s^.start := p;
+    s.start := p;
     if p >= LEN(src) then
-        s^.kind := eof;
+        s.kind := eof;
     else
         c := src[p];
         if at(src, p, "(*") then
-            s^.kind := comment; p := pastComment(src, p);
+            s.kind := comment; p := pastComment(src, p);
         elsif isDigit(c) then
-            s^.kind := number; p := pastNumber(src, p);
+            s.kind := number; p := pastNumber(src, p);
         elsif isWord(c) then
-            s^.kind := word;
+            s.kind := word;
             while (p < LEN(src)) and isWord(src[p]) do INC(p); end;
         elsif (c = '"') or (c = '\'') or (c = '`') then
-            s^.kind := literal; p := pastLiteral(src, p);
+            s.kind := literal; p := pastLiteral(src, p);
         else
-            s^.kind := symbol;
+            s.kind := symbol;
             if at(src, p, "...") then INC(p, 3);
             elsif at(src, p, ":=") or at(src, p, "<=") or at(src, p, ">=") or at(src, p, "..") then
                 INC(p, 2);
@@ -155,17 +155,17 @@ begin
             end;
         end;
     end;
-    s^.stop := p;
-    s^.pos := p;
+    s.stop := p;
+    s.pos := p;
 end;
 
-proc text*(s: ^Scanner): []U8;
+proc text*(const s: Scanner): []U8;
 begin
-    return s^.src[s^.start..s^.stop];
+    return s.src[s.start..s.stop];
 end;
 
 (* Whether the current symbol is t. *)
-proc is*(s: ^Scanner; t: []U8): BOOL;
+proc is*(const s: Scanner; t: []U8): BOOL;
 begin
     return text(s) = t;
 end;

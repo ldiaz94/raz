@@ -38,7 +38,7 @@ begin
     docStart := -1;
     newLine := false;
     repeat
-        Scan.next(ADR(sc));
+        Scan.next(sc);
         newLine := newLine or sc.lineBreak;
         if (sc.kind = Scan.comment) and newLine then
             docStart := sc.start; docEnd := sc.stop;
@@ -76,7 +76,7 @@ end;
 
 proc text: []U8;
 begin
-    return Scan.text(ADR(sc));
+    return Scan.text(sc);
 end;
 
 proc is(s: []U8): BOOL;
@@ -114,7 +114,7 @@ begin
     while (stop < LEN(src)) and ((src[stop] = ' ') or (src[stop] = 9)) do INC(stop); end;
     t := sc;
     t.pos := stop;
-    Scan.next(ADR(t));
+    Scan.next(t);
     if (t.kind = Scan.comment) and (t.start = stop) then return t.stop; end;
     return stop;
 end;
@@ -307,7 +307,7 @@ begin
     Buf.init(b, Heap.heap);
     if not Files.read(path, b) then Rt.stop("Doc: can't read the file"); end;
     src := Buf.bytes(b);
-    Scan.init(ADR(sc), src);
+    Scan.init(sc, src);
     next;
     while (sc.kind # Scan.eof) and not is("module") do next; end;
     if sc.kind = Scan.eof then Rt.stop("Doc: no module"); end;
