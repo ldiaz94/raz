@@ -10,30 +10,20 @@ the owner's word, and goes into the report before any code.
 2026-10-17 (the second review's findings are under "Open questions",
 at the end of part 1). The owner judged the feature, and its use, not
 settled: no change is made for the marks at the call, `ret` or `keep`.
-Parts 2, 4 and 5, the library by `var`, a `const` parameter and a
-variant in a constant, went into report 2026-10.33 on their own,
-without the marks, and are no longer here.
-As drafted, it is five parts, to be made in one thaw so that programs
-break once:
+It was drafted as five parts. Three of them went into report
+2026-10.33 on their own, without the marks: the library's parameters
+by `var` (part 2), a `const` parameter (part 4), and a variant in a
+constant (part 5). What is left are the two parts not approved, kept
+by their numbers:
 
 1. **Marks at the call** (this section): an argument for a `var`
    parameter is written `var x`, and one for a `keep` parameter
    `keep x`.
-2. **The library's parameters by `var`, not by pointer** (now in the
-   report, 2026-10.33): the
-   `ADR` that stands at nearly every call to the library goes.
 3. **`ret` and `keep`** (below): a heading says what a procedure does
    with what it is given, and the compiler holds the body to it.
-4. **A `const` parameter** (now in the report): a record or array only read is
-   passed in place, unmarked, so that `var` at a call always means a
-   change.
-5. **A constant holds a variant** (now in the report): so that a table a procedure
-   keeps, as `Opt.init`'s, can be a constant, not a literal in the
-   frame.
 
-Nothing is built until the owner starts the milestone. The report
-changes first, as always; the documentation listed below comes with
-it.
+Nothing is built unless the owner starts it. The report changes first,
+as always; the documentation listed below comes with it.
 
 ### The problem: a call hides what it does
 
@@ -67,7 +57,7 @@ call means the callee keeps what it is given, but the library takes
 | Heading | The procedure | At the call | Example |
 |---|---|---|---|
 | no mark | reads it while the call runs, then lets go | nothing | `Str.eq(a, b)` |
-| `const x` | reads the caller's variable in place, without a copy, and doesn't change it | nothing | `Opt.at(p)` |
+| `const x` | reads the caller's variable in place, without a copy, and doesn't change it | nothing | `Opt.number(p, 1, 9)` |
 | `var x` | may change the caller's variable | `var x` | `Buf.add(var b, c)` |
 | `keep x` | may store it where it outlives the call | `keep x` | `Names.put(var table, keep name, keep 1)` |
 | `ret x` | its results may point into it | nothing | `s := Str.trim(line[0..n])` |
@@ -79,8 +69,8 @@ and nothing at the call says so. `Sys.read(fd, line)` fills `line`,
 `COPY(d, s)` fills `d`. A slice is a view of the caller's array, and
 lending it is what it is for; the table says so in a note under it.
 
-`var` is in the language now; `keep` and `ret` come with part 3, `const`
-with part 4. The table, and the note, go into the report (8), raz(7)
+`var` and `const` are in the language now (report 2026-10.33); `keep`
+and `ret` would come with part 3. The table, and the note, go into the report (8), raz(7)
 and the tutorial as they are here.
 
 ### The rules
@@ -125,7 +115,7 @@ and the tutorial as they are here.
 8. **`const`** is never written at the call: the procedure neither
    changes nor keeps what it is given. Its argument is any expression
    of the parameter's type; a variable is passed in place, and anything
-   else in a temporary of the statement (part 4).
+   else in a temporary of the statement (report section 8).
 
 ```
 Arguments  = "(" [ Argument { "," Argument } ] ")" .
@@ -134,7 +124,7 @@ Argument   = [ "keep" ] [ "var" ] Expr .
 
 Each rule looks at the call and the heading only, so a one-pass
 compiler makes them as it reads the call: perhaps 40 lines, beside the
-250 to 400 of part 3, the 30 to 60 of part 4 and the 20 of part 5.
+250 to 400 of part 3 (400 to 600, by the second review).
 
 ### Examples
 
@@ -253,7 +243,7 @@ begin
 end;
 ```
 
-**A table a procedure keeps**, a constant (part 5), as `Sh`'s becomes:
+**A table a procedure keeps**, a constant (report section 4), as `Sh`'s is now:
 
 ```
 const Rows: []Opt.Row = [
@@ -262,14 +252,14 @@ const Rows: []Opt.Row = [
 ...
 Opt.init(var p, keep "Sh", keep Rows);
 while Opt.next(var p) do ... end;
-if Opt.at(p) > 1 then ... end;             (* at only reads: const, no mark *)
+secs := Opt.number(p, 1, 600);             (* number only reads: const, no mark *)
 ```
 
 Today's `Opt.init(ADR(p), "Sh", [...])`, with the literal in the call,
 is an error once `init` is `keep table`: the literal lives in the
 frame, and `keep` can't say "as long as `p`" (part 3, "False alarms").
 
-**A large record only read**, by `const` (part 4), from `tools/Pretty.raz`:
+**A large record only read**, by `const` (report section 8), as `tools/Pretty.raz` has it now:
 
 ```
 proc is(const sc: Scanner; s: []U8): BOOL;        (* Scan's *)
@@ -278,8 +268,8 @@ if Scan.is(sc, "-") or Scan.is(sc, "+") then ... end;
 if Scan.among(Scan.text(sc), binaryWords) then ... end;
 ```
 
-Today each of these is `ADR(sc)`; by `var` each would say `var sc`,
-and none changes it.
+Before 2026-10.33 each of these was `ADR(sc)`; by `var` each would say
+`var sc`, and none changes it.
 
 **A list of names a procedure keeps, passed on.** The parameter is
 `keep` in turn, so the promise travels up:
@@ -354,21 +344,19 @@ Count.raz:14:34: 7: write `keep 7`: Counts.put keeps it
 Count.raz:9:27: key[0..4]: kept by Names.put, but it points into this procedure's frame
 Sh.raz:60:28: [...]: kept by Opt.init, but an array literal lives in this procedure's frame: make it a constant
 Pretty.raz:123:19: sc: Scan.is only reads it (const): no `var`
-Scan.raz:41:5: sc: a const parameter can't be changed
-Sh.raz:88:14: ADR(b): Buf.init takes `var b`, not a pointer
-Sh.raz:151:14: p: Buf.add takes `var p^`, not a pointer
 ```
 
-The last two are part 2's mending, `ADR(x)` to `var x` and `p` to
-`var p^`.
+The compiler already says, since 2026-10.33, that a `const` parameter
+can't be changed, and what to write for `ADR(b)` or `p` given to a
+`var` or `const` parameter.
 
 ### How much noise
 
 Measured by a search of `src/`, `lib/`, `tools/` and `examples/`, about
 23,300 lines of code (rough: a search, not the compiler):
 
-- about 630 `ADR`s; most are at calls to the library that part 2 turns
-  into `var x`: the same count, shorter, and true;
+- about 630 `ADR`s, before 2026-10.33; most were at calls to the
+  library, which now take `x` itself, and would take `var x`;
 - about 580 calls of our own procedures with `var` parameters, unmarked
   today: each gains `var`, about one line in 40;
 - `keep`: a few dozen calls (`Map.put`, `List.push`, `Vec.push`,
@@ -376,9 +364,7 @@ Measured by a search of `src/`, `lib/`, `tools/` and `examples/`, about
   Since it follows the heading, it stands also before values that can't
   end, `keep 1` in `Names.put(var table, keep name, keep 1)`: a word
   each, the price of one rule for every instance;
-- `const`: none at the call, and some 40 `var`s and `ADR`s fewer, where
-  a large record is only read (`Opt`, `Scan` in the tools, `Item` in
-  `src/`).
+- `const`: none at the call.
 
 So most of the marks stand where an `ADR` stands today. What is new is
 the 580, and those are the calls, like `utf8(cur.pos)`, that change a
@@ -399,10 +385,8 @@ The thaw is not done until each of these is:
 
 - **The report, `doc/raz.md`.** 8: the grammar above; "Parameters"
   becomes "Parameters and arguments", with the table and its note on
-  slices, rules 1 to 8, and the swap, map and `const` examples; `keep`
-  and `ret` from part 3, `const` from part 4. 4: a constant may hold a
-  variant (part 5), with `Opt`'s table as the example. 5.9: procedure
-  types with marks. 7.3: `ret`. 10: the promise, whose
+  slices, rules 1 to 8, and the swap and map examples; `keep` and
+  `ret` from part 3. 5.9: procedure types with marks. 7.3: `ret`. 10: the promise, whose
   exceptions shrink to `ADR`, C, code procedures and `check off`.
   1, "A first look": its example marks its calls. Every example in the
   report is marked. About two pages; the report stays under 40 (31
@@ -419,21 +403,16 @@ The thaw is not done until each of these is:
   ARGUMENTS": the table; a whole program, with its output, that counts
   the words of its input in a `Map([]U8, INT)` with a `Buf`, using
   `var`, `keep`, `ret` and `const`, each said in a sentence where it
-  stands, and taking its options from a constant table of `Opt`;
+  stands;
   then "What the compiler stops", the four mistakes of the messages
   above, each with its message. Section 16, "FROM PASCAL AND C TO RAZ",
   gains: Pascal's `var` is unmarked at the call, raz's is marked, as C#'s
   `ref` is; C's `&x` becomes `var x` when the callee only changes it,
   and stays `ADR(x)` when it keeps it. Every other example in the
   tutorial is marked. Each runs under `make check`, as now.
-- **Volume 2, `doc/raz-lib.md`, and raz-lib(3)**: every signature of
-  part 2, each module's example marked, and a note in each changed
-  module of what changed.
-- **`STANDARDS.md`**: "Parameters: a value, `var`, or a pointer" becomes
-  "a value, `const`, `var`, or a pointer": a large record or array only
-  read is `const`, not `var`, so that `var` at a call always means a
-  change; `ADR` no longer marks what is kept, `keep` does; "The library
-  until a thaw" goes.
+- **Volume 2, `doc/raz-lib.md`, and raz-lib(3)**: each module's
+  example marked, and `keep` and `ret` where the library has them.
+- **`STANDARDS.md`**: `ADR` no longer marks what is kept, `keep` does.
 - **`doc/compiler.md`**: where the marks are read and checked, the
   checks of part 3 and the set each value carries, with the code
   before and after, and the table of lines.
@@ -447,8 +426,7 @@ The thaw is not done until each of these is:
 
 ### What it breaks, and the order of the work
 
-Every call to a procedure with a `var` or `keep` parameter, and every
-call to the library's procedures of part 2: in `src/`, `lib/`, the
+Every call to a procedure with a `var` or `keep` parameter: in `src/`, `lib/`, the
 tools, the examples, the tests, and rmacs, ravite, rat, rlX11, rloc,
 rpg and rsqlite, each when it moves its pin. The mending is mechanical,
 and the compiler names it at each place.
@@ -462,19 +440,14 @@ and the first step.
 Then, one commit each:
 
 1. The report, `report-history.md`, raz(7): for review.
-2. The compiler reads the marks and checks rules 1 to 7.
-3. The library's signatures (part 2), and every caller in this
-   repository mended.
-4. `ret` and `keep` in headings and their checks (part 3), and the
+2. The compiler reads the marks and checks rules 1 to 8, and every
+   caller in this repository is marked.
+3. `ret` and `keep` in headings and their checks (part 3), and the
    library marked (`Str.trim`, `Map.put`, `List.push`, `Vec.push`,
    `Opt.init`, `Opt.scope`, ...).
-5. `const` parameters (part 4), and the library's and `src/`'s large
-   records only read moved to it.
-6. Constants holding variants (part 5), and `Sh`'s and `Opt`'s tables
-   made constants.
-7. The tutorial, volume 2, raz-lib(3), `STANDARDS.md`,
+4. The tutorial, volume 2, raz-lib(3), `STANDARDS.md`,
    `doc/compiler.md`, `README.md`.
-8. The tests: `conform/`, `test/err`, `test/msg`, `test/pretty`, the
+5. The tests: `conform/`, `test/err`, `test/msg`, `test/pretty`, the
    editors.
 
 The examples of parts 2 and 3 are written as the whole thaw makes
@@ -492,13 +465,9 @@ on nearly every call. Left open, by the owner's word:
    either, so "the seed first" can't work as written: it takes two
    releases, one that accepts every new form without requiring it,
    made the seed, then one that marks `src/` and requires the marks.
-2. **Errors here.** `Opt.at` and `operand` move the `Parser` (`at`
-   runs `next` to the end), so they are `var`, not `const`; the table
-   row and part 1's `Opt.at(p)` are wrong. `Sys.entryKind` reads a
-   `Dir` of 8 KB on Linux: `const` or `var`, not a value. Part 3's
-   `Names.put(var table, keep buf[0..n], 1)` lacks `keep 1`. Part 5's
-   table has a row part 1's lacks. Report 4 must let a variant's case
-   stand in a constant expression.
+2. **An error here.** Part 3's `Names.put(var table, keep buf[0..n], 1)`
+   lacks `keep 1`. (The others the review found were in parts 2, 4
+   and 5, mended when they went into the report.)
 3. **A hole in part 3's exception for `var`.** `proc fill(var r: R);
    begin r.s := r.buf[0..4]; end;` passes, since `r` points where it
    pointed; a caller's local `r` copied to a module variable then
@@ -522,19 +491,15 @@ on nearly every call. Left open, by the owner's word:
 7. **A mark that lends nothing in a plain heading**, `keep n: INT`,
    costs every call a word. Proposed: a warning, but on a module
    parameter's type or a procedure with a body for each target.
-8. **`const`'s rules.** Check 4 must cover `match`'s names and views;
-   whether a slice's elements count as "a part of it" (they shouldn't);
-   a constant argument passed in place, not copied; `ret const` given a
-   temporary that holds an array, an error. The heading's grammar,
-   `Params = ["ret"] ["keep"] ["var" | "const"] ident ...`, and the
-   call's, a designator after `var`.
+8. **`ret` with `const`.** `ret const` given a temporary that holds an
+   array would return a slice of the temporary: an error. The heading's
+   grammar, `Params = ["ret"] ["keep"] ["var" | "const"] ident ...`,
+   and the call's, a designator after `var`. (The rest of `const`'s
+   rules are report 2026-10.33's, section 8.)
 9. **Procedure types** with fewer marks are assignable, not the same:
    5.10 must say so, for `=`, generic instances and `forward`.
    `Map`'s `eq` can't take a `const` equality.
-10. **Constants holding variants.** `match`'s names on one are read
-    only; a pointer field takes only `nil`; an untyped `const D = dot`;
-    padding zero; 30 to 40 lines, not 20.
-11. **False alarms to document.** A local container over a local
+10. **False alarms to document.** A local container over a local
     buffer, `Scan.init(var s, keep line[0..n])`, is refused though both
     end together (a module variable, a `Buf` or the heap is the way
     out); so is a store through `ADR` of a local.
@@ -742,8 +707,6 @@ In each procedure:
    for the exception above. `COPY` into such a place is no such store:
    it copies bytes, not where they point.
 3. An argument for a call's `keep` parameter, as 2.
-4. A `const` parameter, or a part of it, is never assigned, given to
-   a `var` parameter, nor to `ADR` (part 4).
 
 Checks 1 to 3 on a local variable's value wait for the procedure's
 `end`, when everything assigned to it is known.
@@ -789,8 +752,8 @@ right.
   the array literal is frame-bound: an error, though `p` is a local
   and dies with the literal. `keep` can't say "as long as `p`";
   saying that needs lifetimes on records, Rust's whole apparatus, which
-  is not proposed. The way out: the table a constant, which part 5
-  allows, as part 1's example shows.
+  is not proposed. The way out: the table a constant, which report
+  2026-10.33 allows, as part 1's example shows.
 - **A local variable used twice.** One slice variable that holds a
   slice of a local buffer early on and a result to return later is
   frame-bound throughout. Two variables cure it.
@@ -1089,3 +1052,69 @@ lookup of a name where the parser knows it.
 
 Met in mosaico's `Mconfig`, where `MenuAction.run` and a status block's
 kind `run` met; the block's kind was renamed `command`.
+
+## A slice that can't be written: `[]const T`
+
+raz has no slice whose elements can't be written. A `const` parameter
+(report 2026-10.33, section 8) is shallow: the procedure can't change
+the record, but it can write through a slice in it, and through a
+slice it makes of an array in it. A constant's slices, and every
+string literal, point at bytes whose writing "isn't defined" (5.10,
+10): the compiler doesn't refuse it, and on a target with read-only
+memory the program stops. Nothing in a heading says that `Str.eq`
+only reads its slices and `Str.lower` writes them.
+
+```
+type Rule = record class: []U8; tag: INT; end;
+const Rules: [2]Rule = [{class: "firefox", tag: 2}, {class: "mpv"}];
+
+proc shout(const r: Rule);
+begin
+    r.class[0] := 'F';        (* allowed today: writes the constant's bytes, undefined *)
+end;
+```
+
+The proposal: a slice type may say its elements are read only,
+`[]const T`, as a pointer type says `^VOLATILE T`.
+
+- Its elements can be read and sliced, and not written: no `s[i] :=`,
+  no `COPY` into it, no `var` argument or `ADR` of an element, no
+  `INC` of one. A slice of it is `[]const T` too.
+- A `[]T` goes where a `[]const T` is wanted, as `U8` widens to `INT`;
+  never the other way. A procedure that only reads a slice takes
+  `[]const T`, and every caller's `[]T` still fits it: `Str.eq(a, b:
+  []const U8)`, `Sys.write(fd: INT; s: []const U8)`, `Out.str`. Those
+  changes break no program.
+- A record field may be `[]const U8`, so a record, a constant's above
+  all, can hold slices that can't be written: `type Rule = record
+  class: []const U8; ... end`, and `shout` above is refused.
+
+What a procedure returns of its argument is the hard part. `Str.trim(s:
+[]const U8): []const U8` would hand a caller with a `[]U8` back a
+slice it can't write, and break the caller that does. Either such
+procedures keep `[]U8` until `ret` (above) can say "of the same kind
+as the argument", or they come in pairs. This is where D's `inout` and
+C++'s `const` overloads went; neither is small.
+
+A second step, for a thaw: a string literal and a constant's slices
+are `[]const U8` and `[]const T`, so that writing them is an error,
+not undefined, and section 10 loses a case. It breaks every program
+that keeps a literal in a `[]U8` variable or field, which is most of
+them, `Opt`'s rows included; each is mended by writing `[]const U8`
+where nothing writes the bytes.
+
+Precedent: C's `const char *`; D's `const(T)[]`; Rust's `&[T]` and
+`&mut [T]`; ulam, the other language here, makes `[]T` read only and
+writes `[]var T` for one that may be written, which is the safer
+default but breaks every raz program.
+
+Costs: the report, 5.3, 5.10 and 10, and 8 for `const` parameters,
+which could then read their slices as `[]const`, making `const` deep
+for slices; the compiler, a flag on a slice type, as `vol` is on a
+pointer, checked where an element is written, about 60 to 100 lines;
+the library, its read-only slice parameters, a long list but each
+change one word.
+
+Met in the discussion of `const` parameters (2026-10-17): "If a const
+can still be written, what's the point?", and "Can records have
+constant slices?"
