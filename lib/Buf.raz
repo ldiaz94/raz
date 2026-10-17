@@ -79,7 +79,7 @@ begin
 end;
 
 (* What the buffer holds, until it next grows. *)
-proc bytes*(b: Buf): []U8;
+proc bytes*(const b: Buf): []U8;
 begin
     if b.len = 0 then return ""; end;
     return b.data[0..b.len];

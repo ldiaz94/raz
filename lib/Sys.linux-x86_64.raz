@@ -566,7 +566,7 @@ end;
 (* What the name nextEntry gave last is, as the directory says, so that
    a walk needn't ask each file with linkInfo; unknown where the file
    system doesn't say. A link is isLink, whatever it names. *)
-proc entryKind*(var d: Dir): Kind;
+proc entryKind*(const d: Dir): Kind;
 begin
     return d.kind;
 end;

@@ -268,7 +268,7 @@ proc space*(path: []U8): (I64, I64, INT);   (* the bytes free and in all on path
 
 proc openDir*(var d: Dir; path: []U8): INT;
 proc nextEntry*(var d: Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
-proc entryKind*(var d: Dir): Kind;          (* what the name nextEntry gave last is *)
+proc entryKind*(const d: Dir): Kind;        (* what the name nextEntry gave last is *)
 proc closeDir*(var d: Dir);
 
 proc rawMode*(fd: INT): BOOL;      (* the terminal on fd: no echo, no lines, no signals *)
@@ -625,7 +625,7 @@ proc room*(var b: Buf; n: INT): BOOL;    (* room for n more bytes; false if the 
 proc add*(var b: Buf; c: U8);
 proc str*(var b: Buf; s: []U8);
 proc spare*(var b: Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
-proc bytes*(b: Buf): []U8;               (* what it holds, until it next grows *)
+proc bytes*(const b: Buf): []U8;         (* what it holds, until it next grows *)
 proc cut*(var b: Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
 proc reset*(var b: Buf);                 (* emptied, its memory kept *)
 proc done*(var b: Buf);                  (* its memory given back *)
