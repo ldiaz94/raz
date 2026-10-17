@@ -419,6 +419,17 @@ The address of the variable
 .Ar x .
 .It Fn LEN a
 The length of an array, a string constant or a slice.
+.It Fn PTR s
+The address the slice
+.Ar s
+starts at, a
+.Li ^T
+for a
+.Li []T ,
+unchecked: for an empty slice what it holds,
+.Dv nil
+for one never set.
+Of an array, the address of its first element.
 .It Fn NEW p a
 .Ar p
 set to a fresh, zeroed

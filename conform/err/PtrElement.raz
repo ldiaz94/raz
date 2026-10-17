@@ -1,0 +1,7 @@
+module PtrElement;
+proc main*;
+var a: [4]U8; p: ^INT;
+begin
+    p := PTR(a);
+end;
+end PtrElement.

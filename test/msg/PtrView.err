@@ -1,0 +1,5 @@
+conform/err/PtrView.raz:6:14: error: PTR can't take a view
+    6 |     p := PTR(w.([8]U8));
+      |              ^^^^^^^^^
+help: a view has no address, since it may be misaligned: copy it to a variable
+raz: 1 error

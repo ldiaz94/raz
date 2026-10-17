@@ -564,15 +564,22 @@ begin
     return nil;
 end;
 
-(* An error in x's type; if x is an argument, a note at the parameter
-   it goes to. *)
-proc mismatch(x: Item; text: []U8): ERROR;
+(* An error in x's type, with help that says what to write instead
+   unless hint is empty; if x is an argument, a note at the parameter it
+   goes to. *)
+proc mismatchHelp(x: Item; text, hint: []U8): ERROR;
 begin
     Diag.error(x.pos, text);
+    if LEN(hint) > 0 then Diag.help(hint); end;
     if (passing # nil) and (x.pos.f = passingAt.f) and (x.pos.a = passingAt.a) and (x.pos.b = passingAt.b) then
         Diag.note(passing^.pos, say1("it goes to {}, declared here", Scan.nameOf(passing^.name)));
     end;
     return Scan.Failed;
+end;
+
+proc mismatch(x: Item; text: []U8): ERROR;
+begin
+    return mismatchHelp(x, text, "");
 end;
 
 (* An error at x, which is a view, or part of one, and so has no
@@ -583,7 +590,7 @@ begin
 end;
 
 proc coerce*(var x: Item; t: ^Sym.Type): ERROR;
-var s: ^Sym.Type; tmp: I64; inFrame: BOOL;
+var s: ^Sym.Type; tmp: I64; inFrame: BOOL; hint: []U8;
 begin
     if x.mode = mCond then try value(x); end;
     s := x.typ;
@@ -641,6 +648,15 @@ begin
         return Scan.markHelp(x.pos, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
             Diag.say("{} widens to {} only as written, {}({})", [Fmt.str(Sym.typeName(s)),
                 Fmt.str(Sym.typeName(t)), Fmt.str(Sym.typeName(t)), Fmt.str(Diag.source(x.pos))]));
+    elsif (s^.form in {Sym.fSlice, Sym.fArray}) and (t^.form = Sym.fPtr) and Sym.same(s^.base, t^.base) then
+        (* the pointer and the length of a slice are two things *)
+        return mismatchHelp(x, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
+            Diag.say("PTR({}) is the address it starts at, a {}, and LEN({}) how many it has",
+                [Fmt.str(Diag.source(x.pos)), Fmt.str(Sym.typeName(t)), Fmt.str(Diag.source(x.pos))]));
+    elsif (s^.form = Sym.fPtr) and (t^.form = Sym.fSlice) and Sym.same(s^.base, t^.base) then
+        if x.mode = mVar then hint := say1("{}[0..n]", Diag.source(x.pos)); else hint := "p[0..n], for a pointer p,"; end;
+        return mismatchHelp(x, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
+            say1("a pointer has no length: {} is the slice of the n elements it starts", hint));
     elsif widens(t, s) then
         (* the other way, an I64 into an INT, is written: it may drop bits *)
         return Scan.markHelp(x.pos, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
@@ -810,6 +826,50 @@ begin
     st^.base := t^.base;
     tempItem(x, st, tmp);
     x.frame := inFrame;
+    return nil;
+end;
+
+(* PTR(x), the address the slice x starts at, as the pointer type t
+   (report section 6.8). Of a slice it is its first word, read with no
+   check, so that an empty one gives what it holds, nil or an end, where
+   ADR(x[0]) would stop the program:
+
+       PTR(s)    s's first word, as LEN(s) is its second
+
+   Of an array or a string it is the address of its first element, and
+   may be taken where slice above would make a slice of all of it. *)
+proc startOf*(var x: Item; t: ^Sym.Type): ERROR;
+begin
+    if x.typ^.form = Sym.fSlice then
+        if x.mode = mWords then
+            Gen.drop();   (* a call's two words: the length, on top, goes *)
+            x.mode := mStack;
+        else
+            if x.mode # mVar then try copyToTemp(x); end;
+            x.typ := t;
+            try value(x);
+        end;
+        x.typ := t;
+        x.frame := false;
+        return nil;
+    end;
+    if x.vol then
+        return Scan.markHelp(x.pos, "PTR can't take an array through a volatile pointer",
+            Diag.say("ADR({}[0]) is the address of its first element, a ^VOLATILE {}",
+                [Fmt.str(Diag.source(x.pos)), Fmt.str(Sym.typeName(t^.base))]));
+    end;
+    if x.odd then return Scan.markAt(x.pos, "PTR can't take a field of a packed record, which has no address"); end;
+    if x.view then return noAddress(x, "PTR can't take a view"); end;
+    if x.ro and not onlyRead(x) then
+        (* as in slice: another module's array isn't lent to be written *)
+        _ := notReadOnly(x);
+        Diag.help("a pointer to it could change it, as a slice of it could: copy it to a variable here first");
+        return Scan.Failed;
+    end;
+    try address(x);
+    x.mode := mStack;
+    x.typ := t;
+    x.frame := false;
     return nil;
 end;
 

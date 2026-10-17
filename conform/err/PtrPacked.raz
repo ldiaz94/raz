@@ -1,0 +1,8 @@
+module PtrPacked;
+type R = packed record tag: U8; words: [3]I32; end;
+proc main*;
+var r: R; p: ^I32;
+begin
+    p := PTR(r.words);
+end;
+end PtrPacked.

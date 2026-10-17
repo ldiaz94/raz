@@ -1,0 +1,65 @@
+(* PTR(s), the address a slice starts at (report section 6.8): ADR(s[0])
+   when s isn't empty; nil for a slice as it starts and for []; and, of
+   an array, the address of its first element. *)
+module Ptr;
+import Out;
+
+type Value = record n: INT; p: ^U8; end;
+
+const Digits: [4]INT = [1, 2, 3, 4];
+
+var kept: []U8;
+
+(* a slice as a pointer and a length, with no test for the empty one *)
+proc valueOf(s: []U8): Value;
+begin
+    return {n: LEN(s), p: PTR(s)};
+end;
+
+(* and back: empty when n is 0, whatever p is *)
+proc bytes(v: Value): []U8;
+begin
+    return v.p[0..v.n];
+end;
+
+proc same(s: []U8): []U8;
+begin
+    return s;
+end;
+
+proc first(const a: [3]I64): ^I64;
+begin
+    return PTR(a);
+end;
+
+proc main*;
+var
+    a: [6]U8; s, none: []U8; v: Value; w: [3]I64; ws: []I64; q: ^I64;
+    d: ^INT; i: INT;
+begin
+    a := [104, 101, 108, 108, 111, 10];
+    s := a[0..6];
+    Out.str(bytes(valueOf(s)));
+    Out.str(bytes(valueOf(s[1..3]))); Out.str("\n");
+    if PTR(s) = ADR(s[0]) then Out.str("a slice: ADR(s[0])\n"); end;
+    if PTR(a) = ADR(a[0]) then Out.str("an array: ADR(a[0])\n"); end;
+    if PTR(s[2..5]) = ADR(a[2]) then Out.str("a slice of it: ADR(a[2])\n"); end;
+    if PTR(same(s)) = ADR(a[0]) then Out.str("a call's slice\n"); end;
+    v := valueOf(none);
+    if v.p = nil then Out.str("a slice as it starts: nil\n"); end;
+    v := valueOf([]);
+    if v.p = nil then Out.str("[]: nil\n"); end;
+    Out.int(LEN(bytes(v))); Out.str(" bytes back\n");
+    kept := s[3..5];
+    Out.str(PTR(kept)[0..2]); Out.str("\n");
+    w := [10, 20, 30];
+    if first(w) = ADR(w[0]) then Out.str("a const parameter: in place\n"); end;
+    ws := w[0..3];
+    q := PTR(ws);
+    for i := 0 to 2 do Out.int(q[i]); Out.str(" "); end;
+    Out.str("\n");
+    d := PTR(Digits);
+    Out.int(d[3]); Out.str("\n");
+end;
+
+end Ptr.

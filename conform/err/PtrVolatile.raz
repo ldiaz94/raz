@@ -1,0 +1,9 @@
+module PtrVolatile;
+var regs: [4]U32;
+proc main*;
+var v: ^VOLATILE [4]U32; p: ^U32;
+begin
+    v := ADR(regs);
+    p := PTR(v^);
+end;
+end PtrVolatile.

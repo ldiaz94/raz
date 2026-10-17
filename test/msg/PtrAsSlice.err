@@ -1,0 +1,5 @@
+conform/err/PtrAsSlice.raz:5:10: error: can't use ^U8 as []U8
+    5 |     s := PTR(a);
+      |          ^^^^^^
+help: a pointer has no length: p[0..n], for a pointer p, is the slice of the n elements it starts
+raz: 1 error

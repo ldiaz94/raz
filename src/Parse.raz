@@ -960,6 +960,30 @@ begin
     return "INC";
 end;
 
+(* PTR(x): the item x, a slice, an array or a string, made the address
+   its elements start at by Item's startOf. Anything else is an error
+   that says what PTR is for, and for a pointer what to write. *)
+proc ptrOf(var x: TItem): ERROR;
+var e: PType; s: []U8;
+begin
+    if x.mode = Item.mStr then
+        e := Sym.tU8;
+    elsif x.typ^.form in {Sym.fSlice, Sym.fArray} then
+        e := x.typ^.base;
+    else
+        s := say1("PTR needs a slice or an array, found {}", Item.what(x));
+        if (x.typ^.form = Sym.fPtr) and (x.typ^.base # nil) and (x.typ^.base^.form = Sym.fArray) then
+            return Scan.markHelp(x.pos, s, Diag.say("write PTR({}^) for the address of the array's first element, a ^{}",
+                [Fmt.str(Diag.source(x.pos)), Fmt.str(Sym.typeName(x.typ^.base^.base))]));
+        elsif x.typ^.form = Sym.fPtr then
+            return Scan.markHelp(x.pos, s, say1("{} is a pointer already, which is what PTR gives of a slice or an array",
+                Diag.source(x.pos)));
+        end;
+        return Scan.markAt(x.pos, s);
+    end;
+    return Item.startOf(x, newPtr(e, false));
+end;
+
 proc builtin(var x: TItem): ERROR;
 var which, n: INT; y: TItem; t: PType;
 begin
@@ -1009,6 +1033,15 @@ begin
         else
             return Scan.markAt(y.pos, say1("LEN needs an array or a slice, found {}", Item.what(y)));
         end;
+    | Sym.bPtr:
+        if Scan.tok = Scan.sLbrak then
+            (* a literal takes its type from where it stands, and here nothing gives one *)
+            return Scan.markHelp(Scan.tokPos(), "PTR can't take an array literal, which has no type here",
+                "PTR([]) would be nil, the empty slice's pointer; give any other literal a variable first");
+        end;
+        try expression(y, nil);
+        try ptrOf(y);
+        x := y;
     | Sym.bSyscall:
         n := 0;
         repeat

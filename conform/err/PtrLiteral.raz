@@ -1,0 +1,7 @@
+module PtrLiteral;
+proc main*;
+var p: ^U8;
+begin
+    p := PTR([]);
+end;
+end PtrLiteral.

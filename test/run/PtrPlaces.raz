@@ -1,0 +1,22 @@
+(* PTR(s) where the report leaves the address to the implementation:
+   an empty slice cut from another keeps its place there, and a string
+   constant, even "", has a place in read-only data. A slice kept in
+   registers in a loop gives its pointer's register. *)
+module PtrPlaces;
+import Out;
+
+proc main*;
+var a: [4]U8; s, e: []U8; p: ^U8; i, n: INT;
+begin
+    a := [1, 2, 3, 4];
+    s := a[0..4];
+    e := s[2..2];
+    if PTR(e) = PTR(s) + 2 then Out.str("cut empty: at its place\n"); end;
+    p := PTR("");
+    if p # nil then Out.str("\"\": not nil\n"); end;
+    n := 0;
+    for i := 0 to 3 do s := a[i..4]; n := n + INT(PTR(s) - PTR(a)); end;
+    Out.int(n); Out.str("\n");
+end;
+
+end PtrPlaces.

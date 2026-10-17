@@ -1594,6 +1594,22 @@ The built-in procedures are in `builtin` (and `new_`, `atomic`): each
 parses its own arguments, since `SIZE` takes a type and `INC` a
 variable.
 
+`PTR(s)` (report 2026-10.34) is `ptrOf`, which refuses what isn't a
+slice, an array or a string with a message that says what PTR is for
+(and, for a pointer, what to write), and Item's `startOf`, which makes
+it. Of a slice it is the first of its two words, read as `LEN` reads
+the second, with no check, so that an empty slice gives what it holds;
+a call's slice, in two words on the stack (`mWords`), drops its length.
+Of an array or a string it is the address, refused wherever `slice`
+would refuse the slice of all of it:
+
+    ADR(s[0])    check 0 < LEN(s), then s's first word   (stops on "")
+    PTR(s)       s's first word                         (no check)
+
+Two mismatches in `coerce` that people meet on the way to it, a slice
+where its element's pointer is wanted and a pointer where a slice is,
+come with help that says what to write (`mismatchHelp`).
+
 **Register variables.** One pass can't know whether a variable's
 address will be taken before its code is made, so `chooseRegs` reads
 the body ahead, as `instancesFor` does, and counts each variable's

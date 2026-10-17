@@ -1,0 +1,13 @@
+hello
+el
+a slice: ADR(s[0])
+an array: ADR(a[0])
+a slice of it: ADR(a[2])
+a call's slice
+a slice as it starts: nil
+[]: nil
+0 bytes back
+lo
+a const parameter: in place
+10 20 30 
+4

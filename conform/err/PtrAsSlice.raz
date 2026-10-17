@@ -1,0 +1,7 @@
+module PtrAsSlice;
+proc main*;
+var a: [4]U8; s: []U8;
+begin
+    s := PTR(a);
+end;
+end PtrAsSlice.

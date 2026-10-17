@@ -1,0 +1,9 @@
+module PtrPointer;
+proc main*;
+var a: [4]U8; p, q: ^U8; pa: ^[4]U8;
+begin
+    p := ADR(a[0]); pa := ADR(a);
+    q := PTR(p);
+    q := PTR(pa);
+end;
+end PtrPointer.

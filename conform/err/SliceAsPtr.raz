@@ -1,0 +1,9 @@
+module SliceAsPtr;
+proc put(_p: ^U8; _n: INT); begin end;
+proc main*;
+var a: [4]U8; s: []U8;
+begin
+    s := a[0..2];
+    put(s, LEN(s));
+end;
+end SliceAsPtr.

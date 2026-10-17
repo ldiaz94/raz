@@ -1,0 +1,8 @@
+module PtrView;
+proc main*;
+var w: I64; p: ^U8;
+begin
+    w := 0;
+    p := PTR(w.([8]U8));
+end;
+end PtrView.

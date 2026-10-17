@@ -1,0 +1,4 @@
+conform/err/PtrPacked.raz:6:14: error: PTR can't take a field of a packed record, which has no address
+    6 |     p := PTR(r.words);
+      |              ^^^^^^^
+raz: 1 error

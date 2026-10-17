@@ -1,0 +1,8 @@
+conform/err/SliceAsPtr.raz:7:9: error: can't use []U8 as ^U8
+    7 |     put(s, LEN(s));
+      |         ^
+help: PTR(s) is the address it starts at, a ^U8, and LEN(s) how many it has
+conform/err/SliceAsPtr.raz:2:10: note: it goes to _p, declared here
+    2 | proc put(_p: ^U8; _n: INT); begin end;
+      |          ^^
+raz: 1 error

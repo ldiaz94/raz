@@ -1,0 +1,8 @@
+module PtrExport;
+import Owner;
+proc main*;
+var p: ^INT;
+begin
+    p := PTR(Owner.a);
+end;
+end PtrExport.

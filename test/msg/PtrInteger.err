@@ -1,0 +1,4 @@
+conform/err/PtrInteger.raz:6:14: error: PTR needs a slice or an array, found INT
+    6 |     p := PTR(n);
+      |              ^
+raz: 1 error
