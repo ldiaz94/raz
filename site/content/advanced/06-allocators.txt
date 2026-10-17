@@ -153,10 +153,10 @@ begin
         [Fmt.int(b.len), Fmt.int(c.allocs)]);
     Buf.done(b);
 
-    Names.init(ADR(l), ADR(c.base));
-    for i := 1 to 10 do _ := Names.push(ADR(l), "x"); end;
+    Names.init(l, ADR(c.base));
+    for i := 1 to 10 do _ := Names.push(l, "x"); end;
     Fmt.print("{} allocations in all, {} frees so far\n", [Fmt.int(c.allocs), Fmt.int(c.frees)]);
-    Names.clear(ADR(l));
+    Names.clear(l);
     Fmt.print("{} frees after clear\n", [Fmt.int(c.frees)]);
 
     p := Mem.alloc(ADR(c.base), 64, 8);

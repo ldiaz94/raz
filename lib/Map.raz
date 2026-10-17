@@ -18,98 +18,98 @@ type
     end;
 
 (* An empty map, its memory from a. *)
-proc init*(m: ^Map; a: ^Mem.Allocator);
+proc init*(var m: Map; a: ^Mem.Allocator);
 begin
-    m^ := {a: a};
+    m := {a: a};
 end;
 
 (* The slot of k, or of the empty slot where it would go. *)
-proc slot(m: ^Map; k: K): INT;
+proc slot(const m: Map; k: K): INT;
 var i: INT;
 begin
-    i := INT(hash(k) & U64(m^.cap - 1));
-    while m^.slots[i].used and not eq(m^.slots[i].key, k) do
-        i := (i + 1) & (m^.cap - 1);
+    i := INT(hash(k) & U64(m.cap - 1));
+    while m.slots[i].used and not eq(m.slots[i].key, k) do
+        i := (i + 1) & (m.cap - 1);
     end;
     return i;
 end;
 
-proc grow(m: ^Map): BOOL;
+proc grow(var m: Map): BOOL;
 var old: ^Entry; n, i, j: INT;
 begin
-    old := m^.slots;
-    n := m^.cap;
-    if n = 0 then m^.cap := 16; else m^.cap := n * 2; end;
-    m^.slots := ^Entry(Mem.alloc(m^.a, m^.cap * SIZE(Entry), 8));
-    if m^.slots = nil then m^.slots := old; m^.cap := n; return false; end;
-    for i := 0 to m^.cap - 1 do m^.slots[i].used := false; end;
+    old := m.slots;
+    n := m.cap;
+    if n = 0 then m.cap := 16; else m.cap := n * 2; end;
+    m.slots := ^Entry(Mem.alloc(m.a, m.cap * SIZE(Entry), 8));
+    if m.slots = nil then m.slots := old; m.cap := n; return false; end;
+    for i := 0 to m.cap - 1 do m.slots[i].used := false; end;
     for i := 0 to n - 1 do
         if old[i].used then
             j := slot(m, old[i].key);
-            m^.slots[j] := old[i];
+            m.slots[j] := old[i];
         end;
     end;
-    if old # nil then Mem.free(m^.a, ^U8(old)); end;
+    if old # nil then Mem.free(m.a, ^U8(old)); end;
     return true;
 end;
 
 (* k now maps to v; false if there was no room. *)
-proc put*(m: ^Map; k: K; v: V): BOOL;
+proc put*(var m: Map; k: K; v: V): BOOL;
 var i: INT;
 begin
-    if (m^.len + 1) * 4 > m^.cap * 3 then
+    if (m.len + 1) * 4 > m.cap * 3 then
         if not grow(m) then return false; end;
     end;
     i := slot(m, k);
-    if not m^.slots[i].used then
-        m^.slots[i] := {key: k, used: true};
-        INC(m^.len);
+    if not m.slots[i].used then
+        m.slots[i] := {key: k, used: true};
+        INC(m.len);
     end;
-    m^.slots[i].val := v;
+    m.slots[i].val := v;
     return true;
 end;
 
 (* k maps to nothing; false if it didn't map to anything. The entries
    after it that were pushed on past its slot move back, so that a
    search for each still finds it before an empty slot. *)
-proc remove*(m: ^Map; k: K): BOOL;
+proc remove*(var m: Map; k: K): BOOL;
 var i, j, home: INT;
 begin
-    if m^.cap = 0 then return false; end;
+    if m.cap = 0 then return false; end;
     i := slot(m, k);
-    if not m^.slots[i].used then return false; end;
-    j := (i + 1) & (m^.cap - 1);
-    while m^.slots[j].used do
+    if not m.slots[i].used then return false; end;
+    j := (i + 1) & (m.cap - 1);
+    while m.slots[j].used do
         (* the entry at j may fill i if i lies between its home and j *)
-        home := INT(hash(m^.slots[j].key) & U64(m^.cap - 1));
-        if (j - home) & (m^.cap - 1) >= (j - i) & (m^.cap - 1) then
-            m^.slots[i] := m^.slots[j];
+        home := INT(hash(m.slots[j].key) & U64(m.cap - 1));
+        if (j - home) & (m.cap - 1) >= (j - i) & (m.cap - 1) then
+            m.slots[i] := m.slots[j];
             i := j;
         end;
-        j := (j + 1) & (m^.cap - 1);
+        j := (j + 1) & (m.cap - 1);
     end;
-    m^.slots[i].used := false;
-    DEC(m^.len);
+    m.slots[i].used := false;
+    DEC(m.len);
     return true;
 end;
 
 (* What k maps to, and whether it maps to anything. *)
-proc get*(m: ^Map; k: K): (V, BOOL);
+proc get*(const m: Map; k: K): (V, BOOL);
 var i: INT; none: V;
 begin
-    if m^.cap = 0 then return none, false; end;
+    if m.cap = 0 then return none, false; end;
     i := slot(m, k);
-    if not m^.slots[i].used then return none, false; end;
-    return m^.slots[i].val, true;
+    if not m.slots[i].used then return none, false; end;
+    return m.slots[i].val, true;
 end;
 
 (* The entry after i, walking from 0: the number to pass for the one
    after it, or -1 if there are no more, then its key and value. *)
-proc next*(m: ^Map; i: INT): (INT, K, V);
+proc next*(const m: Map; i: INT): (INT, K, V);
 var k: K; v: V;
 begin
-    while i < m^.cap do
-        if m^.slots[i].used then return i + 1, m^.slots[i].key, m^.slots[i].val; end;
+    while i < m.cap do
+        if m.slots[i].used then return i + 1, m.slots[i].key, m.slots[i].val; end;
         INC(i);
     end;
     return -1, k, v;
@@ -117,12 +117,12 @@ end;
 
 (* Gives the map's memory back to its allocator, leaving it empty, as
    init does: it may be used again, and grows anew. *)
-proc done*(m: ^Map);
+proc done*(var m: Map);
 begin
-    if m^.slots # nil then Mem.free(m^.a, ^U8(m^.slots)); end;
-    m^.slots := nil;
-    m^.cap := 0;
-    m^.len := 0;
+    if m.slots # nil then Mem.free(m.a, ^U8(m.slots)); end;
+    m.slots := nil;
+    m.cap := 0;
+    m.len := 0;
 end;
 
 end Map.

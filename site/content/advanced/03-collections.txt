@@ -15,14 +15,14 @@ import Out, Heap, Ints := List(INT);
 proc main*;
 var l: Ints.List; n: ^Ints.Node; v: INT;
 begin
-    Ints.init(ADR(l), Heap.heap);
-    defer Ints.clear(ADR(l));
-    for v := 1 to 5 do _ := Ints.push(ADR(l), v * v); end;
-    Ints.reverse(ADR(l));                    (* oldest first *)
+    Ints.init(l, Heap.heap);
+    defer Ints.clear(l);
+    for v := 1 to 5 do _ := Ints.push(l, v * v); end;
+    Ints.reverse(l);                    (* oldest first *)
     n := l.head;
     while n # nil do Out.int(n^.val); Out.char(' '); n := n^.next; end;
     Out.ln;
-    v, _ := Ints.pop(ADR(l));
+    v, _ := Ints.pop(l);
     Out.int(v); Out.str(" popped, "); Out.int(l.len); Out.str(" left\n");
 end;
 
@@ -40,13 +40,13 @@ import Out, Heap, Ints := Vec(INT);
 proc main*;
 var v: Ints.Vec; i: INT; s: []INT;
 begin
-    Ints.init(ADR(v), Heap.heap);
-    defer Ints.done(ADR(v));
-    for i := 1 to 1000 do Ints.push(ADR(v), i * i); end;
-    s := Ints.all(ADR(v));
+    Ints.init(v, Heap.heap);
+    defer Ints.done(v);
+    for i := 1 to 1000 do Ints.push(v, i * i); end;
+    s := Ints.all(v);
     Out.int(v.len); Out.str(" squares, the last "); Out.int(s[LEN(s) - 1]); Out.ln;
-    Ints.resize(ADR(v), 3);
-    for i := 0 to v.len - 1 do Out.int(Ints.all(ADR(v))[i]); Out.char(' '); end;
+    Ints.resize(v, 3);
+    for i := 0 to v.len - 1 do Out.int(Ints.all(v)[i]); Out.char(' '); end;
     Out.ln;
 end;
 
@@ -64,22 +64,22 @@ import Out, Fmt, Str, Heap, Book := Map([]U8, INT, Str.hash, Str.eq);
 proc main*;
 var m: Book.Map; age: INT; found, ok: BOOL; i: INT; v: INT;
 begin
-    Book.init(ADR(m), Heap.heap);
-    _ := Book.put(ADR(m), "ada", 36);
-    _ := Book.put(ADR(m), "grace", 45);
-    _ := Book.put(ADR(m), "alan", 41);
-    _ := Book.put(ADR(m), "ada", 37);                (* replaces *)
-    age, found := Book.get(ADR(m), "ada");
+    Book.init(m, Heap.heap);
+    _ := Book.put(m, "ada", 36);
+    _ := Book.put(m, "grace", 45);
+    _ := Book.put(m, "alan", 41);
+    _ := Book.put(m, "ada", 37);                (* replaces *)
+    age, found := Book.get(m, "ada");
     Fmt.print("ada: {} ({})\n", [Fmt.int(age), Fmt.bool(found)]);
-    age, found := Book.get(ADR(m), "linus");
+    age, found := Book.get(m, "linus");
     Fmt.print("linus: {} ({})\n", [Fmt.int(age), Fmt.bool(found)]);
-    ok := Book.remove(ADR(m), "alan");
+    ok := Book.remove(m, "alan");
     Fmt.print("{} entries, removed {}\n", [Fmt.int(m.len), Fmt.bool(ok)]);
     v := 0;
-    i, _, age := Book.next(ADR(m), 0);
+    i, _, age := Book.next(m, 0);
     while i >= 0 do
         INC(v, age);
-        i, _, age := Book.next(ADR(m), i);
+        i, _, age := Book.next(m, i);
     end;
     Out.int(v); Out.str(" years in all\n");
 end;
@@ -120,22 +120,22 @@ var
     m: Count.Map; entries: Entries.Vec; i, k, found: INT;
     w, rest: []U8; key: []U8; v: INT; all: []Entry;
 begin
-    Count.init(ADR(m), Heap.heap);
-    defer Count.done(ADR(m));
+    Count.init(m, Heap.heap);
+    defer Count.done(m);
     w, rest := Str.field(Text);
     while LEN(w) > 0 do
-        k, _ := Count.get(ADR(m), w);
-        _ := Count.put(ADR(m), w, k + 1);
+        k, _ := Count.get(m, w);
+        _ := Count.put(m, w, k + 1);
         w, rest := Str.field(rest);
     end;
-    Entries.init(ADR(entries), Heap.heap);
-    defer Entries.done(ADR(entries));
-    found, key, v := Count.next(ADR(m), 0);
+    Entries.init(entries, Heap.heap);
+    defer Entries.done(entries);
+    found, key, v := Count.next(m, 0);
     while found >= 0 do
-        Entries.push(ADR(entries), {word: key, n: v});
-        found, key, v := Count.next(ADR(m), found);
+        Entries.push(entries, {word: key, n: v});
+        found, key, v := Count.next(m, found);
     end;
-    all := Entries.all(ADR(entries));
+    all := Entries.all(entries);
     Rank.sort(all);
     for i := 0 to LEN(all) - 1 do
         Fmt.print("{} {}\n", [Fmt.int(all[i].n), Fmt.str(all[i].word)]);

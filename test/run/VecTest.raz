@@ -8,36 +8,36 @@ type Point = record x, y: INT; name: []U8; end;
 proc main*;
 var v: Ints.Vec; w: Pts.Vec; i, sum, top: INT; ok: BOOL; p: ^Point; s: []INT;
 begin
-    Ints.init(ADR(v), Heap.heap);
-    Fmt.print("{} {}\n", [Fmt.int(v.len), Fmt.int(LEN(Ints.all(ADR(v))))]);
-    for i := 1 to 10000 do Ints.push(ADR(v), i); end;
-    s := Ints.all(ADR(v));
+    Ints.init(v, Heap.heap);
+    Fmt.print("{} {}\n", [Fmt.int(v.len), Fmt.int(LEN(Ints.all(v)))]);
+    for i := 1 to 10000 do Ints.push(v, i); end;
+    s := Ints.all(v);
     sum := 0;
     for i := 0 to LEN(s) - 1 do sum := sum + s[i]; end;
     Fmt.print("{} {} {} {}\n", [Fmt.int(v.len), Fmt.int(s[0]), Fmt.int(s[9999]), Fmt.int(sum)]);
-    Ints.resize(ADR(v), 3);
-    Ints.resize(ADR(v), 5);
-    s := Ints.all(ADR(v));
+    Ints.resize(v, 3);
+    Ints.resize(v, 5);
+    s := Ints.all(v);
     Fmt.print("{} {} {} {}\n", [Fmt.int(LEN(s)), Fmt.int(s[2]), Fmt.int(s[3]), Fmt.int(s[4])]);
-    Ints.reset(ADR(v));
-    Ints.push(ADR(v), 7);
-    Fmt.print("{} {}\n", [Fmt.int(v.len), Fmt.int(Ints.all(ADR(v))[0])]);
-    top, ok := Ints.pop(ADR(v));
+    Ints.reset(v);
+    Ints.push(v, 7);
+    Fmt.print("{} {}\n", [Fmt.int(v.len), Fmt.int(Ints.all(v)[0])]);
+    top, ok := Ints.pop(v);
     Fmt.print("{} {} {}\n", [Fmt.int(top), Fmt.bool(ok), Fmt.int(v.len)]);
-    top, ok := Ints.pop(ADR(v));
+    top, ok := Ints.pop(v);
     Fmt.print("{} {}\n", [Fmt.int(top), Fmt.bool(ok)]);
-    Ints.done(ADR(v));
+    Ints.done(v);
     Fmt.print("{}\n", [Fmt.int(v.len)]);
 
-    Pts.init(ADR(w), Heap.heap);
+    Pts.init(w, Heap.heap);
     for i := 0 to 99 do
-        p := Pts.add(ADR(w));
+        p := Pts.add(w);
         p^.x := i; p^.y := i * i;
     end;
-    Pts.push(ADR(w), {x: -1, y: -2, name: "last"});
-    Fmt.print("{} {} {} {}\n", [Fmt.int(w.len), Fmt.int(Pts.all(ADR(w))[99].y),
-        Fmt.int(Pts.all(ADR(w))[100].x), Fmt.str(Pts.all(ADR(w))[100].name)]);
-    Pts.done(ADR(w));
+    Pts.push(w, {x: -1, y: -2, name: "last"});
+    Fmt.print("{} {} {} {}\n", [Fmt.int(w.len), Fmt.int(Pts.all(w)[99].y),
+        Fmt.int(Pts.all(w)[100].x), Fmt.str(Pts.all(w)[100].name)]);
+    Pts.done(w);
 end;
 
 end VecTest.

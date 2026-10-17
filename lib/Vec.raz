@@ -19,37 +19,37 @@ type
     end;
 
 (* An empty array, which takes its memory from a. *)
-proc init*(v: ^Vec; a: ^Mem.Allocator);
+proc init*(var v: Vec; a: ^Mem.Allocator);
 begin
-    v^ := {a: a};
+    v := {a: a};
 end;
 
 (* Room for n more elements; false if the allocator has none. *)
-proc room*(v: ^Vec; n: INT): BOOL;
+proc room*(var v: Vec; n: INT): BOOL;
 var cap: INT; p: ^T;
 begin
-    if v^.len + n <= v^.cap then return true; end;
-    if v^.a = nil then
+    if v.len + n <= v.cap then return true; end;
+    if v.a = nil then
         (* as Buf: said plainly, rather than as a nil pointer in Mem.alloc *)
         _ := Sys.write(Sys.stderr, "Vec used before Vec.init\n");
         Rt.trace;
         Rt.exit(2);
     end;
-    cap := v^.cap * 2;
+    cap := v.cap * 2;
     if cap < 16 then cap := 16; end;
-    while cap < v^.len + n do cap := cap * 2; end;
+    while cap < v.len + n do cap := cap * 2; end;
     (* 8: no type of raz needs its elements aligned more *)
-    p := ^T(Mem.alloc(v^.a, cap * SIZE(T), 8));
+    p := ^T(Mem.alloc(v.a, cap * SIZE(T), 8));
     if p = nil then return false; end;
-    if v^.len > 0 then COPY(p[0..v^.len], v^.data[0..v^.len]); end;
-    if v^.data # nil then Mem.free(v^.a, ^U8(v^.data)); end;
-    v^.data := p;
-    v^.cap := cap;
+    if v.len > 0 then COPY(p[0..v.len], v.data[0..v.len]); end;
+    if v.data # nil then Mem.free(v.a, ^U8(v.data)); end;
+    v.data := p;
+    v.cap := cap;
     return true;
 end;
 
 (* Room for n more elements, or the program stops. *)
-proc need(v: ^Vec; n: INT);
+proc need(var v: Vec; n: INT);
 begin
     if not room(v, n) then
         _ := Sys.write(Sys.stderr, "Vec: out of memory\n");
@@ -59,83 +59,83 @@ begin
 end;
 
 (* Adds x at the end. *)
-proc push*(v: ^Vec; x: T);
+proc push*(var v: Vec; x: T);
 begin
     need(v, 1);
-    v^.data[v^.len] := x;
-    INC(v^.len);
+    v.data[v.len] := x;
+    INC(v.len);
 end;
 
 (* The last element, taken off; false if the array is empty. It keeps the
    memory, as resize does. *)
-proc pop*(v: ^Vec): (T, BOOL);
+proc pop*(var v: Vec): (T, BOOL);
 var x: T;
 begin
-    if v^.len = 0 then return x, false; end;
-    DEC(v^.len);
-    return v^.data[v^.len], true;
+    if v.len = 0 then return x, false; end;
+    DEC(v.len);
+    return v.data[v.len], true;
 end;
 
 (* Adds an element at the end, zero, and gives it, to be filled in
    place: for a big T, which push would copy. Good until the array
    next grows. *)
-proc add*(v: ^Vec): ^T;
+proc add*(var v: Vec): ^T;
 var zero: T;
 begin
     need(v, 1);
-    v^.data[v^.len] := zero;
-    INC(v^.len);
-    return v^.data + (v^.len - 1);
+    v.data[v.len] := zero;
+    INC(v.len);
+    return v.data + (v.len - 1);
 end;
 
 (* push, or false, and the array as it was, if there is no room. *)
-proc tryPush*(v: ^Vec; x: T): BOOL;
+proc tryPush*(var v: Vec; x: T): BOOL;
 begin
     if not room(v, 1) then return false; end;
-    v^.data[v^.len] := x;
-    INC(v^.len);
+    v.data[v.len] := x;
+    INC(v.len);
     return true;
 end;
 
 (* add, or nil and false, and the array as it was, if there is no room. *)
-proc tryAdd*(v: ^Vec): (^T, BOOL);
+proc tryAdd*(var v: Vec): (^T, BOOL);
 begin
     if not room(v, 1) then return nil, false; end;
     return add(v), true;
 end;
 
 (* Makes the array n elements long: cut short, or grown with zeros. *)
-proc resize*(v: ^Vec; n: INT);
+proc resize*(var v: Vec; n: INT);
 var zero: T; i: INT;
 begin
-    if n > v^.len then
-        need(v, n - v^.len);
-        for i := v^.len to n - 1 do v^.data[i] := zero; end;
+    if n > v.len then
+        need(v, n - v.len);
+        for i := v.len to n - 1 do v.data[i] := zero; end;
     end;
-    v^.len := n;
+    v.len := n;
 end;
 
 (* The elements, until the array next grows. *)
-proc all*(v: ^Vec): []T;
+proc all*(const v: Vec): []T;
 var none: []T;
 begin
-    if v^.len = 0 then return none; end;
-    return v^.data[0..v^.len];
+    if v.len = 0 then return none; end;
+    return v.data[0..v.len];
 end;
 
 (* Empties the array, keeping its memory for what comes next. *)
-proc reset*(v: ^Vec);
+proc reset*(var v: Vec);
 begin
-    v^.len := 0;
+    v.len := 0;
 end;
 
 (* Gives the array's memory back, leaving it empty. *)
-proc done*(v: ^Vec);
+proc done*(var v: Vec);
 begin
-    if v^.data # nil then Mem.free(v^.a, ^U8(v^.data)); end;
-    v^.data := nil;
-    v^.len := 0;
-    v^.cap := 0;
+    if v.data # nil then Mem.free(v.a, ^U8(v.data)); end;
+    v.data := nil;
+    v.len := 0;
+    v.cap := 0;
 end;
 
 end Vec.

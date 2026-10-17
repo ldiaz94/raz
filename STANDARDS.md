@@ -13,14 +13,16 @@ it does with it:
 
 | The procedure | The parameter | Example |
 |---|---|---|
-| reads it, a few words at most (a handle, a slice, a small record) | a value | `Buf.bytes(b: Buf)` |
-| reads it, more than a few words | `const` | `Opt.number(const p: Parser; lo, hi: I64)` |
+| reads it, a single value or a slice | a value | `Sys.write(fd: INT; s: []U8)` |
+| reads it, a record or an array | `const` | `Map.get(const m: Map; k: K)` |
 | changes it, and lets go of it when it returns | `var` | `Buf.add(var b: Buf; c: U8)` |
 | keeps it past the call, in a record, a module variable or another thread | a pointer, `^T` | `Thread.spawn(p, arg: ^U8)` |
 
 A `const` parameter is passed in place, as a `var` one is, so nothing
 is copied; and since it can't be changed, `var` in a heading always
-means the procedure changes what it is given.
+means the procedure changes what it is given. A record of only four
+words passed as a value, copied at each call, made a loop of `Map.get`
+and `Vec.all` half again as slow as `const` did (2026-10.33).
 
 So `ADR` at a call says the callee keeps what it is given. A reader
 who sees `Pg.start(q, ADR(c), sql)` knows that `q` is changed and `c`

@@ -12,20 +12,20 @@ var
     counts: Count.Map; order: Names.List; n: ^Names.Node;
     k, total: INT; found, _ok: BOOL; w, rest: []U8;
 begin
-    Count.init(ADR(counts), Heap.heap);
-    Names.init(ADR(order), Heap.heap);
+    Count.init(counts, Heap.heap);
+    Names.init(order, Heap.heap);
     w, rest := Str.field(Text);
     while LEN(w) > 0 do
         INC(total);
-        k, found := Count.get(ADR(counts), w);
-        if not found then _ok := Names.push(ADR(order), w); end;
-        _ok := Count.put(ADR(counts), w, k + 1);
+        k, found := Count.get(counts, w);
+        if not found then _ok := Names.push(order, w); end;
+        _ok := Count.put(counts, w, k + 1);
         w, rest := Str.field(rest);
     end;
-    Names.reverse(ADR(order));
+    Names.reverse(order);
     n := order.head;
     while n # nil do
-        k, found := Count.get(ADR(counts), n^.val);
+        k, found := Count.get(counts, n^.val);
         Fmt.print("{} {}\n", [Fmt.str(n^.val), Fmt.int(k)]);
         n := n^.next;
     end;

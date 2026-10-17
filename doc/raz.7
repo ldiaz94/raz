@@ -553,9 +553,10 @@ one is the caller's variable, of the parameter's type exactly; a
 .Cm const
 one is the caller's variable too, read in place and never changed, and
 takes any expression of its type.
-A procedure takes what it reads as a value when it is a few words, as
+A procedure takes what it reads as a value when it is a single value
+or a slice, as
 .Cm const
-when it is more; what it changes as
+when it is a record or an array; what it changes as
 .Cm var ;
 and a pointer only for what it keeps.
 .It

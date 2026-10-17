@@ -648,34 +648,34 @@ module List(T);
 type
     Node* = record next*: ^Node; val*: T; end;
     List* = record head*: ^Node; len*: INT; ... end;
-proc init*(l: ^List; a: ^Mem.Allocator);
-proc push*(l: ^List; v: T): BOOL;     (* v at the front; false if the allocator has no room *)
-proc pop*(l: ^List): (T, BOOL);       (* the front value, taken off; false if the list is empty *)
-proc reverse*(l: ^List);
-proc clear*(l: ^List);
+proc init*(var l: List; a: ^Mem.Allocator);
+proc push*(var l: List; v: T): BOOL;     (* v at the front; false if the allocator has no room *)
+proc pop*(var l: List): (T, BOOL);       (* the front value, taken off; false if the list is empty *)
+proc reverse*(var l: List);
+proc clear*(var l: List);
 
 module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
 type Map* = record len*: INT; ... end;
-proc init*(m: ^Map; a: ^Mem.Allocator);
-proc put*(m: ^Map; k: K; v: V): BOOL;         (* k now maps to v; false if there was no room *)
-proc remove*(m: ^Map; k: K): BOOL;            (* false if k wasn't there *)
-proc get*(m: ^Map; k: K): (V, BOOL);          (* what k maps to, and whether it maps to anything *)
-proc next*(m: ^Map; i: INT): (INT, K, V);     (* the entry after i *)
-proc done*(m: ^Map);                          (* its memory given back, leaving it empty *)
+proc init*(var m: Map; a: ^Mem.Allocator);
+proc put*(var m: Map; k: K; v: V): BOOL;         (* k now maps to v; false if there was no room *)
+proc remove*(var m: Map; k: K): BOOL;            (* false if k wasn't there *)
+proc get*(const m: Map; k: K): (V, BOOL);        (* what k maps to, and whether it maps to anything *)
+proc next*(const m: Map; i: INT): (INT, K, V);   (* the entry after i *)
+proc done*(var m: Map);                          (* its memory given back, leaving it empty *)
 
 module Vec(T);
 type Vec* = record len*: INT; ... end;
-proc init*(v: ^Vec; a: ^Mem.Allocator);
-proc room*(v: ^Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
-proc push*(v: ^Vec; x: T);            (* x added at the end *)
-proc pop*(v: ^Vec): (T, BOOL);        (* the last element, taken off; false if the array is empty *)
-proc add*(v: ^Vec): ^T;               (* a new element at the end, zero, to fill in place *)
-proc tryPush*(v: ^Vec; x: T): BOOL;   (* push; false, and v as it was, if there is no room *)
-proc tryAdd*(v: ^Vec): (^T, BOOL);    (* add; nil and false, and v as it was, if there is no room *)
-proc resize*(v: ^Vec; n: INT);        (* n elements: cut short, or the new ones zero *)
-proc all*(v: ^Vec): []T;              (* the elements, until it next grows *)
-proc reset*(v: ^Vec);                 (* emptied, its memory kept *)
-proc done*(v: ^Vec);                  (* its memory given back *)
+proc init*(var v: Vec; a: ^Mem.Allocator);
+proc room*(var v: Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
+proc push*(var v: Vec; x: T);            (* x added at the end *)
+proc pop*(var v: Vec): (T, BOOL);        (* the last element, taken off; false if the array is empty *)
+proc add*(var v: Vec): ^T;               (* a new element at the end, zero, to fill in place *)
+proc tryPush*(var v: Vec; x: T): BOOL;   (* push; false, and v as it was, if there is no room *)
+proc tryAdd*(var v: Vec): (^T, BOOL);    (* add; nil and false, and v as it was, if there is no room *)
+proc resize*(var v: Vec; n: INT);        (* n elements: cut short, or the new ones zero *)
+proc all*(const v: Vec): []T;            (* the elements, until it next grows *)
+proc reset*(var v: Vec);                 (* emptied, its memory kept *)
+proc done*(var v: Vec);                  (* its memory given back *)
 
 module Sort(T; less: proc(a, b: T): BOOL);
 proc sort*(s: []T);
@@ -801,10 +801,10 @@ to pass for the one after it, and -1 when there are no more. A walk
 sees each entry once if the map doesn't change during it:
 
 ```
-i, k, v := Names.next(ADR(names), 0);
+i, k, v := Names.next(names, 0);
 while i >= 0 do
     Fmt.print("{} is {}\n", [Fmt.str(k), Fmt.int(v)]);
-    i, k, v := Names.next(ADR(names), i);
+    i, k, v := Names.next(names, i);
 end;
 ```
 

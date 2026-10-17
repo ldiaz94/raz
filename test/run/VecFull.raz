@@ -7,8 +7,8 @@ proc main*;
 var ar: Arena.Arena; v: Ints.Vec; i: INT;
 begin
     if not Arena.init(ar, 4096) then Rt.stop("no arena"); end;
-    Ints.init(ADR(v), ADR(ar.base));
-    for i := 1 to 10000 do Ints.push(ADR(v), i); end;
+    Ints.init(v, ADR(ar.base));
+    for i := 1 to 10000 do Ints.push(v, i); end;
 end;
 
 end VecFull.

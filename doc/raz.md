@@ -1461,10 +1461,10 @@ begin
 end;
 ```
 
-A procedure takes what it reads as a value when it is a few words, and
-as `const` when it is more; what it changes, as `var`; and a pointer
-only for what it keeps past the call, what may be `nil`, an allocator,
-or what C or the system takes.
+A procedure takes what it reads as a value when it is a single value
+or a slice, and as `const` when it is a record or an array; what it
+changes, as `var`; and a pointer only for what it keeps past the call,
+what may be `nil`, an allocator, or what C or the system takes.
 
 **Results.** A procedure returns nothing, one value, or several. A call
 that returns several values can only stand on the right of a multiple

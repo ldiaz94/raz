@@ -7,15 +7,15 @@ proc main*;
 var ar: Arena.Arena; v: Ints.Vec; n: INT; p: ^INT; ok: BOOL;
 begin
     if not Arena.init(ar, 4096) then Rt.stop("no arena"); end;
-    Ints.init(ADR(v), ADR(ar.base));
+    Ints.init(v, ADR(ar.base));
     n := 0;
-    while Ints.tryPush(ADR(v), n) do INC(n); end;
-    p, ok := Ints.tryAdd(ADR(v));
+    while Ints.tryPush(v, n) do INC(n); end;
+    p, ok := Ints.tryAdd(v);
     Fmt.print("{} {} {} {}\n", [Fmt.int(n), Fmt.int(v.len), Fmt.bool(ok), Fmt.bool(p = nil)]);
-    Ints.reset(ADR(v));
-    p, ok := Ints.tryAdd(ADR(v));
+    Ints.reset(v);
+    p, ok := Ints.tryAdd(v);
     p^ := 5;
-    Fmt.print("{} {} {}\n", [Fmt.bool(ok), Fmt.int(v.len), Fmt.int(Ints.all(ADR(v))[0])]);
+    Fmt.print("{} {} {}\n", [Fmt.bool(ok), Fmt.int(v.len), Fmt.int(Ints.all(v)[0])]);
 end;
 
 end VecTry.

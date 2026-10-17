@@ -22,17 +22,17 @@ var m: Names.Map; i, v: INT; found, _ok: BOOL; keys: [3][]U8;
 begin
     counting := {alloc: alloc, free: free};
     keys := ["node_modules", "target", "build"];
-    Names.init(ADR(m), ADR(counting));
-    Names.done(ADR(m));   (* nothing taken yet *)
-    for i := 0 to 99 do _ok := Names.put(ADR(m), keys[i mod 3], i); end;
+    Names.init(m, ADR(counting));
+    Names.done(m);   (* nothing taken yet *)
+    for i := 0 to 99 do _ok := Names.put(m, keys[i mod 3], i); end;
     Fmt.print("{} entries, {} block\n", [Fmt.int(m.len), Fmt.int(live)]);
-    Names.done(ADR(m));
-    v, found := Names.get(ADR(m), "target");
+    Names.done(m);
+    v, found := Names.get(m, "target");
     Fmt.print("{} entries, {} blocks, found {}\n", [Fmt.int(m.len), Fmt.int(live), Fmt.bool(found)]);
-    _ok := Names.put(ADR(m), "target", 7);
-    v, found := Names.get(ADR(m), "target");
+    _ok := Names.put(m, "target", 7);
+    v, found := Names.get(m, "target");
     Fmt.print("{} entry, {}\n", [Fmt.int(m.len), Fmt.int(v)]);
-    Names.done(ADR(m));
+    Names.done(m);
     Fmt.print("{} blocks\n", [Fmt.int(live)]);
 end;
 
