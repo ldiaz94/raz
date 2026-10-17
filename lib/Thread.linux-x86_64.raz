@@ -181,24 +181,24 @@ begin
 end;
 
 (* Takes m, sleeping while another thread holds it. *)
-proc lock*(m: ^Mutex);
+proc lock*(var m: Mutex);
 var c: INT;
 begin
-    if CAS(ADR(m^.state), 0, 1) then return; end;
-    c := XCHG(ADR(m^.state), 2);
+    if CAS(ADR(m.state), 0, 1) then return; end;
+    c := XCHG(ADR(m.state), 2);
     while c # 0 do
-        _ := futex(ADR(m^.state), FutexWait + Private, 2);
-        c := XCHG(ADR(m^.state), 2);
+        _ := futex(ADR(m.state), FutexWait + Private, 2);
+        c := XCHG(ADR(m.state), 2);
     end;
 end;
 
 (* Gives up m, which the caller holds, waking a thread that waits
    for it. *)
-proc unlock*(m: ^Mutex);
+proc unlock*(var m: Mutex);
 begin
-    if XADD(ADR(m^.state), -1) # 1 then
-        _ := XCHG(ADR(m^.state), 0);
-        _ := futex(ADR(m^.state), FutexWake + Private, 1);
+    if XADD(ADR(m.state), -1) # 1 then
+        _ := XCHG(ADR(m.state), 0);
+        _ := futex(ADR(m.state), FutexWake + Private, 1);
     end;
 end;
 
@@ -217,9 +217,9 @@ var
 
 proc testWork(_arg: ^U8);
 begin
-    lock(ADR(testLock));
+    lock(testLock);
     INC(testCount);
-    unlock(ADR(testLock));
+    unlock(testLock);
 end;
 
 proc testArg(i: INT): INT;
@@ -242,7 +242,7 @@ begin
     if (alive < 1) or (alive > LEN(wave)) then Rt.stop("Thread: alive is 1 to 1000"); end;
     started := 0;
     while started < n do
-        lock(ADR(testLock));
+        lock(testLock);
         k := 0;
         while (k < alive) and (started + k < n) do
             t, err := spawn(testWork, nil);
@@ -254,7 +254,7 @@ begin
             wave[k] := t;
             INC(k);
         end;
-        unlock(ADR(testLock));
+        unlock(testLock);
         for i := 0 to k - 1 do join(wave[i]); end;
         started := started + k;
     end;

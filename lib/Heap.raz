@@ -59,8 +59,8 @@ begin
         if p = nil then return nil; end;
         return give(p + align - Header, -n);
     end;
-    Lock.take(ADR(lock));
-    defer Lock.give(ADR(lock));
+    Lock.take(lock);
+    defer Lock.give(lock);
     b := lists[c];
     if b # nil then
         lists[c] := b^.next;
@@ -83,20 +83,20 @@ var h: ^Head; b: ^Block; c: INT;
 begin
     if p = nil then return; end;
     h := ^Head(p - Header);
-    Lock.take(ADR(lock));
+    Lock.take(lock);
     if h^.mark # Out xor INT(h) then
         Rt.stop("Heap: a block freed twice, or never given out");
     end;
     h^.mark := 0;
     if h^.size < 0 then
-        Lock.give(ADR(lock));
+        Lock.give(lock);
         Mem.unmap(^U8(INT(h) - INT(h) mod Mem.Page), -h^.size);
     else
         c := h^.size;          (* before next, which takes its place, is set *)
         b := ^Block(h);
         b^.next := lists[c];
         lists[c] := b;
-        Lock.give(ADR(lock));
+        Lock.give(lock);
     end;
 end;
 

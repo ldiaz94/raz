@@ -18,9 +18,9 @@ var i: I64; p, list: ^Node;
 begin
     list := nil;
     for i := 1 to Rounds do
-        Thread.lock(ADR(m));
+        Thread.lock(m);
         INC(count);
-        Thread.unlock(ADR(m));
+        Thread.unlock(m);
         _ := XADD(ADR(atomic), 1);
         NEW(p, Heap.heap);
         p^.next := list;

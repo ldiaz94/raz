@@ -90,8 +90,8 @@ one block: its `free` does nothing, and `reset` forgets everything.
 ```
 module Lock;
 type Lock* = record ... end;
-proc take*(l: ^Lock);
-proc give*(l: ^Lock);
+proc take*(var l: Lock);
+proc give*(var l: Lock);
 
 module Thread;
 const Failed*: ERROR = "can't start a thread";
@@ -101,8 +101,8 @@ type
 proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);   (* p(arg) in a new thread *)
 proc join*(t: ^Thread);         (* waits for t to end, then frees its stack *)
 proc signal*(t: ^Thread; sig: INT): INT;   (* sig sent to t alone: 0, or minus an errno *)
-proc lock*(m: ^Mutex);
-proc unlock*(m: ^Mutex);
+proc lock*(var m: Mutex);
+proc unlock*(var m: Mutex);
 ```
 
 A `Lock` is for short sections: a thread that finds it taken tries

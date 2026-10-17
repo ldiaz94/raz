@@ -27,9 +27,9 @@ begin
     n := XADD(ADR(next), 1);
     while n < Jobs do
         r := job(n * 1000);
-        Thread.lock(ADR(m));
+        Thread.lock(m);
         total := total + r;
-        Thread.unlock(ADR(m));
+        Thread.unlock(m);
         n := XADD(ADR(next), 1);
     end;
 end;

@@ -135,10 +135,10 @@ proc work(_arg: ^U8);
 var i: INT;
 begin
     for i := 1 to 20000 do
-        Lock.take(ADR(lock));
+        Lock.take(lock);
         INC(deposits);
         INC(balance, 3);
-        Lock.give(ADR(lock));
+        Lock.give(lock);
     end;
 end;
 

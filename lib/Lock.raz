@@ -9,31 +9,31 @@ import Sys, Rt;
 type Lock* = record held: INT; end;
 
 (* Takes l, waiting while another thread holds it. *)
-proc take*(l: ^Lock);
+proc take*(var l: Lock);
 var tries: INT;
 begin
     tries := 0;
-    while not CAS(ADR(l^.held), 0, 1) do
+    while not CAS(ADR(l.held), 0, 1) do
         INC(tries);
         if tries = 64 then Sys.yield; tries := 0; end;
     end;
 end;
 
 (* Gives up l, which the caller holds. *)
-proc give*(l: ^Lock);
+proc give*(var l: Lock);
 begin
-    _ := XCHG(ADR(l^.held), 0);
+    _ := XCHG(ADR(l.held), 0);
 end;
 
 (* The module's test, in one thread: taken, given, taken again. *)
 proc main*;
 var l: Lock;
 begin
-    take(ADR(l));
+    take(l);
     if l.held # 1 then Rt.stop("Lock.take"); end;
-    give(ADR(l));
-    take(ADR(l));
-    give(ADR(l));
+    give(l);
+    take(l);
+    give(l);
     if l.held # 0 then Rt.stop("Lock.give"); end;
 end;
 

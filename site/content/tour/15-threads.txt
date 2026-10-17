@@ -60,10 +60,10 @@ proc deposit(_arg: ^U8);
 var i: INT;
 begin
     for i := 1 to 10000 do
-        Thread.lock(ADR(m));
+        Thread.lock(m);
         balance := balance + 5;
         INC(deposits);
-        Thread.unlock(ADR(m));
+        Thread.unlock(m);
     end;
 end;
 

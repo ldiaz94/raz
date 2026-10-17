@@ -46,10 +46,10 @@ proc signal*(t: ^Thread; sig: INT): INT;
     too, since pthread_kill is tgkill with C's id for the thread: a C
     thread that hasn't noted its id yet is waited for.
 
-proc lock*(m: ^Mutex);
+proc lock*(var m: Mutex);
     Takes m, sleeping while another thread holds it.
 
-proc unlock*(m: ^Mutex);
+proc unlock*(var m: Mutex);
     Gives up m, which the caller holds, waking a thread that waits
     for it.
 

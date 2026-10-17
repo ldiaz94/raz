@@ -33,9 +33,9 @@ end;
 (* Writes out what the buffer holds. *)
 proc flush*;
 begin
-    Lock.take(ADR(lock));
+    Lock.take(lock);
     out;
-    Lock.give(ADR(lock));
+    Lock.give(lock);
 end;
 
 (* Has the buffer written at each line feed, whatever standard output
@@ -44,23 +44,23 @@ end;
    --line-buffered. *)
 proc lines*(on: BOOL);
 begin
-    Lock.take(ADR(lock));
+    Lock.take(lock);
     eachLine := on;
-    Lock.give(ADR(lock));
+    Lock.give(lock);
 end;
 
 (* Writes the bytes of s. *)
 proc str*(s: []U8);
 var i: INT;
 begin
-    Lock.take(ADR(lock));
+    Lock.take(lock);
     for i := 0 to LEN(s) - 1 do
         if n = LEN(buf) then out; end;
         buf[n] := s[i];
         INC(n);
         if (s[i] = '\n') and eachLine then out; end;
     end;
-    Lock.give(ADR(lock));
+    Lock.give(lock);
 end;
 
 (* Writes the byte c. *)
