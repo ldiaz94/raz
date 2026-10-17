@@ -76,8 +76,9 @@ program.
 
 ## Step 1 as it was left
 
-Not committed; this container's working tree had it, and it is
-repeated here so that a fresh session can make it again. Untested
+Committed on the branch `wip/v0.20-boot` (`849d93e`), not on `main`,
+since CI on `main` would fail until the v0.19.0 release exists; it is
+repeated here too. Untested
 beyond `make raz` (which built `raz 0.19.0-1-...` from build/boot/raz).
 
 - `BOOT`, one line: `v0.19.0 217448cb6521c76a28d71499d70a5dfdebc2dbcbc81d6d41ed9d9590005772ed`
