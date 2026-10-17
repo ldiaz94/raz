@@ -358,17 +358,20 @@ begin
     if interactive then show("\n", []); end;
 end;
 
+(* The options, a constant table of Opt's rows *)
+const Options: []Opt.Row = [
+    Opt.usage("", "Sh [-c script | file]"),
+    Opt.option("", 'c', "command", "script", "run script, not standard input")];
+
 proc main*: INT;
 var p: Opt.Parser; script, file: []U8; given, found: BOOL; b: Buf.Buf;
 begin
     if not Arena.init(arena, 1 shl 24) then Rt.stop("Sh: no memory"); end;
-    Opt.init(ADR(p), "Sh", [
-        Opt.usage("", "Sh [-c script | file]"),
-        Opt.option("", 'c', "command", "script", "run script, not standard input")]);
-    while Opt.next(ADR(p)) do
+    Opt.init(p, "Sh", Options);
+    while Opt.next(p) do
         if p.letter = 'c' then script := p.value; given := true; end;
     end;
-    file, found := Opt.operand(ADR(p));
+    file, found := Opt.operand(p);
     if given then
         run(script);
     elsif found then

@@ -839,14 +839,14 @@ type
         spelt*: []U8;   (* as it was written, no dashes: "b" or "bar"; to read only *)
         ...
     end;
-proc init*(p: ^Parser; name: []U8; table: []Row);  (* the arguments from 1 on, by table *)
-proc next*(p: ^Parser): BOOL;                     (* the next option; false when they end *)
-proc operand*(p: ^Parser): ([]U8, BOOL);          (* the next operand; false when there are no more *)
-proc at*(p: ^Parser): INT;                        (* the argument operand would give next *)
-proc scope*(p: ^Parser; name: []U8);              (* subcommand name's options, from the word after it *)
-proc number*(p: ^Parser; lo, hi: I64): I64;       (* the value just read, a number from lo to hi *)
-proc refuse*(p: ^Parser; wants: []U8);            (* the value just read refused, as number refuses one *)
-proc fail*(p: ^Parser; text: []U8);               (* the program's own mistake *)
+proc init*(var p: Parser; name: []U8; table: []Row);   (* the arguments from 1 on, by table *)
+proc next*(var p: Parser): BOOL;                      (* the next option; false when they end *)
+proc operand*(var p: Parser): ([]U8, BOOL);           (* the next operand; false when there are no more *)
+proc at*(var p: Parser): INT;                         (* the argument operand would give next *)
+proc scope*(var p: Parser; name: []U8);               (* subcommand name's options, from the word after it *)
+proc number*(const p: Parser; lo, hi: I64): I64;      (* the value just read, a number from lo to hi *)
+proc refuse*(const p: Parser; wants: []U8);           (* the value just read refused, as number refuses one *)
+proc fail*(const p: Parser; text: []U8);              (* the program's own mistake *)
 ```
 
 `Opt` reads a command line by the rules of the C library's `getopt`,
@@ -857,7 +857,8 @@ and the messages for mistakes are made from the table, so they can't
 drift from it; the program's test of `p.letter` is the only other
 place an option appears. The parser is a record the program owns, and
 the table a slice it keeps as long as the parser: a literal written in
-the call to `init` lives as long as the procedure that makes it.
+the call to `init` lives as long as the procedure that makes it, and a
+constant, `const Rows: []Opt.Row = [...]`, as long as the program.
 
 A row's `scope` is `""` for the program itself, or a subcommand's
 name: `"start"`, or `"remote.add"` for a subcommand of `remote`. An
@@ -873,25 +874,25 @@ has it, and the help shows it as `--color[=when]`.
 ```
 const wait = 1;     (* the key of --wait, which has no letter *)
 ...
-Opt.init(ADR(p), "keep", [
+Opt.init(p, "keep", [
     Opt.usage("", "keep [-v] [--wait secs] start ..."),
     Opt.sub("", "start", "start a job"),
     Opt.option("", 'v', "verbose", "", "say more"),
     Opt.option("", wait, "wait", "secs", "give the job secs to start"),
     Opt.usage("start", "keep start [-b label] name command [argument ...]"),
     Opt.option("start", 'b', "bar", "label", "show the job in the bar as label")]);
-while Opt.next(ADR(p)) do
+while Opt.next(p) do
     if p.letter = 'v' then verbose := true;
-    elsif p.letter = wait then secs := Opt.number(ADR(p), 1, 600);
+    elsif p.letter = wait then secs := Opt.number(p, 1, 600);
     end;
 end;
-w, ok := Opt.operand(ADR(p));
-if not ok or (w # "start") then Opt.fail(ADR(p), "no command; see keep -h"); end;
-Opt.scope(ADR(p), "start");
-while Opt.next(ADR(p)) do
+w, ok := Opt.operand(p);
+if not ok or (w # "start") then Opt.fail(p, "no command; see keep -h"); end;
+Opt.scope(p, "start");
+while Opt.next(p) do
     if p.letter = 'b' then bar := p.value; end;
 end;
-job, ok := Opt.operand(ADR(p));
+job, ok := Opt.operand(p);
 ```
 
 The rules are `getopt`'s:
@@ -916,8 +917,8 @@ next on are `Files.arg(i)` for `i` from `at(p)` to `ARGC() - 1`, so
 that an interpreter hands a script its arguments as they are:
 
 ```
-script, ok := Opt.operand(ADR(p));       (* tery file arg ... *)
-first := Opt.at(ADR(p));                 (* file's own arguments, from here on *)
+script, ok := Opt.operand(p);       (* tery file arg ... *)
+first := Opt.at(p);                 (* file's own arguments, from here on *)
 ```
 
 `-h` or `--help` among a scope's options prints its help on standard

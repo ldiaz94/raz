@@ -191,23 +191,23 @@ proc main*;
 var p: Opt.Parser; verbose: BOOL; n, i: INT; w: []U8; ok: BOOL;
 begin
     n := 1;
-    Opt.init(ADR(p), "tool", [
+    Opt.init(p, "tool", [
         Opt.usage("", "tool [-v] [--count n] word ..."),
         Opt.option("", 'v', "verbose", "", "say more"),
         Opt.option("", count, "count", "n", "repeat each word n times")]);
-    while Opt.next(ADR(p)) do
+    while Opt.next(p) do
         if p.letter = 'v' then verbose := true;
-        elsif p.letter = count then n := INT(Opt.number(ADR(p), 1, 5));
+        elsif p.letter = count then n := INT(Opt.number(p, 1, 5));
         end;
     end;
-    w, ok := Opt.operand(ADR(p));
-    if not ok then Opt.fail(ADR(p), "no words; see tool -h"); end;
+    w, ok := Opt.operand(p);
+    if not ok then Opt.fail(p, "no words; see tool -h"); end;
     while ok do
         for i := 1 to n do
             if verbose then Out.str("word: "); end;
             Fmt.print("{}\n", [Fmt.str(w)]);
         end;
-        w, ok := Opt.operand(ADR(p));
+        w, ok := Opt.operand(p);
     end;
 end;
 

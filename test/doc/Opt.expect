@@ -31,38 +31,38 @@ type Parser* = record
     help: BOOL;     (* the option just read is -h or --help *)
 end;
 
-proc init*(p: ^Parser; name: []U8; table: []Row);
+proc init*(var p: Parser; name: []U8; table: []Row);
     p reads the arguments from 1 on, by table, in the program's own
     scope; name begins the messages.
 
-proc next*(p: ^Parser): BOOL;
+proc next*(var p: Parser): BOOL;
     The next option, in p.letter, p.value and p.long; false when the
     scope's options end.
 
-proc operand*(p: ^Parser): ([]U8, BOOL);
+proc operand*(var p: Parser): ([]U8, BOOL);
     The next operand, after what options are left; false when there are
     no more.
 
-proc at*(p: ^Parser): INT;
+proc at*(var p: Parser): INT;
     The number of the argument operand would give next, after what
     options are left: the operands from there on are Files.arg(i), for
     i up to ARGC() - 1, as an interpreter hands them to its script.
 
-proc scope*(p: ^Parser; name: []U8);
+proc scope*(var p: Parser; name: []U8);
     The options of the subcommand name, from the word after its own,
     which operand has given.
 
-proc number*(p: ^Parser; lo, hi: I64): I64;
+proc number*(const p: Parser; lo, hi: I64): I64;
     The value of the option just read, as a whole number from lo to hi;
     anything else is a mistake. A number with no top is given the
     largest I64 for hi, and the mistake says "from lo up".
 
-proc refuse*(p: ^Parser; wants: []U8);
+proc refuse*(const p: Parser; wants: []U8);
     The value of the option just read refused, as number refuses one:
     "-b wants wants, not 'value'", the option as it was written, with
     the scope's synopsis lines, and status 2.
 
-proc fail*(p: ^Parser; text: []U8);
+proc fail*(const p: Parser; text: []U8);
     The program's own mistake, written as Opt's are but alone, and
     status 2.
 
