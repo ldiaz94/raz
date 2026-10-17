@@ -4,15 +4,15 @@ What the language or the library might have, met while writing raz.
 None is built while the freeze holds; each waits for a later thaw, by
 the owner's word, and goes into the report before any code.
 
-## IMMINENT - APPROVED: what a call does with its arguments, written at the call
+## What a call does with its arguments, written at the call
 
-**Status.** Approved by the owner, 2026-10-16, for the next thaw, and
-revised on 2026-10-17 after a review of how it reads in real code. A
-second review, the same day, found the questions listed at the end of
-part 1, "Open questions"; the owner judged the feature, and its use,
-not yet settled, and left them open. Only part 2 goes ahead, on its
-own and without the marks (2026-10-17). It is five parts, made in one
-thaw so that programs break once:
+**Status.** Not approved. Drafted 2026-10-16 and reviewed twice on
+2026-10-17 (the second review's findings are under "Open questions",
+at the end of part 1). The owner judged the feature, and its use, not
+settled: no change is made for the marks at the call, `ret` or `keep`.
+Part 2, the library by `var`, is done on its own, without the marks.
+As drafted, it is five parts, to be made in one thaw so that programs
+break once:
 
 1. **Marks at the call** (this section): an argument for a `var`
    parameter is written `var x`, and one for a `keep` parameter
