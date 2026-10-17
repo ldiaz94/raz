@@ -1,6 +1,6 @@
 (* Raz: the command line.
 
-     raz [-I dir]... [-o file] [-Werror] [-S] [-libc glibc|musl] Main.raz
+     raz [-I dir]... [-o file] [-Werror] [-S] [-libc glibc|musl] [-base addr] Main.raz
      raz run [-I dir]... Main.raz [arg]...
      raz --version
 
@@ -93,6 +93,32 @@ begin
     return c # nil;
 end;
 
+(* The address s, a number as raz writes one: decimal digits, or
+   hexadecimal ones that start with a digit and end in H; and whether it
+   is one, and fits in 64 bits. Past high(INT) it is taken as a UINT,
+   whose bits it keeps: 0FFFFFFFF80000000H is -80000000H. *)
+proc address(s: []U8): (INT, BOOL);
+var i, n, d, radix: INT; v: UINT;
+begin
+    n := LEN(s);
+    radix := 10;
+    if (n > 1) and (s[n - 1] = 'H') then radix := 16; DEC(n); end;
+    if (n = 0) or (s[0] < '0') or (s[0] > '9') then return 0, false; end;
+    v := 0;
+    for i := 0 to n - 1 do
+        if (s[i] >= '0') and (s[i] <= '9') then
+            d := INT(s[i]) - 48;
+        elsif (radix = 16) and (s[i] >= 'A') and (s[i] <= 'F') then
+            d := INT(s[i]) - 55;
+        else
+            return 0, false;
+        end;
+        if v > (UINT(0FFFFFFFFFFFFFFFFH) - UINT(d)) div UINT(radix) then return 0, false; end;
+        v := v * UINT(radix) + UINT(d);
+    end;
+    return INT(v), true;
+end;
+
 (* What raz -h says *)
 proc usage;
 begin
@@ -105,6 +131,8 @@ begin
     Out.str("  -S           lists the main module's code, under each line of source\n");
     Out.str("  -s           strips symbols, line numbers, the places a failure is told\n");
     Out.str("               by and the profiler: a failure says only its address\n");
+    Out.str("  -base addr   loads the program at addr, not 400000H: a multiple of 4096\n");
+    Out.str("               in the low or the top 2 GB, as 0FFFFFFFF80000000H\n");
     Out.str("  -noprofile   leaves out the profiler, which RAZ_PROFILE turns on\n");
     Out.str("  -libc name   links a program that uses C against glibc or musl; by\n");
     Out.str("               default glibc, or musl where only its loader is there\n");
@@ -170,9 +198,9 @@ end;
 proc main*: INT;
 var
     path, outPath, s: []U8; dir: []U8;
-    i, first, entry, fd, last, errno: INT;
+    i, first, entry, fd, last, errno, base: INT;
     m, rt, thread: ^Sym.Module; mainObj: ^Sym.Obj;
-    run, noProfile, listing, dynamic, libcSaid: BOOL; err: ERROR;
+    run, noProfile, listing, dynamic, libcSaid, ok: BOOL; err: ERROR;
 begin
     path := "";
     outPath := "";
@@ -197,6 +225,13 @@ begin
             X64.setListing(true);
         elsif s = "-s" then
             Elf.setStripped(true);
+        elsif s = "-base" then
+            INC(i);
+            base, ok := address(Files.arg(i));
+            Link.setBase(base);
+            if not ok or (base mod Link.Page # 0) then
+                Diag.fatal(say1("-base {}: expected an address, a multiple of 4096 as raz writes it, as 0FFFFFFFF80000000H", Files.arg(i)));
+            end;
         elsif s = "-noprofile" then
             noProfile := true;
         elsif s = "-libc" then

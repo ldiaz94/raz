@@ -24,9 +24,9 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,175 | 1,747 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,251 | 3,676 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
+| `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Raz.raz` | 326 | 253 | The command line |
+| `src/Raz.raz` | 361 | 283 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -1648,6 +1648,15 @@ places the live chunks section by section (`place`), each at its
 alignment, then copies their bytes into the images of text and rodata,
 patching every fixup with the distance from the end of its field to its
 target, and every data fixup with its target's address.
+
+The file is loaded at `base`, 400000H unless `raz -base` says another
+(`setBase`), as a kernel wants: Limine one in the top 2 GB. Code reaches
+its data by `rip`, wherever it lies, but `X64.memAbs` holds an address
+in 32 bits that the machine extends by their sign, and the places keep
+each procedure's start and stop in 32 bits: so `linkAll` refuses an
+image not wholly in the low or the top 2 GB, where both hold, checked by
+its size so that no sum overflows. `Rt.procAt` compares the low 32 bits
+of an address with them, the same order in either.
 
 Between placing text and placing rodata, `makePlaces` writes the
 places, a rodata chunk: for the trap report, each live procedure's

@@ -1069,16 +1069,9 @@ compiler) or a handler for `syscall` that does what `Rt` and `Sys` ask
 of Linux. Each piece below takes away one of those work-arounds, and
 stands on its own.
 
-**1. A load address chosen at the command line.** The executable is
-loaded at `Link.Base`, 400000H, fixed. A kernel is often wanted
-elsewhere: Limine wants one in the top 2 GB of the address space, and
-a kernel that maps itself may want room below it. The proposal:
-`raz -base ADDR`, a multiple of the page, and `Link.Base` a variable
-it sets. Code reaches its data relative to `rip` already; what holds
-an address whole (`Chunk.addAbsFixup`) is patched by the linker, which
-knows the base, so the cost is the option and the check that an
-address above 2 GB, as a higher-half kernel's, still fits where the
-code needs 32 bits of it. A few lines.
+**1. A load address chosen at the command line.** Done (2026-10-17):
+`raz -base ADDR`, a multiple of the page, the program wholly in the low
+or the top 2 GB (`doc/compiler.md`, the linker).
 
 **2. A program with no `Rt` body.** `Rt` is always used, and its body
 runs before every other module's: it sets the handlers of SIGSEGV and

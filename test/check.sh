@@ -126,6 +126,17 @@ $out/IndexS > $out/IndexS.out 2>&1
 if [ $? = 2 ] && grep -q '^hello$' $out/IndexS.out && grep -q '^at 0x[0-9a-f]*: index 5 is out of range' $out/IndexS.out \
     && [ $(wc -c < $out/IndexS) -lt $(wc -c < $out/Index) ]; then pass=$((pass + 1))
 else echo "FAIL raz -s:"; cat $out/IndexS.out; fail=$((fail + 1)); fi
+# raz -base: loaded elsewhere, a program says the same of a failed
+# check, the places found as at 400000H; one for the top 2 GB, as a
+# higher-half kernel's, is made, though Linux won't run it there
+entry() { od -An -tx8 -j24 -N8 $1 | tr -d ' '; }
+$raz -base 7FE00000H -o $out/IndexB test/strip/Index.raz
+$out/Index > $out/Index.out 2>&1
+$out/IndexB > $out/IndexB.out 2>&1
+$raz -base 0FFFFFFFF80000000H -o $out/IndexK test/strip/Index.raz
+if [ $? = 0 ] && cmp -s $out/Index.out $out/IndexB.out && grep -q 'Index.main' $out/IndexB.out \
+    && entry $out/IndexB | grep -q '^000000007fe' && entry $out/IndexK | grep -q '^ffffffff800'; then pass=$((pass + 1))
+else echo "FAIL raz -base:"; cat $out/IndexB.out; fail=$((fail + 1)); fi
 
 # raz -S: test/list/X.raz lists as X.expect
 for f in test/list/*.raz; do

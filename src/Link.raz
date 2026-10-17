@@ -19,11 +19,12 @@ module Link;
 import Fmt, Diag, Scan, Chunk;
 
 const
-    Base* = 400000H;
     Page* = 4096;
+    Low* = 80000000H;   (* the image lies below Low, or at -Low or above *)
 
 var
-    textOff*, textSize*: INT;    (* file offset and size of text, at Base + textOff *)
+    base*: INT;                  (* where the file is loaded: raz -base, 400000H if not *)
+    textOff*, textSize*: INT;    (* file offset and size of text, at base + textOff *)
     roOff*, roSize*: INT;        (* rodata, the room for the loader's tables included *)
     roAdr*: INT;                 (* where rodata is loaded *)
     extraAdr*: INT;              (* that room *)
@@ -32,6 +33,11 @@ var
     textImg*, roImg*: ^U8;
     placesChunk*: INT;           (* the rodata chunk of the places, made by the caller *)
     linesOff*, linesSize*: INT;  (* the line table, in the places: .debug_line *)
+
+proc setBase*(a: INT);
+begin
+    base := a;
+end;
 
 proc setPlaces*(c: INT);
 begin
@@ -315,11 +321,20 @@ begin
     Chunk.setData(placesChunk, buf, names + lpLen, 8);
 end;
 
+(* The address a as raz writes it, in hexadecimal: 0FFFFFFFF80000000H *)
+proc literal(a: INT): []U8;
+var s: []U8;
+begin
+    s := Diag.say("{}H", [Fmt.hex(U64(a))]);
+    if s[0] > '9' then s := Diag.say("0{}", [Fmt.str(s)]); end;
+    return s;
+end;
+
 (* Places the live chunks, leaving roExtra bytes at the end of rodata
    and dynSize at the start of the writable segment. The segments follow
    each other in the file with no padding, and each is loaded a page
-   further from its file offset than the one before: rodata at Base +
-   Page + roOff, the writable segment at Base + 2 * Page + bssOff. So an
+   further from its file offset than the one before: rodata at base +
+   Page + roOff, the writable segment at base + 2 * Page + bssOff. So an
    address and its offset agree within a page, as the loader needs, and
    no two segments, with their different permissions, share a page.
    The bss of a program without the loader's table has no bytes in the
@@ -328,23 +343,33 @@ proc linkAll*(headerSize, roExtra, dynSize: INT);
 var c, f, at, p, e, v: INT;
 begin
     textOff := (headerSize + 31) div 32 * 32;   (* as each code chunk is *)
-    e := place(Chunk.secText, Base + textOff);
-    textSize := e - (Base + textOff);
-    if placesChunk >= 0 then makePlaces(Base + textOff, e); end;
+    e := place(Chunk.secText, base + textOff);
+    textSize := e - (base + textOff);
+    if placesChunk >= 0 then makePlaces(base + textOff, e); end;
     roOff := (textOff + textSize + 31) div 32 * 32;
-    roAdr := Base + Page + roOff;
+    roAdr := base + Page + roOff;
     e := place(Chunk.secRodata, roAdr);
     extraAdr := (e + 7) div 8 * 8;
     if roExtra > 0 then e := extraAdr + roExtra; end;
     roSize := e - roAdr;
     bssOff := (roOff + roSize + 31) div 32 * 32;
     if dynSize > 0 then
-        bssAdr := Base + 2 * Page + bssOff;
+        bssAdr := base + 2 * Page + bssOff;
     else
         bssAdr := (roAdr + roSize + Page - 1) div Page * Page;
     end;
     e := place(Chunk.secBss, bssAdr + dynSize);
     bssSize := e - bssAdr;
+    (* An address X64.memAbs makes is 32 bits, which the machine extends
+       by their sign, so the image must lie where such an address reaches:
+       the low 2 GB, as at 400000H, or the top 2 GB, as a higher-half
+       kernel at 0FFFFFFFF80000000H. The places keep each procedure's
+       start and stop in 32 bits too, which Rt.procAt reads so. *)
+    (* By the size, e - base, which can't overflow, where e itself might *)
+    if not (((base >= 0) and (base <= Low - (e - base))) or ((base >= -Low) and (base <= -(e - base)))) then
+        Diag.fatal(Diag.say("-base {}: the program must lie in the low or the top 2 GB, where a 32-bit address reaches, and from there it doesn't",
+            [Fmt.str(literal(base))]));
+    end;
 
     textImg := Scan.grab(textSize + 1);
     (* the gaps between code chunks are int3, a trap if ever run *)
@@ -354,7 +379,7 @@ begin
     for c := 0 to Chunk.numChunks - 1 do
         if Chunk.chunks[c].live then
             if Chunk.chunks[c].sec = Chunk.secText then
-                p := Chunk.chunks[c].adr - (Base + textOff);
+                p := Chunk.chunks[c].adr - (base + textOff);
                 COPY(textImg[p..p + Chunk.chunks[c].size], Chunk.text[Chunk.chunks[c].start..Chunk.chunks[c].start + Chunk.chunks[c].size]);
                 for f := Chunk.chunks[c].firstFix to Chunk.chunks[c].firstFix + Chunk.chunks[c].numFix - 1 do
                     at := Chunk.fixups[f].at - Chunk.chunks[c].start;
@@ -378,4 +403,5 @@ end;
 
 begin
     placesChunk := -1;
+    base := 400000H;
 end Link.

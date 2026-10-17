@@ -197,7 +197,7 @@ begin
     putStr(cwd);
     putStr("raz");
     putN(0, 4);                                  (* the line table, at 0 *)
-    putN(Link.Base + Link.textOff, 8); putN(Link.textSize, 8);   (* the code, all of it *)
+    putN(Link.base + Link.textOff, 8); putN(Link.textSize, 8);   (* the code, all of it *)
     patch(off[1], len - off[1] - 4, 4);
     size[1] := len - off[1];
 
@@ -355,7 +355,7 @@ begin
         phdr(PtInterp, 4, Link.extraAdr - Link.roAdr + Link.roOff, Link.extraAdr, LEN(interp) + 1, LEN(interp) + 1, 1);
     end;
     (* the first segment maps the headers too, so text can follow them *)
-    phdr(PtLoad, 5, 0, Link.Base, Link.textOff + Link.textSize, Link.textOff + Link.textSize, Link.Page);
+    phdr(PtLoad, 5, 0, Link.base, Link.textOff + Link.textSize, Link.textOff + Link.textSize, Link.Page);
     if Link.roSize > 0 then phdr(PtLoad, 4, Link.roOff, Link.roAdr, Link.roSize, Link.roSize, Link.Page); end;
     if dyn then
         phdr(PtLoad, 6, Link.bssOff, Link.bssAdr, dynSize, Link.bssSize, Link.Page);
@@ -424,7 +424,7 @@ begin
        link is its string table's index: 5 .strtab, 8 .dynstr. The order
        here is the index the code above relies on. *)
     shdr("", 0, 0, 0, 0, 0, 0, 0, 0, 0);
-    shdr(".text", 1, 6, Link.Base + Link.textOff, Link.textOff, Link.textSize, 0, 0, 16, 0);
+    shdr(".text", 1, 6, Link.base + Link.textOff, Link.textOff, Link.textSize, 0, 0, 16, 0);
     shdr(".rodata", 1, 2, Link.roAdr, Link.roOff, Link.roSize, 0, 0, 16, 0);
     shdr(".bss", 8, 3, Link.bssAdr + dynSize, Link.roOff + Link.roSize, Link.bssSize - dynSize, 0, 0, 16, 0);
     shdr(".symtab", 2, 0, 0, symOff, nsyms * 24, 5, nsyms, 8, 24);

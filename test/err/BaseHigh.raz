@@ -1,0 +1,5 @@
+module BaseHigh;
+proc main*;
+begin
+end;
+end BaseHigh.

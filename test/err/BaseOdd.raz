@@ -1,0 +1,5 @@
+module BaseOdd;
+proc main*;
+begin
+end;
+end BaseOdd.

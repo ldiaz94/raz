@@ -355,12 +355,17 @@ begin
     return q^;
 end;
 
-(* The procedure whose code holds address a, or nil *)
+(* The procedure whose code holds address a, or nil. A procedure's
+   start and stop are the low 32 bits of its addresses, which are all
+   the compiler keeps; the program's code lies in the low or the top
+   2 GB (raz -base), and in either the low 32 bits of a, which is in
+   the code, are in the same order as a itself. *)
 proc procAt(a: UINT): ^Proc;
 var p: ^Proc; i: INT;
 begin
     if (places = nil) or (a < UINT(places[1])) or (a >= UINT(places[2])) then return nil; end;
     p := ^Proc(places + 5);
+    a := a & 0FFFFFFFFH;
     for i := 0 to places[3] - 1 do
         if (UINT(p[i].start) <= a) and (a < UINT(p[i].stop)) then return p + i; end;
     end;

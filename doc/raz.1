@@ -1,5 +1,5 @@
 .\" raz(1) - the raz compiler
-.Dd October 12, 2026
+.Dd October 17, 2026
 .Dt RAZ 1
 .Os
 .Sh NAME
@@ -99,6 +99,14 @@ table, its line numbers, the places a failure is told by, and the
 profiler.
 A failure then says only its address, and the program is much
 smaller: hello, world is 7 KB, against 28 KB.
+.It Fl base Ar addr
+Load the program at
+.Ar addr ,
+not 400000H, as a kernel may want: a multiple of 4096, written as raz
+writes a number, as
+.Cm 0FFFFFFFF80000000H .
+The program must lie wholly in the low or the top 2 GB of the address
+space, which a 32-bit address reaches.
 .It Fl noprofile
 Leave out the profiler, which
 .Ev RAZ_PROFILE
