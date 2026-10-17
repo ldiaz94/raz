@@ -1,0 +1,13 @@
+module ConstVarArg;
+type R = record n: INT; end;
+proc g(var r: R); begin r.n := 0; end;
+proc f(const r: R);
+begin
+    g(r);
+end;
+proc main*;
+var r: R;
+begin
+    f(r);
+end;
+end ConstVarArg.

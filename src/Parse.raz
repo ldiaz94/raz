@@ -712,7 +712,7 @@ end;
 
 proc signature: (PType, ERROR);
 var
-    t, pt: PType; p, first, last: PObj; isVar: BOOL; n: INT;
+    t, pt: PType; p, first, last: PObj; isVar, isConst: BOOL; n: INT;
 begin
     t := Sym.newType(Sym.fProc, 8, 8);
     last := nil; n := 0;
@@ -725,12 +725,15 @@ begin
                     Scan.next; t^.variadic := true; break;
                 end;
                 isVar := Scan.tok = Scan.sVar;
-                if isVar then Scan.next; end;
+                isConst := Scan.tok = Scan.sConst;
+                if isVar or isConst then Scan.next; end;
                 first := nil;
                 repeat
                     if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
                     p := Sym.newObj(Sym.oVar, Scan.id, nil);
-                    p^.isVar := isVar;
+                    (* a const parameter goes by address, as a var one *)
+                    p^.isVar := isVar or isConst;
+                    p^.isConst := isConst;
                     p^.lev := 1;
                     if last = nil then t^.fields := p; else last^.next := p; end;
                     last := p;
@@ -2084,11 +2087,13 @@ end;
 proc matchStatement(start: Diag.Pos; ind: INT): ERROR;
 var
     x: TItem; t: PType; c, f, o: PObj; p: I64; L, endL, n, first, disp, elseAt: INT;
-    seen: [256]BOOL; hasElse, all, byValue, isStr: BOOL; endAt: Diag.Pos; ls: Labels;
+    seen: [256]BOOL; hasElse, all, byValue, isStr, onlyRead: BOOL; endAt: Diag.Pos; ls: Labels;
 begin
     Scan.next;
     try expression(x, nil);
     if x.typ^.form = Sym.fConst then try Item.coerce(x, Sym.tI64); end;
+    (* a const parameter or a constant: then so are the names its arms give *)
+    onlyRead := Item.onlyRead(x) or ((x.mode = Item.mVar) and (x.obj # nil) and (x.obj^.cls = Sym.oConst));
     p := try Item.matchBegin(x);
     t := x.typ;
     isStr := t^.form = Sym.fSlice;    (* matchBegin made a string a slice *)
@@ -2154,7 +2159,7 @@ begin
                         return Scan.mark(say1("more names than {} has fields", nameOf(c^.name)));
                     end;
                     o := Sym.newObj(Sym.oVar, Scan.id, f^.typ);
-                    o^.lev := 1; o^.ind := true; o^.isVar := true;
+                    o^.lev := 1; o^.ind := true; o^.isVar := true; o^.isConst := onlyRead;
                     o^.val := p; o^.off := f^.val;
                     try declare(o);
                     f := f^.next;
@@ -2898,6 +2903,7 @@ begin
         o^.pos := q^.pos;
         o^.lev := 1;
         o^.isVar := q^.isVar;
+        o^.isConst := q^.isConst;
         o^.param := true;
         if last = nil then params := o; else last^.next := o; end;
         last := o;
@@ -3637,7 +3643,7 @@ begin
         Diag.warning(o^.pos, say1("{} may reach its end without return, and then returns zero", s));
     end;
     if o^.exported or (s[0] = '_') then return; end;
-    if o^.used and (o^.read or (o^.cls # Sym.oVar) or o^.isVar or o^.ext) then return; end;
+    if o^.used and (o^.read or (o^.cls # Sym.oVar) or (o^.isVar and not o^.isConst) or o^.ext) then return; end;
     match o^.cls of
     | oConst: t := say1("constant {}", s);
     | oType: t := say1("type {}", s);

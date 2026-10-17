@@ -1,0 +1,5 @@
+conform/err/ConstAssign.raz:5:5: error: r.n is only read here, and can't be changed
+    5 |     r.n := 1;
+      |     ^^^
+help: a const parameter, a constant, and the names a match gives their fields, are only read: take a var parameter to change it
+raz: 1 error

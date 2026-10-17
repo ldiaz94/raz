@@ -1,0 +1,12 @@
+module ConstAssign;
+type R = record n: INT; end;
+proc f(const r: R);
+begin
+    r.n := 1;
+end;
+proc main*;
+var r: R;
+begin
+    f(r);
+end;
+end ConstAssign.

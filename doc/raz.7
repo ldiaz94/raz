@@ -547,7 +547,15 @@ to right, the designators first [7.5].
 .It
 A parameter is a copy; a
 .Cm var
-one is the caller's variable, of the parameter's type exactly.
+one is the caller's variable, of the parameter's type exactly; a
+.Cm const
+one is the caller's variable too, read in place and never changed, and
+takes any expression of its type.
+A procedure takes what it reads as a value when it is a few words, as
+.Cm const
+when it is more; what it changes as
+.Cm var ;
+and a pointer only for what it keeps.
 .It
 .Cm "proc f(x: INT): (INT, ERROR);"
 returns several results.

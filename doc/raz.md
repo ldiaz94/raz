@@ -1437,7 +1437,10 @@ in it), give it or a part of it to a `var` parameter, take the `ADR` of
 either, write it through a view (section 6.9), or assign the names a
 `match` arm gives its fields. What a slice or a pointer in it points at
 isn't part of it: the procedure may write through them, as it may
-through a value parameter's. Its argument is any expression of the
+through a value parameter's; and a slice it makes of an array in it,
+to read, is a slice like any other, which writes the caller's array if
+written through. `const` keeps the procedure from changing the
+variable by its name, not every path to its bytes. Its argument is any expression of the
 parameter's type: a variable or a constant is passed in place, anything
 else as a temporary of the statement, as an array a call returns is
 (below). If the variable changes while the procedure runs, through a

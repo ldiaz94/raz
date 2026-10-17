@@ -1,0 +1,12 @@
+module ConstAdr;
+type R = record n: INT; end;
+proc f(const r: R): ^R;
+begin
+    return ADR(r);
+end;
+proc main*;
+var r: R;
+begin
+    _ := f(r);
+end;
+end ConstAdr.

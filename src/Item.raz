@@ -267,7 +267,8 @@ begin
         end;
     | oVar:
         x.mode := mVar;
-        x.ro := (o^.lev = 0) and (o^.home # Sym.curModule);
+        (* another module's variable, and a const parameter, are only read *)
+        x.ro := ((o^.lev = 0) and (o^.home # Sym.curModule)) or o^.isConst;
         x.isVar := not x.ro;
         if o^.ext then
             Gen.pushVar(globalAdr(o^.chunk), 8, false, Gen.kWord);
@@ -538,10 +539,24 @@ begin
     return true;
 end;
 
+(* x is only read: a const parameter, a part of one, or a name a match
+   gives a field of one, or of a constant (report sections 7.4 and 8). A
+   part reached through a pointer or a slice in it isn't: what they point
+   at is the caller's to change, as through a value parameter's. *)
+proc onlyRead*(x: Item): BOOL;
+begin
+    return (x.mode = mVar) and x.ro and (x.obj # nil) and x.obj^.isConst;
+end;
+
 (* Another module's exported variable can be read, not changed, nor
-   handed to anything that could change it (report section 3). *)
+   handed to anything that could change it (report section 3); nor can
+   what is only read, above. *)
 proc notReadOnly*(x: Item): ERROR;
 begin
+    if onlyRead(x) then
+        return Scan.markHelp(x.pos, say1("{} is only read here, and can't be changed", Diag.source(x.pos)),
+            "a const parameter, a constant, and the names a match gives their fields, are only read: take a var parameter to change it");
+    end;
     if x.ro then
         return Scan.markAt(x.pos, Diag.say("{} is {}'s, and can't be changed outside it",
             [Fmt.str(Diag.source(x.pos)), Fmt.str(Scan.nameOf(x.obj^.home^.name))]));
@@ -605,7 +620,9 @@ begin
         and Sym.same(s^.base, t^.base) then
         x.typ := t;
     elsif (s^.form = Sym.fArray) and (t^.form = Sym.fSlice) and Sym.same(s^.base, t^.base) then
-        try notReadOnly(x);
+        (* a slice of what is only read may be made, to read, as of a
+           constant; another module's array can't be lent to be written *)
+        if not onlyRead(x) then try notReadOnly(x); end;
         if x.vol then return Scan.markAt(x.pos, "can't make a slice through a volatile pointer"); end;
         if x.odd then return Scan.markAt(x.pos, "can't make a slice of a field of a packed record"); end;
         if x.view then return noAddress(x, "can't make a slice of a view"); end;
@@ -783,7 +800,7 @@ begin
     if x.vol then return Scan.markAt(x.pos, "can't make a slice through a volatile pointer"); end;
     if x.odd then return Scan.markAt(x.pos, "can't make a slice of a field of a packed record"); end;
     if x.view then return noAddress(x, "can't make a slice of a view"); end;
-    if t^.form = Sym.fArray then try notReadOnly(x); end;
+    if (t^.form = Sym.fArray) and not onlyRead(x) then try notReadOnly(x); end;   (* as in coerce *)
     try value(hi);
     inFrame := x.frame and (t^.form # Sym.fPtr);
     tmp := Gen.allocTemp(16, 8);
@@ -1555,6 +1572,31 @@ begin
     return nil;
 end;
 
+(* A const parameter's argument that isn't a variable, or is one with no
+   address of its own (a packed record's field, a view, through ^VOLATILE),
+   in a temporary of the statement, whose address then goes (report
+   section 8): a slice's two words, a record or an array copied, or a
+   single value stored. *)
+proc constTemp(var x: Item): ERROR;
+var t: I64;
+begin
+    if x.typ^.form = Sym.fSlice then
+        try pushWords(x);
+        t := Gen.allocTemp(16, 8);
+        Gen.popVar(frameAdr(t + 8), 8);   (* the length, on top *)
+        Gen.popVar(frameAdr(t), 8);
+    elsif Sym.isAggregate(x.typ) then
+        if x.view then return noAddress(x, "a view of a record or an array can't be a const parameter"); end;
+        return copyToTemp(x);
+    else
+        try value(x);
+        t := Gen.allocTemp(x.typ^.size, x.typ^.align);
+        Gen.popVar(frameAdr(t), scalarSize(x.typ));
+    end;
+    tempItem(x, x.typ, t);
+    return nil;
+end;
+
 proc passArg*(var c: Gen.CallInfo; var a: Item): ERROR;
 var p: ^Sym.Obj;
 begin
@@ -1579,7 +1621,17 @@ begin
     c.isF[c.n] := (p^.typ^.form = Sym.fReal) and not p^.isVar;
     passing := p;
     passingAt := a.pos;
-    if p^.isVar then
+    if p^.isConst then
+        (* by address, as var, but any expression of the type: a variable,
+           or a constant in read-only data, in place; anything else in a
+           temporary. Before:
+               value parameter, a record:  copied to a temporary, its address goes
+           after, for const:
+               its own address goes; nothing is copied *)
+        try coerce(a, p^.typ);
+        if (a.mode # mVar) or a.odd or a.view or a.vol then try constTemp(a); end;
+        try address(a);
+    elsif p^.isVar then
         try notReadOnly(a);
         if (a.mode # mVar) or not a.isVar then return Scan.markAt(a.pos, "a var parameter needs a variable"); end;
         if a.odd then return Scan.markAt(a.pos, "a field of a packed record can't be a var parameter"); end;
@@ -1718,7 +1770,9 @@ begin
     if (x.mode # mVar) or (x.typ^.form # Sym.fVariant) then
         return 0, Scan.markAt(x.pos, say1("match needs a variant, an enumeration, an integer or a string, found {}", what(x)));
     end;
-    if x.ro then try copyToTemp(x); end;   (* its arms' names stand for a copy's fields *)
+    (* another module's variable: its arms' names stand for a copy's fields;
+       what is only read is matched in place, its names only read too *)
+    if x.ro and not onlyRead(x) then try copyToTemp(x); end;
     try address(x);
     p := Gen.allocTemp(8, 8);
     Gen.popVar(frameAdr(p), 8);

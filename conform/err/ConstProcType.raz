@@ -1,0 +1,10 @@
+module ConstProcType;
+type R = record n: INT; end;
+proc f(r: R): INT; begin return r.n; end;
+proc main*;
+var p: proc(const r: R): INT;
+begin
+    p := f;
+    _ := p;
+end;
+end ConstProcType.

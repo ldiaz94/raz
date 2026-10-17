@@ -1,0 +1,15 @@
+module ConstMatchName;
+type S = variant circle(r: INT); dot; end;
+proc f(const s: S);
+begin
+    match s of
+    | circle(r): r := 0;
+    | dot:
+    end;
+end;
+proc main*;
+var s: S;
+begin
+    f(s);
+end;
+end ConstMatchName.

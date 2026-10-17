@@ -1,0 +1,4 @@
+conform/err/ConstProcType.raz:7:10: error: can't use proc(R): INT as proc(const R): INT
+    7 |     p := f;
+      |          ^
+raz: 1 error

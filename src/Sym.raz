@@ -58,7 +58,9 @@ type
         lev*: INT;         (* oVar: 0 for a module variable, 1 for a local *)
         ind*: BOOL;        (* oVar: the frame slot holds the variable's address *)
         off*: I64;         (* oVar with ind: added to that address *)
-        isVar*: BOOL;      (* a var parameter *)
+        isVar*: BOOL;      (* a var parameter, or a const one: passed by address *)
+        isConst*: BOOL;    (* a const parameter, or a name a match gives a field
+                              of something only read: never changed *)
         param*: BOOL;      (* oVar: a parameter *)
         used*: BOOL;       (* named somewhere but in its own body *)
         read*: BOOL;       (* oVar: named other than as what := assigns *)
@@ -472,7 +474,9 @@ begin
     if (a^.base # nil) and not same(a^.base, b^.base) then return false; end;
     p := a^.fields; q := b^.fields;
     while p # nil do
-        if (p^.isVar # q^.isVar) or not same(p^.typ, q^.typ) then return false; end;
+        if (p^.isVar # q^.isVar) or (p^.isConst # q^.isConst) or not same(p^.typ, q^.typ) then
+            return false;
+        end;
         p := p^.next; q := q^.next;
     end;
     return true;
@@ -550,7 +554,8 @@ begin
         Buf.str(b, "proc(");
         f := t^.fields;
         while f # nil do
-            if f^.isVar then Buf.str(b, "var "); end;
+            if f^.isConst then Buf.str(b, "const ");
+            elsif f^.isVar then Buf.str(b, "var "); end;
             typeText(b, f^.typ);
             f := f^.next;
             if f # nil then Buf.str(b, ", "); end;
@@ -606,7 +611,7 @@ begin
     while f # nil do
         if (t^.form # fRecord) or f^.exported then
             mix(h, f^.name);
-            mix(h, bit(f^.isVar));
+            mix(h, bit(f^.isVar) + 2 * bit(f^.isConst));
             shape(h, f^.typ, false);
             g := f^.fields;
             while g # nil do shape(h, g^.typ, false); g := g^.next; end;

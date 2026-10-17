@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 11,200 lines of code (the
+The compiler is eleven files of raz, about 11,400 lines of code (the
 budget is 14,000). It is its own compiler: the
 frozen Pascal compiler in `seed/` builds `src/` the first time, and
 after that a raz builds `src/` (`make fixpoint` checks that it makes
@@ -14,13 +14,13 @@ library, made from `lib/` by `tools/Doc.raz`.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,125 | 934 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 707 | 566 | Types, objects, scopes, layout |
+| `src/Scan.raz` | 1,148 | 949 | Symbols, literals, comments, positions |
+| `src/Sym.raz` | 712 | 570 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,037 | 1,651 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,176 | 3,615 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Item.raz` | 2,091 | 1,682 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,182 | 3,619 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 381 | 298 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 326 | 253 | The command line |
@@ -1374,7 +1374,25 @@ together.
 
 Calls: `beginCall`, then `passArg` for each argument, then `endCall`,
 which has Gen's `call` make the call. Each argument is left on Gen's
-stack, a slice as its two words (`pushWords`). `return f(x);` passing on
+stack, a slice as its two words (`pushWords`).
+
+A `const` parameter (report section 8) is a `var` one that is never
+changed: its `Obj` has `isVar`, so Gen passes and reaches it by
+address as it does a `var`, and `isConst` too, which makes an item
+for it, or for a part of it, `ro`, as another module's variable is.
+`onlyRead` tells the two apart, so that `notReadOnly` says "is only
+read here", and a slice of its array may still be made, to read, as a
+constant's may. `passArg` gives a variable's own address, where a value
+parameter's record is copied first:
+
+    value parameter, a record:   copyToTemp(a); address(a)
+    const parameter:             address(a)     (* a variable, in place *)
+
+and anything else, a constant number, an expression, a call's result,
+a packed record's field, it puts in a temporary of the statement first
+(`constTemp`). A `match` on something only read gives names that are
+`isConst` too (`matchStatement`), where another module's variable is
+copied first and its names are the copy's. `return f(x);` passing on
 f's several results, with `returnAll`, pushes them from the call's
 temporary if they are two words, or else copies them to the place its
 own hidden pointer names.

@@ -1,0 +1,5 @@
+conform/err/ConstVarArg.raz:6:7: error: r is only read here, and can't be changed
+    6 |     g(r);
+      |       ^
+help: a const parameter, a constant, and the names a match gives their fields, are only read: take a var parameter to change it
+raz: 1 error
