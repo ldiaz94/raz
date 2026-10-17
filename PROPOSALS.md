@@ -1073,28 +1073,20 @@ stands on its own.
 `raz -base ADDR`, a multiple of the page, the program wholly in the low
 or the top 2 GB (`doc/compiler.md`, the linker).
 
-**2. A program with no `Rt` body.** `Rt` is always used, and its body
-runs before every other module's: it sets the handlers of SIGSEGV and
-SIGFPE with `rt_sigaction` and a stack for them with `sigaltstack`,
-and starts the profiler with `setitimer` when asked. On the bare
-machine those `syscall`s fault (`EFER.SCE` is clear), and with no IDT
-yet the machine resets. The entry point also reads `argc` and `argv`
-from the stack as Linux leaves them. The proposal: `raz -bare`, under
-which the entry point reads no arguments and calls no body of `Rt`, and
-gives `Rt` nothing (as `-s` does), so that `fail` and `exit` are all
-that is reached of it; a kernel's own module, the first used, sets up
-what `Rt`'s body would. `exit` and `fail` still make system calls,
-which a kernel would catch, or replace by a library of its own as
-today; `-bare` only stops the ones made before the program can. About
-twenty lines in `Raz.raz` and `Gen.entryPoint`.
+**2. A program with no `Rt` body.** Done (2026-10-17): `raz -bare`
+reads no `argc` and `argv`, runs no body of `Rt` and gives it no
+profiler. It still gives `Rt` the places, by stores alone, so that a
+failed check says where it was, which the proposal had left out as
+`-s` does (`doc/compiler.md`, the command line).
 
 **3. The privileged instructions in the assembler.** Done (2026-10-17):
 `cli`, `sti`, `iretq`, `swapgs`, `lgdt`, `lidt`, `ltr`, `invlpg`,
 `mov` to and from the control registers, `rdmsr`, `wrmsr`, `in`, `out`,
 `wbinvd`, `xsave` and `xrstor` (`doc/compiler.md`, the assembler).
 
-What is still left to a kernel's own code, with all three: the boot
-stub, since no common loader enters an ELF64 file in long mode but
+What is still left to a kernel's own code, with all three: zeroing
+the bss and a stack aligned to 16 bytes before `_start`, as Linux
+gives; the boot stub, since no common loader enters an ELF64 file in long mode but
 Firecracker (GRUB's Multiboot2 and QEMU's PVH enter in 32-bit mode,
 and the assembler makes only 64-bit code); interrupt stubs that save
 the XMM registers, since the compiler's code uses them; and, if the

@@ -2419,8 +2419,14 @@ end;
    library's, in a program that uses C. exitProc: the chunk of Rt's exit. The
    first numLinks of links: the addresses Rt is given, of what the program
    has: the places, and the profiler and calls; what it isn't given,
-   nothing reaches, and the linker leaves out. *)
-proc entryPoint*(dynamic: BOOL; first: ^Sym.Module; mainObj: ^Sym.Obj; cLinks: []Link; numCLinks, exitProc: INT; links: []Link; numLinks: INT): INT;
+   nothing reaches, and the linker leaves out.
+
+   bare: raz -bare, a program for the bare machine, a kernel's, with
+   no Linux under it. Its entry point reads no argc and argv, which
+   only Linux leaves on the stack, so that ARGC() is 0; and runs no body
+   of Rt, whose system calls, to set the signals' handlers, would fault
+   there. A kernel's own module sets up what Rt's body would. *)
+proc entryPoint*(dynamic, bare: BOOL; first: ^Sym.Module; mainObj: ^Sym.Obj; cLinks: []Link; numCLinks, exitProc: INT; links: []Link; numLinks: INT): INT;
 var entry, start, i: INT; m: ^Sym.Module;
 begin
     entry := Chunk.newChunk(Chunk.secText, -1, internStr("_start"));
@@ -2450,6 +2456,9 @@ begin
             X.load(RAX, X.memRip(cLinks[i].chunk, 0), 8, false);
             X.store(X.memRip(cLinks[i].into, 0), RAX, 8);
         end;
+    elsif bare then
+        start := entry;
+        Chunk.beginChunk(entry);
     else
         start := entry;
         Chunk.beginChunk(entry);
@@ -2464,7 +2473,7 @@ begin
     end;
     m := first;
     while m # nil do
-        if m^.used and (m^.body >= 0) then X.callChunk(m^.body); end;
+        if m^.used and (m^.body >= 0) and not (bare and (m^.name = internStr("Rt"))) then X.callChunk(m^.body); end;
         m := m^.next;
     end;
     if mainObj # nil then X.callChunk(mainObj^.chunk); end;

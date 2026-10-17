@@ -21,12 +21,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Sym.raz` | 713 | 571 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,567 | 1,292 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Gen.raz` | 2,561 | 1,824 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,175 | 1,747 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,251 | 3,676 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Raz.raz` | 361 | 283 | The command line |
+| `src/Raz.raz` | 369 | 289 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -1751,6 +1751,16 @@ moved whole, as a record's bytes are, isn't noted. A static program starts at `_
 one starts at a `_start` that calls `__libc_start_main` the way C's own
 start-up does, which sets C up and calls back a `main` that runs the
 module bodies and the program's `main`.
+
+`raz -bare` makes a program for the bare machine, a kernel, with no
+Linux under it: its `_start` reads no `argc` and `argv`, which only
+Linux leaves on the stack, and calls no body of `Rt`, whose
+`rt_sigaction` and `sigaltstack` would fault there (`EFER.SCE` is
+clear) and, with no IDT yet, reset the machine. Nor is `Rt` given the
+profiler, which its body would start. It is still given the places, by
+stores alone, so a failed check says where it was; but `Rt.fail` and
+`Rt.exit` end in system calls, which the kernel catches or replaces. A
+program that uses C is refused.
 
 `raz -S` lists the code (`X64.list`) instead of writing
 it. `raz run` writes the executable to a memfd, a file only in memory, and

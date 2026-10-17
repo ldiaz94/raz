@@ -1,0 +1,7 @@
+module BareC;
+extern proc getpid(): I32;
+proc main*;
+begin
+    _ := getpid();
+end;
+end BareC.

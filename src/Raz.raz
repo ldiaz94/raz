@@ -1,6 +1,6 @@
 (* Raz: the command line.
 
-     raz [-I dir]... [-o file] [-Werror] [-S] [-libc glibc|musl] [-base addr] Main.raz
+     raz [-I dir]... [-o file] [-Werror] [-S] [-libc glibc|musl] [-base addr] [-bare] Main.raz
      raz run [-I dir]... Main.raz [arg]...
      raz --version
 
@@ -20,7 +20,8 @@
    C up and calls this as C's main; first it gives Rt C's exit, which
    Rt.exit then ends the program with. The C library is glibc, or musl
    on a machine that has musl's loader and not glibc's, unless -libc
-   names one.
+   names one. Under -bare, for the bare machine, it saves no argc and
+   argv and runs no body of Rt (Gen.entryPoint).
 
    Depends on: everything else, and Version, a module the build makes
    (build/src/Version.raz) from build/version.inc: what git describe
@@ -134,6 +135,8 @@ begin
     Out.str("  -base addr   loads the program at addr, not 400000H: a multiple of 4096\n");
     Out.str("               in the low or the top 2 GB, as 0FFFFFFFF80000000H\n");
     Out.str("  -noprofile   leaves out the profiler, which RAZ_PROFILE turns on\n");
+    Out.str("  -bare        for the bare machine, a kernel: reads no argc and argv, and\n");
+    Out.str("               runs no body of Rt, which sets the signals' handlers\n");
     Out.str("  -libc name   links a program that uses C against glibc or musl; by\n");
     Out.str("               default glibc, or musl where only its loader is there\n");
     Out.str("  -h, --help   says this\n");
@@ -200,11 +203,12 @@ var
     path, outPath, s: []U8; dir: []U8;
     i, first, entry, fd, last, errno, base: INT;
     m, rt, thread: ^Sym.Module; mainObj: ^Sym.Obj;
-    run, noProfile, listing, dynamic, libcSaid, ok: BOOL; err: ERROR;
+    run, noProfile, listing, dynamic, libcSaid, ok, bare: BOOL; err: ERROR;
 begin
     path := "";
     outPath := "";
     noProfile := false;
+    bare := false;
     listing := false;
     libcSaid := false;
     run := (ARGC() >= 2) and (Files.arg(1) = "run");
@@ -234,6 +238,8 @@ begin
             end;
         elsif s = "-noprofile" then
             noProfile := true;
+        elsif s = "-bare" then
+            bare := true;
         elsif s = "-libc" then
             INC(i);
             s := Files.arg(i);
@@ -304,7 +310,8 @@ begin
     (* what Rt is given: the places, which the linker makes, for Rt to say
        where a failed check or a signal was (place), and the calls under
        way then (calls); and the profiler, which needs them too. raz -s
-       gives none, -noprofile no profiler. *)
+       gives none, -noprofile no profiler, and -bare no profiler, since
+       Rt's body, which starts it, doesn't run. *)
     numLinks := 0;
     if not Elf.stripped then
         Link.setPlaces(Chunk.newChunk(Chunk.secRodata, -1, -1));
@@ -312,12 +319,13 @@ begin
         addLink(Link.placesChunk, objIn(rt, "places"));
         addLink(objIn(rt, "calls")^.chunk, objIn(rt, "teller"));
         addLink(objIn(rt, "place")^.chunk, objIn(rt, "placer"));
-        if not noProfile then addLink(objIn(rt, "startProfile")^.chunk, objIn(rt, "profiler")); end;
+        if not noProfile and not bare then addLink(objIn(rt, "startProfile")^.chunk, objIn(rt, "profiler")); end;
     end;
     (* what a program that uses C is given of C: Rt its exit, and
        Thread, if the program has it, the calls that make and join C's
        threads, so that the C library knows of them *)
     dynamic := usesC();
+    if dynamic and bare then Diag.fatal("-bare: the program uses C, which needs Linux and its loader"); end;
     numCLinks := 0;
     if dynamic then
         addCLink("exit", objIn(rt, "cExit"));
@@ -327,7 +335,7 @@ begin
             addCLink("pthread_join", objIn(thread, "cJoin"));
         end;
     end;
-    entry := Gen.entryPoint(dynamic, Parse.firstModule, mainObj, cLinks[0..numCLinks], numCLinks,
+    entry := Gen.entryPoint(dynamic, bare, Parse.firstModule, mainObj, cLinks[0..numCLinks], numCLinks,
         objIn(rt, "exit")^.chunk, links[0..numLinks], numLinks);
 
     Link.markLive(entry);

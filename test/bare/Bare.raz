@@ -1,0 +1,17 @@
+module Bare;
+
+(* For raz -bare: no argc and argv are read, so ARGC() is 0; and Rt's
+   body, which sets the signals' handlers, doesn't run, so a nil pointer
+   ends the program by SIGSEGV with nothing said. *)
+import Out;
+
+proc main*;
+var p: ^INT;
+begin
+    Out.int(ARGC()); Out.ln;
+    Out.flush();
+    p := nil;
+    p^ := 1;
+end;
+
+end Bare.

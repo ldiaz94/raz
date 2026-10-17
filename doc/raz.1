@@ -107,6 +107,18 @@ writes a number, as
 .Cm 0FFFFFFFF80000000H .
 The program must lie wholly in the low or the top 2 GB of the address
 space, which a 32-bit address reaches.
+.It Fl bare
+Make a program for the bare machine, a kernel, with no Linux under it.
+Its entry point reads no arguments, so
+.Fn ARGC
+is 0, and runs no body of
+.Cm Rt ,
+whose system calls set the handlers of signals: a nil pointer or a
+division fault is not told.
+A failed check is still told, by a system call the kernel must catch.
+Its stack must be 16-byte aligned, as Linux leaves it, and its bss
+zeroed.
+A program that uses C is refused.
 .It Fl noprofile
 Leave out the profiler, which
 .Ev RAZ_PROFILE

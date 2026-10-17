@@ -17,7 +17,9 @@
    placer: a failure is told by its address, and calls and place,
    which would need the places, are left out the same way.
    The handlers are Linux's on x86-64, set by system calls: what the
-   kernel hands them is laid out as it is there. *)
+   kernel hands them is laid out as it is there. A program built with
+   raz -bare, for the bare machine, runs no body of Rt, so has no
+   handlers and no profiler. *)
 module Rt;
 import Sys;
 

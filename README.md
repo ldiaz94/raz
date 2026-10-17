@@ -89,7 +89,7 @@ emacs is installed.
 
 ## Using it
 
-    raz [-I dir]... [-o file] [-Werror] [-S] [-s] [-noprofile] [-libc glibc|musl] [-base addr] Main.raz
+    raz [-I dir]... [-o file] [-Werror] [-S] [-s] [-noprofile] [-libc glibc|musl] [-base addr] [-bare] Main.raz
     raz run [option]... Main.raz [arg]...
     raz -h
     raz --version
@@ -116,7 +116,9 @@ instructions made for it. `-s` strips what is there for finding faults:
 the symbols and line numbers, the places a failure is told by, and the
 profiler, so hello, world is 7 KB instead of 28; `-noprofile` leaves
 out only the profiler. `-base addr` loads the program at `addr`, not
-400000H, in the low or the top 2 GB, as a kernel may want.
+400000H, in the low or the top 2 GB, as a kernel may want, and
+`-bare` makes one for the bare machine: no arguments are read and no
+signal handlers set.
 
 At run time, a failed check says where it is and what failed, as in
 `Main.raz:12:9: index 7 is out of range for a length of 5`, and ends

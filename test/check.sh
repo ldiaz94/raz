@@ -137,6 +137,16 @@ $raz -base 0FFFFFFFF80000000H -o $out/IndexK test/strip/Index.raz
 if [ $? = 0 ] && cmp -s $out/Index.out $out/IndexB.out && grep -q 'Index.main' $out/IndexB.out \
     && entry $out/IndexB | grep -q '^000000007fe' && entry $out/IndexK | grep -q '^ffffffff800'; then pass=$((pass + 1))
 else echo "FAIL raz -base:"; cat $out/IndexB.out; fail=$((fail + 1)); fi
+# raz -bare: no argc read, so ARGC() is 0, and no handlers set, so a nil
+# pointer stops the program by SIGSEGV with nothing said; a failed
+# check is still told by its place, and nothing is profiled
+$raz -bare -o $out/Bare test/bare/Bare.raz
+status=$( { ( exec $out/Bare one two ) > $out/Bare.out 2>$out/Bare.err; echo $?; } 2>/dev/null )
+$raz -bare -o $out/IndexBare test/strip/Index.raz
+RAZ_PROFILE=1 $out/IndexBare > $out/IndexBare.out 2>&1
+if [ $status = 139 ] && [ "$(cat $out/Bare.out)" = 0 ] && [ ! -s $out/Bare.err ] \
+    && cmp -s $out/Index.out $out/IndexBare.out; then pass=$((pass + 1))
+else echo "FAIL raz -bare: status $status"; cat $out/Bare.out $out/Bare.err $out/IndexBare.out; fail=$((fail + 1)); fi
 
 # raz -S: test/list/X.raz lists as X.expect
 for f in test/list/*.raz; do
