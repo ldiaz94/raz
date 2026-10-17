@@ -158,7 +158,7 @@ begin
     return (t^.form = Sym.fReal) and (t^.size = 4);
 end;
 
-proc realOf*(x: Item): F64;
+proc realOf*(const x: Item): F64;
 var v: I64; p: ^F64;
 begin
     v := x.val;
@@ -198,7 +198,7 @@ end;
 
 (* Where the variable x is, for Gen; a slice in registers has two. x is
    a var parameter only so as not to be copied, as it is a whole Item. *)
-proc adrOf*(x: Item): Gen.Adr;
+proc adrOf*(const x: Item): Gen.Adr;
 var hi: INT;
 begin
     hi := 0;
@@ -409,7 +409,7 @@ begin
 end;
 
 (* x isn't wanted: what it has on the stack is dropped *)
-proc discard*(x: Item): ERROR;
+proc discard*(const x: Item): ERROR;
 var y: Item;
 begin
     if x.mode = mCond then
@@ -543,7 +543,7 @@ end;
    gives a field of one, or of a constant (report sections 7.4 and 8). A
    part reached through a pointer or a slice in it isn't: what they point
    at is the caller's to change, as through a value parameter's. *)
-proc onlyRead*(x: Item): BOOL;
+proc onlyRead*(const x: Item): BOOL;
 begin
     return (x.mode = mVar) and x.ro and (x.obj # nil) and x.obj^.isConst;
 end;
@@ -551,7 +551,7 @@ end;
 (* Another module's exported variable can be read, not changed, nor
    handed to anything that could change it (report section 3); nor can
    what is only read, above. *)
-proc notReadOnly*(x: Item): ERROR;
+proc notReadOnly*(const x: Item): ERROR;
 begin
     if onlyRead(x) then
         return Scan.markHelp(x.pos, say1("{} is only read here, and can't be changed", Diag.source(x.pos)),
@@ -1576,7 +1576,7 @@ end;
    variable itself, as ADR(b) for var b: Buf: an error that says what to
    write instead, b for ADR(b) and p^ for a pointer p. Mostly met in
    programs written before the library took var (report 2026-10.33). *)
-proc givenAddress(a: Item; p: ^Sym.Obj): ERROR;
+proc givenAddress(const a: Item; p: ^Sym.Obj): ERROR;
 var s, kind: []U8;
 begin
     if (a.typ^.form # Sym.fPtr) or (a.typ^.base = nil) or not Sym.same(a.typ^.base, p^.typ) then
@@ -1749,7 +1749,7 @@ begin
 end;
 
 (* size bytes, off bytes into the variable x, cleared *)
-proc zeroRange*(x: Item; off, size: I64);
+proc zeroRange*(const x: Item; off, size: I64);
 var a: Gen.Adr;
 begin
     a := adrOf(x);
@@ -1764,7 +1764,7 @@ begin
     Gen.popVar(frameAdr(x.off), 8);
 end;
 
-proc setField*(x: Item; f: ^Sym.Obj; var a: Item): ERROR;
+proc setField*(const x: Item; f: ^Sym.Obj; var a: Item): ERROR;
 var at: Gen.Adr;
 begin
     at := adrOf(x);
@@ -1865,7 +1865,7 @@ end;
 (* For a for loop: pushes the variable o and the limit lim, a constant or
    the slot it was put in, and jumps to L if the one is op the other, as
    the type of o compares *)
-proc forCmp*(o: ^Sym.Obj; lim: Item; op: Scan.Sym; var L: INT): ERROR;
+proc forCmp*(o: ^Sym.Obj; const lim: Item; op: Scan.Sym; var L: INT): ERROR;
 var v, b: Item;
 begin
     try makeItem(v, o);
@@ -1887,7 +1887,7 @@ end;
    For another step: v past b goes to past; else b - v (unsigned, as
    v <= b) >= |step| goes on to top, and else the loop ends.
    Past: v is stepped here and tested, going to body if within b. *)
-proc forNext*(o: ^Sym.Obj; lim: Item; step: I64; var exitL: INT; top, body: INT): ERROR;
+proc forNext*(o: ^Sym.Obj; const lim: Item; step: I64; var exitL: INT; top, body: INT): ERROR;
 var v, b: Item; L, pastL: INT; up: BOOL; before, past, within: Scan.Sym; a: I64;
 begin
     up := step > 0;
@@ -1974,7 +1974,7 @@ end;
    that is one, an array literal or a temporary, or a slice of one, a
    field or an element of one included; x.frame says so, set where the
    variable is named and kept through fields, elements and slices. *)
-proc notOfFrame(x: Item; t: ^Sym.Type): ERROR;
+proc notOfFrame(const x: Item; t: ^Sym.Type): ERROR;
 begin
     if (t^.form = Sym.fSlice) and x.frame then
         return Scan.markHelp(x.pos, "can't return a slice of the procedure's own frame",

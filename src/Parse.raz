@@ -1262,7 +1262,7 @@ end;
 
 (* The padding of the record type t, the bytes between its fields and
    after the last, cleared in x: a word at a time, so a few stores *)
-proc clearPadding(x: TItem; t: PType);
+proc clearPadding(const x: TItem; t: PType);
 var f: PObj; at, lo, hi: I64;
 begin
     at := 0;
@@ -1283,7 +1283,7 @@ end;
 
 (* The fields of the record type t that a literal left out, of which seen
    are the n names it gave, cleared in x *)
-proc clearMissing(x: TItem; t: PType; seen: [MaxNames]INT; n: INT);
+proc clearMissing(const x: TItem; t: PType; const seen: [MaxNames]INT; n: INT);
 var f: PObj; i: INT; given: BOOL;
 begin
     f := t^.fields;
@@ -2218,7 +2218,7 @@ end;
 
 (* x, named first n, is a variable the program may assign: not an
    array constant, nor any part of one. *)
-proc assignable(x: TItem; n: INT): ERROR;
+proc assignable(const x: TItem; n: INT): ERROR;
 begin
     if (x.mode = Item.mConst) and (subject(x, n) = nameOf(n)) then
         return Scan.markAt(x.pos, say1("{} is a constant, and can't be changed", nameOf(n)));
@@ -2368,7 +2368,7 @@ end;
    symbol, is x changed by adding to it, taking from it or its bits:
    x + e, x - e, x | e or x xor e, with x nowhere in e, so that it can be
    worked out in x's own register, if x is in one (Gen's inPlace). *)
-proc changesItself(x: TItem): BOOL;
+proc changesItself(const x: TItem): BOOL;
 var st: Scan.State; wasSkipping, changes: BOOL; d: INT;
 begin
     if (x.mode # Item.mVar) or (x.base # Gen.bReg) or (x.typ^.form = Sym.fSlice)
@@ -2400,7 +2400,7 @@ end;
 
 (* A call standing on its own, which drops the results x holds, if any,
    to be warned of *)
-proc noteDrop(x: TItem);
+proc noteDrop(const x: TItem);
 begin
     if (x.mode # Item.mNone) and (numDrops < MaxDrops) then
         drops[numDrops].at := x.pos;

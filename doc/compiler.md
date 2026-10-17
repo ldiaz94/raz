@@ -1403,6 +1403,14 @@ a packed record's field, it puts in a temporary of the statement first
 `isConst` too (`matchStatement`), where another module's variable is
 copied first and its names are the copy's.
 
+The compiler takes its own `Item`, about 130 bytes, as `const` where
+it only reads it on the paths every program goes through (`adrOf`,
+`discard`, `onlyRead`, `zeroRange`, `forCmp`, Parse's `assignable`
+and `clearMissing`, ...): measured with callgrind, each such copy gone
+saves instructions, 0.4% in all. The routines reached only to word an
+error (`what`, `mismatch`, `doesntApply`, ...) take it as a value,
+where a copy costs nothing that is measured.
+
 An address given where a `var` or `const` parameter of its type wants
 the variable, `f(ADR(b))` or `f(p)`, is the commonest slip in a program
 written before the library took `var`; `givenAddress` says what to
