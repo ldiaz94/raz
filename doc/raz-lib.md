@@ -78,9 +78,9 @@ type Arena* = record
     base*: Mem.Allocator;     (* first, so that ^Arena(a) finds the rest *)
     ...
 end;
-proc init*(ar: ^Arena; size: INT): BOOL;   (* an arena of size bytes; false if the system has none *)
-proc reset*(ar: ^Arena);                   (* every allocation forgotten; the memory used again *)
-proc done*(ar: ^Arena);                    (* its memory given back *)
+proc init*(var ar: Arena; size: INT): BOOL;   (* an arena of size bytes; false if the system has none *)
+proc reset*(var ar: Arena);                   (* every allocation forgotten; the memory used again *)
+proc done*(var ar: Arena);                    (* its memory given back *)
 ```
 
 `NEW(p, a)` calls `a^.alloc`. `Heap` is the general

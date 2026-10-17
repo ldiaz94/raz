@@ -686,10 +686,10 @@ begin
         Mem.free(Heap.heap, ^U8(n));
     end;
     Out.ln;
-    if not Arena.init(ADR(ar), 100000) then return; end;
+    if not Arena.init(ar, 100000) then return; end;
     for i := 1 to 1000 do top := push(top, i, ADR(ar.base)); end;
     Out.int(top^.val); Out.ln;
-    Arena.done(ADR(ar));            (* every node at once *)
+    Arena.done(ar);            (* every node at once *)
 end;
 
 end Stack.

@@ -6,7 +6,7 @@ import Arena, Rt, Ints := Vec(INT);
 proc main*;
 var ar: Arena.Arena; v: Ints.Vec; i: INT;
 begin
-    if not Arena.init(ADR(ar), 4096) then Rt.stop("no arena"); end;
+    if not Arena.init(ar, 4096) then Rt.stop("no arena"); end;
     Ints.init(ADR(v), ADR(ar.base));
     for i := 1 to 10000 do Ints.push(ADR(v), i); end;
 end;

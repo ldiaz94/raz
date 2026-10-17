@@ -51,16 +51,16 @@ begin
     b^.data[999] := 7;
     Out.int(b^.data[999] + b^.data[0]); Out.ln;
     Mem.free(Heap.heap, ^U8(b));
-    if not Arena.init(ADR(ar), 8192) then Out.str("no arena"); end;
+    if not Arena.init(ar, 8192) then Out.str("no arena"); end;
     l := build(ADR(ar.base), 100);
     Out.int(sum(l)); Out.ln;
     l := build(ADR(ar.base), 1000);
     if l = nil then Out.str("nil "); end;
-    Arena.reset(ADR(ar));
+    Arena.reset(ar);
     NEW(again, ADR(ar.base));
     if again # nil then Out.str("again "); Out.int(again^.val); end;
     Out.ln;
-    Arena.done(ADR(ar));
+    Arena.done(ar);
 end;
 
 end Alloc.

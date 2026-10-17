@@ -6,7 +6,7 @@ import Arena, Fmt, Rt, Ints := Vec(INT);
 proc main*;
 var ar: Arena.Arena; v: Ints.Vec; n: INT; p: ^INT; ok: BOOL;
 begin
-    if not Arena.init(ADR(ar), 4096) then Rt.stop("no arena"); end;
+    if not Arena.init(ar, 4096) then Rt.stop("no arena"); end;
     Ints.init(ADR(v), ADR(ar.base));
     n := 0;
     while Ints.tryPush(ADR(v), n) do INC(n); end;

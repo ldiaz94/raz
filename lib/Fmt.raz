@@ -134,7 +134,7 @@ proc eprint*(f: []U8; args: []Arg);
 var ar: Arena.Arena; b: Buf.Buf; s: []U8; n: INT;
 begin
     Out.flush;
-    if not Arena.init(ADR(ar), 1 shl 20) then Rt.stop("Fmt.eprint: no arena"); end;
+    if not Arena.init(ar, 1 shl 20) then Rt.stop("Fmt.eprint: no arena"); end;
     Buf.init(b, ADR(ar.base));
     format(ADR(b), f, args);
     s := Buf.bytes(b);
@@ -144,7 +144,7 @@ begin
         elsif n # Sys.errIntr then break;   (* a signal broke in: try again *)
         end;
     end;
-    Arena.done(ADR(ar));
+    Arena.done(ar);
 end;
 
 (* Appends f to b, each {} replaced by the next of args. *)
@@ -157,7 +157,7 @@ end;
 proc main*;
 var ar: Arena.Arena; b: Buf.Buf; zero: F64;
 begin
-    if not Arena.init(ADR(ar), 1 shl 16) then Rt.stop("Fmt: no arena"); end;
+    if not Arena.init(ar, 1 shl 16) then Rt.stop("Fmt: no arena"); end;
     Buf.init(b, ADR(ar.base));
     write(b, "{} {} {} {}|{}{}{} {{}}", [int(-42), uint(0FFFFFFFFFFFFFFFFH), hex(48879),
         str("s"), char('c'), bool(true), int(0)]);
@@ -173,7 +173,7 @@ begin
     write(b, "{} {} {} {} {} {}", [real(1.5E17, 2), real(-9.999E20, 2), real(1.0E15, 0), real(1.7976931348623157E308, 3),
         real(1.0 / zero, 2), real(zero / zero, 2)]);
     if Buf.bytes(b) # "1.50e17 -1.00e21 1e15 1.798e308 inf nan" then Rt.stop("Fmt.real: an exponent"); end;
-    Arena.done(ADR(ar));
+    Arena.done(ar);
 end;
 
 end Fmt.

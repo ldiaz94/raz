@@ -302,7 +302,7 @@ end;
 proc run(script: []U8);
 var p: Pipeline; t: Token; ok: BOOL;
 begin
-    Arena.reset(ADR(arena));
+    Arena.reset(arena);
     s := script;
     at := 0;
     repeat
@@ -361,7 +361,7 @@ end;
 proc main*: INT;
 var p: Opt.Parser; script, file: []U8; given, found: BOOL; b: Buf.Buf;
 begin
-    if not Arena.init(ADR(arena), 1 shl 24) then Rt.stop("Sh: no memory"); end;
+    if not Arena.init(arena, 1 shl 24) then Rt.stop("Sh: no memory"); end;
     Opt.init(ADR(p), "Sh", [
         Opt.usage("", "Sh [-c script | file]"),
         Opt.option("", 'c', "command", "script", "run script, not standard input")]);

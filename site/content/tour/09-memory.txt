@@ -43,18 +43,18 @@ end;
 proc main*;
 var ar: Arena.Arena; small: Arena.Arena; list: ^Item;
 begin
-    if not Arena.init(ADR(ar), 1000000) then return; end;
+    if not Arena.init(ar, 1000000) then return; end;
     list := make(1000, ADR(ar.base));
     Out.int(count(list)); Out.str(" items from a big arena\n");
-    Arena.reset(ADR(ar));              (* every allocation forgotten *)
+    Arena.reset(ar);              (* every allocation forgotten *)
     list := make(10, ADR(ar.base));
     Out.int(count(list)); Out.str(" after a reset\n");
-    Arena.done(ADR(ar));
+    Arena.done(ar);
 
-    if not Arena.init(ADR(small), 4096) then return; end;
+    if not Arena.init(small, 4096) then return; end;
     list := make(1000, ADR(small.base));
     if list = nil then Out.str("a small arena ran out, and said so\n"); end;
-    Arena.done(ADR(small));
+    Arena.done(small);
 end;
 
 end Pool.

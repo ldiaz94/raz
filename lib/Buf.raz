@@ -117,7 +117,7 @@ end;
 proc main*;
 var ar: Arena.Arena; b: Buf; i: INT; s: []U8;
 begin
-    if not Arena.init(ADR(ar), 1 shl 20) then Rt.stop("Buf: no arena"); end;
+    if not Arena.init(ar, 1 shl 20) then Rt.stop("Buf: no arena"); end;
     init(b, ADR(ar.base));
     if LEN(bytes(b)) # 0 then Rt.stop("Buf: not empty"); end;
     for i := 0 to 9999 do add(b, U8(i mod 251)); end;
@@ -138,7 +138,7 @@ begin
     INC(b.len, 2);
     if (LEN(s) # 3) or (bytes(b) # "againab") then Rt.stop("Buf.spare"); end;
     done(b);
-    Arena.done(ADR(ar));
+    Arena.done(ar);
 end;
 
 end Buf.
