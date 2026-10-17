@@ -24,8 +24,12 @@ jobs:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0    # git describe needs the tags
       # musl and musl-tools: test/libc over musl, and cabi with musl-gcc
-      - run: sudo apt-get update && sudo apt-get install -y fp-compiler musl musl-tools
+      - run: sudo apt-get update && sudo apt-get install -y musl musl-tools
+      # src/boot.sh fetches the release BOOT names, by gh where the
+      # repository is private
       - run: make check
+        env:
+          GH_TOKEN: ${{ github.token }}
       - run: make alpine
       - name: release
         if: env.TAG != ''

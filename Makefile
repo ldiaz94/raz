@@ -1,19 +1,15 @@
 # Builds the compiler, raz, from src/ into the repository's root; the
-# library it needs is lib/, beside it. The seed, the Pascal compiler in
-# seed/, builds it: fpc makes the seed in build/seed/ (with lib/ beside
-# it, as every raz has), and the seed compiles src/. The one module
-# the build makes, Version, holds what git says the version is.
+# library it needs is lib/, beside it. The previous release builds it:
+# BOOT names that release and its tarball's SHA-256, and src/boot.sh
+# puts its raz in build/boot/, with this lib/ beside it (as every raz
+# has its library), so that src/ is built against today's library. The
+# one module the build makes, Version, holds what git says the version is.
 
-FPC = fpc
-FPCFLAGS = -O2 -Mobjfpc -Sh- -vew -FUbuild
+raz: build/boot/raz src/*.raz build/src/Version.raz
+	build/boot/raz -Werror -I src -I build/src -o raz src/Raz.raz
 
-raz: build/seed/raz src/*.raz build/src/Version.raz
-	build/seed/raz -Werror -I src -I build/src -o raz src/Raz.raz
-
-build/seed/raz: seed/*.pas build/version.inc | build
-	mkdir -p build/seed
-	$(FPC) $(FPCFLAGS) -Fibuild -FEbuild/seed -obuild/seed/raz seed/raz.pas
-	ln -sfn ../../lib build/seed/lib
+build/boot/raz: BOOT src/boot.sh | build
+	src/boot.sh
 
 build/src/Version.raz: build/version.inc | build
 	mkdir -p build/src
@@ -27,16 +23,6 @@ build/version.inc: FORCE | build
 
 FORCE:
 
-units: seed/*.pas | build
-	for u in diag scan sym chunk x64 link elf; do $(FPC) $(FPCFLAGS) seed/$$u.pas || exit 1; done
-
-# tests of the parts below the parser, built from test/
-tests: units
-	$(FPC) $(FPCFLAGS) -Fuseed -obuild/scantest test/scantest.pas
-	$(FPC) $(FPCFLAGS) -Fuseed -obuild/enctest test/enctest.pas
-	$(FPC) $(FPCFLAGS) -Fuseed -obuild/handtest test/handtest.pas
-	build/handtest build/hand && build/hand; test $$? = 42
-
 build:
 	mkdir -p build
 
@@ -47,12 +33,13 @@ clean:
 check: raz build/raz-lib.3
 	test/check.sh
 
-# the scanner's and the compiler's speed against the seed's
-seed-bench: raz | build
+# the compiler's speed against the previous release's, BOOT's, on the
+# same program: fails if this one is more than a tenth slower
+prev-bench: raz | build
 	src/bench.sh
 
-# the seed builds src/, that builds src/, that builds it again: the
-# last two must be the same file; check and bench then run on it
+# the previous release builds src/, that builds src/, that builds it
+# again: the last two must be the same file; check and bench then run on it
 fixpoint: raz | build
 	src/fixpoint.sh
 
@@ -185,4 +172,4 @@ dist:
 site: raz pdf
 	python3 site/build.py
 
-.PHONY: units tests seed-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site clean install uninstall
+.PHONY: prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site clean install uninstall
