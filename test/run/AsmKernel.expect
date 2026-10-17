@@ -1,0 +1,36 @@
+cli: FA
+sti: FB
+iretq: 48 CF
+swapgs: 0F 01 F8
+rdmsr: 0F 32
+wrmsr: 0F 30
+wbinvd: 0F 09
+lgdt [rdi]: 0F 01 17
+lidt [rsi + 8]: 0F 01 5E 08
+invlpg [rax]: 0F 01 38
+invlpg [r12 + rcx * 8 + 400]: 41 0F 01 BC CC 90 01 00 00
+xsave [rdi]: 0F AE 27
+xrstor [r9]: 41 0F AE 29
+ltr ax: 0F 00 D8
+ltr r10w: 41 0F 00 DA
+mov cr0, rax: 0F 22 C0
+mov cr2, rdx: 0F 22 D2
+mov cr3, r15: 41 0F 22 DF
+mov cr4, rcx: 0F 22 E1
+mov cr8, rax: 44 0F 22 C0
+mov cr8, r11: 45 0F 22 C3
+mov rax, cr0: 0F 20 C0
+mov r9, cr3: 41 0F 20 D9
+mov rbx, cr8: 44 0F 20 C3
+in al, 60H: E4 60
+in ax, 61H: 66 E5 61
+in eax, 0FFH: E5 FF
+in al, dx: EC
+in ax, dx: 66 ED
+in eax, dx: ED
+out 80H, al: E6 80
+out 80H, ax: 66 E7 80
+out 0, eax: E7 00
+out dx, al: EE
+out dx, ax: 66 EF
+out dx, eax: EF

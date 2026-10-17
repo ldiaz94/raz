@@ -20,7 +20,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Scan.raz` | 1,148 | 949 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 713 | 571 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,517 | 1,253 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/X64.raz` | 1,567 | 1,292 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,552 | 1,821 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,175 | 1,747 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,251 | 3,676 | Declarations, statements, expressions, built-ins, recovery, warnings |
@@ -1044,7 +1044,14 @@ operations of a kind their opcodes (`Alus`, `Unaries`, `Shifts`,
 `SseOps`, `Plain`; `PackedOps` the SSE2 integer operations on 16 bytes
 at a time, with `movdqu`, `movdqa` and `pmovmskb` beside them, and
 `BitOps` the bit scans and counts: `bsf`, `bsr`, `tzcnt`, `lzcnt`,
-`popcnt`). Labels are chains of jumps, as below. `db` gives bytes it
+`popcnt`). A kernel's instructions are there too, though the code
+generator never makes them: `cli`, `sti`, `iretq`, `swapgs`, `rdmsr`,
+`wrmsr` and `wbinvd` in `Plain`; `lgdt`, `lidt`, `invlpg`, `xsave` and
+`xrstor`, of one memory operand, in `MemOps`; `ltr` of a 16-bit
+register; `mov` to and from `cr0`, `cr2`, `cr3`, `cr4` and `cr8` (an
+operand of its own kind, `oCr`); and `in` and `out`, of `al`, `ax` or
+`eax` and a port, a byte or `dx`. Each was checked against GNU `as`, and
+`test/run/AsmKernel.raz` reads their bytes back. Labels are chains of jumps, as below. `db` gives bytes it
 doesn't know. An error in an instruction is returned as an `ERROR`,
 which `assemble` passes up. An offset that doesn't fit in 32 bits
 (`mem`) can't be returned, since an operand has nowhere to give it: it

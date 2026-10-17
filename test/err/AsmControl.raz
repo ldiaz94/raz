@@ -1,0 +1,7 @@
+module AsmControl;
+proc f;
+code
+    mov eax, cr0;
+    ret;
+end f;
+end AsmControl.

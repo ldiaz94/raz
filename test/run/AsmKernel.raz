@@ -1,0 +1,79 @@
+module AsmKernel;
+(* A kernel's instructions in the assembler: each one's bytes, read
+   back from the procedure they are made in, since they can't run in
+   user mode. Each was checked against GNU as. *)
+import Out;
+
+const
+    Count = 36;
+    Names: [Count][]U8 = ["cli", "sti", "iretq", "swapgs",
+        "rdmsr", "wrmsr", "wbinvd", "lgdt [rdi]",
+        "lidt [rsi + 8]", "invlpg [rax]", "invlpg [r12 + rcx * 8 + 400]", "xsave [rdi]",
+        "xrstor [r9]", "ltr ax", "ltr r10w", "mov cr0, rax",
+        "mov cr2, rdx", "mov cr3, r15", "mov cr4, rcx", "mov cr8, rax",
+        "mov cr8, r11", "mov rax, cr0", "mov r9, cr3", "mov rbx, cr8",
+        "in al, 60H", "in ax, 61H", "in eax, 0FFH", "in al, dx",
+        "in ax, dx", "in eax, dx", "out 80H, al", "out 80H, ax",
+        "out 0, eax", "out dx, al", "out dx, ax", "out dx, eax"];
+    Sizes: [Count]INT = [1, 1, 2, 3, 2, 2, 2, 3, 4, 3, 9, 3,
+        4, 3, 4, 3, 3, 4, 3, 4, 4, 3, 4, 4,
+        2, 3, 2, 1, 2, 1, 2, 3, 2, 1, 2, 1];
+
+proc kernel;
+code
+    cli;
+    sti;
+    iretq;
+    swapgs;
+    rdmsr;
+    wrmsr;
+    wbinvd;
+    lgdt [rdi];
+    lidt [rsi + 8];
+    invlpg [rax];
+    invlpg [r12 + rcx * 8 + 400];
+    xsave [rdi];
+    xrstor [r9];
+    ltr ax;
+    ltr r10w;
+    mov cr0, rax;
+    mov cr2, rdx;
+    mov cr3, r15;
+    mov cr4, rcx;
+    mov cr8, rax;
+    mov cr8, r11;
+    mov rax, cr0;
+    mov r9, cr3;
+    mov rbx, cr8;
+    in al, 60H;
+    in ax, 61H;
+    in eax, 0FFH;
+    in al, dx;
+    in ax, dx;
+    in eax, dx;
+    out 80H, al;
+    out 80H, ax;
+    out 0, eax;
+    out dx, al;
+    out dx, ax;
+    out dx, eax;
+    ret;
+end kernel;
+
+proc main*;
+var p: proc; b: ^U8; i, j, at: INT;
+begin
+    p := kernel;
+    b := ^U8(p);
+    at := 0;
+    for i := 0 to Count - 1 do
+        Out.str(Names[i]); Out.str(":");
+        for j := 0 to Sizes[i] - 1 do
+            Out.str(" "); Out.hex(U64(b[at + j]), 2);
+        end;
+        Out.ln;
+        at := at + Sizes[i];
+    end;
+end;
+
+end AsmKernel.

@@ -906,10 +906,10 @@ const
     NoBase = -3;   (* a memory operand's base, not yet read *)
 
 type
-    OpKind = (oReg, oXmm, oMem, oImm);
+    OpKind = (oReg, oXmm, oCr, oMem, oImm);
     Operand = record
         kind: OpKind;
-        r, size: INT;   (* oReg, oXmm: the register and its size; oMem: its size, or 0 *)
+        r, size: INT;   (* oReg, oXmm, oCr: the register and its size; oMem: its size, or 0 *)
         m: Mem;
         v: I64;         (* oImm *)
     end;
@@ -927,6 +927,7 @@ begin
     | sDiv: return "div";
     | sShl: return "shl";
     | sShr: return "shr";
+    | sIn: return "in";
     | else: return "";
     end;
 end;
@@ -1048,6 +1049,10 @@ begin
             return Scan.mark("expected a memory operand, [base + index * scale + disp]");
         end;
         Scan.next;
+    elsif (w = "cr0") or (w = "cr2") or (w = "cr3") or (w = "cr4") or (w = "cr8") then
+        (* a control register, for mov to and from a general one *)
+        o^.kind := oCr; o^.r := INT(w[2]) - 48; o^.size := 8;
+        Scan.next;
     elsif isReg(w, ADR(o^.r), ADR(o^.size)) then
         if o^.size = 16 then o^.kind := oXmm; else o^.kind := oReg; end;
         Scan.next;
@@ -1089,10 +1094,18 @@ const
     BitOps = " bsf bsr tzcnt lzcnt popcnt ";
     BitPfx: [5]INT = [0, 0, 0F3H, 0F3H, 0F3H];
     BitCodes: [5]INT = [0BC0FH, 0BD0FH, 0BC0FH, 0BD0FH, 0B80FH];
-    Plain: [15][]U8 = ["ret", "leave", "syscall", "cpuid", "rdtsc",
-        "pause", "nop", "ud2", "int3", "hlt", "cqo", "cdq", "mfence", "lfence", "sfence"];
-    PlainOp: [15]INT = [0C3H, 0C9H, 050FH, 0A20FH, 310FH,
-        90F3H, 90H, 0B0FH, 0CCH, 0F4H, 9948H, 99H, 0F0AE0FH, 0E8AE0FH, 0F8AE0FH];
+    (* the instructions of no operands; the last seven are a kernel's *)
+    Plain: [22][]U8 = ["ret", "leave", "syscall", "cpuid", "rdtsc",
+        "pause", "nop", "ud2", "int3", "hlt", "cqo", "cdq", "mfence", "lfence", "sfence",
+        "cli", "sti", "iretq", "swapgs", "rdmsr", "wrmsr", "wbinvd"];
+    PlainOp: [22]INT = [0C3H, 0C9H, 050FH, 0A20FH, 310FH,
+        90F3H, 90H, 0B0FH, 0CCH, 0F4H, 9948H, 99H, 0F0AE0FH, 0E8AE0FH, 0F8AE0FH,
+        0FAH, 0FBH, 0CF48H, 0F8010FH, 320FH, 300FH, 090FH];
+    (* the privileged instructions of one memory operand, 0F 01 /digit
+       but for xsave and xrstor, 0F AE /digit *)
+    MemOps = " lgdt lidt invlpg xsave xrstor ";
+    MemCodes: [5]INT = [010FH, 010FH, 010FH, 0AE0FH, 0AE0FH];
+    MemDigits: [5]INT = [2, 3, 7, 4, 5];
 
 var
     (* the instruction being assembled *)
@@ -1183,6 +1196,17 @@ begin
         k := wordIndex(aw, Alus);
         return two(k * 8 + 1, k * 8 + 3, 81H, k);
     elsif aw = "mov" then
+        (* to a control register, 0F 22, and from one, 0F 20: the control
+           register in ModRM's reg, always 64 bits wide with no REX.W *)
+        if (an = 2) and (ao[0].kind = oCr) and (ao[1].kind = oReg) and awide then
+            opR(0, false, 220FH, ao[0].r, ao[1].r, false);
+            return nil;
+        elsif (an = 2) and (ao[0].kind = oReg) and (ao[1].kind = oCr) and awide then
+            opR(0, false, 200FH, ao[1].r, ao[0].r, false);
+            return nil;
+        elsif (an = 2) and ((ao[0].kind = oCr) or (ao[1].kind = oCr)) then
+            return bad();
+        end;
         if (an = 2) and (ao[0].kind = oReg) and (ao[1].kind = oImm) and (asize >= 4) then
             if awide then
                 movRI(ao[0].r, ao[1].v);
@@ -1290,6 +1314,32 @@ begin
         if (an # 2) or (ao[0].kind # oReg) or (ao[1].kind = oImm) or (asize < 4) then return bad(); end;
         k := wordIndex(aw, BitOps);
         rm(BitPfx[k], awide, BitCodes[k], ao[0].r, ao[1], false);
+    elsif wordIndex(aw, MemOps) >= 0 then
+        if (an # 1) or (ao[0].kind # oMem) then return bad(); end;
+        k := wordIndex(aw, MemOps);
+        rm(0, false, MemCodes[k], MemDigits[k], ao[0], false);
+    elsif aw = "ltr" then
+        (* 0F 00 /3 with a 16-bit register: written out, since opcode
+           ends an opcode at its first zero byte *)
+        if (an # 1) or (ao[0].kind # oReg) or (asize # 2) then return bad(); end;
+        prefix(0, false, 0, NoIndex, ao[0].r, false);
+        Chunk.put1(0FH); Chunk.put1(0); Chunk.put1(0C0H | (3 shl 3) | (ao[0].r & 7));
+    elsif (aw = "in") or (aw = "out") then
+        (* in al, ax or eax from a port, a byte or dx: E4 or EC; out the
+           other way, E6 or EE; one more for a word or more. The size is
+           the register's, not the first operand's, which is dx for out *)
+        if aw = "in" then k := 1; else k := 0; end;   (* the port's operand *)
+        if (an # 2) or (ao[1 - k].kind # oReg) or (ao[1 - k].r # RAX) or (ao[1 - k].size = 8) then return bad(); end;
+        if ao[1 - k].size = 2 then Chunk.put1(66H); end;
+        if ao[k].kind = oImm then
+            if (ao[k].v < 0) or (ao[k].v > 255) then return bad(); end;
+            Chunk.put1(0E4H + 2 * (1 - k) + bit(ao[1 - k].size # 1));
+            Chunk.put1(INT(ao[k].v));
+        elsif (ao[k].kind = oReg) and (ao[k].r = RDX) and (ao[k].size = 2) then
+            Chunk.put1(0ECH + 2 * (1 - k) + bit(ao[1 - k].size # 1));
+        else
+            return bad();
+        end;
     elsif (aw = "movsd") or (aw = "movss") then
         if aw = "movsd" then k := 0F2H; else k := 0F3H; end;
         if (an = 2) and (ao[0].kind = oXmm) and isXM(1) then
@@ -1325,8 +1375,8 @@ begin
         rm(realPfx(aw = "cvtss2sd"), false, 5A0FH, ao[0].r, ao[1], false);
     else
         k := 0;
-        while (k <= 14) and (Plain[k] # aw) do INC(k); end;
-        if (k > 14) or (an # 0) then
+        while (k < LEN(Plain)) and (Plain[k] # aw) do INC(k); end;
+        if (k = LEN(Plain)) or (an # 0) then
             return Scan.markAt(aat, Diag.say("unknown instruction {}", [Fmt.str(aw)]));
         end;
         opcode(PlainOp[k]);

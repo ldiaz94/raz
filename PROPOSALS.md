@@ -1095,17 +1095,10 @@ which a kernel would catch, or replace by a library of its own as
 today; `-bare` only stops the ones made before the program can. About
 twenty lines in `Raz.raz` and `Gen.entryPoint`.
 
-**3. The privileged instructions in the assembler.** `X64.raz`
-assembles what the code generator uses, and `db` gives the rest. A
-kernel's code procedures are mostly the rest: `cli`, `sti`, `iretq`,
-`swapgs`, `lgdt`, `lidt`, `ltr`, `invlpg`, `mov` to and from `cr0`,
-`cr2`, `cr3`, `cr4`, `rdmsr`, `wrmsr`, `in` and `out`, `wbinvd`,
-`xsave` and `xrstor`. Written as bytes they can't be read, and `raz -S`
-can't name them. The proposal: these instructions in the assembler,
-most a row of `Plain` (`cli`, `sti`, `iretq`, `swapgs`, `rdmsr`,
-`wrmsr`, `wbinvd`), the rest a few lines each, each checked against
-`objdump` as the others were. 40 to 60 lines of the budget. It breaks
-nothing: a word the assembler refused before now assembles.
+**3. The privileged instructions in the assembler.** Done (2026-10-17):
+`cli`, `sti`, `iretq`, `swapgs`, `lgdt`, `lidt`, `ltr`, `invlpg`,
+`mov` to and from the control registers, `rdmsr`, `wrmsr`, `in`, `out`,
+`wbinvd`, `xsave` and `xrstor` (`doc/compiler.md`, the assembler).
 
 What is still left to a kernel's own code, with all three: the boot
 stub, since no common loader enters an ELF64 file in long mode but
