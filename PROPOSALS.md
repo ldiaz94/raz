@@ -7,8 +7,12 @@ the owner's word, and goes into the report before any code.
 ## IMMINENT - APPROVED: what a call does with its arguments, written at the call
 
 **Status.** Approved by the owner, 2026-10-16, for the next thaw, and
-revised on 2026-10-17 after a review of how it reads in real code. It
-is five parts, made in one thaw so that programs break once:
+revised on 2026-10-17 after a review of how it reads in real code. A
+second review, the same day, found the questions listed at the end of
+part 1, "Open questions"; the owner judged the feature, and its use,
+not yet settled, and left them open. Only part 2 goes ahead, on its
+own and without the marks (2026-10-17). It is five parts, made in one
+thaw so that programs break once:
 
 1. **Marks at the call** (this section): an argument for a `var`
    parameter is written `var x`, and one for a `keep` parameter
@@ -472,6 +476,65 @@ Then, one commit each:
 
 The examples of parts 2 and 3 are written as the whole thaw makes
 them, with the marks of part 1.
+
+### Open questions
+
+The second review, 2026-10-17, read the five parts against `src/`,
+`lib/Opt.raz`, `tools/Pretty.raz` and `examples/Words.raz`. It found
+the direction sound, and parts 1, 2 and 4 clearly better in `tools/`
+and `Opt`, but mostly noise in `src/Parse.raz`, where `var x` stands
+on nearly every call. Left open, by the owner's word:
+
+1. **The seed.** A release of today's compiler can't read the marks
+   either, so "the seed first" can't work as written: it takes two
+   releases, one that accepts every new form without requiring it,
+   made the seed, then one that marks `src/` and requires the marks.
+2. **Errors here.** `Opt.at` and `operand` move the `Parser` (`at`
+   runs `next` to the end), so they are `var`, not `const`; the table
+   row and part 1's `Opt.at(p)` are wrong. `Sys.entryKind` reads a
+   `Dir` of 8 KB on Linux: `const` or `var`, not a value. Part 3's
+   `Names.put(var table, keep buf[0..n], 1)` lacks `keep 1`. Part 5's
+   table has a row part 1's lacks. Report 4 must let a variant's case
+   stand in a constant expression.
+3. **A hole in part 3's exception for `var`.** `proc fill(var r: R);
+   begin r.s := r.buf[0..4]; end;` passes, since `r` points where it
+   pointed; a caller's local `r` copied to a module variable then
+   points into a dead frame. Mend: the caller's variable and what its
+   slices point at as two places, the exception covering the second.
+4. **Part 3's cost.** A local points wherever anything assigned to it
+   does, which needs a closure over local-to-local assignments at
+   `end` (`w, rest := Str.field(rest)`), and bits for locals, value
+   parameters and `match`'s names: 400 to 600 lines, not 250 to 400.
+5. **Rule 6.** Its list contradicts itself: `keep - 1` and `keep[i]`
+   are expressions today, and `Sys.closeAllBut(keep: []INT)` indexes
+   `keep[i]`; `keep ^U8(p)` can't be marked. Proposed: decide by the
+   heading, which is known when the argument is read: at a `keep`
+   parameter a leading `keep` is the mark; elsewhere a name.
+6. **`keep` before what can't end is noise**: `keep 5`, `keep "Sh"`,
+   and `keep k + 1`, which reads as `(keep k) + 1`. Proposed: optional
+   before a constant or a basic or pointer type, required where the
+   type carries a slice or is another module's record. It partly undoes
+   rule 2's "the heading alone": one rule and some noise, or less noise
+   and an exception.
+7. **A mark that lends nothing in a plain heading**, `keep n: INT`,
+   costs every call a word. Proposed: a warning, but on a module
+   parameter's type or a procedure with a body for each target.
+8. **`const`'s rules.** Check 4 must cover `match`'s names and views;
+   whether a slice's elements count as "a part of it" (they shouldn't);
+   a constant argument passed in place, not copied; `ret const` given a
+   temporary that holds an array, an error. The heading's grammar,
+   `Params = ["ret"] ["keep"] ["var" | "const"] ident ...`, and the
+   call's, a designator after `var`.
+9. **Procedure types** with fewer marks are assignable, not the same:
+   5.10 must say so, for `=`, generic instances and `forward`.
+   `Map`'s `eq` can't take a `const` equality.
+10. **Constants holding variants.** `match`'s names on one are read
+    only; a pointer field takes only `nil`; an untyped `const D = dot`;
+    padding zero; 30 to 40 lines, not 20.
+11. **False alarms to document.** A local container over a local
+    buffer, `Scan.init(var s, keep line[0..n])`, is refused though both
+    end together (a module variable, a `Buf` or the heap is the way
+    out); so is a store through `ADR` of a local.
 
 ### Part 2: the library's parameters by `var`, not by pointer
 
