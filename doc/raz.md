@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.32 of the report; section 11 says where each
+This is version 2026-10.33 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -41,6 +41,14 @@ its type, and must be where another declaration shares it (section
 5.7); and `continue` (section 7.2), which breaks a program that has a
 name `continue`. 2026-10.32 is an eighth thaw: a constant typed `[]T`
 may be `[]`, the empty slice (section 4); it breaks no program.
+2026-10.33 is a ninth: a `const` parameter, the caller's variable read
+in place (section 8), and a variant in a constant (section 4), which
+break no program; and the library's procedures that took a pointer to
+what they work on take a `var` parameter, a `const` one or a value
+instead (the library volume), which breaks a program that calls them
+with `ADR`.
+
+The compiler follows version 2026-10.32 until the library has moved.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -358,10 +366,10 @@ base type of a pointer may name a type declared later in the same
 procedure may be declared `forward` and defined later (section 8).
 
 **Constants** are evaluated by the compiler. Their expressions use only
-literals, other constants, operators, conversions, `SIZE` and the `LEN`
-of arrays and strings. A constant is an integer, a real, a `BOOL`, a
-name of an enumeration, a set, a string, an array, a record or an
-`ERROR`. A constant of an integer type wraps as the
+literals, other constants, operators, conversions, `SIZE`, the `LEN`
+of arrays and strings, and a variant's cases. A constant is an integer,
+a real, a `BOOL`, a name of an enumeration, a set, a string, an array,
+a record, a variant or an `ERROR`. A constant of an integer type wraps as the
 program would: `U8(250) + 10` is 4. Dividing by zero in a constant is
 an error, and so is dividing the smallest value of a signed type by -1,
 with `div` or `mod`, which stops a program (section 6.1). A string constant can be indexed and sliced as an array of
@@ -375,18 +383,21 @@ const Text = "the cat";
 w := Text[4..7];    (* "cat" *)
 ```
 
-A constant with a type is an `ERROR` (section 5.8), an array or a
-record, and the value of an array or record constant is a literal
-(section 6.5) of constants. Its elements and fields are integers,
-reals, `BOOL`s, enumerations, sets, `ERROR`s, procedures, `nil`, a
-string for a `[]U8`, an array constant or the empty slice for a slice
-of its element type, and arrays and records of these; no variant and
-no other pointer:
+A constant with a type is an `ERROR` (section 5.8), an array, a
+record or a variant, and the value of an array or record constant is a
+literal (section 6.5) of constants, that of a variant one a case built
+from constants, as a program builds one (section 5.6). Its elements
+and fields are integers, reals, `BOOL`s, enumerations, sets, `ERROR`s,
+procedures, `nil`, a string for a `[]U8`, an array constant or the
+empty slice for a slice of its element type, and arrays, records and
+variants of these; no other pointer. A variant constant must have a
+type: `const D = dot;` is an error, `const D: Shape = dot;` isn't.
 
 ```
 const Primes: [5]I64 = [2, 3, 5, 7, 11];
 type Rule = record class: []U8; tag: INT; float: BOOL; end;
 const Rules: [2]Rule = [{class: "firefox", tag: 2}, {class: "mpv", float: true}];
+const Shapes: []Shape = [circle(1.0), rect(2.0, 3.0), dot];   (* Shape of section 5.6 *)
 ...
 p := Primes[i];
 ```
@@ -628,9 +639,9 @@ type Compare = proc(a, b: I64): BOOL;
 
 A value of a procedure type is the address of a procedure with that
 signature, as big as an address, or `nil`. Two signatures are alike when
-their parameters have the same types, each `var` or not alike, in order,
-and their results are the same types; the parameters' names don't
-matter.
+their parameters have the same types, each `var`, `const` or neither
+alike, in order, and their results are the same types; the parameters'
+names don't matter.
 
 ### 5.10 Same and assignable
 
@@ -1167,8 +1178,9 @@ end;
 `match` takes a variant, an enumeration, an integer type (a `U8`
 included) or a string, a `[]U8`; other types are an error. It runs the arm of the case `s` holds. An arm may name the case's
 fields, in order, all of them; the names stand for those fields of `s`
-itself, so assigning to one changes `s`; if `s` isn't a variable, they
-stand for the fields of a copy. An arm may also leave the fields
+itself, so assigning to one changes `s`; if `s` is a constant or a
+`const` parameter, they can't be assigned; if `s` isn't a variable,
+they stand for the fields of a copy. An arm may also leave the fields
 unnamed. Every case must have an arm, and only one, unless there is an
 `| else:` arm, which must come last.
 
@@ -1404,7 +1416,7 @@ LocalDeclaration  = "const" { ident [ ":" Type ] "=" Expr ";" }
                   | "var" { ident { "," ident } ":" Type ";" } .
 Signature         = "(" [ Params { ";" Params } [ ";" "..." ] ] ")" [ ":" Results ]
                   | [ ":" Results ] .
-Params            = [ "var" ] ident { "," ident } ":" Type .
+Params            = [ "var" | "const" ] ident { "," ident } ":" Type .
 Results           = Type | "(" Type { "," Type } ")" .
 ```
 
@@ -1417,6 +1429,39 @@ value, not a call.
 it, and the caller's variable stays as it was. A `var` parameter is the
 caller's variable itself; its argument must be a variable of exactly
 the parameter's type.
+
+A `const` parameter is the caller's variable too, read in place,
+whatever its size, with nothing copied; the procedure may only read it.
+It may not assign it or a part of it (a field, an element of an array
+in it), give it or a part of it to a `var` parameter, take the `ADR` of
+either, write it through a view (section 6.9), or assign the names a
+`match` arm gives its fields. What a slice or a pointer in it points at
+isn't part of it: the procedure may write through them, as it may
+through a value parameter's. Its argument is any expression of the
+parameter's type: a variable or a constant is passed in place, anything
+else as a temporary of the statement, as an array a call returns is
+(below). If the variable changes while the procedure runs, through a
+`var` parameter, a pointer or another thread, the procedure sees the
+change.
+
+```
+type Parser = record args: [][]U8; at: INT; (* ... *) end;
+
+proc current(const p: Parser): []U8;     (* reads p, many words, in place *)
+begin
+    return p.args[p.at];
+end;
+
+proc advance(var p: Parser);             (* changes p *)
+begin
+    INC(p.at);
+end;
+```
+
+A procedure takes what it reads as a value when it is a few words, and
+as `const` when it is more; what it changes, as `var`; and a pointer
+only for what it keeps past the call, what may be `nil`, an allocator,
+or what C or the system takes.
 
 **Results.** A procedure returns nothing, one value, or several. A call
 that returns several values can only stand on the right of a multiple
@@ -1484,8 +1529,8 @@ does. Any bytes may be written with `db`, as in `db 0FH, 31H;`, for an
 instruction the assembler doesn't know.
 
 It is called like any procedure, with the System V convention: integer
-and pointer arguments arrive in `rdi`, `rsi`, `rdx`, `rcx`, `r8` and
-`r9`, `F32` and `F64` ones in `xmm0` to `xmm7`, and the result goes in
+and pointer arguments, and the addresses of `var` and `const` ones,
+arrive in `rdi`, `rsi`, `rdx`, `rcx`, `r8` and `r9`, `F32` and `F64` ones in `xmm0` to `xmm7`, and the result goes in
 `rax` (and `rdx` for a second) or `xmm0`. Its parameters and results
 are therefore of the types C can take (section 9), or slices, at most
 six integer and eight real parameters, and at most two results. A
@@ -1591,7 +1636,8 @@ defined by this report, with one exception: memory reached other than
 through a checked variable. Dereferencing a stale or made-up pointer,
 indexing through a pointer, a slice kept after the call whose frame
 holds what it points at (section 7.3), a slice of an array a call
-returned kept past its statement (section 8), an index out of range in a
+returned, or of a temporary given to a `const` parameter, kept past
+its statement (section 8), an index out of range in a
 module that says `check off;`, writing a string's bytes, a code procedure that
 breaks its rules, and C code can read or write any memory, and what
 follows isn't defined. Dereferencing `nil`, dividing
@@ -1801,7 +1847,7 @@ LocalDeclaration  = "const" { ident [ ":" Type ] "=" Expr ";" }
                   | "var" { ident { "," ident } ":" Type ";" } .
 Signature         = "(" [ Params { ";" Params } [ ";" "..." ] ] ")" [ ":" Results ]
                   | [ ":" Results ] .
-Params            = [ "var" ] ident { "," ident } ":" Type .
+Params            = [ "var" | "const" ] ident { "," ident } ":" Type .
 Results           = Type | "(" Type { "," Type } ")" .
 ExternDeclaration = "extern" ( "proc" IdentDef Signature
                              | "var" IdentDef ":" Type ) .

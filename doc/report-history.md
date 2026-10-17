@@ -198,3 +198,16 @@ at the time.
   4). Before, both were errors, since an array has at least one
   element. It breaks no program. `Vec` gains `pop`, and `Sys.Info`
   `links`, how many names a file has (volume 2).
+- **2026-10.33.** A thaw, the ninth. A parameter may be `const`: the
+  caller's variable, read in place with nothing copied, which the
+  procedure may not change; its argument is any expression of its type
+  (sections 5.9, 7.4, 8 and 10). A typed constant may be a variant, or
+  hold variants among its elements and fields, each a case built from
+  constants (section 4). Neither breaks a program. The library's
+  procedures that took a pointer to what they work on, and kept none,
+  take it as a `var` parameter when they change it, as a `const` one or
+  a value when they only read it: `Arena`, `Buf`, `Files.read` and
+  `load`, `Fmt.write`, `List`, `Lock`, `Map`, `Opt`, `Str.join` and
+  `replace`, `Sys`'s directories, `Thread.lock` and `unlock`, `Vec`
+  (volume 2). That breaks a program that calls them with `ADR`; it is
+  mended by writing `x` for `ADR(x)`, and `p^` for a pointer `p`.

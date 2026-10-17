@@ -6,18 +6,21 @@ ravite, ...). The report says what a program may do; this says what we
 do. New code keeps to it; old code comes to it when it is next changed,
 or, for the library's interfaces, at a thaw (`PROPOSALS.md`).
 
-## Parameters: a value, `var`, or a pointer
+## Parameters: a value, `const`, `var`, or a pointer
 
-A procedure takes a variable it is given in one of three ways, by what
+A procedure takes a variable it is given in one of four ways, by what
 it does with it:
 
-- **It reads it**: a value, when the type is a few words at most (a
-  handle, a slice, a small record). A larger record or array that is
-  only read is `var`, since a value parameter is a copy (8; a `const`
-  parameter waits in `PROPOSALS.md`).
-- **It changes it, and lets go of it when it returns**: `var`.
-- **It keeps it**, in a record, a module variable or another thread,
-  past the call: a pointer, `^T`.
+| The procedure | The parameter | Example |
+|---|---|---|
+| reads it, a few words at most (a handle, a slice, a small record) | a value | `Buf.bytes(b: Buf)` |
+| reads it, more than a few words | `const` | `Opt.number(const p: Parser; lo, hi: I64)` |
+| changes it, and lets go of it when it returns | `var` | `Buf.add(var b: Buf; c: U8)` |
+| keeps it past the call, in a record, a module variable or another thread | a pointer, `^T` | `Thread.spawn(p, arg: ^U8)` |
+
+A `const` parameter is passed in place, as a `var` one is, so nothing
+is copied; and since it can't be changed, `var` in a heading always
+means the procedure changes what it is given.
 
 So `ADR` at a call says the callee keeps what it is given. A reader
 who sees `Pg.start(q, ADR(c), sql)` knows that `q` is changed and `c`

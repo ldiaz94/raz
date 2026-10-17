@@ -10,21 +10,24 @@ the owner's word, and goes into the report before any code.
 2026-10-17 (the second review's findings are under "Open questions",
 at the end of part 1). The owner judged the feature, and its use, not
 settled: no change is made for the marks at the call, `ret` or `keep`.
-Part 2, the library by `var`, is done on its own, without the marks.
+Parts 2, 4 and 5, the library by `var`, a `const` parameter and a
+variant in a constant, went into report 2026-10.33 on their own,
+without the marks, and are no longer here.
 As drafted, it is five parts, to be made in one thaw so that programs
 break once:
 
 1. **Marks at the call** (this section): an argument for a `var`
    parameter is written `var x`, and one for a `keep` parameter
    `keep x`.
-2. **The library's parameters by `var`, not by pointer** (below): the
+2. **The library's parameters by `var`, not by pointer** (now in the
+   report, 2026-10.33): the
    `ADR` that stands at nearly every call to the library goes.
 3. **`ret` and `keep`** (below): a heading says what a procedure does
    with what it is given, and the compiler holds the body to it.
-4. **A `const` parameter** (below): a record or array only read is
+4. **A `const` parameter** (now in the report): a record or array only read is
    passed in place, unmarked, so that `var` at a call always means a
    change.
-5. **A constant holds a variant** (below): so that a table a procedure
+5. **A constant holds a variant** (now in the report): so that a table a procedure
    keeps, as `Opt.init`'s, can be a constant, not a literal in the
    frame.
 
@@ -536,52 +539,6 @@ on nearly every call. Left open, by the owner's word:
     end together (a module variable, a `Buf` or the heap is the way
     out); so is a store through `ADR` of a local.
 
-### Part 2: the library's parameters by `var`, not by pointer
-
-Most of the library's procedures take what they work on as `^T`:
-`Buf.str(ADR(b), s)`, `Vec.push(ADR(v), x)`, `Lock.take(ADR(l))`. None
-keeps it past the call; each reads or changes it and returns. That is
-what `var` is for (8), and with it the call is `Buf.str(var b, s)`. As it
-is, `ADR` stands at nearly every call a program makes to the library,
-and says nothing: a reader can't tell the few places where a pointer
-is kept from the many where it isn't. `STANDARDS.md` says how our own
-code chooses; this would bring the library to it.
-
-The proposal, procedure by procedure, from reading each one:
-
-- **To `var`** (it changes what it is given): `Arena.init`, `reset`,
-  `done`; `Buf.init`, `room`, `add`, `str`, `spare`, `cut`, `reset`,
-  `done`, and the `Buf` that `Files.load`, `Files.read`, `Fmt.write`,
-  `Str.join` and `Str.replace` write into; every procedure of `List`;
-  `Lock.take`, `give`; `Map.init`, `put`, `remove`, `done`; the
-  procedures of `Opt` that change the `Parser` (`init`, `next`,
-  `operand`, `scope`, ...); `Sys.openDir`, `nextEntry`, `closeDir`;
-  `Thread.lock`, `unlock`; `Vec.init`, `room`, `push`, `pop`, `add`,
-  `tryPush`, `tryAdd`, `resize`, `reset`, `done`.
-- **To a value** (it only reads a record of a few words): `Buf.bytes`,
-  `Vec.all`, `Map.get`, `Map.next`, `Sys.entryKind`.
-- **To `const`** (it only reads a record of many words; part 4):
-  `Opt.at`, and whichever other procedure of `Opt` a reading shows only
-  reads the `Parser`.
-- **Staying pointers**: an allocator, `^Mem.Allocator`, everywhere
-  (`NEW` takes one, and `^Arena(a)` needs one); `Mem.pages`, `unmap`,
-  `Sys.mmap`, `munmap`, `mapFile`, which are bytes, not variables;
-  `Thread.spawn`'s `arg`, which is kept, and the `^Thread` it gives,
-  which `join` and `signal` take as the program holds it; `Rt.fail`,
-  which the compiler calls.
-
-What it costs: it breaks every program that calls these, `src/`,
-rmacs, ravite, the tools and the library's own tests among them. The
-mending is mechanical, `ADR(x)` to `var x` at each such call, and `p`
-to `var p^` where a program holds the thing by pointer, and the
-compiler's message for a `^T` given to a `var` names it. The seed
-knows `var` parameters but not the marks of part 1, so with them
-`src/` and the library it imports wait for the new seed. Alone, this
-part changes volume 2 and `raz-lib.3`, not the report.
-
-Met in rpg and rsqlite, whose `Query`, `Result` and `Stmt` went from
-`^T` to `var` and to values, and whose own calls to `Buf` couldn't.
-
 ### Part 3: marking what a procedure does with what it is given: `ret` and `keep`
 
 #### The hole
@@ -870,80 +827,6 @@ opposite and `ret`; Rust's lifetime elision reads a call's result as
 `ret` does. D's experience is that the corners (fields, generics,
 procedure values) take years; the narrow form here leaves record
 lifetimes out, and so the first false alarm above, on purpose.
-
-### Part 4: a `const` parameter
-
-```
-proc is*(const sc: Scanner; s: []U8): BOOL;
-proc text*(ret const sc: Scanner): []U8;
-```
-
-A `const` parameter is the caller's variable itself, as a `var` one
-is, and the procedure may only read it: it may not assign it or a
-part of it, give it to a `var` parameter, nor take its `ADR`. Nothing
-is copied, whatever its size. Its argument is any expression of the
-parameter's type: a variable is passed in place; anything else, a
-call's result, a literal, an expression, goes in a temporary of the
-statement, and its address is passed.
-
-It is passed by its address always, so what it means is plain: if the
-variable changes while the procedure runs, through a `var` parameter,
-a pointer or another thread, the procedure sees the change.
-`f(var x, x)`, with `f`'s second parameter `const`, reads `x` as it now
-is. (Ada leaves the choice of copy or address to the compiler, and a
-program that depends on it is wrong; raz fixes the address, which is
-the cheaper and the one a reader expects.)
-
-It is never marked at the call: the procedure neither changes nor
-keeps what it is given (part 1, rule 8). With it, `STANDARDS.md` says:
-a record or array only read is a value when it is a few words, and
-`const` when it is more; `var` is for what is changed. So `var` at a
-call always means a change, and the marks of part 1 stay true.
-
-A `const` parameter whose type holds an array lends the caller's
-variable to `ret`, as a `var` one does (part 3, "Words"). A procedure
-type says `const` where its procedure does, and two signatures are
-alike only if their `const`s are (5.9). A code procedure receives a
-`const` parameter's address in a register, as a `var` one's; `extern`
-procedures take none.
-
-Met in porting the compiler to raz, where the seed's `const x: TItem`
-(about 130 bytes) became a value parameter, copied at every call.
-Measured once the port built: not what stands out, the compiler's
-profile is flat (`Scan.tokPos` is 9%). Met again here, where `Opt`'s
-`Parser` and the tools' `Scanner`, many words, are only read by many
-procedures, and `var` for them would be a mark that isn't true.
-
-Costs: the report, 8 and 5.9; the compiler, 30 to 60 lines: the word
-in a heading, passing as `var` does, the temporary, and the checks
-above. The seed knows `const` parameters in Pascal, not in raz; `src/`
-uses them after the new seed, as it does the marks.
-
-### Part 5: a constant holds a variant
-
-Today a typed constant holds no variant (4: "no variant and no other
-pointer"), and `src/Parse.raz` says "a constant holds no variant". So a
-table of `Opt.Row`s, a variant, can't be a constant, and part 3 makes
-the literal table at `Opt.init`'s call an error. The plain place for
-such a table is a constant:
-
-```
-const Rows: []Opt.Row = [
-    Opt.usage("", "Sh [-c script | file]"),
-    Opt.option("", 'c', "command", "script", "run script, not standard input"),
-    Opt.sub("", "run", "run the file named")];
-```
-
-A variant's case built from constants, `Opt.usage("", "...")`, or a
-case without fields, `dot`, is a constant of the variant's type, and a
-variant may stand among a constant's elements and fields as a record
-may. Its bytes are as 5.6 lays them out: the case's number, then its
-fields, the rest zero. Nothing else changes: a constant is still read
-only, and a `match` on one works as on a variable.
-
-Costs: the report, 4, one line; the compiler, the variant's branch of
-the constant writer in `Parse.raz`, which writes the tag and the
-case's fields as it writes a record's: about 20 lines.
 
 ## A minus sign after an operator
 
