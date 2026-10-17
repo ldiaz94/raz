@@ -47,12 +47,12 @@ var
 proc say(f: []U8; args: []Fmt.Arg);
 var b: Buf.Buf; _n: INT;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    Fmt.write(ADR(b), "Sh: ", []);
-    Fmt.write(ADR(b), f, args);
-    Buf.add(ADR(b), 10);
-    _n := Sys.write(Sys.stderr, Buf.bytes(ADR(b)));
-    Buf.done(ADR(b));
+    Buf.init(b, Heap.heap);
+    Fmt.write(b, "Sh: ", []);
+    Fmt.write(b, f, args);
+    Buf.add(b, 10);
+    _n := Sys.write(Sys.stderr, Buf.bytes(b));
+    Buf.done(b);
 end;
 
 proc special(c: U8): BOOL;
@@ -65,7 +65,7 @@ end;
 
 (* $NAME or $? at s[at], its value added to b; a $ before anything else
    is itself. *)
-proc dollar(b: ^Buf.Buf);
+proc dollar(var b: Buf.Buf);
 var start: INT;
 begin
     INC(at);
@@ -85,34 +85,34 @@ end;
 proc readWord;
 var b: Buf.Buf; q: U8;
 begin
-    Buf.init(ADR(b), ADR(arena.base));
+    Buf.init(b, ADR(arena.base));
     while (at < LEN(s)) and not special(s[at]) do
         q := s[at];
         match q of
         | 39:                      (* '...': every character as it is *)
             INC(at);
-            while (at < LEN(s)) and (s[at] # 39) do Buf.add(ADR(b), s[at]); INC(at); end;
+            while (at < LEN(s)) and (s[at] # 39) do Buf.add(b, s[at]); INC(at); end;
             INC(at);
         | '"':                     (* "...": dollars, and \" and \\ *)
             INC(at);
             while (at < LEN(s)) and (s[at] # '"') do
-                if s[at] = '$' then dollar(ADR(b));
+                if s[at] = '$' then dollar(b);
                 else
                     if (s[at] = '\\') and (at + 1 < LEN(s)) and ((s[at + 1] = '"') or (s[at + 1] = '\\')) then INC(at); end;
-                    Buf.add(ADR(b), s[at]);
+                    Buf.add(b, s[at]);
                     INC(at);
                 end;
             end;
             INC(at);
         | '$':
-            dollar(ADR(b));
+            dollar(b);
         | else:
             if (q = '\\') and (at + 1 < LEN(s)) then INC(at); end;
-            Buf.add(ADR(b), s[at]);
+            Buf.add(b, s[at]);
             INC(at);
         end;
     end;
-    text := Buf.bytes(ADR(b));
+    text := Buf.bytes(b);
 end;
 
 proc next: Token;
@@ -185,10 +185,10 @@ begin
         if (i = LEN(path)) or (path[i] = ':') then
             dir := path[start..i];
             start := i + 1;
-            Buf.init(ADR(b), ADR(arena.base));
-            Fmt.write(ADR(b), "{}/{}", [Fmt.str(dir), Fmt.str(name)]);
-            info, err := Sys.info(Buf.bytes(ADR(b)));
-            if (err = 0) and info.file and (info.mode & 49H # 0) then return Buf.bytes(ADR(b)), true; end;
+            Buf.init(b, ADR(arena.base));
+            Fmt.write(b, "{}/{}", [Fmt.str(dir), Fmt.str(name)]);
+            info, err := Sys.info(Buf.bytes(b));
+            if (err = 0) and info.file and (info.mode & 49H # 0) then return Buf.bytes(b), true; end;
         end;
     end;
     return "", false;
@@ -314,7 +314,7 @@ end;
 
 (* A line from standard input, a byte at a time, so that what follows
    it is left for the programs the line starts; false at its end. *)
-proc readLine(b: ^Buf.Buf): BOOL;
+proc readLine(var b: Buf.Buf): BOOL;
 var c: [1]U8;
 begin
     Buf.reset(b);
@@ -349,10 +349,10 @@ begin
         group := Sys.pid();
         _ok := Sys.foreground(Sys.stdin, group) = 0;
     end;
-    Buf.init(ADR(line), Heap.heap);
+    Buf.init(line, Heap.heap);
     if interactive then reap; show("$ ", []); end;
-    while readLine(ADR(line)) do
-        run(Buf.bytes(ADR(line)));
+    while readLine(line) do
+        run(Buf.bytes(line));
         if interactive then reap; show("$ ", []); end;
     end;
     if interactive then show("\n", []); end;
@@ -372,9 +372,9 @@ begin
     if given then
         run(script);
     elsif found then
-        Buf.init(ADR(b), Heap.heap);
-        if not Files.read(file, ADR(b)) then say("{}: can't read it", [Fmt.str(file)]); return 127; end;
-        run(Buf.bytes(ADR(b)));
+        Buf.init(b, Heap.heap);
+        if not Files.read(file, b) then say("{}: can't read it", [Fmt.str(file)]); return 127; end;
+        run(Buf.bytes(b));
     else
         interact;
     end;

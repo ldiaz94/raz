@@ -79,16 +79,16 @@ proc line(n: INT): BOOL;
 var b: Buf.Buf;
 begin
     if n < 0 then return false; end;
-    Buf.init(ADR(b), Heap.heap);
-    defer Buf.done(ADR(b));            (* freed on every way out below *)
-    Buf.str(ADR(b), "n is ");
+    Buf.init(b, Heap.heap);
+    defer Buf.done(b);            (* freed on every way out below *)
+    Buf.str(b, "n is ");
     if n > 9 then
-        Buf.str(ADR(b), "large");
-        Out.str(Buf.bytes(ADR(b))); Out.ln;
+        Buf.str(b, "large");
+        Out.str(Buf.bytes(b)); Out.ln;
         return true;
     end;
-    Buf.str(ADR(b), "small");
-    Out.str(Buf.bytes(ADR(b))); Out.ln;
+    Buf.str(b, "small");
+    Out.str(Buf.bytes(b)); Out.ln;
     return true;
 end;
 

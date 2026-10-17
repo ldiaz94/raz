@@ -38,7 +38,7 @@ const read1 = 1; readEnd = 0; readSkip = -1;
 const largest = 9223372036854775807;   (* the largest I64, a number with no top *)
 
 (* b written whole to fd, then freed. *)
-proc say(fd: INT; b: ^Buf.Buf);
+proc say(fd: INT; var b: Buf.Buf);
 var s: []U8; n: INT;
 begin
     s := Buf.bytes(b);
@@ -62,7 +62,7 @@ end;
 (* The scope's synopsis lines, as the help and the mistakes begin:
    "usage: " and the first, the others under it; or, for a scope with
    none, "usage: keep start". *)
-proc usageOf(p: ^Parser; b: ^Buf.Buf);
+proc usageOf(p: ^Parser; var b: Buf.Buf);
 var i, lines: INT; c: U8;
 begin
     for i := 0 to LEN(p^.table) - 1 do
@@ -93,12 +93,12 @@ end;
 proc mistake(p: ^Parser; f: []U8; args: []Fmt.Arg);
 var b: Buf.Buf;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    Fmt.write(ADR(b), "{}: ", [Fmt.str(p^.name)]);
-    Fmt.write(ADR(b), f, args);
-    Buf.add(ADR(b), 10);
-    usageOf(p, ADR(b));
-    say(Sys.stderr, ADR(b));
+    Buf.init(b, Heap.heap);
+    Fmt.write(b, "{}: ", [Fmt.str(p^.name)]);
+    Fmt.write(b, f, args);
+    Buf.add(b, 10);
+    usageOf(p, b);
+    say(Sys.stderr, b);
     Rt.exit(2);
 end;
 
@@ -119,7 +119,7 @@ end;
 (* The left column of a row in the help, as "-b, --bar label", or, for
    a value that may be left out, "-c, --color[=when]", as grep's help
    has it. *)
-proc left(b: ^Buf.Buf; r: ^Row);
+proc left(var b: Buf.Buf; r: ^Row);
 begin
     match r^ of
     | sub(_s, name, _help): Buf.str(b, name);
@@ -140,16 +140,16 @@ end;
 proc leftWidth(r: ^Row): INT;
 var b: Buf.Buf; n: INT;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    left(ADR(b), r);
-    n := LEN(Buf.bytes(ADR(b)));
-    Buf.done(ADR(b));
+    Buf.init(b, Heap.heap);
+    left(b, r);
+    n := LEN(Buf.bytes(b));
+    Buf.done(b);
     return n;
 end;
 
 (* A line of the list: the left column, padded to width and three
    spaces more, and the line of help. *)
-proc item(b: ^Buf.Buf; r: ^Row; width: INT);
+proc item(var b: Buf.Buf; r: ^Row; width: INT);
 var i: INT;
 begin
     Buf.str(b, "  ");
@@ -198,9 +198,9 @@ begin
     h := 'h';
     if ownsH(p) then h := 0; end;
     own := option(p^.scope, h, "help", "", "print this and exit");
-    Buf.init(ADR(b), Heap.heap);
-    usageOf(p, ADR(b));
-    Buf.add(ADR(b), 10);
+    Buf.init(b, Heap.heap);
+    usageOf(p, b);
+    Buf.add(b, 10);
     width := leftWidth(ADR(own));
     for i := 0 to LEN(p^.table) - 1 do
         r := ADR(p^.table[i]);
@@ -209,19 +209,19 @@ begin
     for i := 0 to LEN(p^.table) - 1 do
         r := ADR(p^.table[i]);
         match r^ of
-        | sub(s, _name, _help): if s = p^.scope then item(ADR(b), r, width); end;
+        | sub(s, _name, _help): if s = p^.scope then item(b, r, width); end;
         | else:
         end;
     end;
     for i := 0 to LEN(p^.table) - 1 do
         r := ADR(p^.table[i]);
         match r^ of
-        | option(s, _l, _long, _v, _help): if s = p^.scope then item(ADR(b), r, width); end;
+        | option(s, _l, _long, _v, _help): if s = p^.scope then item(b, r, width); end;
         | else:
         end;
     end;
-    item(ADR(b), ADR(own), width);
-    say(Sys.stdout, ADR(b));
+    item(b, ADR(own), width);
+    say(Sys.stdout, b);
     Rt.exit(0);
 end;
 
@@ -315,9 +315,9 @@ end;
 proc badTable(p: ^Parser; row: INT; why: []U8);
 var b: Buf.Buf;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    Fmt.write(ADR(b), "{}: option table, row {}: {}\n", [Fmt.str(p^.name), Fmt.int(row), Fmt.str(why)]);
-    say(Sys.stderr, ADR(b));
+    Buf.init(b, Heap.heap);
+    Fmt.write(b, "{}: option table, row {}: {}\n", [Fmt.str(p^.name), Fmt.int(row), Fmt.str(why)]);
+    say(Sys.stderr, b);
     Rt.exit(1);
 end;
 
@@ -431,9 +431,9 @@ end;
 proc fail*(p: ^Parser; text: []U8);
 var b: Buf.Buf;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    Fmt.write(ADR(b), "{}: {}\n", [Fmt.str(p^.name), Fmt.str(text)]);
-    say(Sys.stderr, ADR(b));
+    Buf.init(b, Heap.heap);
+    Fmt.write(b, "{}: {}\n", [Fmt.str(p^.name), Fmt.str(text)]);
+    say(Sys.stderr, b);
     Rt.exit(2);
 end;
 
@@ -463,9 +463,9 @@ begin
     w, ok := operand(ADR(p));
     if not ok then fail(ADR(p), "no command; see keep -h"); end;
     if w # "start" then
-        Buf.init(ADR(b), Heap.heap);
-        Fmt.write(ADR(b), "no command {}; see keep -h", [Fmt.str(w)]);
-        fail(ADR(p), Buf.bytes(ADR(b)));
+        Buf.init(b, Heap.heap);
+        Fmt.write(b, "no command {}; see keep -h", [Fmt.str(w)]);
+        fail(ADR(p), Buf.bytes(b));
     end;
     scope(ADR(p), "start");
     while next(ADR(p)) do

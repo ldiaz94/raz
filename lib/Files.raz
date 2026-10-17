@@ -17,21 +17,21 @@ end;
    the read that failed, as Sys gives them: -2 (ENOENT) for no such
    file, -13 (EACCES) for one not allowed, -21 (EISDIR) for a
    directory. What was read before a read failed stays in b. *)
-proc load*(path: []U8; b: ^Buf.Buf): INT;
+proc load*(path: []U8; var b: Buf.Buf): INT;
 var fd, n: INT;
 begin
     fd := Sys.openRead(path);
     if fd < 0 then return fd; end;
     repeat
         n := Sys.read(fd, Buf.spare(b, 65536));   (* straight into b *)
-        if n > 0 then INC(b^.len, n); end;
+        if n > 0 then INC(b.len, n); end;
     until (n <= 0) and (n # Sys.errIntr);         (* a signal Sys.handle took; read again *)
     Sys.close(fd);
     return n;
 end;
 
 (* Adds the file at path to b; false if it can't be read. *)
-proc read*(path: []U8; b: ^Buf.Buf): BOOL;
+proc read*(path: []U8; var b: Buf.Buf): BOOL;
 begin
     return load(path, b) = 0;
 end;
@@ -57,15 +57,15 @@ end;
 proc main*;
 var b: Buf.Buf;
 begin
-    Buf.init(ADR(b), Heap.heap);
+    Buf.init(b, Heap.heap);
     if not write("/tmp/raz-files-test", "abc") then Rt.stop("Files.write"); end;
-    if (load("/tmp/raz-files-test", ADR(b)) # 0) or (Buf.bytes(ADR(b)) # "abc") then Rt.stop("Files.load"); end;
-    if not read("/tmp/raz-files-test", ADR(b)) or (Buf.bytes(ADR(b)) # "abcabc") then Rt.stop("Files.read"); end;
+    if (load("/tmp/raz-files-test", b) # 0) or (Buf.bytes(b) # "abc") then Rt.stop("Files.load"); end;
+    if not read("/tmp/raz-files-test", b) or (Buf.bytes(b) # "abcabc") then Rt.stop("Files.read"); end;
     _ := Sys.remove("/tmp/raz-files-test");
-    if load("/tmp/raz-files-test", ADR(b)) # Sys.errNoEntry then Rt.stop("Files.load: no such file"); end;
-    if load("/", ADR(b)) # -21 then Rt.stop("Files.load: a directory"); end;
-    if read("/", ADR(b)) or (b.len # 6) then Rt.stop("Files.read: a directory"); end;
-    Buf.done(ADR(b));
+    if load("/tmp/raz-files-test", b) # Sys.errNoEntry then Rt.stop("Files.load: no such file"); end;
+    if load("/", b) # -21 then Rt.stop("Files.load: a directory"); end;
+    if read("/", b) or (b.len # 6) then Rt.stop("Files.read: a directory"); end;
+    Buf.done(b);
 end;
 
 end Files.

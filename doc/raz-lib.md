@@ -602,8 +602,8 @@ proc isPunct*(c: U8): BOOL;           (* printable, and neither a letter, a digi
 proc hexVal*(c: U8): INT;             (* c's value as a hexadecimal digit, or -1 *)
 proc lower*(s: []U8);                 (* s's ASCII capitals made small, in place *)
 proc upper*(s: []U8);                 (* s's ASCII small letters made capitals, in place *)
-proc join*(b: ^Buf.Buf; parts: [][]U8; sep: []U8);   (* the parts added to b, sep between each two *)
-proc replace*(b: ^Buf.Buf; s, old, new: []U8);       (* s added to b, with new for each old in it *)
+proc join*(var b: Buf.Buf; parts: [][]U8; sep: []U8);   (* the parts added to b, sep between each two *)
+proc replace*(var b: Buf.Buf; s, old, new: []U8);       (* s added to b, with new for each old in it *)
 proc encode*(c: I32): ([4]U8, INT);   (* c in UTF-8: its bytes, and how many *)
 proc decode*(s: []U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
 proc decodeLast*(s: []U8): (I32, INT);   (* the character s ends with, and its length in bytes *)
@@ -620,15 +620,15 @@ proc putBE*(s: []U8; v: U64);         (* v into s, the highest byte first *)
 
 module Buf;
 type Buf* = record len*: INT; ... end;
-proc init*(b: ^Buf; a: ^Mem.Allocator);
-proc room*(b: ^Buf; n: INT): BOOL;    (* room for n more bytes; false if the allocator has none *)
-proc add*(b: ^Buf; c: U8);
-proc str*(b: ^Buf; s: []U8);
-proc spare*(b: ^Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
-proc bytes*(b: ^Buf): []U8;           (* what it holds, until it next grows *)
-proc cut*(b: ^Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
-proc reset*(b: ^Buf);                 (* emptied, its memory kept *)
-proc done*(b: ^Buf);                  (* its memory given back *)
+proc init*(var b: Buf; a: ^Mem.Allocator);
+proc room*(var b: Buf; n: INT): BOOL;    (* room for n more bytes; false if the allocator has none *)
+proc add*(var b: Buf; c: U8);
+proc str*(var b: Buf; s: []U8);
+proc spare*(var b: Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
+proc bytes*(b: Buf): []U8;               (* what it holds, until it next grows *)
+proc cut*(var b: Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
+proc reset*(var b: Buf);                 (* emptied, its memory kept *)
+proc done*(var b: Buf);                  (* its memory given back *)
 
 module Fmt;
 type Arg* = variant
@@ -642,7 +642,7 @@ type Arg* = variant
 end;
 proc print*(f: []U8; args: []Arg);              (* to standard output *)
 proc eprint*(f: []U8; args: []Arg);             (* to standard error, once Out is flushed *)
-proc write*(b: ^Buf.Buf; f: []U8; args: []Arg); (* added to b *)
+proc write*(var b: Buf.Buf; f: []U8; args: []Arg); (* added to b *)
 
 module List(T);
 type
@@ -709,8 +709,8 @@ allocator `init` gives them. `Buf.add`, `str` and `spare` stop the program, as a
 failed check does, if the allocator has no room; `room` asks first. A
 program reads into a `Buf` through `spare`, then adds what it read to
 `len`: `s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n > 0 then
-INC(b^.len, n); end;`. `cut` takes back what was added, to a length it
-had: `start := b^.len; ...; Buf.cut(b, start);`; a length past `len`
+INC(b.len, n); end;`. `cut` takes back what was added, to a length it
+had: `start := b.len; ...; Buf.cut(b, start);`; a length past `len`
 stops the program, as an index past the end does. A `Vec` is `Buf` for any `T`: one block, which
 doubles when it is full, so `push` costs the same on average however
 long it grows. `all` gives the elements as a slice, indexed and
@@ -821,8 +821,8 @@ nearest; from 1e15 on, with an exponent, as `1.50e17`; and `nan`,
 ```
 module Files;
 proc arg*(i: INT): []U8;                     (* argument i; 0 is the program's name *)
-proc read*(path: []U8; b: ^Buf.Buf): BOOL;   (* the whole file added to b *)
-proc load*(path: []U8; b: ^Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
+proc read*(path: []U8; var b: Buf.Buf): BOOL;   (* the whole file added to b *)
+proc load*(path: []U8; var b: Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
 proc write*(path, data: []U8): BOOL;         (* the file made to hold data *)
 
 module Opt;

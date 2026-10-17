@@ -67,7 +67,7 @@ module Message;
 import Out, Buf, Fmt, Heap;
 
 (* "name (age n)", built in a Buf the caller owns *)
-proc describe(b: ^Buf.Buf; name: []U8; age: INT);
+proc describe(var b: Buf.Buf; name: []U8; age: INT);
 begin
     Fmt.write(b, "{} (age {})", [Fmt.str(name), Fmt.int(age)]);
 end;
@@ -75,12 +75,12 @@ end;
 proc main*;
 var b: Buf.Buf;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    defer Buf.done(ADR(b));
-    describe(ADR(b), "Ada", 36);
-    Buf.str(ADR(b), "; ");
-    describe(ADR(b), "Grace", 45);
-    Out.str(Buf.bytes(ADR(b))); Out.ln;
+    Buf.init(b, Heap.heap);
+    defer Buf.done(b);
+    describe(b, "Ada", 36);
+    Buf.str(b, "; ");
+    describe(b, "Grace", 45);
+    Out.str(Buf.bytes(b)); Out.ln;
     Out.int(b.len); Out.str(" bytes\n");
 end;
 

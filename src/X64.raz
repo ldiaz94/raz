@@ -293,22 +293,22 @@ proc mnSized(m: Mem; size: INT): []U8;
 var b: ^Buf.Buf;
 begin
     b := ^Buf.Buf(Scan.grab(SIZE(Buf.Buf)));
-    Buf.init(b, Heap.heap);
-    if size = 1 then Buf.str(b, "byte ");
-    elsif size = 2 then Buf.str(b, "word ");
-    elsif size = 4 then Buf.str(b, "dword ");
-    elsif size = 8 then Buf.str(b, "qword ");
+    Buf.init(b^, Heap.heap);
+    if size = 1 then Buf.str(b^, "byte ");
+    elsif size = 2 then Buf.str(b^, "word ");
+    elsif size = 4 then Buf.str(b^, "dword ");
+    elsif size = 8 then Buf.str(b^, "qword ");
     end;
-    Buf.str(b, "[");
-    if m.base = RIP then Buf.str(b, Chunk.chunkName(m.chunk)); else Buf.str(b, rn(m.base)); end;
-    if m.index # NoIndex then Fmt.write(b, " + {} * {}", [Fmt.str(rn(m.index)), Fmt.int(m.scale)]); end;
+    Buf.str(b^, "[");
+    if m.base = RIP then Buf.str(b^, Chunk.chunkName(m.chunk)); else Buf.str(b^, rn(m.base)); end;
+    if m.index # NoIndex then Fmt.write(b^, " + {} * {}", [Fmt.str(rn(m.index)), Fmt.int(m.scale)]); end;
     if m.disp > 0 then
-        Fmt.write(b, " + {}", [Fmt.int(m.disp)]);
+        Fmt.write(b^, " + {}", [Fmt.int(m.disp)]);
     elsif m.disp < 0 then
-        Fmt.write(b, " - {}", [Fmt.int(-m.disp)]);
+        Fmt.write(b^, " - {}", [Fmt.int(-m.disp)]);
     end;
-    Buf.str(b, "]");
-    return Buf.bytes(b);
+    Buf.str(b^, "]");
+    return Buf.bytes(b^);
 end;
 
 proc mn(m: Mem): []U8;

@@ -7,8 +7,8 @@ proc main*;
 var ar: Arena.Arena; b: Buf.Buf; big: [10000]U8;
 begin
     if not Arena.init(ADR(ar), 4096) then Rt.stop("no arena"); end;
-    Buf.init(ADR(b), ADR(ar.base));
-    Buf.str(ADR(b), big);
+    Buf.init(b, ADR(ar.base));
+    Buf.str(b, big);
 end;
 
 end BufFull.

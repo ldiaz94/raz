@@ -109,16 +109,16 @@ begin
     p.fds[1] := wr;
     pid := Sys.spawn(p);
     Sys.close(wr);                      (* only the child writes now *)
-    Buf.init(ADR(b), Heap.heap);
-    defer Buf.done(ADR(b));
+    Buf.init(b, Heap.heap);
+    defer Buf.done(b);
     n := Sys.read(rd, chunk);
     while n > 0 do
-        Buf.str(ADR(b), chunk[0..n]);
+        Buf.str(b, chunk[0..n]);
         n := Sys.read(rd, chunk);
     end;
     Sys.close(rd);
     _, how, status := Sys.wait(pid, true);
-    Out.str("captured: "); Out.str(Buf.bytes(ADR(b)));
+    Out.str("captured: "); Out.str(Buf.bytes(b));
     Out.str("status "); Out.int(status); Out.ln;
     if how = Sys.exited then Out.str("(a normal exit)\n"); end;
 end;

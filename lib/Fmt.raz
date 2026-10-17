@@ -37,7 +37,7 @@ end;
 (* Where the pieces go: to b, or to standard output if b is nil. *)
 proc put(b: ^Buf.Buf; s: []U8);
 begin
-    if b = nil then Out.str(s); else Buf.str(b, s); end;
+    if b = nil then Out.str(s); else Buf.str(b^, s); end;
 end;
 
 (* x as Arg's real says. The whole part and the fraction are taken
@@ -135,9 +135,9 @@ var ar: Arena.Arena; b: Buf.Buf; s: []U8; n: INT;
 begin
     Out.flush;
     if not Arena.init(ADR(ar), 1 shl 20) then Rt.stop("Fmt.eprint: no arena"); end;
-    Buf.init(ADR(b), ADR(ar.base));
+    Buf.init(b, ADR(ar.base));
     format(ADR(b), f, args);
-    s := Buf.bytes(ADR(b));
+    s := Buf.bytes(b);
     while LEN(s) > 0 do
         n := Sys.write(Sys.stderr, s);
         if n > 0 then s := s[n..LEN(s)];
@@ -148,9 +148,9 @@ begin
 end;
 
 (* Appends f to b, each {} replaced by the next of args. *)
-proc write*(b: ^Buf.Buf; f: []U8; args: []Arg);
+proc write*(var b: Buf.Buf; f: []U8; args: []Arg);
 begin
-    format(b, f, args);
+    format(ADR(b), f, args);   (* format's nil is standard output *)
 end;
 
 (* The module's test: formats into a buffer over an arena. *)
@@ -158,21 +158,21 @@ proc main*;
 var ar: Arena.Arena; b: Buf.Buf; zero: F64;
 begin
     if not Arena.init(ADR(ar), 1 shl 16) then Rt.stop("Fmt: no arena"); end;
-    Buf.init(ADR(b), ADR(ar.base));
-    write(ADR(b), "{} {} {} {}|{}{}{} {{}}", [int(-42), uint(0FFFFFFFFFFFFFFFFH), hex(48879),
+    Buf.init(b, ADR(ar.base));
+    write(b, "{} {} {} {}|{}{}{} {{}}", [int(-42), uint(0FFFFFFFFFFFFFFFFH), hex(48879),
         str("s"), char('c'), bool(true), int(0)]);
-    if Buf.bytes(ADR(b)) # "-42 18446744073709551615 BEEF s|ctrue0 {}" then Rt.stop("Fmt.write"); end;
-    Buf.reset(ADR(b));
-    write(ADR(b), "{} and {}", [int(1)]);
-    if Buf.bytes(ADR(b)) # "1 and " then Rt.stop("Fmt: too few arguments"); end;
-    Buf.reset(ADR(b));
-    write(ADR(b), "{} {} {} {} {} {} {} {}", [real(3.14159, 2), real(-2.5, 0), real(0.999, 2), real(0.05, 1),
+    if Buf.bytes(b) # "-42 18446744073709551615 BEEF s|ctrue0 {}" then Rt.stop("Fmt.write"); end;
+    Buf.reset(b);
+    write(b, "{} and {}", [int(1)]);
+    if Buf.bytes(b) # "1 and " then Rt.stop("Fmt: too few arguments"); end;
+    Buf.reset(b);
+    write(b, "{} {} {} {} {} {} {} {}", [real(3.14159, 2), real(-2.5, 0), real(0.999, 2), real(0.05, 1),
         real(1.0, 12), real(-0.001, 2), real(123.0, 0), real(999999999999999.9, 0)]);
-    if Buf.bytes(ADR(b)) # "3.14 -3 1.00 0.1 1.000000000 -0.00 123 1000000000000000" then Rt.stop("Fmt.real"); end;
-    Buf.reset(ADR(b));
-    write(ADR(b), "{} {} {} {} {} {}", [real(1.5E17, 2), real(-9.999E20, 2), real(1.0E15, 0), real(1.7976931348623157E308, 3),
+    if Buf.bytes(b) # "3.14 -3 1.00 0.1 1.000000000 -0.00 123 1000000000000000" then Rt.stop("Fmt.real"); end;
+    Buf.reset(b);
+    write(b, "{} {} {} {} {} {}", [real(1.5E17, 2), real(-9.999E20, 2), real(1.0E15, 0), real(1.7976931348623157E308, 3),
         real(1.0 / zero, 2), real(zero / zero, 2)]);
-    if Buf.bytes(ADR(b)) # "1.50e17 -1.00e21 1e15 1.798e308 inf nan" then Rt.stop("Fmt.real: an exponent"); end;
+    if Buf.bytes(b) # "1.50e17 -1.00e21 1e15 1.798e308 inf nan" then Rt.stop("Fmt.real: an exponent"); end;
     Arena.done(ADR(ar));
 end;
 

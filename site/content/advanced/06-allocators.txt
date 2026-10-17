@@ -147,11 +147,11 @@ proc main*;
 var c: Counted.Counted; b: Buf.Buf; l: Names.List; i: INT; p: ^U8;
 begin
     Counted.init(ADR(c), Heap.heap);
-    Buf.init(ADR(b), ADR(c.base));
-    for i := 1 to 200 do Buf.str(ADR(b), "0123456789"); end;
+    Buf.init(b, ADR(c.base));
+    for i := 1 to 200 do Buf.str(b, "0123456789"); end;
     Fmt.print("a buffer of {} bytes took {} allocations\n",
         [Fmt.int(b.len), Fmt.int(c.allocs)]);
-    Buf.done(ADR(b));
+    Buf.done(b);
 
     Names.init(ADR(l), ADR(c.base));
     for i := 1 to 10 do _ := Names.push(ADR(l), "x"); end;

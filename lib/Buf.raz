@@ -10,20 +10,20 @@ type
     end;
 
 (* An empty buffer, which takes its memory from a. *)
-proc init*(b: ^Buf; a: ^Mem.Allocator);
+proc init*(var b: Buf; a: ^Mem.Allocator);
 begin
-    b^ := {a: a};
+    b := {a: a};
 end;
 
 (* Room for n more bytes; false if the allocator has none. *)
-proc room*(b: ^Buf; n: INT): BOOL;
+proc room*(var b: Buf; n: INT): BOOL;
 var cap: INT; p: ^U8;
 begin
-    if b^.len + n <= b^.cap then return true; end;
-    cap := b^.cap * 2;
+    if b.len + n <= b.cap then return true; end;
+    cap := b.cap * 2;
     if cap < 64 then cap := 64; end;
-    while cap < b^.len + n do cap := cap * 2; end;
-    if b^.a = nil then
+    while cap < b.len + n do cap := cap * 2; end;
+    if b.a = nil then
         (* a zero Buf has no allocator: the core has no heap to assume,
            so init must give it one. Said plainly, with the calls under
            way, rather than as a nil pointer in Mem.alloc *)
@@ -31,19 +31,19 @@ begin
         Rt.trace;
         Rt.exit(2);
     end;
-    p := Mem.alloc(b^.a, cap, 1);
+    p := Mem.alloc(b.a, cap, 1);
     if p = nil then return false; end;
-    if b^.len > 0 then COPY(p[0..b^.len], b^.data[0..b^.len]); end;
-    if b^.data # nil then Mem.free(b^.a, b^.data); end;
-    b^.data := p;
-    b^.cap := cap;
+    if b.len > 0 then COPY(p[0..b.len], b.data[0..b.len]); end;
+    if b.data # nil then Mem.free(b.a, b.data); end;
+    b.data := p;
+    b.cap := cap;
     return true;
 end;
 
 (* Room for n more bytes, or the program stops: a buffer that went on
    short of what was added to it would be wrong data, and nothing would
    say so. A program that can do better asks room first. *)
-proc need(b: ^Buf; n: INT);
+proc need(var b: Buf; n: INT);
 begin
     if not room(b, n) then
         _ := Sys.write(Sys.stderr, "Buf: out of memory\n");
@@ -53,64 +53,64 @@ begin
 end;
 
 (* Adds the byte c at the end. *)
-proc add*(b: ^Buf; c: U8);
+proc add*(var b: Buf; c: U8);
 begin
     need(b, 1);
-    b^.data[b^.len] := c;
-    INC(b^.len);
+    b.data[b.len] := c;
+    INC(b.len);
 end;
 
 (* Adds the bytes of s at the end. *)
-proc str*(b: ^Buf; s: []U8);
+proc str*(var b: Buf; s: []U8);
 begin
     need(b, LEN(s));
-    COPY(b^.data[b^.len..b^.len + LEN(s)], s);
-    INC(b^.len, LEN(s));
+    COPY(b.data[b.len..b.len + LEN(s)], s);
+    INC(b.len, LEN(s));
 end;
 
 (* Room for n more bytes, and those bytes, for a read to fill: the
    program then adds to len what it filled. Good until the buffer next
    grows, as bytes is. *)
-proc spare*(b: ^Buf; n: INT): []U8;
+proc spare*(var b: Buf; n: INT): []U8;
 begin
     if n = 0 then return ""; end;   (* a new buffer has no data to slice *)
     need(b, n);
-    return b^.data[b^.len..b^.len + n];
+    return b.data[b.len..b.len + n];
 end;
 
 (* What the buffer holds, until it next grows. *)
-proc bytes*(b: ^Buf): []U8;
+proc bytes*(b: Buf): []U8;
 begin
-    if b^.len = 0 then return ""; end;
-    return b^.data[0..b^.len];
+    if b.len = 0 then return ""; end;
+    return b.data[0..b.len];
 end;
 
 (* Keeps only the first n bytes, and the memory, for what comes next.
    An n past what the buffer holds is the program's mistake, and stops
    it, as an index past the end does. *)
-proc cut*(b: ^Buf; n: INT);
+proc cut*(var b: Buf; n: INT);
 begin
-    if (n < 0) or (n > b^.len) then
+    if (n < 0) or (n > b.len) then
         _ := Sys.write(Sys.stderr, "Buf.cut past the end\n");
         Rt.trace;
         Rt.exit(2);
     end;
-    b^.len := n;
+    b.len := n;
 end;
 
 (* Empties the buffer, keeping its memory for what comes next. *)
-proc reset*(b: ^Buf);
+proc reset*(var b: Buf);
 begin
     cut(b, 0);
 end;
 
 (* Gives the buffer's memory back, leaving it empty. *)
-proc done*(b: ^Buf);
+proc done*(var b: Buf);
 begin
-    if b^.data # nil then Mem.free(b^.a, b^.data); end;
-    b^.data := nil;
-    b^.len := 0;
-    b^.cap := 0;
+    if b.data # nil then Mem.free(b.a, b.data); end;
+    b.data := nil;
+    b.len := 0;
+    b.cap := 0;
 end;
 
 (* The module's test, over an arena. *)
@@ -118,26 +118,26 @@ proc main*;
 var ar: Arena.Arena; b: Buf; i: INT; s: []U8;
 begin
     if not Arena.init(ADR(ar), 1 shl 20) then Rt.stop("Buf: no arena"); end;
-    init(ADR(b), ADR(ar.base));
-    if LEN(bytes(ADR(b))) # 0 then Rt.stop("Buf: not empty"); end;
-    for i := 0 to 9999 do add(ADR(b), U8(i mod 251)); end;
-    str(ADR(b), "end");
-    s := bytes(ADR(b));
+    init(b, ADR(ar.base));
+    if LEN(bytes(b)) # 0 then Rt.stop("Buf: not empty"); end;
+    for i := 0 to 9999 do add(b, U8(i mod 251)); end;
+    str(b, "end");
+    s := bytes(b);
     if (LEN(s) # 10003) or (s[9998] # U8(9998 mod 251)) or (s[10000..10003] # "end") then
         Rt.stop("Buf: contents");
     end;
-    reset(ADR(b));
-    str(ADR(b), "again");
-    if bytes(ADR(b)) # "again" then Rt.stop("Buf.reset"); end;
-    cut(ADR(b), 2);
-    str(ADR(b), "ain");
-    cut(ADR(b), 5);
-    if bytes(ADR(b)) # "again" then Rt.stop("Buf.cut"); end;
-    s := spare(ADR(b), 3);
+    reset(b);
+    str(b, "again");
+    if bytes(b) # "again" then Rt.stop("Buf.reset"); end;
+    cut(b, 2);
+    str(b, "ain");
+    cut(b, 5);
+    if bytes(b) # "again" then Rt.stop("Buf.cut"); end;
+    s := spare(b, 3);
     COPY(s, "abc");
     INC(b.len, 2);
-    if (LEN(s) # 3) or (bytes(ADR(b)) # "againab") then Rt.stop("Buf.spare"); end;
-    done(ADR(b));
+    if (LEN(s) # 3) or (bytes(b) # "againab") then Rt.stop("Buf.spare"); end;
+    done(b);
     Arena.done(ADR(ar));
 end;
 

@@ -62,9 +62,9 @@ proc main*;
 var buf: Buf.Buf; n, op, i: INT; a, b, c: Scan.Scanner;
 begin
     if ARGC() # 3 then Rt.stop("usage: Mutate File.raz seed"); end;
-    Buf.init(ADR(buf), Heap.heap);
-    if not Files.read(Files.arg(1), ADR(buf)) then Rt.stop("Mutate: can't read the file"); end;
-    src := Buf.bytes(ADR(buf));
+    Buf.init(buf, Heap.heap);
+    if not Files.read(Files.arg(1), buf) then Rt.stop("Mutate: can't read the file"); end;
+    src := Buf.bytes(buf);
     seed(Files.arg(2));
     n := count();
     if n < 2 then Out.str(src); return; end;

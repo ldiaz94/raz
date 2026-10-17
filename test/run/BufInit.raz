@@ -6,7 +6,7 @@ import Buf;
 proc main*;
 var b: Buf.Buf;
 begin
-    Buf.str(ADR(b), "hello");
+    Buf.str(b, "hello");
 end;
 
 end BufInit.

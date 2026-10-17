@@ -17,15 +17,15 @@ var b: Buf.Buf; ok: BOOL;
 begin
     ok := Files.write("notes.txt", "first line\nsecond line\n");
     if not ok then Out.str("can't write\n"); return; end;
-    Buf.init(ADR(b), Heap.heap);
-    defer Buf.done(ADR(b));
-    ok := Files.read("notes.txt", ADR(b));
+    Buf.init(b, Heap.heap);
+    defer Buf.done(b);
+    ok := Files.read("notes.txt", b);
     if ok then
-        Out.int(b.len); Out.str(" bytes: "); Out.str(Buf.bytes(ADR(b)));
+        Out.int(b.len); Out.str(" bytes: "); Out.str(Buf.bytes(b));
     end;
-    ok := Files.read("missing.txt", ADR(b));
+    ok := Files.read("missing.txt", b);
     if not ok then Out.str("missing.txt: not there\n"); end;
-    if Files.load("missing.txt", ADR(b)) = -2 then Out.str("missing.txt: ENOENT\n"); end;
+    if Files.load("missing.txt", b) = -2 then Out.str("missing.txt: ENOENT\n"); end;
 end;
 
 end Notes.
@@ -119,12 +119,12 @@ begin
     end;
     Sys.closeDir(ADR(d));
     Order.sort(names[0..n]);
-    Buf.init(ADR(path), Heap.heap);
+    Buf.init(path, Heap.heap);
     for i := 0 to n - 1 do
-        Buf.reset(ADR(path));
-        Buf.str(ADR(path), "proj/");
-        Buf.str(ADR(path), names[i]);
-        info, err := Sys.info(Buf.bytes(ADR(path)));
+        Buf.reset(path);
+        Buf.str(path, "proj/");
+        Buf.str(path, names[i]);
+        info, err := Sys.info(Buf.bytes(path));
         Out.str(names[i]);
         if err < 0 then Out.str(" ?");
         elsif info.dir then Out.str("/");
@@ -133,7 +133,7 @@ begin
         Out.ln;
         Mem.free(Heap.heap, ^U8(ADR(names[i][0])));
     end;
-    Buf.done(ADR(path));
+    Buf.done(path);
 end;
 
 end Tree.

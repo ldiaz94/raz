@@ -100,21 +100,21 @@ import Out, Buf, Heap, Str;
 proc main*;
 var b: Buf.Buf; i: INT;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    defer Buf.done(ADR(b));
+    Buf.init(b, Heap.heap);
+    defer Buf.done(b);
     for i := 1 to 5 do
-        Buf.str(ADR(b), "item ");
-        Buf.add(ADR(b), U8('0' + i));
-        Buf.add(ADR(b), ',');
+        Buf.str(b, "item ");
+        Buf.add(b, U8('0' + i));
+        Buf.add(b, ',');
     end;
-    Out.str(Buf.bytes(ADR(b))); Out.ln;
+    Out.str(Buf.bytes(b)); Out.ln;
     Out.int(b.len); Out.str(" bytes\n");
-    Buf.reset(ADR(b));
-    Str.join(ADR(b), ["red", "green", "blue"], ", ");
-    Out.str(Buf.bytes(ADR(b))); Out.ln;
-    Buf.reset(ADR(b));
-    Str.replace(ADR(b), "a-b-c", "-", " and ");
-    Out.str(Buf.bytes(ADR(b))); Out.ln;
+    Buf.reset(b);
+    Str.join(b, ["red", "green", "blue"], ", ");
+    Out.str(Buf.bytes(b)); Out.ln;
+    Buf.reset(b);
+    Str.replace(b, "a-b-c", "-", " and ");
+    Out.str(Buf.bytes(b)); Out.ln;
 end;
 
 end Build.

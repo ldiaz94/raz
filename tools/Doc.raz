@@ -304,9 +304,9 @@ end;
 proc document(path: []U8);
 var b: Buf.Buf; start, ds, de: INT;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    if not Files.read(path, ADR(b)) then Rt.stop("Doc: can't read the file"); end;
-    src := Buf.bytes(ADR(b));
+    Buf.init(b, Heap.heap);
+    if not Files.read(path, b) then Rt.stop("Doc: can't read the file"); end;
+    src := Buf.bytes(b);
     Scan.init(ADR(sc), src);
     next;
     while (sc.kind # Scan.eof) and not is("module") do next; end;
@@ -336,7 +336,7 @@ end;
 (* line, from the report or a manual page's literal block, added to b
    as the program has it: in a page, \e is a backslash, \(ga a
    backquote and \& nothing. *)
-proc addLine(b: ^Buf.Buf; line: []U8; page: BOOL);
+proc addLine(var b: Buf.Buf; line: []U8; page: BOOL);
 var i: INT;
 begin
     i := 0;
@@ -357,7 +357,7 @@ begin
 end;
 
 (* text written to the file dir/name and ext, its path made in out *)
-proc write(out: ^Buf.Buf; dir, name, ext, text: []U8);
+proc write(var out: Buf.Buf; dir, name, ext, text: []U8);
 begin
     Buf.reset(out);
     Buf.str(out, dir); Buf.str(out, "/"); Buf.str(out, name); Buf.str(out, ext);
@@ -374,11 +374,11 @@ var
     b, out, prog: Buf.Buf; s, line, first, last, name, shows: []U8;
     i, k, n, after: INT; inBlock, whole, page, fence: BOOL;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    Buf.init(ADR(out), Heap.heap);
-    Buf.init(ADR(prog), Heap.heap);
-    if not Files.read(path, ADR(b)) then Rt.stop("Doc: can't read the examples' file"); end;
-    s := Buf.bytes(ADR(b));
+    Buf.init(b, Heap.heap);
+    Buf.init(out, Heap.heap);
+    Buf.init(prog, Heap.heap);
+    if not Files.read(path, b) then Rt.stop("Doc: can't read the examples' file"); end;
+    s := Buf.bytes(b);
     page := (LEN(path) < 3) or (path[LEN(path) - 3..LEN(path)] # ".md");
     inBlock := false;
     after := -1;
@@ -394,22 +394,22 @@ begin
                 n := 0;
                 while (n < LEN(name)) and Scan.isWord(name[n]) do INC(n); end;
                 name := name[0..n];
-                write(ADR(out), dir, name, ".raz", Buf.bytes(ADR(prog)));
+                write(out, dir, name, ".raz", Buf.bytes(prog));
                 Out.str(name); Out.ln;
                 after := k + 1;
             elsif LEN(shows) > 0 then
-                write(ADR(out), dir, shows, ".shown", Buf.bytes(ADR(prog)));
+                write(out, dir, shows, ".shown", Buf.bytes(prog));
             end;
             inBlock := false;
         elsif not inBlock and (fence or page and Str.hasPrefix(line, ".Bd -literal")) then
             inBlock := true;
             shows := "";
             if page and (i = after) then shows := name; end;
-            Buf.reset(ADR(prog));
+            Buf.reset(prog);
             first := ""; last := "";
             whole := true;
         elsif inBlock then
-            addLine(ADR(prog), line, page);
+            addLine(prog, line, page);
             if Str.trim(line) = "..." then whole := false; end;
             if LEN(Str.trim(line)) > 0 then
                 if LEN(first) = 0 then first := Str.trim(line); end;

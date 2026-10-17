@@ -71,12 +71,12 @@ begin
     if not cwdKnown then
         d, err := Sys.workDir();
         if err = 0 then
-            Buf.str(ADR(cwd), d);
-            Buf.add(ADR(cwd), '/');
+            Buf.str(cwd, d);
+            Buf.add(cwd, '/');
         end;
         cwdKnown := true;
     end;
-    c := Buf.bytes(ADR(cwd));
+    c := Buf.bytes(cwd);
     if (LEN(c) > 0) and Str.hasPrefix(path, c) then return path[LEN(c)..LEN(path)]; end;
     return path;
 end;
@@ -127,17 +127,17 @@ end;
 
 proc put(s: []U8);
 begin
-    Buf.str(ADR(out), s);
+    Buf.str(out, s);
 end;
 
 proc putc(c: U8);
 begin
-    Buf.add(ADR(out), c);
+    Buf.add(out, c);
 end;
 
 proc putNum(n: INT);
 begin
-    Fmt.write(ADR(out), "{}", [Fmt.int(n)]);
+    Fmt.write(out, "{}", [Fmt.int(n)]);
 end;
 
 (* The text of a number *)
@@ -145,9 +145,9 @@ proc say*(f: []U8; args: []Fmt.Arg): []U8;
 var b: ^Buf.Buf;
 begin
     b := ^Buf.Buf(grab(SIZE(Buf.Buf)));
-    Buf.init(b, Heap.heap);
-    Fmt.write(b, f, args);
-    return Buf.bytes(b);
+    Buf.init(b^, Heap.heap);
+    Fmt.write(b^, f, args);
+    return Buf.bytes(b^);
 end;
 
 (* c, when colour is on *)
@@ -172,13 +172,13 @@ end;
 proc flush;
 var s: []U8; n: INT;
 begin
-    s := Buf.bytes(ADR(out));
+    s := Buf.bytes(out);
     while LEN(s) > 0 do
         n := Sys.write(Sys.stderr, s);
         if n <= 0 then break; end;
         s := s[n..LEN(s)];
     end;
-    Buf.reset(ADR(out));
+    Buf.reset(out);
 end;
 
 (* Positions *)
@@ -405,6 +405,6 @@ begin
 end;
 
 begin
-    Buf.init(ADR(cwd), Heap.heap);
-    Buf.init(ADR(out), Heap.heap);
+    Buf.init(cwd, Heap.heap);
+    Buf.init(out, Heap.heap);
 end Diag.

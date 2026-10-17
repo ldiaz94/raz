@@ -55,14 +55,14 @@ var
 
 proc spaces(n: INT);
 begin
-    while n > 0 do Buf.add(ADR(out), ' '); DEC(n); end;
+    while n > 0 do Buf.add(out, ' '); DEC(n); end;
 end;
 
 (* Drops the spaces at the end of the line in out. *)
 proc trim;
 var s: []U8;
 begin
-    s := Buf.bytes(ADR(out));
+    s := Buf.bytes(out);
     while (out.len > lineAt) and ((s[out.len - 1] = ' ') or (s[out.len - 1] = '\t')) do
         DEC(out.len);
     end;
@@ -71,7 +71,7 @@ end;
 proc newLine;
 begin
     trim;
-    Buf.add(ADR(out), '\n');
+    Buf.add(out, '\n');
     lineAt := out.len;
 end;
 
@@ -215,12 +215,12 @@ begin
         if (n < 1) and (sc.start > last) then n := 1; end;
         spaces(n);
     elsif afterComment then
-        Buf.str(ADR(out), src[last..sc.start]);
+        Buf.str(out, src[last..sc.start]);
     elsif Scan.is(ADR(sc), ",") or Scan.is(ADR(sc), ";") then
     elsif Scan.is(ADR(prev), ",") or Scan.is(ADR(prev), ";") or binaryNow or prevBinary then
         if not prevUnary then spaces(1); end;
     elsif not prevUnary then
-        Buf.str(ADR(out), src[last..sc.start]);
+        Buf.str(out, src[last..sc.start]);
     end;
 end;
 
@@ -233,7 +233,7 @@ begin
     i := sc.start;
     while i < sc.stop do
         if (src[i] = '\n') and (sc.kind = Scan.literal) then
-            Buf.add(ADR(out), '\n');
+            Buf.add(out, '\n');
             lineAt := out.len;
             INC(i);
         elsif src[i] = '\n' then
@@ -243,7 +243,7 @@ begin
             if (k < sc.stop) and (src[k] # '\n') then spaces(k - (i + 1) + lineDelta); end;
             i := k;
         else
-            Buf.add(ADR(out), src[i]);
+            Buf.add(out, src[i]);
             INC(i);
         end;
     end;
@@ -289,7 +289,7 @@ proc format(text: []U8);
 var b: BOOL;
 begin
     src := text;
-    Buf.reset(ADR(out));
+    Buf.reset(out);
     lineAt := 0;
     depth := 0;
     brackets := 0;
@@ -325,23 +325,23 @@ end;
 proc main*;
 var b: Buf.Buf; i: INT; path: []U8;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    Buf.init(ADR(out), Heap.heap);
+    Buf.init(b, Heap.heap);
+    Buf.init(out, Heap.heap);
     if (ARGC() >= 3) and (Files.arg(1) = "-w") then
         for i := 2 to ARGC() - 1 do
             path := Files.arg(i);
-            Buf.reset(ADR(b));
-            if not Files.read(path, ADR(b)) then Rt.stop("Pretty: can't read a file"); end;
-            format(Buf.bytes(ADR(b)));
-            if Buf.bytes(ADR(out)) # Buf.bytes(ADR(b)) then
-                if not Files.write(path, Buf.bytes(ADR(out))) then Rt.stop("Pretty: can't write a file"); end;
+            Buf.reset(b);
+            if not Files.read(path, b) then Rt.stop("Pretty: can't read a file"); end;
+            format(Buf.bytes(b));
+            if Buf.bytes(out) # Buf.bytes(b) then
+                if not Files.write(path, Buf.bytes(out)) then Rt.stop("Pretty: can't write a file"); end;
                 Out.str(path); Out.ln;
             end;
         end;
     elsif ARGC() = 2 then
-        if not Files.read(Files.arg(1), ADR(b)) then Rt.stop("Pretty: can't read the file"); end;
-        format(Buf.bytes(ADR(b)));
-        Out.str(Buf.bytes(ADR(out)));
+        if not Files.read(Files.arg(1), b) then Rt.stop("Pretty: can't read the file"); end;
+        format(Buf.bytes(b));
+        Out.str(Buf.bytes(out));
     else
         Rt.stop("usage: Pretty Module.raz, or Pretty -w File.raz...");
     end;

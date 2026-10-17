@@ -219,7 +219,7 @@ begin
 end;
 
 (* The parts added to b, with sep between each two. *)
-proc join*(b: ^Buf.Buf; parts: [][]U8; sep: []U8);
+proc join*(var b: Buf.Buf; parts: [][]U8; sep: []U8);
 var i: INT;
 begin
     for i := 0 to LEN(parts) - 1 do
@@ -230,7 +230,7 @@ end;
 
 (* s added to b, with new for each old in it, from the left, none
    overlapping another; s as it is if old is empty. *)
-proc replace*(b: ^Buf.Buf; s, old, new: []U8);
+proc replace*(var b: Buf.Buf; s, old, new: []U8);
 var i: INT;
 begin
     i := -1;
@@ -547,18 +547,18 @@ begin
     if up # "AB-Z9" then Rt.stop("Str.upper"); end;
     lower(up);
     if up # "ab-z9" then Rt.stop("Str.lower"); end;
-    Buf.init(ADR(b), Heap.heap);
-    join(ADR(b), ["a", "b", "c"], ", ");
-    if Buf.bytes(ADR(b)) # "a, b, c" then Rt.stop("Str.join"); end;
-    Buf.reset(ADR(b));
-    join(ADR(b), [], "-");
-    replace(ADR(b), "a.b..c", ".", "::");
-    if Buf.bytes(ADR(b)) # "a::b::::c" then Rt.stop("Str.replace"); end;
-    Buf.reset(ADR(b));
-    replace(ADR(b), "aaa", "aa", "b");
-    replace(ADR(b), "xy", "", "-");
-    if Buf.bytes(ADR(b)) # "baxy" then Rt.stop("Str.replace: overlapping, empty"); end;
-    Buf.done(ADR(b));
+    Buf.init(b, Heap.heap);
+    join(b, ["a", "b", "c"], ", ");
+    if Buf.bytes(b) # "a, b, c" then Rt.stop("Str.join"); end;
+    Buf.reset(b);
+    join(b, [], "-");
+    replace(b, "a.b..c", ".", "::");
+    if Buf.bytes(b) # "a::b::::c" then Rt.stop("Str.replace"); end;
+    Buf.reset(b);
+    replace(b, "aaa", "aa", "b");
+    replace(b, "xy", "", "-");
+    if Buf.bytes(b) # "baxy" then Rt.stop("Str.replace: overlapping, empty"); end;
+    Buf.done(b);
 end;
 
 proc testChars;

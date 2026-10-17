@@ -20,7 +20,7 @@ var
     w: [Last + 1]U8;    (* each character's width, 1 unless a file says *)
 
 (* The whole file at path. *)
-proc load(path: []U8; b: ^Buf.Buf): []U8;
+proc load(path: []U8; var b: Buf.Buf): []U8;
 begin
     Buf.init(b, Heap.heap);
     if not Files.read(path, b) then
@@ -116,7 +116,7 @@ begin
 end;
 
 (* c as a constant of raz: 0, six hexadecimal digits and H. *)
-proc hex(b: ^Buf.Buf; c: INT);
+proc hex(var b: Buf.Buf; c: INT);
 const Digits = "0123456789ABCDEF";
 var i: INT;
 begin
@@ -127,7 +127,7 @@ end;
 
 (* The constant name, the ranges of characters whose width is width,
    each its first and last, four ranges to a line. *)
-proc table(b: ^Buf.Buf; name: []U8; width: U8);
+proc table(var b: Buf.Buf; name: []U8; width: U8);
 var c, lo, n: INT;
 begin
     Buf.str(b, "    "); Buf.str(b, name); Buf.str(b, ": []I32 = [");
@@ -153,7 +153,7 @@ begin
         Out.str("usage: Widths lib/Width.raz EastAsianWidth.txt UnicodeData.txt PropList.txt\n");
         Rt.exit(2);
     end;
-    s := load(Files.arg(1), ADR(src));
+    s := load(Files.arg(1), src);
     before, after, ok := Str.cut(s, Start);
     if ok then _, after, ok := Str.cut(after, Stop); end;
     if not ok then
@@ -161,22 +161,22 @@ begin
         Rt.exit(1);
     end;
     mark(0, Last, 1);
-    version := eastAsian(load(Files.arg(2), ADR(eaw)));
-    categories(load(Files.arg(3), ADR(ucd)));
-    concatenation(load(Files.arg(4), ADR(props)));
+    version := eastAsian(load(Files.arg(2), eaw));
+    categories(load(Files.arg(3), ucd));
+    concatenation(load(Files.arg(4), props));
     mark(1160H, 11FFH, 0);               (* Hangul's medial and final jamo *)
     mark(0D7B0H, 0D7FFH, 0);
     mark(3164H, 3164H, 0);               (* the Hangul fillers, which draw nothing *)
     mark(0FFA0H, 0FFA0H, 0);
-    Buf.init(ADR(out), Heap.heap);
-    Buf.str(ADR(out), before);
-    Buf.str(ADR(out), Start);
-    Buf.str(ADR(out), "(* Unicode "); Buf.str(ADR(out), version); Buf.str(ADR(out), " *)\nconst\n");
-    table(ADR(out), "Zero", 0);
-    table(ADR(out), "Wide", 2);
-    Buf.str(ADR(out), Stop);
-    Buf.str(ADR(out), after);
-    if not Files.write(Files.arg(1), Buf.bytes(ADR(out))) then
+    Buf.init(out, Heap.heap);
+    Buf.str(out, before);
+    Buf.str(out, Start);
+    Buf.str(out, "(* Unicode "); Buf.str(out, version); Buf.str(out, " *)\nconst\n");
+    table(out, "Zero", 0);
+    table(out, "Wide", 2);
+    Buf.str(out, Stop);
+    Buf.str(out, after);
+    if not Files.write(Files.arg(1), Buf.bytes(out)) then
         Out.str(Files.arg(1)); Out.str(": can't be written\n");
         Rt.exit(1);
     end;

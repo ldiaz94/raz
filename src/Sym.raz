@@ -510,7 +510,7 @@ end;
 
 (* What a type is called, added to b: the names a program gives it, else
    what it is made of *)
-proc typeText(b: ^Buf.Buf; t: ^Type);
+proc typeText(var b: Buf.Buf; t: ^Type);
 var f: ^Obj;
 begin
     if t = nil then Buf.str(b, "nothing"); return; end;
@@ -574,9 +574,9 @@ proc typeName*(t: ^Type): []U8;
 var b: ^Buf.Buf;
 begin
     b := ^Buf.Buf(Scan.grab(SIZE(Buf.Buf)));
-    Buf.init(b, Heap.heap);
-    typeText(b, t);
-    return Buf.bytes(b);
+    Buf.init(b^, Heap.heap);
+    typeText(b^, t);
+    return Buf.bytes(b^);
 end;
 
 (* A fingerprint of what a declaration exports, for the interface

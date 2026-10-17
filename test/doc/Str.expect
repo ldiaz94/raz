@@ -84,10 +84,10 @@ proc lower*(s: []U8);
 proc upper*(s: []U8);
     s's small ASCII letters made capitals, in place.
 
-proc join*(b: ^Buf.Buf; parts: [][]U8; sep: []U8);
+proc join*(var b: Buf.Buf; parts: [][]U8; sep: []U8);
     The parts added to b, with sep between each two.
 
-proc replace*(b: ^Buf.Buf; s, old, new: []U8);
+proc replace*(var b: Buf.Buf; s, old, new: []U8);
     s added to b, with new for each old in it, from the left, none
     overlapping another; s as it is if old is empty.
 

@@ -3603,10 +3603,10 @@ end;
 proc moduleParams(m: PModule): ERROR;
 var i: INT; o, a: PObj; sig: PType; s: Buf.Buf; at: Diag.Pos; text: []U8;
 begin
-    Buf.init(ADR(s), Heap.heap);
+    Buf.init(s, Heap.heap);
     i := 0;
-    Buf.str(ADR(s), nameOf(m^.name));
-    Buf.add(ADR(s), '(');
+    Buf.str(s, nameOf(m^.name));
+    Buf.add(s, '(');
     Scan.next;
     repeat
         if Scan.tok # Scan.sIdent then return expected("a name"); end;
@@ -3619,8 +3619,8 @@ begin
         o := Sym.newObj(Sym.oType, Scan.id, m^.args.t[i]);
         o^.used := true;   (* a parameter of the module, not a declaration *)
         try declare(o);
-        Buf.str(ADR(s), Sym.typeName(m^.args.t[i]));
-        Buf.add(ADR(s), ',');
+        Buf.str(s, Sym.typeName(m^.args.t[i]));
+        Buf.add(s, ',');
         INC(i);
         Scan.next;
         if Scan.tok # Scan.sComma then break; end;
@@ -3650,20 +3650,20 @@ begin
         o^.typ := a^.typ; o^.chunk := a^.chunk; o^.isCode := a^.isCode; o^.ext := a^.ext;
         o^.used := true;
         try declare(o);
-        Buf.str(ADR(s), nameOf(a^.home^.name));
-        Buf.add(ADR(s), '.');
-        Buf.str(ADR(s), nameOf(a^.name));
-        Buf.add(ADR(s), ',');
+        Buf.str(s, nameOf(a^.home^.name));
+        Buf.add(s, '.');
+        Buf.str(s, nameOf(a^.name));
+        Buf.add(s, ',');
         INC(i);
     end;
     try expect(Scan.sRparen);
     if i # m^.args.n then
         return Scan.markAt(m^.args.at, say1("too many type arguments for {}", nameOf(m^.name)));
     end;
-    text := Buf.bytes(ADR(s));
+    text := Buf.bytes(s);
     text[LEN(text) - 1] := ')';
     m^.sname := internName(text);
-    Buf.done(ADR(s));
+    Buf.done(s);
     return nil;
 end;
 

@@ -6,9 +6,9 @@ import Buf, Heap;
 proc main*;
 var b: Buf.Buf;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    Buf.str(ADR(b), "hello");
-    Buf.cut(ADR(b), 6);
+    Buf.init(b, Heap.heap);
+    Buf.str(b, "hello");
+    Buf.cut(b, 6);
 end;
 
 end BufCut.

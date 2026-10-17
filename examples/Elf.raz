@@ -44,13 +44,13 @@ end;
 proc main*;
 var b: Buf.Buf; f: []U8; h: Header; i, at, loaded, exec: INT; r: [3]U8;
 begin
-    Buf.init(ADR(b), Heap.heap);
-    defer Buf.done(ADR(b));
-    if not Files.read("/proc/self/exe", ADR(b)) then
+    Buf.init(b, Heap.heap);
+    defer Buf.done(b);
+    if not Files.read("/proc/self/exe", b) then
         Out.str("can't read the program\n");
         return;
     end;
-    f := Buf.bytes(ADR(b));
+    f := Buf.bytes(b);
 
     (* the header, copied out of the bytes whole *)
     h := f[0].(Header);
