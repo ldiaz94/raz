@@ -96,7 +96,7 @@ an I8: -5; braces: { and }
 <span class="kw">import</span> Out, Buf, Fmt, Heap;
 
 <span class="comment">(* &quot;name (age n)&quot;, built in a Buf the caller owns *)</span>
-<span class="kw">proc</span> describe(b: ^Buf.Buf; name: []<span class="ty">U8</span>; age: <span class="ty">INT</span>);
+<span class="kw">proc</span> describe(<span class="kw">var</span> b: Buf.Buf; name: []<span class="ty">U8</span>; age: <span class="ty">INT</span>);
 <span class="kw">begin</span>
     Fmt.write(b, <span class="string">&quot;{} (age {})&quot;</span>, [Fmt.str(name), Fmt.int(age)]);
 <span class="kw">end</span>;
@@ -104,12 +104,12 @@ an I8: -5; braces: { and }
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> b: Buf.Buf;
 <span class="kw">begin</span>
-    Buf.init(<span class="ty">ADR</span>(b), Heap.heap);
-    <span class="kw">defer</span> Buf.done(<span class="ty">ADR</span>(b));
-    describe(<span class="ty">ADR</span>(b), <span class="string">&quot;Ada&quot;</span>, <span class="number">36</span>);
-    Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;; &quot;</span>);
-    describe(<span class="ty">ADR</span>(b), <span class="string">&quot;Grace&quot;</span>, <span class="number">45</span>);
-    Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
+    Buf.init(b, Heap.heap);
+    <span class="kw">defer</span> Buf.done(b);
+    describe(b, <span class="string">&quot;Ada&quot;</span>, <span class="number">36</span>);
+    Buf.str(b, <span class="string">&quot;; &quot;</span>);
+    describe(b, <span class="string">&quot;Grace&quot;</span>, <span class="number">45</span>);
+    Out.str(Buf.bytes(b)); Out.ln;
     Out.int(b.len); Out.str(<span class="string">&quot; bytes\n&quot;</span>);
 <span class="kw">end</span>;
 

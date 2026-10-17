@@ -55,15 +55,15 @@
 <span class="kw">begin</span>
     ok := Files.write(<span class="string">&quot;notes.txt&quot;</span>, <span class="string">&quot;first line\nsecond line\n&quot;</span>);
     <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> Out.str(<span class="string">&quot;can&#x27;t write\n&quot;</span>); <span class="kw">return</span>; <span class="kw">end</span>;
-    Buf.init(<span class="ty">ADR</span>(b), Heap.heap);
-    <span class="kw">defer</span> Buf.done(<span class="ty">ADR</span>(b));
-    ok := Files.read(<span class="string">&quot;notes.txt&quot;</span>, <span class="ty">ADR</span>(b));
+    Buf.init(b, Heap.heap);
+    <span class="kw">defer</span> Buf.done(b);
+    ok := Files.read(<span class="string">&quot;notes.txt&quot;</span>, b);
     <span class="kw">if</span> ok <span class="kw">then</span>
-        Out.int(b.len); Out.str(<span class="string">&quot; bytes: &quot;</span>); Out.str(Buf.bytes(<span class="ty">ADR</span>(b)));
+        Out.int(b.len); Out.str(<span class="string">&quot; bytes: &quot;</span>); Out.str(Buf.bytes(b));
     <span class="kw">end</span>;
-    ok := Files.read(<span class="string">&quot;missing.txt&quot;</span>, <span class="ty">ADR</span>(b));
+    ok := Files.read(<span class="string">&quot;missing.txt&quot;</span>, b);
     <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> Out.str(<span class="string">&quot;missing.txt: not there\n&quot;</span>); <span class="kw">end</span>;
-    <span class="kw">if</span> Files.load(<span class="string">&quot;missing.txt&quot;</span>, <span class="ty">ADR</span>(b)) = -<span class="number">2</span> <span class="kw">then</span> Out.str(<span class="string">&quot;missing.txt: ENOENT\n&quot;</span>); <span class="kw">end</span>;
+    <span class="kw">if</span> Files.load(<span class="string">&quot;missing.txt&quot;</span>, b) = -<span class="number">2</span> <span class="kw">then</span> Out.str(<span class="string">&quot;missing.txt: ENOENT\n&quot;</span>); <span class="kw">end</span>;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Notes.</code></pre>
@@ -146,22 +146,22 @@ missing.txt: ENOENT
     _ := Sys.makeDir(<span class="string">&quot;proj/src&quot;</span>);
     put(<span class="string">&quot;proj/b.txt&quot;</span>, <span class="string">&quot;bb&quot;</span>);
     put(<span class="string">&quot;proj/a.txt&quot;</span>, <span class="string">&quot;a&quot;</span>);
-    <span class="kw">if</span> Sys.openDir(<span class="ty">ADR</span>(d), <span class="string">&quot;proj&quot;</span>) &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="kw">if</span> Sys.openDir(d, <span class="string">&quot;proj&quot;</span>) &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
     n := <span class="number">0</span>;
-    name, more := Sys.nextEntry(<span class="ty">ADR</span>(d));
+    name, more := Sys.nextEntry(d);
     <span class="kw">while</span> more <span class="kw">do</span>
         copy, ok := Str.copy(Heap.heap, name);
         <span class="kw">if</span> ok <span class="kw">and</span> (n &lt; <span class="number">16</span>) <span class="kw">then</span> names[n] := copy; <span class="ty">INC</span>(n); <span class="kw">end</span>;
-        name, more := Sys.nextEntry(<span class="ty">ADR</span>(d));
+        name, more := Sys.nextEntry(d);
     <span class="kw">end</span>;
-    Sys.closeDir(<span class="ty">ADR</span>(d));
+    Sys.closeDir(d);
     Order.sort(names[<span class="number">0</span>..n]);
-    Buf.init(<span class="ty">ADR</span>(path), Heap.heap);
+    Buf.init(path, Heap.heap);
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> n - <span class="number">1</span> <span class="kw">do</span>
-        Buf.reset(<span class="ty">ADR</span>(path));
-        Buf.str(<span class="ty">ADR</span>(path), <span class="string">&quot;proj/&quot;</span>);
-        Buf.str(<span class="ty">ADR</span>(path), names[i]);
-        info, err := Sys.info(Buf.bytes(<span class="ty">ADR</span>(path)));
+        Buf.reset(path);
+        Buf.str(path, <span class="string">&quot;proj/&quot;</span>);
+        Buf.str(path, names[i]);
+        info, err := Sys.info(Buf.bytes(path));
         Out.str(names[i]);
         <span class="kw">if</span> err &lt; <span class="number">0</span> <span class="kw">then</span> Out.str(<span class="string">&quot; ?&quot;</span>);
         <span class="kw">elsif</span> info.dir <span class="kw">then</span> Out.str(<span class="string">&quot;/&quot;</span>);
@@ -170,7 +170,7 @@ missing.txt: ENOENT
         Out.ln;
         Mem.free(Heap.heap, ^<span class="ty">U8</span>(<span class="ty">ADR</span>(names[i][<span class="number">0</span>])));
     <span class="kw">end</span>;
-    Buf.done(<span class="ty">ADR</span>(path));
+    Buf.done(path);
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Tree.</code></pre>
@@ -227,23 +227,23 @@ the same file: true
 <span class="kw">var</span> p: Opt.Parser; verbose: <span class="ty">BOOL</span>; n, i: <span class="ty">INT</span>; w: []<span class="ty">U8</span>; ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     n := <span class="number">1</span>;
-    Opt.init(<span class="ty">ADR</span>(p), <span class="string">&quot;tool&quot;</span>, [
+    Opt.init(p, <span class="string">&quot;tool&quot;</span>, [
         Opt.usage(<span class="string">&quot;&quot;</span>, <span class="string">&quot;tool [-v] [--count n] word ...&quot;</span>),
         Opt.option(<span class="string">&quot;&quot;</span>, <span class="string">&#x27;v&#x27;</span>, <span class="string">&quot;verbose&quot;</span>, <span class="string">&quot;&quot;</span>, <span class="string">&quot;say more&quot;</span>),
         Opt.option(<span class="string">&quot;&quot;</span>, count, <span class="string">&quot;count&quot;</span>, <span class="string">&quot;n&quot;</span>, <span class="string">&quot;repeat each word n times&quot;</span>)]);
-    <span class="kw">while</span> Opt.next(<span class="ty">ADR</span>(p)) <span class="kw">do</span>
+    <span class="kw">while</span> Opt.next(p) <span class="kw">do</span>
         <span class="kw">if</span> p.letter = <span class="string">&#x27;v&#x27;</span> <span class="kw">then</span> verbose := <span class="ty">true</span>;
-        <span class="kw">elsif</span> p.letter = count <span class="kw">then</span> n := <span class="ty">INT</span>(Opt.number(<span class="ty">ADR</span>(p), <span class="number">1</span>, <span class="number">5</span>));
+        <span class="kw">elsif</span> p.letter = count <span class="kw">then</span> n := <span class="ty">INT</span>(Opt.number(p, <span class="number">1</span>, <span class="number">5</span>));
         <span class="kw">end</span>;
     <span class="kw">end</span>;
-    w, ok := Opt.operand(<span class="ty">ADR</span>(p));
-    <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> Opt.fail(<span class="ty">ADR</span>(p), <span class="string">&quot;no words; see tool -h&quot;</span>); <span class="kw">end</span>;
+    w, ok := Opt.operand(p);
+    <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> Opt.fail(p, <span class="string">&quot;no words; see tool -h&quot;</span>); <span class="kw">end</span>;
     <span class="kw">while</span> ok <span class="kw">do</span>
         <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> n <span class="kw">do</span>
             <span class="kw">if</span> verbose <span class="kw">then</span> Out.str(<span class="string">&quot;word: &quot;</span>); <span class="kw">end</span>;
             Fmt.print(<span class="string">&quot;{}\n&quot;</span>, [Fmt.str(w)]);
         <span class="kw">end</span>;
-        w, ok := Opt.operand(<span class="ty">ADR</span>(p));
+        w, ok := Opt.operand(p);
     <span class="kw">end</span>;
 <span class="kw">end</span>;
 

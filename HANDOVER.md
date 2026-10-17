@@ -18,7 +18,7 @@ the release `BOOT` names, which must exist first:
 |---|---|---|---|
 | `v0.18.1` | `88b18ba` ("Docs for v0.18.1: ...") | `raz 0.18.1, report 2026-10.32` | what `site/public/download/raz-0.18.1-linux-x86_64.tar.gz.sha256` says |
 | `v0.19.0` | `51a90a6` ("Report 2026-10.33 is followed; ...") | `raz 0.19.0, report 2026-10.33` | `217448cb6521c76a28d71499d70a5dfdebc2dbcbc81d6d41ed9d9590005772ed` |
-| `v0.20.0` | the commit "Docs for v0.20.0" (see below) | `raz 0.20.0, report 2026-10.34` | what `site/public/download/raz-0.20.0-linux-x86_64.tar.gz.sha256` says |
+| `v0.20.0` | `086e55c` ("Docs for v0.20.0: ...") | `raz 0.20.0, report 2026-10.34` | `bfa954d27d759e4ca7f7f33debb4705f25d5c05a097d86aa28b3260048b5d9cc` |
 
     git tag -a v0.18.1 -m 'raz 0.18.1, report 2026-10.32' 88b18ba
     git push origin v0.18.1
@@ -28,16 +28,15 @@ the release `BOOT` names, which must exist first:
     #   gh api repos/ldiaz94/raz/releases/tags/v0.19.0 --jq '.assets[].name'
     #   gh release download v0.19.0 -p '*.tar.gz' && sha256sum raz-0.19.0-*.tar.gz
     # it must be BOOT's; only then:
-    git tag -a v0.20.0 -m 'raz 0.20.0, report 2026-10.34' <commit>
+    git tag -a v0.20.0 -m 'raz 0.20.0, report 2026-10.34' 086e55c
     git push origin v0.20.0
 
-`<commit>` is the commit whose subject is "Docs for v0.20.0", found by
-`git log --oneline --grep='^Docs for v0.20.0'`; it is the one before
-"site: v0.19.0 and v0.20.0". Check before tagging that `make check`
-passes there, and that `src/Raz.raz` there says report 2026-10.34.
-The site commit after it changes only
-`site/` and this file, so the tag stays on the docs commit, as v0.18.1's
-did.
+`086e55c` is "Docs for v0.20.0"; the commit after it, "site: v0.19.0
+and v0.20.0", changes only `site/`, `make dist` (which lends a
+fetched BOOT tarball to its checkout) and this file, so the tag stays
+on the docs commit, as v0.18.1's did. Check before tagging that `make
+check` passes there. The sums of v0.19.0 and v0.20.0 are also in
+`site/public/download/*.sha256`, which the website serves.
 
 Before v0.19.0's release exists, CI on every push to `main` fails at
 `src/boot.sh` (it can't fetch the tarball `BOOT` names); that is
@@ -53,7 +52,9 @@ by hand: v0.19.0's by building `51a90a6` in `/tmp/raz-dist` with
 `build/version.inc` set to `'0.19.0'` (its Makefile predates
 `VERSION`), which gave BOOT's sum, the same that the session before
 got with a local tag; v0.20.0's by `make dist REV=<commit>
-VERSION=0.20.0`, which the Makefile now takes for this. So CI's
+VERSION=0.20.0`, which the Makefile now takes for this, twice, with
+the same sum; its `raz --version` says `raz 0.20.0, report
+2026-10.34`. So CI's
 tarball for each tag must have the sum in the table; if one differs,
 the website's copy is wrong and must be replaced by CI's before
 anyone pins it (the site keeps a tarball once it has it).

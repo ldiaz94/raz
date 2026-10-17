@@ -284,7 +284,66 @@ INT:   8
 
 <span class="kw">end</span> Chain.</code></pre>
 <pre class="output"><code>40 30 20 10 
-</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="slices.html">&larr; Arrays, slices and strings</a><a href="index.html">Contents</a><a class="next" href="variants.html">Enumerations, sets, variants and match &rarr;</a></div></article></div>
+</code></pre>
+<h2>A slice's pointer</h2>
+<p>A slice is a pointer and a length, and a record can keep the two apart: an interpreter keeps a string so, and C takes one so. <code>LEN(s)</code> is the length. The pointer looks like <code>ADR(s[0])</code>, the address of the first element, and that works until the slice is empty: then there is no first element, <code>s[0]</code> is out of range, and the program stops.</p>
+<div class="file"><span>Empty.raz</span></div><pre class="code"><code><span class="kw">module</span> Empty;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Span = <span class="kw">record</span> p: ^<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="kw">proc</span> spanOf(s: []<span class="ty">U8</span>): Span;
+<span class="kw">begin</span>
+    <span class="kw">return</span> {p: <span class="ty">ADR</span>(s[<span class="number">0</span>]), n: <span class="ty">LEN</span>(s)};
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a, b: Span;
+<span class="kw">begin</span>
+    a := spanOf(<span class="string">&quot;one&quot;</span>);
+    Out.int(a.n); Out.ln;
+    b := spanOf(<span class="string">&quot;&quot;</span>);
+    Out.int(b.n); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Empty.</code></pre>
+<pre class="output"><code>3
+<span class="err">Empty.raz:8:22: index 0 is out of range for a length of 0
+  in Empty.spanOf at Empty.raz:8:22
+  in Empty.main at Empty.raz:16:5
+</span></code></pre>
+<p><code>PTR(s)</code> is the pointer itself, a <code>^U8</code> for a <code>[]U8</code>, with no check. For a slice that isn't empty it is <code>ADR(s[0])</code>; for an empty one it is what the slice holds, <code>nil</code> for one never set. So nothing needs testing first, and <code>sp.p[0..sp.n]</code> makes the slice again, empty when <code>sp.n</code> is 0, whatever <code>sp.p</code> is:</p>
+<div class="file"><span>Spans.raz</span></div><pre class="code"><code><span class="kw">module</span> Spans;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Span = <span class="kw">record</span> p: ^<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="kw">proc</span> spanOf(s: []<span class="ty">U8</span>): Span;
+<span class="kw">begin</span>
+    <span class="kw">return</span> {p: PTR(s), n: <span class="ty">LEN</span>(s)};
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> text(sp: Span): []<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> sp.p[<span class="number">0</span>..sp.n];
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> words: [<span class="number">3</span>]Span; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    words := [spanOf(<span class="string">&quot;one&quot;</span>), spanOf(<span class="string">&quot;&quot;</span>), spanOf(<span class="string">&quot;three&quot;</span>)];
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">2</span> <span class="kw">do</span>
+        Out.int(words[i].n); Out.char(<span class="string">&#x27; &#x27;</span>);
+        Out.str(text(words[i])); Out.ln;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Spans.</code></pre>
+<pre class="output"><code>3 one
+0 
+5 three
+</code></pre>
+<p>Of an array, <code>PTR(a)</code> is the address of its first element, a <code>^T</code> where <code>ADR(a)</code> is a <code>^[n]T</code>. Reading through the pointer is as unchecked as through any pointer: the length is yours to keep with it. The compiler says so when the two are mixed up: a slice given where a pointer is wanted is an error whose help says to write <code>PTR(s)</code> and <code>LEN(s)</code>, and a pointer given where a slice is, <code>p[0..n]</code>.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="slices.html">&larr; Arrays, slices and strings</a><a href="index.html">Contents</a><a class="next" href="variants.html">Enumerations, sets, variants and match &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license.</footer>
 </body>

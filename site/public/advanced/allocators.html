@@ -172,16 +172,16 @@ room again after a reset
 <span class="kw">var</span> c: Counted.Counted; b: Buf.Buf; l: Names.List; i: <span class="ty">INT</span>; p: ^<span class="ty">U8</span>;
 <span class="kw">begin</span>
     Counted.init(<span class="ty">ADR</span>(c), Heap.heap);
-    Buf.init(<span class="ty">ADR</span>(b), <span class="ty">ADR</span>(c.base));
-    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">200</span> <span class="kw">do</span> Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;0123456789&quot;</span>); <span class="kw">end</span>;
+    Buf.init(b, <span class="ty">ADR</span>(c.base));
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">200</span> <span class="kw">do</span> Buf.str(b, <span class="string">&quot;0123456789&quot;</span>); <span class="kw">end</span>;
     Fmt.print(<span class="string">&quot;a buffer of {} bytes took {} allocations\n&quot;</span>,
         [Fmt.int(b.len), Fmt.int(c.allocs)]);
-    Buf.done(<span class="ty">ADR</span>(b));
+    Buf.done(b);
 
-    Names.init(<span class="ty">ADR</span>(l), <span class="ty">ADR</span>(c.base));
-    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">10</span> <span class="kw">do</span> _ := Names.push(<span class="ty">ADR</span>(l), <span class="string">&quot;x&quot;</span>); <span class="kw">end</span>;
+    Names.init(l, <span class="ty">ADR</span>(c.base));
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">10</span> <span class="kw">do</span> _ := Names.push(l, <span class="string">&quot;x&quot;</span>); <span class="kw">end</span>;
     Fmt.print(<span class="string">&quot;{} allocations in all, {} frees so far\n&quot;</span>, [Fmt.int(c.allocs), Fmt.int(c.frees)]);
-    Names.clear(<span class="ty">ADR</span>(l));
+    Names.clear(l);
     Fmt.print(<span class="string">&quot;{} frees after clear\n&quot;</span>, [Fmt.int(c.frees)]);
 
     p := Mem.alloc(<span class="ty">ADR</span>(c.base), <span class="number">64</span>, <span class="number">8</span>);

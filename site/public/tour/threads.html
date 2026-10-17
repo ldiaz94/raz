@@ -58,9 +58,9 @@
         sum := sum + i;
         _ := <span class="ty">XADD</span>(<span class="ty">ADR</span>(hits), <span class="number">1</span>);
     <span class="kw">end</span>;
-    Thread.lock(<span class="ty">ADR</span>(m));
+    Thread.lock(m);
     total := total + sum;
-    Thread.unlock(<span class="ty">ADR</span>(m));
+    Thread.unlock(m);
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
@@ -124,10 +124,10 @@
 <span class="kw">var</span> i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">10000</span> <span class="kw">do</span>
-        Thread.lock(<span class="ty">ADR</span>(m));
+        Thread.lock(m);
         balance := balance + <span class="number">5</span>;
         <span class="ty">INC</span>(deposits);
-        Thread.unlock(<span class="ty">ADR</span>(m));
+        Thread.unlock(m);
     <span class="kw">end</span>;
 <span class="kw">end</span>;
 

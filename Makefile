@@ -155,6 +155,8 @@ DIST = /tmp/raz-dist
 
 dist:
 	rm -rf $(DIST) && git worktree prune && git worktree add -q --detach $(DIST) $(REV)
+	# the tarball BOOT names, if fetched, lent to the checkout (src/boot.sh checks its sum)
+	if [ -d build/boot ]; then mkdir -p $(DIST)/build/boot && cp build/boot/*.tar.gz $(DIST)/build/boot/; fi
 	$(MAKE) -C $(DIST) raz man
 	v=$$($(DIST)/raz --version | sed 's/^raz \([^,]*\),.*/\1/'); \
 	d=raz-$$v-linux-x86_64; \

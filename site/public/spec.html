@@ -38,7 +38,7 @@
 <p>raz is a small systems language, first made for x86-64 Linux. A raz program can lay a record over a device’s registers, read and write a device’s memory exactly as written, take part in lock-free algorithms, make system calls and call C libraries. It has no garbage collector and no hidden run time: what the program does is what its text says.</p>
 <p>This is the first volume of the report: the language, what an implementation chooses, and the grammar. The second, <code>doc/raz-lib.md</code>, is the library, which sections 3 and 10 and appendix A name.</p>
 <p>This report defines the language. It is short on purpose. Whatever it doesn’t allow, raz doesn’t have.</p>
-<p>This is version 2026-10.32 of the report; section 11 says where each version’s changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>. 2026-10.25 is a fourth, for strings: raw strings, which may run over lines and may be indented with the code around them (section 2), and <code>match</code> on a string (section 7.4); it breaks no program. 2026-10.26 is a fifth: an <code>INT</code> widens to an <code>I64</code> wherever it goes to one, in an expression too (sections 5.10 and 6.1); and a view, <code>v.(T)</code>, reads and writes the bytes of a variable as a <code>T</code> (section 6.9); it breaks no program. 2026-10.27 mends a defect: returning a slice of the procedure’s own frame is an error (section 7.3), which breaks only a program that read memory already gone. 2026-10.28 mends another: an array a call returns lives to the end of its statement, and a slice of it kept past that is undefined (sections 8 and 10). 2026-10.29 is a sixth thaw: an array constant typed <code>[]T</code> takes its length from its literal (section 4); it breaks no program. 2026-10.30 mends a defect: <code>[]</code> used as a slice is the empty slice, which may be returned (sections 6.5 and 7.3); it breaks no program. 2026-10.31 is a seventh thaw: <code>INT</code> is at least 16 bits, and <code>U8</code>, <code>I8</code> and <code>I16</code> widen to it (sections 5.1, 5.10 and 6.1); an enumeration’s name may be written with its type, and must be where another declaration shares it (section 5.7); and <code>continue</code> (section 7.2), which breaks a program that has a name <code>continue</code>. 2026-10.32 is an eighth thaw: a constant typed <code>[]T</code> may be <code>[]</code>, the empty slice (section 4); it breaks no program.</p>
+<p>This is version 2026-10.34 of the report; section 11 says where each version’s changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>. 2026-10.25 is a fourth, for strings: raw strings, which may run over lines and may be indented with the code around them (section 2), and <code>match</code> on a string (section 7.4); it breaks no program. 2026-10.26 is a fifth: an <code>INT</code> widens to an <code>I64</code> wherever it goes to one, in an expression too (sections 5.10 and 6.1); and a view, <code>v.(T)</code>, reads and writes the bytes of a variable as a <code>T</code> (section 6.9); it breaks no program. 2026-10.27 mends a defect: returning a slice of the procedure’s own frame is an error (section 7.3), which breaks only a program that read memory already gone. 2026-10.28 mends another: an array a call returns lives to the end of its statement, and a slice of it kept past that is undefined (sections 8 and 10). 2026-10.29 is a sixth thaw: an array constant typed <code>[]T</code> takes its length from its literal (section 4); it breaks no program. 2026-10.30 mends a defect: <code>[]</code> used as a slice is the empty slice, which may be returned (sections 6.5 and 7.3); it breaks no program. 2026-10.31 is a seventh thaw: <code>INT</code> is at least 16 bits, and <code>U8</code>, <code>I8</code> and <code>I16</code> widen to it (sections 5.1, 5.10 and 6.1); an enumeration’s name may be written with its type, and must be where another declaration shares it (section 5.7); and <code>continue</code> (section 7.2), which breaks a program that has a name <code>continue</code>. 2026-10.32 is an eighth thaw: a constant typed <code>[]T</code> may be <code>[]</code>, the empty slice (section 4); it breaks no program. 2026-10.33 is a ninth: a <code>const</code> parameter, the caller’s variable read in place (section 8), and a variant in a constant (section 4), which break no program; and the library’s procedures that took a pointer to what they work on take a <code>var</code> parameter, a <code>const</code> one or a value instead (the library volume), which breaks a program that calls them with <code>ADR</code>. 2026-10.34 is a tenth: <code>PTR(s)</code>, the address a slice starts at, even an empty one (section 6.8); it breaks no program.</p>
 <p>The language is frozen, softly, from this version on: it changes only to mend a defect, and its library grows only by what breaks no program written for it. What anyone wishes it had waits on a list, for a later thaw.</p>
 <h1 id="a-first-look">1. A first look</h1>
 <pre><code>module Hello;
@@ -134,15 +134,16 @@ var names: Table.Map;   (* the instance is made here *)</code></pre>
 IdentDef    = ident [ &quot;*&quot; ] .
 IdentList   = IdentDef { &quot;,&quot; IdentDef } .</code></pre>
 <p>A name must be declared before it is used, with two exceptions: the base type of a pointer may name a type declared later in the same <code>type</code> section (so that two records can point at each other), and a procedure may be declared <code>forward</code> and defined later (section 8).</p>
-<p><strong>Constants</strong> are evaluated by the compiler. Their expressions use only literals, other constants, operators, conversions, <code>SIZE</code> and the <code>LEN</code> of arrays and strings. A constant is an integer, a real, a <code>BOOL</code>, a name of an enumeration, a set, a string, an array, a record or an <code>ERROR</code>. A constant of an integer type wraps as the program would: <code>U8(250) + 10</code> is 4. Dividing by zero in a constant is an error, and so is dividing the smallest value of a signed type by -1, with <code>div</code> or <code>mod</code>, which stops a program (section 6.1). A string constant can be indexed and sliced as an array of <code>U8</code> is, and its <code>LEN</code> is its length in bytes. <code>+</code> joins two string constants into one:</p>
+<p><strong>Constants</strong> are evaluated by the compiler. Their expressions use only literals, other constants, operators, conversions, <code>SIZE</code>, the <code>LEN</code> of arrays and strings, and a variant’s cases. A constant is an integer, a real, a <code>BOOL</code>, a name of an enumeration, a set, a string, an array, a record, a variant or an <code>ERROR</code>. A constant of an integer type wraps as the program would: <code>U8(250) + 10</code> is 4. Dividing by zero in a constant is an error, and so is dividing the smallest value of a signed type by -1, with <code>div</code> or <code>mod</code>, which stops a program (section 6.1). A string constant can be indexed and sliced as an array of <code>U8</code> is, and its <code>LEN</code> is its length in bytes. <code>+</code> joins two string constants into one:</p>
 <pre><code>const Text = &quot;the cat&quot;;
     Line = Text + &quot;\n&quot;;
 ...
 w := Text[4..7];    (* &quot;cat&quot; *)</code></pre>
-<p>A constant with a type is an <code>ERROR</code> (section 5.8), an array or a record, and the value of an array or record constant is a literal (section 6.5) of constants. Its elements and fields are integers, reals, <code>BOOL</code>s, enumerations, sets, <code>ERROR</code>s, procedures, <code>nil</code>, a string for a <code>[]U8</code>, an array constant or the empty slice for a slice of its element type, and arrays and records of these; no variant and no other pointer:</p>
+<p>A constant with a type is an <code>ERROR</code> (section 5.8), an array, a record or a variant, and the value of an array or record constant is a literal (section 6.5) of constants, that of a variant one a case built from constants, as a program builds one (section 5.6). Its elements and fields are integers, reals, <code>BOOL</code>s, enumerations, sets, <code>ERROR</code>s, procedures, <code>nil</code>, a string for a <code>[]U8</code>, an array constant or the empty slice for a slice of its element type, and arrays, records and variants of these; no other pointer. A variant constant must have a type: <code>const D = dot;</code> is an error, <code>const D: Shape = dot;</code> isn’t.</p>
 <pre><code>const Primes: [5]I64 = [2, 3, 5, 7, 11];
 type Rule = record class: []U8; tag: INT; float: BOOL; end;
 const Rules: [2]Rule = [{class: &quot;firefox&quot;, tag: 2}, {class: &quot;mpv&quot;, float: true}];
+const Shapes: []Shape = [circle(1.0), rect(2.0, 3.0), dot];   (* Shape of section 5.6 *)
 ...
 p := Primes[i];</code></pre>
 <p>It is used as a variable of that type is, but can’t be changed: an array constant can be indexed and sliced and its <code>LEN</code> is <code>n</code>, a record constant’s fields can be read, and either can be assigned, compared as its type allows, and passed. Its parts are constant as a string’s bytes are (section 5.10). A part of it isn’t a constant, even at a constant index.</p>
@@ -219,7 +220,7 @@ QualIdent = [ ident &quot;.&quot; ] ident .</code></pre>
 <h2 id="slices">5.3 Slices</h2>
 <p><code>[]T</code> is a view of elements that live elsewhere: a pointer to the first and a count, two addresses’ worth, 16 bytes on x86-64.</p>
 <pre><code>Slice = record ptr: ^T; len: INT; end;    (* its layout *)</code></pre>
-<p>A slice is made from an array (<code>a[2..5]</code>, or an array used where a slice is wanted), from another slice, or from a pointer (<code>p[0..n]</code>). It doesn’t own what it points at.</p>
+<p>A slice is made from an array (<code>a[2..5]</code>, or an array used where a slice is wanted), from another slice, or from a pointer (<code>p[0..n]</code>). It doesn’t own what it points at. <code>LEN(s)</code> is its count, and <code>PTR(s)</code> its pointer (section 6.8).</p>
 <h2 id="pointers">5.4 Pointers</h2>
 <p><code>^T</code> is the address of a <code>T</code>, as big as an <code>INT</code>. <code>nil</code> is the pointer to nothing.</p>
 <p><code>^VOLATILE T</code> is the address of a <code>T</code> that something besides the program may read or change: a device register, memory shared with another process. Section 7.6 says what that promises.</p>
@@ -266,7 +267,7 @@ n, err := Table.find(7);
 if err = Table.NotFound then ... end;</code></pre>
 <h2 id="procedure-types">5.9 Procedure types</h2>
 <pre><code>type Compare = proc(a, b: I64): BOOL;</code></pre>
-<p>A value of a procedure type is the address of a procedure with that signature, as big as an address, or <code>nil</code>. Two signatures are alike when their parameters have the same types, each <code>var</code> or not alike, in order, and their results are the same types; the parameters’ names don’t matter.</p>
+<p>A value of a procedure type is the address of a procedure with that signature, as big as an address, or <code>nil</code>. Two signatures are alike when their parameters have the same types, each <code>var</code>, <code>const</code> or neither alike, in order, and their results are the same types; the parameters’ names don’t matter.</p>
 <h2 id="same-and-assignable">5.10 Same and assignable</h2>
 <p>Two named types are the same only if they are the same declaration. Two anonymous pointer, array, slice, set or procedure types are the same if they are built alike: <code>^I64</code> is <code>^I64</code> wherever it is written. A record, variant or enumeration, though, is a type of its own wherever it is written, named or not: two <code>record x: I64; end</code> are two types. A named and an anonymous type are the same if the named one is built like the anonymous one, so that <code>p := ADR(n)</code> works for <code>p: NodePtr</code> with <code>type NodePtr = ^Node</code>. Sameness doesn’t pass through the anonymous type: with <code>type P1 = ^Node; P2 = ^Node;</code>, each of <code>P1</code> and <code>P2</code> is the same as <code>^Node</code>, but they are two declarations, so not the same as each other.</p>
 <p>A type declared with only a name on the right, <code>type Count = I64;</code>, is another name for that type, not a new one.</p>
@@ -437,6 +438,10 @@ Fmt.print(&quot;{} of {}\n&quot;, [Fmt.int(n), Fmt.int(m)]);</code></pre>
 <td>the number of elements of an array or a string constant (an untyped constant) or of a slice (an <code>INT</code>)</td>
 </tr>
 <tr>
+<td><code>PTR(s)</code></td>
+<td>the address the slice <code>s</code> starts at, a <code>^T</code> for <code>s: []T</code>, unchecked; for an array <code>a</code>, that of <code>a[0..LEN(a)]</code></td>
+</tr>
+<tr>
 <td><code>NEW(p, a)</code></td>
 <td>sets <code>p: ^T</code> to a fresh, zeroed <code>T</code> from the allocator <code>a: ^Mem.Allocator</code>, or to <code>nil</code> if <code>a</code> has no room</td>
 </tr>
@@ -488,6 +493,14 @@ Fmt.print(&quot;{} of {}\n&quot;, [Fmt.int(n), Fmt.int(m)]);</code></pre>
 </table>
 <p><code>SYSCALL</code> exists only on Linux targets. Other systems have no stable system call interface, and their modules call the C library instead (section 9).</p>
 <p><code>NEW(p, a)</code> calls <code>a^.alloc(a, SIZE(T), A)</code>, where <code>A</code> is the alignment of <code>T</code>, and zeroes the bytes it gets if they aren’t <code>nil</code>. <code>Mem.Allocator</code> (the library, <code>doc/raz-lib.md</code>) is the one type of the library the language names.</p>
+<p><code>PTR(s)</code> is the first of the two words of <code>s</code> (section 5.3), and is not checked. For a slice that isn’t empty it is <code>ADR(s[0])</code>; for an empty one, where <code>s[0]</code> would stop the program, it is what the slice holds: <code>nil</code> for a slice variable as it starts (section 4) and for <code>[]</code>, and for one cut empty from another, <code>t[3..3]</code>, an address that mustn’t be read through, as the end of an array mustn’t. So a slice becomes a pointer and a length, for a record or for C, with no test for the empty one first:</p>
+<pre><code>type Value = record n: INT; p: ^U8; end;
+
+proc valueOf(s: []U8): Value;
+begin
+    return {n: LEN(s), p: PTR(s)};      (* &quot;&quot; too *)
+end;</code></pre>
+<p>and <code>v.p[0..v.n]</code> is the slice again (section 6.4), empty when <code>v.n</code> is 0, whatever <code>v.p</code> is. Reading through the pointer is as unchecked as through any pointer. <code>PTR(a)</code> of an array may be taken wherever the slice <code>a[0..LEN(a)]</code> may be made, and is an error wherever it may not.</p>
 <p><code>COPY</code> is a statement, as <code>INC</code> is. It copies the bytes of <code>LEN(s)</code> elements as one block, as an assignment of an array does, and is right when <code>d</code> and <code>s</code> overlap, as in <code>COPY(a[1..n], a[0..n - 1])</code>. It is checked as a slice is: past <code>LEN(d)</code>, it stops the program, unless the module says <code>check off;</code>.</p>
 <p><code>INC</code> and <code>DEC</code> evaluate <code>v</code> once, so <code>INC(a[f(i)])</code> calls <code>f</code> once. They read <code>v</code> and then write it: two accesses, even through a <code>^VOLATILE</code> pointer, and not atomic; <code>XADD</code> is the atomic one.</p>
 <p>For <code>CAS</code>, <code>XCHG</code> and <code>XADD</code>, <code>p</code> is a <code>^T</code> or <code>^VOLATILE T</code> where <code>T</code> is <code>INT</code>, <code>UINT</code> or a pointer type (<code>INT</code> or <code>UINT</code> for <code>XADD</code>), on every target. They are sequentially consistent, on every target; how a machine without atomic instructions makes them so is the implementation’s choice (appendix A). ### 6.9 Views</p>
@@ -570,7 +583,7 @@ end;</code></pre>
 | rect(w, h): area := w * h;
 | dot:        area := 0.0;
 end;</code></pre>
-<p><code>match</code> takes a variant, an enumeration, an integer type (a <code>U8</code> included) or a string, a <code>[]U8</code>; other types are an error. It runs the arm of the case <code>s</code> holds. An arm may name the case’s fields, in order, all of them; the names stand for those fields of <code>s</code> itself, so assigning to one changes <code>s</code>; if <code>s</code> isn’t a variable, they stand for the fields of a copy. An arm may also leave the fields unnamed. Every case must have an arm, and only one, unless there is an <code>| else:</code> arm, which must come last.</p>
+<p><code>match</code> takes a variant, an enumeration, an integer type (a <code>U8</code> included) or a string, a <code>[]U8</code>; other types are an error. It runs the arm of the case <code>s</code> holds. An arm may name the case’s fields, in order, all of them; the names stand for those fields of <code>s</code> itself, so assigning to one changes <code>s</code>; if <code>s</code> is a constant or a <code>const</code> parameter, they can’t be assigned; if <code>s</code> isn’t a variable, they stand for the fields of a copy. An arm may also leave the fields unnamed. Every case must have an arm, and only one, unless there is an <code>| else:</code> arm, which must come last.</p>
 <p><code>match</code> on an enumeration works the same way: each arm names one of the enumeration’s names, or several, separated by commas, for the arm to run when the value is any of them:</p>
 <pre><code>match op of
 | sPlus, sMinus: kind := additive;
@@ -670,10 +683,23 @@ LocalDeclaration  = &quot;const&quot; { ident [ &quot;:&quot; Type ] &quot;=&quo
                   | &quot;var&quot; { ident { &quot;,&quot; ident } &quot;:&quot; Type &quot;;&quot; } .
 Signature         = &quot;(&quot; [ Params { &quot;;&quot; Params } [ &quot;;&quot; &quot;...&quot; ] ] &quot;)&quot; [ &quot;:&quot; Results ]
                   | [ &quot;:&quot; Results ] .
-Params            = [ &quot;var&quot; ] ident { &quot;,&quot; ident } &quot;:&quot; Type .
+Params            = [ &quot;var&quot; | &quot;const&quot; ] ident { &quot;,&quot; ident } &quot;:&quot; Type .
 Results           = Type | &quot;(&quot; Type { &quot;,&quot; Type } &quot;)&quot; .</code></pre>
 <p>A procedure without parameters may leave out the parentheses, both where it is declared (<code>proc main*;</code>) and where it is called (<code>Out.ln</code>). Used without parentheses in an expression, a procedure is a procedure value, not a call.</p>
 <p><strong>Parameters.</strong> A value parameter is a copy: the procedure may change it, and the caller’s variable stays as it was. A <code>var</code> parameter is the caller’s variable itself; its argument must be a variable of exactly the parameter’s type.</p>
+<p>A <code>const</code> parameter is the caller’s variable too, read in place, whatever its size, with nothing copied; the procedure may only read it. It may not assign it or a part of it (a field, an element of an array in it), give it or a part of it to a <code>var</code> parameter, take the <code>ADR</code> of either, write it through a view (section 6.9), or assign the names a <code>match</code> arm gives its fields. What a slice or a pointer in it points at isn’t part of it: the procedure may write through them, as it may through a value parameter’s; and a slice it makes of an array in it, to read, is a slice like any other, which writes the caller’s array if written through. <code>const</code> keeps the procedure from changing the variable by its name, not every path to its bytes. Its argument is any expression of the parameter’s type: a variable or a constant is passed in place, anything else as a temporary of the statement, as an array a call returns is (below). If the variable changes while the procedure runs, through a <code>var</code> parameter, a pointer or another thread, the procedure sees the change.</p>
+<pre><code>type Parser = record args: [][]U8; at: INT; (* ... *) end;
+
+proc current(const p: Parser): []U8;     (* reads p, many words, in place *)
+begin
+    return p.args[p.at];
+end;
+
+proc advance(var p: Parser);             (* changes p *)
+begin
+    INC(p.at);
+end;</code></pre>
+<p>A procedure takes what it reads as a value when it is a single value or a slice, and as <code>const</code> when it is a record or an array; what it changes, as <code>var</code>; and a pointer only for what it keeps past the call, what may be <code>nil</code>, an allocator, or what C or the system takes.</p>
 <p><strong>Results.</strong> A procedure returns nothing, one value, or several. A call that returns several values can only stand on the right of a multiple assignment, alone as a statement, or alone after <code>return</code> in a procedure whose results are of the same types, in the same order, which then returns them as they are: <code>return divmod(n, 2);</code>. A procedure that can fail has an <code>ERROR</code> as its last result (section 5.8), which <code>try</code> passes on (section 7.8).</p>
 <p>An array a call returns lives to the end of the statement the call is in. A slice of it may be used there, indexed, passed or compared; one kept past the statement, in a variable or anywhere else, points at what is gone, and is the exception of section 10:</p>
 <pre><code>s := f(&#39;a&#39;)[0..4];     (* f returns a [8]U8: s is undefined after this *)
@@ -706,7 +732,7 @@ code
     ret;
 end rdtsc;</code></pre>
 <p>A label, <code>name:</code>, names the place of the instruction after it, within the procedure. A constant of the module may stand wherever a number does. Any bytes may be written with <code>db</code>, as in <code>db 0FH, 31H;</code>, for an instruction the assembler doesn’t know.</p>
-<p>It is called like any procedure, with the System V convention: integer and pointer arguments arrive in <code>rdi</code>, <code>rsi</code>, <code>rdx</code>, <code>rcx</code>, <code>r8</code> and <code>r9</code>, <code>F32</code> and <code>F64</code> ones in <code>xmm0</code> to <code>xmm7</code>, and the result goes in <code>rax</code> (and <code>rdx</code> for a second) or <code>xmm0</code>. Its parameters and results are therefore of the types C can take (section 9), or slices, at most six integer and eight real parameters, and at most two results. A slice is two integers, as System V passes a struct of them: as a parameter its address arrives in one register and its length in the next, the two counting among the six; as the result its address goes in <code>rax</code> and its length in <code>rdx</code>, and it is the only result. The instructions are the whole procedure, <code>ret</code> included; they must keep <code>rbx</code>, <code>rbp</code>, <code>rsp</code> and <code>r12</code> to <code>r15</code> as they found them. The compiler doesn’t look past what they say.</p>
+<p>It is called like any procedure, with the System V convention: integer and pointer arguments, and the addresses of <code>var</code> and <code>const</code> ones, arrive in <code>rdi</code>, <code>rsi</code>, <code>rdx</code>, <code>rcx</code>, <code>r8</code> and <code>r9</code>, <code>F32</code> and <code>F64</code> ones in <code>xmm0</code> to <code>xmm7</code>, and the result goes in <code>rax</code> (and <code>rdx</code> for a second) or <code>xmm0</code>. Its parameters and results are therefore of the types C can take (section 9), or slices, at most six integer and eight real parameters, and at most two results. A slice is two integers, as System V passes a struct of them: as a parameter its address arrives in one register and its length in the next, the two counting among the six; as the result its address goes in <code>rax</code> and its length in <code>rdx</code>, and it is the only result. The instructions are the whole procedure, <code>ret</code> included; they must keep <code>rbx</code>, <code>rbp</code>, <code>rsp</code> and <code>r12</code> to <code>r15</code> as they found them. The compiler doesn’t look past what they say.</p>
 <h1 id="calling-c">9. Calling C</h1>
 <pre><code>ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
                              | &quot;var&quot; IdentDef &quot;:&quot; Type ) .</code></pre>
@@ -733,7 +759,7 @@ end;</code></pre>
 proc exit*(status: INT);
 proc trace*;                    (* the calls under way, on standard error *)</code></pre>
 <p><code>Rt.trace</code> says on standard error the calls under way, from the one that calls it out, each with its variables, as a program that stops does.</p>
-<p><strong>Defined behaviour.</strong> Every variable starts at zero, integers wrap, and indexing arrays and slices is checked, so a program’s behaviour is defined by this report, with one exception: memory reached other than through a checked variable. Dereferencing a stale or made-up pointer, indexing through a pointer, a slice kept after the call whose frame holds what it points at (section 7.3), a slice of an array a call returned kept past its statement (section 8), an index out of range in a module that says <code>check off;</code>, writing a string’s bytes, a code procedure that breaks its rules, and C code can read or write any memory, and what follows isn’t defined. Dereferencing <code>nil</code>, dividing by zero, calling a <code>nil</code> procedure and running out of stack stop the program, on every target, with status 2, as a failed check does. Before it stops, the program prints to standard error where it was, as file, line and column, and why, as far as it can tell: a <code>nil</code> pointer, a <code>nil</code> procedure, a stack overflow, a bad address or a division fault; then the calls under way, each with its variables of a basic, enumeration, set or pointer type. Whether the machine catches these or the compiled code checks for them is the implementation’s choice (appendix A); that they stop the program isn’t.</p>
+<p><strong>Defined behaviour.</strong> Every variable starts at zero, integers wrap, and indexing arrays and slices is checked, so a program’s behaviour is defined by this report, with one exception: memory reached other than through a checked variable. Dereferencing a stale or made-up pointer, indexing through a pointer, a slice kept after the call whose frame holds what it points at (section 7.3), a slice of an array a call returned, or of a temporary given to a <code>const</code> parameter, kept past its statement (section 8), an index out of range in a module that says <code>check off;</code>, writing a string’s bytes, a code procedure that breaks its rules, and C code can read or write any memory, and what follows isn’t defined. Dereferencing <code>nil</code>, dividing by zero, calling a <code>nil</code> procedure and running out of stack stop the program, on every target, with status 2, as a failed check does. Before it stops, the program prints to standard error where it was, as file, line and column, and why, as far as it can tell: a <code>nil</code> pointer, a <code>nil</code> procedure, a stack overflow, a bad address or a division fault; then the calls under way, each with its variables of a basic, enumeration, set or pointer type. Whether the machine catches these or the compiled code checks for them is the implementation’s choice (appendix A); that they stop the program isn’t.</p>
 <p><strong>Separate compilation.</strong> An importer depends only on a module’s interface: what it exports, as an importer sees it, never its source or its code. An implementation that compiles modules on its own makes the same program as if every module were compiled together (appendix A).</p>
 <p><strong>Errors.</strong> A program that breaks a rule of this report that says it is an error isn’t a raz program, and an implementation must reject it: say what is wrong and make no executable. Such a rule is one whose breach would leave the program with no meaning this report can give: a mistake of types, a name that isn’t declared or is declared twice, an assignment to what is read-only, a call with the wrong number of arguments, a type name or a procedure with no result used as a value, type arguments given to a module that isn’t generic, or too many, an import that can’t be found, a procedure declared <code>forward</code> and never defined, a module that imports itself. A fault that is only a lint isn’t an error: a name declared and never used, or a result that a call standing on its own drops (<code>Sys.write(fd, s);</code>, where <code>_ := Sys.write(fd, s);</code> says it is meant). A program with one is valid, and an implementation may warn of it. The text of its messages, how many it reports and which warnings it gives are its own (appendix A).</p>
 <h1 id="versions">11. Versions</h1>
@@ -742,7 +768,7 @@ proc trace*;                    (* the calls under way, on standard error *)</co
 <h1 id="appendix-a.-what-an-implementation-chooses">Appendix A. What an implementation chooses</h1>
 <p>Everything in this report binds every implementation of raz, except what follows, which each chooses for itself and documents. This compiler’s choices are in <code>doc/compiler.md</code>, under “This compiler’s choices”. The programs in <code>conform/</code> are how an implementation shows that it follows this report: it passes them all, its reals aside where its target has none; <code>conform/check.sh</code> runs them.</p>
 <ul>
-<li><strong>The target.</strong> Which machines and systems it compiles for, and the names of their files (<code>linux-x86_64</code>, section 3); for each, the size of an address, and so of <code>INT</code>, and whether it has reals.</li>
+<li><strong>The target.</strong> Which machines and systems it compiles for, and the names of their files (<code>linux-x86_64</code>, section 3); for each, the size of an address, and so of <code>INT</code>, whether it has reals, and which C library a program that uses C is linked against.</li>
 <li><strong>Separate compilation.</strong> Whether modules are compiled on their own, and if so into what: the object file, its format, the form of the code in it, when one is out of date, and how an instance is named so that the program keeps one (section 10). This compiler compiles every module of a program together, and writes no object files.</li>
 <li><strong>Atomics.</strong> How <code>CAS</code>, <code>XCHG</code> and <code>XADD</code> are made sequentially consistent on a machine without atomic instructions (section 6.8): on one with a single processor, by holding off interrupts while they run, for one.</li>
 <li><strong>The calling convention.</strong> On x86-64 Linux it is System V (sections 8 and 9); elsewhere it is the C library’s own, so that <code>extern</code> procedures and callbacks work. How a procedure returns several results, and how its frame is laid out, are the implementation’s.</li>
@@ -848,7 +874,7 @@ LocalDeclaration  = &quot;const&quot; { ident [ &quot;:&quot; Type ] &quot;=&quo
                   | &quot;var&quot; { ident { &quot;,&quot; ident } &quot;:&quot; Type &quot;;&quot; } .
 Signature         = &quot;(&quot; [ Params { &quot;;&quot; Params } [ &quot;;&quot; &quot;...&quot; ] ] &quot;)&quot; [ &quot;:&quot; Results ]
                   | [ &quot;:&quot; Results ] .
-Params            = [ &quot;var&quot; ] ident { &quot;,&quot; ident } &quot;:&quot; Type .
+Params            = [ &quot;var&quot; | &quot;const&quot; ] ident { &quot;,&quot; ident } &quot;:&quot; Type .
 Results           = Type | &quot;(&quot; Type { &quot;,&quot; Type } &quot;)&quot; .
 ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
                              | &quot;var&quot; IdentDef &quot;:&quot; Type ) .</code></pre>
@@ -870,7 +896,7 @@ ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
 </tr>
 <tr>
 <td><code>Sys</code></td>
-<td>system calls: <code>open</code>, <code>openMode</code>, <code>openRead</code>, <code>create</code>, <code>read</code>, <code>write</code>, <code>seek</code>, <code>position</code>, <code>truncate</code>, <code>sync</code>, <code>syncAll</code>, <code>lock</code>, <code>close</code>, <code>dup</code>, <code>dupTo</code>, <code>dupAbove</code>, <code>keepOnExec</code>, <code>mmap</code>, <code>munmap</code>, <code>isTerminal</code>, <code>yield</code>, <code>exit</code>; files and directories, <code>rename</code>, <code>remove</code>, <code>removeDir</code>, <code>makeDir</code>, <code>chmod</code>, <code>access</code>, <code>umask</code>, <code>symlink</code>, <code>readLink</code>, <code>info</code>, <code>linkInfo</code>, <code>infoOf</code>, <code>openDir</code>, <code>nextEntry</code>, <code>entryKind</code>, <code>closeDir</code>; the terminal, <code>rawMode</code>, <code>restoreMode</code>, <code>getMode</code>, <code>setMode</code>, <code>termSize</code>, <code>ready</code>; the environment, <code>env</code>, <code>envAt</code>, <code>setEnv</code>, <code>workDir</code>, <code>setWorkDir</code>; programs, <code>spawn</code>, <code>exec</code> and <code>execve</code>, pipes and signals; the user, the machine, time used and limits; time, <code>clock</code>, <code>now</code>, <code>sleep</code>; <code>random</code>; what an errno means, <code>errorText</code>; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and <code>Sys.raz</code> over the C library for the others</td>
+<td>system calls: <code>open</code>, <code>openMode</code>, <code>openRead</code>, <code>create</code>, <code>read</code>, <code>write</code>, <code>seek</code>, <code>position</code>, <code>truncate</code>, <code>sync</code>, <code>syncAll</code>, <code>lock</code>, <code>close</code>, <code>dup</code>, <code>dupTo</code>, <code>dupAbove</code>, <code>keepOnExec</code>, <code>mmap</code>, <code>munmap</code>, <code>isTerminal</code>, <code>yield</code>, <code>exit</code>; files and directories, <code>rename</code>, <code>remove</code>, <code>removeDir</code>, <code>makeDir</code>, <code>chmod</code>, <code>access</code>, <code>umask</code>, <code>symlink</code>, <code>readLink</code>, <code>info</code>, <code>linkInfo</code>, <code>infoOf</code>, <code>openDir</code>, <code>nextEntry</code>, <code>entryKind</code>, <code>closeDir</code>; the terminal, <code>rawMode</code>, <code>restoreMode</code>, <code>getMode</code>, <code>setMode</code>, <code>termSize</code>, <code>ready</code>; the environment, <code>env</code>, <code>envAt</code>, <code>setEnv</code>, <code>workDir</code>, <code>setWorkDir</code>; programs, <code>spawn</code>, <code>exec</code> and <code>execve</code>, pipes and signals; the user, the machine, time used and limits; time, <code>clock</code>, <code>now</code>, <code>sleep</code>; <code>random</code>; errors, by name, and what one means, <code>errorText</code>; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and <code>Sys.raz</code> over the C library for the others, which takes what each C library fixes from <code>CAbi</code></td>
 </tr>
 <tr>
 <td><code>Out</code></td>
@@ -979,14 +1005,14 @@ type Arena* = record
     base*: Mem.Allocator;     (* first, so that ^Arena(a) finds the rest *)
     ...
 end;
-proc init*(ar: ^Arena; size: INT): BOOL;   (* an arena of size bytes; false if the system has none *)
-proc reset*(ar: ^Arena);                   (* every allocation forgotten; the memory used again *)
-proc done*(ar: ^Arena);                    (* its memory given back *)</code></pre>
+proc init*(var ar: Arena; size: INT): BOOL;   (* an arena of size bytes; false if the system has none *)
+proc reset*(var ar: Arena);                   (* every allocation forgotten; the memory used again *)
+proc done*(var ar: Arena);                    (* its memory given back *)</code></pre>
 <p><code>NEW(p, a)</code> calls <code>a^.alloc</code>. <code>Heap</code> is the general allocator. An arena hands out memory from one block: its <code>free</code> does nothing, and <code>reset</code> forgets everything.</p>
 <pre><code>module Lock;
 type Lock* = record ... end;
-proc take*(l: ^Lock);
-proc give*(l: ^Lock);
+proc take*(var l: Lock);
+proc give*(var l: Lock);
 
 module Thread;
 const Failed*: ERROR = &quot;can&#39;t start a thread&quot;;
@@ -996,8 +1022,8 @@ type
 proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);   (* p(arg) in a new thread *)
 proc join*(t: ^Thread);         (* waits for t to end, then frees its stack *)
 proc signal*(t: ^Thread; sig: INT): INT;   (* sig sent to t alone: 0, or minus an errno *)
-proc lock*(m: ^Mutex);
-proc unlock*(m: ^Mutex);</code></pre>
+proc lock*(var m: Mutex);
+proc unlock*(var m: Mutex);</code></pre>
 <p>A <code>Lock</code> is for short sections: a thread that finds it taken tries again, giving up the processor now and then. A <code>Mutex</code> sleeps. Each of <code>Thread</code>’s threads runs on a stack of its own, with a page below it that can’t be touched, so that running off the stack stops the program with a message, as in the main thread. In a program that uses C, <code>Thread</code> makes its threads with C’s <code>pthread_create</code>, so that C’s library knows of them; in one that doesn’t, with the system’s own calls. The program is the same either way.</p>
 <p><code>Sys.kill</code> signals a program, and the system gives the signal to any of its threads; <code>signal</code> gives it to <code>t</code> alone, until <code>t</code> is joined, and is -3 (ESRCH) once <code>t</code> has ended. With <code>Sys.handle(sig)</code>, a call <code>t</code> waits in, a <code>read</code> or a <code>ready</code>, fails with -4, so that one thread can break into another’s wait, as <code>^C</code> breaks into the main thread’s. A signal sent before <code>t</code> begins its wait is only noted, so a program sends it again until <code>t</code> says it has stopped.</p>
 <pre><code>module Out;
@@ -1022,7 +1048,7 @@ begin
 end;
 
 end Both.</code></pre>
-<p><strong>Sys</strong> gives every target the same procedures, so that a program that needs only these runs wherever raz does: through system calls on Linux, through the C library elsewhere. A result that can fail is a number, minus an errno, as on Linux; 0 is success.</p>
+<p><strong>Sys</strong> gives every target the same procedures, so that a program that needs only these runs wherever raz does: through system calls on Linux, through the C library elsewhere. A result that can fail is a number, minus an errno, as on Linux; 0 is success. The number is Linux’s on every target: <code>Sys</code> over another system’s C library gives the Linux errno of the same name, and a program tests it by the names below; one with no Linux twin keeps its own number. <code>Sys.raz</code>, the <code>Sys</code> over C, keeps to POSIX’s names; what a C library fixes for its target, the layouts of its structs, its numbers and the names that differ, it takes from <code>CAbi</code>, one file per target, which <code>tools/cabi.c</code>, compiled there, writes.</p>
 <pre><code>module Sys;
 const
     stdin* = 0; stdout* = 1; stderr* = 2;
@@ -1035,6 +1061,16 @@ const
     (* the limits limit and setLimit take, by their numbers on Linux; each target has its own *)
     limitCpu* = 0; limitFileSize* = 1; limitData* = 2; limitStack* = 3;
     limitCore* = 4; limitProcs* = 6; limitFiles* = 7; limitMemory* = 9;
+    (* errors, minus Linux&#39;s errnos on every target *)
+    errPerm* = -1; errNoEntry* = -2; errNoProcess* = -3; errIntr* = -4;
+    errIo* = -5; errBadFd* = -9; errChild* = -10; errAgain* = -11;
+    errNoMemory* = -12; errDenied* = -13; errExists* = -17;
+    errNotDir* = -20; errIsDir* = -21; errInvalid* = -22;
+    errNotTerminal* = -25; errNoSpace* = -28; errPipe* = -32;
+    errNameTooLong* = -36; errNotEmpty* = -39; errLoop* = -40;
+    errAddrInUse* = -98; errNetUnreach* = -101; errConnReset* = -104;
+    errTimedOut* = -110; errRefused* = -111; errHostUnreach* = -113;
+    errInProgress* = -115;
 
 type
     Access* = (reading, writing, creating, exclusive, truncating, appending, executing);
@@ -1105,10 +1141,10 @@ proc linkInfo*(path: []U8): (Info, INT); (* the link itself *)
 proc infoOf*(fd: INT): (Info, INT);      (* the open file&#39;s *)
 proc space*(path: []U8): (I64, I64, INT);   (* the bytes free and in all on path&#39;s file system *)
 
-proc openDir*(d: ^Dir; path: []U8): INT;
-proc nextEntry*(d: ^Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
-proc entryKind*(d: ^Dir): Kind;          (* what the name nextEntry gave last is *)
-proc closeDir*(d: ^Dir);
+proc openDir*(var d: Dir; path: []U8): INT;
+proc nextEntry*(var d: Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
+proc entryKind*(const d: Dir): Kind;        (* what the name nextEntry gave last is *)
+proc closeDir*(var d: Dir);
 
 proc rawMode*(fd: INT): BOOL;      (* the terminal on fd: no echo, no lines, no signals *)
 proc restoreMode*(fd: INT);        (* as rawMode found it *)
@@ -1220,8 +1256,8 @@ proc isPunct*(c: U8): BOOL;           (* printable, and neither a letter, a digi
 proc hexVal*(c: U8): INT;             (* c&#39;s value as a hexadecimal digit, or -1 *)
 proc lower*(s: []U8);                 (* s&#39;s ASCII capitals made small, in place *)
 proc upper*(s: []U8);                 (* s&#39;s ASCII small letters made capitals, in place *)
-proc join*(b: ^Buf.Buf; parts: [][]U8; sep: []U8);   (* the parts added to b, sep between each two *)
-proc replace*(b: ^Buf.Buf; s, old, new: []U8);       (* s added to b, with new for each old in it *)
+proc join*(var b: Buf.Buf; parts: [][]U8; sep: []U8);   (* the parts added to b, sep between each two *)
+proc replace*(var b: Buf.Buf; s, old, new: []U8);       (* s added to b, with new for each old in it *)
 proc encode*(c: I32): ([4]U8, INT);   (* c in UTF-8: its bytes, and how many *)
 proc decode*(s: []U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
 proc decodeLast*(s: []U8): (I32, INT);   (* the character s ends with, and its length in bytes *)
@@ -1238,15 +1274,15 @@ proc putBE*(s: []U8; v: U64);         (* v into s, the highest byte first *)
 
 module Buf;
 type Buf* = record len*: INT; ... end;
-proc init*(b: ^Buf; a: ^Mem.Allocator);
-proc room*(b: ^Buf; n: INT): BOOL;    (* room for n more bytes; false if the allocator has none *)
-proc add*(b: ^Buf; c: U8);
-proc str*(b: ^Buf; s: []U8);
-proc spare*(b: ^Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
-proc bytes*(b: ^Buf): []U8;           (* what it holds, until it next grows *)
-proc cut*(b: ^Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
-proc reset*(b: ^Buf);                 (* emptied, its memory kept *)
-proc done*(b: ^Buf);                  (* its memory given back *)
+proc init*(var b: Buf; a: ^Mem.Allocator);
+proc room*(var b: Buf; n: INT): BOOL;    (* room for n more bytes; false if the allocator has none *)
+proc add*(var b: Buf; c: U8);
+proc str*(var b: Buf; s: []U8);
+proc spare*(var b: Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
+proc bytes*(const b: Buf): []U8;         (* what it holds, until it next grows *)
+proc cut*(var b: Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
+proc reset*(var b: Buf);                 (* emptied, its memory kept *)
+proc done*(var b: Buf);                  (* its memory given back *)
 
 module Fmt;
 type Arg* = variant
@@ -1260,40 +1296,40 @@ type Arg* = variant
 end;
 proc print*(f: []U8; args: []Arg);              (* to standard output *)
 proc eprint*(f: []U8; args: []Arg);             (* to standard error, once Out is flushed *)
-proc write*(b: ^Buf.Buf; f: []U8; args: []Arg); (* added to b *)
+proc write*(var b: Buf.Buf; f: []U8; args: []Arg); (* added to b *)
 
 module List(T);
 type
     Node* = record next*: ^Node; val*: T; end;
     List* = record head*: ^Node; len*: INT; ... end;
-proc init*(l: ^List; a: ^Mem.Allocator);
-proc push*(l: ^List; v: T): BOOL;     (* v at the front; false if the allocator has no room *)
-proc pop*(l: ^List): (T, BOOL);       (* the front value, taken off; false if the list is empty *)
-proc reverse*(l: ^List);
-proc clear*(l: ^List);
+proc init*(var l: List; a: ^Mem.Allocator);
+proc push*(var l: List; v: T): BOOL;     (* v at the front; false if the allocator has no room *)
+proc pop*(var l: List): (T, BOOL);       (* the front value, taken off; false if the list is empty *)
+proc reverse*(var l: List);
+proc clear*(var l: List);
 
 module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
 type Map* = record len*: INT; ... end;
-proc init*(m: ^Map; a: ^Mem.Allocator);
-proc put*(m: ^Map; k: K; v: V): BOOL;         (* k now maps to v; false if there was no room *)
-proc remove*(m: ^Map; k: K): BOOL;            (* false if k wasn&#39;t there *)
-proc get*(m: ^Map; k: K): (V, BOOL);          (* what k maps to, and whether it maps to anything *)
-proc next*(m: ^Map; i: INT): (INT, K, V);     (* the entry after i *)
-proc done*(m: ^Map);                          (* its memory given back, leaving it empty *)
+proc init*(var m: Map; a: ^Mem.Allocator);
+proc put*(var m: Map; k: K; v: V): BOOL;         (* k now maps to v; false if there was no room *)
+proc remove*(var m: Map; k: K): BOOL;            (* false if k wasn&#39;t there *)
+proc get*(const m: Map; k: K): (V, BOOL);        (* what k maps to, and whether it maps to anything *)
+proc next*(const m: Map; i: INT): (INT, K, V);   (* the entry after i *)
+proc done*(var m: Map);                          (* its memory given back, leaving it empty *)
 
 module Vec(T);
 type Vec* = record len*: INT; ... end;
-proc init*(v: ^Vec; a: ^Mem.Allocator);
-proc room*(v: ^Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
-proc push*(v: ^Vec; x: T);            (* x added at the end *)
-proc pop*(v: ^Vec): (T, BOOL);        (* the last element, taken off; false if the array is empty *)
-proc add*(v: ^Vec): ^T;               (* a new element at the end, zero, to fill in place *)
-proc tryPush*(v: ^Vec; x: T): BOOL;   (* push; false, and v as it was, if there is no room *)
-proc tryAdd*(v: ^Vec): (^T, BOOL);    (* add; nil and false, and v as it was, if there is no room *)
-proc resize*(v: ^Vec; n: INT);        (* n elements: cut short, or the new ones zero *)
-proc all*(v: ^Vec): []T;              (* the elements, until it next grows *)
-proc reset*(v: ^Vec);                 (* emptied, its memory kept *)
-proc done*(v: ^Vec);                  (* its memory given back *)
+proc init*(var v: Vec; a: ^Mem.Allocator);
+proc room*(var v: Vec; n: INT): BOOL;    (* room for n more; false if the allocator has none *)
+proc push*(var v: Vec; x: T);            (* x added at the end *)
+proc pop*(var v: Vec): (T, BOOL);        (* the last element, taken off; false if the array is empty *)
+proc add*(var v: Vec): ^T;               (* a new element at the end, zero, to fill in place *)
+proc tryPush*(var v: Vec; x: T): BOOL;   (* push; false, and v as it was, if there is no room *)
+proc tryAdd*(var v: Vec): (^T, BOOL);    (* add; nil and false, and v as it was, if there is no room *)
+proc resize*(var v: Vec; n: INT);        (* n elements: cut short, or the new ones zero *)
+proc all*(const v: Vec): []T;            (* the elements, until it next grows *)
+proc reset*(var v: Vec);                 (* emptied, its memory kept *)
+proc done*(var v: Vec);                  (* its memory given back *)
 
 module Sort(T; less: proc(a, b: T): BOOL);
 proc sort*(s: []T);
@@ -1320,7 +1356,7 @@ proc bits*(x: F64): U64;              (* the bits of x, as IEEE 754 lays them ou
 proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
 proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
 proc toReal*(s: []U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn&#39;t one *)</code></pre>
-<p>A <code>Buf</code>, a <code>List</code>, a <code>Map</code> and a <code>Vec</code> take their memory from the allocator <code>init</code> gives them. <code>Buf.add</code>, <code>str</code> and <code>spare</code> stop the program, as a failed check does, if the allocator has no room; <code>room</code> asks first. A program reads into a <code>Buf</code> through <code>spare</code>, then adds what it read to <code>len</code>: <code>s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n &gt; 0 then INC(b^.len, n); end;</code>. <code>cut</code> takes back what was added, to a length it had: <code>start := b^.len; ...; Buf.cut(b, start);</code>; a length past <code>len</code> stops the program, as an index past the end does. A <code>Vec</code> is <code>Buf</code> for any <code>T</code>: one block, which doubles when it is full, so <code>push</code> costs the same on average however long it grows. <code>all</code> gives the elements as a slice, indexed and checked as any is, and <code>v.len</code> is their number; the slice, and what <code>add</code> gives, are good until the array next grows. <code>pop</code> takes the last element off, keeping the memory. <code>push</code>, <code>add</code> and <code>resize</code> stop the program, as <code>Buf.add</code> does, if the allocator has no room; <code>room</code> asks first: <code>import Lines := Vec([]U8);</code>. <code>Fmt</code>’s format takes the next argument at each <code>{}</code>; <code>{{</code> and <code>}}</code> stand for <code>{</code> and <code>}</code>. A <code>Map</code> hashes and compares its keys with the procedures it is given: <code>import Count := Map([]U8, INT, Str.hash, Str.eq);</code>.</p>
+<p>A <code>Buf</code>, a <code>List</code>, a <code>Map</code> and a <code>Vec</code> take their memory from the allocator <code>init</code> gives them. <code>Buf.add</code>, <code>str</code> and <code>spare</code> stop the program, as a failed check does, if the allocator has no room; <code>room</code> asks first. A program reads into a <code>Buf</code> through <code>spare</code>, then adds what it read to <code>len</code>: <code>s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n &gt; 0 then INC(b.len, n); end;</code>. <code>cut</code> takes back what was added, to a length it had: <code>start := b.len; ...; Buf.cut(b, start);</code>; a length past <code>len</code> stops the program, as an index past the end does. A <code>Vec</code> is <code>Buf</code> for any <code>T</code>: one block, which doubles when it is full, so <code>push</code> costs the same on average however long it grows. <code>all</code> gives the elements as a slice, indexed and checked as any is, and <code>v.len</code> is their number; the slice, and what <code>add</code> gives, are good until the array next grows. <code>pop</code> takes the last element off, keeping the memory. <code>push</code>, <code>add</code> and <code>resize</code> stop the program, as <code>Buf.add</code> does, if the allocator has no room; <code>room</code> asks first: <code>import Lines := Vec([]U8);</code>. <code>Fmt</code>’s format takes the next argument at each <code>{}</code>; <code>{{</code> and <code>}}</code> stand for <code>{</code> and <code>}</code>. A <code>Map</code> hashes and compares its keys with the procedures it is given: <code>import Count := Map([]U8, INT, Str.hash, Str.eq);</code>.</p>
 <p><code>Str</code> reads and writes UTF-8. <code>encode</code> writes a character, of at most 10FFFFH, in one to four bytes; a number that isn’t one becomes FFFDH, the character that stands for a wrong one. <code>decode</code> reads the first character of <code>s</code>, and gives FFFDH and 1 for a byte that doesn’t start one rightly, and 0 and 0 for an empty <code>s</code>: a continuation, a byte followed by too few continuations, a surrogate, a character beyond 10FFFFH or one spelled in more bytes than it needs. <code>decodeLast</code> reads the last character in the same way, to walk a string backwards. <code>valid</code> says that <code>decode</code> finds no such byte in <code>s</code>, and <code>chars</code> counts the characters, each such byte one. <code>next</code> walks a string a character at a time, as <code>decode</code> reads them: from 0, it gives the character at <code>i</code> and where the one after it starts, and 0 and -1 when <code>i</code> is at the end, or past it:</p>
 <pre><code>c, i := Str.next(s, 0);
 while i &gt;= 0 do
@@ -1343,17 +1379,17 @@ end;</code></pre>
 Str.putBE(packet[0..2], U64(port));</code></pre>
 <p><code>Math.toReal</code> reads a real as a constant is written (section 2), with a <code>-</code> or <code>+</code> before it if any, its point and the digits after it, or its exponent, left out if it has none, and <code>e</code> taken as <code>E</code>: <code>2</code>, <code>-0.5</code> and <code>1.5e-3</code> are reals to it. It gives the <code>F64</code> nearest the number, and <code>false</code> for anything else, or a number too big for an <code>F64</code>.</p>
 <p><code>Map.next</code> walks a map: from 0, it gives the next entry and the number to pass for the one after it, and -1 when there are no more. A walk sees each entry once if the map doesn’t change during it:</p>
-<pre><code>i, k, v := Names.next(ADR(names), 0);
+<pre><code>i, k, v := Names.next(names, 0);
 while i &gt;= 0 do
     Fmt.print(&quot;{} is {}\n&quot;, [Fmt.str(k), Fmt.int(v)]);
-    i, k, v := Names.next(ADR(names), i);
+    i, k, v := Names.next(names, i);
 end;</code></pre>
 <p><code>Sort.sort</code> puts <code>s</code> in the order <code>less</code> gives, in place, without memory of its own, in time <code>n log n</code> at most; two elements equal by <code>less</code> may change places. <code>Math</code>’s procedures are as C’s <code>math.h</code> has them, to within the last bit or so. <code>Fmt.real(x, places)</code> writes <code>x</code> with <code>places</code> digits after the point, at most 9, rounded to the nearest; from 1e15 on, with an exponent, as <code>1.50e17</code>; and <code>nan</code>, <code>inf</code> and <code>-inf</code> as themselves.</p>
 <p><strong>Files and Opt</strong> are what most programs need of their command line.</p>
 <pre><code>module Files;
 proc arg*(i: INT): []U8;                     (* argument i; 0 is the program&#39;s name *)
-proc read*(path: []U8; b: ^Buf.Buf): BOOL;   (* the whole file added to b *)
-proc load*(path: []U8; b: ^Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
+proc read*(path: []U8; var b: Buf.Buf): BOOL;   (* the whole file added to b *)
+proc load*(path: []U8; var b: Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
 proc write*(path, data: []U8): BOOL;         (* the file made to hold data *)
 
 module Opt;
@@ -1370,37 +1406,37 @@ type
         spelt*: []U8;   (* as it was written, no dashes: &quot;b&quot; or &quot;bar&quot;; to read only *)
         ...
     end;
-proc init*(p: ^Parser; name: []U8; table: []Row);  (* the arguments from 1 on, by table *)
-proc next*(p: ^Parser): BOOL;                     (* the next option; false when they end *)
-proc operand*(p: ^Parser): ([]U8, BOOL);          (* the next operand; false when there are no more *)
-proc at*(p: ^Parser): INT;                        (* the argument operand would give next *)
-proc scope*(p: ^Parser; name: []U8);              (* subcommand name&#39;s options, from the word after it *)
-proc number*(p: ^Parser; lo, hi: I64): I64;       (* the value just read, a number from lo to hi *)
-proc refuse*(p: ^Parser; wants: []U8);            (* the value just read refused, as number refuses one *)
-proc fail*(p: ^Parser; text: []U8);               (* the program&#39;s own mistake *)</code></pre>
-<p><code>Opt</code> reads a command line by the rules of the C library’s <code>getopt</code>, with GNU’s long options, so that a program’s options behave as every other Unix program’s. The program describes itself once, in a table of <code>Row</code>s: its synopsis lines, its subcommands and its options. The help and the messages for mistakes are made from the table, so they can’t drift from it; the program’s test of <code>p.letter</code> is the only other place an option appears. The parser is a record the program owns, and the table a slice it keeps as long as the parser: a literal written in the call to <code>init</code> lives as long as the procedure that makes it.</p>
+proc init*(var p: Parser; name: []U8; table: []Row);   (* the arguments from 1 on, by table *)
+proc next*(var p: Parser): BOOL;                      (* the next option; false when they end *)
+proc operand*(var p: Parser): ([]U8, BOOL);           (* the next operand; false when there are no more *)
+proc at*(var p: Parser): INT;                         (* the argument operand would give next *)
+proc scope*(var p: Parser; name: []U8);               (* subcommand name&#39;s options, from the word after it *)
+proc number*(const p: Parser; lo, hi: I64): I64;      (* the value just read, a number from lo to hi *)
+proc refuse*(const p: Parser; wants: []U8);           (* the value just read refused, as number refuses one *)
+proc fail*(const p: Parser; text: []U8);              (* the program&#39;s own mistake *)</code></pre>
+<p><code>Opt</code> reads a command line by the rules of the C library’s <code>getopt</code>, with GNU’s long options, so that a program’s options behave as every other Unix program’s. The program describes itself once, in a table of <code>Row</code>s: its synopsis lines, its subcommands and its options. The help and the messages for mistakes are made from the table, so they can’t drift from it; the program’s test of <code>p.letter</code> is the only other place an option appears. The parser is a record the program owns, and the table a slice it keeps as long as the parser: a literal written in the call to <code>init</code> lives as long as the procedure that makes it, and a constant, <code>const Rows: []Opt.Row = [...]</code>, as long as the program.</p>
 <p>A row’s <code>scope</code> is <code>""</code> for the program itself, or a subcommand’s name: <code>"start"</code>, or <code>"remote.add"</code> for a subcommand of <code>remote</code>. An option has a <code>letter</code>, a <code>long</code> name, or both. One with a long name only has a key of its own below <code>'!'</code> for a letter, so that the program can tell it from the others. With a <code>value</code>, the name the help and the messages give it, the option takes a value; with <code>""</code> it is a flag. A value written in brackets, <code>"[when]"</code>, may be left out, and is <code>""</code> then: it is given only in the option’s own word, <code>--color=always</code> or <code>-calways</code>, never as the next, as <code>getopt</code>’s <code>::</code> has it, and the help shows it as <code>--color[=when]</code>.</p>
 <pre><code>const wait = 1;     (* the key of --wait, which has no letter *)
 ...
-Opt.init(ADR(p), &quot;keep&quot;, [
+Opt.init(p, &quot;keep&quot;, [
     Opt.usage(&quot;&quot;, &quot;keep [-v] [--wait secs] start ...&quot;),
     Opt.sub(&quot;&quot;, &quot;start&quot;, &quot;start a job&quot;),
     Opt.option(&quot;&quot;, &#39;v&#39;, &quot;verbose&quot;, &quot;&quot;, &quot;say more&quot;),
     Opt.option(&quot;&quot;, wait, &quot;wait&quot;, &quot;secs&quot;, &quot;give the job secs to start&quot;),
     Opt.usage(&quot;start&quot;, &quot;keep start [-b label] name command [argument ...]&quot;),
     Opt.option(&quot;start&quot;, &#39;b&#39;, &quot;bar&quot;, &quot;label&quot;, &quot;show the job in the bar as label&quot;)]);
-while Opt.next(ADR(p)) do
+while Opt.next(p) do
     if p.letter = &#39;v&#39; then verbose := true;
-    elsif p.letter = wait then secs := Opt.number(ADR(p), 1, 600);
+    elsif p.letter = wait then secs := Opt.number(p, 1, 600);
     end;
 end;
-w, ok := Opt.operand(ADR(p));
-if not ok or (w # &quot;start&quot;) then Opt.fail(ADR(p), &quot;no command; see keep -h&quot;); end;
-Opt.scope(ADR(p), &quot;start&quot;);
-while Opt.next(ADR(p)) do
+w, ok := Opt.operand(p);
+if not ok or (w # &quot;start&quot;) then Opt.fail(p, &quot;no command; see keep -h&quot;); end;
+Opt.scope(p, &quot;start&quot;);
+while Opt.next(p) do
     if p.letter = &#39;b&#39; then bar := p.value; end;
 end;
-job, ok := Opt.operand(ADR(p));</code></pre>
+job, ok := Opt.operand(p);</code></pre>
 <p>The rules are <code>getopt</code>’s:</p>
 <ul>
 <li>Flags may share a dash: <code>-lw</code> is <code>-l -w</code>. A letter’s value is the rest of its word, <code>-bdev</code>, or the whole next word, <code>-b dev</code>, even one that starts with a dash or is empty; in a group, the first letter that takes a value takes the rest, <code>-qn12</code>.</li>
@@ -1409,8 +1445,8 @@ job, ok := Opt.operand(ADR(p));</code></pre>
 <li>Each scope has its own options. An option given twice is read twice.</li>
 </ul>
 <p><code>number</code> reads the value as <code>Str.toInt</code> does. <code>operand</code> reads what options are left first, and the program doesn’t see them. So does <code>at</code>, which says where the operands are: the arguments from <code>operand</code>’s next on are <code>Files.arg(i)</code> for <code>i</code> from <code>at(p)</code> to <code>ARGC() - 1</code>, so that an interpreter hands a script its arguments as they are:</p>
-<pre><code>script, ok := Opt.operand(ADR(p));       (* tery file arg ... *)
-first := Opt.at(ADR(p));                 (* file&#39;s own arguments, from here on *)</code></pre>
+<pre><code>script, ok := Opt.operand(p);       (* tery file arg ... *)
+first := Opt.at(p);                 (* file&#39;s own arguments, from here on *)</code></pre>
 <p><code>-h</code> or <code>--help</code> among a scope’s options prints its help on standard output and ends the program with status 0. <code>init</code> and <code>scope</code> answer it, looking through the scope’s options before <code>next</code> gives one, so that the program has done nothing yet: <code>keep -v -h -x</code> prints the help, and the program never sees <code>-v</code>, nor the mistake. The help is the scope’s synopsis lines, a blank line, and its subcommands, its options and the help itself, each with its line of help:</p>
 <pre><code>usage: keep start [-b label] name command [argument ...]
 
@@ -1420,7 +1456,7 @@ first := Opt.at(ADR(p));                 (* file&#39;s own arguments, from here 
 <p>A mistake on the command line is a sentence on standard error, the program’s name first, then the scope’s synopsis lines, as the help begins, and status 2:</p>
 <pre><code>keep: unknown option -x
 usage: keep start [-b label] name command [argument ...]</code></pre>
-<p>The sentences are <code>unknown option -x</code> (or <code>--name</code>, up to its <code>=</code>), <code>-b needs a label</code>, <code>--follow takes no value</code> and <code>--wait wants a number from 1 to 600, not '0'</code>; for a number with no top, given the largest <code>I64</code> for <code>hi</code>, <code>--jobs wants a number from 1 up, not '0'</code>. <code>refuse</code> refuses a value the program reads itself, as <code>number</code> refuses one, naming the option as the user wrote it, <code>-b</code> or <code>--bar</code>: <code>Opt.refuse(ADR(p), "a label with no spaces")</code> writes <code>keep: -b wants a label with no spaces, not 'a b'</code>, and the synopsis lines. <code>p.spelt</code> is that spelling, for the program’s own sentences. <code>fail</code> writes the program’s own mistakes the same way, but alone, so that the sentence can say where the help is: <code>keep: no command; see keep -h</code>.</p>
+<p>The sentences are <code>unknown option -x</code> (or <code>--name</code>, up to its <code>=</code>), <code>-b needs a label</code>, <code>--follow takes no value</code> and <code>--wait wants a number from 1 to 600, not '0'</code>; for a number with no top, given the largest <code>I64</code> for <code>hi</code>, <code>--jobs wants a number from 1 up, not '0'</code>. <code>refuse</code> refuses a value the program reads itself, as <code>number</code> refuses one, naming the option as the user wrote it, <code>-b</code> or <code>--bar</code>: <code>Opt.refuse(p, "a label with no spaces")</code> writes <code>keep: -b wants a label with no spaces, not 'a b'</code>, and the synopsis lines. <code>p.spelt</code> is that spelling, for the program’s own sentences. <code>fail</code> writes the program’s own mistakes the same way, but alone, so that the sentence can say where the help is: <code>keep: no command; see keep -h</code>.</p>
 <p>A mistake in the table is the program’s, not its user’s. <code>init</code> checks the table before it reads a word, and ends the program with status 1: <code>keep: option table, row 3: the option is in the scope already</code>. The others are an option with neither a letter nor a long name, a long name with <code>=</code> in it, a letter <code>-</code>, a value with one bracket but not the other, and <code>--help</code> in the table, since it is <code>Opt</code>’s.</p>
 <p><strong>Width</strong> says how many columns of a terminal text takes, for a program with a screen that wraps its lines and cuts them at the window’s edge.</p>
 <pre><code>module Width;

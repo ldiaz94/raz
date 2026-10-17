@@ -68,10 +68,10 @@
         Mem.free(Heap.heap, ^<span class="ty">U8</span>(n));
     <span class="kw">end</span>;
     Out.ln;
-    <span class="kw">if</span> <span class="kw">not</span> Arena.init(<span class="ty">ADR</span>(ar), <span class="number">100000</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="kw">if</span> <span class="kw">not</span> Arena.init(ar, <span class="number">100000</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
     <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">1000</span> <span class="kw">do</span> top := push(top, i, <span class="ty">ADR</span>(ar.base)); <span class="kw">end</span>;
     Out.int(top^.val); Out.ln;
-    Arena.done(<span class="ty">ADR</span>(ar));            <span class="comment">(* every node at once *)</span>
+    Arena.done(ar);            <span class="comment">(* every node at once *)</span>
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Stack.</code></pre>
@@ -112,18 +112,18 @@
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> ar: Arena.Arena; small: Arena.Arena; list: ^Item;
 <span class="kw">begin</span>
-    <span class="kw">if</span> <span class="kw">not</span> Arena.init(<span class="ty">ADR</span>(ar), <span class="number">1000000</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="kw">if</span> <span class="kw">not</span> Arena.init(ar, <span class="number">1000000</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
     list := make(<span class="number">1000</span>, <span class="ty">ADR</span>(ar.base));
     Out.int(count(list)); Out.str(<span class="string">&quot; items from a big arena\n&quot;</span>);
-    Arena.reset(<span class="ty">ADR</span>(ar));              <span class="comment">(* every allocation forgotten *)</span>
+    Arena.reset(ar);              <span class="comment">(* every allocation forgotten *)</span>
     list := make(<span class="number">10</span>, <span class="ty">ADR</span>(ar.base));
     Out.int(count(list)); Out.str(<span class="string">&quot; after a reset\n&quot;</span>);
-    Arena.done(<span class="ty">ADR</span>(ar));
+    Arena.done(ar);
 
-    <span class="kw">if</span> <span class="kw">not</span> Arena.init(<span class="ty">ADR</span>(small), <span class="number">4096</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="kw">if</span> <span class="kw">not</span> Arena.init(small, <span class="number">4096</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
     list := make(<span class="number">1000</span>, <span class="ty">ADR</span>(small.base));
     <span class="kw">if</span> list = <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="string">&quot;a small arena ran out, and said so\n&quot;</span>); <span class="kw">end</span>;
-    Arena.done(<span class="ty">ADR</span>(small));
+    Arena.done(small);
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Pool.</code></pre>
@@ -164,21 +164,21 @@ a small arena ran out, and said so
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> b: Buf.Buf; i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
-    Buf.init(<span class="ty">ADR</span>(b), Heap.heap);
-    <span class="kw">defer</span> Buf.done(<span class="ty">ADR</span>(b));
+    Buf.init(b, Heap.heap);
+    <span class="kw">defer</span> Buf.done(b);
     <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">5</span> <span class="kw">do</span>
-        Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;item &quot;</span>);
-        Buf.add(<span class="ty">ADR</span>(b), <span class="ty">U8</span>(<span class="string">&#x27;0&#x27;</span> + i));
-        Buf.add(<span class="ty">ADR</span>(b), <span class="string">&#x27;,&#x27;</span>);
+        Buf.str(b, <span class="string">&quot;item &quot;</span>);
+        Buf.add(b, <span class="ty">U8</span>(<span class="string">&#x27;0&#x27;</span> + i));
+        Buf.add(b, <span class="string">&#x27;,&#x27;</span>);
     <span class="kw">end</span>;
-    Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
+    Out.str(Buf.bytes(b)); Out.ln;
     Out.int(b.len); Out.str(<span class="string">&quot; bytes\n&quot;</span>);
-    Buf.reset(<span class="ty">ADR</span>(b));
-    Str.join(<span class="ty">ADR</span>(b), [<span class="string">&quot;red&quot;</span>, <span class="string">&quot;green&quot;</span>, <span class="string">&quot;blue&quot;</span>], <span class="string">&quot;, &quot;</span>);
-    Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
-    Buf.reset(<span class="ty">ADR</span>(b));
-    Str.replace(<span class="ty">ADR</span>(b), <span class="string">&quot;a-b-c&quot;</span>, <span class="string">&quot;-&quot;</span>, <span class="string">&quot; and &quot;</span>);
-    Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
+    Buf.reset(b);
+    Str.join(b, [<span class="string">&quot;red&quot;</span>, <span class="string">&quot;green&quot;</span>, <span class="string">&quot;blue&quot;</span>], <span class="string">&quot;, &quot;</span>);
+    Out.str(Buf.bytes(b)); Out.ln;
+    Buf.reset(b);
+    Str.replace(b, <span class="string">&quot;a-b-c&quot;</span>, <span class="string">&quot;-&quot;</span>, <span class="string">&quot; and &quot;</span>);
+    Out.str(Buf.bytes(b)); Out.ln;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Build.</code></pre>

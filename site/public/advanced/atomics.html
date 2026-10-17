@@ -144,20 +144,20 @@
 type Lock* = record held: INT; end;
 
 (* Takes l, waiting while another thread holds it. *)
-proc take*(l: ^Lock);
+proc take*(var l: Lock);
 var tries: INT;
 begin
     tries := 0;
-    while not CAS(ADR(l^.held), 0, 1) do
+    while not CAS(ADR(l.held), 0, 1) do
         INC(tries);
         if tries = 64 then Sys.yield; tries := 0; end;
     end;
 end;
 
 (* Gives up l, which the caller holds. *)
-proc give*(l: ^Lock);
+proc give*(var l: Lock);
 begin
-    _ := XCHG(ADR(l^.held), 0);
+    _ := XCHG(ADR(l.held), 0);
 end;</code></pre>
 <p>And here is a use of it: a structure with two fields that must stay in step, which no single atomic can protect.</p>
 <div class="file"><span>Account.raz</span></div><pre class="code"><code><span class="kw">module</span> Account;
@@ -171,10 +171,10 @@ end;</code></pre>
 <span class="kw">var</span> i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">20000</span> <span class="kw">do</span>
-        Lock.take(<span class="ty">ADR</span>(lock));
+        Lock.take(lock);
         <span class="ty">INC</span>(deposits);
         <span class="ty">INC</span>(balance, <span class="number">3</span>);
-        Lock.give(<span class="ty">ADR</span>(lock));
+        Lock.give(lock);
     <span class="kw">end</span>;
 <span class="kw">end</span>;
 

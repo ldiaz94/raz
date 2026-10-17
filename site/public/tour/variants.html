@@ -51,7 +51,9 @@
         dot;
     <span class="kw">end</span>;
 
-<span class="kw">proc</span> area(s: Shape): <span class="ty">F64</span>;
+<span class="kw">const</span> Some: []Shape = [circle(<span class="number">1.0</span>), rect(<span class="number">2.0</span>, <span class="number">3.5</span>), dot];
+
+<span class="kw">proc</span> area(<span class="kw">const</span> s: Shape): <span class="ty">F64</span>;
 <span class="kw">begin</span>
     <span class="kw">match</span> s <span class="kw">of</span>
     | circle(r): <span class="kw">return</span> Math.pi * r * r;
@@ -80,11 +82,10 @@
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> shapes: [<span class="number">3</span>]Shape; i: <span class="ty">INT</span>; warm: Colours; c: Colour;
+<span class="kw">var</span> i: <span class="ty">INT</span>; warm: Colours; c: Colour;
 <span class="kw">begin</span>
-    shapes := [circle(<span class="number">1.0</span>), rect(<span class="number">2.0</span>, <span class="number">3.5</span>), dot];
-    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">2</span> <span class="kw">do</span>
-        Fmt.print(<span class="string">&quot;{}\n&quot;</span>, [Fmt.real(area(shapes[i]), <span class="number">2</span>)]);
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(Some) - <span class="number">1</span> <span class="kw">do</span>
+        Fmt.print(<span class="string">&quot;{}\n&quot;</span>, [Fmt.real(area(Some[i]), <span class="number">2</span>)]);
     <span class="kw">end</span>;
     Fmt.print(<span class="string">&quot;{} {} {}\n&quot;</span>, [Fmt.str(kind(<span class="string">&#x27;7&#x27;</span>)), Fmt.str(kind(<span class="string">&#x27;x&#x27;</span>)),
         Fmt.str(kind(<span class="string">&#x27;+&#x27;</span>))]);

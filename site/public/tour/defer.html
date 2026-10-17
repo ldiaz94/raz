@@ -154,16 +154,16 @@ pass 3 done
 <span class="kw">var</span> b: Buf.Buf;
 <span class="kw">begin</span>
     <span class="kw">if</span> n &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> <span class="ty">false</span>; <span class="kw">end</span>;
-    Buf.init(<span class="ty">ADR</span>(b), Heap.heap);
-    <span class="kw">defer</span> Buf.done(<span class="ty">ADR</span>(b));            <span class="comment">(* freed on every way out below *)</span>
-    Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;n is &quot;</span>);
+    Buf.init(b, Heap.heap);
+    <span class="kw">defer</span> Buf.done(b);            <span class="comment">(* freed on every way out below *)</span>
+    Buf.str(b, <span class="string">&quot;n is &quot;</span>);
     <span class="kw">if</span> n &gt; <span class="number">9</span> <span class="kw">then</span>
-        Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;large&quot;</span>);
-        Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
+        Buf.str(b, <span class="string">&quot;large&quot;</span>);
+        Out.str(Buf.bytes(b)); Out.ln;
         <span class="kw">return</span> <span class="ty">true</span>;
     <span class="kw">end</span>;
-    Buf.str(<span class="ty">ADR</span>(b), <span class="string">&quot;small&quot;</span>);
-    Out.str(Buf.bytes(<span class="ty">ADR</span>(b))); Out.ln;
+    Buf.str(b, <span class="string">&quot;small&quot;</span>);
+    Out.str(Buf.bytes(b)); Out.ln;
     <span class="kw">return</span> <span class="ty">true</span>;
 <span class="kw">end</span>;
 

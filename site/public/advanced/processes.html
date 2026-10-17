@@ -139,16 +139,16 @@ it exited with 0
     p.fds[<span class="number">1</span>] := wr;
     pid := Sys.spawn(p);
     Sys.close(wr);                      <span class="comment">(* only the child writes now *)</span>
-    Buf.init(<span class="ty">ADR</span>(b), Heap.heap);
-    <span class="kw">defer</span> Buf.done(<span class="ty">ADR</span>(b));
+    Buf.init(b, Heap.heap);
+    <span class="kw">defer</span> Buf.done(b);
     n := Sys.read(rd, chunk);
     <span class="kw">while</span> n &gt; <span class="number">0</span> <span class="kw">do</span>
-        Buf.str(<span class="ty">ADR</span>(b), chunk[<span class="number">0</span>..n]);
+        Buf.str(b, chunk[<span class="number">0</span>..n]);
         n := Sys.read(rd, chunk);
     <span class="kw">end</span>;
     Sys.close(rd);
     _, how, status := Sys.wait(pid, <span class="ty">true</span>);
-    Out.str(<span class="string">&quot;captured: &quot;</span>); Out.str(Buf.bytes(<span class="ty">ADR</span>(b)));
+    Out.str(<span class="string">&quot;captured: &quot;</span>); Out.str(Buf.bytes(b));
     Out.str(<span class="string">&quot;status &quot;</span>); Out.int(status); Out.ln;
     <span class="kw">if</span> how = Sys.exited <span class="kw">then</span> Out.str(<span class="string">&quot;(a normal exit)\n&quot;</span>); <span class="kw">end</span>;
 <span class="kw">end</span>;
