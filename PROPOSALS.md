@@ -1056,3 +1056,64 @@ change one word.
 Met in the discussion of `const` parameters (2026-10-17): "If a const
 can still be written, what's the point?", and "Can records have
 constant slices?"
+
+## For a kernel: three changes to the compiler
+
+Not the language's but this compiler's, kept together since they serve
+one end: a raz program run on the bare machine, a unikernel, with no
+operating system under it. None is needed for one: a kernel can be
+made today, with a boot stub of its own that enters long mode, `db`
+for the instructions the assembler lacks, and either a library of its
+own beside a copy of `raz` (the library is read from beside the
+compiler) or a handler for `syscall` that does what `Rt` and `Sys` ask
+of Linux. Each piece below takes away one of those work-arounds, and
+stands on its own.
+
+**1. A load address chosen at the command line.** The executable is
+loaded at `Link.Base`, 400000H, fixed. A kernel is often wanted
+elsewhere: Limine wants one in the top 2 GB of the address space, and
+a kernel that maps itself may want room below it. The proposal:
+`raz -base ADDR`, a multiple of the page, and `Link.Base` a variable
+it sets. Code reaches its data relative to `rip` already; what holds
+an address whole (`Chunk.addAbsFixup`) is patched by the linker, which
+knows the base, so the cost is the option and the check that an
+address above 2 GB, as a higher-half kernel's, still fits where the
+code needs 32 bits of it. A few lines.
+
+**2. A program with no `Rt` body.** `Rt` is always used, and its body
+runs before every other module's: it sets the handlers of SIGSEGV and
+SIGFPE with `rt_sigaction` and a stack for them with `sigaltstack`,
+and starts the profiler with `setitimer` when asked. On the bare
+machine those `syscall`s fault (`EFER.SCE` is clear), and with no IDT
+yet the machine resets. The entry point also reads `argc` and `argv`
+from the stack as Linux leaves them. The proposal: `raz -bare`, under
+which the entry point reads no arguments and calls no body of `Rt`, and
+gives `Rt` nothing (as `-s` does), so that `fail` and `exit` are all
+that is reached of it; a kernel's own module, the first used, sets up
+what `Rt`'s body would. `exit` and `fail` still make system calls,
+which a kernel would catch, or replace by a library of its own as
+today; `-bare` only stops the ones made before the program can. About
+twenty lines in `Raz.raz` and `Gen.entryPoint`.
+
+**3. The privileged instructions in the assembler.** `X64.raz`
+assembles what the code generator uses, and `db` gives the rest. A
+kernel's code procedures are mostly the rest: `cli`, `sti`, `iretq`,
+`swapgs`, `lgdt`, `lidt`, `ltr`, `invlpg`, `mov` to and from `cr0`,
+`cr2`, `cr3`, `cr4`, `rdmsr`, `wrmsr`, `in` and `out`, `wbinvd`,
+`xsave` and `xrstor`. Written as bytes they can't be read, and `raz -S`
+can't name them. The proposal: these instructions in the assembler,
+most a row of `Plain` (`cli`, `sti`, `iretq`, `swapgs`, `rdmsr`,
+`wrmsr`, `wbinvd`), the rest a few lines each, each checked against
+`objdump` as the others were. 40 to 60 lines of the budget. It breaks
+nothing: a word the assembler refused before now assembles.
+
+What is still left to a kernel's own code, with all three: the boot
+stub, since no common loader enters an ELF64 file in long mode but
+Firecracker (GRUB's Multiboot2 and QEMU's PVH enter in 32-bit mode,
+and the assembler makes only 64-bit code); interrupt stubs that save
+the XMM registers, since the compiler's code uses them; and, if the
+compiler's code ever writes below `rsp`, which isn't yet checked, an
+IST stack for each interrupt.
+
+Met in the question "how difficult to create a simple amd64 unikernel
+in raz?" (2026-10-17).
