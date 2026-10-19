@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="index.html"><img src="logo.svg" width="26" height="26" alt="">raz</a><a href="tour/index.html">Raz, Set, Go</a><a href="advanced/index.html">More Raz</a><a href="spec.html" aria-current="page">Report</a><a href="index.html#download">Download</a></nav></header>
+<header><nav><a class="mark" href="index.html"><img src="logo.svg" width="26" height="26" alt="">raz</a><a href="tour/index.html">Raz, Set, Go</a><a href="advanced/index.html">More Raz</a><a href="spec.html" aria-current="page">Report</a><a href="source/index.html">Source</a><a href="index.html#download">Download</a></nav></header>
 <main>
 <div class="spec"><p><a href="raz.pdf">Volume 1 as a PDF</a> &middot; <a href="raz-lib.pdf">Volume 2 as a PDF</a></p>
 <ul>
@@ -1465,6 +1465,6 @@ proc columns*(s: []U8): INT;   (* the columns the UTF-8 text s takes *)</code></
 <p>A combining mark, a format character, a control and Hangul’s medial and final jamo take 0 columns; an ideograph, a kana, most emoji and the rest that Unicode calls East Asian Wide or Fullwidth take 2; every other character takes 1, the ambiguous ones among them, as most terminals draw them. These are the C library’s <code>wcwidth</code>’s answers, but for a control, which is -1 there. <code>Width</code> knows characters, not clusters: an emoji joined to another by a zero width joiner, or a flag, counts as its parts. Its tables, about 4 KB, come from Unicode’s data, made again by <code>tools/Widths.raz</code> for a new version of Unicode; a program that imports <code>Width</code> and calls neither procedure carries none of them.</p>
 </div>
 </main>
-<footer>raz is under the ISC license.</footer>
+<footer>raz is under the ISC license. <a href="source/index.html">Source</a></footer>
 </body>
 </html>

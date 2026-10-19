@@ -1,4 +1,7 @@
 build/
+.wrangler/
+/site/public/source/
+/site/__pycache__/
 /raz
 # Programs make check builds next to their sources
 /examples/*

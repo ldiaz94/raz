@@ -1,7 +1,9 @@
 {
   // Cloudflare: serves site/public/ (made by make site) as static files.
-  // The dashboard's deploy command is "npx wrangler deploy"; no build.
+  // The dashboard's deploy command stays "npx wrangler deploy". This
+  // hook generates /source/ from main before assets are uploaded.
   "name": "raz",
   "compatibility_date": "2026-10-01",
+  "build": { "command": "make site-source" },
   "assets": { "directory": "./site/public" }
 }

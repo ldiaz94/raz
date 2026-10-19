@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
 <li><a href="fmt.html">Output and formatting</a></li>
@@ -117,6 +117,6 @@ Hello: ELF 64-bit LSB executable, statically linked, with debug_info, not stripp
 <h2>The same promise for your own modules</h2>
 <p>The rule isn't special to <code>Thread</code>. A module of yours that makes <code>SYSCALL</code>s directly, or relies on being the only owner of signal handlers, or sets up its own stacks, says <code>link static;</code> too, and then the compiler keeps C away from it for you. The module is documenting a fact about itself, and the compiler checks it where the program is assembled.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="static.html">&larr; A program with no run time</a><a href="index.html">Contents</a><a class="next" href="lifecycle.html">Starting, ending, and signals &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license.</footer>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
 </body>
 </html>

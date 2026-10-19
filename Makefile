@@ -175,8 +175,19 @@ dist:
 # "Raz, Set, Go" (whose programs are run here, so the output shown is
 # real), the report and the latest release's tarball. site/build.py
 # says how; it needs ./raz and pandoc. RELEASES, "vX.Y.Z=COMMIT ...",
-# names releases whose tags aren't pushed yet.
+# adds release records to those kept in site/releases. site-source runs
+# ladle after the pages: its Git store and releases live under /source/,
+# with their headers merged at the upload's root. The pinned ladle is
+# bundled for Cloudflare; LADLE may name a locally built one instead.
+LADLE ?=
 site: raz pdf
 	python3 site/build.py $(RELEASES)
+	$(MAKE) site-source
 
-.PHONY: prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site clean install uninstall
+# Wrangler runs this before deploying the committed pages. The generated
+# Git store must never be committed: otherwise later stores contain copies
+# of earlier ones. See site/README.md for the release and upload procedure.
+site-source:
+	python3 site/source.py $(if $(LADLE),--ladle $(LADLE)) $(RELEASES)
+
+.PHONY: prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site site-source clean install uninstall

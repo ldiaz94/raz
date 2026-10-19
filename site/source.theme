@@ -1,0 +1,13 @@
+base paper
+light
+bg #fbfaf7
+fg #1b1b1a
+muted #6b6a66
+accent #b4401f
+link #b4401f
+dark
+bg #17181a
+fg #e6e4de
+muted #9a988f
+accent #ee8a63
+link #ee8a63

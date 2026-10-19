@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
 <li><a href="fmt.html">Output and formatting</a></li>
@@ -134,6 +134,6 @@
 <p>That is the end of the tour. A few places to continue:</p>
 <ul><li><strong><a href="../spec.html">The report</a></strong> defines the language, and is short enough to read through.</li><li><strong><code>doc/compiler.md</code></strong> in the sources is a guide to reading the compiler, file by file; it is a model of the style the project is written in.</li><li><strong><code>lib/</code></strong> is the library, in raz. Each module's own <code>main</code> is its test. Reading <code>Heap</code>, <code>Map</code>, <code>Opt</code> and <code>Thread</code> is the best remaining education.</li><li><strong><code>tools/Doc.raz</code></strong> prints what a module exports with its comments: <code>raz -o Doc tools/Doc.raz &amp;&amp; ./Doc lib/Str.raz</code>.</li><li><strong><code>examples/</code></strong> holds small programs with the output each should give, and <code>conform/</code> holds what any implementation must do.</li></ul><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="lockfree.html">&larr; A lock-free stack</a><a href="index.html">Contents</a><a class="next" href="../spec.html">The report &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license.</footer>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
 </body>
 </html>

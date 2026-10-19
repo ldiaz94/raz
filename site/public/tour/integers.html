@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
 <li><a href="hello.html">Hello, world</a></li>
@@ -281,6 +281,6 @@ but they are the same bits
 <h2>Which one to use</h2>
 <ul><li><strong><code>INT</code></strong> for lengths, indexes, counts, loop variables, and anything you'd write <code>int</code> for in C.</li><li><strong><code>U8</code></strong> for bytes, and for a string's elements (<code>[]U8</code>). <strong><code>I32</code></strong> for a character, a code point.</li><li><strong><code>U32</code>, <code>U64</code></strong> for hashes, bit sets, masks and addresses you do arithmetic on.</li><li><strong><code>I64</code></strong> for what must not shrink on a smaller target: a file's size or position, a time in nanoseconds, a number read from text.</li><li><strong><code>I8</code>, <code>I16</code>, <code>U16</code></strong> when a format or a layout says so, in a record or an array, to save space or match a protocol. Convert at the edge and compute in <code>INT</code>.</li><li><strong><code>UINT</code></strong> rarely: for a count that must use the whole address range, or an address.</li></ul><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="modules.html">&larr; Modules</a><a href="index.html">Contents</a><a class="next" href="values.html">Values and conversions &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license.</footer>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
 </body>
 </html>

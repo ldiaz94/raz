@@ -86,6 +86,7 @@ emacs is installed.
     make pdf        # build/raz.pdf and build/raz-lib.pdf, the two volumes, by pandoc and Chromium
     make dist       # build/raz-V-linux-x86_64.tar.gz, the release's tarball
     make site       # site/public/, the website, by pandoc and python3
+    make site-source # /source/, its releases and HTTP clone store, by git and Python 3
 
 ## Using it
 
@@ -237,6 +238,24 @@ From 0.15.0 on, `make dist` makes the same tarball, byte for byte,
 wherever it runs, so GitHub's and the website's agree. Once a release
 is out, `BOOT` may name it, and the next one is built by it: then
 `src/` may use what it brought.
+
+The website's [source browser](https://raz.lucelad.workers.dev/source/)
+has the files, history and [release pages](https://raz.lucelad.workers.dev/source/releases/).
+Each supported version has its compiler archive, a separate source
+archive and SHA-256s. The same address is a git remote:
+
+    git clone https://raz.lucelad.workers.dev/source/
+
+`site/releases` records existing website distributions whose tags
+are not pushed yet, so a plain `make site` keeps offering them. Both
+the home page and ladle's release pages use this list. Existing
+`download/` URLs and compiler archives keep their exact bytes.
+[Building the site](site/README.md) gives the complete procedure.
+`make site` runs ladle after building the normal pages and merges its
+headers under `/source/`. The source output stays ignored; Wrangler's
+build hook regenerates it before `npx wrangler deploy` uploads the
+site. Commit the main pages, scripts and pinned builder, then push
+`main` for the existing Cloudflare deployment.
 
 A version of the report is named by its month and a count; the report's
 last section says what each version changed.

@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
 <li><a href="fmt.html">Output and formatting</a></li>
@@ -258,20 +258,20 @@ Dot2.dot:
 <ul><li><code>gdb</code> finds procedures by name and lines by number, since the executable carries them: <code>break Dot.dot</code> and <code>list</code> work, and so does stepping a line at a time.</li><li><code>RAZ_PROFILE=1</code> samples the program every millisecond and says which procedures and lines took the time.</li><li><code>objdump -d</code> disassembles what is really in the file, if you want to see the bytes behind a listing.</li></ul>
 <pre class="output term"><code><span class="cmd">$ raz -o Dot Dot.raz</span>
 <span class="cmd">$ objdump -d -M intel --no-show-raw-insn Dot | sed -n &#x27;/&lt;Dot.dot&gt;:/,/ret/p&#x27; | head -12</span>
-0000000000403b00 &lt;Dot.dot&gt;:
-  403b00:	push   rbp
-  403b01:	mov    rbp,rsp
-  403b04:	sub    rsp,0x40
-  403b0b:	mov    QWORD PTR [rbp-0x38],rbx
-  403b0f:	xor    ebx,ebx
-  403b11:	mov    QWORD PTR [rbp-0x30],r12
-  403b15:	xor    r12d,r12d
-  403b18:	mov    QWORD PTR [rbp-0x28],r13
-  403b1c:	xor    r13d,r13d
-  403b1f:	mov    QWORD PTR [rbp-0x20],rdx
-  403b23:	mov    QWORD PTR [rbp-0x18],rcx</code></pre>
+0000000000403b20 &lt;Dot.dot&gt;:
+  403b20:	push   rbp
+  403b21:	mov    rbp,rsp
+  403b24:	sub    rsp,0x40
+  403b2b:	mov    QWORD PTR [rbp-0x38],rbx
+  403b2f:	xor    ebx,ebx
+  403b31:	mov    QWORD PTR [rbp-0x30],r12
+  403b35:	xor    r12d,r12d
+  403b38:	mov    QWORD PTR [rbp-0x28],r13
+  403b3c:	xor    r13d,r13d
+  403b3f:	mov    QWORD PTR [rbp-0x20],rdx
+  403b43:	mov    QWORD PTR [rbp-0x18],rcx</code></pre>
 <p>The listing is what the encoder meant; <code>objdump</code> is what the processor will read. They tell the same story.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="syscalls.html">&larr; System calls</a><a href="index.html">Contents</a><a class="next" href="volatile.html">Volatile &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license.</footer>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
 </body>
 </html>

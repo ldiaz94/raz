@@ -1,4 +1,37 @@
-# Handover, 2026-10-17
+# Handover
+
+## Website source integration, 2026-10-19
+
+`make site` now adds ladle's source browser, history, release pages
+and a dumb-HTTP clone store under `/source/`. The existing Cloudflare
+deploy command stays `npx wrangler deploy`; its custom build hook runs
+`make site-source` before uploading. The source output is ignored,
+avoiding a Git store that contains copies of its own earlier builds.
+The compressed static ladle executable is pinned at 509b9d3 with its
+checksum and build instructions in `site/tools/`.
+
+`site/releases` records the existing v0.18.1, v0.19.0 and v0.20.0
+website distributions at the commits below. Both site builders read
+it, so a plain build keeps v0.20.0 as the latest download. All
+original compiler archives and their published checksums keep their
+bytes. Each supported version also has a source archive; the three
+untagged versions have notes under `site/release-notes/` explaining
+their status. No compiler release or tag was created here.
+
+The root `_headers` carries scoped `/source/` rules, including the
+canonical release-page URLs Cloudflare serves. Other pages keep their
+existing policy; `/download/latest` keeps its redirect. `site/README.md`
+gives the full build and verification procedure. The bundled builder
+needs only Python 3 and git on x86-64 Linux. A shallow deployment
+checkout fetches the full history and tags from its own origin.
+
+Checks before pushing: `make check` (1,012 checks), `make site`, six
+Git and checksum checks in `site/check.py`, and Wrangler's actual
+custom build in a deploy dry run. The existing report PDFs were
+reused; Pandoc 3.8 rebuilds the HTML report as before. Live deployment
+and HTTP download/clone verification follow the push to main.
+
+## Compiler handover, 2026-10-17
 
 v0.20.0 is done on `main`; nothing is tagged. This says what to tag
 where, how, and what to check. Delete this file once the three tags

@@ -1,0 +1,5 @@
+# Existing distributions whose tags have not yet been pushed.
+# Keep these identities when their tags are added.
+v0.18.1 88b18ba640f341da2f4d7c6a6941b2e13cb29190
+v0.19.0 51a90a630cbd3b2e3b4634d72b3568edcc476dc4
+v0.20.0 086e55c439e4b2e38e8b3f062da8f9d5703054ce

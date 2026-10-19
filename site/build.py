@@ -3,7 +3,8 @@
 
     python3 site/build.py [vX.Y.Z=COMMIT ...]
 
-Each vX.Y.Z=COMMIT is a release whose tag isn't pushed yet: it is
+site/releases records website distributions whose tags are not pushed
+yet. Each additional vX.Y.Z=COMMIT is another such distribution: it is
 offered as if the tag were at COMMIT, its tarball made by make dist
 with VERSION, the same tarball the tag will give.
 
@@ -37,6 +38,7 @@ session: each line that starts with "$ " is run in the lesson's folder,
 with raz on the path, and shown with what it printed.
 """
 import hashlib, html, os, re, shutil, subprocess, sys, tempfile
+from releases import refs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -237,6 +239,7 @@ def page(title, body, depth=0, current=""):
             ("tour", "tour/index.html", "Raz, Set, Go"),
             ("advanced", "advanced/index.html", "More Raz"),
             ("spec", "spec.html", "Report"),
+            ("source", "source/index.html", "Source"),
             ("get", "index.html#download", "Download")])
     return """<!doctype html>
 <html lang="en">
@@ -260,10 +263,10 @@ def page(title, body, depth=0, current=""):
 <main>
 %s
 </main>
-<footer>raz is under the ISC license.</footer>
+<footer>raz is under the ISC license. <a href="%ssource/index.html">Source</a></footer>
 </body>
 </html>
-""" % (html.escape(title), html.escape(title), SITE, up, up, up, up, up, up, nav, body)
+""" % (html.escape(title), html.escape(title), SITE, up, up, up, up, up, up, nav, body, up)
 
 def write(path, text):
     path = os.path.join(OUT, path)
@@ -335,12 +338,8 @@ def build_spec():
     body = '<div class="spec">%s</div>' % p.stdout
     write("spec.html", page("The raz report", body, 0, "spec"))
 
-# The first release whose tarball the site offers: the first with the
-# manual, which make dist packs
-FIRST_RELEASE = "v0.7.1"
-
 def build_download(untagged):
-    """Every release's tarball from FIRST_RELEASE on, in public/download/
+    """Every release's tarball from v0.7.1 on, in public/download/
     with its SHA-256, and /download/latest leading to the newest; a list
     of (version, file name, SHA-256), oldest first. A program's CI can
     fetch the version it was written for by its name, so none is ever
@@ -349,20 +348,20 @@ def build_download(untagged):
     made again: those before 0.14.0 were made before make dist made the
     same tarball each time, so a new one would differ, and so its
     SHA-256, which a program's CI may check."""
-    git = lambda *a: subprocess.run(("git", "-C", ROOT) + a, capture_output=True,
-                                    text=True, check=True).stdout.strip()
     releases = []
-    tags = git("tag", "-l", "v*", "--sort=v:refname", "--contains", FIRST_RELEASE).split()
-    revs = [(tag, tag, []) for tag in tags]
-    revs += [(tag, rev, ["VERSION=" + tag[1:]]) for tag, rev in untagged if tag not in tags]
-    for tag, rev, version in revs:
+    for tag, rev in refs(ROOT, untagged):
         name = "raz-%s-linux-x86_64.tar.gz" % tag[1:]
         made = os.path.join(OUT, "download", name)
         if not os.path.exists(made):
-            subprocess.run(["make", "-s", "-C", ROOT, "dist", "REV=" + rev] + version,
+            subprocess.run(["make", "-s", "-C", ROOT, "dist", "REV=" + rev, "VERSION=" + tag[1:]],
                            stdout=subprocess.DEVNULL, check=True)
             shutil.copy(os.path.join(ROOT, "build", name), made)
         digest = hashlib.sha256(open(made, "rb").read()).hexdigest()
+        checksum = made + ".sha256"
+        if os.path.exists(checksum):
+            expected = open(checksum, encoding="utf-8").read().split()
+            if not expected or expected[0] != digest:
+                sys.exit("release archive does not match its published checksum: " + made)
         write("download/%s.sha256" % name, "%s  %s\n" % (digest, name))
         releases.append((tag[1:], name, digest))
     # Cloudflare reads _redirects from the root of what it serves
@@ -397,6 +396,10 @@ def build_home(releases):
 def main():
     if not os.path.exists(RAZ):
         sys.exit("make raz first")
+    untagged = [a.split("=", 1) for a in sys.argv[1:]]
+    if not all(len(u) == 2 and re.fullmatch(r"v\d+\.\d+\.\d+", u[0]) for u in untagged):
+        sys.exit("usage: build.py [vX.Y.Z=COMMIT ...]")
+    refs(ROOT, untagged)  # validate the release records before removing old pages
     # everything is made again but the tarballs (see build_download)
     for f in os.listdir(OUT) if os.path.exists(OUT) else []:
         path = os.path.join(OUT, f)
@@ -427,9 +430,6 @@ def main():
     build_spec()
     for pdf in ("raz.pdf", "raz-lib.pdf"):       # made by make pdf
         shutil.copy(os.path.join(ROOT, "build", pdf), OUT)
-    untagged = [a.split("=", 1) for a in sys.argv[1:]]
-    if not all(len(u) == 2 and re.match(r"v\d+\.\d+\.\d+$", u[0]) for u in untagged):
-        sys.exit("usage: build.py [vX.Y.Z=COMMIT ...]")
     build_home(build_download(untagged))
     print("site/public: %s lessons" % " + ".join(map(str, counts)))
 

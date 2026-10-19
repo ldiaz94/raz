@@ -16,7 +16,7 @@
 <link rel="stylesheet" href="../style.css">
 </head>
 <body>
-<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../index.html#download">Download</a></nav></header>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
 <main>
 <div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
 <li><a href="fmt.html">Output and formatting</a></li>
@@ -107,6 +107,6 @@ raz: ./Clock.raz: ticks isn&#x27;t exported as in ./Clock.linux-x86_64.raz</code
 <h2>What stays the same everywhere</h2>
 <p>The core of the library is what every target must have: <code>Rt</code>, <code>Out</code>, <code>Mem</code>, <code>Arena</code>, <code>Lock</code>, <code>Str</code> and <code>Buf</code>, and of <code>Sys</code> what they need. A program that keeps to the core runs on every target. <code>Thread</code>, <code>link</code> and <code>extern</code>, and most of <code>Sys</code>, are what a target may leave out when its system can't give them.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="lifecycle.html">&larr; Starting, ending, and signals</a><a href="index.html">Contents</a><a class="next" href="asm.html">Procedures in assembly &rarr;</a></div></article></div>
 </main>
-<footer>raz is under the ISC license.</footer>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
 </body>
 </html>
