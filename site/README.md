@@ -65,8 +65,7 @@ after that tag exists. This records existing distributions; the site
 build never creates tags or compiler releases.
 
 `release-notes/vX.Y.Z.md`, when present, supplies that version's notes.
-Otherwise an annotated tag supplies them. The three untagged website
-distributions have notes here that identify their pending tags.
+Otherwise an annotated tag supplies them.
 
 Both builders read this list through `releases.py`, so the home page
 and source browser offer the same versions. An existing distribution
