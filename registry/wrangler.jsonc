@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "raz-registry",
+  "main": "worker.ts",
+  "compatibility_date": "2026-07-30",
+  "workers_dev": true,
+  "preview_urls": false,
+  "r2_buckets": [
+    { "binding": "REGISTRY", "bucket_name": "raz-image-registry" }
+  ],
+  "vars": { "REGISTRY_USERNAME": "publisher" }
+  // REGISTRY_PASSWORD is a Worker secret, never a committed value.
+}

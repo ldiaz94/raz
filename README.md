@@ -237,6 +237,19 @@ Two editors are written in raz, each in a repository of its own that
 pins the raz it is built with: rmacs, with emacs's keys, and ravite,
 with vim's. Both colour raz through `tools/Scan.raz`.
 
+## CI image
+
+`containers/ci/` builds an x86-64 Linux image with released raz 0.21.0,
+its library and tools, pinned concha and robbie, and Debian build tools.
+Its [README](containers/ci/README.md) gives the build and checks.
+The image revision is `0.21.0-debian12-r1`.
+
+`registry/` prepares a separate Cloudflare Worker and R2 registry for
+public Docker pulls and authenticated pushes. Its [README](registry/README.md)
+gives deployment and publishing steps. The container workflow validates
+the image and registry; publishing is an explicit manual option and
+needs a deployed registry and its publisher secret.
+
 ## Versions
 
 The compiler says its own version and that of the report it follows:

@@ -1,0 +1,100 @@
+name: CI image and registry
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'containers/ci/**'
+      - 'registry/**'
+      - '.github/workflows/container.yml'
+  pull_request:
+    paths:
+      - 'containers/ci/**'
+      - 'registry/**'
+      - '.github/workflows/container.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Push the validated image to the configured Cloudflare registry
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: raz-ci-image
+  cancel-in-progress: false
+env:
+  IMAGE_TAG: 0.21.0-debian12-r1
+jobs:
+  registry:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: registry
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: registry/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run dry-run
+  image:
+    needs: registry
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: registry/package-lock.json
+      - name: Build the pinned tools and run their tests
+        run: docker build --platform linux/amd64 -t "raz:$IMAGE_TAG" containers/ci
+      - name: Check layer sizes against the registry upload limit
+        run: docker save "raz:$IMAGE_TAG" | python3 containers/ci/check-layers.py
+      - name: Smoke-test the final image
+        run: docker run --rm "raz:$IMAGE_TAG" sh /usr/local/share/raz-ci/smoke.sh
+      - name: Record the exact image contents
+        run: docker run --rm "raz:$IMAGE_TAG" cat /usr/local/share/raz-ci/versions.txt
+      - name: Test Docker publishing and anonymous pulling locally
+        working-directory: registry
+        run: |
+          npm ci
+          npm run test:docker -- "raz:$IMAGE_TAG"
+      - name: Check the release tag has not been published
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          REGISTRY: ${{ vars.RAZ_REGISTRY || 'raz-registry.lucelad.workers.dev' }}
+        run: |
+          status=$(curl --silent --show-error --head --output /dev/null --write-out '%{http_code}' \
+            "https://$REGISTRY/v2/raz/manifests/$IMAGE_TAG")
+          if [ "$status" != 404 ]; then
+            echo "Expected an unpublished tag (404); got $status. Refusing to replace a release."
+            exit 1
+          fi
+      - name: Log in for publishing
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.RAZ_REGISTRY || 'raz-registry.lucelad.workers.dev' }}
+          username: publisher
+          password: ${{ secrets.RAZ_REGISTRY_PASSWORD }}
+      - name: Publish the validated image
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          REGISTRY: ${{ vars.RAZ_REGISTRY || 'raz-registry.lucelad.workers.dev' }}
+        run: |
+          docker tag "raz:$IMAGE_TAG" "$REGISTRY/raz:$IMAGE_TAG"
+          docker push "$REGISTRY/raz:$IMAGE_TAG"
+      - name: Verify an anonymous pull
+        if: github.event_name == 'workflow_dispatch' && inputs.publish
+        env:
+          REGISTRY: ${{ vars.RAZ_REGISTRY || 'raz-registry.lucelad.workers.dev' }}
+        run: |
+          docker_config=$(mktemp -d)
+          docker --config "$docker_config" pull "$REGISTRY/raz:$IMAGE_TAG"
+          docker --config "$docker_config" run --rm "$REGISTRY/raz:$IMAGE_TAG" \
+            sh /usr/local/share/raz-ci/smoke.sh
+          rm -r "$docker_config"
