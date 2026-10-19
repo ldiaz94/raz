@@ -84,17 +84,20 @@ pinned with its checksum under `site/tools/`. `make site` builds the
 main pages and then the source site. Wrangler runs `make site-source`
 before uploading, so the generated Git store stays out of this
 repository. `site/README.md` gives the build, release records and
-checks. `site/releases` preserves the existing untagged website
-distributions; it does not create their tags.
+checks. `site/releases` lists website releases whose tags aren't
+pushed yet (none now); it never makes a tag.
 
-v0.20.0, report 2026-10.34, is made and not yet tagged: v0.19.0 builds
-`src/` (`BOOT`) and the Pascal seed is gone; `Buf.bytes`,
-`Sys.entryKind` and `src/`'s `Item`s only read take `const`; and the
-tenth thaw, by the owner's word, `PTR(s)`, a slice's pointer, with
-messages that point to it. Its tag, and v0.18.1's and v0.19.0's, which
-were never pushed, are the owner's: `HANDOVER.md` says what to tag
-where and how, and what comes next (`Sys`'s private `bytes` gives way
-to `PTR` once `BOOT` names v0.20.0).
+v0.21.0, report 2026-10.34, the language unchanged, is for a kernel:
+the assembler knows a kernel's instructions (`cli`, `lgdt`, `mov` to
+`cr3`, `in`, `out`, ...); `raz -base` sets the load address, in the low
+or the top 2 GB; `raz -bare` makes a program for the bare machine, which
+reads no arguments and runs no body of `Rt`. `BOOT` names v0.20.0, and
+`Sys` takes `PTR` where it had its private `bytes`. `MEM_PROPOSAL.md`
+proposes a memory-safe raz, for a thaw.
+v0.20.0, report 2026-10.34, before it: v0.19.0 builds `src/` and the
+Pascal seed is gone; `Buf.bytes`, `Sys.entryKind` and `src/`'s `Item`s
+only read take `const`; and the tenth thaw, by the owner's word,
+`PTR(s)`, a slice's pointer, with messages that point to it.
 v0.19.0, report 2026-10.33, before it: the ninth thaw, a `const`
 parameter, a variant in a constant, and the library taking `var`,
 `const` or a value where it took a pointer (`Arena`, `Buf`, `Files`,
