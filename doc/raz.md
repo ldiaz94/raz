@@ -281,7 +281,16 @@ are the same.
 
 **Finding modules.** The compiler looks for module `Name` in the main
 module's directory, then in each directory given with `-I`, then in the
-`lib` directory beside the compiler. In each directory it takes the
+user library directories, then in the `lib` directory beside the
+compiler. User libraries live in `$HOME/.raz/lib` by default.
+`RAZ_PATH`, when set, replaces that default with a colon-separated
+list of directories; an empty value disables user libraries. Empty
+entries are ignored. With no nonempty `HOME`, there is no default.
+Paths are not searched recursively; relative paths are relative to the
+compiler's working directory, and `~` and variables inside them are
+not expanded. Install a library's source files directly in one of these
+directories, with its target-specific files beside them. In each
+directory the compiler takes the
 first of `Name.OS-ARCH.raz`, `Name.OS.raz`, `Name.ARCH.raz` and
 `Name.raz` that exists, where `OS-ARCH` is the target, for now only
 `linux-x86_64`. So a module whose code depends on the machine or the

@@ -6,8 +6,8 @@ the owner's word, and goes into the report before any code.
 
 ## Installed source libraries and RAZ_PATH
 
-**Status.** Approved by the owner on 2026-10-19, to be implemented
-after this proposal is committed and pushed. This changes the compiler's
+**Status.** Approved by the owner on 2026-10-19 and implemented after
+this proposal was committed and pushed. This changes the compiler's
 module search paths and documents an installation convention; it adds
 no language syntax or package manager.
 

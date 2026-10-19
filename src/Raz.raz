@@ -198,6 +198,53 @@ begin
     return p;
 end;
 
+(* User libraries are source directories, not packages to discover
+   recursively. Read NAME=value entries so an empty RAZ_PATH differs
+   from an unset one; Sys.env alone gives "" for both. The slices and
+   their array live until the compiler exits, as command-line paths do. *)
+proc userLibraries;
+var path, s: []U8; dirs: ^[]U8; i, first, n: INT; more, found: BOOL;
+begin
+    i := 0;
+    repeat
+        s, more := Sys.envAt(i);
+        if not more then break; end;
+        if (LEN(s) >= 9) and (s[0..9] = "RAZ_PATH=") then
+            path := s[9..LEN(s)];
+            found := true;
+            break;
+        end;
+        INC(i);
+    until false;
+    if not found then
+        s := Sys.env("HOME");
+        if LEN(s) > 0 then
+            dirs := ^[]U8(Scan.grab(SIZE([]U8)));
+            dirs[0] := say1("{}/.raz/lib", s);
+            Parse.setUserDirs(dirs[0..1]);
+        end;
+        return;
+    end;
+    if LEN(path) = 0 then return; end;
+    n := 1;
+    for i := 0 to LEN(path) - 1 do
+        if path[i] = ':' then INC(n); end;
+    end;
+    dirs := ^[]U8(Scan.grab(n * SIZE([]U8)));
+    n := 0;
+    first := 0;
+    for i := 0 to LEN(path) do
+        if (i = LEN(path)) or (path[i] = ':') then
+            if i > first then
+                dirs[n] := path[first..i];
+                INC(n);
+            end;
+            first := i + 1;
+        end;
+    end;
+    Parse.setUserDirs(dirs[0..n]);
+end;
+
 proc main*: INT;
 var
     path, outPath, s: []U8; dir: []U8;
@@ -274,6 +321,7 @@ begin
     i := LEN(dir);
     while (i > 0) and (dir[i - 1] # '/') do DEC(i); end;
     if i = 0 then Parse.setLibDir("lib"); else Parse.setLibDir(say1("{}lib", dir[0..i])); end;
+    userLibraries();
     if LEN(outPath) = 0 then
         outPath := path;
         last := LEN(outPath);

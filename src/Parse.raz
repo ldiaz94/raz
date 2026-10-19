@@ -75,6 +75,7 @@ var
     libDir*, mainDir: []U8;
     incDirs*: [16][]U8;
     numInc*: INT;
+    userDirs: [][]U8;    (* RAZ_PATH, or HOME/.raz/lib; set by the driver *)
     firstModule*, lastModule*: PModule;   (* in the order they were finished *)
 
     checkMode: BOOL;     (* reading a file only for its interface *)
@@ -139,6 +140,12 @@ proc addIncDir*(dir: []U8);
 begin
     incDirs[numInc] := dir;
     INC(numInc);
+end;
+
+(* The driver's user library directories, kept until compilation ends *)
+proc setUserDirs*(dirs: [][]U8);
+begin
+    userDirs := dirs;
 end;
 
 proc nameOf(n: INT): []U8;
@@ -4043,12 +4050,14 @@ begin
     return nil;
 end;
 
-(* The directories searched for modules, in order, from -1 to numInc *)
+(* The directories searched for modules: main, -I, user libraries, lib *)
 proc searchDir(i: INT): []U8;
 begin
     if i = -1 then return mainDir; end;
-    if i = numInc then return libDir; end;
-    return incDirs[i];
+    if i < numInc then return incDirs[i]; end;
+    i := i - numInc;
+    if i < LEN(userDirs) then return userDirs[i]; end;
+    return libDir;
 end;
 
 (* The file of module n in dir that suffix j says: Name.linux-x86_64.raz
@@ -4061,7 +4070,7 @@ end;
 proc moduleFile(n: INT): ([]U8, []U8, BOOL);
 var i, j: INT; dir, f: []U8;
 begin
-    for i := -1 to numInc do
+    for i := -1 to numInc + LEN(userDirs) do
         dir := searchDir(i);
         for j := 0 to 3 do
             f := fileName(n, j);
@@ -4081,7 +4090,7 @@ begin
     mineDev, mineIno := identity(say2("{}/{}", dir, f));
     others := "";
     past := false;
-    for i := -1 to numInc do
+    for i := -1 to numInc + LEN(userDirs) do
         if past then
             files := "";
             chosen := false;
@@ -4117,7 +4126,7 @@ begin
     if not found then
         Diag.error(args.at, say1("can't find module {}", nameOf(name)));
         where := Diag.shownPath(searchDir(-1));
-        for i := 0 to numInc do where := say2("{}, {}", where, Diag.shownPath(searchDir(i))); end;
+        for i := 0 to numInc + LEN(userDirs) do where := say2("{}, {}", where, Diag.shownPath(searchDir(i))); end;
         Diag.help(say2("looked for {}.raz in {}", nameOf(name), where));
         return nil, Scan.Failed;
     end;

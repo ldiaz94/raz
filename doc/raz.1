@@ -1,5 +1,5 @@
 .\" raz(1) - the raz compiler
-.Dd October 17, 2026
+.Dd October 19, 2026
 .Dt RAZ 1
 .Os
 .Sh NAME
@@ -36,7 +36,9 @@ in the directory of
 .Ar Main.raz ,
 then in each
 .Fl I
-directory in turn, then in the library,
+directory in turn, then in the user library directories (see
+.Sx ENVIRONMENT ) ,
+then in the library,
 .Pa lib/
 beside the
 .Nm
@@ -142,6 +144,28 @@ and the version of the report it follows.
 .El
 .Sh ENVIRONMENT
 .Bl -tag -width "RAZ_PROFILE"
+.It Ev RAZ_PATH
+Colon-separated directories of installed raz source modules, searched
+after the
+.Fl I
+directories and before the standard library.
+When unset, the user library directory is
+.Pa $HOME/.raz/lib ;
+with no nonempty
+.Ev HOME ,
+there is no default.
+An explicitly empty
+.Ev RAZ_PATH
+disables user library directories; it does not disable the standard
+library. Empty entries are ignored, not taken as the working directory.
+Relative paths are relative to the compiler's working directory.
+The compiler does not expand a tilde or variables within paths.
+Directories are not searched recursively: install a library's source
+modules directly in one of them, with their target-specific siblings.
+The duplicate-module error and symbolic-link exception apply across
+all search directories;
+.Fl I
+does not override an installed module.
 .It Ev RAZ_PROFILE
 Set to anything, in the environment of a program built without
 .Fl s

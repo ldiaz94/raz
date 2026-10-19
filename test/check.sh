@@ -19,6 +19,10 @@
 # the tutorial's, tools/Pretty.raz, and the library's own tests.
 
 raz=./raz
+# Fixtures use only their explicit module paths and the standard library.
+# library-path.py sets up its own HOME and RAZ_PATH for user-path checks.
+RAZ_PATH=
+export RAZ_PATH
 out=build/check
 mkdir -p $out
 ulimit -c 0   # the tests stopped by a signal leave no core
@@ -318,6 +322,9 @@ else echo "FAIL an unused import, Width, changes the program"; fail=$((fail + 1)
 
 # the editors' support, headless, where the editors are installed
 if test/editors.sh; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
+
+# Installed source libraries: default, explicit and isolated lookup.
+if python3 test/library-path.py "$raz"; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
 
 echo "$pass passed, $fail failed"
 [ $fail = 0 ]

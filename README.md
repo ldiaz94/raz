@@ -102,9 +102,38 @@ a glance, and `man raz-lib` the library, made from its sources.
 `raz Main.raz` compiles module `Main` and every module it imports, and
 writes the executable `Main`. A module `Name` lives in `Name.raz`, found
 in the main module's directory, then in each `-I` directory, then in
-`lib`. A module whose code depends on the system comes in one file per
-target, `Name.linux-x86_64.raz` before `Name.raz`; the compiler checks
+the user library directories, then in `lib`. A module whose code depends
+on the system comes in one file per target, `Name.linux-x86_64.raz`
+before `Name.raz`; the compiler checks
 that all of them export the same things.
+
+Install third-party source modules directly in `$HOME/.raz/lib` to use
+them from any project without `-I` or a Git submodule. Keep their
+target-specific files beside them; directories are not searched
+recursively. A library's makefile or Robfile can provide install and
+uninstall tasks for its own files. For example, for a library `Json`:
+
+```sh
+mkdir -p "$HOME/.raz/lib"
+install -m644 Json.raz "$HOME/.raz/lib/Json.raz"
+raz Main.raz                         # import Json; needs no -I
+```
+
+`RAZ_PATH` replaces the default directory with a colon-separated list:
+
+```sh
+export RAZ_PATH="$HOME/.raz/lib:$HOME/work/raz-libs"
+RAZ_PATH= raz -I deps/json Main.raz  # use only the project's dependency
+```
+
+An unset `RAZ_PATH` uses `$HOME/.raz/lib`; an empty one disables user
+libraries while keeping the standard library. With no nonempty `HOME`,
+there is no default. Empty list entries are ignored. Relative paths
+start at the compiler's working directory; the compiler does not expand
+`~` or variables within them. Duplicate modules are errors across all
+search directories, with the report's symbolic-link exception, so `-I`
+does not override an installed module. Projects that need particular
+dependency versions can set `RAZ_PATH` for their build.
 
 An error is shown with its file, line and column, the line of source
 underlined, and notes and help where they help: where a name is

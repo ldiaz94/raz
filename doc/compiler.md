@@ -23,10 +23,10 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,567 | 1,292 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,561 | 1,824 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,175 | 1,747 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,251 | 3,676 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,260 | 3,683 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Raz.raz` | 369 | 289 | The command line |
+| `src/Raz.raz` | 417 | 332 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -1768,6 +1768,14 @@ executes it through `/proc/self/fd` in raz's own place, handing it the
 rest of raz's `argv`. Nothing is left on disk, and the program's
 status is the command's.
 
+Before compiling, `userLibraries` reads `RAZ_PATH` with `Sys.envAt`,
+which distinguishes an unset variable from an explicitly empty one.
+Unset means `$HOME/.raz/lib` if `HOME` is nonempty; set means a
+colon-separated list, with empty entries ignored. `Parse.setUserDirs`
+keeps its slices in `userDirs`, separate from the 16 `-I` directories. `searchDir`
+puts them between those and the standard library, for both finding
+modules and checking duplicate names. No subdirectories are searched.
+
 ## This compiler's choices
 
 What the report's appendix A leaves to an implementation, and what
@@ -1781,7 +1789,8 @@ this one does.
   loader is there.
 - **Finding modules.** `raz Main.raz` looks for `X`, imported, in
   `Main.raz`'s directory, then in each `-I dir` in the order given
-  (16 at most), then in `lib` beside the `raz` executable, following
+  (16 at most), then in `RAZ_PATH`'s directories (or `$HOME/.raz/lib`
+  when unset), then in `lib` beside the `raz` executable, following
   a link to it (`make install` puts `raz` and `lib/` together in
   `PREFIX/lib/raz`). In each directory it tries `X.linux-x86_64.raz`,
   `X.linux.raz`, `X.x86_64.raz` and `X.raz`, in that order, and takes
