@@ -4,6 +4,55 @@ What the language or the library might have, met while writing raz.
 None is built while the freeze holds; each waits for a later thaw, by
 the owner's word, and goes into the report before any code.
 
+## Installed source libraries and RAZ_PATH
+
+**Status.** Approved by the owner on 2026-10-19, to be implemented
+after this proposal is committed and pushed. This changes the compiler's
+module search paths and documents an installation convention; it adds
+no language syntax or package manager.
+
+A library should be usable by several programs without adding it as a
+Git submodule to each. Install its source modules directly in
+`$HOME/.raz/lib`, including any target-specific siblings. The compiler
+searches that directory automatically. It does not search subdirectories
+or create the directory itself.
+
+`RAZ_PATH` replaces that default with a colon-separated list of module
+directories. An unset variable means `$HOME/.raz/lib`; an explicitly
+empty value disables user library directories. Empty entries in a list
+are ignored, rather than standing for the working directory. Relative
+paths are relative to the compiler's working directory. The compiler
+does not expand `~` or environment variables inside a path: the shell
+can expand them when setting `RAZ_PATH`. If `HOME` is unset or empty,
+there is no default user library directory.
+
+The search is the main module's directory, each `-I` directory, the user
+library directories, and finally `lib/` beside the compiler. The standard
+library is always searched, even with an empty `RAZ_PATH`. Existing
+target suffixes, interface checks, duplicate-module errors and the
+symbolic-link exception apply to the new directories too. `-I` does not
+silently override an installed module.
+
+For example:
+
+```sh
+mkdir -p "$HOME/.raz/lib"
+install -m644 Json.raz "$HOME/.raz/lib/Json.raz"
+raz Main.raz                         # import Json; needs no -I
+export RAZ_PATH="$HOME/.raz/lib:$HOME/work/raz-libs"
+RAZ_PATH= raz -I deps/json Main.raz  # an isolated dependency selection
+```
+
+A library's build file may provide install and uninstall tasks for its
+own source files. Robbie can run those tasks, as make or a shell can;
+the convention belongs to raz and needs no special robbie feature.
+Dependency versions and downloads remain the project's or user's choice.
+
+Document this in the report's module lookup, raz(1), the README and the
+compiler guide. Test the unset and empty cases, lists of directories,
+paths with spaces, target-specific files and interface checks, duplicate
+modules and symbolic links, and use with both compilation and `raz run`.
+
 ## What a call does with its arguments, written at the call
 
 **Status.** Not approved. Drafted 2026-10-16 and reviewed twice on
