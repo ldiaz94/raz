@@ -955,14 +955,6 @@ begin
     return 0;
 end;
 
-(* The address of b's first byte, or nil if it has none, for a call
-   that takes an address and a length. *)
-proc bytes(b: []U8): ^U8;
-begin
-    if LEN(b) = 0 then return nil; end;
-    return ADR(b[0]);
-end;
-
 (* A stream socket connected to port at addr, as connectTcp makes it,
    or -110 (ETIMEDOUT) if it isn't connected within ms milliseconds.
    It starts to connect without waiting, then waits for the socket to
@@ -1009,7 +1001,7 @@ proc receive*(fd: INT; buf: []U8): (INT, Peer);
 var p: Peer; size: U32; n: INT;
 begin
     size := U32(SIZE(Sockaddr));
-    n := C.recvfrom(I32(fd), bytes(buf), UINT(LEN(buf)), 0, ^U8(ADR(p.a)), ADR(size));
+    n := C.recvfrom(I32(fd), PTR(buf), UINT(LEN(buf)), 0, ^U8(ADR(p.a)), ADR(size));
     if n < 0 then n := failed(); end;
     p.size := INT(size);
     return n, p;
@@ -1020,7 +1012,7 @@ end;
 proc reply*(fd: INT; peer: Peer; s: []U8): INT;
 var r: INT;
 begin
-    r := C.sendto(I32(fd), bytes(s), UINT(LEN(s)), CAbi.msgNosignal, ^U8(ADR(peer.a)), U32(peer.size));
+    r := C.sendto(I32(fd), PTR(s), UINT(LEN(s)), CAbi.msgNosignal, ^U8(ADR(peer.a)), U32(peer.size));
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -1061,7 +1053,7 @@ end;
 proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);
 var m: Msghdr; v: Iovec; c: Control; mp, cp: ^U8; got: ^I32; n, k, i, size: INT;
 begin
-    v := {base: bytes(buf), size: LEN(buf)};
+    v := {base: PTR(buf), size: LEN(buf)};
     mp := ^U8(ADR(m));
     cp := ^U8(ADR(c));
     setField(mp, CAbi.msgIovAt, SIZE(^U8), INT(ADR(v)));

@@ -915,14 +915,6 @@ begin
     return SYSCALL(72, fd, 4, flags);               (* F_SETFL *)
 end;
 
-(* The address of b's first byte, or nil if it has none, for a system
-   call that takes an address and a length. *)
-proc bytes(b: []U8): ^U8;
-begin
-    if LEN(b) = 0 then return nil; end;
-    return ADR(b[0]);
-end;
-
 (* A stream socket connected to port at addr, as connectTcp makes it,
    or -110 (ETIMEDOUT) if it isn't connected within ms milliseconds.
    It starts to connect without waiting, then waits for the socket to
@@ -966,7 +958,7 @@ proc receive*(fd: INT; buf: []U8): (INT, Peer);
 var p: Peer; size: I32; n: INT;
 begin
     size := I32(SIZE(Sockaddr));
-    n := SYSCALL(45, fd, bytes(buf), LEN(buf), 0, ADR(p.a), ADR(size));   (* recvfrom *)
+    n := SYSCALL(45, fd, PTR(buf), LEN(buf), 0, ADR(p.a), ADR(size));   (* recvfrom *)
     p.size := INT(size);
     return n, p;
 end;
@@ -975,7 +967,7 @@ end;
    gave it: the bytes sent, or minus an errno. *)
 proc reply*(fd: INT; peer: Peer; s: []U8): INT;
 begin
-    return SYSCALL(44, fd, bytes(s), LEN(s), 4000H, ADR(peer.a), peer.size);   (* sendto, MSG_NOSIGNAL *)
+    return SYSCALL(44, fd, PTR(s), LEN(s), 4000H, ADR(peer.a), peer.size);   (* sendto, MSG_NOSIGNAL *)
 end;
 
 (* Sends s, at least one byte, to the Unix socket fd, as send does, and
@@ -1003,7 +995,7 @@ end;
 proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);
 var m: Msghdr; v: Iovec; c: Rights; n, k, i: INT;
 begin
-    v := {base: bytes(buf), size: LEN(buf)};
+    v := {base: PTR(buf), size: LEN(buf)};
     m := {iov: ADR(v), iovLen: 1, control: ^U8(ADR(c)), controlSize: SIZE(Rights)};
     n := SYSCALL(47, fd, ADR(m), 40000000H);     (* recvmsg, MSG_CMSG_CLOEXEC *)
     if n < 0 then return n, 0; end;
