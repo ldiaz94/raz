@@ -48,9 +48,8 @@ tools and the library's tests: they must have no warnings.
 
 - The compiler, `src/`, is raz, in the language of the report and with
   the library of `lib/`; it must build with the release `BOOT` names
-  (v0.19.0), so it, and the modules of `lib/` it imports, use nothing
-  that release doesn't know (`PTR`, report 2026-10.34, not yet) until
-  `BOOT` names a newer one.
+  (v0.20.0), so it, and the modules of `lib/` it imports, use nothing
+  that release doesn't know until `BOOT` names a newer one.
 - Work goes by milestones, each a release, set by the owner. A milestone
   starts only on the owner's explicit go-ahead; within it, one commit
   per step, pushed as it is done, then stop for review. Never start a
