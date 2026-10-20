@@ -11,7 +11,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `close`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `chmod`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; errors, by name, and what one means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others, which takes what each C library fixes from `CAbi` |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `lockShared`, `close`, `closeChecked`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `makeDirMode`, `chmod`, `setTime`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; errors, by name, and what one means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others, which takes what each C library fixes from `CAbi` |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -203,6 +203,7 @@ type
     Info* = record
         size*: I64;      (* in bytes *)
         mtime*: I64;     (* when its contents last changed, in nanoseconds since 1970 *)
+        seconds*: I64;   (* mtime in whole seconds, rounded down: exact past 2262 and before 1677, where mtime wraps *)
         mode*: INT;      (* its permission bits, as chmod takes them: 1EDH is rwxr-xr-x *)
         dir*: BOOL;      (* a directory *)
         file*: BOOL;     (* a regular file: not a directory, device, pipe or socket *)
@@ -210,6 +211,7 @@ type
         ino*: U64;       (* its inode, which a rename keeps and a new file doesn't *)
         dev*: U64;       (* the file system it is on; with ino, it names the file *)
         links*: U64;     (* how many names it has: 1 for a file no hard link shares *)
+        special*: INT;   (* its set-user-id, set-group-id and sticky bits, as chmod takes them: 800H, 400H, 200H *)
     end;
     Kind* = (unknown, isFile, isDir, isLink, isOther);   (* what a directory says a name in it is *)
     Dir* = record ... end;   (* an open directory; its fields are the target's *)
@@ -241,7 +243,9 @@ proc truncate*(fd: INT; size: I64): INT; (* the file made size bytes long *)
 proc sync*(fd: INT): INT;                (* what was written to it, on the disk *)
 proc syncAll*(fd: INT): INT;             (* all that was written to its file system, on the disk *)
 proc lock*(fd: INT; wait: BOOL): INT;    (* the file's lock, held until fd is closed *)
+proc lockShared*(fd: INT; wait: BOOL): INT;   (* lock, shared with others that ask it so *)
 proc close*(fd: INT);
+proc closeChecked*(fd: INT): INT;        (* close, and 0 or minus the errno it failed with *)
 proc dup*(fd: INT): INT;                 (* a new fd for the same file, the lowest free *)
 proc dupTo*(fd, into: INT): INT;         (* into made the same file as fd, closing what it was *)
 proc dupAbove*(fd, least: INT): INT;     (* a new fd for the same file, the lowest free from least on, closed on exec *)
@@ -256,7 +260,9 @@ proc rename*(old, new: []U8): INT;       (* replaces what new names *)
 proc remove*(path: []U8): INT;           (* a file, not a directory *)
 proc removeDir*(path: []U8): INT;        (* an empty directory *)
 proc makeDir*(path: []U8): INT;          (* readable by all, writable by its owner *)
+proc makeDirMode*(path: []U8; mode: INT): INT;   (* makeDir, given mode *)
 proc chmod*(path: []U8; mode: INT): INT;
+proc setTime*(path: []U8; sec: I64; nsec: INT): INT;   (* its mtime, and the time it was read, made sec and nsec *)
 proc access*(path: []U8; how: Accesses): INT;   (* 0 if this user may read, write or execute it *)
 proc umask*(mask: INT): INT;             (* the bits taken from every file made; the mask it was *)
 proc symlink*(target, path: []U8): INT;  (* path made a link to target *)
@@ -374,12 +380,21 @@ returns once what was written to the file is on the disk, as a
 program needs before it says a file is saved; `syncAll` returns once
 everything written to the file system that holds the file is on the
 disk, at once rather than a file at a time, and may flush other file
-systems too. `lock` takes the file's lock, which one open file holds
-at a time: another that asks for it waits if `wait`, and otherwise
-fails with -11 (EAGAIN). The lock goes when the file is closed or the
+systems too. `lock` takes the file's lock for one open file alone:
+another that asks for it waits if `wait`, and otherwise fails with -11
+(EAGAIN). The lock goes when the file is closed or the
 program ends, however it ends, so it never goes stale as a file made
-with `exclusive` does. `infoOf` is `info` of
-an open file: its size is what it holds now, however it was written;
+with `exclusive` does. `lockShared` takes it shared, as a program
+that only reads asks it: any number may hold it so at once, and `lock`
+waits, or fails, until the last has let it go, as a shared one waits
+for the one that `lock` took. Both are `flock`'s, so they agree with
+any other program that takes the file's lock so. `closeChecked` closes
+as `close` does, and says if that failed: a file system may say only
+then that what was written never reached it, a full disk or a quota
+over NFS, so a program that must know its writes landed, as one that
+copies a backup, asks it. The fd is closed either way, so a failed
+`closeChecked`, -4 (EINTR) too, is never tried again. `infoOf` is
+`info` of an open file: its size is what it holds now, however it was written;
 `linkInfo` is `info` of a symbolic link itself, not what it names, so
 that `symlink` is true, `dir` and `file` false, and `size` the length
 of what it names, which need not be there. `Info.mtime` is what a program checks
@@ -392,7 +407,23 @@ directory it is already in. `Info.links` is how many names the file
 has: more than 1 if a hard link shares it, so that writing to it
 writes to a file named elsewhere too; 0 on a target that doesn't say.
 `Info.mode` holds the nine bits of `rwxrwxrwx`, and `chmod` sets them,
-1EDH (755) for a program, 1A4H (644) for data.
+1EDH (755) for a program, 1A4H (644) for data; `Info.special` holds
+the three above them, set-user-id 800H, set-group-id 400H and sticky
+200H, which `chmod` sets too, with `mode | special`, as a program that
+copies a file keeps them. `makeDirMode` is `makeDir` that gives the
+directory the bits `mode`, less those the umask takes away, as
+`openMode` gives a file: 1C0H (700) for one only its owner may enter.
+Of the three above them, Linux gives a new directory only sticky; it
+takes set-group-id from the directory it is made in. `setTime` sets
+the file's time, following a symbolic link, and the time it was last
+read with it, as a program that copies or restores a file keeps its
+time, so that a later run sees it unchanged: `sec` seconds and `nsec`,
+from 0 to 999999999, nanoseconds since 1970. `Info.mtime` holds the
+time in nanoseconds, which an `I64` holds from 1677 to 2262 only;
+`Info.seconds` holds it in whole seconds, rounded down, whatever it
+is, so a program that copies times exactly takes `Info.seconds`, and
+the nanoseconds as `mtime - seconds * 1000000000`, which is right in
+any year, since the wrapping cancels out (section 6.1).
 
 **Programs.** `openPty` makes a pseudo-terminal, a terminal that a
 program, a terminal emulator, plays the screen and the keyboard of:

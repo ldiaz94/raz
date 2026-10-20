@@ -114,10 +114,11 @@ int main(int argc, char **argv) {
     K("fSetfl", F_SETFL); K("fDupfdCloexec", F_DUPFD_CLOEXEC);
     K("fdCloexec", FD_CLOEXEC);
     K("seekSet", SEEK_SET); K("seekCur", SEEK_CUR); K("seekEnd", SEEK_END);
-    K("lockEx", LOCK_EX); K("lockNb", LOCK_NB);
+    K("lockEx", LOCK_EX); K("lockSh", LOCK_SH); K("lockNb", LOCK_NB);
     K("protRead", PROT_READ); K("protWrite", PROT_WRITE);
     K("mapShared", MAP_SHARED); K("mapPrivate", MAP_PRIVATE);
     K("mapAnonymous", MAP_ANONYMOUS); K("mfdCloexec", MFD_CLOEXEC);
+    K("atFdcwd", AT_FDCWD);
     K("fOk", F_OK); K("rOk", R_OK); K("wOk", W_OK); K("xOk", X_OK);
 
     SAY("struct stat, statvfs and dirent");

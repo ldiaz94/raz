@@ -29,6 +29,7 @@ const
     seekCur* = 1;
     seekEnd* = 2;
     lockEx* = 2;
+    lockSh* = 1;
     lockNb* = 4;
     protRead* = 1;
     protWrite* = 2;
@@ -36,6 +37,7 @@ const
     mapPrivate* = 2;
     mapAnonymous* = 32;
     mfdCloexec* = 1;
+    atFdcwd* = -100;
     fOk* = 0;
     rOk* = 4;
     wOk* = 2;
