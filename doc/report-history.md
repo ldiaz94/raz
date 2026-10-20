@@ -216,4 +216,8 @@ at the time.
   `ADR(s[0])` when `s` isn't empty, and what the slice holds when it
   is, where `ADR(s[0])` stops the program; of an array, that of the
   slice of all of it (sections 5.3 and 6.8). A predeclared name may be
-  hidden (section 2), so it breaks no program.
+  hidden (section 2), so it breaks no program. Then `Sys` gains
+  `setTime`, `lockShared`, `makeDirMode` and `closeChecked`, and
+  `Info` gains `seconds` and `special`, for a program that copies files
+  whole: their times in any year, their set-user-id, set-group-id and
+  sticky bits, and a close that fails (volume 2). It breaks no program.

@@ -62,6 +62,7 @@ type
     Info* = record
         size*: I64;     (* in bytes *)
         mtime*: I64;    (* its contents' last change, in ns since 1970 *)
+        seconds*: I64;  (* mtime in whole seconds, rounded down: exact past 2262 and before 1677, where mtime wraps *)
         mode*: INT;     (* its permission bits, rwxrwxrwx *)
         dir*: BOOL;     (* a directory *)
         file*: BOOL;    (* not a directory, device, pipe or socket *)
@@ -69,6 +70,7 @@ type
         ino*: U64;      (* its inode, which a rename keeps and a new file doesn't *)
         dev*: U64;      (* the file system it is on; with ino, it names the file *)
         links*: U64;    (* how many names it has: 1 for a file no hard link shares *)
+        special*: INT;  (* its set-user-id, set-group-id and sticky bits, as chmod takes them: 800H, 400H, 200H *)
     end;
 
     (* What a directory says a name in it is, without asking the file:
@@ -332,10 +334,34 @@ begin
     return 0;
 end;
 
+(* Takes the lock on the open file fd as lock does, but shared: any
+   number of programs may hold it so at once, as readers do, while none
+   holds it as lock takes it. 0, or minus an errno. *)
+proc lockShared*(fd: INT; wait: BOOL): INT;
+var how: I32;
+begin
+    how := CAbi.lockSh;
+    if not wait then how := how | CAbi.lockNb; end;
+    if C.flock(I32(fd), how) # 0 then return failed(); end;
+    return 0;
+end;
+
 (* Closes the file descriptor fd. *)
 proc close*(fd: INT);
 begin
     _ := C.close(I32(fd));
+end;
+
+(* Closes the file descriptor fd, as close does, and says whether that
+   failed: 0, or minus an errno. A file system may report only at the
+   close that what was written to the file never reached it, -28
+   (ENOSPC) or -122 (EDQUOT) say, as NFS does; a program that must know
+   its writes landed asks so. The fd is closed either way, so it is never
+   closed again, after -4 (EINTR) too. *)
+proc closeChecked*(fd: INT): INT;
+begin
+    if C.close(I32(fd)) # 0 then return failed(); end;
+    return 0;
 end;
 
 (* A new file descriptor for the file fd is open on, the lowest free:
@@ -453,6 +479,17 @@ begin
     return 0;
 end;
 
+(* Makes a directory at path with the permission bits mode, less those
+   the umask takes away: 1C0H (700) for one only its owner may enter. Of
+   the bits above them Linux keeps only sticky, 200H. *)
+proc makeDirMode*(path: []U8; mode: INT): INT;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    if C.mkdir(ADR(a[0]), U32(mode)) # 0 then return failed(); end;
+    return 0;
+end;
+
 (* Removes the directory at path, which must be empty. *)
 proc removeDir*(path: []U8): INT;
 var a: [4096]U8;
@@ -468,6 +505,22 @@ var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
     if C.chmod(ADR(a[0]), U32(mode)) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* Sets when the contents of what path names last changed, and when it
+   was last read, to sec seconds and nsec nanoseconds since 1970, as a
+   program copying a file keeps its time: Info.seconds gives sec back,
+   whatever the time. *)
+proc setTime*(path: []U8; sec: I64; nsec: INT): INT;
+var a: [4096]U8; t: [2]Timespec;
+begin
+    if not cstr(path, a) then return -36; end;
+    if (nsec < 0) or (nsec >= 1000000000) then return -22; end;   (* EINVAL *)
+    t[0].sec := sec;
+    t[0].nsec := nsec;
+    t[1] := t[0];
+    if C.utimensat(CAbi.atFdcwd, ADR(a[0]), ^U8(ADR(t)), 0) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -532,7 +585,9 @@ begin
     i.ino := U64(field(p, CAbi.stInoAt, CAbi.stInoLen));
     i.links := U64(field(p, CAbi.stNlinkAt, CAbi.stNlinkLen));
     i.mtime := field(p, CAbi.stMtimeAt, CAbi.stMtimeLen) * 1000000000 + field(p, CAbi.stMtimeNsAt, CAbi.stMtimeNsLen);
+    i.seconds := field(p, CAbi.stMtimeAt, CAbi.stMtimeLen);
     i.mode := INT(field(p, CAbi.stModeAt, CAbi.stModeLen)) & 1FFH;
+    i.special := INT(field(p, CAbi.stModeAt, CAbi.stModeLen)) & 0E00H;
     i.dir := fileType(st) = CAbi.sIfdir;
     i.file := fileType(st) = CAbi.sIfreg;
     return i;
@@ -2068,7 +2123,7 @@ end;
    and closed; a directory made, listed and emptied; no terminal; a
    socket, sent to after its end; programs; time and the network. *)
 proc main*;
-var free, total: I64; fd, n, err, w, h, l, c, a, m, k: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i, j: Info; d: Dir; name: []U8; ok: BOOL;
+var free, total: I64; fd, n, err, w, h, l, c, a, m, k, o: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i, j: Info; d: Dir; name: []U8; ok: BOOL;
 begin
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
@@ -2149,7 +2204,23 @@ begin
     close(fd);
     if lock(k, true) # 0 then exit(2); end;
     close(k);
+    (* the shared lock: two open files hold it at once, lock is refused
+       until both have gone, and a shared one while lock holds it *)
+    fd := openRead("/tmp/raz-sys-dir/h");
+    k := openRead("/tmp/raz-sys-dir/h");
+    if (lockShared(fd, false) # 0) or (lockShared(k, true) # 0) then exit(2); end;
+    o := openRead("/tmp/raz-sys-dir/h");
+    if lock(o, false) # -11 then exit(2); end;
+    close(fd);
+    close(k);
+    if lock(o, false) # 0 then exit(2); end;
+    fd := openRead("/tmp/raz-sys-dir/h");
+    if lockShared(fd, false) # -11 then exit(2); end;
+    close(fd);
+    close(o);
     if (position(fd) # -9) or (truncate(fd, 0) # -9) or (sync(fd) # -9) then exit(2); end;   (* EBADF *)
+    k := openRead("/tmp/raz-sys-dir/h");
+    if (closeChecked(k) # 0) or (closeChecked(k) # -9) then exit(2); end;
     i, err := infoOf(fd);
     if err # -9 then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/h");
@@ -2157,6 +2228,26 @@ begin
     if chmod("/tmp/raz-sys-dir/h", 1EDH) # 0 then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/h");
     if i.mode # 1EDH then exit(2); end;
+    (* setTime, after 1970 and before it, to the nanosecond *)
+    if setTime("/tmp/raz-sys-dir/h", 1234567890, 123456789) # 0 then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/h");
+    if (i.mtime # 1234567890123456789) or (i.seconds # 1234567890) then exit(2); end;
+    if setTime("/tmp/raz-sys-dir/h", -2, 500000000) # 0 then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/h");
+    if (i.mtime # -1500000000) or (i.seconds # -2) then exit(2); end;
+    if setTime("/tmp/raz-sys-dir/h", 10413792000, 0) # 0 then exit(2); end;   (* 2300, past mtime's reach *)
+    i, err := info("/tmp/raz-sys-dir/h");
+    if i.seconds # 10413792000 then exit(2); end;
+    if setTime("/tmp/raz-sys-dir/h", 0, 1000000000) # -22 then exit(2); end;
+    if setTime("/no/such/file", 0, 0) # -2 then exit(2); end;
+    (* the special bits: set-user-id by chmod, and sticky by makeDirMode *)
+    if chmod("/tmp/raz-sys-dir/h", 9EDH) # 0 then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/h");
+    if (i.mode # 1EDH) or (i.special # 800H) then exit(2); end;
+    if makeDirMode("/tmp/raz-sys-dir/m", 3C0H) # 0 then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/m");
+    if (err # 0) or not i.dir or (i.mode # 1C0H) or (i.special # 200H) then exit(2); end;
+    if removeDir("/tmp/raz-sys-dir/m") # 0 then exit(2); end;
     _ := remove("/tmp/raz-sys-dir/h");
     fd := openMode("/tmp/raz-sys-dir/h", {writing, creating}, 1C0H);   (* rwx------ *)
     close(fd);
