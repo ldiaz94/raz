@@ -1160,9 +1160,10 @@ in `Sys.raz` (C's `setsid`) and `Sys.linux-x86_64.raz` (system call
 A daemon forks, and its child calls `setsid` so that the terminal it
 was started from is no longer its own: closing that terminal sends it
 no `SIGHUP`, and the terminal's job control doesn't reach it. Without
-it, a program can only ignore `SIGHUP`, which `Sys.handle` can't do
-(it notes a signal; it doesn't ignore one), and stays in the
-terminal's process group, so a Ctrl-C there still reaches it.
+it, a program can only ignore `SIGHUP` (`Sys.ignore`), and stays in
+the terminal's process group and session, so a Ctrl-C there still
+reaches it unless it ignores `SIGINT` too, and a `SIGHUP` sent to the
+whole group by a shell that leaves is the only one it is spared.
 
 Met in rabble, whose daemon (its `PLAN.md`, from 0.2.0) is started by
 the client with `fork` and must outlive the terminal (2026-10-21).
