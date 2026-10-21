@@ -1166,3 +1166,26 @@ any other signal sent to the group still reach it.
 
 Met in rabble, whose daemon (its `PLAN.md`, from 0.2.0) is started by
 the client with `fork` and must outlive the terminal (2026-10-21).
+
+## The local time zone
+
+Library growth that breaks no program: a module, `Zone`, that tells
+the offset from UTC of the user's time zone at a given time, so that a
+program can show times as its user's clock does.
+
+    (* The local zone's offset from UTC, in seconds east, at the time
+       t (seconds since 1970 UTC), and its abbreviation ("CEST"); 0 and
+       "UTC" if no zone can be read. *)
+    proc offset*(t: I64): (INT, []U8);
+
+The zone is the one `TZ` names, as a file under `/usr/share/zoneinfo`
+(`TZ=Europe/Madrid`) or a path (`TZ=/etc/localtime`); with `TZ` unset,
+`/etc/localtime`. The file is TZif, versions 1 to 4, read once and
+kept: its transitions, and the POSIX rule in its footer for the times
+past the last one. A `TZ` written as a POSIX rule itself
+(`CET-1CEST,M3.5.0,M10.5.0/3`) is read too. No C: the same on every
+target, with or without libc, so a program's times don't change with
+the target it is built for.
+
+Met in rabble, which shows every time in UTC, in the screen and in its
+logs, since the library has no zone (2026-10-21).
