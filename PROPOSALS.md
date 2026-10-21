@@ -1144,3 +1144,25 @@ IST stack for each interrupt.
 
 Met in the question "how difficult to create a simple amd64 unikernel
 in raz?" (2026-10-17).
+
+## `Sys.setsid`: a session of a process's own
+
+Library growth that breaks no program: one procedure, beside `fork`,
+in `Sys.raz` (C's `setsid`) and `Sys.linux-x86_64.raz` (system call
+112).
+
+    (* A new session and process group, led by this process, with no
+       controlling terminal: its process id, or minus an errno (-1,
+       EPERM, if it leads a process group already, as a process just
+       forked doesn't). *)
+    proc setsid*: INT;
+
+A daemon forks, and its child calls `setsid` so that the terminal it
+was started from is no longer its own: closing that terminal sends it
+no `SIGHUP`, and the terminal's job control doesn't reach it. Without
+it, a program can only ignore `SIGHUP`, which `Sys.handle` can't do
+(it notes a signal; it doesn't ignore one), and stays in the
+terminal's process group, so a Ctrl-C there still reaches it.
+
+Met in rabble, whose daemon (its `PLAN.md`, from 0.2.0) is started by
+the client with `fork` and must outlive the terminal (2026-10-21).
