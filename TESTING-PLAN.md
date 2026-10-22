@@ -55,8 +55,9 @@ muted; the smallest failing case is run again aloud and saved to
 timeout each, `-r pattern`; times each; shows a test's output only when
 it fails; colour on a terminal unless `CI` or `NO_COLOR`; a summary and
 the status. `--tap`, `--junit file` (a module is a case, its `FAIL`
-blocks the failure). `-w` reruns what a changed `.raz` reaches, by
-polling file times (Sys has no inotify: a gap). `--seed`, `--fuzz 60s`
+blocks the failure). `-w` reruns every test when a `.raz` beside the
+tests or in `-I` changes (raz builds fast; import tracking isn't worth
+its lines), by polling file times (Sys has no inotify: a gap). `--seed`, `--fuzz 60s`
 set `PROP_*`. Left out: `.cn`, sh and pty tests, which stay in make. A
 Makefile uses `raztest` when it's there and its own loop when not.
 

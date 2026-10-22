@@ -311,6 +311,32 @@ if [ -x $out/raztest ]; then
     fi
 fi
 
+# raztest -w: a passing test, then edited to fail, is run again by the
+# watch, which ^C ends with status 130; each wait is bounded to 10 s
+waitfor() {   # file, text: whether text shows in file within 10 s
+    for _ in $(seq 100); do
+        grep -q "$2" $1 && return 0
+        sleep 0.1
+    done
+    return 1
+}
+if [ -x $out/raztest ]; then
+    wd=$out/rtw; rm -rf $wd; mkdir -p $wd/t
+    cp test/raztest/Pass.raz $wd/t/
+    RAZ=$raz $out/raztest -w -o $wd/o $wd/t > $wd/log 2>&1 </dev/null &
+    wpid=$!
+    if waitfor $wd/log '1 passed'; then
+        printf 'module Pass;\nimport Rt;\nproc main*;\nbegin\n    Rt.exit(1);\nend;\nend Pass.\n' > $wd/t/Pass.raz
+        waitfor $wd/log '0 passed, 1 failed'; ok=$?
+    else ok=1; fi
+    kill -INT $wpid 2>/dev/null; wait $wpid; st=$?
+    if [ $ok = 0 ] && [ $st = 130 ]; then pass=$((pass + 1))
+    else
+        echo "FAIL raztest -w (status $st):"; cat $wd/log
+        fail=$((fail + 1))
+    fi
+fi
+
 # CAbi is tools/cabi.c's output, from the C library's own headers:
 # compiled with cc, and with musl-gcc, each where it is installed, it
 # writes lib/'s file again

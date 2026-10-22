@@ -12,6 +12,7 @@
 .Op Fl t Ar secs
 .Op Fl o Ar dir
 .Op Fl r Ar text
+.Op Fl w
 .Op Fl \-tap
 .Op Fl \-junit Ar file
 .Ar file.raz Ns | Ns Ar dir ...
@@ -124,6 +125,26 @@ if not given.
 .It Fl r Ar text
 Run only the tests whose name holds
 .Ar text .
+.It Fl w , Fl \-watch
+Run the tests, then run them all again whenever a file changes, until
+interrupted.
+Watched are the
+.Pa *.raz
+files directly in the directory of each test file given, in each
+directory given, and in each
+.Fl I
+directory, not those below them.
+The files' times and sizes are looked at every 300 ms, and a change is
+waited out until the files stay as they are for one look, since an
+editor writes in steps.
+All the tests run again, not only those a change reaches.
+The operands are read again each time, so a new test file is found.
+On a terminal the screen is cleared before each run, and
+.Ql watching N files; ^C stops
+is written after the summary.
+With
+.Fl \-junit
+the file is written again after each run.
 .It Fl \-tap
 Write TAP instead of the usual lines.
 .It Fl \-junit Ar file

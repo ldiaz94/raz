@@ -1,6 +1,6 @@
 (* Test: raztest, which builds and runs the tests of a raz program.
 
-       raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text]
+       raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] [-w]
                [--tap] [--junit file] file.raz|dir ...
 
    A test is a module whose main is its test: it passes if it builds
@@ -35,9 +35,20 @@
    is, so invalid UTF-8 in it passes through into the XML, except that
    the control bytes XML 1.0 forbids become ?.
 
-   Needs only the library. Leaves out: watching files (to come),
-   arguments to a test, tests not in raz, and the number of processors
-   as -j's default, which Sys can't tell: it is 1. *)
+   -w runs the tests, then runs them all again whenever a *.raz file
+   changes, until a signal stops it. Watched are the *.raz directly in
+   the directory of each test file, of each directory given and of each
+   -I directory. Sys has no inotify, so the files' times and sizes are
+   looked at every 300 ms; a change is waited out until the files stay
+   as they are for one look, since an editor writes in steps. All the
+   tests run again, not those a change reaches: raz builds fast, and
+   tracking imports isn't worth its lines. The operands are read again
+   each time, so a new test file is found. On a terminal the screen is
+   cleared before each run.
+
+   Needs only the library. Leaves out: arguments to a test, tests not
+   in raz, and the number of processors as -j's default, which Sys
+   can't tell: it is 1. *)
 module Test;
 import Opt, Fmt, Out, Buf, Str, Heap, Sys, Rt, Files;
 import Names := Vec([]U8), Jobs := Vec(Job), ByName := Sort([]U8, less);
@@ -46,15 +57,19 @@ const
     TapKey = 1;                  (* the keys of --tap and --junit, which have no letter *)
     JunitKey = 2;
     Table: []Opt.Row = [
-        Opt.usage("", "raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] [--tap] [--junit file] file.raz|dir ..."),
+        Opt.usage("", "raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] [-w] [--tap] [--junit file] file.raz|dir ..."),
         Opt.option("", 'I', "include", "dir", "look for modules in dir too, as raz -I"),
         Opt.option("", 'j', "jobs", "n", "run n tests at once (1)"),
         Opt.option("", 't', "timeout", "secs", "kill a build or run after secs (60)"),
         Opt.option("", 'o', "out", "dir", "put the programs and their .out in dir (build/raztest)"),
         Opt.option("", 'r', "run", "text", "run only the tests whose name holds text"),
+        Opt.option("", 'w', "watch", "", "run again whenever a .raz file changes"),
         Opt.option("", TapKey, "tap", "", "write TAP version 14 instead of the usual lines"),
         Opt.option("", JunitKey, "junit", "file", "also write the results to file as JUnit XML")];
     PollMs = 10;                 (* how long to wait between looks at the running tests *)
+    WatchMs = 300;               (* how long to wait between looks at the watched files *)
+    Clear = "\x1b[H\x1b[2J";     (* home the cursor and clear the screen *)
+    Modulus = 1000000007;        (* keeps a fingerprint's sums small *)
     Second = 1000000000;         (* a second in Sys.clock's nanoseconds *)
     Green = "\x1b[32m";          (* the colours of ok, FAIL and TIMEOUT *)
     Red = "\x1b[31m";
@@ -86,6 +101,7 @@ type
 var
     raz: []U8;           (* the compiler: $RAZ, or raz on PATH *)
     includes: Names.Vec; (* the -I directories *)
+    operands: Names.Vec; (* the files and directories given *)
     jobs: INT;           (* -j: tests at once *)
     timeout: I64;        (* -t, in nanoseconds *)
     outDir: []U8;        (* -o *)
@@ -97,6 +113,8 @@ var
     colour: BOOL;        (* the words of the results are coloured *)
     tap: BOOL;           (* --tap: report in TAP *)
     junit: []U8;         (* --junit: the file for the XML, or "" *)
+    watch: BOOL;         (* -w: run again when a file changes *)
+    clearing: BOOL;      (* the screen is cleared before each run of -w *)
 
 (* Whether a sorts before b, for sorting a directory's files. *)
 proc less(a, b: []U8): BOOL;
@@ -195,7 +213,7 @@ var p: Opt.Parser; arg: []U8; ok: BOOL;
 begin
     jobs := 1; timeout := 60 * Second; outDir := "build/raztest";
     Names.init(includes, Heap.heap);
-    Jobs.init(tests, Heap.heap);
+    Names.init(operands, Heap.heap);
     Opt.init(p, "raztest", Table);
     while Opt.next(p) do
         if p.letter = 'I' then Names.push(includes, p.value);
@@ -203,6 +221,7 @@ begin
         elsif p.letter = 't' then timeout := Opt.number(p, 1, 1000000) * Second;
         elsif p.letter = 'o' then outDir := p.value;
         elsif p.letter = 'r' then only := p.value;
+        elsif p.letter = 'w' then watch := true;
         elsif p.letter = TapKey then tap := true;
         elsif p.letter = JunitKey then junit := p.value;
         end;
@@ -210,9 +229,20 @@ begin
     arg, ok := Opt.operand(p);
     if not ok then Opt.fail(p, "no tests named; raztest --help says how"); end;
     repeat
-        addOperand(arg);
+        Names.push(operands, arg);
         arg, ok := Opt.operand(p);
     until not ok;
+end;
+
+(* Makes the list of tests, from the operands as they are now. *)
+proc loadTests;
+var i: INT;
+begin
+    for i := 0 to tests.len - 1 do Buf.done(Jobs.all(tests)[i].why); end;
+    Jobs.done(tests);
+    Jobs.init(tests, Heap.heap);
+    busy := 0;
+    for i := 0 to operands.len - 1 do addOperand(Names.all(operands)[i]); end;
     checkNames;
 end;
 
@@ -245,6 +275,7 @@ begin
     signals := Sys.catch([Sys.sigInt, Sys.sigTerm, Sys.sigHup]);
     if signals < 0 then die("can't catch signals: {}", [Fmt.str(Sys.errorText(signals))]); end;
     colour := Sys.isTerminal(Sys.stdout) and (LEN(Sys.env("NO_COLOR")) = 0) and not tap;
+    clearing := Sys.isTerminal(Sys.stdout) and not tap;
 end;
 
 (* Whether the test j is being built or run. *)
@@ -516,8 +547,8 @@ begin
     if not Files.write(junit, Buf.bytes(b)) then die("can't write {}", [Fmt.str(junit)]); end;
 end;
 
-(* The summary line, the --junit file, and status 1 if any test failed. *)
-proc summary(took: I64);
+(* The summary line and the --junit file; whether all the tests passed. *)
+proc summary(took: I64): BOOL;
 var all: []Job; i: INT; count: [3]INT;
 begin
     all := Jobs.all(tests);
@@ -528,17 +559,130 @@ begin
          Fmt.real(F64(took) / F64(Second), 2)]);
     Out.flush;
     if LEN(junit) > 0 then writeJunit(took); end;
-    if count[INT(passed)] < LEN(all) then Rt.exit(1); end;
+    return count[INT(passed)] = LEN(all);
 end;
 
-proc main*;
+(* Loads, runs and reports the tests once; whether all passed. *)
+proc cycle(): BOOL;
 var began: I64;
 begin
     began := Sys.clock();
-    readArgs;
-    setUp;
+    loadTests;
     if tap then tapPlan; end;
     runAll;
-    summary(Sys.clock() - began);
+    return summary(Sys.clock() - began);
+end;
+
+(* The directory of the file path. *)
+proc dirOf(path: []U8): []U8;
+var i: INT;
+begin
+    i := Str.findLast(path, "/");
+    if i < 0 then return "."; end;
+    if i = 0 then return "/"; end;
+    return path[0..i];
+end;
+
+(* Adds dir to the directories to watch, unless it is there. *)
+proc watchDir(var dirs: Names.Vec; dir: []U8);
+var i: INT;
+begin
+    for i := 0 to dirs.len - 1 do
+        if Names.all(dirs)[i] = dir then return; end;
+    end;
+    Names.push(dirs, dir);
+end;
+
+(* The directories to watch: those given, those of the test files given,
+   and the -I ones. *)
+proc watchDirs(var dirs: Names.Vec);
+var i, err: INT; f: Sys.Info; path: []U8;
+begin
+    Names.init(dirs, Heap.heap);
+    for i := 0 to operands.len - 1 do
+        path := Names.all(operands)[i];
+        f, err := Sys.info(path);
+        if (err = 0) and f.dir then watchDir(dirs, path); else watchDir(dirs, dirOf(path)); end;
+    end;
+    for i := 0 to includes.len - 1 do watchDir(dirs, Names.all(includes)[i]); end;
+end;
+
+(* Adds to the fingerprint and the count the *.raz files of dir. It
+   runs every few hundred milliseconds for as long as -w does, so the
+   paths are made in one buffer, used again. *)
+proc lookIn(dir: []U8; var print: I64; var count: INT);
+var d: Sys.Dir; name: []U8; ok: BOOL; f: Sys.Info; err: INT; path: Buf.Buf;
+begin
+    if Sys.openDir(d, dir) < 0 then return; end;
+    Buf.init(path, Heap.heap);
+    defer Buf.done(path);
+    name, ok := Sys.nextEntry(d);
+    while ok do
+        Buf.reset(path);
+        Buf.str(path, dir); Buf.str(path, "/"); Buf.str(path, name);
+        f, err := Sys.info(Buf.bytes(path));
+        if Str.hasSuffix(name, ".raz") and (err = 0) then
+            INC(count);
+            print := (print + 1 + f.mtime mod Modulus + f.size mod Modulus) mod Modulus;
+        end;
+        name, ok := Sys.nextEntry(d);
+    end;
+    Sys.closeDir(d);
+end;
+
+(* A number that changes when a *.raz file in the directories is edited,
+   added or removed, and how many files there are. *)
+proc fingerprint(): (I64, INT);
+var dirs: Names.Vec; i, count: INT; print: I64;
+begin
+    watchDirs(dirs);
+    defer Names.done(dirs);
+    for i := 0 to dirs.len - 1 do lookIn(Names.all(dirs)[i], print, count); end;
+    return print, count;
+end;
+
+(* Waits one look's time; a signal that stops raztest ends it at once. *)
+proc nap;
+begin
+    if Sys.ready(signals, WatchMs) then interrupted(Sys.caught(signals)); end;
+end;
+
+(* Waits until the fingerprint is not seen, and then does not change
+   for one look. *)
+proc waitChange(seen: I64);
+var print: I64;
+begin
+    repeat
+        nap;
+        print, _ := fingerprint();
+    until print # seen;
+    repeat
+        seen := print;
+        nap;
+        print, _ := fingerprint();
+    until print = seen;
+end;
+
+(* Runs the tests, and again at each change, for ever. *)
+proc watchAll;
+var seen: I64; n: INT;
+begin
+    while true do
+        if clearing then Out.str(Clear); end;
+        seen, n := fingerprint();
+        _ := cycle();
+        if tap then Out.str("# "); end;
+        Fmt.print("watching {} files; ^C stops\n", [Fmt.int(n)]);
+        Out.flush;
+        waitChange(seen);
+    end;
+end;
+
+proc main*;
+begin
+    readArgs;
+    setUp;
+    if watch then watchAll; end;
+    if not cycle() then Rt.exit(1); end;
 end;
 end Test.
