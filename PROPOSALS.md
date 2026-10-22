@@ -1237,3 +1237,26 @@ itself, where the ordinary self-build fit.
 Met in moss (`docs/raz-port.md`): its stored programs get a guarded
 64 KiB stack, and a native compiler must fit, or the stack must grow
 (2026-10-22).
+
+## `Sys.blocking`: whether a descriptor's reads and writes wait
+
+Library growth that breaks no program: one procedure, beside
+`setBlocking`, in `Sys.raz` (C's `fcntl` with `F_GETFL`) and
+`Sys.linux-x86_64.raz` (system call 72, `F_GETFL`, as `setBlocking`
+already makes it).
+
+    (* Whether reads and writes on fd wait, as they do at first: 1 if
+       they do, 0 if they return -11 (EAGAIN) at once, or minus an
+       errno. *)
+    proc blocking*(fd: INT): INT;
+
+`setBlocking` sets the flag but nothing reads it, so a library that
+must make a caller's descriptor non-blocking for a while can't put it
+back as it found it: it can only guess. rnet's `Tls.accept` makes the
+socket it is given non-blocking for the handshake and, on failure,
+makes it blocking again, as `Sys.accept` gives it; a caller that gave
+it a non-blocking one gets it back changed. With `blocking`, it would
+note the flag first and restore that. A test, too, can't check that a
+descriptor was put back without it.
+
+Met in rnet, after a review of its STARTTLS (2026-10-22).
