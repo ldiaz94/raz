@@ -6,6 +6,8 @@
    end, and a run with no failures says nothing. A program that stops
    otherwise after a check failed, by Rt.stop or a failed check of the
    language, ends with status 1 too.
+   While mute is on, as Prop searches for a failing case, checks say
+   nothing and aren't counted, but mutedFailures counts those failed.
 
        FAIL what
          got:  "a\nb"
@@ -26,11 +28,30 @@ var
     failures: INT;                                      (* of them, failed *)
     registered: BOOL;                                   (* the exit procedure is on Rt's list *)
     sink: proc(s: []U8);                                (* where text goes, or nil for standard error; a test sets it *)
+    muted: BOOL;                                        (* checks say nothing and aren't counted, as Prop searches *)
+    mutedFails: INT;                                    (* checks failed since mute was turned on *)
 
-(* Writes s to standard error, trying again after a short or interrupted write. *)
+(* Turns muting on or off. While it is on, checks write nothing and
+   count neither as checks nor as failures; turning it on zeroes the
+   failures mutedFailures gives. *)
+proc mute*(on: BOOL);
+begin
+    muted := on;
+    if on then mutedFails := 0; end;
+end;
+
+(* How many checks failed while muted, since mute was turned on. *)
+proc mutedFailures*(): INT;
+begin
+    return mutedFails;
+end;
+
+(* Writes s to standard error, trying again after a short or interrupted
+   write; nothing while muted. *)
 proc put(s: []U8);
 var n: INT;
 begin
+    if muted then return; end;
     if sink # nil then sink(s); return; end;
     while LEN(s) > 0 do
         n := Sys.write(Sys.stderr, s);
@@ -107,14 +128,17 @@ end;
    any did, and ends the program with status 1. *)
 proc report;
 begin
+    muted := false;                                     (* a program that stopped while muted still reports *)
     if failures = 0 then return; end;
     put("Check: "); putInt(failures); put(" of "); putInt(checks); put(" failed\n");
     Rt.exit(1);
 end;
 
-(* Counts a check, and the first time registers report to run at exit. *)
+(* Counts a check, unless muted, and the first time registers report
+   to run at exit. *)
 proc count;
 begin
+    if muted then return; end;
     if not registered then
         if Rt.atExit(report) # nil then Rt.stop("Check: no room for the exit procedure"); end;
         registered := true;
@@ -123,9 +147,11 @@ begin
 end;
 
 (* Counts a failure and begins its report with the FAIL line. Standard
-   output is flushed first, so the two come in order. *)
+   output is flushed first, so the two come in order. While muted, it
+   only counts it among the muted failures. *)
 proc fail(what: []U8);
 begin
+    if muted then INC(mutedFails); return; end;
     INC(failures);
     Out.flush;
     put("FAIL "); put(what); put("\n");
@@ -208,6 +234,12 @@ begin
     ok(true, "ok passes");
     str("str passes", "same", "same");
     int("int passes", -5, -5);
+    mute(true);
+    ok(false, "muted ok");
+    str("muted str", "a", "b");
+    int("muted int", 1, 2);
+    mute(false);
+    if mutedFailures() # 3 then Rt.stop("Check: muted failures are wrong"); end;
     if (checks # 10 + 3) or (failures # 0) then Rt.stop("Check: counts are wrong"); end;
 end;
 end Check.

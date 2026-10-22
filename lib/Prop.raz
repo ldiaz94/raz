@@ -1,0 +1,604 @@
+(* Property tests and fuzzing over recorded choices, with shrinking.
+
+   A property is a procedure that draws values from a Source and checks
+   them with Check. A case is the bytes the property drew: a fresh case
+   takes them from Rand, and a failing case is shrunk by changing its
+   bytes, not its values, and running the property again, so no type
+   needs a shrinker of its own. A property that draws only bytes is a
+   fuzzer. Fewer and smaller bytes give simpler values:
+
+       01  00 00 00 00 00 00 03 E8  05 78 00
+       --  -----------------------  --------
+       bool  int(0, 1000000): 1000  bytes: "x"
+
+   check(name, p) runs p on each case saved in $PROP_DIR/name (default
+   test/seeds/name), then on $PROP_CASES fresh cases (100) from the
+   seed $PROP_SEED or a new one, or on as many as $PROP_TIME seconds
+   allow, if it is set. Check is muted while it searches. The first
+   case that fails is shrunk, saved in a file named by its hash, said
+   on standard error with the seed, and run once more aloud, so that
+   Check shows its failures and the program ends with status 1. A
+   passing check says nothing. A case that stops the program, by a
+   failed check of the language, Rt.stop or a signal, can't be shrunk:
+   it is saved as it is, at exit, and so is replayed first next run.
+
+   Needs Rt, Sys, Buf, Heap, Str, Fmt, Files, Rand and Check. Leaves
+   out generators of composite types (a property builds them from
+   draws), shrinking by type, coverage guidance, and threads. *)
+module Prop;
+import Rt, Sys, Buf, Heap, Str, Fmt, Files, Rand, Check;
+
+const
+    Budget = 5000;                                      (* the most runs a shrink makes *)
+    Cases = 100;                                        (* fresh cases when $PROP_CASES is unset *)
+    Seeds = "test/seeds";                               (* where cases are saved when $PROP_DIR is unset *)
+    Second = 1000000000;                                (* a second in Sys.clock's nanoseconds *)
+    Look = 64;                                          (* fresh cases between looks at the clock, a system call *)
+    Digits = "0123456789abcdef";                        (* the digits of a saved case's name *)
+
+type
+    (* A case: the bytes a property draws from, kept as they are drawn. *)
+    Source* = record
+        data: Buf.Buf;                                  (* the bytes: given, then those drawn past them *)
+        drawn: INT;                                     (* how many the property has drawn *)
+        fresh: BOOL;                                    (* bytes past data come from rand, not 0 *)
+        rand: Rand.Rand;                                (* where a fresh case's bytes come from *)
+    end;
+
+    (* A property: draws from s, and checks what it drew with Check. *)
+    Property* = proc(var s: Source);
+
+var
+    src: Source;                                        (* the case being run; one at a time *)
+    best: Buf.Buf;                                      (* the simplest failing case found *)
+    cand: Buf.Buf;                                      (* a case to try: a shrink of best, or a saved one *)
+    runs: INT;                                          (* runs the shrink under way has made *)
+    found: INT;                                         (* bytes of the failing fresh case, before shrinking *)
+    name: []U8;                                         (* the property being checked *)
+    dir: Buf.Buf;                                       (* where its cases are saved *)
+    path: Buf.Buf;                                      (* the file of a saved case *)
+    seed: U64;                                          (* the seed of the fresh cases *)
+    underway: BOOL;                                     (* a case is being run, for crashed *)
+    ready: BOOL;                                        (* the buffers are made and crashed is registered *)
+
+(* The next byte of the case. Past the bytes given it is a fresh random
+   one, or 0 in a replayed case; either way it is added to the case. *)
+proc next(var s: Source): U8;
+var c: U8;
+begin
+    if s.drawn = s.data.len then
+        c := 0;
+        if s.fresh then c := U8(Rand.next(s.rand)); end;
+        Buf.add(s.data, c);
+    end;
+    c := Buf.bytes(s.data)[s.drawn];
+    INC(s.drawn);
+    return c;
+end;
+
+(* 64 bits, from 8 bytes, the first the highest: a byte-wise smaller
+   case is a smaller number. *)
+proc bits*(var s: Source): U64;
+var i: INT; v: U64;
+begin
+    for i := 1 to 8 do v := v shl 8 | U64(next(s)); end;
+    return v;
+end;
+
+(* A number from lo to hi, both included, the whole I64 range too;
+   zeros give lo. lo must not exceed hi. *)
+proc int*(var s: Source; lo, hi: I64): I64;
+var span, v: U64;
+begin
+    if lo > hi then Rt.stop("Prop.int: lo > hi"); end;
+    span := U64(hi) - U64(lo);
+    v := bits(s);
+    if span # 0FFFFFFFFFFFFFFFFH then v := v mod (span + 1); end;
+    return I64(U64(lo) + v);
+end;
+
+(* One of 0 to n - 1; n must be at least 1. *)
+proc pick*(var s: Source; n: INT): INT;
+begin
+    if n < 1 then Rt.stop("Prop.pick: n < 1"); end;
+    return INT(int(s, 0, I64(n - 1)));
+end;
+
+(* A byte's lowest bit: odd is true. *)
+proc bool*(var s: Source): BOOL;
+begin
+    return next(s) & 1 = 1;
+end;
+
+(* b, emptied, then given at most max bytes. Before each comes a byte
+   that ends them if it is below a mark, so that deleting two bytes of
+   the case deletes one of b: a length drawn first could not shrink with
+   them. The mark makes a fresh b about max / 2 long. *)
+proc bytes*(var s: Source; max: INT; var b: Buf.Buf);
+var mark: INT;
+begin
+    Buf.reset(b);
+    mark := 256 div ((max + 1) div 2 + 1);
+    if mark < 1 then mark := 1; end;
+    while (b.len < max) and (INT(next(s)) >= mark) do Buf.add(b, next(s)); end;
+end;
+
+(* Makes s a fresh case, its bytes from s.rand. *)
+proc fresh(var s: Source);
+begin
+    Buf.reset(s.data);
+    s.drawn := 0;
+    s.fresh := true;
+end;
+
+(* Makes s replay the case data; past its end, bytes are 0. *)
+proc replay(var s: Source; data: []U8);
+begin
+    Buf.reset(s.data);
+    Buf.str(s.data, data);
+    s.drawn := 0;
+    s.fresh := false;
+end;
+
+(* Runs p on the case in src, with Check muted; whether a check failed. *)
+proc fails(p: Property): BOOL;
+begin
+    Check.mute(true);
+    underway := true;
+    p(src);
+    underway := false;
+    return Check.mutedFailures() > 0;
+end;
+
+(* Runs p on data once more, with Check heard, so that it shows the
+   failure and counts it. *)
+proc aloud(p: Property; data: []U8);
+begin
+    Check.mute(false);
+    replay(src, data);
+    p(src);
+end;
+
+(* Whether case a is simpler than b: shorter, or as long and smaller
+   byte by byte. *)
+proc simpler(a, b: []U8): BOOL;
+begin
+    return (LEN(a) < LEN(b)) or ((LEN(a) = LEN(b)) and (Str.cmp(a, b) < 0));
+end;
+
+(* Runs p on cand, within the budget; if it fails and the bytes it drew
+   are simpler than best, they become best, and the result is true. *)
+proc improves(p: Property): BOOL;
+var drawn: []U8;
+begin
+    if runs >= Budget then return false; end;
+    INC(runs);
+    replay(src, Buf.bytes(cand));
+    if not fails(p) then return false; end;
+    drawn := Buf.bytes(src.data)[0..src.drawn];
+    if not simpler(drawn, Buf.bytes(best)) then return false; end;
+    Buf.reset(best);
+    Buf.str(best, drawn);
+    return true;
+end;
+
+(* best's w bytes from i, as a number, the first the highest. *)
+proc chunk(i, w: INT): U64;
+begin
+    return Str.be(Buf.bytes(best)[i..i + w]);
+end;
+
+(* Makes cand best without its w bytes from i. *)
+proc without(i, w: INT);
+var b: []U8;
+begin
+    b := Buf.bytes(best);
+    Buf.reset(cand);
+    Buf.str(cand, b[0..i]);
+    Buf.str(cand, b[i + w..LEN(b)]);
+end;
+
+(* Makes cand best with its w bytes from i the number v. *)
+proc setChunk(i, w: INT; v: U64);
+begin
+    Buf.reset(cand);
+    Buf.str(cand, Buf.bytes(best));
+    Str.putBE(Buf.bytes(cand)[i..i + w], v);
+end;
+
+(* Tries best without each run of 8, 4, 2 and 1 bytes; whether any
+   made it simpler. *)
+proc deletePass(p: Property): BOOL;
+var w, i: INT; better: BOOL;
+begin
+    w := 8;
+    while w > 0 do
+        i := 0;
+        while i + w <= best.len do
+            without(i, w);
+            if improves(p) then better := true; else INC(i); end;   (* on success, the next run moved to i *)
+        end;
+        w := w div 2;
+    end;
+    return better;
+end;
+
+(* Tries best with each run of 8, 4, 2 and 1 bytes made zeros; whether
+   any made it simpler. *)
+proc zeroPass(p: Property): BOOL;
+var w, i: INT; better: BOOL;
+begin
+    w := 8;
+    while w > 0 do
+        i := 0;
+        while i + w <= best.len do
+            if chunk(i, w) # 0 then
+                setChunk(i, w, 0);
+                if improves(p) then better := true; end;
+            end;
+            INC(i);
+        end;
+        w := w div 2;
+    end;
+    return better;
+end;
+
+(* Looks, by binary search, for the least number for best's w bytes
+   from i that still fails; whether best changed. *)
+proc lower(p: Property; i, w: INT): BOOL;
+var lo, hi, mid: U64; better: BOOL;
+begin
+    hi := chunk(i, w);                                  (* fails; all below lo don't, as far as is known *)
+    while (lo < hi) and (runs < Budget) and (i + w <= best.len) do
+        mid := lo + (hi - lo) div 2;
+        setChunk(i, w, mid);
+        if improves(p) then hi := mid; better := true; else lo := mid + 1; end;
+    end;
+    return better;
+end;
+
+(* Lowers each run of 8, 4, 2 and 1 bytes of best, as a number; whether
+   any made it simpler. A number drawn from several bytes shrinks as a
+   whole, where lowering byte by byte would stop at 1024 above 1000. *)
+proc lowerPass(p: Property): BOOL;
+var w, i: INT; better: BOOL;
+begin
+    w := 8;
+    while w > 0 do
+        i := 0;
+        while i + w <= best.len do
+            if lower(p, i, w) then better := true; end;
+            INC(i);
+        end;
+        w := w div 2;
+    end;
+    return better;
+end;
+
+(* Makes best, a failing case, as simple as the passes can within the
+   budget: until a round of them finds nothing simpler. *)
+proc shrink(p: Property);
+var better: BOOL;
+begin
+    runs := 0;
+    repeat
+        better := deletePass(p);
+        if zeroPass(p) then better := true; end;
+        if lowerPass(p) then better := true; end;
+    until not better or (runs >= Budget);
+end;
+
+(* s as a decimal U64, and true; false if it is not one. *)
+proc decimal(s: []U8): (U64, BOOL);
+var v, d: U64; i: INT;
+begin
+    if LEN(s) = 0 then return 0, false; end;
+    for i := 0 to LEN(s) - 1 do
+        if not Str.isDigit(s[i]) then return 0, false; end;
+        d := U64(s[i] - '0');
+        if v > (0FFFFFFFFFFFFFFFFH - d) div 10 then return 0, false; end;
+        v := v * 10 + d;
+    end;
+    return v, true;
+end;
+
+(* Stops the program: the environment variable called key is not a
+   number, as it must be. *)
+proc badEnv(key: []U8);
+begin
+    Fmt.eprint("Prop: ${} is not a whole number\n", [Fmt.str(key)]);
+    Rt.exit(2);
+end;
+
+(* The environment variable called key, a number from 0; otherwise
+   unset, and 0. *)
+proc envNumber(key: []U8): I64;
+var n: I64; ok: BOOL;
+begin
+    if LEN(Sys.env(key)) = 0 then return 0; end;
+    n, ok := Str.toInt(Sys.env(key));
+    if not ok or (n < 0) then badEnv(key); end;
+    return n;
+end;
+
+(* The seed for the fresh cases: $PROP_SEED, or a new one. *)
+proc envSeed(): U64;
+var v: U64; ok: BOOL;
+begin
+    if LEN(Sys.env("PROP_SEED")) = 0 then return Rand.seed(); end;
+    v, ok := decimal(Sys.env("PROP_SEED"));
+    if not ok then badEnv("PROP_SEED"); end;
+    return v;
+end;
+
+(* Runs fresh cases, $PROP_CASES of them or for $PROP_TIME seconds;
+   if one fails, it is shrunk into best, and the result is true. *)
+proc freshFailing(p: Property): BOOL;
+var cases, n, deadline: I64;
+begin
+    seed := envSeed();
+    Rand.init(src.rand, seed);
+    cases := Cases;
+    if LEN(Sys.env("PROP_CASES")) > 0 then cases := envNumber("PROP_CASES"); end;
+    deadline := 0;
+    if envNumber("PROP_TIME") > 0 then deadline := Sys.clock() + envNumber("PROP_TIME") * Second; end;
+    n := 0;
+    while ((deadline = 0) and (n < cases)) or ((deadline # 0) and ((n mod Look # 0) or (Sys.clock() < deadline))) do
+        fresh(src);
+        if fails(p) then
+            Buf.reset(best);
+            Buf.str(best, Buf.bytes(src.data));
+            found := best.len;
+            shrink(p);
+            return true;
+        end;
+        INC(n);
+    end;
+    return false;
+end;
+
+(* The 16 hex digits of v. *)
+proc hex(v: U64): [16]U8;
+var d: [16]U8; i: INT;
+begin
+    for i := 15 to 0 by -1 do
+        d[i] := Digits[INT(v & 15)];
+        v := v shr 4;
+    end;
+    return d;
+end;
+
+(* Makes path the file called file in dir. *)
+proc caseFile(file: []U8);
+begin
+    Buf.reset(path);
+    Buf.str(path, Buf.bytes(dir));
+    Buf.add(path, '/');
+    Buf.str(path, file);
+end;
+
+(* Saves data in dir, made with the directories it needs, in a file
+   named by the hash of data, so that a case is saved once; whether it
+   was written. path names the file. *)
+proc save(data: []U8): BOOL;
+var d: []U8; i: INT; h: [16]U8;
+begin
+    d := Buf.bytes(dir);
+    for i := 1 to LEN(d) - 1 do
+        if d[i] = '/' then _ := Sys.makeDir(d[0..i]); end;
+    end;
+    _ := Sys.makeDir(d);
+    h := hex(Str.hash(data));
+    caseFile(h);
+    return Files.write(Buf.bytes(path), data);
+end;
+
+(* What became of a case save tried to save, for a message. *)
+proc saved(ok: BOOL): []U8;
+begin
+    if ok then return "saved"; end;
+    return "could not save";
+end;
+
+(* Runs each case saved in dir; if one fails, it is in cand, its file
+   in path, and the result is true. *)
+proc savedFailing(p: Property): BOOL;
+var d: Sys.Dir; file: []U8; more: BOOL;
+begin
+    if Sys.openDir(d, Buf.bytes(dir)) < 0 then return false; end;   (* none saved yet *)
+    file, more := Sys.nextEntry(d);
+    while more do
+        caseFile(file);
+        Buf.reset(cand);
+        if Files.read(Buf.bytes(path), cand) then
+            replay(src, Buf.bytes(cand));
+            if fails(p) then Sys.closeDir(d); return true; end;
+        end;
+        file, more := Sys.nextEntry(d);
+    end;
+    Sys.closeDir(d);
+    return false;
+end;
+
+(* Run at exit: a case still under way stopped the program, so it is
+   saved, to be replayed first next run. *)
+proc crashed;
+var ok: BOOL;
+begin
+    if not underway then return; end;
+    underway := false;
+    ok := save(Buf.bytes(src.data));
+    Fmt.eprint("Prop {}: crashed; case {} {}\n",
+        [Fmt.str(name), Fmt.str(saved(ok)), Fmt.str(Buf.bytes(path))]);
+end;
+
+(* Makes the buffers and registers crashed, the first time; then sets
+   the property's name and directory. *)
+proc prepare(n: []U8);
+var root: []U8;
+begin
+    if not ready then
+        Buf.init(src.data, Heap.heap);
+        Buf.init(best, Heap.heap);
+        Buf.init(cand, Heap.heap);
+        Buf.init(dir, Heap.heap);
+        Buf.init(path, Heap.heap);
+        if Rt.atExit(crashed) # nil then Rt.stop("Prop: no room for the exit procedure"); end;
+        ready := true;
+    end;
+    name := n;
+    root := Sys.env("PROP_DIR");
+    if LEN(root) = 0 then root := Seeds; end;
+    Buf.reset(dir);
+    Buf.str(dir, root);
+    Buf.add(dir, '/');
+    Buf.str(dir, n);
+end;
+
+(* Checks the property p, called name: the saved cases, then fresh
+   ones; the first that fails is said, saved if fresh, and run aloud. *)
+proc check*(name: []U8; p: Property);
+var ok: BOOL;
+begin
+    prepare(name);
+    if savedFailing(p) then
+        Fmt.eprint("Prop {}: saved case {} fails\n", [Fmt.str(name), Fmt.str(Buf.bytes(path))]);
+        aloud(p, Buf.bytes(cand));
+    elsif freshFailing(p) then
+        ok := save(Buf.bytes(best));
+        Fmt.eprint("Prop {}: failed, seed {}; shrunk from {} to {} bytes, {} {}\n",
+            [Fmt.str(name), Fmt.uint(seed), Fmt.int(found), Fmt.int(best.len),
+             Fmt.str(saved(ok)), Fmt.str(Buf.bytes(path))]);
+        aloud(p, Buf.bytes(best));
+    end;
+    Check.mute(false);
+end;
+
+var
+    got: Buf.Buf;                                       (* what the test's properties drew with bytes *)
+
+(* A property that holds. *)
+proc holds(var s: Source);
+begin
+    Check.ok(int(s, 0, 9) <= 9, "int within its range");
+end;
+
+(* A property that fails from 1000 on. *)
+proc below1000(var s: Source);
+begin
+    Check.ok(int(s, 0, 1000000) < 1000, "int below 1000");
+end;
+
+(* A property that fails when the bytes hold an x. *)
+proc noX(var s: Source);
+begin
+    bytes(s, 100, got);
+    Check.ok(Str.find(Buf.bytes(got), "x") < 0, "no x in the bytes");
+end;
+
+(* The draws, on cases given byte by byte. *)
+proc testDraws;
+begin
+    replay(src, "");
+    Check.int("int of zeros", int(src, -5, 5), -5);
+    Check.ok(not bool(src), "bool of zero");
+    bytes(src, 10, got);
+    Check.int("bytes of zeros", got.len, 0);
+    Check.int("pick of zeros", pick(src, 3), 0);
+    Check.int("past the end, all drawn", src.drawn, 8 + 1 + 1 + 8);
+    replay(src, "\x01\x02\x03\x04\x05\x06\x07\x08");
+    Check.ok(bits(src) = 0102030405060708H, "bits big-endian");
+    replay(src, "\x00\x00\x00\x00\x00\x00\x01\x02\x00\x00\x00\x00\x00\x00\x00\x07");
+    Check.int("int from lo", int(src, 10, 1000), 10 + 258);
+    Check.int("int mod the span", int(src, 0, 4), 2);
+    replay(src, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF");
+    Check.int("int whole range", int(src, -9223372036854775807 - 1, 9223372036854775807), 9223372036854775807);
+    replay(src, "\x03");
+    Check.ok(bool(src) and not bool(src), "bool odd, then 0 past the end");
+    replay(src, "\x05a\x05b\x00");
+    bytes(src, 100, got);
+    Check.str("bytes until a byte below the mark", Buf.bytes(got), "ab");
+    replay(src, "\x80a\x80b");
+    bytes(src, 1, got);
+    Check.str("bytes at most max", Buf.bytes(got), "a");
+    Check.int("bytes at max draw no more", src.drawn, 2);
+end;
+
+(* Small private procedures. *)
+proc testHelpers;
+var v: U64; ok: BOOL; h: [16]U8;
+begin
+    h := hex(0123456789ABCDEFH);
+    Check.str("hex", h, "0123456789abcdef");
+    v, ok := decimal("18446744073709551615");
+    Check.ok(ok and (v = 0FFFFFFFFFFFFFFFFH), "decimal largest");
+    v, ok := decimal("18446744073709551616");
+    Check.ok(not ok, "decimal too big");
+    v, ok := decimal("12a");
+    Check.ok(not ok, "decimal not digits");
+    Check.ok(simpler("ab", "abc") and simpler("ab", "ac") and not simpler("ab", "ab"), "simpler");
+end;
+
+(* Fresh cases found and shrunk, with a fixed seed so the test is the
+   same each run. *)
+proc testShrink;
+var failed: BOOL;
+begin
+    prepare("int");
+    failed := freshFailing(below1000);
+    Check.mute(false);
+    Check.ok(failed, "int: a failing case found");
+    replay(src, Buf.bytes(best));
+    Check.int("int: shrunk to 1000", int(src, 0, 1000000), 1000);
+    Check.int("int: shrunk to 8 bytes", best.len, 8);
+    prepare("bytes");
+    failed := freshFailing(noX);
+    Check.mute(false);
+    Check.ok(failed, "bytes: a failing case found");
+    replay(src, Buf.bytes(best));
+    bytes(src, 100, got);
+    Check.str("bytes: shrunk to x", Buf.bytes(got), "x");
+    Check.int("bytes: shrunk to 3 bytes", best.len, 3);
+    check("holds", holds);
+end;
+
+(* A case saved, then replayed. *)
+proc testSaved;
+var failed: BOOL; h: [16]U8; b: Buf.Buf;
+begin
+    prepare("saved");
+    Check.ok(save("\x00\x00\x00\x00\x00\x00\x03\xE8"), "save");
+    h := hex(Str.hash("\x00\x00\x00\x00\x00\x00\x03\xE8"));
+    Check.ok(Str.hasSuffix(Buf.bytes(path), h), "saved under its hash");
+    Buf.init(b, Heap.heap);
+    Check.ok(Files.read(Buf.bytes(path), b), "saved file read");
+    Check.str("saved bytes", Buf.bytes(b), "\x00\x00\x00\x00\x00\x00\x03\xE8");
+    failed := savedFailing(below1000);
+    Check.mute(false);
+    Check.ok(failed, "saved case replayed and fails");
+    failed := savedFailing(holds);
+    Check.mute(false);
+    Check.ok(not failed, "saved case passes another property");
+    check("saved", holds);
+    Check.int("remove the case", Sys.remove(Buf.bytes(path)), 0);
+    Check.int("remove its directory", Sys.removeDir(Buf.bytes(dir)), 0);
+    Buf.done(b);
+end;
+
+(* The module's test, with its cases in build/proptest, removed after. *)
+proc main*;
+begin
+    _ := Sys.setEnv("PROP_DIR", "build/proptest");
+    _ := Sys.setEnv("PROP_SEED", "1");
+    _ := Sys.setEnv("PROP_CASES", "");
+    _ := Sys.setEnv("PROP_TIME", "");
+    Buf.init(got, Heap.heap);
+    prepare("draws");
+    testDraws;
+    testHelpers;
+    testShrink;
+    testSaved;
+    Check.int("remove build/proptest", Sys.removeDir("build/proptest"), 0);
+end;
+
+end Prop.

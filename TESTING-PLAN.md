@@ -27,7 +27,7 @@ after each, stop for review.
 and replay). No reals until a user needs them.
 
 **Check.** `ok(cond, what)`, `str(what, got, want)` (escaped),
-`int(what, got, want)`, `mute`/`unmute`. A failure is a block on
+`int(what, got, want)`, `mute(on)` and `mutedFailures()` for Prop. A failure is a block on
 standard error:
 
     FAIL what
@@ -44,11 +44,15 @@ nothing. The status and this text are the whole contract with
 (`int(s, lo, hi)`, `bool(s)`, `bytes(s, max, buf)`, `pick(s, n)`) and
 checks them with `Check`. A case is the bytes it drew (as Hypothesis
 does), so shrinking works on those bytes (cut chunks, zero, lower) and
-replays the property: no shrinker per type, no closures. A property
+replays the property: no shrinker per type, no closures. A number is 8
+bytes, big-endian, lowered as a whole; `bytes` puts before each byte
+one that may end them, so that they shrink one by one. A property
 reading only `bytes` is a byte fuzzer. While searching, `Check` is
 muted; the smallest failing case is run again aloud and saved to
 `test/seeds/<name>`; saved seeds are replayed first, every run.
-`PROP_SEED` replays one case, `PROP_TIME=60` fuzzes for a minute.
+`PROP_SEED` replays a run's fresh cases, `PROP_CASES` sets how many
+(100), `PROP_TIME=60` fuzzes for a minute, `PROP_DIR` moves the seeds;
+a case that crashes is saved at exit.
 
 **raztest.** Finds modules with `proc main*` in `src/` and `test/*.raz`
 (`-I`, default `src`); builds with `-Werror`; runs them, `-j n`, a

@@ -1,7 +1,8 @@
 (* Test: raztest, which builds and runs the tests of a raz program.
 
        raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] [-w]
-               [--tap] [--junit file] file.raz|dir ...
+               [--tap] [--junit file] [--seed n] [--fuzz secs]
+               file.raz|dir ...
 
    A test is a module whose main is its test: it passes if it builds
    with raz -Werror and then exits with status 0, as a program that
@@ -46,6 +47,11 @@
    each time, so a new test file is found. On a terminal the screen is
    cleared before each run.
 
+   --seed n and --fuzz secs are for tests that use Prop: they set
+   PROP_SEED, the seed of the fresh cases, and PROP_TIME, how long each
+   property is fuzzed, in the tests' environment. --fuzz raises -t to
+   secs + 60, unless -t is given.
+
    Needs only the library. Leaves out: arguments to a test, tests not
    in raz, and the number of processors as -j's default, which Sys
    can't tell: it is 1. *)
@@ -56,8 +62,10 @@ import Names := Vec([]U8), Jobs := Vec(Job), ByName := Sort([]U8, less);
 const
     TapKey = 1;                  (* the keys of --tap and --junit, which have no letter *)
     JunitKey = 2;
+    SeedKey = 3;                 (* and of --seed and --fuzz *)
+    FuzzKey = 4;
     Table: []Opt.Row = [
-        Opt.usage("", "raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] [-w] [--tap] [--junit file] file.raz|dir ..."),
+        Opt.usage("", "raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] [-w] [--tap] [--junit file] [--seed n] [--fuzz secs] file.raz|dir ..."),
         Opt.option("", 'I', "include", "dir", "look for modules in dir too, as raz -I"),
         Opt.option("", 'j', "jobs", "n", "run n tests at once (1)"),
         Opt.option("", 't', "timeout", "secs", "kill a build or run after secs (60)"),
@@ -65,7 +73,9 @@ const
         Opt.option("", 'r', "run", "text", "run only the tests whose name holds text"),
         Opt.option("", 'w', "watch", "", "run again whenever a .raz file changes"),
         Opt.option("", TapKey, "tap", "", "write TAP version 14 instead of the usual lines"),
-        Opt.option("", JunitKey, "junit", "file", "also write the results to file as JUnit XML")];
+        Opt.option("", JunitKey, "junit", "file", "also write the results to file as JUnit XML"),
+        Opt.option("", SeedKey, "seed", "n", "give Prop's fresh cases the seed n"),
+        Opt.option("", FuzzKey, "fuzz", "secs", "fuzz each Prop property for secs")];
     PollMs = 10;                 (* how long to wait between looks at the running tests *)
     WatchMs = 300;               (* how long to wait between looks at the watched files *)
     Clear = "\x1b[H\x1b[2J";     (* home the cursor and clear the screen *)
@@ -207,9 +217,26 @@ begin
     end;
 end;
 
+(* Sets the environment variable name to value, for the tests. *)
+proc setProp(name, value: []U8);
+begin
+    if Sys.setEnv(name, value) # 0 then die("can't set {}", [Fmt.str(name)]); end;
+end;
+
+(* --seed: PROP_SEED, a whole number from 0, as Prop reads it. *)
+proc setSeed(const p: Opt.Parser);
+var i: INT;
+begin
+    if LEN(p.value) = 0 then Opt.refuse(p, "a whole number"); end;
+    for i := 0 to LEN(p.value) - 1 do
+        if not Str.isDigit(p.value[i]) then Opt.refuse(p, "a whole number"); end;
+    end;
+    setProp("PROP_SEED", p.value);
+end;
+
 (* Reads the command line into the settings and the list of tests. *)
 proc readArgs;
-var p: Opt.Parser; arg: []U8; ok: BOOL;
+var p: Opt.Parser; arg: []U8; ok, timed: BOOL; fuzz: I64;
 begin
     jobs := 1; timeout := 60 * Second; outDir := "build/raztest";
     Names.init(includes, Heap.heap);
@@ -224,8 +251,12 @@ begin
         elsif p.letter = 'w' then watch := true;
         elsif p.letter = TapKey then tap := true;
         elsif p.letter = JunitKey then junit := p.value;
+        elsif p.letter = SeedKey then setSeed(p);
+        elsif p.letter = FuzzKey then fuzz := Opt.number(p, 1, 1000000); setProp("PROP_TIME", p.value);
         end;
+        timed := timed or (p.letter = 't');
     end;
+    if (fuzz > 0) and not timed then timeout := (fuzz + 60) * Second; end;
     arg, ok := Opt.operand(p);
     if not ok then Opt.fail(p, "no tests named; raztest --help says how"); end;
     repeat
