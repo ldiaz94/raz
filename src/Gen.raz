@@ -86,7 +86,7 @@ type
     end;
 
     (* The code made so far, to go back to for a second try at a body *)
-    CodeMark* = record pc*, fixups*, lines*, said*, fails*: INT; end;
+    CodeMark* = record pc*, fixups*, lines*, said*, fails*, exit*: INT; end;
 
     (* For entryPoint: the address of chunk, put in the variable whose
        chunk is into before the program starts; or, for C's symbols, the
@@ -2128,7 +2128,7 @@ end;
 proc markCode*(var m: CodeMark);
 begin
     m.pc := Chunk.pc; m.fixups := Chunk.numFixups; m.lines := Chunk.numLines; m.said := X.saidCount();
-    m.fails := numFails;
+    m.fails := numFails; m.exit := exitL;
 end;
 
 (* The code made since m taken back, as if it had never been made; the
@@ -2138,6 +2138,7 @@ begin
     Chunk.rewindTo(m.pc, m.fixups, m.lines);
     X.unsay(m.said);
     numFails := m.fails;
+    exitL := m.exit;                                    (* a try or return in it made jumps to the exit *)
 end;
 
 (* For a second try at the body: the code as it was at m, and the frame

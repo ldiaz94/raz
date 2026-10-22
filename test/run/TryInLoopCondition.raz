@@ -1,0 +1,37 @@
+(* A try in a loop's condition: the condition is compiled once to find
+   its type and taken back, and the jump to the procedure's exit that
+   its try made must go with it. *)
+module TryInLoopCondition;
+import Sys;
+
+var n: INT;
+
+(* True while n is below 3; fails when n reaches 5. *)
+proc below(): (BOOL, ERROR);
+begin
+    INC(n);
+    return n < 3, nil;
+end;
+
+proc plain(): ERROR;
+begin
+    while try below() do _ := try below(); end;
+    return nil;
+end;
+
+proc deferred(): ERROR;
+begin
+    defer n := 0;
+    while try below() do _ := try below(); end;
+    return nil;
+end;
+
+proc main*;
+begin
+    n := 0;
+    if plain() # nil then Sys.exit(1); end;
+    if deferred() # nil then Sys.exit(1); end;
+    if n # 0 then Sys.exit(1); end;
+    _ := Sys.write(Sys.stdout, "ok\n");
+end;
+end TryInLoopCondition.
