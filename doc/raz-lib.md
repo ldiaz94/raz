@@ -328,7 +328,7 @@ proc came*(sig: INT): BOOL;        (* whether sig came since the last time it wa
 proc clock*: I64;                  (* nanoseconds, on a clock that only goes forward *)
 proc now*: I64;                    (* nanoseconds since 1970-01-01, UTC *)
 proc sleep*(ms: INT);
-proc random*(b: []U8);             (* b filled with random bytes *)
+proc random*(b: []U8);             (* b filled with random bytes; stops the program if it can't be *)
 
 proc connect*(path: []U8): INT;    (* a stream socket, connected to the Unix socket at path: its fd *)
 proc connectTcp*(addr: []U8; port: INT): INT;   (* addr an IPv4 or IPv6 address, as numbers *)
