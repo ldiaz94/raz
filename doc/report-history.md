@@ -233,4 +233,10 @@ at the time.
 - **2026-10.36.** Three modules join the standard library: `Rand`, a
   seeded random number generator; `Check`, checks for a test; and
   `Prop`, property tests and fuzzing with shrinking (volume 2). They are
-  not core. The language is unchanged, and no program breaks.
+  not core. And a twelfth thaw, by the owner's word: `MIN(T)` and
+  `MAX(T)`, the smallest and largest value of an integer type, untyped
+  constants; and `CLZ(x)`, `CTZ(x)` and `POPCOUNT(x)`, which count the
+  zero bits above the highest one, below the lowest one, and the one
+  bits (or members of a set) of a word of an unsigned integer type, an
+  `INT`, and of constants are a constant (sections 4, 6.1 and 6.8). A
+  predeclared name may be hidden (section 2), so it breaks no program.

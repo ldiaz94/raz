@@ -49,7 +49,10 @@ instead (the library volume), which breaks a program that calls them
 with `ADR`. 2026-10.34 is a tenth: `PTR(s)`, the address a slice
 starts at, even an empty one (section 6.8); it breaks no program.
 2026-10.35 is an eleventh: `ROL(x, n)` and `ROR(x, n)`, a word
-rotated (sections 6.1 and 6.8); it breaks no program.
+rotated (sections 6.1 and 6.8); it breaks no program. 2026-10.36 is a
+twelfth: `MIN(T)` and `MAX(T)`, the limits of an integer type, and
+`CLZ`, `CTZ` and `POPCOUNT`, which count bits (sections 6.1 and 6.8);
+it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -377,7 +380,8 @@ procedure may be declared `forward` and defined later (section 8).
 
 **Constants** are evaluated by the compiler. Their expressions use only
 literals, other constants, operators, conversions, `SIZE`, the `LEN`
-of arrays and strings, `ROL` and `ROR`, and a variant's cases. A constant is an integer,
+of arrays and strings, `MIN`, `MAX`, `ROL`, `ROR`, `CLZ`, `CTZ`,
+`POPCOUNT`, and a variant's cases. A constant is an integer,
 a real, a `BOOL`, a name of an enumeration, a set, a string, an array,
 a record, a variant or an `ERROR`. A constant of an integer type wraps as the
 program would: `U8(250) + 10` is 4. Dividing by zero in a constant is
@@ -816,6 +820,17 @@ rotations, which machines do in one instruction, and which two shifts
 and an `or` say only at more length: `ROR(x, 7)` is `x shr 7 | x shl
 25` for a `U32` `x`.
 
+`CLZ(x)` and `CTZ(x)` (section 6.8) count the zero bits above the
+highest one in `x` and below the lowest one, and `POPCOUNT(x)` counts
+its one bits. `x` is of an unsigned integer type, and the result is an
+`INT`; for `x: U8`, `CLZ(x)` is 7 when `x` is 1, and `CLZ(x)` and
+`CTZ(x)` are 8 when `x` is 0. The width is the type's, as for `ROL`; an
+untyped constant has none, so `CLZ(1)` is an error, and `CLZ(U64(1))`
+is 63. `POPCOUNT(x)` may also take a set, and counts its members.
+`MIN(T)` and `MAX(T)` are the smallest and the largest value of the
+integer type `T`, untyped constants: `MAX(U8)` is 255 and `MIN(I16)` is
+-32768. Each of the five, given constants, is a constant (section 4).
+
 Relations compare as signed or unsigned according to the type.
 
 ### 6.2 Booleans
@@ -956,6 +971,9 @@ the same rules: `U8(300)` is 44.
 | `XCHG(p, x)` | sets `p^ := x` and returns the value before, atomically |
 | `XADD(p, x)` | adds `x` to `p^` and returns the value before, atomically |
 | `ROL(x, n)`, `ROR(x, n)` | `x` rotated left, or right, by `n` bits modulo its width; `x` of an unsigned integer type (section 6.1) |
+| `CLZ(x)`, `CTZ(x)` | the number of zero bits above the highest one in `x`, or below the lowest one, an `INT`; the width of `x`'s type if `x` is 0; `x` of an unsigned integer type |
+| `POPCOUNT(x)` | the number of one bits in `x`, or of members of the set `x`, an `INT`; `x` of an unsigned integer type or a set |
+| `MIN(T)`, `MAX(T)` | the smallest, or the largest, value of the integer type `T`, an untyped constant; any other type is an error |
 | `ARGC()` | the number of command line arguments, an `INT` |
 | `ARGV()` | the arguments, a `^^U8` (C strings) |
 

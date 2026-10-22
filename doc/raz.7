@@ -472,6 +472,19 @@ returning the value before; atomically.
 of an unsigned integer type, rotated left or right by
 .Ar n
 bits modulo its width.
+.It Fn CLZ x , Fn CTZ x
+The zero bits above the highest one, or below the lowest one, in
+.Ar x ,
+of an unsigned integer type; its width if
+.Ar x
+is 0.
+.It Fn POPCOUNT x
+The one bits in
+.Ar x ,
+of an unsigned integer type, or the members of a set.
+.It Fn MIN T , Fn MAX T
+The smallest, or the largest, value of the integer type
+.Ar T .
 .It Cm FENCE
 A full memory barrier.
 .It Fn SYSCALL n x1 ...
