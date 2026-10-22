@@ -1260,3 +1260,42 @@ note the flag first and restore that. A test, too, can't check that a
 descriptor was put back without it.
 
 Met in rnet, after a review of its STARTTLS (2026-10-22).
+
+## Base64 in `Str`
+
+Library growth that breaks no program: three procedures in `Str.raz`,
+beside `hexVal` and `toHex`, of base64 as RFC 4648 (4) has it: its
+alphabet, `A` to `Z`, `a` to `z`, `0` to `9`, `+` and `/`, and `=` to
+pad the last group to four.
+
+    (* The bytes base64 makes of n bytes: 4 for each 3, or part of 3. *)
+    proc base64Size*(n: INT): INT;
+
+    (* s in base64 into out, which holds base64Size(LEN(s)) bytes at
+       least: the bytes written. *)
+    proc base64*(s, out: []U8): INT;
+
+    (* s, base64, decoded into out, which holds LEN(s) div 4 * 3 bytes at
+       least: the bytes written; false if s isn't base64, its length
+       not a multiple of 4, a byte outside the alphabet, or padding
+       anywhere but at the end. *)
+    proc unbase64*(s, out: []U8): (INT, BOOL);
+
+The caller gives the room, as `Fmt` and the rest of `Str` have it, so
+nothing is allocated. Decoding is strict: line breaks and missing
+padding, which MIME and some programs allow, are the caller's to take
+out or put back first.
+
+Programs each carry their own copy meanwhile: rnet's `Ws`, for the
+WebSocket handshake's accept key, and `Smtp`, for AUTH PLAIN, the same
+twenty lines twice in one library; flojo, for the terminal's clipboard
+(OSC 52), its own fifteen. HTTP's Basic authentication and data URLs
+want it as well, and want decoding too, which none of those copies
+does.
+
+Left out: base64url (RFC 4648, 5), for JWTs, which is the same with
+`-` and `_` and usually no padding; a flag, or a second pair of
+procedures, if a program needs it.
+
+Met in rnet, whose `Smtp` copied `Ws`'s (2026-10-22); listed in
+`~/r/RAZ-GAPS.md` before that, from rnet and flojo.
