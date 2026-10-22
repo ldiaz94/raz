@@ -1,0 +1,5 @@
+conform/err/RotateUntyped.raz:5:14: error: ROL needs an unsigned integer, found 1
+    5 |     x := ROL(1, 3);
+      |              ^
+help: an untyped constant has no width to rotate in: give it a type, as in U32(1)
+raz: 1 error

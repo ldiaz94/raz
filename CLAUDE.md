@@ -332,3 +332,10 @@ otherwise.
   type there, and its help says it would be `nil`. A slice where its
   element's pointer is wanted, and a pointer where a slice is, are
   errors whose help names `PTR(s)` and `LEN(s)`, or `p[0..n]`.
+- `ROL(x, n)` and `ROR(x, n)` (report 2026-10.35) are done at `x`'s
+  own width, `rol al, cl` for a `U8`, with no mask of the count: x86
+  takes it modulo 32 or 64, and a byte's or a word's rotation goes
+  round modulo 8 or 16 itself. A negative count is taken modulo the
+  width as a shift's is, `n & (w - 1)`: `ROL(x, -1)` is `ROR(x, 1)`.
+  The result is a built-in's, not an operator's, and widens (`made`
+  is false). Of two constants they fold, in a constant too.

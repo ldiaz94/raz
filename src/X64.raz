@@ -28,8 +28,8 @@ const
     (* group 1 operations, the /digit of 81 and 83 *)
     aluAdd* = 0; aluOr* = 1; aluAnd* = 4; aluSub* = 5; aluXor* = 6; aluCmp* = 7;
 
-    (* the /digit of D3 and C1 *)
-    shShl* = 4; shShr* = 5; shSar* = 7;
+    (* the /digit of D3 and C1, and of D2 and C0 for a byte *)
+    shRol* = 0; shRor* = 1; shShl* = 4; shShr* = 5; shSar* = 7;
 
     NoLabel* = -1;
 
@@ -513,6 +513,23 @@ begin
     if listing then say(text2(ShiftNames[op], rn(r), num(n))); end;
     opR(0, true, 0C1H, op, r, false);
     Chunk.put1(n);
+end;
+
+(* rol or ror, op, of the size bytes of r, by cl, or by n if n >= 0:
+   D3 by cl and C1 by an imm8, D2 and C0 for a byte. Unlike a shift, a
+   rotation is done at its value's own width, rol eax and not rol rax,
+   so the bits leaving one end come back in at the other end of it. *)
+proc rotate*(op, r, size, n: INT);
+var opc: INT;
+begin
+    if listing then
+        if n < 0 then say(text2(ShiftNames[op], rnSized(r, size), "cl"));
+        else say(text2(ShiftNames[op], rnSized(r, size), num(n))); end;
+    end;
+    if n < 0 then opc := 0D2H; else opc := 0C0H; end;
+    if size > 1 then INC(opc); end;
+    opR(pfx16(size), size = 8, opc, op, r, size = 1);
+    if n >= 0 then Chunk.put1(n); end;
 end;
 
 (* F7 /ext: 2 not, 3 neg, 6 div, 7 idiv *)

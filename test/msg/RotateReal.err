@@ -1,0 +1,4 @@
+conform/err/RotateReal.raz:6:14: error: ROL needs an unsigned integer, found F64
+    6 |     x := ROL(x, 1);
+      |              ^
+raz: 1 error

@@ -1,0 +1,4 @@
+conform/err/RotateSigned.raz:6:14: error: ROR needs an unsigned integer, found I32
+    6 |     x := ROR(x, 1);
+      |              ^
+raz: 1 error

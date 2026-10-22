@@ -1,0 +1,66 @@
+(* ROL(x, n) and ROR(x, n) rotate x by n bits modulo its width (report
+   section 6.1): of each unsigned type, by 0, by the width and past it,
+   by a negative or signed count, with x and n variables or constants;
+   and a constant made by ROL. Each line is the left rotation, then the
+   right one. *)
+module Rotate;
+import Out;
+
+const
+    Eight = ROL(U32(1), 3);
+    Top = ROR(U64(1), 1) | ROL(U64(1), 64);
+
+(* the two rotations of x by n, a variable count *)
+proc u8(x: U8; n: INT);
+begin
+    Out.hex(U64(ROL(x, n)), 2); Out.str(" "); Out.hex(U64(ROR(x, n)), 2); Out.ln;
+end;
+
+proc u16(x: U16; n: I8);
+begin
+    Out.hex(U64(ROL(x, n)), 4); Out.str(" "); Out.hex(U64(ROR(x, n)), 4); Out.ln;
+end;
+
+proc u32(x: U32; n: U64);
+begin
+    Out.hex(U64(ROL(x, n)), 8); Out.str(" "); Out.hex(U64(ROR(x, n)), 8); Out.ln;
+end;
+
+proc u64(x: U64; n: I64);
+begin
+    Out.hex(ROL(x, n), 16); Out.str(" "); Out.hex(ROR(x, n), 16); Out.ln;
+end;
+
+proc uint(x: UINT; n: U8);
+begin
+    Out.hex(U64(ROL(x, n)), 16); Out.str(" "); Out.hex(U64(ROR(x, n)), 16); Out.ln;
+end;
+
+proc main*;
+var a: U8; b: U16; c: U32; d: U64; n: INT;
+begin
+    u8(81H, 1); u8(81H, 0); u8(81H, 8); u8(81H, 9); u8(81H, 33); u8(81H, -1); u8(0B4H, 4);
+    u16(8001H, 1); u16(8001H, 16); u16(8001H, 33); u16(1234H, -4);
+    u32(80000001H, 1); u32(80000001H, 32); u32(80000001H, 33); u32(12345678H, 7);
+    u64(8000000000000001H, 1); u64(8000000000000001H, 64); u64(8000000000000001H, -63);
+    u64(0123456789ABCDEFH, 12);
+    uint(1, 63); uint(1, 200);
+
+    (* a constant count, an immediate *)
+    a := 81H; b := 8001H; c := 12345678H; d := 0123456789ABCDEFH;
+    Out.hex(U64(ROL(a, 1)), 2); Out.str(" "); Out.hex(U64(ROR(a, 9)), 2); Out.str(" "); Out.hex(U64(ROL(a, -1)), 2); Out.ln;
+    Out.hex(U64(ROL(b, 17)), 4); Out.str(" "); Out.hex(U64(ROR(b, 0)), 4); Out.ln;
+    Out.hex(U64(ROR(c, 7)), 8); Out.str(" "); Out.hex(U64(ROL(c, 32)), 8); Out.ln;
+    Out.hex(ROL(d, 12), 16); Out.str(" "); Out.hex(ROR(d, 68), 16); Out.ln;
+
+    (* a constant x, a variable count *)
+    n := 3;
+    Out.hex(U64(ROL(U8(81H), n)), 2); Out.str(" "); Out.hex(U64(ROR(U32(1), n)), 8); Out.ln;
+
+    (* both constants, folded *)
+    Out.hex(U64(ROL(U8(81H), 1)), 2); Out.str(" "); Out.hex(U64(ROR(U8(81H), 1)), 2); Out.str(" ");
+    Out.hex(U64(ROR(U16(8001H), 17)), 4); Out.str(" "); Out.hex(U64(ROR(U32(12345678H), -25)), 8); Out.ln;
+    Out.int(I64(Eight)); Out.str(" "); Out.hex(Top, 16); Out.ln;
+end;
+
+end Rotate.

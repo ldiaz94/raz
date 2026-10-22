@@ -1,0 +1,8 @@
+module RotateArgs;
+proc main*;
+var x: U16;
+begin
+    x := 1;
+    x := ROL(x);
+end;
+end RotateArgs.

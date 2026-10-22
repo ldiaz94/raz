@@ -1038,6 +1038,33 @@ begin
     if o # 0 then putOff(o); end;
 end;
 
+(* ROL or ROR, by left, of the two values on top: an unsigned integer of
+   size bytes, under the count (report section 6.1). x86 takes the count
+   of rol and ror modulo 32, or 64 for a quadword, and a byte's or a
+   word's rotation then goes round modulo 8 or 16 itself: as 8 and 16
+   divide 32, that is the count modulo the width, as the report has it,
+   with no mask of the count's own, which a shift needs. A constant
+   count is cut to the width here, an imm8; 0 rotates nothing. The bits
+   above the width are zero and stay so: rol al and rol ax leave them,
+   rol eax clears them. *)
+proc rotate*(left: BOOL; size: INT);
+var c: BOOL; v: I64; r, y, op: INT;
+begin
+    if left then op := X.shRol; else op := X.shRor; end;
+    c, v := topConst();
+    if c then
+        drop();
+        r := top();
+        v := v & I64(size * 8 - 1);
+        if v # 0 then X.rotate(op, r, size, INT(v)); end;
+    else
+        r, y := operands();
+        if y # RCX then X.movRR(RCX, y); end;
+        X.rotate(op, r, size, -1);
+    end;
+    stack[depth - 1].k := kWord;
+end;
+
 (* The left op the right of the two values on top, as a BOOL *)
 proc compare*(sy: Scan.Sym; k: Kind; signed: BOOL);
 var f: BOOL; r, x, y, i: INT; v: I64; c: BOOL; m: X.Mem;

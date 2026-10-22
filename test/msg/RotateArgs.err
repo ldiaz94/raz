@@ -1,0 +1,4 @@
+conform/err/RotateArgs.raz:6:15: error: expected ",", found ")"
+    6 |     x := ROL(x);
+      |               ^
+raz: 1 error

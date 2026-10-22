@@ -1,0 +1,8 @@
+module RotateSigned;
+proc main*;
+var x: I32;
+begin
+    x := 1;
+    x := ROR(x, 1);
+end;
+end RotateSigned.

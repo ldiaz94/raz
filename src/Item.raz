@@ -1512,6 +1512,54 @@ begin
     return Sym.same(t, Sym.tInt) or Sym.same(t, Sym.tUInt);
 end;
 
+(* The x of ROL(x, n), left, or ROR(x, n), checked: of an unsigned
+   integer type, since a rotation goes round within a width, which an
+   untyped constant hasn't (report section 6.1). It is loaded, unless a
+   constant, before n is read, as the left of an operator is by op1. *)
+proc rotand*(var x: Item; left: BOOL): ERROR;
+var name, s: []U8;
+begin
+    if x.mode in {mType, mBuiltin, mNone, mCase, mStr} then return notValue(x); end;
+    if left then name := "ROL"; else name := "ROR"; end;
+    s := say2("{} needs an unsigned integer, found {}", name, what(x));
+    if x.typ = Sym.tConst then
+        return Scan.markHelp(x.pos, s,
+            say1("an untyped constant has no width to rotate in: give it a type, as in U32({})", Diag.source(x.pos)));
+    end;
+    if (x.typ^.form # Sym.fInt) or x.typ^.signed then return Scan.markAt(x.pos, s); end;
+    if x.mode # mConst then try value(x); end;
+    return nil;
+end;
+
+(* ROL(x, n), left, or ROR(x, n): x, of rotand, rotated by n modulo its
+   width. Of two constants it is folded: right by k is left by w - k,
+   and left by k is x shl k | x shr (w - k), cut to the width. *)
+proc rotate*(var x, n: Item; left: BOOL): ERROR;
+var w, k: I64; v: U64;
+begin
+    if n.mode in {mType, mBuiltin, mNone, mCase, mStr} then return notValue(n); end;
+    if not Sym.isInt(n.typ) then return Scan.markAt(n.pos, say1("expected an integer, found {}", what(n))); end;
+    x.made := false;   (* a built-in's result, not an operator's: it widens *)
+    if (x.mode = mConst) and (n.mode = mConst) then
+        w := bits(x.typ);
+        k := n.val & (w - 1);
+        if not left then k := (w - k) & (w - 1); end;
+        v := U64(x.val);
+        if k # 0 then v := v shl k | v shr (w - k); end;
+        x.val := cut(I64(v), x.typ);
+        return nil;
+    end;
+    try value(n);
+    if x.mode = mConst then
+        (* x goes on after n, which rotand didn't load, and under it *)
+        try value(x);
+        Gen.swap();
+    end;
+    Gen.rotate(left, intSize(x.typ));
+    x.mode := mStack;
+    return nil;
+end;
+
 proc convert*(var x: Item; t: ^Sym.Type): ERROR;
 var s: ^Sym.Type; r: F64;
 begin

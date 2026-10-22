@@ -1,0 +1,8 @@
+module RotateCount;
+proc main*;
+var x: U8;
+begin
+    x := 1;
+    x := ROR(x, 1.5);
+end;
+end RotateCount.

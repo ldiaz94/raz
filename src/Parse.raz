@@ -1085,6 +1085,12 @@ begin
         Item.makeConst(x, Sym.tNone, 0);
         x.mode := Item.mNone;
     | Sym.bNew: try new_(x);
+    | Sym.bRol, Sym.bRor:
+        try expression(x, nil);
+        try Item.rotand(x, which = Sym.bRol);
+        try expect(Scan.sComma);
+        try expression(y, nil);
+        try Item.rotate(x, y, which = Sym.bRol);
     | Sym.bCopy:
         try expression(x, nil);
         try Item.copyDest(x);

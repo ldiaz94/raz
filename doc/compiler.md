@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,148 | 949 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 713 | 571 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 715 | 573 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,567 | 1,292 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,561 | 1,824 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,175 | 1,747 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,260 | 3,683 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/X64.raz` | 1,584 | 1,304 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,588 | 1,841 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 2,223 | 1,785 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,266 | 3,689 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 417 | 332 | The command line |
@@ -1146,7 +1146,12 @@ the right of `*`, `div` or `mod` becomes shifts (`divPow2`), since
 are brought back to their width after each operation, which is how `U8`
 arithmetic wraps; since they are computed in 64 bits, a shift's count is
 cut to their width first, and `divTrap` makes the smallest value of one
-divided by -1 fault as an `I64`'s does.
+divided by -1 fault as an `I64`'s does. A rotation, `ROL` and `ROR`
+(`Gen.rotate`), is the one operation done at its value's own width,
+`rol al, cl` and not `rol rax, cl`, so that the bits leaving one end of
+a `U8` come back in at its other end; and its count needs no mask, as
+x86 takes it modulo 32, or 64, and a byte's or a word's rotation then
+goes round modulo 8 or 16 itself, the count modulo the width.
 
 Checks: `check` jumps, when the check fails, to code at the end of the
 procedure (`endFails`), so that a check that holds is a jump not taken.
@@ -1617,6 +1622,13 @@ would refuse the slice of all of it:
 
     ADR(s[0])    check 0 < LEN(s), then s's first word   (stops on "")
     PTR(s)       s's first word                         (no check)
+
+`ROL(x, n)` and `ROR(x, n)` (report 2026-10.35) are Item's `rotand`,
+which refuses an `x` not of an unsigned type, an untyped constant with
+help that says to give it one, and loads `x` before `n` is read, as
+`op1` loads an operator's left; and `rotate`, which folds two constants,
+right by k as left by the width less k, or has `Gen.rotate` make `rol`
+or `ror`.
 
 Two mismatches in `coerce` that people meet on the way to it, a slice
 where its element's pointer is wanted and a pointer where a slice is,

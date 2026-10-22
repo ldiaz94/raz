@@ -1,0 +1,4 @@
+conform/err/RotateCount.raz:6:17: error: expected an integer, found 1.5
+    6 |     x := ROR(x, 1.5);
+      |                 ^^^
+raz: 1 error
