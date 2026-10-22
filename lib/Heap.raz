@@ -78,6 +78,13 @@ begin
     return give(p, c);
 end;
 
+(* The start of the page holding address a; a mask, so it holds for the
+   top half of the address space, where an INT is negative *)
+proc pageOf(a: INT): INT;
+begin
+    return a - a & (Mem.Page - 1);
+end;
+
 proc free(_a: ^Mem.Allocator; p: ^U8);
 var h: ^Head; b: ^Block; c: INT;
 begin
@@ -90,7 +97,7 @@ begin
     h^.mark := 0;
     if h^.size < 0 then
         Lock.give(lock);
-        Mem.unmap(^U8(INT(h) - INT(h) mod Mem.Page), -h^.size);
+        Mem.unmap(^U8(pageOf(INT(h))), -h^.size);
     else
         c := h^.size;          (* before next, which takes its place, is set *)
         b := ^Block(h);
@@ -110,6 +117,9 @@ begin
         p[i] := Mem.alloc(heap, n, 8);
         if (p[i] = nil) or (INT(p[i]) mod 8 # 0) then Rt.stop("Heap: alloc"); end;
         for j := 0 to n - 1 do p[i][j] := U8(i); end;
+    end;
+    if (pageOf(-4095) # -4096) or (pageOf(-4096) # -4096) or (pageOf(4097) # 4096) then
+        Rt.stop("Heap: pageOf");
     end;
     for i := 0 to 39 do
         n := (i * i * 37) mod 9000 + 1;
