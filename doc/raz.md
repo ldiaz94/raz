@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.34 of the report; section 11 says where each
+This is version 2026-10.35 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -48,6 +48,8 @@ what they work on take a `var` parameter, a `const` one or a value
 instead (the library volume), which breaks a program that calls them
 with `ADR`. 2026-10.34 is a tenth: `PTR(s)`, the address a slice
 starts at, even an empty one (section 6.8); it breaks no program.
+2026-10.35 is an eleventh: `ROL(x, n)` and `ROR(x, n)`, a word
+rotated (sections 6.1 and 6.8); it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -375,7 +377,7 @@ procedure may be declared `forward` and defined later (section 8).
 
 **Constants** are evaluated by the compiler. Their expressions use only
 literals, other constants, operators, conversions, `SIZE`, the `LEN`
-of arrays and strings, and a variant's cases. A constant is an integer,
+of arrays and strings, `ROL` and `ROR`, and a variant's cases. A constant is an integer,
 a real, a `BOOL`, a name of an enumeration, a set, a string, an array,
 a record, a variant or an `ERROR`. A constant of an integer type wraps as the
 program would: `U8(250) + 10` is 4. Dividing by zero in a constant is
@@ -803,6 +805,17 @@ any integer type. The result has `x`'s type, cut to its width: in
 `U8`, `0C0H shl 1` is `80H`. If `x` is an untyped constant, so is the
 result, and it doesn't wrap: `1 shl 9` is 512, which doesn't fit a `U8`.
 
+`ROL(x, n)` and `ROR(x, n)` (section 6.8) rotate `x` left and right
+by `n` bits modulo its width: the bits shifted out at one end come back
+in at the other. For `x: U8` holding `81H`, `ROL(x, 1)` is `03H` and
+`ROR(x, 1)` is `0C0H`. `x` is of an unsigned integer type, `U8`, `U16`,
+`U32`, `U64` or `UINT`, and the result has its type; `n` may be of any
+integer type. An untyped constant has no width, so `ROL(1, 3)` is an
+error, and `ROL(U32(1), 3)` is 8. Hashes and ciphers are written with
+rotations, which machines do in one instruction, and which two shifts
+and an `or` say only at more length: `ROR(x, 7)` is `x shr 7 | x shl
+25` for a `U32` `x`.
+
 Relations compare as signed or unsigned according to the type.
 
 ### 6.2 Booleans
@@ -942,6 +955,7 @@ the same rules: `U8(300)` is 44.
 | `CAS(p, old, new)` | if `p^ = old`, sets `p^ := new` and returns `true`; atomically |
 | `XCHG(p, x)` | sets `p^ := x` and returns the value before, atomically |
 | `XADD(p, x)` | adds `x` to `p^` and returns the value before, atomically |
+| `ROL(x, n)`, `ROR(x, n)` | `x` rotated left, or right, by `n` bits modulo its width; `x` of an unsigned integer type (section 6.1) |
 | `ARGC()` | the number of command line arguments, an `INT` |
 | `ARGV()` | the arguments, a `^^U8` (C strings) |
 

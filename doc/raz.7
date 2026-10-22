@@ -467,6 +467,11 @@ and return true; atomically.
 Set, or add to,
 .Ar p Ns ^ ,
 returning the value before; atomically.
+.It Fn ROL x n , Fn ROR x n
+.Ar x ,
+of an unsigned integer type, rotated left or right by
+.Ar n
+bits modulo its width.
 .It Cm FENCE
 A full memory barrier.
 .It Fn SYSCALL n x1 ...

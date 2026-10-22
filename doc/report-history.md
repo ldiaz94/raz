@@ -221,3 +221,9 @@ at the time.
   `Info` gains `seconds` and `special`, for a program that copies files
   whole: their times in any year, their set-user-id, set-group-id and
   sticky bits, and a close that fails (volume 2). It breaks no program.
+- **2026-10.35.** A thaw, the eleventh, by the owner's word, asked for
+  by sauce and rcrypto, whose hashes call a procedure for each
+  rotation: `ROL(x, n)` and `ROR(x, n)` rotate a word of an unsigned
+  integer type left and right by `n` bits modulo its width, and of
+  constants are a constant (sections 4, 6.1 and 6.8). A predeclared
+  name may be hidden (section 2), so it breaks no program.

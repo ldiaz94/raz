@@ -916,7 +916,11 @@ above; `Str.be` is not, a loop over its bytes, and would want a
 `Str.be32` of four bytes that only returns, or the loop unrolled where
 it is. A rotate of the language's own, an operator or a built-in
 procedure, would serve SHA, the other hashes and checksums without
-any inlining, but it is a language change, for a thaw. On 100 MB of
+any inlining, but it is a language change, for a thaw. **Taken into
+the report (2026-10.35):** the built-ins `ROL(x, n)` and `ROR(x, n)`,
+by the owner's word, for review; the compiler is next. rcrypto met the
+same (its `RAZ-NOTES.md`): SHA-256 at 32 MB/s with `ror` a procedure,
+80 with it written out. On 100 MB of
 new files `sauce commit` takes 1.2 s against the Pascal sauce's 0.7,
 and `verify` 0.95 s against 0.48: the hashing.
 
