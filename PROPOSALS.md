@@ -1558,3 +1558,35 @@ enumeration has `LEN`-like answers of its own, and a real's limits
 taken among the built-ins, which a program can't declare anyway.
 
 Met in mosaico, rfuzz and raudio.
+
+## `OFFSET(T, f)`, and `SIZE` of a field
+
+A record handed to C by pointer must match C's struct byte for byte;
+a field one word off is read wrong with no error. mosaico and rx11 test
+their Xlib records against C's `offsetof` and `sizeof`, and today
+measure an offset on a dummy variable, `INT(ADR(v.f)) - INT(ADR(v))`:
+a run-time value, a variable declared for it, and pointer arithmetic
+where the test means "where `f` is". rx11's `test/layout.sh` copies
+each field's type out of the source text, since `SIZE` takes only a
+type.
+
+The proposal, two additions to the built-in procedures:
+
+| Call | Result |
+|---|---|
+| `OFFSET(T, f)` | the byte offset of field `f` in the record type `T`, an untyped constant |
+| `SIZE(T.f)` | the size of field `f` of the record type `T`, an untyped constant |
+
+`f` is one field name; a path, `OFFSET(T, a.b)`, would be the sum of
+two and is left out, and so is a variant, whose cases share their
+place. `SIZE` still takes no
+variable: `T.f` names a type's field, not storage, so `SIZE` stays a
+question about types.
+
+C has `offsetof`; Modula-2 and Oberon kept such things in `SYSTEM`,
+and raz has no `SYSTEM`. It is constant folding of what the compiler
+already knows, and it is also what a view through raw memory wants,
+`mem[a + OFFSET(Hdr, len)].(U32)`, in place of a number, and what a
+kernel's `code` procedures would want if their operands take constants.
+
+Met in mosaico and rx11.
