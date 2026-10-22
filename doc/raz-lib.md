@@ -874,6 +874,14 @@ followed by anything but `}` or a width is dropped, as before.
 writes ` 3:07 U+00E9`.
 
 **Files and Opt** are what most programs need of their command line.
+`Files.writeAll` writes again after a short write or a signal, as a
+pipe or a socket needs, and `write` is made over it. `realPath` adds
+to `b` the absolute path of what `path` names, with no `.`, `..` or
+symbolic link in it, and leaves the working directory alone: -2
+(`ENOENT`) if a part isn't there, -20 (`ENOTDIR`) if a file is used as
+a directory, and -40 (`ELOOP`) after 40 links. `b` is left as it was
+on an error. `removeTree` removes a file, or a directory with all it
+holds; a symbolic link is removed itself and never followed.
 
 ```
 module Files;
@@ -881,6 +889,9 @@ proc arg*(i: INT): []U8;                     (* argument i; 0 is the program's n
 proc read*(path: []U8; var b: Buf.Buf): BOOL;   (* the whole file added to b *)
 proc load*(path: []U8; var b: Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
 proc write*(path, data: []U8): BOOL;         (* the file made to hold data; false if it or its close failed *)
+proc writeAll*(fd: INT; s: []U8): INT;       (* all of s written to fd; 0, or minus the errno *)
+proc realPath*(path: []U8; var b: Buf.Buf): INT;   (* the absolute path of path, plain, added to b; 0, or minus an errno *)
+proc removeTree*(path: []U8): INT;           (* the file, or the directory and all in it, removed; 0, or minus the first errno *)
 
 module Opt;
 type
