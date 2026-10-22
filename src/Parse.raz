@@ -3261,7 +3261,7 @@ end;
 
 (* The part of type t at offset off of the constant *)
 proc constPart(t: PType; off: INT): ERROR;
-var e: TItem; f: PObj; k: INT; r: F32; start: Diag.Pos; src: ^U8; st: INT;
+var e: TItem; f: PObj; k: INT; r: F32; start: Diag.Pos; src: ^U8; st, fx: INT;
 begin
     start := Scan.tokPos();
     if (t^.form = Sym.fSlice) and (Scan.tok = Scan.sLbrak) and (literalLength() = 0) then
@@ -3331,7 +3331,17 @@ begin
     elsif t^.form = Sym.fVariant then
         return Scan.markAt(e.pos, say1("expected a case of {}", Sym.typeName(t)));
     elsif (t^.form = Sym.fArray) or (t^.form = Sym.fRecord) then
-        return Scan.markAt(e.pos, say1("expected a literal of {}", Sym.typeName(t)));
+        (* a literal, or the whole of a constant of the type: its bytes and addresses are copied *)
+        if (e.mode # Item.mVar) or (e.obj = nil) or (e.obj^.cls # Sym.oConst) or (e.typ # e.obj^.typ)
+            or not Sym.same(e.typ, t) then
+            return Scan.markAt(e.pos, say1("expected a literal of {}", Sym.typeName(t)));
+        end;
+        st := Chunk.chunks[e.chunk].start;
+        COPY(constBytes[off..off + INT(t^.size)], Chunk.rodata[st..st + INT(t^.size)]);
+        fx := Chunk.chunks[e.chunk].firstFix;
+        for k := fx to fx + Chunk.chunks[e.chunk].numFix - 1 do
+            try constFix(off + Chunk.dataFixups[k].at, Chunk.dataFixups[k].chunk);
+        end;
     else
         try Item.coerce(e, t);
         if (e.mode = Item.mProc) and not e.obj^.ext then

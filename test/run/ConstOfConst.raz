@@ -1,0 +1,20 @@
+(* A named record or array constant as an element of an array constant,
+   and a constant with an address in it. *)
+module ConstOfConst;
+import Sys;
+
+type R = record a: INT; s: []U8; end;
+
+const X: R = {a: 1, s: "one"};
+const Row: [2]INT = [3, 4];
+const Y: [2]R = [X, {a: 2, s: "two"}];
+const Grid: [2][2]INT = [Row, [5, 6]];
+
+proc main*;
+begin
+    _ := Sys.write(Sys.stdout, Y[0].s);
+    _ := Sys.write(Sys.stdout, Y[1].s);
+    _ := Sys.write(Sys.stdout, "\n");
+    if (Y[0].a # 1) or (Y[1].a # 2) or (Grid[0][1] # 4) or (Grid[1][0] # 5) then Sys.exit(1); end;
+end;
+end ConstOfConst.
