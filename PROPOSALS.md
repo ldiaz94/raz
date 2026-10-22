@@ -1509,3 +1509,52 @@ Open: `Fmt.real` writes its exponent `e`, the language reads only `E`,
 so a printed value can't be pasted into code (rayo). Writing `E` would
 change output a test may compare; reading `e` too would change the
 report.
+
+## Selectors after a `^T(e)` conversion
+
+A conversion through a pointer type's name is a designator, so
+selectors follow it: with `PR = ^R` and `PU = ^U8`, `PR(ADR(r))^.b`
+and `PU(ADR(r))[0..4]` compile today. The same conversion written out
+is the grammar's own factor, `"^" ["VOLATILE"] Type "(" Expr ")"`, and
+takes none: `^R(ADR(r))^.b` is "a conversion can't be dereferenced",
+and `^U8(ADR(r))[0..4]` is "can't use ^U8 as []U8", the slice read as
+part of the operand. So a program declares a pointer type, or a
+variable, for one read through a C struct or one slice of raw memory.
+
+The proposal: that factor takes selectors, as a named conversion does.
+
+    Factor = ... | "^" ["VOLATILE"] Type "(" Expr ")" { Selector } | ...
+
+`^U8(p)[0..n]` is a slice of `n` bytes from `p`; `^XMapEvent(ADR(ev))^.window`
+is one field of an event. Nothing new is checked or left unchecked: the
+selectors are a pointer's, as they are after `PU(p)`. A statement still
+starts with a name or `try`, so `^T(x)^ := v` stays out (the report
+says so already, and a view, `mem[a].(I64) := v`, writes it). What is
+text with an error today gets a meaning, and nothing else changes.
+
+Met in znaczy, raudio, rcrypto and linia (the slice) and rx11 (the
+dereference).
+
+## The limits of an integer type: `MIN(T)` and `MAX(T)`
+
+Programs write `7FFFFFFFFFFFFFFFH` for the largest `I64` and `-10^12`
+for "below anything real", and nothing ties either to its type: change
+a field from `I64` to `I32` and the constant still compiles, wrong.
+Oberon has `MIN` and `MAX` of a basic type for this.
+
+The proposal: two built-in procedures, for an integer type `T` only:
+
+| Call | Result |
+|---|---|
+| `MIN(T)` | the smallest value of `T`, an untyped constant |
+| `MAX(T)` | the largest value of `T`, an untyped constant |
+
+`MIN(U64)` is 0, `MAX(U64)` is 18446744073709551615, `MIN(I64)` is
+-9223372036854775808, so the constants need the compiler's
+`U64`-and-`I64` range, which constant folding already has. A name for
+another type, an enumeration, a set or a real, is an error: an
+enumeration has `LEN`-like answers of its own, and a real's limits
+(an infinity, the largest finite) are a separate question. Two words
+taken among the built-ins, which a program can't declare anyway.
+
+Met in mosaico, rfuzz and raudio.
