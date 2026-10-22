@@ -1,0 +1,98 @@
+(* A seeded random number generator, splitmix64: one U64 of state, a
+   few steps to a number. The same seed gives the same numbers, on
+   every machine, so a failing run can be replayed. It is fast and
+   passes the usual statistical tests, but it is not for secrets.
+   Needs Sys (for a fresh seed) and Rt. Leaves out reals, shuffles and
+   other distributions. *)
+module Rand;
+import Sys, Rt;
+
+type
+    Rand* = record
+        state: U64;                                     (* advances by a constant at each draw *)
+    end;
+
+(* Starts r at seed; any seed, 0 too, will do. *)
+proc init*(var r: Rand; seed: U64);
+begin
+    r.state := seed;
+end;
+
+(* The next number, all 64 bits of it. *)
+proc next*(var r: Rand): U64;
+var z: U64;
+begin
+    INC(r.state, 09E3779B97F4A7C15H);
+    z := r.state;
+    z := (z xor (z shr 30)) * 0BF58476D1CE4E5B9H;
+    z := (z xor (z shr 27)) * 094D049BB133111EBH;
+    return z xor (z shr 31);
+end;
+
+(* A number from 0 to n - 1, each as likely as another. It draws again
+   when it falls in the short last run of the 64-bit range, which n
+   does not divide, so no number is favoured. n = 0 stops the program. *)
+proc below*(var r: Rand; n: U64): U64;
+var x, short: U64;
+begin
+    if n = 0 then Rt.stop("Rand.below: n is 0"); end;
+    short := (0 - n) mod n;                             (* 2^64 mod n numbers are left over *)
+    x := next(r);
+    while x < short do x := next(r); end;
+    return x mod n;
+end;
+
+(* A number from lo to hi, both included; lo must not exceed hi. The
+   span is taken as a U64, so the whole I64 range works. *)
+proc range*(var r: Rand; lo, hi: I64): I64;
+var span: U64;
+begin
+    if lo > hi then Rt.stop("Rand.range: lo > hi"); end;
+    span := U64(hi) - U64(lo);
+    if span = 0FFFFFFFFFFFFFFFFH then return I64(next(r)); end;
+    return I64(U64(lo) + below(r, span + 1));
+end;
+
+(* A fresh seed from the kernel, for a program to print and, to replay
+   a run, to be given back to init. *)
+proc seed*(): U64;
+var b: [8]U8; i: INT; s: U64;
+begin
+    Sys.random(b);
+    s := 0;
+    for i := 0 to 7 do s := s shl 8 | U64(b[i]); end;
+    return s;
+end;
+
+(* The module's test. *)
+proc main*;
+var r, q: Rand; i: INT; x: U64; v: I64; lo, hi: BOOL;
+begin
+    init(r, 0);
+    if (next(r) # 0E220A8397B1DCDAFH) or (next(r) # 06E789E6AA1B965F4H)
+        or (next(r) # 006C45D188009454FH) then
+        Rt.stop("Rand.next: splitmix64 from 0");
+    end;
+    init(r, 42); init(q, 42);
+    for i := 1 to 100 do
+        if next(r) # next(q) then Rt.stop("Rand: same seed, different numbers"); end;
+    end;
+    for i := 1 to 1000 do
+        if below(r, 1) # 0 then Rt.stop("Rand.below 1"); end;
+        if below(r, 3) >= 3 then Rt.stop("Rand.below 3"); end;
+        x := below(r, 08000000000000001H);
+        if x >= 08000000000000001H then Rt.stop("Rand.below 2^63+1"); end;
+    end;
+    lo := false; hi := false;
+    for i := 1 to 1000 do
+        v := range(r, -2, 2);
+        if (v < -2) or (v > 2) then Rt.stop("Rand.range -2..2"); end;
+        lo := lo or (v = -2); hi := hi or (v = 2);
+    end;
+    if not (lo and hi) then Rt.stop("Rand.range: ends not reached"); end;
+    for i := 1 to 100 do v := range(r, -9223372036854775807 - 1, 9223372036854775807); end;
+    if range(r, 7, 7) # 7 then Rt.stop("Rand.range 7..7"); end;
+    x := seed();
+end;
+
+end Rand.
