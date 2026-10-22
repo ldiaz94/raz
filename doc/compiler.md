@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 11,500 lines of code (the
+The compiler is twelve files of raz, about 11,500 lines of code (the
 budget is 14,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -23,10 +23,11 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,567 | 1,292 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,561 | 1,824 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,175 | 1,747 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,260 | 3,683 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,258 | 3,681 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Raz.raz` | 417 | 332 | The command line |
+| `src/Host.raz` | 90 | 58 | The system running the compiler |
+| `src/Raz.raz` | 390 | 313 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -1534,7 +1535,10 @@ Last, modules, at the end of the file. `compileFile` reads one module.
 `importModule` finds a module's file, trying the target's names first,
 and compiles it if it isn't yet. `checkOneModule` first makes sure no
 later directory has the module too, unless the file is a link to one
-of its files there; `checkSiblings` then reads the files for other
+of its files there. File identity comes from `Sys.info`: its device and
+inode name the file, following a symbolic link. The parser knows no
+operating-system metadata record or syscall number. `checkSiblings`
+then reads the files for other
 targets beside it, declarations only, and `compareIface` holds them
 to the same exports by their fingerprints. A generic module is
 compiled once per distinct list of arguments, where it is first used.
@@ -1740,8 +1744,9 @@ each with the variable it goes in, found by name (`addCLink`): `exit`
 for `Rt.cExit`, and, if the program has `Thread`, `pthread_create` and
 `pthread_join` for `Thread.cCreate` and `Thread.cJoin`. Then it has
 gen's `entryPoint` write the entry point, and `Link.markLive` mark what it
-reaches. The program is `proc main*: INT`; where raz is, for the library
-beside it, it reads from `/proc/self/exe`, and the version it prints is
+reaches. The program is `proc main*: INT`; `Host` supplies its arguments
+and the library directory. The Linux host finds that directory through
+`/proc/self/exe`, falling back to argument zero. The version it prints is
 the module `Version`, which the build makes from `git describe`. On a target
 without reals (`HasReals`, a constant of `Parse`; x86-64 has
 them), a live chunk that computes with one is an error at the first
@@ -1775,6 +1780,53 @@ colon-separated list, with empty entries ignored. `Parse.setUserDirs`
 keeps its slices in `userDirs`, separate from the 16 `-I` directories. `searchDir`
 puts them between those and the standard library, for both finding
 modules and checking duplicate names. No subdirectories are searched.
+
+## Host.raz: the system running the compiler
+
+The host is the system running raz; the target is the system its program will
+run on. `Host.raz` keeps the compiler's host-specific work together. Its Linux
+implementation uses the same command line, library discovery, loader probes,
+memfd execution and executable permissions as before. It changes no language
+rule or generated calling convention.
+
+`Raz` reads arguments through `Host.argCount` and `Host.arg`, and gets the
+standard library directory from `Host.libraryDir`. Argument and directory
+slices must remain valid for the compiler's run. `Host.preferMusl` selects the
+default C library when the command line has not selected one. `canRun` and
+`canLinkC` say whether this host supports replacing the compiler with a program
+and producing an executable that uses C. A refused `raz run` is diagnosed before
+reading its source; C support is checked when the used modules are known.
+
+Running has two steps so that `Host` need not depend on `Elf`.
+`prepareRun` returns a temporary output path and an `ERROR`, nil on success.
+Its error carries the host-specific failure message. `Raz` writes the executable
+there, then `execute(path, first)` replaces the compiler: argument `first`,
+the main source path, becomes the
+program's argument zero, followed by the remaining arguments. On success it
+never returns; on failure it returns an error for the driver to report. The
+Linux implementation keeps the descriptor open until exec, whose close-on-exec
+flag removes it, or until the compiler exits after an error.
+
+`Elf` gives its finished bytes to `Host.writeExecutable`. On Linux this writes
+the file and sets mode 755; both must succeed. A host with explicit durable-file
+semantics can sync here, and a host without permission bits can implement its
+own executable policy. Failure must be reported rather than hidden.
+
+To build the compiler for another host, stage its sources with a replacement
+`Host.raz` beside `Raz.raz`, and supply that host's `Sys`, `Rt` and other required
+library implementations. The main source directory is searched first, so an
+`-I` directory alone cannot replace `src/Host.raz`. Preserve every export above;
+there is no Moss syscall or kernel ABI in the compiler. Ordinary reads,
+directory enumeration, environment queries and working-directory queries still
+use `Sys` directly. Source identity uses `Sys.info`'s `dev` and `ino` fields:
+returning zeroes for every file would lose duplicate-module checking.
+
+Host replacement alone does not change the output target. A freestanding
+x86-64 program still needs the right runtime sources and explicit `-bare`, `-s`
+and `-base` options. Target module names, the x86-64 encoder and ELF format keep
+their existing meaning. A native compiler port must separately establish its
+memory, stack, file and execution limits; this boundary is not a claim that
+such a port already runs.
 
 ## This compiler's choices
 

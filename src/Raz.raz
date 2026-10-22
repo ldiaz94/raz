@@ -29,13 +29,10 @@
    Leaves out: the work itself; the other units compile, link and
    write, and this only reads the command line and runs them in order. *)
 module Raz;
-import Sys, Out, Version, Files, Fmt, Diag, Scan, Sym, Chunk, X64, Gen, Parse, Link, Elf;
+import Sys, Out, Version, Host, Fmt, Diag, Scan, Sym, Chunk, X64, Gen, Parse, Link, Elf;
 
 const
     Report = "2026-10.34";   (* the version of doc/raz.md it follows *)
-    MemfdCreate = 319;       (* the system call *)
-    MfdCloexec = 1;          (* an ELF still executes: the kernel opens it first *)
-    Execve = 59;
 
 var
     links: [4]Gen.Link;
@@ -145,15 +142,6 @@ begin
     Out.flush();
 end;
 
-(* Whether a program that uses C is linked against musl when -libc
-   doesn't say: only if the machine has musl's loader and not glibc's,
-   as Alpine has *)
-proc muslHere: BOOL;
-begin
-    return (Sys.access("/lib64/ld-linux-x86-64.so.2", {}) # 0)
-        and (Sys.access("/lib/ld-musl-x86_64.so.1", {}) = 0);
-end;
-
 (* The module named n, or nil if the program has none *)
 proc moduleNamed(n: []U8): ^Sym.Module;
 var m: ^Sym.Module;
@@ -186,16 +174,6 @@ begin
     cLinks[numCLinks].chunk := Chunk.externChunk(internStr(sym));
     cLinks[numCLinks].into := v^.chunk;
     INC(numCLinks);
-end;
-
-(* s as a C string, in memory that is never freed *)
-proc cstr(s: []U8): ^U8;
-var p: ^U8;
-begin
-    p := Scan.grab(LEN(s) + 1);
-    if LEN(s) > 0 then COPY(p[0..LEN(s)], s); end;
-    p[LEN(s)] := 0;
-    return p;
 end;
 
 (* User libraries are source directories, not packages to discover
@@ -247,8 +225,8 @@ end;
 
 proc main*: INT;
 var
-    path, outPath, s: []U8; dir: []U8;
-    i, first, entry, fd, last, errno, base: INT;
+    path, outPath, s: []U8;
+    i, first, entry, last, base: INT;
     m, rt, thread: ^Sym.Module; mainObj: ^Sym.Obj;
     run, noProfile, listing, dynamic, libcSaid, ok, bare: BOOL; err: ERROR;
 begin
@@ -258,17 +236,17 @@ begin
     bare := false;
     listing := false;
     libcSaid := false;
-    run := (ARGC() >= 2) and (Files.arg(1) = "run");
+    run := (Host.argCount() >= 2) and (Host.arg(1) = "run");
     if run then i := 2; else i := 1; end;
-    while i < ARGC() do
-        s := Files.arg(i);
+    while i < Host.argCount() do
+        s := Host.arg(i);
         if s = "-I" then
             INC(i);
             if Parse.numInc > 15 then Diag.fatal("more than 16 -I directories"); end;
-            Parse.addIncDir(Files.arg(i));
+            Parse.addIncDir(Host.arg(i));
         elsif s = "-o" then
             INC(i);
-            outPath := Files.arg(i);
+            outPath := Host.arg(i);
         elsif s = "-Werror" then
             Diag.setWerror(true);
         elsif s = "-S" then
@@ -278,10 +256,10 @@ begin
             Elf.setStripped(true);
         elsif s = "-base" then
             INC(i);
-            base, ok := address(Files.arg(i));
+            base, ok := address(Host.arg(i));
             Link.setBase(base);
             if not ok or (base mod Link.Page # 0) then
-                Diag.fatal(say1("-base {}: expected an address, a multiple of 4096 as raz writes it, as 0FFFFFFFF80000000H", Files.arg(i)));
+                Diag.fatal(say1("-base {}: expected an address, a multiple of 4096 as raz writes it, as 0FFFFFFFF80000000H", Host.arg(i)));
             end;
         elsif s = "-noprofile" then
             noProfile := true;
@@ -289,7 +267,7 @@ begin
             bare := true;
         elsif s = "-libc" then
             INC(i);
-            s := Files.arg(i);
+            s := Host.arg(i);
             if (s # "glibc") and (s # "musl") then Diag.fatal(say1("unknown C library {}: glibc or musl", s)); end;
             Elf.setMusl(s = "musl");
             libcSaid := true;
@@ -313,14 +291,10 @@ begin
         usage();
         return 1;
     end;
+    if run and not Host.canRun() then Diag.fatal("this compiler host does not support raz run"); end;
     if run and (LEN(outPath) > 0) then Diag.fatal("raz run takes no -o"); end;
-    if not libcSaid then Elf.setMusl(muslHere()); end;
-    (* where raz is, as the system says, for the library beside it *)
-    dir, errno := Sys.readLink("/proc/self/exe");
-    if errno # 0 then dir := Files.arg(0); end;
-    i := LEN(dir);
-    while (i > 0) and (dir[i - 1] # '/') do DEC(i); end;
-    if i = 0 then Parse.setLibDir("lib"); else Parse.setLibDir(say1("{}lib", dir[0..i])); end;
+    if not libcSaid then Elf.setMusl(Host.preferMusl()); end;
+    Parse.setLibDir(Host.libraryDir());
     userLibraries();
     if LEN(outPath) = 0 then
         outPath := path;
@@ -373,6 +347,7 @@ begin
        Thread, if the program has it, the calls that make and join C's
        threads, so that the C library knows of them *)
     dynamic := usesC();
+    if dynamic and not Host.canLinkC() then Diag.fatal("this compiler host does not support C programs"); end;
     if dynamic and bare then Diag.fatal("-bare: the program uses C, which needs Linux and its loader"); end;
     numCLinks := 0;
     if dynamic then
@@ -402,12 +377,10 @@ begin
 
     Elf.setMainPath(path);
     if run then
-        (* argv from Main.raz on is the program's, ending in nil as it must *)
-        fd := SYSCALL(MemfdCreate, cstr("raz"), MfdCloexec);
-        if fd < 0 then Diag.fatal("can't create a memfd"); end;
-        outPath := Diag.say("/proc/self/fd/{}", [Fmt.int(fd)]);
+        outPath, err := Host.prepareRun();
+        if err # nil then Diag.fatal(MSG(err)); end;
         Elf.writeElf(outPath, entry);
-        _ := SYSCALL(Execve, cstr(outPath), ARGV() + first, ARGV() + (ARGC() + 1));
+        _ := Host.execute(outPath, first);
         Diag.fatal(say1("can't run {}", path));
     end;
     Elf.writeElf(outPath, entry);

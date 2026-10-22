@@ -1,0 +1,64 @@
+(* A compiler host for tests: arguments and policy come from named
+   environment entries, not the process's argv or executable path.
+   Linux still supplies the runtime and ordinary files. *)
+module Host;
+import Sys, Files;
+const PrepareFailed: ERROR = "host run preparation failed";
+
+proc argCount*: INT;
+var s: []U8; n, i: INT;
+begin
+    s := Sys.env("RAZ_TEST_COUNT");
+    for i := 0 to LEN(s) - 1 do n := n * 10 + INT(s[i]) - INT('0'); end;
+    return n;
+end;
+
+proc arg*(i: INT): []U8;
+begin
+    match i of
+    | 0: return Sys.env("RAZ_TEST_ARG0");
+    | 1: return Sys.env("RAZ_TEST_ARG1");
+    | 2: return Sys.env("RAZ_TEST_ARG2");
+    | 3: return Sys.env("RAZ_TEST_ARG3");
+    | 4: return Sys.env("RAZ_TEST_ARG4");
+    | 5: return Sys.env("RAZ_TEST_ARG5");
+    | 6: return Sys.env("RAZ_TEST_ARG6");
+    | 7: return Sys.env("RAZ_TEST_ARG7");
+    | 8: return Sys.env("RAZ_TEST_ARG8");
+    | 9: return Sys.env("RAZ_TEST_ARG9");
+    | else: return "";
+    end;
+end;
+
+proc libraryDir*: []U8;
+begin return Sys.env("RAZ_TEST_LIBRARY"); end;
+
+proc preferMusl*: BOOL;
+begin return Sys.env("RAZ_TEST_MUSL") = "yes"; end;
+
+proc canRun*: BOOL;
+begin return Sys.env("RAZ_TEST_RUN") = "yes"; end;
+
+proc canLinkC*: BOOL;
+begin return Sys.env("RAZ_TEST_C") = "yes"; end;
+
+proc prepareRun*: ([]U8, ERROR);
+begin
+    if Sys.env("RAZ_TEST_PREPARE") = "refuse" then return "", PrepareFailed; end;
+    return Sys.env("RAZ_TEST_RUN_PATH"), nil;
+end;
+
+proc execute*(path: []U8; first: INT): INT;
+begin
+    if first # 2 then return -22; end;
+    _ := Files.write(Sys.env("RAZ_TEST_EXEC_MARKER"), path);
+    return -38;
+end;
+
+proc writeExecutable*(path, data: []U8): BOOL;
+begin
+    if Sys.env("RAZ_TEST_WRITE") = "refuse" then return false; end;
+    return Files.write(path, data) and (Sys.chmod(path, 1EDH) = 0);
+end;
+
+end Host.

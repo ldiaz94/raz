@@ -325,6 +325,7 @@ if test/editors.sh; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
 
 # Installed source libraries: default, explicit and isolated lookup.
 if python3 test/library-path.py "$raz"; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
+if python3 test/compiler-host.py "$raz"; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
 
 echo "$pass passed, $fail failed"
 [ $fail = 0 ]

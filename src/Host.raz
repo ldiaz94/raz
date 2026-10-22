@@ -1,0 +1,90 @@
+(* Host: what the compiler asks of the machine it runs on, beyond Sys.
+
+   This implementation is for Linux. A compiler built for another host stages
+   a replacement beside its sources; the language and generated code do not
+   depend on Linux's argument pointers, procfs or executable permissions.
+
+   Depends on: Sys and Files for Linux services, Scan for memory that lasts
+   until exit, and Diag and Fmt for paths. Leaves out: compilation and ELF
+   layout, which belong to the driver and Elf. *)
+module Host;
+import Sys, Files, Fmt, Diag, Scan;
+
+const CreateRun: ERROR = "can't create a memfd";
+
+(* Arguments stay valid until the compiler exits. *)
+proc argCount*: INT;
+begin
+    return ARGC();
+end;
+
+proc arg*(index: INT): []U8;
+begin
+    return Files.arg(index);
+end;
+
+(* The standard library beside the compiler, even when argv[0] names a link.
+   Without procfs, retain the existing fallback to the spelling of argv[0]. *)
+proc libraryDir*: []U8;
+var path: []U8; error, i: INT;
+begin
+    path, error := Sys.readLink("/proc/self/exe");
+    if error # 0 then path := arg(0); end;
+    i := LEN(path);
+    while (i > 0) and (path[i - 1] # '/') do DEC(i); end;
+    if i = 0 then return "lib"; end;
+    return Diag.say("{}lib", [Fmt.str(path[0..i])]);
+end;
+
+(* Alpine has musl's loader and not glibc's. An explicit -libc wins. *)
+proc preferMusl*: BOOL;
+begin
+    return (Sys.access("/lib64/ld-linux-x86-64.so.2", {}) # 0)
+        and (Sys.access("/lib/ld-musl-x86_64.so.1", {}) = 0);
+end;
+
+proc canRun*: BOOL;
+begin
+    return true;
+end;
+
+proc canLinkC*: BOOL;
+begin
+    return true;
+end;
+
+(* Linux needs mode 755 after writing. Other hosts can require a durable sync
+   instead, without inventing Unix permissions in their file system. *)
+proc writeExecutable*(path, data: []U8): BOOL;
+begin
+    return Files.write(path, data) and (Sys.chmod(path, 1EDH) >= 0);
+end;
+
+(* s as a C string, with the compiler's lifetime. *)
+proc cstr(s: []U8): ^U8;
+var p: ^U8;
+begin
+    p := Scan.grab(LEN(s) + 1);
+    if LEN(s) > 0 then COPY(p[0..LEN(s)], s); end;
+    p[LEN(s)] := 0;
+    return p;
+end;
+
+(* A run's file lives only in memory. The descriptor remains open until exec
+   or exit; close-on-exec lets Linux release it once it has opened the ELF. *)
+proc prepareRun*: ([]U8, ERROR);
+var fd: INT;
+begin
+    fd := SYSCALL(319, cstr("raz"), 1);   (* memfd_create, MFD_CLOEXEC *)
+    if fd < 0 then return "", CreateRun; end;
+    return Diag.say("/proc/self/fd/{}", [Fmt.int(fd)]), nil;
+end;
+
+(* argv from Main.raz on is the program's, ending in nil. Preserve the Linux
+   environment pointer after argv's nil as the old driver did. *)
+proc execute*(path: []U8; first: INT): INT;
+begin
+    return SYSCALL(59, cstr(path), ARGV() + first, ARGV() + (ARGC() + 1));
+end;
+
+end Host.

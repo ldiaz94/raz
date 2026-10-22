@@ -14,8 +14,8 @@
    There is no PLT and no lazy binding, and the program exports nothing.
 
    Depends on: Link for the images and addresses, Chunk for the chunks,
-   Scan for names and memory, Diag for errors, Sys and Files to write
-   the file.
+   Scan for names and memory, Diag for errors, Sys for the working directory,
+   and Host to write the file.
    Leaves out: position independent executables, symbol versions, the
    rest of DWARF.
 
@@ -25,7 +25,7 @@
    Exported variables can't be set from outside, so needLib, setMusl,
    setMainPath and setStripped do it. *)
 module Elf;
-import Sys, Files, Fmt, Diag, Scan, Chunk, Link;
+import Sys, Host, Fmt, Diag, Scan, Chunk, Link;
 
 var
     needed: [32]INT;     (* the libraries to load, names interned *)
@@ -439,7 +439,7 @@ begin
     shdr(".debug_info", 1, 0, 0, dbgOff[1], dbgSize[1], 0, 0, 1, 0);
     shdr(".debug_abbrev", 1, 0, 0, dbgOff[2], dbgSize[2], 0, 0, 1, 0);
 
-    if not Files.write(path, buf[0..len]) or (Sys.chmod(path, 1EDH) < 0) then
+    if not Host.writeExecutable(path, buf[0..len]) then
         Diag.fatal(Diag.say("can't write {}", [Fmt.str(path)]));
     end;
 end;
