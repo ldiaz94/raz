@@ -97,6 +97,7 @@ type
         foreground*: BOOL;  (* its group gets the terminal on standard input *)
         tty*: INT;          (* a pseudo-terminal to start a session on, or 0 *)
         more*: []INT;       (* fds above 2 passed on to it at the same numbers *)
+        keepIgnored*: BOOL; (* signals this program ignores stay ignored in it *)
     end;
     (* How a program that wait waited for changed. *)
     Status* = (running, exited, killed, stopped);
@@ -1554,9 +1555,9 @@ end;
 
 (* What p asks of the program before it runs, done to this one: a
    session on the terminal name, if p.tty, or else its group, its
-   terminal's foreground, and its standard input, output and error;
-   then its working directory, the C string dir. 0, or minus an
-   errno. *)
+   terminal's foreground; then its standard input, output and error,
+   each p.fds names over the terminal's; then its working directory,
+   the C string dir. 0, or minus an errno. *)
 proc takeOn(p: Program; name, dir: []U8): INT;
 var fd: I32; i: INT;
 begin
@@ -1571,19 +1572,36 @@ begin
         elsif p.group # 0 then _ := C.setpgid(0, I32(p.group));
         end;
         if p.foreground then _ := C.tcsetpgrp(0, C.getpgrp()); end;
-        for i := 0 to 2 do
-            if p.fds[i] # 0 then _ := C.dup2(I32(p.fds[i]), I32(i)); end;
-        end;
+    end;
+    for i := 0 to 2 do
+        if p.fds[i] # 0 then _ := C.dup2(I32(p.fds[i]), I32(i)); end;
     end;
     if (LEN(p.dir) > 0) and (C.chdir(ADR(dir[0])) # 0) then return failed(); end;
     return 0;
 end;
 
+(* Whether the struct sigaction a says SIG_IGN. *)
+proc ignoredIn(var a: Sigaction): BOOL;
+var h: ^UINT;
+begin
+    h := ^UINT(^U8(ADR(a)) + CAbi.saHandlerAt);
+    return h^ = 1;
+end;
+
+(* Whether this program ignores the signal sig. *)
+proc ignored(sig: INT): BOOL;
+var a: Sigaction;
+begin
+    _ := C.sigaction(I32(sig), nil, ^U8(ADR(a)));
+    return ignoredIn(a);
+end;
+
 (* Starts the program p describes, found as run says: its process id,
-   or minus an errno. A program that can't be started ends with status
-   127. Every signal is blocked from the fork until the program has its
-   own: its group, its terminal's foreground, and signals as they are
-   at first. *)
+   or minus an errno: -2 (ENOENT) or -13 (EACCES) as exec says, before
+   the fork, if there is no program to run. A program found that
+   execve then refuses ends with status 127. Every signal is blocked
+   from the fork until the program has its own: its group, its
+   terminal's foreground, and signals as they are at first. *)
 proc spawn*(p: Program): INT;
 var
     a, dir, name: [4096]U8; argv: ^^U8; none: ^U8; size, err, i, g: INT; search: []U8;
@@ -1603,13 +1621,17 @@ begin
     if argv = nil then return -12; end;               (* ENOMEM *)
     search := env("PATH");                            (* read here, before the fork *)
     if LEN(search) = 0 then search := defaultPath; end;
+    err := find(p.path, search, a);
+    if err < 0 then munmap(^U8(argv), size); return err; end;
     for i := 0 to LEN(all) - 1 do all[i] := 0FFFFFFFFFFFFFFFFH; end;
     _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(all)), ^U8(ADR(old)));
     pid := C.fork();
     if pid = 0 then
         if takeOn(p, name, dir) # 0 then C._exit(127); end;
         closeAllBut(p.more);
-        for i := 1 to CAbi.sigMax do _ := C.sigaction(I32(i), ^U8(ADR(dfl)), nil); end;
+        for i := 1 to CAbi.sigMax do
+            if not (p.keepIgnored and ignored(i)) then _ := C.sigaction(I32(i), ^U8(ADR(dfl)), nil); end;
+        end;
         _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(empty)), nil);
         run(p.path, search, a, argv, argv + (LEN(p.args) + 1));
         C._exit(127);
@@ -1666,7 +1688,12 @@ begin
            gives them, each kept to give back if execve fails *)
         for i := 0 to LEN(all) - 1 do all[i] := 0FFFFFFFFFFFFFFFFH; end;
         _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(all)), ^U8(ADR(old)));
-        for i := 1 to CAbi.sigMax do _ := C.sigaction(I32(i), ^U8(ADR(dfl)), ^U8(ADR(acts[i]))); end;
+        for i := 1 to CAbi.sigMax do
+            _ := C.sigaction(I32(i), nil, ^U8(ADR(acts[i])));   (* as it is *)
+            if not (p.keepIgnored and ignoredIn(acts[i])) then
+                _ := C.sigaction(I32(i), ^U8(ADR(dfl)), nil);
+            end;
+        end;
         _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(empty)), nil);
         _ := C.execve(ADR(a[0]), argv, argv + (LEN(p.args) + 1));
         r := failed();
@@ -1696,6 +1723,18 @@ begin
     return r;
 end;
 
+(* waitpid with options, its status read as C's macros read it. *)
+proc waitFor(pid: INT; options: I32): (INT, Status, INT);
+var status, r: I32;
+begin
+    r := C.waitpid(I32(pid), ADR(status), options);
+    if r < 0 then return failed(), running, 0; end;
+    if r = 0 then return 0, running, 0; end;
+    if status & 7FH = 0 then return INT(r), exited, INT(status) shr 8 & 0FFH; end;
+    if status & 0FFH = 7FH then return INT(r), stopped, INT(status) shr 8 & 0FFH; end;
+    return INT(r), killed, INT(status) & 7FH;
+end;
+
 (* Waits for the program pid, any of this program's if pid is -1, or
    any of the group g if pid is -g, to change, if block, and says which one changed and how: exited, with
    its exit status; killed or stopped, with the signal's number. Without
@@ -1703,16 +1742,19 @@ end;
    errno, and running, if there is none to wait for. The status is read
    as C's macros read it, which every Unix encodes alike. *)
 proc wait*(pid: INT; block: BOOL): (INT, Status, INT);
-var status, options, r: I32;
+var options: I32;
 begin
     options := CAbi.wNohang | CAbi.wUntraced;
     if block then options := CAbi.wUntraced; end;
-    r := C.waitpid(I32(pid), ADR(status), options);
-    if r < 0 then return failed(), running, 0; end;
-    if r = 0 then return 0, running, 0; end;
-    if status & 7FH = 0 then return INT(r), exited, INT(status) shr 8 & 0FFH; end;
-    if status & 0FFH = 7FH then return INT(r), stopped, INT(status) shr 8 & 0FFH; end;
-    return INT(r), killed, INT(status) & 7FH;
+    return waitFor(pid, options);
+end;
+
+(* Waits for the program pid as wait does, but only for one to end:
+   a stopped program is not waited for, so the status is exited or
+   killed, or running if there is none to wait for. *)
+proc waitExit*(pid: INT): (INT, Status, INT);
+begin
+    return waitFor(pid, 0);
 end;
 
 (* Sends the program pid, or the group -pid, the signal: 0, or minus an
@@ -1860,7 +1902,9 @@ end;
    terminal's foreground until it ends with status 3; one in a
    directory and an environment of its own writes to a pipe; one in a
    group of its own is stopped and killed through it; one that isn't
-   there ends with 127. Then signals: caught as a program ends and as
+   there is no child, and one found that execve refuses ends with 127;
+   ignored signals stay so only with keepIgnored; fds replace a
+   terminal's files. Then signals: caught as a program ends and as
    one is sent; and a program starts with them neither caught nor
    ignored. *)
 proc testPrograms;
@@ -1928,9 +1972,33 @@ begin
     child := spawn({path: "sh", args: ["sh", "-c", "exit 4"]});
     r, st, c := wait(child, true);
     if (r # child) or (st # exited) or (c # 4) then exit(2); end;
-    child := spawn({path: "no-such-program-on-path", args: ["x"]});
-    r, st, c := wait(child, true);
-    if (r # child) or (st # exited) or (c # 127) then exit(2); end;
+    (* one not on PATH is no child at all *)
+    if spawn({path: "no-such-program-on-path", args: ["x"]}) # -2 then exit(2); end;
+    r, st, c := wait(-1, false);
+    if r # -10 then exit(2); end;                   (* ECHILD: none was made *)
+    (* an ignored signal stays so only with keepIgnored *)
+    if ignore(sigInt, true) # 0 then exit(2); end;
+    child := spawn({path: "sh", args: ["sh", "-c", "kill -INT $$; exit 6"], keepIgnored: true});
+    r, st, c := waitExit(child);
+    if (r # child) or (st # exited) or (c # 6) then exit(2); end;
+    child := spawn({path: "sh", args: ["sh", "-c", "kill -INT $$; exit 6"]});
+    r, st, c := waitExit(child);
+    if (r # child) or (st # killed) or (c # sigInt) then exit(2); end;
+    if ignore(sigInt, false) # 0 then exit(2); end;
+    (* fds replace the terminal's files, with tty *)
+    pty := openPty();
+    r, w := pipe();
+    child := spawn({path: "sh", args: ["sh", "-c", "echo out; echo err >&2"], tty: pty, fds: [0, w, 0]});
+    close(w);
+    n := 0;
+    repeat
+        m := read(r, buf[n..LEN(buf)]);
+        if m > 0 then INC(n, m); end;
+    until m <= 0;
+    close(r);
+    r, st, c := waitExit(child);
+    close(pty);
+    if (buf[0..n] # "out\n") or (r # child) or (st # exited) or (c # 0) then exit(2); end;
 
     sigs := catch([sigChld, sigHup]);
     if (sigs < 0) or (catch([sigWinch]) # sigs) or (catch([CAbi.sigSegv]) # -22) or (catch([sigKill]) # -22) then exit(2); end;

@@ -229,6 +229,7 @@ type
         foreground*: BOOL;  (* its group takes the terminal on standard input *)
         tty*: INT;          (* a pseudo-terminal's fd, to start a session on; 0 for none *)
         more*: []INT;       (* fds above 2 passed on to it, at the same numbers *)
+        keepIgnored*: BOOL; (* signals this program ignores stay ignored in it *)
     end;
     Status* = (running, exited, killed, stopped);
     Mode* = record ... end;   (* a terminal's modes; its fields are the target's *)
@@ -306,6 +307,7 @@ proc exec*(p: Program): INT;       (* p run in this program's place; returns onl
 proc execve*(path: []U8; args, env: [][]U8): INT;   (* as the kernel's execve: no search *)
 proc fork*: INT;                   (* this program copied: 0 in the copy, its process id in this one *)
 proc wait*(pid: INT; block: BOOL): (INT, Status, INT);   (* which program, how, and its code *)
+proc waitExit*(pid: INT): (INT, Status, INT);   (* as wait, but only for a program to end *)
 proc kill*(pid, signal: INT): INT;
 proc pid*: INT;                    (* this program's process id *)
 proc group*: INT;                  (* the process group this program is in *)
@@ -438,7 +440,12 @@ arguments, the first being its name. A `p.path` without a `/` is
 looked for as a shell looks for a command, and as C's `execvp` does:
 in each directory of this program's `PATH` in turn, an empty one being
 the working directory, or of `/bin:/usr/bin` if `PATH` is unset or
-empty; the first that runs is the program. Its environment is this
+empty; the first that runs is the program. If there is none, `spawn`
+says so, -2 (ENOENT) or -13 (EACCES), before it makes a child: no
+program is started, and no process id given for a program that was
+never there. A `p.path` with a `/` is not looked at first, and a
+program that is there but that the kernel then refuses to run (not a
+program, a bad interpreter) is a child that ends with status 127. Its environment is this
 program's with each `NAME=value` of `p.env` added or put in place of
 the old value, or, if `p.onlyEnv`, `p.env` alone. It starts in
 `p.dir`. Its standard input, output and error are `p.fds`; a 0 gives
@@ -446,10 +453,13 @@ it this program's own, so `{path: "ls", args: ["ls"]}` runs
 `ls` as a shell runs it, with every other field zero. It gets no
 other open file but those of `p.more`, each at its own number, as a
 shell passes `3<file` on, every signal does what it does at first, and
-none is blocked. If `p.tty` is a pseudo-terminal's fd, the program starts a
-session on that terminal: it is its controlling terminal, and its
-standard input, output and error, and `p.fds` and `p.group` are not
-used.
+none is blocked; with `p.keepIgnored`, a signal this program ignores
+stays ignored in it, as the kernel's `execve` leaves it, which is what
+a program run under `nohup` wants of the programs it starts. If `p.tty`
+is a pseudo-terminal's fd, the program starts a session on that
+terminal: it is its controlling terminal, and its standard input,
+output and error, but that a `p.fds[i]` that is not 0 is that file
+instead, as for a job that reads `/dev/null`; `p.group` is not used.
 
 `p.group` puts the program in a process group, the programs that a
 shell's job is made of: -1 makes it the first of a new group, whose
@@ -525,6 +535,9 @@ its exit status; `killed`, with the number of the signal that ended
 it; or `stopped`, by Ctrl-Z or a signal, with the signal's number.
 Without `block` it doesn't wait, and is 0 and `running` if no program
 changed. A program that has nothing to wait for is -10 (ECHILD).
+`waitExit(pid)` is `wait` that blocks until a program ends, and not
+for one that is stopped, so that a program waiting for its editor
+isn't woken by Ctrl-Z.
 `kill` sends a program a signal, `sigTerm` to end it; to a group, if
 `pid` is minus its number.
 
