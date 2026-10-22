@@ -7,7 +7,7 @@
    twice, or freeing what the heap never gave out, stops the program.
    One lock keeps it whole across threads. *)
 module Heap;
-import Mem, Lock, Rt;
+import Mem, Lock, Rt, Sys;
 
 const
     Classes = 9;
@@ -25,9 +25,13 @@ var
     cur: ^U8;            (* where the next new small block comes from *)
     left: INT;
     lock: Lock.Lock;
-    std: Mem.Allocator;
+    std, surer: Mem.Allocator;
     (* The heap, for NEW(p, Heap.heap) and Mem's procedures. *)
     heap*: ^Mem.Allocator;
+    (* The heap, but running out of memory stops the program, as
+       Buf.add does, instead of giving nil: for NEW where nil would be
+       a bug nobody checks for. *)
+    sure*: ^Mem.Allocator;
 
 (* The block p, with size for its header, given out. *)
 proc give(p: ^U8; size: INT): ^U8;
@@ -107,10 +111,24 @@ begin
     end;
 end;
 
+(* The heap's alloc, but with no room the program stops, with the
+   calls under way. *)
+proc allocSure(a: ^Mem.Allocator; size, align: INT): ^U8;
+var p: ^U8;
+begin
+    p := alloc(a, size, align);
+    if p = nil then
+        _ := Sys.write(Sys.stderr, "Heap: out of memory\n");
+        Rt.trace;
+        Rt.exit(2);
+    end;
+    return p;
+end;
+
 (* The module's test: blocks of every class and big ones, written,
    freed and taken again. *)
 proc main*;
-var p: [40]^U8; i, j, n: INT; again: ^U8;
+var p: [40]^U8; i, j, n: INT; again: ^U8; q: ^INT;
 begin
     for i := 0 to 39 do
         n := (i * i * 37) mod 9000 + 1;
@@ -129,6 +147,10 @@ begin
     again := Mem.alloc(heap, (25 * 37) mod 9000 + 1, 8);
     if again # p[5] then Rt.stop("Heap: a freed block isn't taken again"); end;
     for i := 0 to 39 do Mem.free(heap, p[i]); end;
+    NEW(q, sure);
+    if (q = nil) or (INT(q) mod 8 # 0) then Rt.stop("Heap: sure"); end;
+    q^ := 7;
+    Mem.free(sure, ^U8(q));
     if Mem.alloc(heap, -1, 8) # nil then Rt.stop("Heap: negative size"); end;
     if Mem.alloc(heap, 7FFFFFFFFFFFFFFFH - 4, 8) # nil then Rt.stop("Heap: huge size"); end;
 end;
@@ -136,4 +158,6 @@ end;
 begin
     std := {alloc: alloc, free: free};
     heap := ADR(std);
+    surer := {alloc: allocSure, free: free};
+    sure := ADR(surer);
 end Heap.

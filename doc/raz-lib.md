@@ -75,6 +75,7 @@ proc free*(a: ^Allocator; p: ^U8);   (* a^.free(a, p) *)
 
 module Heap;
 var heap*: ^Mem.Allocator;
+var sure*: ^Mem.Allocator;   (* heap, but running out of memory stops the program *)
 
 module Arena;
 type Arena* = record
@@ -87,7 +88,9 @@ proc done*(var ar: Arena);                    (* its memory given back *)
 ```
 
 `NEW(p, a)` calls `a^.alloc`. `Heap` is the general
-allocator. An arena hands out memory from
+allocator; `Heap.heap` gives `nil` when memory runs out, and `Heap.sure`
+stops the program instead, as `Buf` does, so that `NEW(p, Heap.sure)`
+needs no check. An arena hands out memory from
 one block: its `free` does nothing, and `reset` forgets everything.
 
 ```

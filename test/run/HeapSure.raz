@@ -1,0 +1,12 @@
+module HeapSure;
+(* Heap.sure stops the program, with the calls under way, when the heap
+   has no room: here for a size it refuses on any machine *)
+import Heap, Mem, Rt;
+
+proc main*;
+begin
+    _ := Mem.alloc(Heap.sure, 7FFFFFFFFFFFFFFFH - 4, 8);
+    Rt.stop("HeapSure: not stopped");
+end;
+
+end HeapSure.
