@@ -711,14 +711,26 @@ begin
     repeat until SYSCALL(230, 1, 1, ADR(t), 0) # -4;    (* clock_nanosleep until t, again after EINTR *)
 end;
 
-(* Fills b with random bytes, from the kernel. *)
+(* Ends the program: random bytes can't be faked. *)
+proc noRandom;
+begin
+    _ := write(stderr, "Sys.random: the kernel gave no random bytes\n");
+    _ := SYSCALL(231, 2);                               (* exit *)
+end;
+
+(* Fills b with random bytes, from the kernel. Random bytes can't be
+   faked, so if the kernel can't give them (no getrandom, or a filter
+   refusing it) it says so on standard error and ends the program by
+   exit with status 2. *)
 proc random*(b: []U8);
 var n, r: INT;
 begin
     n := 0;
     while n < LEN(b) do                                 (* a signal may cut it short *)
         r := SYSCALL(318, ADR(b[n]), LEN(b) - n, 0);    (* getrandom *)
-        if r > 0 then INC(n, r); end;
+        if r > 0 then INC(n, r);
+        elsif r # errIntr then noRandom();
+        end;
     end;
 end;
 

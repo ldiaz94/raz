@@ -783,14 +783,26 @@ begin
     repeat until C.clock_nanosleep(CAbi.clockMonotonic, CAbi.timerAbstime, ^U8(ADR(t)), nil) # CAbi.eIntr;
 end;
 
-(* Fills b with random bytes, from the kernel. *)
+(* Ends the program: random bytes can't be faked. *)
+proc noRandom;
+begin
+    _ := write(stderr, "Sys.random: the kernel gave no random bytes\n");
+    C._exit(2);
+end;
+
+(* Fills b with random bytes, from the kernel. Random bytes can't be
+   faked, so if the kernel can't give them (no getrandom, or a filter
+   refusing it) it says so on standard error and ends the program by
+   exit with status 2. *)
 proc random*(b: []U8);
 var n, r: INT;
 begin
     n := 0;
     while n < LEN(b) do                                 (* a signal may cut it short *)
         r := C.getrandom(ADR(b[n]), UINT(LEN(b) - n), 0);
-        if r > 0 then INC(n, r); end;
+        if r > 0 then INC(n, r);
+        elsif (r >= 0) or (failed() # errIntr) then noRandom();   (* r = 0 can't be, and is no progress *)
+        end;
     end;
 end;
 
