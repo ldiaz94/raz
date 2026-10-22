@@ -1193,3 +1193,47 @@ the target it is built for.
 
 Met in rabble, which shows every time in UTC, in the screen and in its
 logs, since the library has no zone (2026-10-21).
+
+## Implementation limits, and a compiler for a small stack
+
+**Status.** To investigate; nothing decided.
+
+The report names no implementation limits: how deep expressions,
+statements, imports and generic instances may nest, how long a name or
+a string may be. A compiler for a small machine that rejects a deep
+nesting is then arguably not a raz compiler at all. C settles it with
+its translation limits (C99 §5.2.4.1: 63 levels of nested parentheses,
+15 of nested includes, and so on): every compiler must take at least
+that much, and may take more. The proposal: a short section in the
+report giving the least each compiler must accept, and saying that a
+compiler that goes past its own limit stops with an error naming it,
+never a crash. It changes the report, not the language.
+
+Behind it, three things in this compiler that need no change to the
+report at all, so that it runs in a small stack:
+
+1. **Nesting.** Each level of a nested expression costs about 1 KiB
+   of stack. A constant expression with 64 nested parentheses fails a
+   64 KiB stack and passes 256 KiB; 256 of them fail 256 KiB and pass
+   1 MiB. A limit from the section above, checked in the parser, makes
+   the stack a program needs bounded and known.
+2. **Imports.** `importModule` compiles an imported module in the
+   middle of the one importing it, on the same stack, so the stack
+   grows with the depth of the chain of imports. Ordering the modules
+   first and compiling them from the leaves, in a loop, keeps whole
+   program compilation and a stack that doesn't grow; symbol files, as
+   Wirth's compilers have, would do it too, but must then carry a
+   generic module's body.
+3. **Instances.** `makeInstance` keeps the declaration under way aside
+   in arrays on the stack (`[MaxFwd]PType`, `[MaxFwd]Diag.Pos`,
+   `[MaxNames]INT`, several KiB) for every instance it nests. A list
+   of instances still to make, made between declarations, would keep
+   none.
+
+Not yet measured: which of these filled the stack when the stripped
+compiler, given one more `-I` directory, overflowed 64 KiB building
+itself, where the ordinary self-build fit.
+
+Met in moss (`docs/raz-port.md`): its stored programs get a guarded
+64 KiB stack, and a native compiler must fit, or the stack must grow
+(2026-10-22).
