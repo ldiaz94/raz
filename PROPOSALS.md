@@ -1695,8 +1695,8 @@ alone; none changes what a program that compiles today means.
   this is a defect of the compiler, mended with no change to the
   report: where an array, record or variant is wanted, a constant of
   that type stands for its literal. Met in mgla.
-  **Recommendation:** take, as a defect mended. Being fixed with the
-  other bugs of 2026-10-22, so not for the owner to decide.
+  **Recommendation:** take, as a defect mended. Fixed in 065335a
+  (2026-10-22).
 
 - **A literal for a slice part.** `const T: [][]INT = [[1, 2], [3]]`
   is "a constant slice is a string, an array constant of its elements
