@@ -227,3 +227,6 @@ at the time.
   integer type left and right by `n` bits modulo its width, and of
   constants are a constant (sections 4, 6.1 and 6.8). A predeclared
   name may be hidden (section 2), so it breaks no program.
+  Then `Str` gains `base64Size`, `base64` and `unbase64`, RFC 4648's
+  base64 with padding, decoded strictly (volume 2). It breaks no
+  program.

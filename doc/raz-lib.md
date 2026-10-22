@@ -643,6 +643,9 @@ proc valid*(s: []U8): BOOL;           (* s is UTF-8, every character rightly spe
 proc chars*(s: []U8): INT;            (* the characters in s, as decode reads them *)
 proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
 proc toHex*(s: []U8): (U64, BOOL);    (* s, in hexadecimal; false if it isn't a number a U64 holds *)
+proc base64Size*(n: INT): INT;        (* the bytes base64 makes of n bytes: 4 for each 3, or part of 3 *)
+proc base64*(s, out: []U8): INT;      (* s in base64 into out, which holds base64Size(LEN(s)) bytes at least: the bytes written *)
+proc unbase64*(s, out: []U8): (INT, BOOL);   (* s, base64, into out, which holds LEN(s) div 4 * 3 bytes at least: the bytes written; false if s is not base64 *)
 proc fromInt*(n: I64): ([20]U8, INT); (* n in decimal: its bytes, and how many *)
 proc le*(s: []U8): U64;               (* s, at most 8 bytes, the first the lowest *)
 proc be*(s: []U8): U64;               (* s, at most 8 bytes, the first the highest *)
@@ -809,6 +812,18 @@ and nothing else. `toHex` reads hexadecimal digits, capitals or not,
 and nothing else: no sign, `0x` or `H`. `fromInt` writes a number as
 `Out.int` does, with a `-` if it is negative, its bytes the first of
 the 20 it gives.
+
+`base64` writes `s` as RFC 4648 (section 4) does: the digits `A` to
+`Z`, `a` to `z`, `0` to `9`, `+` and `/`, and `=` to pad a last group
+of 1 or 2 bytes to four. `unbase64` reads that and nothing else: its
+length a multiple of 4, `=` only as the last one or two bytes, and the
+bits of the digit before the padding that no byte uses all 0, so a
+byte string has the one spelling `base64` gives it. Line breaks,
+missing padding and the `-` and `_` of base64url are the caller's to
+mend first; `unbase64` of such a string is false, and what it wrote
+into `out` is not to be used. The caller gives the room, as `Fmt`
+does: an `out` shorter than the comment says stops the program, as
+indexing past a slice does.
 
 `le` and `be` read an unsigned number of up to 8 bytes in a fixed
 order, little-endian or big-endian, whatever the machine's own, and

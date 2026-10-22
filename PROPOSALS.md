@@ -1263,6 +1263,11 @@ Met in rnet, after a review of its STARTTLS (2026-10-22).
 
 ## Base64 in `Str`
 
+**Status.** Approved by the owner on 2026-10-22 and implemented in
+`lib/Str.raz`, with the interface below; `out` too short stops the
+program at the byte it lacks, as any slice does. Decoding also rejects
+padding bits that are not 0 (RFC 4648, section 3.5 allows it).
+
 Library growth that breaks no program: three procedures in `Str.raz`,
 beside `hexVal` and `toHex`, of base64 as RFC 4648 (4) has it: its
 alphabet, `A` to `Z`, `a` to `z`, `0` to `9`, `+` and `/`, and `=` to

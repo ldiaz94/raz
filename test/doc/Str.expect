@@ -127,6 +127,28 @@ proc toHex*(s: []U8): (U64, BOOL);
     s in hexadecimal, digits only, capitals or not; false if it isn't
     that, or a U64 can't hold it.
 
+proc base64Size*(n: INT): INT;
+    The bytes base64 makes of n bytes: 4 for each 3, or part of 3.
+
+proc base64*(s, out: []U8): INT;
+    s in base64 (RFC 4648, section 4) into out, which holds
+    base64Size(LEN(s)) bytes at least; a shorter out stops the program
+    at the byte it lacks, as any slice does. The bytes written. A last
+    group of 1 or 2 bytes is padded with = to four.
+
+proc unbase64*(s, out: []U8): (INT, BOOL);
+    s, base64 (RFC 4648, section 4), decoded into out, which holds
+    LEN(s) div 4 * 3 bytes at least; a shorter out stops the program at
+    the byte it lacks, as any slice does. The bytes written, and true;
+    or 0 and false, with out left in no state to use, if s is not base64
+    as the RFC writes it and in no other way: its length a multiple of
+    4, every byte a digit but the last one or two, which may be =
+    (and then both of the last two are, or the last alone), and the bits
+    of the digit before the padding that no byte uses are 0, so a byte
+    string has the one spelling that base64 gives it (RFC 4648, section
+    3.5 allows a decoder to take that). Line breaks and padding left off
+    are the caller's to mend first.
+
 proc fromInt*(n: I64): ([20]U8, INT);
     n in decimal, as Out.int writes it: its bytes, the first of the 20,
     and how many.
