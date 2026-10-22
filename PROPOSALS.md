@@ -859,6 +859,8 @@ the report would say in a line.
 
 Met in tery's `aligned`, `(a + 7) & -8`.
 
+**Status.** Deferred by the owner on 2026-10-22: not soon, if at all.
+
 ## Dividing 128 bits by 64
 
 `Math.mul` gives the 128-bit product of two `U64`s; there is nothing
@@ -1304,3 +1306,206 @@ procedures, if a program needs it.
 
 Met in rnet, whose `Smtp` copied `Ws`'s (2026-10-22); listed in
 `~/r/RAZ-GAPS.md` before that, from rnet and flojo.
+
+## A library that says which raz it was written for
+
+0.19 moved the library from pointers to `var` and `const` parameters,
+and every library pinned to an older raz stopped building: rnet, rjson,
+rfetch, rj and arno needed fixes, and alba, clima and linia carried
+their own JSON reader meanwhile. The errors were loud but far from the
+cause: "can't use ^Buf as Buf" inside rjson, read by someone building
+clima. The report says the library "grows only by what breaks no
+program", and the move broke all of them. Three small pieces, none of
+them syntax.
+
+**A deprecation step.** A change to the standard library that breaks
+programs keeps the old form for one minor version beside the new, the
+old one marked so that a call to it is a warning naming the new one:
+
+    (* deprecated: Buf.add(var b, ...) *)
+    proc addOld*(b: ^Buf; s: []U8);
+
+How the mark is written is the open question: a comment the compiler
+reads is a pragma in disguise; a word like `obsolete` before `proc` is
+a reserved word for a rare case. The step could also be policy alone,
+with no mark: the release notes list the old forms and the next
+version removes them.
+
+**An error says whose module it is in.** An error in a module found
+through `-I` or `RAZ_PATH` names the directory it came from and, if
+that directory holds a file `RAZ-VERSION` (one line, `0.21`), the raz
+it was written for:
+
+    /home/luis/.raz/lib/Json.raz:41: can't use ^Buf as Buf
+      (a library written for raz 0.18; this is raz 0.21)
+
+The compiler only reads the file; it never refuses to build. A library
+that has none is no worse off than today.
+
+**`raz --version` says its commit** when `git describe` finds no tag,
+as from a shallow fetch, instead of "unknown" (rcrypto pins a commit
+and always sees "unknown").
+
+Met in rnet, rjson, rfetch, rj, arno, alba, clima and linia (0.19),
+and rcrypto (`--version`).
+
+## Sys for a server
+
+Library growth that breaks no program. Programs that serve sockets
+(rabble's relay and daemon, dwa's broker, rdbus, awizo, arno's te
+protocol) each declare a few C procedures or make system calls with
+`SYSCALL` in a `.linux.raz` file, for what any server needs. Each piece
+below stands alone; together they are about a dozen procedures in
+`Sys.raz` and `Sys.linux-x86_64.raz`.
+
+- **`shutdown`.** `proc closeWrite*(fd: INT): INT;` ends this side's
+  writing, `SHUT_WR`, so the peer reads an end and can still answer
+  on the same socket (te's protocol; rabble wakes a thread waiting in
+  a handshake with it). Met in dwa, rabble, arno.
+- **Who is at the other end.** `proc peer*(fd: INT): (Peer, INT);`
+  with `Peer` the address of a TCP peer (family, address bytes, port)
+  and, for a Unix socket, the peer's uid and pid (`SO_PEERCRED`). A
+  server can log who connected and a broker can check that its client
+  is the same user, instead of trusting a 0700 directory. Met in
+  rabble, dwa.
+- **A pair of sockets.** `proc socketPair*(): (INT, INT, INT);` the two
+  ends and 0, or minus an errno. Met in rdbus's tests and rabble's
+  relay.
+- **A send that doesn't wait.** `proc sendNow*(fd: INT; s: []U8): INT;`
+  (`MSG_DONTWAIT`): -11 where `send` would wait, without making reads
+  non-blocking too. Met in rdbus.
+- **Opening without waiting.** `nonblocking` and `closeOnExec` among
+  `Access`. Opening a fifo to write waits for a reader, and a fifo
+  given where a file was expected waits for a writer. Met in mosaico,
+  awizo, surco, raudio.
+- **A fifo.** `proc makeFifo*(path: []U8; mode: INT): INT;`. Met in
+  awizo.
+- **An owner.** `Info.uid`, `Info.gid` and `proc chown*(path: []U8;
+  uid, gid: INT): INT;`, so a save through rename keeps the owner and a
+  daemon can check that its directory is the user's. Met in dwa,
+  rabble.
+- **Keepalive.** `proc keepAlive*(fd: INT; idle, interval, count:
+  INT): INT;` rather than a general `setsockopt`, whose value is a
+  pointer and a length of any type. Met in rabble.
+- **An abstract Unix socket.** `connect` passes `2 + LEN(path)` as the
+  address's length when the path starts with a zero byte, so Linux's
+  abstract names (D-Bus's `unix:abstract=`) are reached. A fix, not a
+  procedure. Met in rdbus.
+- **`errConnAborted`** (-103), which `accept` gives for a client gone
+  before it was taken. Met in rabble.
+
+**Waiting**, the one piece that changes a procedure's answer, and so
+better as a new procedure than a change to `readyFor`:
+
+    (* Waits up to ms milliseconds (ms < 0: as long as it takes) until
+       one of fds may be read or written as each of its wants says, and
+       sets each one's ready. The number ready, 0 on a timeout, or minus
+       an errno. *)
+    proc poll*(var fds: []Poll; ms: INT): INT;
+
+with `Poll = record fd: INT; read, write: BOOL; ready: BOOL; end`.
+It takes as many as it is given (`readyFor` stops at 64, so dwa's
+broker serves 31 editors), answers every ready descriptor in one call
+(`readyOf` gives only the first, so awizo takes two rounds and rabble
+rotates its clients so that the first doesn't starve the rest), gives
+the place in the list, not the fd, and tells a timeout from an error
+(both are -1 today). `readyFor` and `readyOf` stay, written over it.
+Whole milliseconds stay too: surco rounds up, and a wait in
+nanoseconds is `ppoll`, Linux's, for one program.
+
+Each item is listed in `~/r/RAZ-GAPS.md` under "Standard library: Sys,
+files, processes".
+
+## Sys for running a program
+
+Library growth, but two of the four change what `spawn` and `wait`
+do, so they need the owner's word on whether a change of behaviour
+counts as breaking.
+
+- **`spawn` says a program isn't there.** Today a missing program
+  still gives a pid, and the child exits 127, which a caller can't tell
+  from the program's own 127; clima, alba, sauce and raztest search
+  `PATH` first, about 20 lines each, and sauce still reads curl's 127
+  as "cannot run curl". `spawn` searches `PATH` in the parent, as
+  `exec` already does, and gives -2 (ENOENT) before it forks. A
+  program found but failing in `execve` (not executable, a bad
+  interpreter) still exits 127, since only the child sees that; a
+  close-on-exec pipe would carry its errno back, at the cost of a pipe
+  per spawn.
+- **Ignored signals stay ignored.** `spawn` and `exec` give the child
+  every signal as at first, SIG_IGN included, where `execve` keeps an
+  ignored one ignored: a robbie under `nohup` runs its recipes without
+  it, and ssh run by fdn doesn't keep SIGPIPE ignored. A
+  `Program.keepIgnored: BOOL`, false as today, keeps them.
+- **`fds` with `tty`.** With `tty`, the pseudo-terminal is all three
+  files and `fds` is ignored, so dwa's background job that should read
+  `/dev/null` waits on a terminal nobody types to. A non-zero `fds[i]`
+  replaces the terminal for that file; zero keeps it.
+- **`wait` without the stopped.** `wait` always asks for stopped
+  children (WUNTRACED), so a program waiting for `$EDITOR` loops past
+  Ctrl-Z (notis, fdn). `proc waitExit*(pid: INT): (INT, Status, INT);`
+  waits only for an end, or `wait` takes `stopped: BOOL`, which
+  changes its signature.
+
+`PATH` read empty as unset (pict) stays: the library volume says so,
+and it is `execvp`'s choice.
+
+## An investigation: where a hot loop's time goes
+
+Not a change: a measurement, whose report would say whether register
+allocation, inlining (see "Inlining a procedure that only returns"),
+or neither is worth its weight in the compiler.
+
+What is known, from rcrypto, rat and sauce:
+
+| Code | MB/s | Against |
+|---|---|---|
+| ChaCha20, `quarter` on a `var x: [16]U32` | 40 | 78 written out on sixteen locals; OpenSSL scalar 589 |
+| Poly1305, arithmetic on locals, no calls | 491 | |
+| AES-128 bitsliced, 115 gates on 130 local `U64`s | 23 | GHASH 180 |
+| SHA-256 with `ROR` | 76 | 40 before `ROR` |
+
+and rat's parser, which inlines `Utf8.take` by hand because the call
+costs 7 to 10 per cent.
+
+The steps: a `bench/` of these few kernels, each in its plain form and
+its hand-tuned one; their `raz -S` read side by side, counting loads
+and stores of locals, spills and calls; then the same kernel with the
+generator changed by hand (a local kept in a register across a loop, a
+small procedure inlined) to put a number on each. The outcome is a
+page here saying which change buys what, and none is made before it.
+
+Listed in `~/r/RAZ-GAPS.md` as "A state in an array or behind a `var`
+is slow" and "No procedure is inlined".
+
+## A width in `Fmt`
+
+Library growth that breaks no program. `Fmt` has only `{}`, so seven
+programs pad by hand: arno, rat, notis and poczta each have a
+two-digit helper for times, surco writes `m:ss` and its cover files'
+lower-case hashes with loops of its own, rttf writes `U+00E9` and raz's
+own `Prop` a fixed-width hex name.
+
+The proposal: a width between the braces, and a zero before it to pad
+with zeros, right-aligned:
+
+    Fmt.print("{2}:{02}", [Fmt.int(m), Fmt.int(s)]);    (* " 3:07" *)
+    Fmt.print("U+{04}", [Fmt.hex(0E9H)]);              (* "U+00E9" *)
+
+A value wider than the width is written whole. A minus pads on the
+right (`{-10}`), for columns of names. Zeros go after a sign: `{04}` of
+-7 is `-007`. Nothing else: no precision (`Fmt.real` has `places`), no
+other fill, no named or numbered arguments.
+
+And a lower-case hexadecimal: a case `lowHex(h: U64)` beside `hex`, or
+`{x}` against `{X}`, which is a second letter in the format for a thing
+an argument could say. The argument is the plainer.
+
+`{` followed by anything but `}` or a width is printed as it stands
+today, so no format changes meaning unless it already had `{2}` in it,
+which printed `{2}`.
+
+Open: `Fmt.real` writes its exponent `e`, the language reads only `E`,
+so a printed value can't be pasted into code (rayo). Writing `E` would
+change output a test may compare; reading `e` too would change the
+report.
