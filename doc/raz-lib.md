@@ -672,6 +672,7 @@ type Arg* = variant
     int(i: I64);
     uint(u: U64);
     hex(h: U64);
+    lowHex(h: U64);
     str(s: []U8);
     char(c: U8);
     bool(b: BOOL);
@@ -862,8 +863,15 @@ memory of its own, in time `n log n` at most; two elements equal by
 `less` may change places. `Math`'s procedures are as C's `math.h`
 has them, to within the last bit or so. `Fmt.real(x, places)` writes
 `x` with `places` digits after the point, at most 9, rounded to the
-nearest; from 1e15 on, with an exponent, as `1.50e17`; and `nan`,
-`inf` and `-inf` as themselves.
+nearest; from 1E15 on, with an exponent, as `1.50E17`; and `nan`,
+`inf` and `-inf` as themselves. `hex` writes capitals and `lowHex`
+lower case, neither with a `0x`. A width between the braces pads an
+argument to that many bytes: `{2}` with spaces on the left, `{02}`
+with zeros on the left, after a sign (`{04}` of -7 is `-007`), `{-10}`
+with spaces on the right. A longer argument is written whole. A `{`
+followed by anything but `}` or a width is dropped, as before.
+`Fmt.print("{2}:{02} U+{04}", [Fmt.int(3), Fmt.int(7), Fmt.hex(0E9H)])`
+writes ` 3:07 U+00E9`.
 
 **Files and Opt** are what most programs need of their command line.
 

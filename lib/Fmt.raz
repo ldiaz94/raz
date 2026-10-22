@@ -1,7 +1,12 @@
 (* Formatted output. Each {} in the format takes the next argument:
        Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)]);
    {{ and }} stand for { and }. A {} with no argument left prints
-   nothing, and arguments left over are not printed. *)
+   nothing, and arguments left over are not printed.
+   A width between the braces pads the argument to that many bytes:
+   {3} on the left with spaces, {03} on the left with zeros (after a
+   minus sign), {-3} on the right with spaces. A longer argument is
+   written whole. A { followed by anything else is no width.
+   Left out: precision, other fills, argument numbers and names. *)
 module Fmt;
 import Out, Buf, Arena, Rt, Sys;
 
@@ -9,46 +14,75 @@ type
     (* An argument, and how it is printed. A real has places digits
        after the point, at most 9, rounded to the nearest, half away
        from zero; from 1E15 on, it has the exponent that makes it less
-       than 10, as 1.50e17; nan and inf are spelled so. *)
+       than 10, as 1.50E17; nan and inf are spelled so. *)
     Arg* = variant
         int(i: I64);       (* in decimal *)
         uint(u: U64);      (* in decimal *)
         hex(h: U64);       (* in hexadecimal, capitals, no 0x *)
+        lowHex(h: U64);    (* in hexadecimal, lower case, no 0x *)
         str(s: []U8);
         char(c: U8);       (* the one byte *)
         bool(b: BOOL);     (* true or false *)
         real(r: F64; places: INT);
     end;
 
-(* The digits of u in base, at the end of the array: it and where they start. *)
-proc digits(u: U64; base: U64): ([24]U8, INT);
+    (* Where the pieces go: to b, or to standard output if b is nil.
+       With dry set nothing is written and n only counts the bytes
+       that would be, to know how much a width must pad. *)
+    Sink = record
+        b: ^Buf.Buf;
+        dry: BOOL;
+        n: INT;
+    end;
+
+    (* What a {} says: its width, whether it pads with zeros, and
+       whether on the right. *)
+    Spec = record
+        width: INT;
+        zero, left: BOOL;
+    end;
+
+(* The digits of u in base, at the end of the array: it and where they
+   start. Digits past 9 are letters from letter on, 'A' or 'a'. *)
+proc digits(u: U64; base: U64; letter: U8): ([24]U8, INT);
 var d: [24]U8; i: INT; v: U8;
 begin
     i := 24;
     repeat
         DEC(i);
         v := U8(u mod base);
-        if v < 10 then d[i] := v + '0'; else d[i] := v - 10 + 'A'; end;
+        if v < 10 then d[i] := v + '0'; else d[i] := v - 10 + letter; end;
         u := u div base;
     until u = 0;
     return d, i;
 end;
 
-(* Where the pieces go: to b, or to standard output if b is nil. *)
-proc put(b: ^Buf.Buf; s: []U8);
+(* s to k. *)
+proc put(var k: Sink; s: []U8);
 begin
-    if b = nil then Out.str(s); else Buf.str(b^, s); end;
+    INC(k.n, LEN(s));
+    if k.dry then return; end;
+    if k.b = nil then Out.str(s); else Buf.str(k.b^, s); end;
 end;
 
-(* x as Arg's real says. The whole part and the fraction are taken
-   apart, so that each fits an I64: hence the exponent from 1E15. *)
-proc putReal(b: ^Buf.Buf; x: F64; places: INT);
+(* n copies of c to k. *)
+proc fill(var k: Sink; c: U8; n: INT);
+var one: [1]U8; i: INT;
+begin
+    one[0] := c;
+    for i := 1 to n do put(k, one); end;
+end;
+
+(* x as Arg's real says, but for the minus sign, which arg writes. The
+   whole part and the fraction are taken apart, so that each fits an
+   I64: hence the exponent from 1E15. *)
+proc putReal(var k: Sink; x: F64; places: INT);
 const zeros = "00000000";
 var d: [24]U8; at, i, e: INT; scale, whole, frac: I64;
 begin
-    if x # x then put(b, "nan"); return; end;
-    if x < 0.0 then put(b, "-"); x := -x; end;
-    if x > 1.7976931348623157E308 then put(b, "inf"); return; end;
+    if x # x then put(k, "nan"); return; end;
+    if x < 0.0 then x := -x; end;
+    if x > 1.7976931348623157E308 then put(k, "inf"); return; end;
     if places < 0 then places := 0; elsif places > 9 then places := 9; end;
     scale := 1;
     for i := 1 to places do scale := scale * 10; end;
@@ -59,62 +93,124 @@ begin
     frac := I64((x - F64(whole)) * F64(scale) + 0.5);
     if frac = scale then INC(whole); frac := 0; end;
     if (e > 0) and (whole = 10) then whole := 1; INC(e); end;
-    d, at := digits(U64(whole), 10);
-    put(b, d[at..24]);
+    d, at := digits(U64(whole), 10, 'A');
+    put(k, d[at..24]);
     if places > 0 then
-        put(b, ".");
-        d, at := digits(U64(frac), 10);
-        put(b, zeros[0..places - (24 - at)]);
-        put(b, d[at..24]);
+        put(k, ".");
+        d, at := digits(U64(frac), 10, 'A');
+        put(k, zeros[0..places - (24 - at)]);
+        put(k, d[at..24]);
     end;
     if e > 0 then
-        d, at := digits(U64(e), 10);
-        put(b, "e");
-        put(b, d[at..24]);
+        d, at := digits(U64(e), 10, 'A');
+        put(k, "E");
+        put(k, d[at..24]);
     end;
 end;
 
-proc arg(b: ^Buf.Buf; a: Arg);
+(* Whether a is printed with a minus sign. *)
+proc negative(a: Arg): BOOL;
+var neg: BOOL;
+begin
+    match a of
+    | int(i): neg := i < 0;
+    | real(r, _places): neg := r < 0.0;
+    | else: neg := false;
+    end;
+    return neg;
+end;
+
+(* a as Arg says, but for the minus sign. *)
+proc magnitude(var k: Sink; a: Arg);
 var d: [24]U8; at: INT; one: [1]U8;
 begin
     match a of
     | int(i):
         if i < 0 then
-            put(b, "-");
-            d, at := digits(0 - U64(i), 10);
+            d, at := digits(0 - U64(i), 10, 'A');
         else
-            d, at := digits(U64(i), 10);
+            d, at := digits(U64(i), 10, 'A');
         end;
-        put(b, d[at..24]);
-    | uint(u): d, at := digits(u, 10); put(b, d[at..24]);
-    | hex(h):  d, at := digits(h, 16); put(b, d[at..24]);
-    | str(s):  put(b, s);
-    | char(c): one[0] := c; put(b, one);
-    | bool(t): if t then put(b, "true"); else put(b, "false"); end;
-    | real(r, places): putReal(b, r, places);
+        put(k, d[at..24]);
+    | uint(u):   d, at := digits(u, 10, 'A'); put(k, d[at..24]);
+    | hex(h):    d, at := digits(h, 16, 'A'); put(k, d[at..24]);
+    | lowHex(h): d, at := digits(h, 16, 'a'); put(k, d[at..24]);
+    | str(s):    put(k, s);
+    | char(c):   one[0] := c; put(k, one);
+    | bool(t):   if t then put(k, "true"); else put(k, "false"); end;
+    | real(r, places): putReal(k, r, places);
     end;
 end;
 
-proc format(b: ^Buf.Buf; f: []U8; args: []Arg);
-var i, start, n: INT;
+(* a as Arg says. *)
+proc arg(var k: Sink; a: Arg);
 begin
+    if negative(a) then put(k, "-"); end;
+    magnitude(k, a);
+end;
+
+(* a in a field of s.width bytes: on the left spaces, or zeros after
+   the minus sign; or spaces on the right. A longer a is written whole. *)
+proc field(var k: Sink; a: Arg; const s: Spec);
+var dry: Sink; pad: INT;
+begin
+    dry.b := nil; dry.dry := true; dry.n := 0;
+    arg(dry, a);
+    pad := s.width - dry.n;
+    if s.left then
+        arg(k, a); fill(k, ' ', pad);
+    elsif s.zero then
+        if negative(a) then put(k, "-"); end;
+        fill(k, '0', pad); magnitude(k, a);
+    else
+        fill(k, ' ', pad); arg(k, a);
+    end;
+end;
+
+(* If f[i], a {, starts a width, {2}, {02} or {-10}: it is read into s
+   and the place of its } is the result; else the result is -1. *)
+proc spec(f: []U8; i: INT; var s: Spec): INT;
+var count: INT;
+begin
+    s.width := 0; s.zero := false; s.left := false;
+    INC(i);
+    if (i < LEN(f)) and (f[i] = '-') then s.left := true; INC(i); end;
+    if (i < LEN(f)) and (f[i] = '0') then s.zero := true; end;
+    while (i < LEN(f)) and (f[i] >= '0') and (f[i] <= '9') and (count < 4) do
+        s.width := s.width * 10 + INT(f[i] - '0');
+        INC(count); INC(i);
+    end;
+    if (count > 0) and (i < LEN(f)) and (f[i] = '}') then return i; end;
+    return -1;
+end;
+
+proc format(b: ^Buf.Buf; f: []U8; args: []Arg);
+var i, start, n, close: INT; k: Sink; s: Spec;
+begin
+    k.b := b; k.dry := false; k.n := 0;
     i := 0; start := 0; n := 0;
     while i < LEN(f) do
         if (f[i] = '{') or (f[i] = '}') then
-            put(b, f[start..i]);
+            put(k, f[start..i]);
+            close := -1;
+            if f[i] = '{' then close := spec(f, i, s); end;
             if (i + 1 < LEN(f)) and (f[i + 1] = f[i]) then
-                put(b, f[i..i + 1]);
+                put(k, f[i..i + 1]);
                 INC(i);
             elsif (f[i] = '{') and (i + 1 < LEN(f)) and (f[i + 1] = '}') then
-                if n < LEN(args) then arg(b, args[n]); end;
+                if n < LEN(args) then arg(k, args[n]); end;
                 INC(n);
                 INC(i);
+            elsif close >= 0 then
+                if n < LEN(args) then field(k, args[n], s); end;
+                INC(n);
+                i := close;
             end;
             start := i + 1;
         end;
         INC(i);
     end;
-    put(b, f[start..LEN(f)]);
+    put(k, f[start..LEN(f)]);
 end;
 
 (* Writes f to standard output, each {} replaced by the next of args. *)
@@ -172,7 +268,16 @@ begin
     Buf.reset(b);
     write(b, "{} {} {} {} {} {}", [real(1.5E17, 2), real(-9.999E20, 2), real(1.0E15, 0), real(1.7976931348623157E308, 3),
         real(1.0 / zero, 2), real(zero / zero, 2)]);
-    if Buf.bytes(b) # "1.50e17 -1.00e21 1e15 1.798e308 inf nan" then Rt.stop("Fmt.real: an exponent"); end;
+    if Buf.bytes(b) # "1.50E17 -1.00E21 1E15 1.798E308 inf nan" then Rt.stop("Fmt.real: an exponent"); end;
+    Buf.reset(b);
+    write(b, "[{3}][{03}][{-3}][{04}][{4}][{-4}|][{2}]", [int(7), int(7), int(7), int(-7), int(-7), int(-7), int(12345)]);
+    if Buf.bytes(b) # "[  7][007][7  ][-007][  -7][-7  |][12345]" then Rt.stop("Fmt: a width"); end;
+    Buf.reset(b);
+    write(b, "{6}|{-6}|{06}|{2}|{05}|{3}", [str("ab"), str("ab"), real(-1.5, 1), hex(255), lowHex(0ABCH), char('c')]);
+    if Buf.bytes(b) # "    ab|ab    |-001.5|FF|00abc|  c" then Rt.stop("Fmt: a width on other arguments"); end;
+    Buf.reset(b);
+    write(b, "{x} {2x} {0} {-} {a} {1", [int(1), int(2)]);
+    if Buf.bytes(b) # "x 2x 1 - a 1" then Rt.stop("Fmt: a { that is no width"); end;
     Arena.done(ar);
 end;
 
