@@ -4021,6 +4021,14 @@ begin
     end;
 end;
 
+(* A directory and a module name, keeping the root's slash and not
+   adding another when the directory already ends in one. *)
+proc modulePath(dir, file: []U8): []U8;
+begin
+    if (LEN(dir) > 0) and (dir[LEN(dir) - 1] = '/') then return say2("{}{}", dir, file); end;
+    return say2("{}/{}", dir, file);
+end;
+
 (* Reads every other file of module n in dir, and checks its interface
    against m, compiled from the file named chosen. *)
 proc checkSiblings(dir, chosen: []U8; n: INT; m: PModule; args: Sym.Args): ERROR;
@@ -4042,7 +4050,7 @@ begin
     until false;
     Sys.closeDir(dp);
     for i := 0 to numOthers - 1 do
-        sib := try compileFile(say2("{}/{}", dir, others[i]), n, args, true);
+        sib := try compileFile(modulePath(dir, others[i]), n, args, true);
         compareIface(m, sib);
     end;
     return nil;
@@ -4072,7 +4080,7 @@ begin
         dir := searchDir(i);
         for j := 0 to 3 do
             f := fileName(n, j);
-            if exists(say2("{}/{}", dir, f)) then return dir, f, true; end;
+            if exists(modulePath(dir, f)) then return dir, f, true; end;
         end;
     end;
     return "", "", false;
@@ -4085,7 +4093,7 @@ proc checkOneModule(n: INT; dir, f: []U8; at: Diag.Pos): ERROR;
 var
     i, j, dev, ino, mineDev, mineIno: INT; past, chosen: BOOL; g, files, others: []U8;
 begin
-    mineDev, mineIno := identity(say2("{}/{}", dir, f));
+    mineDev, mineIno := identity(modulePath(dir, f));
     others := "";
     past := false;
     for i := -1 to numInc + LEN(userDirs) do
@@ -4093,7 +4101,7 @@ begin
             files := "";
             chosen := false;
             for j := 0 to 3 do
-                g := say2("{}/{}", searchDir(i), fileName(n, j));
+                g := modulePath(searchDir(i), fileName(n, j));
                 if exists(g) then
                     files := say2("{} and {}", files, Diag.shownPath(g));
                     dev, ino := identity(g);
@@ -4105,7 +4113,7 @@ begin
         past := past or (searchDir(i) = dir);
     end;
     if LEN(others) = 0 then return nil; end;
-    Diag.error(at, say3("module {} is in {}{}", nameOf(n), Diag.shownPath(say2("{}/{}", dir, f)), others));
+    Diag.error(at, say3("module {} is in {}{}", nameOf(n), Diag.shownPath(modulePath(dir, f)), others));
     Diag.help("a program has one module of each name; a symbolic link to one of these files chooses it");
     return Scan.Failed;
 end;
@@ -4129,7 +4137,7 @@ begin
         return nil, Scan.Failed;
     end;
     try checkOneModule(name, dir, f, args.at);
-    m := try compileFile(say2("{}/{}", dir, f), name, args, false);
+    m := try compileFile(modulePath(dir, f), name, args, false);
     try checkSiblings(dir, f, name, m, args);
     return m, nil;
 end;
@@ -4230,7 +4238,9 @@ begin
     none.n := 0;
     i := LEN(path);
     while (i > 0) and (path[i - 1] # '/') do DEC(i); end;
-    if i = 0 then mainDir := "."; else mainDir := path[0..i - 1]; end;
+    if i = 0 then mainDir := ".";
+    elsif i = 1 then mainDir := "/";
+    else mainDir := path[0..i - 1]; end;
     base := path[i..LEN(path)];
     i := 0;
     while (i < LEN(base)) and (base[i] # '.') do INC(i); end;

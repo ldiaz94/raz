@@ -136,6 +136,22 @@ end Main.
                    "module PathLib; const other* = 42; end PathLib.\n")
         self.fails("isn't exported")
 
+    def test_trailing_slash_keeps_sibling_paths(self):
+        directory = self.root / "target"
+        chosen = self.library(directory, suffix=".linux-x86_64")
+        sibling = directory / "PathLib.raz"
+        self.write(sibling, "module PathLib; const other* = 42; end PathLib.\n")
+        for source in ("include", "user"):
+            with self.subTest(source=source):
+                flags = ("-I", str(directory) + "/") if source == "include" else ()
+                self.env["RAZ_PATH"] = str(directory) + "/" if source == "user" else ""
+                result = self.compile(*flags)
+                self.assertEqual(result.returncode, 1, result.stderr)
+                self.assertIn("isn't exported", result.stderr)
+                self.assertIn(str(chosen), result.stderr)
+                self.assertIn(str(sibling), result.stderr)
+                self.assertNotIn("//", result.stderr)
+
     def test_duplicate_main_and_include(self):
         chosen = self.library(self.default)
         for directory in (self.main.parent, self.root / "include"):

@@ -23,7 +23,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,567 | 1,292 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,561 | 1,824 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,175 | 1,747 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,258 | 3,681 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,268 | 3,688 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Host.raz` | 90 | 58 | The system running the compiler |
@@ -1533,7 +1533,11 @@ which its type's fingerprint has.
 
 Last, modules, at the end of the file. `compileFile` reads one module.
 `importModule` finds a module's file, trying the target's names first,
-and compiles it if it isn't yet. `checkOneModule` first makes sure no
+and compiles it if it isn't yet. `compileMain` keeps `/` as the directory
+of a main file at the root; `modulePath` joins directories and names without
+adding a slash when one is already there. Directory enumeration and file
+lookup thus refer to the same directory, including `/`. `checkOneModule`
+first makes sure no
 later directory has the module too, unless the file is a link to one
 of its files there. File identity comes from `Sys.info`: its device and
 inode name the file, following a symbolic link. The parser knows no
