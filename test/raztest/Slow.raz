@@ -1,0 +1,9 @@
+(* A fixture for test/check.sh: a test that outlasts raztest -t 1. *)
+module Slow;
+import Sys;
+
+proc main*;
+begin
+    Sys.sleep(5000);
+end;
+end Slow.

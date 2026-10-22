@@ -285,6 +285,32 @@ else
     echo "FAIL tools/Test.raz: $(cat $out/raztest.cerr)"; fail=$((fail + 1))
 fi
 
+# raztest's own three reports, over the fixtures in test/raztest (a pass,
+# a failed check, a build that fails, a test that outlasts -t 1): plain,
+# --tap and --junit, each against its .expect, every time in them
+# written T
+rtreport() {   # name, then raztest's arguments after the common ones
+    name=$1; shift
+    RAZ=$raz $out/raztest -t 1 -o $out/rt "$@" test/raztest 2>&1 </dev/null |
+        sed -e 's/[0-9][0-9]*\.[0-9][0-9]s/Ts/' -e 's/time="[0-9.]*"/time="T"/' > $out/rt.$name
+    if cmp -s $out/rt.$name test/raztest/$name.expect; then pass=$((pass + 1))
+    else
+        echo "FAIL raztest $name:"; diff test/raztest/$name.expect $out/rt.$name
+        fail=$((fail + 1))
+    fi
+}
+if [ -x $out/raztest ]; then
+    rtreport plain
+    rtreport tap --tap
+    RAZ=$raz $out/raztest -t 1 -o $out/rt --junit $out/rt.xml test/raztest >/dev/null 2>&1
+    sed -e 's/time="[0-9.]*"/time="T"/' $out/rt.xml > $out/rt.junit
+    if cmp -s $out/rt.junit test/raztest/junit.expect; then pass=$((pass + 1))
+    else
+        echo "FAIL raztest junit:"; diff test/raztest/junit.expect $out/rt.junit
+        fail=$((fail + 1))
+    fi
+fi
+
 # CAbi is tools/cabi.c's output, from the C library's own headers:
 # compiled with cc, and with musl-gcc, each where it is installed, it
 # writes lib/'s file again

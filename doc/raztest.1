@@ -12,6 +12,8 @@
 .Op Fl t Ar secs
 .Op Fl o Ar dir
 .Op Fl r Ar text
+.Op Fl \-tap
+.Op Fl \-junit Ar file
 .Ar file.raz Ns | Ns Ar dir ...
 .Sh DESCRIPTION
 .Nm
@@ -73,8 +75,29 @@ Last comes a summary:
 .Ed
 .Pp
 The three words are in colour when standard output is a terminal.
+.Pp
+With
+.Fl \-tap
+standard output is TAP version 14 instead: the lines
+.Ql TAP version 14
+and
+.Ql 1..N ,
+then for each test
+.Ql ok K - file
+or
+.Ql not ok K - file # status 1
+(the same reason as the
+.Ql FAIL
+line, or
+.Ql timed out ) ,
+with a failure's
+.Pa .out
+under it as comment lines starting with
+.Ql # ,
+and the summary as a last comment line.
+There is no colour.
 .Sh OPTIONS
-.Bl -tag -width "-t secs"
+.Bl -tag -width "--junit file"
 .It Fl I Ar dir
 Look for modules in
 .Ar dir
@@ -101,6 +124,24 @@ if not given.
 .It Fl r Ar text
 Run only the tests whose name holds
 .Ar text .
+.It Fl \-tap
+Write TAP instead of the usual lines.
+.It Fl \-junit Ar file
+Besides the usual output, write the results to
+.Ar file
+as JUnit XML, which CI services read: one
+.Ql testcase
+for each test, its
+.Ql classname
+the file, with a
+.Ql failure
+holding the log for one that failed or timed out.
+The directory of
+.Ar file
+must exist; if it can't be written, the status is 2.
+Control bytes XML 1.0 forbids in a log are written as
+.Ql \&? ;
+invalid UTF-8 is passed through.
 .It Fl h , Fl \-help
 Say the options, and exit.
 .El
@@ -124,6 +165,11 @@ exits with 128 and the signal's number.
 Run a project's tests, four at a time:
 .Bd -literal -offset indent
 raztest -j 4 -I src test
+.Ed
+.Pp
+In CI, with a report for the service to show:
+.Bd -literal -offset indent
+raztest -j 4 -I src --junit build/junit.xml test
 .Ed
 .Pp
 A Makefile's check that uses

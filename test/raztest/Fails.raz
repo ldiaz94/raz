@@ -1,0 +1,9 @@
+(* A fixture for test/check.sh: a test with one failing check. *)
+module Fails;
+import Check;
+
+proc main*;
+begin
+    Check.int("two and two", 2 + 2, 5);
+end;
+end Fails.

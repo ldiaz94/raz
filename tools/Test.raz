@@ -1,6 +1,7 @@
 (* Test: raztest, which builds and runs the tests of a raz program.
 
-       raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] file.raz|dir ...
+       raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text]
+               [--tap] [--junit file] file.raz|dir ...
 
    A test is a module whose main is its test: it passes if it builds
    with raz -Werror and then exits with status 0, as a program that
@@ -25,22 +26,34 @@
    command line or the setup. The words ok, FAIL and TIMEOUT are in
    colour when standard output is a terminal and NO_COLOR is unset.
 
-   Needs only the library. Leaves out: TAP and JUnit reports and
-   watching files (to come), arguments to a test, tests not in raz,
-   and the number of processors as -j's default, which Sys can't tell:
-   it is 1. *)
+   --tap writes TAP version 14 on standard output instead: the plan
+   1..N first, then ok or not ok for each test, a failure's log in
+   comment lines under it, and the summary as a last comment; no
+   colour. --junit file also writes the results to file as JUnit XML,
+   as CI services read it; the file's directory must exist. A timeout
+   counts as a failure there. The log of a failure is written as it
+   is, so invalid UTF-8 in it passes through into the XML, except that
+   the control bytes XML 1.0 forbids become ?.
+
+   Needs only the library. Leaves out: watching files (to come),
+   arguments to a test, tests not in raz, and the number of processors
+   as -j's default, which Sys can't tell: it is 1. *)
 module Test;
 import Opt, Fmt, Out, Buf, Str, Heap, Sys, Rt, Files;
 import Names := Vec([]U8), Jobs := Vec(Job), ByName := Sort([]U8, less);
 
 const
+    TapKey = 1;                  (* the keys of --tap and --junit, which have no letter *)
+    JunitKey = 2;
     Table: []Opt.Row = [
-        Opt.usage("", "raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] file.raz|dir ..."),
+        Opt.usage("", "raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] [--tap] [--junit file] file.raz|dir ..."),
         Opt.option("", 'I', "include", "dir", "look for modules in dir too, as raz -I"),
         Opt.option("", 'j', "jobs", "n", "run n tests at once (1)"),
         Opt.option("", 't', "timeout", "secs", "kill a build or run after secs (60)"),
         Opt.option("", 'o', "out", "dir", "put the programs and their .out in dir (build/raztest)"),
-        Opt.option("", 'r', "run", "text", "run only the tests whose name holds text")];
+        Opt.option("", 'r', "run", "text", "run only the tests whose name holds text"),
+        Opt.option("", TapKey, "tap", "", "write TAP version 14 instead of the usual lines"),
+        Opt.option("", JunitKey, "junit", "file", "also write the results to file as JUnit XML")];
     PollMs = 10;                 (* how long to wait between looks at the running tests *)
     Second = 1000000000;         (* a second in Sys.clock's nanoseconds *)
     Green = "\x1b[32m";          (* the colours of ok, FAIL and TIMEOUT *)
@@ -82,6 +95,8 @@ var
     devNull: INT;        (* /dev/null, each test's standard input *)
     signals: INT;        (* the fd the interrupting signals come on *)
     colour: BOOL;        (* the words of the results are coloured *)
+    tap: BOOL;           (* --tap: report in TAP *)
+    junit: []U8;         (* --junit: the file for the XML, or "" *)
 
 (* Whether a sorts before b, for sorting a directory's files. *)
 proc less(a, b: []U8): BOOL;
@@ -188,6 +203,8 @@ begin
         elsif p.letter = 't' then timeout := Opt.number(p, 1, 1000000) * Second;
         elsif p.letter = 'o' then outDir := p.value;
         elsif p.letter = 'r' then only := p.value;
+        elsif p.letter = TapKey then tap := true;
+        elsif p.letter = JunitKey then junit := p.value;
         end;
     end;
     arg, ok := Opt.operand(p);
@@ -227,7 +244,7 @@ begin
     if devNull < 0 then die("can't open /dev/null: {}", [Fmt.str(Sys.errorText(devNull))]); end;
     signals := Sys.catch([Sys.sigInt, Sys.sigTerm, Sys.sigHup]);
     if signals < 0 then die("can't catch signals: {}", [Fmt.str(Sys.errorText(signals))]); end;
-    colour := Sys.isTerminal(Sys.stdout) and (LEN(Sys.env("NO_COLOR")) = 0);
+    colour := Sys.isTerminal(Sys.stdout) and (LEN(Sys.env("NO_COLOR")) = 0) and not tap;
 end;
 
 (* Whether the test j is being built or run. *)
@@ -337,24 +354,31 @@ begin
     for i := LEN(word) to 7 do Out.char(' '); end;
 end;
 
-(* Writes the file at path, each line indented by 4 spaces. *)
-proc putIndented(path: []U8);
+(* Writes the file at path, each line after the text lead. *)
+proc putLog(path, lead: []U8);
 var b: Buf.Buf; s, line, rest: []U8; more: BOOL;
 begin
     Buf.init(b, Heap.heap);
     defer Buf.done(b);
-    if not Files.read(path, b) then Fmt.print("    (can't read {})\n", [Fmt.str(path)]); return; end;
+    if not Files.read(path, b) then Fmt.print("{}(can't read {})\n", [Fmt.str(lead), Fmt.str(path)]); return; end;
     s := Buf.bytes(b);
     while LEN(s) > 0 do
         line, rest, more := Str.cut(s, "\n");
-        Fmt.print("    {}\n", [Fmt.str(line)]);
+        Fmt.print("{}{}\n", [Fmt.str(lead), Fmt.str(line)]);
         s := rest;
         if not more then break; end;
     end;
 end;
 
+(* Why the test j failed: what its why says, or that it timed out. *)
+proc reason(const j: Job): []U8;
+begin
+    if j.result = timedOut then return "timed out"; end;
+    return Buf.bytes(j.why);
+end;
+
 (* Writes the line of the ended test j, and its log if it failed. *)
-proc report(const j: Job);
+proc reportLine(const j: Job);
 var secs: Fmt.Arg;
 begin
     secs := Fmt.real(F64(j.took) / F64(Second), 2);
@@ -364,12 +388,30 @@ begin
     elsif j.result = timedOut then
         putWord("TIMEOUT", Yellow);
         Fmt.print("{}  {}s\n", [Fmt.str(j.path), secs]);
-        putIndented(j.log);
+        putLog(j.log, "    ");
     else
         putWord("FAIL", Red);
         Fmt.print("{}  {}  {}s\n", [Fmt.str(j.path), Fmt.str(Buf.bytes(j.why)), secs]);
-        putIndented(j.log);
+        putLog(j.log, "    ");
     end;
+end;
+
+(* Writes the TAP lines of the ended test j, the kth: its result, and
+   its log in comment lines if it failed. *)
+proc reportTap(const j: Job; k: INT);
+begin
+    if j.result = passed then
+        Fmt.print("ok {} - {}\n", [Fmt.int(k), Fmt.str(j.path)]);
+        return;
+    end;
+    Fmt.print("not ok {} - {} # {}\n", [Fmt.int(k), Fmt.str(j.path), Fmt.str(reason(j))]);
+    putLog(j.log, "# ");
+end;
+
+(* Writes what ended test j, the kth, in the report asked for. *)
+proc report(const j: Job; k: INT);
+begin
+    if tap then reportTap(j, k); else reportLine(j); end;
     Out.flush;
 end;
 
@@ -402,21 +444,90 @@ begin
         for i := 0 to next - 1 do
             if active(all[i]) and poll(all[i]) then changed := true; end;
         end;
-        while (shown < LEN(all)) and (all[shown].phase = done) do report(all[shown]); INC(shown); end;
+        while (shown < LEN(all)) and (all[shown].phase = done) do report(all[shown], shown + 1); INC(shown); end;
         if not changed and Sys.ready(signals, PollMs) then interrupted(Sys.caught(signals)); end;
     end;
 end;
 
-(* The summary line, and status 1 if any test failed. *)
+(* Writes the plan of a TAP report: how many tests there are. *)
+proc tapPlan;
+begin
+    Fmt.print("TAP version 14\n1..{}\n", [Fmt.int(tests.len)]);
+    Out.flush;
+end;
+
+(* Adds s to b as XML text or an attribute: & < > and " escaped, and
+   each control byte but tab, newline and carriage return, which XML 1.0
+   forbids, written as ?. Bytes from 128 up, valid UTF-8 or not, are
+   passed through as they are. *)
+proc xml(var b: Buf.Buf; s: []U8);
+var i: INT; c: U8;
+begin
+    for i := 0 to LEN(s) - 1 do
+        c := s[i];
+        if c = '&' then Buf.str(b, "&amp;");
+        elsif c = '<' then Buf.str(b, "&lt;");
+        elsif c = '>' then Buf.str(b, "&gt;");
+        elsif c = '"' then Buf.str(b, "&quot;");
+        elsif (c < 32) and (c # 9) and (c # 10) and (c # 13) then Buf.add(b, '?');
+        else Buf.add(b, c);
+        end;
+    end;
+end;
+
+(* Adds the XML element of the test j to b: a testcase, with a failure
+   inside it, holding the log, if it failed. *)
+proc testCase(var b: Buf.Buf; const j: Job);
+var log: Buf.Buf;
+begin
+    Buf.str(b, "<testcase name=\"");
+    xml(b, j.name);
+    Buf.str(b, "\" classname=\"");
+    xml(b, j.path);
+    Fmt.write(b, "\" time=\"{}\"", [Fmt.real(F64(j.took) / F64(Second), 2)]);
+    if j.result = passed then Buf.str(b, "/>\n"); return; end;
+    Buf.str(b, "><failure message=\"");
+    xml(b, reason(j));
+    Buf.str(b, "\">");
+    Buf.init(log, Heap.heap);
+    defer Buf.done(log);
+    if Files.read(j.log, log) then xml(b, Buf.bytes(log)); end;
+    Buf.str(b, "</failure></testcase>\n");
+end;
+
+(* Writes the results to the --junit file, which took the whole run
+   took nanoseconds; status 2 if it can't be written. *)
+proc writeJunit(took: I64);
+var b: Buf.Buf; all: []Job; i, failures: INT; counts, secs: Fmt.Arg;
+begin
+    all := Jobs.all(tests);
+    for i := 0 to LEN(all) - 1 do
+        if all[i].result # passed then INC(failures); end;
+    end;
+    counts := Fmt.int(LEN(all));
+    secs := Fmt.real(F64(took) / F64(Second), 2);
+    Buf.init(b, Heap.heap);
+    defer Buf.done(b);
+    Buf.str(b, "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    Fmt.write(b, "<testsuites tests=\"{}\" failures=\"{}\" time=\"{}\">\n", [counts, Fmt.int(failures), secs]);
+    Fmt.write(b, "<testsuite name=\"raztest\" tests=\"{}\" failures=\"{}\" time=\"{}\">\n", [counts, Fmt.int(failures), secs]);
+    for i := 0 to LEN(all) - 1 do testCase(b, all[i]); end;
+    Buf.str(b, "</testsuite>\n</testsuites>\n");
+    if not Files.write(junit, Buf.bytes(b)) then die("can't write {}", [Fmt.str(junit)]); end;
+end;
+
+(* The summary line, the --junit file, and status 1 if any test failed. *)
 proc summary(took: I64);
 var all: []Job; i: INT; count: [3]INT;
 begin
     all := Jobs.all(tests);
     for i := 0 to LEN(all) - 1 do INC(count[INT(all[i].result)]); end;
+    if tap then Out.str("# "); end;
     Fmt.print("{} passed, {} failed, {} timed out, {}s\n",
         [Fmt.int(count[INT(passed)]), Fmt.int(count[INT(failed)]), Fmt.int(count[INT(timedOut)]),
          Fmt.real(F64(took) / F64(Second), 2)]);
     Out.flush;
+    if LEN(junit) > 0 then writeJunit(took); end;
     if count[INT(passed)] < LEN(all) then Rt.exit(1); end;
 end;
 
@@ -426,6 +537,7 @@ begin
     began := Sys.clock();
     readArgs;
     setUp;
+    if tap then tapPlan; end;
     runAll;
     summary(Sys.clock() - began);
 end;

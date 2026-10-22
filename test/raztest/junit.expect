@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites tests="4" failures="3" time="T">
+<testsuite name="raztest" tests="4" failures="3" time="T">
+<testcase name="Broken" classname="test/raztest/Broken.raz" time="T"><failure message="doesn't compile">test/raztest/Broken.raz:6:5: error: nothing isn't declared
+    6 |     nothing := 1;
+      |     ^^^^^^^
+raz: 1 error
+</failure></testcase>
+<testcase name="Fails" classname="test/raztest/Fails.raz" time="T"><failure message="status 1">FAIL two and two
+  got:  4
+  want: 5
+Check: 1 of 1 failed
+</failure></testcase>
+<testcase name="Pass" classname="test/raztest/Pass.raz" time="T"/>
+<testcase name="Slow" classname="test/raztest/Slow.raz" time="T"><failure message="timed out"></failure></testcase>
+</testsuite>
+</testsuites>

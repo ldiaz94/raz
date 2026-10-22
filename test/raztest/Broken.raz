@@ -1,0 +1,8 @@
+(* A fixture for test/check.sh: a test that doesn't compile. *)
+module Broken;
+
+proc main*;
+begin
+    nothing := 1;
+end;
+end Broken.

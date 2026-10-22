@@ -1,0 +1,7 @@
+(* A fixture for test/check.sh: a test that passes. *)
+module Pass;
+
+proc main*;
+begin
+end;
+end Pass.
