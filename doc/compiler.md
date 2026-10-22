@@ -16,17 +16,17 @@ library, made from `lib/` by `tools/Doc.raz`.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/Diag.raz` | 410 | 315 | Messages: positions, source excerpts, colour, counts |
+| `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,148 | 949 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 715 | 573 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,584 | 1,304 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,592 | 1,843 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,223 | 1,785 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,266 | 3,689 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,323 | 3,735 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Raz.raz` | 417 | 332 | The command line |
+| `src/Raz.raz` | 418 | 333 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -895,7 +895,9 @@ one under `quiet`, which the parser sets (`setQuiet`) when an error
 follows from another (see Parse.raz). The line and column are worked out
 only when a message is printed (`locate`, `chars`), so positions cost
 nothing while compiling. `addFile` keeps every source file the scanner
-opens, so a note can show a line of any of them. `finish` prints the
+opens, so a note can show a line of any of them. A file may carry one
+line to tell (`setOrigin`), shown once under the first message about
+it: the parser gives a library's. `finish` prints the
 count of errors and warnings and stops if there were errors; `fatal` is
 for errors with no place in the source. A message is made by `say` from
 a format and its arguments, and kept for good, since a message is made
@@ -1537,7 +1539,11 @@ which its type's fingerprint has.
 
 Last, modules, at the end of the file. `compileFile` reads one module.
 `importModule` finds a module's file, trying the target's names first,
-and compiles it if it isn't yet. `checkOneModule` first makes sure no
+and compiles it if it isn't yet. A module found in an `-I` or
+`RAZ_PATH` directory that holds a file `RAZ-VERSION` gets a line
+(`libraryNote`, `majorMinor`) saying the raz its library was written
+for and this one's, "0.21" for `0.21.0-5-g38d29a8`; the compiler only
+reads the file. `checkOneModule` first makes sure no
 later directory has the module too, unless the file is a link to one
 of its files there; `checkSiblings` then reads the files for other
 targets beside it, declarations only, and `compareIface` holds them

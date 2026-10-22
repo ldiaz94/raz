@@ -1,0 +1,5 @@
+test/err/mods/oldlib/OldLib.raz:2:17: error: an integer constant and a string are different types
+  (a library written for raz 0.18; this is raz N)
+    2 | const Answer* = 1 + "a";
+      |                 ^^^^^^^
+raz: 1 error

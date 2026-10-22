@@ -1,0 +1,3 @@
+module OldLib;
+const Answer* = 1 + "a";
+end OldLib.

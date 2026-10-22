@@ -320,6 +320,7 @@ begin
     if errno # 0 then dir := Files.arg(0); end;
     i := LEN(dir);
     while (i > 0) and (dir[i - 1] # '/') do DEC(i); end;
+    Parse.setVersion(Version.Text);
     if i = 0 then Parse.setLibDir("lib"); else Parse.setLibDir(say1("{}lib", dir[0..i])); end;
     userLibraries();
     if LEN(outPath) = 0 then

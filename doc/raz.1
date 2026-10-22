@@ -89,6 +89,15 @@ Look for imported modules in
 .Ar dir
 too, after the main module's own directory and before the library.
 It may be given up to 16 times.
+An error in a module found in such a directory, or in one of
+.Ev RAZ_PATH ,
+names that directory in its path; and if the directory holds a file
+.Pa RAZ-VERSION ,
+of one line such as
+.Ql 0.21 ,
+a second line says the raz the library was written for and this one:
+.Ql (a library written for raz 0.18; this is raz 0.21) .
+The compiler only reads the file; it never refuses to build for it.
 .It Fl Werror
 A warning counts as an error.
 .It Fl S

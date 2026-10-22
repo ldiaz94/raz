@@ -26,6 +26,7 @@ type
         path: []U8;
         buf: ^U8;
         len: INT;
+        origin: []U8;     (* a line told once, under the first message about the file; "" for none *)
     end;
 
 const
@@ -106,9 +107,16 @@ begin
     end;
     p, ok := Str.copy(Heap.heap, shownPath(path));
     if not ok then fatal("out of memory"); end;
-    files[numFiles] := {path: p, buf: buf, len: len};
+    files[numFiles] := {path: p, buf: buf, len: len, origin: ""};
     INC(numFiles);
     return numFiles - 1;
+end;
+
+(* Gives file f a line to tell once, under the first message about it:
+   where a library came from and the raz it was written for *)
+proc setOrigin*(f: INT; text: []U8);
+begin
+    files[f].origin := text;
 end;
 
 proc pathOf*(f: INT): []U8;
@@ -251,6 +259,10 @@ begin
     put(" ");
     paint(Bold, msg);
     putc('\n');
+    if LEN(f^.origin) > 0 then
+        put("  ("); put(f^.origin); put(")\n");
+        f^.origin := "";
+    end;
     stop := start;
     while (stop < f^.len) and (buf[stop] # 10) do INC(stop); end;
     lo := start;

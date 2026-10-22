@@ -12,7 +12,8 @@
 #             each address in it, 0x and hex digits, written 0x?
 # A program without X.expect is compiled, not run. test/libc puts
 # lib/Sys.raz, over the C library, before the system call one.
-# Programs in test/err must not compile, and must print X.err; there
+# Programs in test/err must not compile, and must print X.err (with
+# the compiler's own version in a library's note written as N); there
 # X.args holds the compiler's options. The examples, test/libc, the
 # tools and the library's tests are compiled with -Werror, so warnings
 # fail them. Then the version, tools/Doc.raz, the report's examples,
@@ -99,7 +100,7 @@ for f in test/err/*.raz; do
     if $raz $flags -I test/err/mods -I test/run/mods -o $out/$name $f 2>$out/$name.cerr; then
         echo "FAIL $f: compiles"
         fail=$((fail + 1))
-    elif ! cmp -s test/err/$name.err $out/$name.cerr; then
+    elif ! sed 's/ this is raz [^)]*)/ this is raz N)/' $out/$name.cerr | cmp -s test/err/$name.err -; then
         echo "FAIL $f: says"; diff test/err/$name.err $out/$name.cerr
         fail=$((fail + 1))
     else

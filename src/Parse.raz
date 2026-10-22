@@ -76,6 +76,8 @@ var
     incDirs*: [16][]U8;
     numInc*: INT;
     userDirs: [][]U8;    (* RAZ_PATH, or HOME/.raz/lib; set by the driver *)
+    thisVersion: []U8;   (* the compiler's version; set by the driver *)
+    originNote: []U8;    (* for the module about to be opened, see libraryNote *)
     firstModule*, lastModule*: PModule;   (* in the order they were finished *)
 
     checkMode: BOOL;     (* reading a file only for its interface *)
@@ -146,6 +148,12 @@ end;
 proc setUserDirs*(dirs: [][]U8);
 begin
     userDirs := dirs;
+end;
+
+(* The driver's version of the compiler, which a library's note names *)
+proc setVersion*(v: []U8);
+begin
+    thisVersion := v;
 end;
 
 proc nameOf(n: INT): []U8;
@@ -3861,6 +3869,8 @@ begin
     Chunk.setCurFile(internName(path));
     why := Scan.open(path);
     if LEN(why) # 0 then Diag.fatal(say2("can't read {}: {}", path, why)); end;
+    Diag.setOrigin(Scan.tokPos().f, originNote);
+    originNote := "";
     NEW(m, Heap.heap);
     m^.name := n;
     m^.sname := n;
@@ -4069,6 +4079,39 @@ begin
     return nil;
 end;
 
+(* The compiler's version as a library's RAZ-VERSION would say it:
+   "0.21" for "0.21.0-5-g38d29a8"; a name with fewer dots stays whole *)
+proc majorMinor(v: []U8): []U8;
+var i, dots: INT;
+begin
+    dots := 0;
+    for i := 0 to LEN(v) - 1 do
+        if v[i] = '.' then
+            INC(dots);
+            if dots = 2 then return v[0..i]; end;
+        end;
+    end;
+    return v;
+end;
+
+(* The line told with the first error in a module found in dir, an -I or
+   RAZ_PATH directory: if dir holds a file RAZ-VERSION, the raz its
+   library was written for. The file is only read; a library with none,
+   or a module of the program's own directory or of lib, has no line. *)
+proc libraryNote(dir: []U8): []U8;
+var fd, n, i: INT; b: [32]U8;
+begin
+    if (dir = mainDir) or (dir = libDir) then return ""; end;
+    fd := Sys.openRead(say1("{}/RAZ-VERSION", dir));
+    if fd < 0 then return ""; end;
+    n := Sys.read(fd, b[0..32]);
+    Sys.close(fd);
+    i := 0;
+    while (i < n) and (b[i] # 10) and (b[i] # 32) do INC(i); end;
+    if i = 0 then return ""; end;
+    return say2("a library written for raz {}; this is raz {}", b[0..i], majorMinor(thisVersion));
+end;
+
 (* The directories searched for modules: main, -I, user libraries, lib *)
 proc searchDir(i: INT): []U8;
 begin
@@ -4150,6 +4193,7 @@ begin
         return nil, Scan.Failed;
     end;
     try checkOneModule(name, dir, f, args.at);
+    originNote := libraryNote(dir);
     m := try compileFile(say2("{}/{}", dir, f), name, args, false);
     try checkSiblings(dir, f, name, m, args);
     return m, nil;
