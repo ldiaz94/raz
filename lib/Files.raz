@@ -3,10 +3,12 @@
 module Files;
 import Sys, Buf, Heap, Rt;
 
-(* Argument i, a C string, as a slice. *)
+(* Argument i, a C string, as a slice; empty if there is no argument i,
+   as for i below 0 or from ARGC() on. *)
 proc arg*(i: INT): []U8;
 var s: ^U8; n: INT;
 begin
+    if (i < 0) or (i >= ARGC()) then return ""; end;
     s := ARGV()[i];
     n := 0;
     while s[n] # 0 do INC(n); end;
@@ -65,6 +67,7 @@ begin
     if load("/tmp/raz-files-test", b) # Sys.errNoEntry then Rt.stop("Files.load: no such file"); end;
     if load("/", b) # -21 then Rt.stop("Files.load: a directory"); end;
     if read("/", b) or (b.len # 6) then Rt.stop("Files.read: a directory"); end;
+    if (LEN(arg(ARGC())) # 0) or (LEN(arg(-1)) # 0) then Rt.stop("Files.arg: past the arguments"); end;
     Buf.done(b);
 end;
 
