@@ -19,9 +19,10 @@
    zero width joiner, or a flag, two regional indicators, counts as its
    parts. The tables below are made from Unicode's data by
    tools/Widths.raz, which says how; they take about 4 KB, which a
-   program that doesn't call width or columns doesn't carry. *)
+   program that doesn't call width or columns doesn't carry. Its test
+   uses Check. *)
 module Width;
-import Rt, Str;
+import Str, Check;
 
 (* The tables: each a sorted list of ranges, first and last. Made by
    tools/Widths.raz: don't edit them, make them again. *)
@@ -198,21 +199,27 @@ begin
     return w;
 end;
 
+(* Checks that every character in cs has the width w. *)
+proc allWidth(what: []U8; cs: []I32; w: INT);
+var i: INT;
+begin
+    for i := 0 to LEN(cs) - 1 do Check.int(what, width(cs[i]), w); end;
+end;
+
 (* The module's test. *)
 proc main*;
 begin
-    if (width('a') # 1) or (width(' ') # 1) or (width(0) # 0) or (width(9) # 0)
-        or (width(7FH) # 0) then Rt.stop("Width.width: ASCII"); end;
-    if (width(0301H) # 0) or (width(200BH) # 0) or (width(0ADH) # 1)
-        or (width(1160H) # 0) then Rt.stop("Width.width: none"); end;
-    if (width(4E2DH) # 2) or (width(3042H) # 2) or (width(0FF21H) # 2)
-        or (width(01F600H) # 2) or (width(3000H) # 2) then Rt.stop("Width.width: wide"); end;
-    if (width(0E9H) # 1) or (width(03B1H) # 1) or (width(0FFFDH) # 1)
-        or (width(10FFFFH) # 1) then Rt.stop("Width.width: one"); end;
-    if (columns("") # 0) or (columns("abc") # 3) or (columns("e\u{301}") # 1)
-        or (columns("\u{4E2D}\u{6587}") # 4) or (columns("a\u{1F600}b") # 4) then
-        Rt.stop("Width.columns");
-    end;
+    allWidth("Width.width: ASCII 1", [I32('a'), I32(' ')], 1);
+    allWidth("Width.width: ASCII 0", [I32(0), 9, 7FH], 0);
+    allWidth("Width.width: none", [I32(0301H), 200BH, 1160H], 0);
+    Check.int("Width.width: soft hyphen", width(0ADH), 1);
+    allWidth("Width.width: wide", [I32(4E2DH), 3042H, 0FF21H, 01F600H, 3000H], 2);
+    allWidth("Width.width: one", [I32(0E9H), 03B1H, 0FFFDH, 10FFFFH], 1);
+    Check.int("Width.columns empty", columns(""), 0);
+    Check.int("Width.columns abc", columns("abc"), 3);
+    Check.int("Width.columns combining", columns("e\u{301}"), 1);
+    Check.int("Width.columns wide", columns("\u{4E2D}\u{6587}"), 4);
+    Check.int("Width.columns mixed", columns("a\u{1F600}b"), 4);
 end;
 
 end Width.

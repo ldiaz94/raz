@@ -5,11 +5,11 @@
    from it, so they can't drift from it.
 
    Depends on Files for the words, and writes the help and the
-   messages itself, then ends the program.
+   messages itself, then ends the program. Its test uses Check.
    Leaves out: options after operands (GNU's reordering), and
    completion for concha. *)
 module Opt;
-import Files, Str, Buf, Fmt, Heap, Out, Sys, Rt;
+import Files, Str, Buf, Fmt, Heap, Sys, Rt, Check;
 
 type
     Row* = variant
@@ -534,8 +534,9 @@ begin
     return n;
 end;
 
+(* Runs one case in a child and checks how it ended and what it wrote. *)
 proc run(c: Case; n: INT);
-var outR, outW, errR, errW, pid, status, no, ne: INT; st: Sys.Status; out, err: [4096]U8;
+var outR, outW, errR, errW, pid, status, no, ne: INT; st: Sys.Status; out, err: [4096]U8; what: Buf.Buf;
 begin
     outR, outW := Sys.pipe();
     errR, errW := Sys.pipe();
@@ -546,11 +547,13 @@ begin
     pid, st, status := Sys.wait(pid, true);
     no := readAll(outR, out);
     ne := readAll(errR, err);
-    if (st # Sys.exited) or (status # c.status) or (out[0..no] # c.out) or (err[0..ne] # c.err) then
-        Fmt.print("case {}: status {}, out:\n{}err:\n{}", [Fmt.int(n), Fmt.int(status), Fmt.str(out[0..no]), Fmt.str(err[0..ne])]);
-        Out.flush;
-        Rt.stop("Opt: a case went wrong");
-    end;
+    Buf.init(what, Heap.heap);
+    Fmt.write(what, "Opt case {}", [Fmt.int(n)]);
+    Check.ok(st = Sys.exited, "Opt: the child did not exit");
+    Check.int(Buf.bytes(what), status, c.status);
+    Check.str(Buf.bytes(what), out[0..no], c.out);
+    Check.str(Buf.bytes(what), err[0..ne], c.err);
+    Buf.done(what);
 end;
 
 proc main*;

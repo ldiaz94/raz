@@ -8,7 +8,7 @@
    Left out: the hyperbolic functions, fmod and hypot, until a program
    needs them. *)
 module Math;
-import Rt;
+import Check;
 
 const
     pi* = 3.141592653589793;   (* the F64 nearest to pi *)
@@ -925,25 +925,22 @@ end;
 proc testToReal;
 var b: [900]U8; i: INT;
 begin
-    if not reads("2", 2.0, true) or not reads("-0.5", -0.5, true) or not reads("1.5e-3", 1.5E-3, true)
-        or not reads("+1.25E+2", 125.0, true) or not reads("0.1", 0.1, true)
-        or not reads("1.7976931348623157E308", 1.7976931348623157E308, true)
-        or not reads("4.9e-324", fromBits(1), true) or not reads("1e-400", 0.0, true)
-        or not reads("-0", -0.0, true) or not reads("9007199254740993", 9007199254740992.0, true)
-        or not reads("1e309", 0.0, false) or not reads("1.8E308", 0.0, false)
-        then Rt.stop("Math.toReal"); end;
-    if not reads("", 0.0, false) or not reads("-", 0.0, false) or not reads("1.", 0.0, false)
-        or not reads(".5", 0.0, false) or not reads("1e", 0.0, false) or not reads("1.5.2", 0.0, false)
-        or not reads(" 1", 0.0, false) or not reads("1x", 0.0, false) or not reads("0x10", 0.0, false)
-        then Rt.stop("Math.toReal: not a real"); end;
+    Check.ok(reads("2", 2.0, true) and reads("-0.5", -0.5, true) and reads("1.5e-3", 1.5E-3, true)
+        and reads("+1.25E+2", 125.0, true) and reads("0.1", 0.1, true)
+        and reads("1.7976931348623157E308", 1.7976931348623157E308, true)
+        and reads("4.9e-324", fromBits(1), true) and reads("1e-400", 0.0, true)
+        and reads("-0", -0.0, true) and reads("9007199254740993", 9007199254740992.0, true)
+        and reads("1e309", 0.0, false) and reads("1.8E308", 0.0, false), "Math.toReal");
+    Check.ok(reads("", 0.0, false) and reads("-", 0.0, false) and reads("1.", 0.0, false)
+        and reads(".5", 0.0, false) and reads("1e", 0.0, false) and reads("1.5.2", 0.0, false)
+        and reads(" 1", 0.0, false) and reads("1x", 0.0, false) and reads("0x10", 0.0, false), "Math.toReal: not a real");
     (* 2^53 + 1, then 801 zeros and a 1: just above the half between two
        F64s, though the 1 is past the digits kept, so it rounds up *)
     COPY(b[0..16], "9007199254740993");
     for i := 16 to 816 do b[i] := '0'; end;
     b[817] := '1';
     COPY(b[818..823], "e-802");
-    if not reads(b[0..823], 9007199254740994.0, true) or not reads(b[0..817], 0.0, false)
-        then Rt.stop("Math.toReal: many digits"); end;
+    Check.ok(reads(b[0..823], 9007199254740994.0, true) and reads(b[0..817], 0.0, false), "Math.toReal: many digits");
 end;
 
 proc near(got, want: F64): BOOL;
@@ -962,47 +959,46 @@ begin
     inf := 1.0 / 0.0;
     nan := inf - inf;
     hard := scale(6381956970095103.0, 797);   (* of all F64s, the nearest a multiple of pi/2 *)
-    if (sqrt(2.0) # 1.4142135623730951) or (sqrt(0.0) # 0.0) or (sqrt(-1.0) = sqrt(-1.0)) then Rt.stop("Math.sqrt"); end;
-    if (floor(2.5) # 2.0) or (floor(-2.5) # -3.0) or (floor(-2.0) # -2.0) or (floor(1.0E300) # 1.0E300)
-        or not negative(floor(-0.0)) or (floor(nan) = floor(nan)) then Rt.stop("Math.floor"); end;
-    if not near(exp(1.0), 2.718281828459045) or not near(exp(-3.5), 0.0301973834223185)
+    Check.ok(not ((sqrt(2.0) # 1.4142135623730951) or (sqrt(0.0) # 0.0) or (sqrt(-1.0) = sqrt(-1.0))), "Math.sqrt");
+    Check.ok(not ((floor(2.5) # 2.0) or (floor(-2.5) # -3.0) or (floor(-2.0) # -2.0) or (floor(1.0E300) # 1.0E300)
+        or not negative(floor(-0.0)) or (floor(nan) = floor(nan))), "Math.floor");
+    Check.ok(not (not near(exp(1.0), 2.718281828459045) or not near(exp(-3.5), 0.0301973834223185)
         or not near(exp(700.0), 1.0142320547350045E304) or not near(exp(-740.0), 4.2E-322)
-        or (exp(0.0) # 1.0) or (exp(710.0) # inf) or (exp(-746.0) # 0.0) or (exp(-inf) # 0.0) then Rt.stop("Math.exp"); end;
-    if not near(ln(10.0), 2.302585092994046) or not near(ln(0.3), -1.2039728043259361)
+        or (exp(0.0) # 1.0) or (exp(710.0) # inf) or (exp(-746.0) # 0.0) or (exp(-inf) # 0.0)), "Math.exp");
+    Check.ok(not (not near(ln(10.0), 2.302585092994046) or not near(ln(0.3), -1.2039728043259361)
         or not near(ln(1.0E-310), -713.8013788281542) or (ln(1.0) # 0.0) or (ln(0.0) # -inf)
-        or (ln(inf) # inf) or (ln(-1.0) = ln(-1.0)) then Rt.stop("Math.ln"); end;
-    if not near(sin(1.0), 0.8414709848078965) or not near(sin(-100.0), 0.5063656411097588)
+        or (ln(inf) # inf) or (ln(-1.0) = ln(-1.0))), "Math.ln");
+    Check.ok(not (not near(sin(1.0), 0.8414709848078965) or not near(sin(-100.0), 0.5063656411097588)
         or not near(sin(pi), 1.2246467991473532E-16) or not near(sin(1.0E6), -0.34999350217129294)
         or not near(sin(1.0E22), -0.8522008497671888) or not negative(sin(-0.0))
-        or (sin(inf) = sin(inf)) then Rt.stop("Math.sin"); end;
-    if not near(cos(1.0), 0.5403023058681398) or not near(cos(-100.0), 0.8623188722876839)
+        or (sin(inf) = sin(inf))), "Math.sin");
+    Check.ok(not (not near(cos(1.0), 0.5403023058681398) or not near(cos(-100.0), 0.8623188722876839)
         or not near(cos(pi / 2.0), 6.123233995736766E-17) or not near(cos(1.0E6), 0.9367521275331447)
         or not near(cos(1.0E300), -0.5753861119575491) or not near(cos(hard), -4.687165924254628E-19)
-        or (cos(0.0) # 1.0) or (cos(nan) = cos(nan)) then Rt.stop("Math.cos"); end;
-    if not near(atan2(1.0, 2.0), 0.4636476090008061) or not near(atan2(-3.0, -4.0), -2.498091544796509)
+        or (cos(0.0) # 1.0) or (cos(nan) = cos(nan))), "Math.cos");
+    Check.ok(not (not near(atan2(1.0, 2.0), 0.4636476090008061) or not near(atan2(-3.0, -4.0), -2.498091544796509)
         or not near(atan2(5.0, 0.1), 1.550798992821746) or not near(atan2(1.0, -1.0E-20), 1.5707963267948966)
         or (atan2(0.0, -1.0) # pi) or not negative(atan2(-0.0, 1.0)) or (atan2(-inf, inf) # -pi / 4.0)
-        or not near(atan2(inf, -inf), 2.356194490192345) or (atan2(1.0, 0.0) # pi / 2.0) then Rt.stop("Math.atan2"); end;
-    if (ceil(2.5) # 3.0) or (ceil(-2.5) # -2.0) or not negative(ceil(-0.5)) or (ceil(1.0E300) # 1.0E300)
+        or not near(atan2(inf, -inf), 2.356194490192345) or (atan2(1.0, 0.0) # pi / 2.0)), "Math.atan2");
+    Check.ok(not ((ceil(2.5) # 3.0) or (ceil(-2.5) # -2.0) or not negative(ceil(-0.5)) or (ceil(1.0E300) # 1.0E300)
         or (round(2.5) # 3.0) or (round(-2.5) # -3.0) or (round(0.49999999999999994) # 0.0)
-        or not negative(round(-0.3)) then Rt.stop("Math.ceil, round"); end;
-    if not near(pow(2.5, 3.7), 29.67413253642086) or not near(pow(0.3, -12.5), 3435455.4096325925)
+        or not negative(round(-0.3))), "Math.ceil, round");
+    Check.ok(not (not near(pow(2.5, 3.7), 29.67413253642086) or not near(pow(0.3, -12.5), 3435455.4096325925)
         or not near(pow(1.0000001, 1.0E9), 2.6881038582144647E43) or (pow(-2.0, -3.0) # -0.125)
         or (pow(10.0, 22.0) # 1.0E22) or (pow(2.0, -1074.0) # scale(1.0, -1074)) or (pow(2.0, 1024.0) # inf)
         or (pow(nan, 0.0) # 1.0) or (pow(1.0, nan) # 1.0) or (pow(-1.0, inf) # 1.0) or (pow(0.0, -1.0) # inf)
-        or (pow(-0.0, -1.0) # -inf) or (pow(-2.0, 0.5) = pow(-2.0, 0.5)) then Rt.stop("Math.pow"); end;
-    if (log2(8.0) # 3.0) or (log2(0.5) # -1.0) or not near(log2(10.0), 3.321928094887362)
+        or (pow(-0.0, -1.0) # -inf) or (pow(-2.0, 0.5) = pow(-2.0, 0.5))), "Math.pow");
+    Check.ok(not ((log2(8.0) # 3.0) or (log2(0.5) # -1.0) or not near(log2(10.0), 3.321928094887362)
         or not near(log2(3.0E-310), -1028.212746914361) or (log10(1000.0) # 3.0) or (log10(1.0E22) # 22.0)
         or not near(log10(2.0), 0.3010299956639812) or not near(log10(7.0E-300), -299.15490195998575)
-        or (log2(0.0) # -inf) or (log10(-1.0) = log10(-1.0)) then Rt.stop("Math.log2, log10"); end;
-    if not near(tan(1.0), 1.5574077246549023) or not near(tan(-1.5707963267948966), -1.633123935319537E16)
-        or not near(tan(1.0E22), -1.6287782256068988) or not negative(tan(-0.0)) or (tan(inf) = tan(inf))
-        then Rt.stop("Math.tan"); end;
-    if not near(asin(0.3), 0.3046926540153975) or not near(asin(-0.99), -1.4292568534704693)
+        or (log2(0.0) # -inf) or (log10(-1.0) = log10(-1.0))), "Math.log2, log10");
+    Check.ok(not (not near(tan(1.0), 1.5574077246549023) or not near(tan(-1.5707963267948966), -1.633123935319537E16)
+        or not near(tan(1.0E22), -1.6287782256068988) or not negative(tan(-0.0)) or (tan(inf) = tan(inf))), "Math.tan");
+    Check.ok(not (not near(asin(0.3), 0.3046926540153975) or not near(asin(-0.99), -1.4292568534704693)
         or (asin(1.0) # pi / 2.0) or (asin(1.5) = asin(1.5)) or not near(acos(0.7), 0.7953988301841436)
         or not near(acos(-0.2), 1.7721542475852274) or (acos(1.0) # 0.0) or (acos(-1.0) # pi)
         or not near(atan(0.5), 0.4636476090008061) or not near(atan(-1.0E10), -1.5707963266948965)
-        or (atan(inf) # pi / 2.0) or not negative(atan(-0.0)) then Rt.stop("Math.asin, acos, atan"); end;
+        or (atan(inf) # pi / 2.0) or not negative(atan(-0.0))), "Math.asin, acos, atan");
     testToReal;
 end;
 

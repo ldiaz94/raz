@@ -2,10 +2,10 @@
    few steps to a number. The same seed gives the same numbers, on
    every machine, so a failing run can be replayed. It is fast and
    passes the usual statistical tests, but it is not for secrets.
-   Needs Sys (for a fresh seed) and Rt. Leaves out reals, shuffles and
-   other distributions. *)
+   Needs Sys (for a fresh seed) and Rt; its test uses Check.
+   Leaves out reals, shuffles and other distributions. *)
 module Rand;
-import Sys, Rt;
+import Sys, Rt, Check;
 
 type
     Rand* = record
@@ -69,29 +69,28 @@ proc main*;
 var r, q: Rand; i: INT; x: U64; v: I64; lo, hi: BOOL;
 begin
     init(r, 0);
-    if (next(r) # 0E220A8397B1DCDAFH) or (next(r) # 06E789E6AA1B965F4H)
-        or (next(r) # 006C45D188009454FH) then
-        Rt.stop("Rand.next: splitmix64 from 0");
-    end;
+    Check.ok(next(r) = 0E220A8397B1DCDAFH, "Rand.next: splitmix64 from 0, first");
+    Check.ok(next(r) = 06E789E6AA1B965F4H, "Rand.next: splitmix64 from 0, second");
+    Check.ok(next(r) = 006C45D188009454FH, "Rand.next: splitmix64 from 0, third");
     init(r, 42); init(q, 42);
     for i := 1 to 100 do
-        if next(r) # next(q) then Rt.stop("Rand: same seed, different numbers"); end;
+        Check.ok(next(r) = next(q), "Rand: same seed, different numbers");
     end;
     for i := 1 to 1000 do
-        if below(r, 1) # 0 then Rt.stop("Rand.below 1"); end;
-        if below(r, 3) >= 3 then Rt.stop("Rand.below 3"); end;
+        Check.int("Rand.below 1", I64(below(r, 1)), 0);
+        Check.ok(below(r, 3) < 3, "Rand.below 3");
         x := below(r, 08000000000000001H);
-        if x >= 08000000000000001H then Rt.stop("Rand.below 2^63+1"); end;
+        Check.ok(x < 08000000000000001H, "Rand.below 2^63+1");
     end;
     lo := false; hi := false;
     for i := 1 to 1000 do
         v := range(r, -2, 2);
-        if (v < -2) or (v > 2) then Rt.stop("Rand.range -2..2"); end;
+        Check.ok((v >= -2) and (v <= 2), "Rand.range -2..2");
         lo := lo or (v = -2); hi := hi or (v = 2);
     end;
-    if not (lo and hi) then Rt.stop("Rand.range: ends not reached"); end;
+    Check.ok(lo and hi, "Rand.range: ends not reached");
     for i := 1 to 100 do v := range(r, -9223372036854775807 - 1, 9223372036854775807); end;
-    if range(r, 7, 7) # 7 then Rt.stop("Rand.range 7..7"); end;
+    Check.int("Rand.range 7..7", range(r, 7, 7), 7);
     x := seed();
 end;
 

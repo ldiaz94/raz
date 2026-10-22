@@ -1,0 +1,213 @@
+(* Checks for a test: a program says what it expects, and a check that
+   fails writes what was got and what was wanted on standard error.
+   The program goes on, and at its end, if any check failed, it says
+   how many and exits with status 1, by a procedure registered with
+   Rt.atExit at the first check; so there is no call to remember at the
+   end, and a run with no failures says nothing. A program that stops
+   otherwise after a check failed, by Rt.stop or a failed check of the
+   language, ends with status 1 too.
+
+       FAIL what
+         got:  "a\nb"
+         want: "a\tb"
+         at byte 1
+
+   Needs only Rt, Sys and Out, so that any library module may use it
+   without a cycle. Leaves out threads (the counts are not safe to
+   change from several at once), reals, and naming the failing line. *)
+module Check;
+import Rt, Sys, Out;
+
+const
+    Hex = "0123456789ABCDEF";                          (* the digits of base 16 *)
+
+var
+    checks: INT;                                        (* checks made *)
+    failures: INT;                                      (* of them, failed *)
+    registered: BOOL;                                   (* the exit procedure is on Rt's list *)
+    sink: proc(s: []U8);                                (* where text goes, or nil for standard error; a test sets it *)
+
+(* Writes s to standard error, trying again after a short or interrupted write. *)
+proc put(s: []U8);
+var n: INT;
+begin
+    if sink # nil then sink(s); return; end;
+    while LEN(s) > 0 do
+        n := Sys.write(Sys.stderr, s);
+        if n > 0 then s := s[n..LEN(s)];
+        elsif n # Sys.errIntr then break;               (* closed or failed: give up *)
+        end;
+    end;
+end;
+
+(* Writes the decimal digits of v, with a minus sign if it is below 0. *)
+proc putInt(v: I64);
+var d: [20]U8; i: INT; u: U64;
+begin
+    u := U64(v);
+    if v < 0 then u := 0 - u; end;                      (* the magnitude, right for the smallest I64 too *)
+    i := LEN(d);
+    repeat
+        DEC(i);
+        d[i] := U8('0' + INT(u mod 10));
+        u := u div 10;
+    until u = 0;
+    if v < 0 then put("-"); end;
+    put(d[i..LEN(d)]);
+end;
+
+(* Writes the two uppercase hex digits of c, after the backslash and x. *)
+proc putHex(c: U8);
+var d: [4]U8;
+begin
+    d[0] := '\\'; d[1] := 'x';
+    d[2] := Hex[INT(c shr 4)];
+    d[3] := Hex[INT(c & 15)];
+    put(d);
+end;
+
+(* Writes s between quotes, with the quote, backslash and bytes below
+   32 or 127 as escapes; the bytes from 128 are written as they are,
+   so UTF-8 reads. *)
+proc putQuoted(s: []U8);
+var i, from: INT; c: U8;
+begin
+    put("\"");
+    from := 0;                                          (* the start of the run not yet written *)
+    for i := 0 to LEN(s) - 1 do
+        c := s[i];
+        if (c >= 32) and (c # 127) and (c # '"') and (c # '\\') then continue; end;
+        put(s[from..i]);
+        from := i + 1;
+        if c = '"' then put("\\\"");
+        elsif c = '\\' then put("\\\\");
+        elsif c = 10 then put("\\n");
+        elsif c = 9 then put("\\t");
+        elsif c = 13 then put("\\r");
+        else putHex(c);
+        end;
+    end;
+    put(s[from..LEN(s)]);
+    put("\"");
+end;
+
+(* The index of the first byte where a and b differ, or the shorter
+   length if one is a prefix of the other. *)
+proc firstDiff(a, b: []U8): INT;
+var i, n: INT;
+begin
+    n := LEN(a);
+    if LEN(b) < n then n := LEN(b); end;
+    i := 0;
+    while (i < n) and (a[i] = b[i]) do INC(i); end;
+    return i;
+end;
+
+(* The procedure Rt runs at the end: says how many checks failed, if
+   any did, and ends the program with status 1. *)
+proc report;
+begin
+    if failures = 0 then return; end;
+    put("Check: "); putInt(failures); put(" of "); putInt(checks); put(" failed\n");
+    Rt.exit(1);
+end;
+
+(* Counts a check, and the first time registers report to run at exit. *)
+proc count;
+begin
+    if not registered then
+        if Rt.atExit(report) # nil then Rt.stop("Check: no room for the exit procedure"); end;
+        registered := true;
+    end;
+    INC(checks);
+end;
+
+(* Counts a failure and begins its report with the FAIL line. Standard
+   output is flushed first, so the two come in order. *)
+proc fail(what: []U8);
+begin
+    INC(failures);
+    Out.flush;
+    put("FAIL "); put(what); put("\n");
+end;
+
+(* Fails, saying what, when cond is false. *)
+proc ok*(cond: BOOL; what: []U8);
+begin
+    count;
+    if not cond then fail(what); end;
+end;
+
+(* Fails, saying what, when got is not want; shows both, escaped, and
+   where they first differ. *)
+proc str*(what, got, want: []U8);
+var at: INT;
+begin
+    count;
+    at := firstDiff(got, want);
+    if (at = LEN(got)) and (at = LEN(want)) then return; end;
+    fail(what);
+    put("  got:  "); putQuoted(got); put("\n");
+    put("  want: "); putQuoted(want); put("\n");
+    put("  at byte "); putInt(at); put("\n");
+end;
+
+(* Fails, saying what, when got is not want; shows both. *)
+proc int*(what: []U8; got, want: I64);
+begin
+    count;
+    if got = want then return; end;
+    fail(what);
+    put("  got:  "); putInt(got); put("\n");
+    put("  want: "); putInt(want); put("\n");
+end;
+
+var
+    cap: [512]U8;                                       (* the test's capture of what put was given *)
+    capN: INT;                                          (* bytes in cap *)
+
+(* The test's sink: appends s to cap. *)
+proc capture(s: []U8);
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do cap[capN] := s[i]; INC(capN); end;
+end;
+
+(* Runs f with its output captured, and checks that it is want. *)
+proc expect(what: []U8; f: proc; want: []U8);
+begin
+    capN := 0;
+    f;
+    str(what, cap[0..capN], want);
+end;
+
+proc tInt0; begin putInt(0); end;
+proc tIntMin; begin putInt(-9223372036854775807 - 1); end;
+proc tIntMax; begin putInt(9223372036854775807); end;
+proc tIntNeg; begin putInt(-420); end;
+proc tPlain; begin putQuoted("héllo"); end;
+proc tEmpty; begin putQuoted(""); end;
+proc tEsc; begin putQuoted("a\"b\\c\nd\te\rf\x01g\x7Fh\x1Fi"); end;
+
+(* The module's test: private formatting through a captured sink, then
+   the public checks, all passing, as a failing one would end the run. *)
+proc main*;
+begin
+    sink := capture;
+    expect("putInt 0", tInt0, "0");
+    expect("putInt smallest", tIntMin, "-9223372036854775808");
+    expect("putInt largest", tIntMax, "9223372036854775807");
+    expect("putInt negative", tIntNeg, "-420");
+    expect("quote plain and UTF-8", tPlain, "\"héllo\"");
+    expect("quote empty", tEmpty, "\"\"");
+    expect("quote escapes", tEsc, "\"a\\\"b\\\\c\\nd\\te\\rf\\x01g\\x7Fh\\x1Fi\"");
+    ok(firstDiff("abc", "abd") = 2, "firstDiff differs");
+    ok(firstDiff("ab", "abc") = 2, "firstDiff prefix");
+    ok(firstDiff("", "") = 0, "firstDiff empty");
+    sink := nil;
+    ok(true, "ok passes");
+    str("str passes", "same", "same");
+    int("int passes", -5, -5);
+    if (checks # 10 + 3) or (failures # 0) then Rt.stop("Check: counts are wrong"); end;
+end;
+end Check.

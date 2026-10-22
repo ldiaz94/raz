@@ -6,7 +6,7 @@ module Opt;
     from it, so they can't drift from it.
     
     Depends on Files for the words, and writes the help and the
-    messages itself, then ends the program.
+    messages itself, then ends the program. Its test uses Check.
     Leaves out: options after operands (GNU's reordering), and
     completion for concha.
 

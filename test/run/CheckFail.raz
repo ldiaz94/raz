@@ -1,0 +1,15 @@
+(* Four checks, two of them failing: the exit procedure, not main,
+   must say so on standard error and set status 1. *)
+module CheckFail;
+import Check, Out;
+
+proc main*;
+begin
+    Out.str("before the failures\n");
+    Check.ok(true, "passes");
+    Check.ok(false, "ok fails");
+    Check.str("str fails", "a\nb", "a\tb");
+    Check.int("int fails", -9223372036854775807 - 1, 0);
+end;
+
+end CheckFail.

@@ -1,0 +1,9 @@
+FAIL ok fails
+FAIL str fails
+  got:  "a\nb"
+  want: "a\tb"
+  at byte 1
+FAIL int fails
+  got:  -9223372036854775808
+  want: 0
+Check: 3 of 4 failed

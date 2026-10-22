@@ -13,9 +13,9 @@
    stores C's exit in Rt.cExit; so this module uses no C itself, and
    serves both kinds of program. C's thread has a stack and a guard
    page of C's; the mapping here holds only the handlers' stack and
-   the Thread. *)
+   the Thread. Its test uses Check. *)
 module Thread;
-import Sys, Rt;
+import Sys, Rt, Check;
 
 const
     Failed*: ERROR = "can't start a thread";
@@ -232,6 +232,7 @@ begin
     return v;
 end;
 
+(* The module's test: starts threads in waves, and counts that each ran. *)
 proc main*;
 var n, alive, started, k, i: INT; t: ^Thread; err: ERROR; fail: BOOL;
 begin
@@ -258,8 +259,8 @@ begin
         for i := 0 to k - 1 do join(wave[i]); end;
         started := started + k;
     end;
-    if testCount # started then Rt.stop("Thread: a thread didn't run"); end;
-    if fail and (started = LEN(wave)) then Rt.stop("Thread: spawn never failed"); end;
+    Check.int("Thread: every thread ran", testCount, started);
+    Check.ok(not (fail and (started = LEN(wave))), "Thread: spawn never failed");
 end;
 
 end Thread.

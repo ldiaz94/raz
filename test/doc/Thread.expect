@@ -14,7 +14,7 @@ module Thread;
     stores C's exit in Rt.cExit; so this module uses no C itself, and
     serves both kinds of program. C's thread has a stack and a guard
     page of C's; the mapping here holds only the handlers' stack and
-    the Thread.
+    the Thread. Its test uses Check.
 
 const Failed*: ERROR = "can't start a thread";
 
@@ -54,3 +54,4 @@ proc unlock*(var m: Mutex);
     for it.
 
 proc main*;
+    The module's test: starts threads in waves, and counts that each ran.
