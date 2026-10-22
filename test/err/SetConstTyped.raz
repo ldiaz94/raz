@@ -1,0 +1,5 @@
+module SetConstTyped;
+type Kind = (a, b, c);
+type Kinds = set of Kind;
+const W: Kinds = {a, b};
+end SetConstTyped.

@@ -3408,6 +3408,9 @@ begin
         t := try parseType();
         if (t # Sym.tError) and not ((t^.form = Sym.fArray) or (t^.form = Sym.fSlice)
             or ((t^.form = Sym.fRecord) and not t^.tuple) or (t^.form = Sym.fVariant)) then
+            if t^.form = Sym.fSet then
+                return Scan.markAt(Scan.spanFrom(start), "a set constant takes its type from its names: write it without one");
+            end;
             return Scan.markAt(Scan.spanFrom(start), "only an ERROR, an array, a record or a variant constant has a type");
         end;
     end;

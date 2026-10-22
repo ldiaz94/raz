@@ -1,0 +1,4 @@
+test/err/SetConstTyped.raz:4:10: error: a set constant takes its type from its names: write it without one
+    4 | const W: Kinds = {a, b};
+      |          ^^^^^
+raz: 1 error
