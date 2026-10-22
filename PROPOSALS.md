@@ -1375,7 +1375,8 @@ below stands alone; together they are about a dozen procedures in
   (`MSG_DONTWAIT`): -11 where `send` would wait, without making reads
   non-blocking too. Met in rdbus.
 - **Opening without waiting.** `nonblocking` and `closeOnExec` among
-  `Access`. Opening a fifo to write waits for a reader, and a fifo
+  `Access`. (`closeOnExec` falls away if "Sys for files and
+  memory" makes it the default.) Opening a fifo to write waits for a reader, and a fifo
   given where a file was expected waits for a writer. Met in mosaico,
   awizo, surco, raudio.
 - **A fifo.** `proc makeFifo*(path: []U8; mode: INT): INT;`. Met in
@@ -1505,10 +1506,7 @@ an argument could say. The argument is the plainer.
 today, so no format changes meaning unless it already had `{2}` in it,
 which printed `{2}`.
 
-Open: `Fmt.real` writes its exponent `e`, the language reads only `E`,
-so a printed value can't be pasted into code (rayo). Writing `E` would
-change output a test may compare; reading `e` too would change the
-report.
+Settled by "One exponent letter: `Fmt` writes `E`", below.
 
 ## Selectors after a `^T(e)` conversion
 
@@ -1679,3 +1677,1196 @@ write both in `sh` before the merge.
 of `doc/compiler.md` made as short and plain as the rest; a rebase on
 main (`doc/compiler.md` and `src/Raz.raz` conflict). Moss's
 `RAZ_PORT.lock` then pins a commit on main.
+
+## Constants built from constants
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+Three small changes to what a constant may be written with, and a defect. Each stands
+alone; none changes what a program that compiles today means.
+
+- **A named constant as an element.** `const Y: [2]R = [X, {a: 2}]`,
+  with `X` a record constant, is "expected a literal of R", and so is
+  `[X, [3, 4]]` with `X` an array constant, and `{a: X}` for an array
+  field. A named integer is taken (`[N, 2]` compiles), and so is a
+  named array constant for a slice part (`[R1, R2]` for a `[][]INT`).
+  The report already allows it: the value is "a literal of constants",
+  and its elements may be "arrays, records and variants of these". So
+  this is a defect of the compiler, mended with no change to the
+  report: where an array, record or variant is wanted, a constant of
+  that type stands for its literal. Met in mgla.
+  **Recommendation:** take, as a defect mended. Being fixed with the
+  other bugs of 2026-10-22, so not for the owner to decide.
+
+- **A literal for a slice part.** `const T: [][]INT = [[1, 2], [3]]`
+  is "a constant slice is a string, an array constant of its elements
+  or []", and so is `{r: [1, 2]}` for a `[]INT` field. Each row must be
+  named first, `R1: []INT = [1, 2];`, and the table written `[R1, R2]`,
+  or the rows flattened into one slice walked by counts, as raudio's
+  Sbr test does. The proposal, one clause of 4: where a slice part is
+  wanted, an array literal of its element type makes an array constant
+  of its own, with no name, as `[]` there makes the empty slice. `[]`
+  stays the empty slice. Met in raudio.
+  **Recommendation:** take, since the named rows say nothing the
+  literal doesn't.
+
+- **An `ERROR` constant named by another.**
+  `const Short*: ERROR = PictBase.Short;` is "an error is made from a
+  string", so an interface module can't pass on the errors of the
+  modules under it, and its callers import a second module only to
+  compare. The proposal, a sentence of 5.8: an `ERROR` constant whose
+  value is another `ERROR` constant is that same error, not a new one,
+  and `Short = PictBase.Short` holds. Only a string makes a new error,
+  as now. Met in pict.
+  **Recommendation:** take, since the alternative is a second import
+  on every caller.
+
+- **A comma after the last element.** `[a, b,]` is "expected an
+  expression", so a table written one row a line, by hand or by a
+  program, treats its last row apart, and adding a row changes two
+  lines. The proposal, in the grammar:
+
+      | "[" [ Expr { "," Expr } [ "," ] ] "]"
+      | "{" [ Element { "," Element } [ "," ] ] "}"
+
+  for array, record and set literals alike; not for calls, parameter
+  lists or `match` labels. `Pretty` keeps the comma where a literal
+  runs over lines and drops it where it fits on one. Met in rtui.
+  **Recommendation:** take, since a generated table is the common case
+  for literals this long.
+
+## A record's procedure field that takes the record
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+A record that carries its own callback can't give the callback the
+record:
+
+```
+type Lines = record each: proc(var r: Lines; s: []U8); n: INT; end;
+    (* "Lines isn't declared" *)
+```
+
+Only the base type of a pointer may name a type declared later (4), so
+the callback takes `^Lines` and is called with `ADR(l)`, which by
+`STANDARDS.md` says the callee keeps it, and it doesn't. Met in znaczy.
+
+The proposal, a clause of 4: the type of a parameter or result of a
+procedure type may also name a type declared later in the same `type`
+section. A procedure value is an address whatever its signature, so
+the record's size doesn't depend on it; a call through the field
+comes after the section, when `Lines` is whole. Nothing that compiles
+today changes. In the compiler, the pointer's forward reference
+reused where a signature is read in a `type` section.
+
+**Recommendation:** take, since the workaround puts a false `ADR` at
+every call.
+
+## A `match` arm names its case as everywhere else
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+An arm takes a case written alone, or with its type when the type is
+the module's own (`| K.a:`). An imported case can't be written as
+everywhere else outside its module:
+
+```
+import Xml;
+...
+if x.kind = Xml.done then ... end;     (* qualified here *)
+match x.kind of
+| Xml.done: ...                        (* "Xml isn't a case of Xml.Kind" *)
+| Xml.Kind.text: ...                   (* the same *)
+| done: ...                            (* taken: a name this module otherwise hasn't *)
+```
+
+The same holds for a variant's cases (`| Ev.circle(r):`). Met in
+rslack, rxml and fraco.
+
+This is the complement of "An enumeration's name read against the type
+it is given to": an arm already reads a bare name against the matched
+type. The proposal, a sentence of 7.4: an arm on an enumeration or a
+variant names its case alone or as it is written anywhere else, with
+its type, its module, or both (`done`, `Kind.done`, `Xml.done`,
+`Xml.Kind.done`), and a qualified name must be a case of the matched
+type. The bare form stays, so nothing breaks. A wrong qualified name
+says so: "Ev.dot isn't a case of Xml.Kind".
+
+**Recommendation:** take, since the natural spelling is refused with a
+message that doesn't say what to write.
+
+## Two warnings
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+Compiler warnings, which are the implementation's own (10, appendix
+A): no change to the report, and `-Werror` builds break only where the
+text is in fact doubtful.
+
+- **A relation of `BOOL`s beside `and` or `or`.** In raz the relations
+  bind tighter than `and` and `or`, so
+  `(b[i] = 0) # (i >= 2) and (i < 9)` is
+  `((b[i] = 0) # (i >= 2)) and (i < 9)`. It was meant the Pascal way,
+  and a test passed for the wrong reason. The warning: an `=` or `#`
+  whose operands are `BOOL`s, written unparenthesised as an operand of
+  `and` or `or`:
+
+      a # b and c is (a # b) and c: put the # of two BOOLs in parentheses
+
+  Comparing integers is untouched, so `i < n and a[i] # 0` stays
+  quiet. Met in rcrypto.
+  **Recommendation:** take, since the slip is silent and the fix is a
+  pair of parentheses.
+
+- **`\0` before a digit.** `"\01"` is a zero byte and `1`; a reader who
+  knows C reads one octal byte. Moss's keyboard table,
+  `"\0\01234567890-="`, cost a bug. The warning, in a string or a
+  character where `\0` is followed by `0` to `7`:
+
+      \0 is a zero byte and the digit after it is itself: write \x00 to keep them apart
+
+  Met in moss (and dwa's tests have the same text, in a comment).
+  **Recommendation:** take, as a few lines in `Scan` for a bug already
+  paid for.
+
+## A `BOOL` as an integer: `INT(b)`
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+Moved here from the list of what to leave out, because three programs
+met it and one of them for a reason an `if` can't serve. 6.7 says
+there is no conversion between `BOOL` and integers, left out until
+needed. Programs now write `8 + Ord(b)` as an `if` (raudio, surco's
+Lyrcheck). Constant-time code needs a comparison as a mask with no
+branch: rcrypto rebuilds each test from byte differences,
+`INT((d - 1) shr 31)`, since an `if` would branch on a secret.
+
+The proposal, one row of 6.7's table:
+
+| From | To | Result |
+|---|---|---|
+| `BOOL` | integer | 0 for `false`, 1 for `true` |
+
+`U64(a = b)` is 0 or 1, and `0 - U64(a = b)` the mask. Only this way:
+no integer to `BOOL` (`x # 0` says it). In a constant it folds. The
+compiler has the comparison's `setcc` already, so it is computed
+without a branch; the report doesn't promise that (no word of it says
+anything of time), but this compiler does it.
+
+**Recommendation:** take, since Oberon has `ORD(b)` and a constant-time
+mask has no other plain spelling.
+
+## Counting bits: `CLZ`, `CTZ` and `POPCOUNT`
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+raz has `ROL` and `ROR` (report 2026-10.35) but nothing that counts
+bits, so programs loop. raudio's Rice decoder finds the one bit that
+ends a unary code by shifting until it meets it (`Bitio.unary`); oku's
+`Grid.count` asks `d in s` for each of nine digits to learn how many a
+set holds. The library meets the same three times in `Bytes`: `highest`
+is a loop, the lowest set byte is found by a multiply, and `count` sums
+bits by a multiply, each with a paragraph to explain it. Oberon has
+none of these; C compilers, Go (`math/bits`), Rust and Zig all do, as
+one instruction each on every machine raz targets.
+
+The proposal: three built-in procedures, beside `ROL` and `ROR` in 6.8.
+
+| Call | Result |
+|---|---|
+| `CLZ(x)` | the number of zero bits above the highest one in `x`, an `INT`; the width of `x`'s type if `x` is 0; `x` of an unsigned integer type |
+| `CTZ(x)` | the number of zero bits below the lowest one in `x`, an `INT`; the width of `x`'s type if `x` is 0; `x` as for `CLZ` |
+| `POPCOUNT(x)` | the number of one bits in `x`, an `INT`; `x` of an unsigned integer type, or a set, whose members it counts |
+
+The width is the type's, as for `ROL`: `CLZ(U8(1))` is 7, `CLZ(U64(1))`
+is 63. Defining 0 rather than leaving it undefined, as C does, costs a
+test where the machine's instruction doesn't give the width (x86-64's
+baseline `bsr` and `bsf`); `lzcnt`, `tzcnt` and `popcnt`, which the
+compiler's assembler already knows, are newer than the baseline, so
+the compiler emits `bsr` or `bsf` with a test, and the multiply that
+`Bytes` uses for `POPCOUNT`, unless the target says the instructions
+are there. A set goes to `POPCOUNT` and not to `LEN`, which already
+means a fixed number of elements and would read as the size of the
+set's type.
+
+Why three and not one: `CLZ` is what reads a code from the top bit
+down (Rice, Golomb, UTF-8's lead byte, a log base 2), `CTZ` what walks
+the members of a bit mask from the bottom, and `POPCOUNT` what counts.
+Each can be written from another only in a way that needs a comment.
+Three words among the built-ins, which a program can't declare anyway.
+It breaks nothing.
+
+Met in raudio, oku and the library's own `Bytes`.
+
+**Recommendation:** take; three one-instruction built-ins replace loops
+and multiplies that each need a paragraph.
+
+## The bytes of a variable or a slice: `BYTES(x)`
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+A view, `v.(T)`, reads one value from bytes, and can't be sliced,
+since it has no address (6.9). So a program that has words and wants
+their bytes takes an unchecked pointer: raudio writes a `[]I32` of
+samples to a file through `p := ^U8(PTR(s))` and `p[0..LEN(s) * 4]`
+(`Ao.bytesOf`); surco's Engcheck reads a file into a `[]I32` the same
+way; rcrypto wipes each hash state through `p := ^U8(ADR(c));
+RcBytes.wipe(p[0..SIZE(Ctx)])`, with a `p` that says nothing. "Selectors
+after a `^T(e)` conversion" makes the last one expression,
+`^U8(ADR(c))[0..SIZE(Ctx)]`, but it stays unchecked: the length is
+written by hand and nothing ties it to `c`.
+
+The proposal: one built-in procedure.
+
+| Call | Result |
+|---|---|
+| `BYTES(x)` | the bytes of `x` as a `[]U8`: for a slice `s: []T`, its `LEN(s) * SIZE(T)` bytes; for a variable of any other type `T`, its `SIZE(T)` bytes |
+
+```
+n := Sys.write(fd, BYTES(samples));     (* samples: []I32 *)
+n := Sys.read(fd, BYTES(words));        (* fills words: []I32 *)
+RcBytes.wipe(BYTES(c));                 (* c: Ctx, all of it *)
+```
+
+`T` must be a type a view may take (6.9): integers, reals, pointers,
+and records and arrays of these alone, the types for which any bytes
+are a value. So writing through the slice can make nothing mean
+nothing, which is why a `BOOL`, a set, an enumeration, a slice, a
+variant or a procedure, or a record holding one, is an error. The
+slice is checked as any slice is; its length comes from the type, not
+from the program. A variable given to `BYTES` follows the rules for a
+slice of it: a local's bytes can't be returned (7.3); a `const`
+parameter, a view and a volatile variable are errors, as `ADR` of them
+is; a string constant is an error, as writing its bytes isn't defined.
+The bytes are in the target's order (appendix A), as a view's are.
+
+It is `PTR` and `SIZE` made one checked expression, about 30 lines in
+the compiler. It breaks nothing. It also gives "Filling bytes:
+`Bytes.fill`", below, every array of words: `Bytes.fill(BYTES(a), 0)`.
+
+Met in raudio, surco and rcrypto.
+
+**Recommendation:** take; it replaces an unchecked pointer and a
+hand-written length with one checked expression.
+
+## Filling bytes: `Bytes.fill`
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+`COPY` copies and `NEW` zeroes, but nothing sets the bytes of a slice
+already in hand. rttf clears each glyph's raster a byte at a time
+(`clear`), its `Pgm` the same for an image, a `Buf.spare` slice is
+cleared by a loop, and raudio zeroes a `[576]F32` with a loop or a
+helper. Pascal has `FillChar`, C `memset`.
+
+The proposal: library growth in `Bytes`, beside `index` and `count`.
+
+    (* Sets every byte of s to b. *)
+    proc fill*(s: []U8; b: U8);
+
+It writes eight bytes at a time as `Bytes` reads them, and
+`Bytes.x86_64.raz` may use `rep stosb`. With `BYTES`, above, an array
+of words is zeroed in one statement: `Bytes.fill(BYTES(a), 0)`. A
+built-in `FILL(d, x)` for any element type was weighed and left: a
+value other than zero for words is rare, and a loop says it.
+
+It breaks nothing. It is not a wipe: an optimizer may leave out a fill
+that nothing reads after, as it may any write (7.6).
+
+Met in rttf and raudio.
+
+**Recommendation:** take; one procedure for a loop every buffer-handling
+program writes.
+
+## A slice of a `const` parameter, returned
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+7.3 says a slice of a `var` parameter, of a module variable, or of
+what a pointer points at may be returned, and says nothing of a
+`const` one. rimap's `proc sectionOf(const p: Part): []U8; begin
+return p.section[0..p.sectionLen]; end;` compiles and works, but the
+report doesn't promise it, so rimap leaves its callers to slice the
+field themselves.
+
+A `const` parameter is the caller's variable read in place (8), as a
+`var` one is, so its slice is the caller's, not this procedure's
+frame. When the argument isn't a variable it is a temporary of the
+caller's statement, and a slice of it kept past that statement is
+already the exception of section 10. The rule only has to say so.
+
+The proposal, 7.3's sentence:
+
+> A slice of a `var` or `const` parameter, of a module variable, or of
+> what a pointer points at may be returned: none of them is this
+> procedure's frame. For a `const` parameter given a temporary, the
+> slice lives to the end of the caller's statement (section 8).
+
+Only the report changes; the compiler already accepts it. It breaks
+nothing. Whether the caller may write through the slice it gets back
+is the question of "A slice that can't be written: `[]const T`", which
+this doesn't settle.
+
+Met in rimap.
+
+**Recommendation:** take; a sentence promises what the compiler already
+does.
+
+## What wiping can't reach, said in appendix A
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+A wipe through `^VOLATILE U8` is never left out (7.6), but it writes
+only what the program can name. A spilled register, a statement's
+temporary, a value parameter's copy and an array a call returned are
+the compiler's, and stay in memory after the procedure returns, until
+something else writes there. rcrypto found that its wipes can't reach
+them, and nothing in the report says they exist. C has the same limit
+and says nothing either; OpenSSL's `OPENSSL_cleanse`, which rnet's
+`Tls.wipe` calls, wipes only what it is given.
+
+The proposal: a paragraph in appendix A, among what an implementation
+says of itself, and no feature.
+
+> **Copies.** A procedure's frame may hold copies of its variables
+> that the program can't name: registers saved to it, temporaries of
+> its statements, its value parameters, and arrays its calls return.
+> This implementation leaves them where they are when the procedure
+> returns; they last until the stack is used again. A wipe (7.6)
+> reaches only the variables it is given. A secret is best kept in
+> one variable, passed by `var` or `const` or by pointer, never by
+> value, and wiped there.
+
+Zeroing a frame on return, by a word on the procedure or a flag, was
+weighed and left: it costs every call of such a procedure a write of
+its frame, and still misses registers and the kernel's copies of a
+thread's state. It breaks nothing.
+
+Met in rcrypto.
+
+**Recommendation:** take; a paragraph says a limit every program that
+wipes must know.
+
+## Sys for files and memory
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+Library growth, but the last item changes what `open` does, so it
+needs the owner's word on whether that counts as breaking. Each item
+stands alone; each is in both `Sys.raz` (the C library) and
+`Sys.linux-x86_64.raz` (system calls).
+
+- **A file mapped to be read.** `mapFile` maps to read and write,
+  shared, so a file opened only to read (a dictionary that isn't the
+  user's to write) can't be mapped: `mmap` fails with EACCES. znaczy
+  makes the system call itself in a `Zmap.linux.raz` (30 lines), and
+  raudio's Inmem does the same.
+
+      (* The first size bytes of the file fd, which may be open only to
+         read, mapped to be read only: writing there stops the program.
+         nil if it can't be; munmap gives them back. *)
+      proc mapRead*(fd, size: INT): ^U8;
+
+  C's `mmap` with `PROT_READ` and `MAP_PRIVATE`; system call 9 with
+  the same. Met in znaczy, raudio. **Recommendation:** take, two
+  programs carry a Linux-only file for it.
+
+- **Memory that can't be touched.** A test that puts its input against
+  a guard page, so that a read one byte out of range stops it, calls
+  `SYSCALL(10, ...)` itself and is tied to Linux; raudio's Inmem grows
+  a large mapping readable a step at a time, so that the bytes never
+  move.
+
+      (* Lets the pages from p, size bytes from a page boundary, be read
+         and written as read and write say; neither, and touching them
+         stops the program. 0, or minus an errno. *)
+      proc protect*(p: ^U8; size: INT; read, write: BOOL): INT;
+
+  C's `mprotect`; system call 10. With `mmap` it serves raudio's
+  reserve too: map the most it will hold, `protect` it all to neither,
+  and open it as it fills. Met in rttf, raudio. **Recommendation:**
+  take, the one portable way to a guard page.
+
+- **Files closed in a program exec starts.** `pipe`, sockets and
+  `memFile` are closed across `exec`; a file `open` gives is not, so a
+  fifo mosaico holds reaches every program it starts, unasked, and it
+  calls `keepOnExec(fd, false)` after each open. `openMode`, `open`,
+  `openRead` and `create` would pass `O_CLOEXEC`, and their comments
+  say "closed in a program exec starts" as `pipe`'s does;
+  `keepOnExec(fd, true)` keeps one open. `spawn`'s `fds` are unchanged,
+  since `dup2` in the child clears the flag. This makes the
+  `closeOnExec` access in "Sys for a server" unneeded (`nonblocking`
+  stays). A program that hands an opened file to an exec'd one by its
+  number, without `fds`, must then say `keepOnExec`. Met in mosaico.
+  **Recommendation:** take, one rule for every descriptor Sys makes.
+
+## Files: what programs write over Sys
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+Library growth that breaks no program. Each is portable, written in
+`Files.raz` over procedures `Sys` already has, so neither backend nor
+Moss's `Sys` grows.
+
+- **Writing all of it.** A `write` may be short (a pipe, a socket) or
+  broken by a signal, and each program carries its loop; `Files.write`
+  has one, but only for a whole file it creates.
+
+      (* Writes all of s to fd, again after a short write or a signal:
+         0, or minus the errno of the write that failed. *)
+      proc writeAll*(fd: INT; s: []U8): INT;
+
+  `Files.write` is then written over it. Met in surco (Sjournal), and
+  the loop is in most programs that write to a pipe.
+  **Recommendation:** take, the loop every writer to a pipe needs.
+
+- **A path made absolute and plain.** surco makes `-r` and a playlist
+  absolute with an `extern` to C's `realpath(3)`; dwa's
+  `Docs.canonical` does `setWorkDir`, `workDir` and `setWorkDir` back,
+  which is wrong with threads.
+
+      (* Adds to b the absolute path of the file at path, with no ".",
+         "..", or symbolic link in it: 0, or minus an errno (-2, ENOENT,
+         if a part of it isn't there). *)
+      proc realPath*(path: []U8; var b: Buf.Buf): INT;
+
+  About 40 lines over `workDir`, `linkInfo` and `readLink`, with a
+  bound on links followed (-40, ELOOP). Met in surco, dwa.
+  **Recommendation:** take, two programs and the workaround is wrong.
+
+- **Removing a tree.** A sauce clone cut short leaves
+  `<dir>.sauce-clone`, since removing a tree is a walk of `openDir`,
+  `remove` and `removeDir`; a test that makes a directory to work in
+  has the same walk to clean up.
+
+      (* Removes the file at path and, if it is a directory, all within
+         it, without following a symbolic link: 0, or minus the first
+         errno. *)
+      proc removeTree*(path: []U8): INT;
+
+  Over `openDir`, `entryKind`, `linkInfo`, `remove` and `removeDir`,
+  about 30 lines. Met in sauce. **Recommendation:** take, easy to get
+  wrong (a link to a directory followed) and wanted by every test with
+  a scratch directory.
+
+## Sys for signals and the process
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+Library growth that breaks no program. The first three are in both
+`Sys` backends; the last is in `Rt`.
+
+- **Whether a signal is ignored.** A program started in the
+  background or under `nohup` starts with some signals ignored, and
+  should leave those alone, as a shell does, rather than `handle` or
+  `catch` them. `handle` and `ignore` don't say what was there, so
+  robbie asks the kernel through `rt_sigaction` in an `Rsig.linux.raz`.
+
+      (* Whether the signal sig does nothing now, as ignore(sig, true)
+         or the program that started this one left it. *)
+      proc ignored*(sig: INT): BOOL;
+
+  C's `sigaction` with no new action; system call 13 the same.
+  Independent of `keepIgnored` in "Sys for running a program", which is
+  about the child. Met in robbie. **Recommendation:** take, any
+  program that takes SIGINT or SIGHUP should ask it first.
+
+- **An environment variable unset or empty.** `env` gives `""` for
+  both, but `TZ` unset means `/etc/localtime` and `TZ=` means UTC, so
+  alba and rzone walk `envAt` themselves.
+
+      (* The value of the environment variable name and true, or "" and
+         false if it isn't set. *)
+      proc findEnv*(name: []U8): ([]U8, BOOL);
+
+  `env` stays, written over it. Met in alba, rzone, surco.
+  **Recommendation:** take, three programs walk `envAt` for it.
+
+- **How many processors.** `raztest -j` would default to it, as
+  `make -j$(nproc)` does, and defaults to 1; rayo makes
+  `SYSCALL(204)` itself.
+
+      (* The number of processors this program may run on, at least 1. *)
+      proc processors*: INT;
+
+  C's `sched_getaffinity` and `CPU_COUNT`; system call 204, counting
+  the bits. Moss's gives 1. Met in raztest, rayo.
+  **Recommendation:** take, two programs and no portable way without it.
+
+- **How the program ends, for `atExit`.** A procedure `Rt.atExit`
+  registered can't tell an end by `exit(0)` from a failed check or
+  `Rt.stop`, so surco's log can't note a crash.
+
+      (* The status exit was given, while the procedures atExit
+         registered run; 0 before. *)
+      proc exitStatus*: INT;
+
+  `Rt.exit` sets it before running them. A failed check and `stop`
+  both end with 2, which is enough to note a crash. Met in surco.
+  **Recommendation:** take, three lines and nothing else can say it.
+
+## Numbers in the library
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+### An unsigned decimal reader: `Str.toU64`
+
+Library growth that breaks no program. `Str.toInt` stops at the largest
+`I64`, so a `U64` written by `Fmt.uint`, such as a `Rand.seed` read back
+from `$PROP_SEED`, needs a loop of its own (raz's own `Prop.decimal`).
+`toHex` already gives a `U64`; decimal should too:
+
+    (* s as a decimal number, digits only; false if it isn't one, or a
+       U64 can't hold it. *)
+    proc toU64*(s: []U8): (U64, BOOL);
+
+No sign: a `-` is no `U64`, and a `+` nobody writes. `Opt.number`
+stays on `toInt`.
+
+Met in raz's `Prop`.
+
+**Recommendation:** take; it is the reader for what `Fmt.uint` writes.
+
+### `ABS`, and `min`, `max` and `clamp` of integers
+
+Library and language growth that breaks no program. `Math` is `F64`
+only and there are no built-ins, so rat writes `min` and `max` in Draw,
+Font, Layout and Shapes, `abs` in Shapes and `clamp` in Rat; raudio's
+Tags and rabble's Remote the same; mgla and fraco each write a 4-line
+`abs` of an `F64`.
+
+The proposal, in two parts. A built-in, as Oberon has it, for every
+numeric type, since one name serves integers and reals and no
+procedure can:
+
+| Call | Result |
+|---|---|
+| `ABS(x)` | `x` without its sign, of `x`'s type; for an integer, `-x` if `x < 0`, so the smallest `I64` gives itself, as `-x` does |
+
+And three procedures in `Math`, of `INT`, the type that indexes and
+counts:
+
+    (* The smaller of a and b. *)
+    proc min*(a, b: INT): INT;
+    (* The larger of a and b. *)
+    proc max*(a, b: INT): INT;
+    (* x, or lo if it is below lo, or hi if it is above hi. *)
+    proc clamp*(x, lo, hi: INT): INT;
+
+`MIN` and `MAX` are taken for a type's limits ("The limits of an
+integer type"), so these are lower-case procedures, not built-ins.
+`Math`'s opening line then says "and `min`, `max` and `clamp` of
+`INT`". Left out: the same of `F64`, which no program asked for.
+
+Open: `ABS` touches the report (6.8's table), so it may move to
+the language proposals, beside `MIN(T)` and `MAX(T)`.
+
+Met in rat, raudio, rabble, mgla, fraco.
+
+**Recommendation:** take; five programs write the same four lines.
+
+### `Math.tanh`
+
+Library growth that breaks no program. `Math`'s header leaves the
+hyperbolic functions out "until a program needs them"; mgla soft-clips
+its mix with tanh, written `1 - 2/(exp(2x)+1)`, which loses every digit
+near 0.
+
+    (* The hyperbolic tangent of x, from -1 to 1. *)
+    proc tanh*(x: F64): F64;
+
+fdlibm's, over a private `expm1` (which `Math.pow` and `exp` already
+come close to). `sinh` and `cosh` stay left out, as the header says,
+until a program needs them.
+
+Met in mgla.
+
+**Recommendation:** take; the header's own rule says when, and mgla is it.
+
+### Rounding a half to even: `Math.roundEven`
+
+Library growth that breaks no program. `Math.round` takes a half away
+from 0, as C's `round` does: `round(2.5)` is 3.0. Pascal's `Round`, and
+IEEE 754's default, take it to the even one, 2.0, and a program that
+must give Pascal's numbers (alba's, raudio's `Sbr`) writes its own,
+where the case of `x + 0.5` rounding up is easy to get wrong.
+
+    (* The whole number nearest x; a half to the even one, as IEEE 754's
+       default and Pascal's Round have it. *)
+    proc roundEven*(x: F64): F64;
+
+Met in alba and raudio.
+
+**Recommendation:** take; two programs, and the edge cases are subtle.
+
+### The fewest digits that read back: `Fmt.short`
+
+Library growth that breaks no program. `Fmt.real(x, places)` writes a
+fixed number of places; nothing writes a real as briefly as it can be
+written and still read back as itself. arkusz carries 150 lines for it
+(`Afmt`: base-10^9 big numbers, and the halves to the neighbouring
+`F64`s); fraco writes its own decimals for a deep zoom's centre, which
+needs up to 17 places; alba prints coordinates.
+
+A case of `Arg`:
+
+    (* r in the fewest digits that Math.toReal reads back as r; with an
+       exponent below 1E-4 and from 1E15 on, as real writes one. *)
+    short(r: F64);
+
+The result is unique (Steele and White; Ryu's answer). It costs a
+correctly rounded conversion, so about arkusz's 150 lines, moved into
+`Fmt`; `Fmt.real` keeps its own fast path.
+
+Left out: arkusz's exact 17-digit expansion (`sci(x, digits)`), which
+`short` makes unneeded for the round trip, and rounding the 17-digit
+text again as Pascal's `Str` does, which gives `45.1603` for
+`Fmt.real(45.16025, 4)` where the binary value, below the half, gives
+`45.1602`: that is Pascal's double rounding, not a fault in `Fmt`.
+
+Met in alba, arkusz and fraco.
+
+**Recommendation:** take; three programs, and the hard part is the
+library's to do once.
+
+### One exponent letter: `Fmt` writes `E`
+
+A change to output. `Fmt.real` writes `1.50e17`; the language reads a
+real's exponent as `E` only (report section 2), so a value a program
+prints can't be pasted into code (rayo). `Math.toReal` reads both.
+
+The proposal: `Fmt` writes `E`, as the report's own numbers are
+written, `1.50E17`. Reading `e` in the compiler instead would add a
+spelling to the report. A test that compares printed exponents changes
+by one letter; raz's own `Fmt` test is one.
+
+This settles the open question in "A width in `Fmt`".
+
+Met in rayo.
+
+**Recommendation:** take; one letter for the language and its library.
+
+## Memory, Buf and Vec
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+### An allocator that stops when memory runs out: `Heap.sure`
+
+Library growth that breaks no program. `Buf` and `Vec` stop the program
+when the allocator has no room; `NEW(p, Heap.heap)` and `Mem.alloc`
+give `nil`, so rat checks and stops in about a dozen places. A
+procedure that allocates or stops can't be written for every `T`, but
+an allocator can, and `NEW` is already generic:
+
+    (* The heap, but running out of memory stops the program, as
+       Buf.add does, instead of giving nil: for NEW where nil would be
+       a bug nobody checks for. *)
+    sure*: ^Mem.Allocator;
+
+`NEW(p, Heap.sure)` then gives a `p` or stops, with `Rt.trace`. Its
+`free` is the heap's. Ten lines, and nothing new to learn.
+
+Met in rat.
+
+**Recommendation:** take; one variable makes every `NEW` safe without a
+check at each.
+
+### Freeing back to a mark: `Arena.mark` and `Arena.release`
+
+Library growth that breaks no program. `Arena` frees only everything at
+once, so fdn's recursive walk, which makes a few strings per entry,
+gives each back to the heap by hand. An arena that goes back to where
+it stood gives one line per level:
+
+    (* Where ar stands now, for release. *)
+    proc mark*(const ar: Arena): INT;
+
+    (* Everything allocated from ar since mark m freed at once; a mark
+       past where it stands stops the program. *)
+    proc release*(var ar: Arena; m: INT);
+
+A mark is the arena's `used`, so each is a line. `reset` is
+`release(ar, 0)`, and stays for its name.
+
+Met in fdn.
+
+**Recommendation:** take; two lines in `Arena` replace a free per string.
+
+### Inserting and removing in the middle of a `Vec`
+
+Library growth that breaks no program. dwa's edit takes lines out and
+puts others in by resizing around a `COPY` by hand, twice, where the
+overlapping copy's direction is the thing to get wrong.
+
+    (* n zero elements opened at i, those from i on moved up; i from 0
+       to v.len. Stops the program, as push does, if there is no room. *)
+    proc insert*(var v: Vec; i, n: INT);
+
+    (* The n elements from i taken out, those after them moved down;
+       i + n at most v.len. *)
+    proc remove*(var v: Vec; i, n: INT);
+
+`insert` gives zeros, as `add` and `resize` do, for the caller to fill
+in `all(v)[i..i + n]`. Left out: a `tryInsert`, until a program wants
+one.
+
+Met in dwa; any editor's lines, and a list kept in order, want it.
+
+**Recommendation:** take; it is the one `Vec` operation that is easy to
+get wrong by hand.
+
+## Strings, base64 and text for C
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+### A slice of a C string, and a C string of a slice
+
+Library growth that breaks no program. C gives a `^U8` ending in a zero
+byte (an X resource's value, a class hint's name), which awizo counts
+by hand to make a `[]U8`. The other way, a path for C's `open` or
+`realpath` must be followed by a zero, which callers copy into a
+`[PathMax + 1]U8` by hand.
+
+    (* The bytes at p up to its zero byte, not copied; "" for nil. *)
+    proc fromC*(p: ^U8): []U8;
+
+    (* s copied into out with a zero byte after it, for C: out holds
+       LEN(s) + 1 bytes at least. *)
+    proc toC*(s, out: []U8): ^U8;
+
+`toC` gives `PTR(out)`, so the call reads as what C is given:
+`C.realpath(Str.toC(path, room), ...)`. `out` too short stops the
+program, as a slice does. Left out: a `CStr` type, which would say in
+a signature that a zero follows; that is a language question, and
+`Sys` takes `[]U8` already.
+
+Met in awizo and surco; every binding to a C library meets both.
+
+**Recommendation:** take; the two ends of every C call that takes or
+gives text.
+
+### Base64 in another alphabet, unpadded
+
+Library growth that breaks no program. `Str.base64` has RFC 4648's
+section 4 alphabet, padded. Section 5's, `-` and `_` and no padding, is
+PKCE's and JWTs', and IMAP's modified UTF-7 is `,` for `/`, unpadded:
+roauth carries 13 lines over `Str.base64`, rimap 40 of hand-packed
+6-bit letters. "Base64 in `Str`" left this out until a program needed
+it; two do.
+
+    const
+        (* The alphabets of RFC 4648, sections 4 and 5. *)
+        Base64* = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        Base64Url* = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+    (* s in base64 with the 64 letters of alphabet into out, which
+       holds base64Size(LEN(s)) bytes at least, padded with = if pad:
+       the bytes written. *)
+    proc base64With*(s, out, alphabet: []U8; pad: BOOL): INT;
+
+    (* s decoded as base64With wrote it, into out, which holds
+       (LEN(s) + 3) div 4 * 3 bytes at least: the bytes written; false
+       as unbase64 says, or, without pad, for a length that leaves one
+       letter over. *)
+    proc unbase64With*(s, out, alphabet: []U8; pad: BOOL): (INT, BOOL);
+
+`base64` and `unbase64` become `base64With(s, out, Str.Base64, true)`
+and stay, for the common case. rimap passes its own alphabet.
+
+Met in roauth and rimap.
+
+**Recommendation:** take; two programs, and the existing proposal named
+this as the way to grow.
+
+### Formatting into a caller's slice: `Fmt.into`
+
+Library growth that breaks no program. `Fmt.write` goes only to a
+`Buf`, which needs an allocator, so a library with no heap (rxml, for
+"... on line 12"; rttf and magma are the same kind) joins pieces by
+hand with `Str.fromInt`. `Buf` says the core has no heap to assume;
+`Fmt` should then work without one.
+
+    (* f formatted into out as write formats it: the bytes written, and
+       false if out was too short and the text is cut there. *)
+    proc into*(out: []U8; f: []U8; args: []Arg): (INT, BOOL);
+
+Cut short, not stopped: the length of formatted text isn't known
+before, as base64's is. Inside, `put` writes to a target that is a
+`Buf`, a slice, or standard output, in place of today's `^Buf.Buf` or
+`nil`.
+
+Met in rxml.
+
+**Recommendation:** take; it makes `Fmt` usable in the no-heap core
+`Buf` itself is written for.
+
+## `Opt`
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+### A negative number as an operand
+
+A change to what `Opt` reads, for scopes it can't hurt. `alba -33.87
+151.21` is "unknown option -3", and `--` changes the command line the
+user types, so alba reads its arguments by hand and loses `Opt`'s help
+and mistakes.
+
+The proposal: in a scope with no option whose letter is a digit, a
+word of a `-` and then a digit is an operand, and so ends the options
+as any operand does. A scope that gives a digit a letter (`head -5`
+style) reads it as today. No new procedure; the library volume's list
+of rules gains a line.
+
+Met in alba.
+
+**Recommendation:** take; one rule, no interface, and it lets a numeric
+program keep `Opt`.
+
+### A mistake in the operands, with the synopsis: `Opt.misuse`
+
+Library growth that breaks no program. `Opt.fail` writes the program's
+sentence alone, for "no command; see keep -h". The one that adds the
+synopsis lines, as `Opt`'s own mistakes and `refuse` do, is the private
+`mistake`, so raztest's "no tests named", a mistake in the operands,
+comes without the usage a user needs.
+
+    (* The program's own mistake, written as Opt's are, with the
+       scope's synopsis lines after it, and status 2. *)
+    proc misuse*(const p: Parser; text: []U8);
+
+It is `mistake` with `text` as its one argument. A flag on `fail`
+would read worse at the call.
+
+Met in raztest.
+
+**Recommendation:** take; three lines, and no workaround without
+copying the table's synopsis by hand.
+
+## A freestanding program, stated
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+"For a kernel: three changes to the compiler" made a raz program run on
+the bare machine; Moss, a kernel in raz, now boots on it. What it found
+is less a missing feature than missing words: what a `-bare` program
+must give the compiler, and what it may count on, are known only by
+reading `Gen.entryPoint` and `Raz`. Five items, each standing alone.
+The sixth thing Moss met, `jmp rax` read as a jump to a label, was a
+bug, fixed in ac3c464.
+
+**1. The runtime ABI, written down.** A section of `doc/compiler.md`,
+"A program with its own `Rt`", saying what the compiler asks of `Rt`
+and what a program's start may count on:
+- **Required:** `proc exit*(status: INT);`, which never returns (the
+  compiler puts `ud2` after its call), and
+  `proc fail*(what, a, b, len: INT; at: UINT; name: ^U8; rdi, rsi: UINT);`,
+  with the kinds of `what` as `lib/Rt.raz` gives them (0 an index, 1 a
+  slice, 2 an enumeration, 3 a backward slice of a pointer, 4 a nil
+  pointer, 5 a division by zero, 6 a stack overflow, 7 a view), named
+  constants in the text, not bare numbers.
+- **Optional, found by name when declared:** `places`, `calls`,
+  `teller`, `place`, `placer` (item 5), `startProfile` and `profiler`
+  (never under `-bare`), `cExit` (only with C, which `-bare` refuses).
+- **The entry:** `_start` runs every used module's body but `Rt`'s,
+  then `main`. Under `-bare` it reads nothing from the stack and aligns
+  nothing: the loader or boot stub enters it with the bss zeroed and
+  `rsp` a multiple of 16, as Linux does.
+- **`main` returning:** allowed. `Rt.exit` is then called with `main`'s
+  result, or 0 for `proc main*`.
+- **The panic hook:** `Rt.fail` is it. A kernel's `fail` prints and
+  halts; nothing else is needed, and no second hook is proposed.
+
+A test holds it: `test/run/` builds a `-bare` program against a
+smallest `Rt` of `exit` and `fail` alone, run under Linux, whose
+`exit` and `fail` make the system call themselves.
+
+Met in Moss (`docs/raz-findings.md` §2), which copied the stock
+signatures.
+
+**Recommendation:** take; it is words and one test, and the contract
+already exists.
+
+**2. A recipe for an interrupt's entry.** Before any attribute or
+generated stub, a tested recipe in `doc/compiler.md`, beside item 1,
+stating what the compiler's code may assume and so what a stub must
+restore:
+- **What the compiler's code uses:** System V's caller-saved
+  registers, `rax`, `rcx`, `rdx`, `rsi`, `rdi`, `r8` to `r11`, all of
+  `xmm0` to `xmm15`, and the flags; the direction flag is clear at
+  every call (the compiler's copies use `std` and `cld` and leave it
+  clear).
+- **The red zone:** whether the compiler ever writes below `rsp`. Not
+  checked today ("For a kernel" leaves it open); it is to be checked
+  and the answer written down. If it never does, an interrupt needs no
+  IST stack for that reason.
+- **The stub:** a `code` procedure per vector that pushes 0 where the
+  CPU pushes no error code, pushes the vector, saves the caller-saved
+  registers, aligns `rsp` to 16, saves the SSE state (`fxsave` or
+  `xsave` to an aligned area), `cld`, calls an ordinary procedure
+  `proc handle(vector, code: INT; frame: ^Frame)`, restores, drops the
+  two words and `iretq`.
+
+It is testable on Linux: `iretq` from ring 3 to ring 3 is allowed, so
+`test/run/Interrupt.raz` builds a frame by hand, jumps to the stub, has
+the handler compute with reals, and checks on return that every
+register the stub promised to keep is kept. The stub needs items 3 and
+"The assembler's instructions", 1 (`push` of a constant, `cld`).
+
+Met in Moss (`docs/raz-findings.md` §4): its handlers use only `rax`
+and make no call, which is safe but no recipe.
+
+**Recommendation:** take; a kernel's first stub is where the calling
+convention is easiest to get wrong, and a test on Linux keeps it right.
+
+**3. A code procedure names a procedure or a global.** In a code
+procedure, a name of the module's scope, or a qualified one, that is a
+procedure or a global variable stands for its address, as an operand
+of three forms only:
+
+    call fault;              (* a procedure, rip-relative *)
+    jmp fault;
+    lea rax, [ticks];        (* a procedure or a global *)
+
+Each makes a reference to that chunk, so the linker keeps what is
+named, as any call does. No other operand takes a name, and no type is
+checked: a code procedure is the target's, and its author already
+answers for the convention. The assembler gets the names as it gets
+constants, by a function the parser hands in beside `ConstFn`.
+
+Moss stores `UINT(fault)` in a slot at start and calls through a
+register (`docs/raz-findings.md` §5), so the slot must be filled
+before the first fault, which nothing checks.
+
+**Recommendation:** take; three operand forms remove a hand-off that
+can be forgotten, and the recipe in item 2 needs `call handle`.
+
+**4. A program brings its own `Rt`.** A `src/Rt.raz` beside the main
+module meets `lib/Rt.raz`, and "a program has one module of each name"
+refuses it, rightly. Moss copies the compiler beside an empty `lib/`.
+Two ways out:
+- **Staging,** as "The compiler on another host" proposes for the
+  compiler's own sources: copy `raz` beside a library of the program's
+  own. Nothing in raz changes; only words in `doc/compiler.md`. Every
+  freestanding project then carries a copied compiler, and its library
+  is all or nothing.
+- **`raz -lib DIR`:** the library is `DIR`, not the one beside the
+  compiler. A kernel's `-lib` is a directory holding its own `Rt` and
+  `Sys` and, by symbolic links, whichever of raz's modules it takes
+  (`Str`, `Fmt`, `Buf`). The duplicate check stays as it is. On the
+  `Host` branch it is one line over `Host.libraryDir`; today a few
+  lines in `Raz.raz` and raz(1).
+
+The option is the smaller for its users and nearly as small in raz;
+staging stays the way for the compiler on another host, where the
+whole of `src/` is replaced anyway.
+
+**Recommendation:** take `-lib`; a few lines save every freestanding
+program a copy of the compiler.
+
+**5. Symbols without `Rt`'s places.** Without `-s` the compiler links
+`places`, `calls`, `teller`, `place` and `placer` and stops with "Rt
+has no places" where `Rt` lacks one, and `-noprofile` doesn't help, so
+Moss builds with `-s` and loses the symbol table a debugger reads.
+Two things are tied that needn't be: the ELF's symbols and lines, for
+a debugger, and the places, for `Rt` to say where a check failed.
+The change: each of the five is linked only when `Rt` declares it,
+`calls` with `teller` and `place` with `placer`, a pair or neither; `-s`
+still strips both. A kernel then keeps its symbols for GDB and gives
+`fail` the raw address, or declares `places` and decodes them itself.
+
+A hosted program's `Rt` is raz's, which declares all five, so no
+program changes. One that writes its own `Rt` and misspells `places`
+loses its places silently; item 1 lists the names.
+
+Met in Moss (`docs/raz-findings.md` §3).
+
+**Recommendation:** take; it is a test on each name in `Raz.raz` and
+gives a kernel its symbols back.
+
+## The assembler's instructions
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+The report leaves which instructions the assembler knows to the
+implementation, and `db` gives any other. That stays. What is missing
+is a rule for when an instruction joins, and the few that programs
+have already written in `db`.
+
+**1. `push` of a constant, and `cld` and `std`.** `push imm8` and
+`push imm32` (6A, 68, sign-extended to 64 bits), and `cld` and `std`
+in `Plain`. The encoder already writes `cld` and `std` for the
+compiler's copies; only the assembler's table lacks them. Moss's
+exception stubs write all three with `db`, and every stub of
+"A freestanding program, stated", 2, needs them.
+
+**Recommendation:** take; three entries the encoder half has, and an
+interrupt stub can't be written without them.
+
+**2. When an instruction joins, and the SHA and shuffle ones now.**
+The rule, in `doc/compiler.md` beside the assembler: an instruction
+joins when a program writes it in `db`, it is a family's member the
+tables already hold (a code in `PackedOps`, an entry in `Plain`), and
+its bytes are checked against GNU `as` in `test/run/`, as
+`AsmKernel.raz` does. Anything else stays `db`, which is the permanent
+answer for an instruction no program uses twice. By that rule, now:
+- `paddd`, `punpcklqdq`, `punpckhqdq` into `PackedOps` (66 0F FE, 6C,
+  6D);
+- `pshufb` (66 0F 38 00) and `palignr` (66 0F 3A 0F, with a byte),
+  two more forms, three-byte opcodes;
+- `sha256rnds2` (0F 38 CB, `xmm0` implied), `sha256msg1` (0F 38 CC),
+  `sha256msg2` (0F 38 CD).
+
+Sauce's SHA-NI hash is 123 `db` lines assembled by GNU `as`, nothing
+checking a byte against its mnemonic; with these it is read as written.
+AES-NI, `pclmulqdq`, AVX and the rest wait for a program. (`movd` and
+`movq`, `pxor`, `pshufd`, `movdqu`, `movdqa`, `pmovmskb` are there
+already.)
+
+**Recommendation:** take; a rule stops the list growing by wish, and
+eight instructions turn sauce's 123 unchecked lines into checked ones.
+
+**3. `raz -S`'s listing, stated.** raz(1) gives the listing's form, so
+a tool may read it:
+- a blank line, then a procedure's name as `Module.name:`;
+- a source line: its number right-aligned in 6 columns, two spaces,
+  the line's text;
+- an instruction: its offset in the procedure right-aligned in 14
+  columns, two spaces, the instruction as the assembler would read it,
+  a jump within the procedure giving its target as an offset.
+
+Only the main module's live procedures, in the order they were made;
+nothing is disassembled. A change to the form is then a change to the
+manual, and rcrypto's constant-time guard (`tools/branches.sh`), which
+counts conditional jumps by reading these three kinds of line, breaks
+loudly instead of silently. A test in raz holds the form against a
+small program's listing.
+
+**Recommendation:** take; it is a paragraph of raz(1) and one test,
+for a form that already doesn't change.
+
+## `Doc` for a library's pages
+
+**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+
+`tools/Doc.raz` writes raz-lib(3) from `lib/`, and other libraries
+have started to use it for their own pages. Two changes let them.
+
+**1. A comment that heads a group of constants.** A comment just
+before `const`, `type` or `var`, on lines of its own, is the group's:
+`Doc` writes it once, before the group's declarations, as it writes a
+module's own comment, and each declaration keeps the comment just
+before it as now. Today `section` reads past the keyword and drops it
+(checked: each constant then shows alone), so mosaico's `Mxlib` has a
+comment line for each of its 237 constants where one before each group
+would halve the file. In mdoc the group's comment is filled text before
+the literal display; in plain text, the comment as written.
+
+**Recommendation:** take; a few lines in `section` keep a comment the
+standards already ask for.
+
+**2. `Doc man` writes the modules, not the page.** Today it writes
+raz-lib(3)'s `.Dd`, `.Dt`, NAME, DESCRIPTION and SEE ALSO, fixed in the
+tool, and a `Date` constant in `Doc.raz` dated by hand. The change:
+`Doc man Module.raz ...` writes only what is now between `.Sh MODULES`
+and `.Sh SEE ALSO`; raz's `Makefile` puts the head and tail around it
+from `doc/raz-lib.head` and `doc/raz-lib.tail` (or one file with a
+marker line), and the date lives with the page, not the tool. rcrypto's
+`tools/man3.sh`, which cuts Doc's page between the two `.Sh` lines and
+sets its own around it, then just wraps it, as raz does. Title, name
+and description from the command line were the other way; three
+options to replace two small files is the larger.
+
+**Recommendation:** take; it makes `Doc man` serve any library, and
+`Doc.raz` loses its fixed text and its date.
+
+## Left out, to confirm
+
+What the collation of 2026-10-22 recommends leaving out, each with its
+reason. The owner confirms or moves an item into a proposal; what is
+confirmed is marked "Not planned" in `~/r/RAZ-GAPS.md`.
+
+### The language
+
+
+- Several values are assigned at once only from a call — two statements say it; `a, b := b, a` would need a rule that every right side is read before any is stored.
+- No conditional compilation — a constant module chosen by `-I` is the Wirth idiom, and `if Fake then` on a constant already reads as one program.
+- Records don't compare with `=` — padding, reals (`-0.0`, NaN) and slices make a byte compare wrong; a `same` procedure says what equal means.
+- No type of its own for an array — a one-field record keeps two hashes apart, as it keeps generic arrays (owner's idiom).
+- No exporting a record's fields as a whole — each `*` is the reader's mark of what is public; `Mxlib` is a C mirror, made by a program.
+- An exported array can't be read as a slice outside its module — a slice can be written through; "A slice that can't be written: `[]const T`" in PROPOSALS.md would answer it.
+- An exported variable can't be assigned from outside — Oberon's read-only export; a setter shows who writes.
+- A generic instance isn't reachable through the module that imported it — no bug: an import's name is never exported (3); export a type of the instance, or import it again.
+- `I32` doesn't widen to `INT` — `INT` may be 16 bits (5.1), so the widening would not hold everywhere.
+- Common words are reserved — settled.
+- Text built at run time needs a `Buf` — with no collector a `+` of texts has no owner for its result; `Fmt.write` into a `Buf` is it.
+- Every string a record keeps is freed by hand — no collector; an `Arena` per record frees all of them at once.
+- Nothing in the report says anything of time — this is about constant-time code, not clocks (rzone doesn't answer it); a sentence would bind every later optimiser, and rcrypto isn't to be depended on.
+- An `ERROR` carries no text from the other end — an `ERROR` is an identity as big as an address; text from a peer belongs in a result field.
+- A module's test drags its imports into every user — costs compile time and a few bytes; a comment `(* for the test *)` on the import tells the reader.
+
+### Bits and bytes
+
+
+- **`Buf` gives memory back unwiped.** — a program with secrets sizes
+  its `Buf` with `Buf.room` and calls `Tls.wipe(Buf.bytes(b))` before
+  `Buf.done`, as roauth does; a wipe in the library would duplicate
+  rnet's `Tls` backends.
+- **No hash but FNV, and no wipe the compiler can't drop.** — hashing
+  and wiping go through rnet's `Tls` backends (`Tls.sha256`,
+  `Tls.wipe`); `Ws`'s SHA-1 and the two 8-line wipes in `Smtp` and
+  `Imapnet` move to `Tls` in rnet, and raz gains nothing.
+
+### Sys and Files
+
+
+- No reserving address space — `mmap` of the most it will hold, then
+  `protect`, serves raudio; `MAP_NORESERVE` alone is not worth a
+  procedure.
+- `Sys.openDir` gives no order — sorting the names is a few lines with
+  `Sort`, in the one program.
+- No glob — one program (robbie), and which wildcards it takes is that
+  program's choice; a `*` over `openDir` is about 40 lines.
+- A signal noted just before a `wait` doesn't break it — already
+  answered: `catch` SIGCHLD with the others and wait in `ready` on
+  catch's fd (child, signal or deadline at once), then `wait(pid,
+  false)`; `ignore(sig, false)` gives a caught signal its default back.
+  Worth a paragraph in the library volume, not a procedure.
+- No word from the kernel when a file changes — inotify is Linux's,
+  with no match in the C backend's other systems or Moss; a 300 ms
+  look serves.
+- No sleep a signal breaks into — `ready(-1, ms)` is that sleep for
+  `handle`, and `ready` on catch's fd for `catch`.
+- No sockets but streams and datagrams to addresses — netlink and HCI
+  are Linux's, for one program.
+- No user's name — the password database with NSS needs the C
+  library, which mosaico links anyway.
+- `Sys.rawMode` doesn't flush typed-ahead input — keys typed ahead are
+  usually meant for the program; flushing would lose them.
+- No positional read (`pread`, `fadvise`) — `seek` then `read` serves
+  the one program; `fadvise` is a hint, fine as a `SYSCALL`.
+- No `madvise` in `Sys` — `munmap` then `mmap` gives pages back.
+
+### Numbers, strings, memory and Opt
+
+
+- No fixed-capacity string — one program, a record of a length and an array, three lines.
+- `Math.toReal` refuses `.5` and `5.` — it reads reals as the language writes them, and arkusz's 3-line `withZeros` serves its one user.
+- `Math.toReal` is slow far from 10^0 — a fast path (Eisel and Lemire) is 60 lines and a table for one program's benchmark.
+- `Math.pow` is not correctly rounded, and `Math.exp(y * Math.ln(x))` is worse — within an ulp as the header promises; correct rounding costs far more than one bit is worth.
+- `Opt` has no GNU reordering, and does not say a `--` ended the options — options ending at the first operand is `Opt`'s stated rule, so that a command's own options pass through.
+- `Opt` carries no completion words — completion is concha's, one program, and the table would grow for every user.
+- A zero `Buf` or `Vec` isn't usable — deliberate: the core assumes no heap, and `init` says which allocator.
+- Joining texts into a kept `[]U8` costs a `Buf` and a copy — `Str.join` then `Str.copy` is two calls, for one program.
+- Case is ASCII only — Unicode case maps are large tables for one program; rrem has them.
+- `Vec` gives no pointer to an element already in it — `Nodes.all(v)[k].next := m` already sets a field in place.
+- No lenient base64 reader in `Str` — mail's junk is rmime's to handle; its 30 lines serve the one reader that meets it.
+- `Check.int` takes `I64` — an `I32` widening to `I64` is the language's question, and one call site converts.
+- `Rand` has no shuffle — `Rand` isn't generic, and Fisher and Yates over `below` is four lines.
+- `Fmt.real(x, n)` rounds the binary value, not the decimal text — the Pascal double rounding is left; the round-trip need is met by `Fmt.short` above.
+
+### Freestanding programs and tools
+
+
+- `Doc` fills a list — rcrypto's paragraphs read as well, and a line
+  indented further already means code, which a list's continuation
+  would muddle.
