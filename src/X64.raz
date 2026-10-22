@@ -57,6 +57,7 @@ var
     listing*: BOOL;      (* -S: each instruction's text is kept, for list *)
     said: ^Said;
     numSaid, saidCap: INT;
+    labelAt: INT;        (* where a jump was last fixed to the place it was at *)
 
 proc setListing*(yes: BOOL);
 begin
@@ -881,6 +882,7 @@ end;
 
 proc fixLink*(L: INT);
 begin
+    if L # NoLabel then labelAt := Chunk.pc; end;
     fixLinkTo(L, Chunk.pc);
 end;
 
@@ -891,10 +893,11 @@ end;
    4 bytes back and an E9 byte (jmp) is before it; a jcc's field follows
    the bytes 0F 8x, never E9. L then becomes the next jump on the chain,
    which the field held. The caller must place L next, before anything
-   can have noted where the jmp ended. *)
+   can have noted where the jmp ended; and no jump may have been fixed
+   to just after it, as an if's, which would then land beyond. *)
 proc dropJumpTo*(var L: INT);
 begin
-    if (L = NoLabel) or (L # Chunk.pc - 4) or (Chunk.text[L - 1] # 0E9H) then return; end;
+    if (L = NoLabel) or (L # Chunk.pc - 4) or (Chunk.text[L - 1] # 0E9H) or (labelAt = Chunk.pc) then return; end;
     L := Chunk.get4At(L);
     Chunk.takeBack(5);
     if listing and (numSaid > 0) and (said[numSaid - 1].at = Chunk.pc) then DEC(numSaid); end;
