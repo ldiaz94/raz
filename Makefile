@@ -15,12 +15,13 @@ build/src/Version.raz: build/version.inc | build
 	mkdir -p build/src
 	printf 'module Version;\nconst Text* = "%s";\nend Version.\n' "$$(tr -d "'" < build/version.inc)" >$@
 
-# The version is git's name for the commit, or VERSION where it is given
+# The version is git's name for the commit (a tag's, or with no tag, as in a
+# shallow fetch, the commit's hash), or VERSION where it is given
 # (make dist REV=... VERSION=0.20.0 packs a release before its tag is
 # pushed, as the tag will); the file changes only when that does, so
 # raz isn't rebuilt for nothing.
 build/version.inc: FORCE | build
-	@v=$(if $(VERSION),$(VERSION),$$(git describe --tags --dirty 2>/dev/null || echo unknown)); \
+	@v=$(if $(VERSION),$(VERSION),$$(git describe --tags --always --dirty 2>/dev/null || echo unknown)); \
 	v="'$${v#v}'"; echo "$$v" | cmp -s - $@ || echo "$$v" >$@
 
 FORCE:
