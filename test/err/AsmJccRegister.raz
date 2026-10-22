@@ -1,0 +1,6 @@
+module AsmJccRegister;
+proc f;
+code
+    jz rax;
+end f;
+end AsmJccRegister.

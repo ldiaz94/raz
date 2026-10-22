@@ -1401,6 +1401,13 @@ begin
     return nil;
 end;
 
+(* Whether the identifier at the scan is a register name, not a label *)
+proc atRegister(): BOOL;
+var r, size: INT;
+begin
+    return isReg(asmWord(), ADR(r), ADR(size));
+end;
+
 (* One instruction or label, as assemble reads it *)
 proc statement(constExpr: ConstFn): ERROR;
 var
@@ -1441,7 +1448,7 @@ begin
             if Scan.tok # Scan.sComma then break; end;
             Scan.next;
         until false;
-    elsif (aw[0] = 'j') and ((aw = "jmp") or (cond(part(aw, 1, 3)) >= 0)) and (Scan.tok = Scan.sIdent) then
+    elsif (aw[0] = 'j') and ((aw = "jmp") or (cond(part(aw, 1, 3)) >= 0)) and (Scan.tok = Scan.sIdent) and not atRegister() then
         (* a jump to a label *)
         k := try lab(Scan.id);
         Scan.next;

@@ -120,6 +120,12 @@ code
     db 0C3H;
 end answer;
 
+(* the procedure f, jumped to through a register: its result comes back as ours *)
+proc through(f: proc: I64): I64;
+code
+    jmp rdi;
+end through;
+
 (* s without its first k bytes: s in rdi and rsi, k in rdx, the slice back in rax and rdx *)
 proc tail(s: []U8; k: INT): []U8;
 code
@@ -162,6 +168,7 @@ begin
     c := 40;
     Out.int(fetchAdd(ADR(c), 2)); Out.str(" "); Out.int(c); Out.ln;
     Out.int(I64(two() * 21.0)); Out.str(" "); Out.int(answer()); Out.ln;
+    Out.int(through(answer)); Out.ln;
     t := "abcdef";
     Out.str(tail(t[0..6], 2)); Out.str(" "); Out.int(LEN(tail(t[0..6], 6))); Out.ln;
     Out.int(pick(3, t[0..6])); Out.str(" "); Out.int(pick(9, t[0..6])); Out.ln;
