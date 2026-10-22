@@ -147,6 +147,25 @@ end Main.
             self.succeeds(*flags)
             duplicate.unlink()
 
+    def test_hard_link_chooses_same_module(self):
+        chosen = self.library(self.default)
+        duplicate = self.main.parent / chosen.name
+        os.link(chosen, duplicate)
+        self.succeeds()
+
+    def test_equal_contents_do_not_choose_distinct_module(self):
+        chosen = self.library(self.default)
+        duplicate = self.main.parent / chosen.name
+        self.write(duplicate, chosen.read_text())
+        # Selection follows file identity, not equal source text.
+        self.fails("module PathLib is in")
+
+    def test_symbolic_link_to_distinct_module_does_not_choose(self):
+        self.library(self.default)
+        other = self.library(self.root / "elsewhere")
+        (self.main.parent / other.name).symlink_to(other)
+        self.fails("module PathLib is in")
+
     def test_duplicate_user_directories(self):
         self.library(self.default)
         other = self.root / "other"

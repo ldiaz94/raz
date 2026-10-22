@@ -3801,13 +3801,11 @@ end;
 (* Which file path is, as its device and inode: two names of one file
    have the same. Zero for a file that can't be asked about. *)
 proc identity(path: []U8): (INT, INT);
-var a: [4096]U8; st: [18]INT;   (* struct stat: st_dev, then st_ino *)
+var info: Sys.Info; err: INT;
 begin
-    if LEN(path) >= 4096 then return 0, 0; end;
-    COPY(a[0..LEN(path)], path);
-    a[LEN(path)] := 0;
-    if SYSCALL(4, ADR(a[0]), ADR(st)) < 0 then return 0, 0; end;
-    return st[0], st[1];
+    info, err := Sys.info(path);
+    if err # 0 then return 0, 0; end;
+    return INT(info.dev), INT(info.ino);
 end;
 
 (* s, in memory that is never freed, for what must outlast the buffer it is in *)
