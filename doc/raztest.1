@@ -1,0 +1,145 @@
+.\" raztest(1) - build and run the tests of a raz program
+.Dd October 22, 2026
+.Dt RAZTEST 1
+.Os
+.Sh NAME
+.Nm raztest
+.Nd build and run the tests of a raz program
+.Sh SYNOPSIS
+.Nm
+.Op Fl I Ar dir
+.Op Fl j Ar n
+.Op Fl t Ar secs
+.Op Fl o Ar dir
+.Op Fl r Ar text
+.Ar file.raz Ns | Ns Ar dir ...
+.Sh DESCRIPTION
+.Nm
+builds each test with
+.Ic raz -Werror ,
+runs it, and says which passed.
+A test is a module whose
+.Ic main
+is its test: it passes if it builds and then exits with status 0, as a
+program that checks with the library's
+.Ic Check
+does when no check fails.
+.Pp
+The tests are the files given.
+A directory gives each
+.Pa *.raz
+directly in it that has a line starting
+.Ql proc main* ,
+in the order of their names.
+A test's name is its file's, without
+.Pa .raz ;
+two tests may not share one.
+.Pp
+Each test is built into the
+.Fl o
+directory as
+.Ar name ,
+and run there with standard input from
+.Pa /dev/null ,
+in a process group of its own.
+What the compiler writes, and then what the test writes on standard
+output and standard error, goes to
+.Ar name Ns .out
+beside it, which stays for a look afterwards.
+A build or a run that takes longer than the
+.Fl t
+seconds has its process group killed.
+.Pp
+As each test ends,
+.Nm
+writes a line for it, in the order the tests were given: the word
+.Ql ok ,
+.Ql FAIL
+or
+.Ql TIMEOUT ,
+the file, for a failure what failed,
+such as
+.Ql doesn't compile ,
+.Ql status 1
+or
+.Ql signal 11 ,
+and the seconds it took to build and run.
+Under a failure comes its
+.Pa .out ,
+indented by four spaces.
+Last comes a summary:
+.Bd -literal -offset indent
+12 passed, 1 failed, 0 timed out, 3.41s
+.Ed
+.Pp
+The three words are in colour when standard output is a terminal.
+.Sh OPTIONS
+.Bl -tag -width "-t secs"
+.It Fl I Ar dir
+Look for modules in
+.Ar dir
+too, as
+.Ic raz -I
+does.
+It may be given more than once.
+.It Fl j Ar n
+Build and run
+.Ar n
+tests at once; 1 if not given.
+.It Fl t Ar secs
+Kill a build, or a run, that takes longer than
+.Ar secs
+seconds; 60 if not given.
+.It Fl o Ar dir
+Put the programs and their
+.Pa .out
+files in
+.Ar dir ,
+made if it isn't there;
+.Pa build/raztest
+if not given.
+.It Fl r Ar text
+Run only the tests whose name holds
+.Ar text .
+.It Fl h , Fl \-help
+Say the options, and exit.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width "NO_COLOR"
+.It Ev RAZ
+The compiler; if unset,
+.Ic raz
+on the
+.Ev PATH .
+.It Ev NO_COLOR
+If set and not empty, no colour.
+.El
+.Sh EXIT STATUS
+0 if every test passed; 1 if one failed or timed out; 2 for a mistake
+in the command line, a file that isn't there, or an output directory
+that can't be made.
+Stopped by an interrupt or a hangup, it kills the tests under way and
+exits with 128 and the signal's number.
+.Sh EXAMPLES
+Run a project's tests, four at a time:
+.Bd -literal -offset indent
+raztest -j 4 -I src test
+.Ed
+.Pp
+A Makefile's check that uses
+.Nm
+where it is installed, and its own loop where it isn't:
+.Bd -literal -offset indent
+check:
+	@if command -v raztest >/dev/null; then raztest -I src test; \e
+	else fail=0; for f in test/*.raz; do \e
+	    raz -Werror -I src -o build/t $$f && build/t || fail=1; \e
+	done; test $$fail = 0; fi
+.Ed
+.Sh SEE ALSO
+.Xr raz 1 ,
+.Xr raz-lib 3
+.Sh BUGS
+.Fl j
+doesn't default to the number of processors, which the library can't
+tell yet.

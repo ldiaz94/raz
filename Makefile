@@ -116,11 +116,12 @@ build/%.pdf: doc/%.md doc/report.css | build
 
 # raz, its library and its tools go together under $(PREFIX)/lib/raz,
 # laid out as in the tarball; the link on PATH works since raz finds
-# lib/ beside its real path, and a program's make finds tools/ so. The
-# manual pages go where man looks, beside bin.
+# lib/ beside its real path, and a program's make finds tools/ so.
+# raztest, tools/Test.raz, is built onto PATH by this raz. The manual
+# pages go where man looks, beside bin.
 PREFIX = $(HOME)/.local
 MAN = $(PREFIX)/share/man
-TOOLS = Pretty Doc Scan
+TOOLS = Pretty Doc Scan Test
 
 install: raz build/raz-lib.3
 	rm -rf $(PREFIX)/lib/raz
@@ -128,21 +129,24 @@ install: raz build/raz-lib.3
 	cp -r raz lib $(PREFIX)/lib/raz
 	cp $(TOOLS:%=tools/%.raz) $(PREFIX)/lib/raz/tools
 	ln -sf $(PREFIX)/lib/raz/raz $(PREFIX)/bin/raz
-	cp doc/raz.1 $(MAN)/man1/raz.1
+	./raz -Werror -o $(PREFIX)/bin/raztest tools/Test.raz
+	cp doc/raz.1 doc/raztest.1 $(MAN)/man1
 	cp build/raz-lib.3 $(MAN)/man3/raz-lib.3
 	cp doc/raz.7 doc/raz-tutorial.7 $(MAN)/man7
 
 uninstall:
-	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(MAN)/man1/raz.1 $(MAN)/man3/raz-lib.3 \
+	rm -rf $(PREFIX)/lib/raz $(PREFIX)/bin/raz $(PREFIX)/bin/raztest \
+	    $(MAN)/man1/raz.1 $(MAN)/man1/raztest.1 $(MAN)/man3/raz-lib.3 \
 	    $(MAN)/man7/raz.7 $(MAN)/man7/raz-tutorial.7
 
 # A release's tarball, build/raz-V-linux-x86_64.tar.gz: raz, the lib/
 # it reads beside itself, the tools a program's make may build (the
-# formatter, Doc and the Scan they share) and the manual pages, V being what raz
-# --version says. It is made of the commit REV, HEAD unless given: CI
-# packs the tag it checked out, and site/build.py each tag it lacks. A
-# release whose tag isn't pushed yet is made with VERSION, its version
-# without the v: the same tarball as the tag's, once the tag is at REV.
+# formatter, Doc and the Scan they share, and raztest) and the manual
+# pages, V being what raz --version says. It is made of the commit
+# REV, HEAD unless given: CI packs the tag it checked out, and
+# site/build.py each tag it lacks. A release whose tag isn't pushed yet
+# is made with VERSION, its version without the v: the same tarball as
+# the tag's, once the tag is at REV.
 #
 # The tarball is the same, byte for byte, wherever it is made, so that
 # its SHA-256 can be checked against GitHub's or the website's. raz is
@@ -163,7 +167,7 @@ dist:
 	rm -rf build/$$d && mkdir -p build/$$d/man && \
 	cp -r $(DIST)/raz $(DIST)/lib $(DIST)/LICENSE $(DIST)/README.md build/$$d && \
 	mkdir build/$$d/tools && cp $(TOOLS:%=$(DIST)/tools/%.raz) build/$$d/tools && \
-	cp $(DIST)/doc/raz.1 $(DIST)/doc/raz.7 $(DIST)/doc/raz-tutorial.7 \
+	cp $(DIST)/doc/raz.1 $(DIST)/doc/raztest.1 $(DIST)/doc/raz.7 $(DIST)/doc/raz-tutorial.7 \
 	    $(DIST)/build/raz-lib.3 build/$$d/man && \
 	tar -cf - --format=gnu --sort=name --mtime=@$$(git log -1 --format=%ct $(REV)) \
 	    --owner=0 --group=0 --numeric-owner --mode=a+rX,u+w,go-w \

@@ -1,0 +1,432 @@
+(* Test: raztest, which builds and runs the tests of a raz program.
+
+       raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] file.raz|dir ...
+
+   A test is a module whose main is its test: it passes if it builds
+   with raz -Werror and then exits with status 0, as a program that
+   checks with Check does when no check fails. The tests are the files
+   given; a directory gives each *.raz directly in it that has a line
+   starting proc main*. A test's name is its file's, without .raz.
+
+   Each is built into the -o directory, as Name, by $RAZ (raz on PATH if
+   unset), and run there with no input, in a process group of its own;
+   what the compiler, then the test, write goes to Name.out beside it,
+   a file, so that nothing need be read while they run and the logs stay
+   for CI. -j tests go at once, polled every few milliseconds, with no
+   threads; one that takes longer than -t seconds to build, or to run,
+   has its group killed.
+
+   A line for each test as it ends, in the order given, with the
+   .out of one that failed or timed out under it; then a summary,
+
+       12 passed, 1 failed, 0 timed out, 3.41s
+
+   and status 0 if all passed, 1 if not, 2 for a mistake in the
+   command line or the setup. The words ok, FAIL and TIMEOUT are in
+   colour when standard output is a terminal and NO_COLOR is unset.
+
+   Needs only the library. Leaves out: TAP and JUnit reports and
+   watching files (to come), arguments to a test, tests not in raz,
+   and the number of processors as -j's default, which Sys can't tell:
+   it is 1. *)
+module Test;
+import Opt, Fmt, Out, Buf, Str, Heap, Sys, Rt, Files;
+import Names := Vec([]U8), Jobs := Vec(Job), ByName := Sort([]U8, less);
+
+const
+    Table: []Opt.Row = [
+        Opt.usage("", "raztest [-I dir] [-j n] [-t secs] [-o dir] [-r text] file.raz|dir ..."),
+        Opt.option("", 'I', "include", "dir", "look for modules in dir too, as raz -I"),
+        Opt.option("", 'j', "jobs", "n", "run n tests at once (1)"),
+        Opt.option("", 't', "timeout", "secs", "kill a build or run after secs (60)"),
+        Opt.option("", 'o', "out", "dir", "put the programs and their .out in dir (build/raztest)"),
+        Opt.option("", 'r', "run", "text", "run only the tests whose name holds text")];
+    PollMs = 10;                 (* how long to wait between looks at the running tests *)
+    Second = 1000000000;         (* a second in Sys.clock's nanoseconds *)
+    Green = "\x1b[32m";          (* the colours of ok, FAIL and TIMEOUT *)
+    Red = "\x1b[31m";
+    Yellow = "\x1b[33m";
+    Plain = "\x1b[0m";           (* back to no colour *)
+
+type
+    (* Where a test is: not started, being built, being run, or ended. *)
+    Phase = (waiting, building, running, done);
+
+    (* How a test ended. *)
+    Result = (passed, failed, timedOut);
+
+    (* A test and how it is going. *)
+    Job = record
+        path: []U8;      (* its file, as given *)
+        name: []U8;      (* the file's name without .raz *)
+        bin: []U8;       (* its program, in the out directory *)
+        log: []U8;       (* its .out, beside the program *)
+        phase: Phase;
+        pid: INT;        (* the compiler's or the test's, while building or running *)
+        began: I64;      (* Sys.clock when its build started *)
+        deadline: I64;   (* Sys.clock when the phase under way is killed *)
+        took: I64;       (* nanoseconds from its build's start to its end *)
+        result: Result;
+        why: Buf.Buf;    (* for a failure, what failed: "status 1" *)
+    end;
+
+var
+    raz: []U8;           (* the compiler: $RAZ, or raz on PATH *)
+    includes: Names.Vec; (* the -I directories *)
+    jobs: INT;           (* -j: tests at once *)
+    timeout: I64;        (* -t, in nanoseconds *)
+    outDir: []U8;        (* -o *)
+    only: []U8;          (* -r: the text a name must hold, or "" *)
+    tests: Jobs.Vec;     (* in the order they are reported *)
+    busy: INT;           (* tests being built or run *)
+    devNull: INT;        (* /dev/null, each test's standard input *)
+    signals: INT;        (* the fd the interrupting signals come on *)
+    colour: BOOL;        (* the words of the results are coloured *)
+
+(* Whether a sorts before b, for sorting a directory's files. *)
+proc less(a, b: []U8): BOOL;
+begin
+    return Str.cmp(a, b) < 0;
+end;
+
+(* A mistake in the setup: the message, and status 2. *)
+proc die(f: []U8; args: []Fmt.Arg);
+var b: Buf.Buf;
+begin
+    Buf.init(b, Heap.heap);
+    Fmt.write(b, "raztest: ", []);
+    Fmt.write(b, f, args);
+    Fmt.eprint("{}\n", [Fmt.str(Buf.bytes(b))]);
+    Rt.exit(2);
+end;
+
+(* a, b and c joined, in memory of its own that is never freed. *)
+proc join(a, b, c: []U8): []U8;
+var s: Buf.Buf;
+begin
+    Buf.init(s, Heap.heap);
+    Buf.str(s, a); Buf.str(s, b); Buf.str(s, c);
+    return Buf.bytes(s);
+end;
+
+(* Whether the source at path has a line that starts proc main*. *)
+proc hasMain(path: []U8): BOOL;
+var b: Buf.Buf; src: []U8;
+begin
+    Buf.init(b, Heap.heap);
+    defer Buf.done(b);
+    if not Files.read(path, b) then return false; end;
+    src := Buf.bytes(b);
+    return Str.hasPrefix(src, "proc main*") or (Str.find(src, "\nproc main*") >= 0);
+end;
+
+(* Adds the test at path, unless -r leaves it out. *)
+proc add(path: []U8);
+var j: ^Job; name: []U8;
+begin
+    name := path[Str.findLast(path, "/") + 1..LEN(path)];
+    if Str.hasSuffix(name, ".raz") then name := name[0..LEN(name) - 4]; end;
+    if Str.find(name, only) < 0 then return; end;
+    j := Jobs.add(tests);
+    j^ := {path: path, name: name, bin: join(outDir, "/", name), phase: waiting};
+    j^.log := join(j^.bin, ".out", "");
+    Buf.init(j^.why, Heap.heap);
+end;
+
+(* Adds the tests of the directory dir: its *.raz with a main, by name. *)
+proc addDir(dir: []U8);
+var d: Sys.Dir; files: Names.Vec; name, path: []U8; ok: BOOL; err, i: INT;
+begin
+    err := Sys.openDir(d, dir);
+    if err < 0 then die("can't read {}: {}", [Fmt.str(dir), Fmt.str(Sys.errorText(err))]); end;
+    Names.init(files, Heap.heap);
+    name, ok := Sys.nextEntry(d);
+    while ok do
+        path := join(dir, "/", name);
+        if Str.hasSuffix(name, ".raz") and hasMain(path) then Names.push(files, path); end;
+        name, ok := Sys.nextEntry(d);
+    end;
+    Sys.closeDir(d);
+    ByName.sort(Names.all(files));
+    for i := 0 to files.len - 1 do add(Names.all(files)[i]); end;
+end;
+
+(* Adds what an operand names: a directory's tests, or a file. *)
+proc addOperand(path: []U8);
+var f: Sys.Info; err: INT;
+begin
+    f, err := Sys.info(path);
+    if err < 0 then die("{}: {}", [Fmt.str(path), Fmt.str(Sys.errorText(err))]); end;
+    if f.dir then addDir(path); else add(path); end;
+end;
+
+(* Stops if two tests have one name, as their programs would. *)
+proc checkNames;
+var all: []Job; i, k: INT;
+begin
+    all := Jobs.all(tests);
+    for i := 0 to LEN(all) - 1 do
+        for k := 0 to i - 1 do
+            if all[i].name = all[k].name then
+                die("{} and {} are both named {}", [Fmt.str(all[k].path), Fmt.str(all[i].path), Fmt.str(all[i].name)]);
+            end;
+        end;
+    end;
+end;
+
+(* Reads the command line into the settings and the list of tests. *)
+proc readArgs;
+var p: Opt.Parser; arg: []U8; ok: BOOL;
+begin
+    jobs := 1; timeout := 60 * Second; outDir := "build/raztest";
+    Names.init(includes, Heap.heap);
+    Jobs.init(tests, Heap.heap);
+    Opt.init(p, "raztest", Table);
+    while Opt.next(p) do
+        if p.letter = 'I' then Names.push(includes, p.value);
+        elsif p.letter = 'j' then jobs := INT(Opt.number(p, 1, 1000));
+        elsif p.letter = 't' then timeout := Opt.number(p, 1, 1000000) * Second;
+        elsif p.letter = 'o' then outDir := p.value;
+        elsif p.letter = 'r' then only := p.value;
+        end;
+    end;
+    arg, ok := Opt.operand(p);
+    if not ok then Opt.fail(p, "no tests named; raztest --help says how"); end;
+    repeat
+        addOperand(arg);
+        arg, ok := Opt.operand(p);
+    until not ok;
+    checkNames;
+end;
+
+(* Makes the directory dir and those it is in, as mkdir -p does. *)
+proc makeDirs(dir: []U8);
+var i, err: INT; f: Sys.Info;
+begin
+    for i := 1 to LEN(dir) - 1 do
+        if dir[i] = '/' then _ := Sys.makeDir(dir[0..i]); end;
+    end;
+    err := Sys.makeDir(dir);
+    if err = Sys.errExists then
+        f, err := Sys.info(dir);
+        if (err = 0) and not f.dir then err := Sys.errNotDir; end;
+    end;
+    if err < 0 then
+        die("can't make {}: {}", [Fmt.str(dir), Fmt.str(Sys.errorText(err))]);
+    end;
+end;
+
+(* Readies what every test needs: the compiler's name, the out
+   directory, /dev/null, the signals that stop raztest, and colour. *)
+proc setUp;
+begin
+    raz := Sys.env("RAZ");
+    if LEN(raz) = 0 then raz := "raz"; end;
+    makeDirs(outDir);
+    devNull := Sys.openRead("/dev/null");
+    if devNull < 0 then die("can't open /dev/null: {}", [Fmt.str(Sys.errorText(devNull))]); end;
+    signals := Sys.catch([Sys.sigInt, Sys.sigTerm, Sys.sigHup]);
+    if signals < 0 then die("can't catch signals: {}", [Fmt.str(Sys.errorText(signals))]); end;
+    colour := Sys.isTerminal(Sys.stdout) and (LEN(Sys.env("NO_COLOR")) = 0);
+end;
+
+(* Whether the test j is being built or run. *)
+proc active(const j: Job): BOOL;
+begin
+    return (j.phase = building) or (j.phase = running);
+end;
+
+(* Ends the test j's phase as result: what failed is in j.why. *)
+proc finish(var j: Job; result: Result);
+begin
+    if active(j) then DEC(busy); end;
+    j.phase := done;
+    j.result := result;
+    j.took := Sys.clock() - j.began;
+end;
+
+(* Starts args[0] with its output and errors into j's log, as j's next
+   phase, in a group of its own; false, with j failed, if it can't. *)
+proc start(var j: Job; args: [][]U8; phase: Phase): BOOL;
+var fd: INT;
+begin
+    fd := Sys.create(j.log);
+    if fd < 0 then
+        Fmt.write(j.why, "can't write {}: {}", [Fmt.str(j.log), Fmt.str(Sys.errorText(fd))]);
+        finish(j, failed); return false;
+    end;
+    j.pid := Sys.spawn({path: args[0], args: args, fds: [devNull, fd, fd], group: -1});
+    Sys.close(fd);
+    if j.pid < 0 then
+        Fmt.write(j.why, "can't start {}: {}", [Fmt.str(args[0]), Fmt.str(Sys.errorText(j.pid))]);
+        finish(j, failed); return false;
+    end;
+    if j.phase = waiting then INC(busy); end;
+    j.phase := phase;
+    j.deadline := Sys.clock() + timeout;
+    return true;
+end;
+
+(* Starts building the test j: raz -Werror, the -I directories, -o. *)
+proc build(var j: Job);
+var args: Names.Vec; i: INT;
+begin
+    Names.init(args, Heap.heap);
+    defer Names.done(args);
+    Names.push(args, raz);
+    Names.push(args, "-Werror");
+    for i := 0 to includes.len - 1 do
+        Names.push(args, "-I");
+        Names.push(args, Names.all(includes)[i]);
+    end;
+    Names.push(args, "-o");
+    Names.push(args, j.bin);
+    Names.push(args, j.path);
+    j.began := Sys.clock();
+    _ := start(j, Names.all(args), building);
+end;
+
+(* The test j's phase has ended, how and with value as Sys.wait says:
+   on to running it, or the end. *)
+proc ended(var j: Job; how: Sys.Status; value: INT);
+var args: [1][]U8;
+begin
+    if (j.phase = building) and (how = Sys.exited) and (value = 0) then
+        args[0] := j.bin;
+        _ := start(j, args, running);
+        return;
+    end;
+    if j.phase = building then
+        if (how = Sys.exited) and (value = 1) then Buf.str(j.why, "doesn't compile");
+        elsif how = Sys.exited then Fmt.write(j.why, "raz status {}", [Fmt.int(value)]);
+        else Fmt.write(j.why, "raz signal {}", [Fmt.int(value)]);
+        end;
+        finish(j, failed);
+    elsif (how = Sys.exited) and (value = 0) then finish(j, passed);
+    elsif how = Sys.exited then Fmt.write(j.why, "status {}", [Fmt.int(value)]); finish(j, failed);
+    else Fmt.write(j.why, "signal {}", [Fmt.int(value)]); finish(j, failed);
+    end;
+end;
+
+(* Looks at the test j, being built or run, without waiting: whether
+   it has ended its phase, or run out of time and been killed. *)
+proc poll(var j: Job): BOOL;
+var pid, value: INT; how: Sys.Status;
+begin
+    pid, how, value := Sys.wait(j.pid, false);
+    if pid < 0 then
+        Fmt.write(j.why, "lost: {}", [Fmt.str(Sys.errorText(pid))]);
+        finish(j, failed);
+    elsif (pid > 0) and (how # Sys.stopped) then
+        ended(j, how, value);
+    elsif Sys.clock() > j.deadline then
+        _ := Sys.kill(-j.pid, Sys.sigKill);
+        _, _, _ := Sys.wait(j.pid, true);
+        finish(j, timedOut);
+    else
+        return false;
+    end;
+    return true;
+end;
+
+(* Writes word, in colour c on a terminal, padded to a column of 8. *)
+proc putWord(word, c: []U8);
+var i: INT;
+begin
+    if colour then Out.str(c); Out.str(word); Out.str(Plain); else Out.str(word); end;
+    for i := LEN(word) to 7 do Out.char(' '); end;
+end;
+
+(* Writes the file at path, each line indented by 4 spaces. *)
+proc putIndented(path: []U8);
+var b: Buf.Buf; s, line, rest: []U8; more: BOOL;
+begin
+    Buf.init(b, Heap.heap);
+    defer Buf.done(b);
+    if not Files.read(path, b) then Fmt.print("    (can't read {})\n", [Fmt.str(path)]); return; end;
+    s := Buf.bytes(b);
+    while LEN(s) > 0 do
+        line, rest, more := Str.cut(s, "\n");
+        Fmt.print("    {}\n", [Fmt.str(line)]);
+        s := rest;
+        if not more then break; end;
+    end;
+end;
+
+(* Writes the line of the ended test j, and its log if it failed. *)
+proc report(const j: Job);
+var secs: Fmt.Arg;
+begin
+    secs := Fmt.real(F64(j.took) / F64(Second), 2);
+    if j.result = passed then
+        putWord("ok", Green);
+        Fmt.print("{}  {}s\n", [Fmt.str(j.path), secs]);
+    elsif j.result = timedOut then
+        putWord("TIMEOUT", Yellow);
+        Fmt.print("{}  {}s\n", [Fmt.str(j.path), secs]);
+        putIndented(j.log);
+    else
+        putWord("FAIL", Red);
+        Fmt.print("{}  {}  {}s\n", [Fmt.str(j.path), Fmt.str(Buf.bytes(j.why)), secs]);
+        putIndented(j.log);
+    end;
+    Out.flush;
+end;
+
+(* Kills every test being built or run, after a signal to stop, and
+   ends with the shell's status for it, 128 and its number. *)
+proc interrupted(sig: INT);
+var all: []Job; i: INT;
+begin
+    all := Jobs.all(tests);
+    for i := 0 to LEN(all) - 1 do
+        if active(all[i]) then
+            _ := Sys.kill(-all[i].pid, Sys.sigKill);
+            _, _, _ := Sys.wait(all[i].pid, true);
+        end;
+    end;
+    Out.flush;
+    Rt.exit(128 + sig);
+end;
+
+(* Builds and runs every test, jobs at a time, and reports each in
+   order as soon as it and those before it have ended. *)
+proc runAll;
+var all: []Job; next, shown, i: INT; changed: BOOL;
+begin
+    all := Jobs.all(tests);
+    next := 0; shown := 0;
+    while shown < LEN(all) do
+        while (busy < jobs) and (next < LEN(all)) do build(all[next]); INC(next); end;
+        changed := false;
+        for i := 0 to next - 1 do
+            if active(all[i]) and poll(all[i]) then changed := true; end;
+        end;
+        while (shown < LEN(all)) and (all[shown].phase = done) do report(all[shown]); INC(shown); end;
+        if not changed and Sys.ready(signals, PollMs) then interrupted(Sys.caught(signals)); end;
+    end;
+end;
+
+(* The summary line, and status 1 if any test failed. *)
+proc summary(took: I64);
+var all: []Job; i: INT; count: [3]INT;
+begin
+    all := Jobs.all(tests);
+    for i := 0 to LEN(all) - 1 do INC(count[INT(all[i].result)]); end;
+    Fmt.print("{} passed, {} failed, {} timed out, {}s\n",
+        [Fmt.int(count[INT(passed)]), Fmt.int(count[INT(failed)]), Fmt.int(count[INT(timedOut)]),
+         Fmt.real(F64(took) / F64(Second), 2)]);
+    Out.flush;
+    if count[INT(passed)] < LEN(all) then Rt.exit(1); end;
+end;
+
+proc main*;
+var began: I64;
+begin
+    began := Sys.clock();
+    readArgs;
+    setUp;
+    runAll;
+    summary(Sys.clock() - began);
+end;
+end Test.

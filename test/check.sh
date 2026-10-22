@@ -267,17 +267,23 @@ else
     echo "FAIL tools/Mutate.raz: $(cat $out/Mutate.cerr)"; fail=$((fail + 1))
 fi
 
-# each library module's main is its test; Sys over C is tested in test/libc
-for f in lib/*.raz; do
-    [ $f = lib/Sys.raz ] && continue
-    grep -q '^proc main\*' $f || continue
-    name=lib_$(basename $f .raz)
-    if ! $raz -Werror -o $out/$name $f 2>$out/$name.cerr; then
-        echo "FAIL $f: doesn't compile: $(cat $out/$name.cerr)"; fail=$((fail + 1))
-    elif ! $out/$name > $out/$name.out 2>&1; then
-        echo "FAIL $f: its test says $(cat $out/$name.out)"; fail=$((fail + 1))
-    else pass=$((pass + 1)); fi
-done
+# each library module's main is its test, run by tools/Test.raz,
+# raztest, which says what it counted on its last line; Sys over C is
+# tested in test/libc
+if $raz -Werror -o $out/raztest tools/Test.raz 2>$out/raztest.cerr; then
+    RAZ=$raz $out/raztest -j $(nproc 2>/dev/null || echo 1) -o $out/lib \
+        $(for f in lib/*.raz; do [ $f != lib/Sys.raz ] && grep -q '^proc main\*' $f && echo $f; done) \
+        > $out/raztest.out 2>&1
+    set -- $(tail -1 $out/raztest.out)   # N passed, F failed, T timed out, S
+    if [ "$2" = passed, ] && [ "$6" = timed ]; then
+        pass=$((pass + $1)); fail=$((fail + $3 + $5))
+        [ $(($3 + $5)) = 0 ] || grep -v '^ok ' $out/raztest.out
+    else
+        echo "FAIL tools/Test.raz:"; cat $out/raztest.out; fail=$((fail + 1))
+    fi
+else
+    echo "FAIL tools/Test.raz: $(cat $out/raztest.cerr)"; fail=$((fail + 1))
+fi
 
 # CAbi is tools/cabi.c's output, from the C library's own headers:
 # compiled with cc, and with musl-gcc, each where it is installed, it
@@ -293,7 +299,7 @@ done
 
 # Thread's test again, with too little memory for all its threads:
 # spawn must fail, with Thread.Failed
-if (ulimit -v 60000; $out/lib_Thread.linux-x86_64 fail) > /dev/null 2>&1; then pass=$((pass + 1))
+if (ulimit -v 60000; $out/lib/Thread.linux-x86_64 fail) > /dev/null 2>&1; then pass=$((pass + 1))
 else echo "FAIL Thread under a memory limit"; fail=$((fail + 1)); fi
 
 # the compiler's way of going on after an error, in small: a parser

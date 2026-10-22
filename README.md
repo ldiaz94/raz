@@ -42,6 +42,7 @@ ELF executable itself, with no assembler or linker, and compiles about
 | `examples/` | Small programs, each with the output it should give |
 | `tools/Doc.raz` | Prints what a module exports, with its comments |
 | `tools/Pretty.raz` | The formatter: fixes indentation and spacing |
+| `tools/Test.raz` | `raztest`: builds and runs a program's tests, `-j` at once; `make install` puts it on PATH, `doc/raztest.1` says how |
 | `site/` | The website: home page, the tours "Raz, Set, Go" and "More Raz", the report and the latest release's tarball, as plain files in `site/public/`; `make site` rebuilds them, with the report's two PDFs (`make pdf`) |
 | `editor/` | Support for vim and emacs |
 | `conform/` | The conformance suite: what every implementation must do |
