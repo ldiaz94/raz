@@ -1,0 +1,36 @@
+(* A parameter passed by its address (var, const) that comes on the
+   stack, past the six registers, and is kept in a register because a
+   loop reads it: it holds the address, 8 bytes, whatever its type. It
+   was loaded as its type's value, a var BOOL as one byte, and the
+   first read through it stopped the program on a bad pointer. *)
+module VarOnStack;
+import Out;
+
+type
+    Pair = record
+        a, b: INT;
+    end;
+
+(* Six words fill the registers; flag, x, n and p come on the stack. *)
+proc f(a, b, c, d, e, g: INT; var flag: BOOL; var x: F64; var n: INT; const p: Pair);
+var i: INT;
+begin
+    for i := 1 to 3 do
+        if not flag then flag := true; end;
+        x := x + 0.5;
+        n := n + p.a + p.b + a + b + c + d + e + g;
+    end;
+end;
+
+proc main*;
+var flag: BOOL; x: F64; n: INT; p: Pair;
+begin
+    p := {a: 10, b: 20};
+    f(1, 2, 3, 4, 5, 6, flag, x, n, p);
+    if flag then Out.str("flag set\n"); end;
+    if x = 1.5 then Out.str("x is 1.5\n"); end;
+    Out.int(n);
+    Out.ln;
+end;
+
+end VarOnStack.

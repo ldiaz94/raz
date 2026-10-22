@@ -2233,11 +2233,15 @@ begin
         end;
     end;
     (* a register variable's parameter that came on the stack, above the
-       frame (val > 0), is loaded from there *)
+       frame (val > 0), is loaded from there; one passed by its address
+       (ind: var, or const) holds the address, 8 bytes, whatever its type:
+       a var BOOL loaded as a byte was a bad pointer *)
     p := procParams;
     while p # nil do
         if (p^.reg # 0) and (p^.val > 0) then
-            if p^.typ^.form = Sym.fReal then
+            if p^.ind then
+                X.load(p^.reg, X.mem(RBP, p^.val), 8, false);
+            elsif p^.typ^.form = Sym.fReal then
                 X.movsXM(p^.reg - XmmVar, X.mem(RBP, p^.val), p^.typ^.size = 4);
             elsif p^.typ^.form in {Sym.fInt, Sym.fBool, Sym.fEnum, Sym.fSet} then
                 X.load(p^.reg, X.mem(RBP, p^.val), INT(p^.typ^.size), p^.typ^.signed);
