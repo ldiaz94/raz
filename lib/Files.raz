@@ -38,7 +38,8 @@ begin
     return load(path, b) = 0;
 end;
 
-(* Makes the file at path hold data; false if it can't be written. *)
+(* Makes the file at path hold data; false if it can't be written, or
+   the close, where a late write error shows, fails. *)
 proc write*(path, data: []U8): BOOL;
 var fd, n, at: INT;
 begin
@@ -51,8 +52,7 @@ begin
         elsif n # Sys.errIntr then Sys.close(fd); return false;   (* a signal broke in: write again *)
         end;
     end;
-    Sys.close(fd);
-    return true;
+    return Sys.closeChecked(fd) = 0;                    (* a write error may come only at the close *)
 end;
 
 (* The module's test. *)
