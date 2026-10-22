@@ -51,3 +51,13 @@ A pointer is right also where `var` can't serve:
 
 Anything else that takes `^T` and neither keeps it nor needs one of the
 above is a mistake, and its callers' `ADR`s are noise.
+
+## A module tests itself
+
+A library or support module has its own `proc main*` as its test, and
+`raztest` runs it. It states what it expects with `Check` (`ok`, `str`,
+`int`), which reports every failure and ends the run with status 1, and
+tests a property of its code, one that must hold for any input, with
+`Prop`, drawing bytes or numbers from its `Source`. A test that passes
+says nothing. The core modules, and those the compiler imports, keep
+their own checks, since they can't import a standard-library module.

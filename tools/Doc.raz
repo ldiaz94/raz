@@ -19,7 +19,7 @@
 module Doc;
 import Out, Rt, Str, Buf, Heap, Scan, Files;
 
-const Date = "October 14, 2026";   (* raz-lib(3)'s, when the library last changed *)
+const Date = "October 22, 2026";   (* raz-lib(3)'s, when the library last changed *)
 
 var
     sc: Scan.Scanner;         (* the text being read, at the current symbol *)

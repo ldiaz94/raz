@@ -230,3 +230,7 @@ at the time.
   Then `Str` gains `base64Size`, `base64` and `unbase64`, RFC 4648's
   base64 with padding, decoded strictly (volume 2). It breaks no
   program.
+- **2026-10.36.** Three modules join the standard library: `Rand`, a
+  seeded random number generator; `Check`, checks for a test; and
+  `Prop`, property tests and fuzzing with shrinking (volume 2). They are
+  not core. The language is unchanged, and no program breaks.

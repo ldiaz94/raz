@@ -4,7 +4,7 @@ The second volume of the report on raz. The first, `doc/raz.md`, defines
 the language; this one defines the modules that come with it, and
 refers to the first's sections by number, as "section 6.8". Only the
 core binds every implementation (appendix A of the first volume); the
-rest is the standard library.
+rest is the standard library, `Rand`, `Check` and `Prop` among it.
 
 Modules written in raz, in the compiler's `lib` directory:
 
@@ -31,6 +31,9 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Files` | an argument as a string, and a whole file read or written |
 | `Opt` | a command line read through one table, by `getopt`'s rules with long options; its help and its mistakes |
 | `Width` | how many columns of a terminal a character, or a string, takes: 0, 1 or 2, as `wcwidth` says |
+| `Rand` | a seeded random number generator, splitmix64: the same seed, the same numbers; for tests and simulations, not secrets |
+| `Check` | checks for a test: `ok`, `str` and `int` say what failed on standard error, and the program ends with status 1 if any did |
+| `Prop` | property tests and fuzzing: a property draws values, a failing case is shrunk and saved, and run first next time |
 
 Lengths, counts, file descriptors, process ids and statuses are
 `INT`s, and a character is an `I32`. What may pass an `INT` on a small
@@ -1037,3 +1040,158 @@ counts as its parts. Its tables, about 4 KB, come from Unicode's data,
 made again by `tools/Widths.raz` for a new version of Unicode; a
 program that imports `Width` and calls neither procedure carries none
 of them.
+
+**Rand, Check and Prop** are for testing a program, and are standard
+library, not core: a target may leave them out. `raztest(1)` builds
+and runs the tests that use them.
+
+`Rand` is a seeded generator of numbers, splitmix64: one `U64` of
+state. The same seed gives the same numbers on every machine, so a
+run can be replayed. It is not for secrets.
+
+```
+module Rand;
+type Rand* = record ... end;
+proc init*(var r: Rand; seed: U64);     (* starts r at seed; any seed, 0 too *)
+proc next*(var r: Rand): U64;           (* the next number, all 64 bits of it *)
+proc below*(var r: Rand; n: U64): U64;  (* 0 to n - 1, each as likely as another; n = 0 stops the program *)
+proc range*(var r: Rand; lo, hi: I64): I64;   (* lo to hi, both included; lo must not exceed hi *)
+proc seed*(): U64;                      (* a fresh seed from the kernel, to print and give back to init *)
+```
+
+```
+module Dice;
+import Rand, Check;
+
+(* Five rolls of a die from seed, as the digits of a number. *)
+proc rolls(seed: U64): INT;
+var r: Rand.Rand; i, v: INT;
+begin
+    Rand.init(r, seed);
+    for i := 1 to 5 do v := v * 10 + INT(Rand.range(r, 1, 6)); end;
+    return v;
+end;
+
+proc main*;
+begin
+    Check.int("the same seed, the same rolls", rolls(7), rolls(7));
+    Check.ok(rolls(7) >= 11111, "every die shows 1 or more");
+    Check.ok(rolls(7) <= 66666, "every die shows 6 or less");
+end;
+
+end Dice.
+```
+
+`Check` says what a test expects. A check that fails writes `FAIL`
+and its words on standard error, with what it got and what it wanted
+where they differ; the program goes on. At its end, if any check
+failed, it says how many and exits with status 1, and a run with none
+failed says nothing and keeps its own status. No call is needed at the
+end: the first check asks `Rt.atExit` to make it. A program that stops
+after a check failed, by `Rt.stop` or a failed check of the language,
+ends with status 1 too. `mute` is for `Prop`, which searches with the
+checks silenced.
+
+```
+module Check;
+proc ok*(cond: BOOL; what: []U8);                 (* fails, saying what, when cond is false *)
+proc str*(what, got, want: []U8);                 (* fails when got is not want; shows both, escaped, and the byte where they differ *)
+proc int*(what: []U8; got, want: I64);            (* fails when got is not want; shows both *)
+proc mute*(on: BOOL);                             (* while on, checks say nothing and are not counted *)
+proc mutedFailures*(): INT;                       (* how many failed since mute was turned on *)
+```
+
+```
+module Digits;
+import Check;
+
+(* How many decimal digits n, not negative, takes. *)
+proc count(n: INT): INT;
+var d: INT;
+begin
+    d := 1;
+    while n >= 10 do n := n div 10; INC(d); end;
+    return d;
+end;
+
+proc main*;
+begin
+    Check.int("0 is one digit", count(0), 1);
+    Check.int("9 is one digit", count(9), 1);
+    Check.int("10 is two digits", count(10), 2);
+    Check.ok(count(1000000) = 7, "a million is seven digits");
+end;
+
+end Digits.
+```
+
+`Prop` tests a property: a procedure that draws values and checks
+them with `Check`. A case is the bytes the property drew, and
+`Source` gives them as a number, a choice, a flag or a string of
+bytes; fewer and smaller bytes give simpler values. When a case
+fails, `Prop` shrinks it by changing its bytes and running the
+property again, so no type needs a shrinker of its own, and it
+saves the case. A property that draws only bytes is a fuzzer.
+
+```
+module Prop;
+type Source* = record ... end;
+type Property* = proc(var s: Source);              (* draws from s, checks with Check *)
+proc bits*(var s: Source): U64;                    (* 64 bits, from 8 bytes, the first the highest *)
+proc int*(var s: Source; lo, hi: I64): I64;        (* lo to hi, both included; zeros give lo *)
+proc pick*(var s: Source; n: INT): INT;            (* 0 to n - 1; n at least 1 *)
+proc bool*(var s: Source): BOOL;
+proc bytes*(var s: Source; max: INT; var b: Buf.Buf);   (* b, emptied, then given at most max bytes *)
+proc check*(name: []U8; p: Property);              (* runs p on the saved cases, then on fresh ones *)
+```
+
+`check` runs `p` on each case saved in the directory `$PROP_DIR/name`
+(`test/seeds/name` if `PROP_DIR` is unset), then on `$PROP_CASES`
+fresh cases (100 if unset), from the seed `$PROP_SEED` or a new one,
+or for as many seconds as `$PROP_TIME` says, if it is set. Each is a
+whole number. A property that holds says nothing and writes no file.
+The first case that fails is shrunk and saved in a file named by its
+hash; standard error says the seed and the file; the shrunk case runs
+once more with `Check` heard, and the program ends with status 1. A
+saved case is run first the next time, so a failure stays found until
+it is mended; keep the directory with the tests. A case that stops
+the program, by `Rt.stop`, a failed check of the language or a signal,
+can't be shrunk; it is saved as it was, when the program ends.
+`raztest --seed` and `--fuzz` set `PROP_SEED` and `PROP_TIME`.
+
+```
+module Reverse;
+import Prop, Check, Buf, Heap;
+
+var
+    b, was: Buf.Buf;    (* the bytes drawn, and a copy of them *)
+
+(* Turns s round, in place. *)
+proc reverse(s: []U8);
+var i: INT; c: U8;
+begin
+    for i := 0 to LEN(s) div 2 - 1 do
+        c := s[i]; s[i] := s[LEN(s) - 1 - i]; s[LEN(s) - 1 - i] := c;
+    end;
+end;
+
+(* Reversing any string twice gives it back. *)
+proc twice(var s: Prop.Source);
+begin
+    Prop.bytes(s, 64, b);
+    Buf.reset(was);
+    Buf.str(was, Buf.bytes(b));
+    reverse(Buf.bytes(b));
+    reverse(Buf.bytes(b));
+    Check.str("reversed twice", Buf.bytes(b), Buf.bytes(was));
+end;
+
+proc main*;
+begin
+    Buf.init(b, Heap.heap);
+    Buf.init(was, Heap.heap);
+    Prop.check("reverse", twice);
+end;
+
+end Reverse.
+```

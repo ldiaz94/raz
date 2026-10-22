@@ -68,17 +68,24 @@ Makefile uses `raztest` when it's there and its own loop when not.
 ## Steps
 
 1. `Rand`, with its self-test.
+   Done: `lib/Rand.raz`, splitmix64.
 2. `Check`; the library's self-tests use it.
+   Done: `lib/Check.raz`.
 3. `raztest`: finding, building, running, `-j`, timeouts, colour,
    summary; `test/check.sh`'s library loop uses it. `TOOLS` gains
    `Test`; `make install` puts `raztest` on PATH; `doc/raztest.1`.
+   Done: `tools/Test.raz`.
 4. `raztest --tap`, `--junit`.
+   Done.
 5. `raztest -w`.
+   Done.
 6. `Prop`, with its self-test.
+   Done: `lib/Prop.raz`.
 7. Volume 2: `Rand`, `Check` and `Prop` go into `doc/raz-lib.md` as
    standard library (not core: `conform/` is untouched), with whole
    examples, once the first users have settled them; one report
    version. `STANDARDS.md` says how a module tests itself with them.
+   Done: report 2026-10.36, `doc/raz-lib.md`, `STANDARDS.md`.
 8. robbie: `robbie -w`, in its own repository.
 
 After the release that brings them: rjson, pict and sauce take `Rand`
