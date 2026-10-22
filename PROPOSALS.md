@@ -2790,7 +2790,7 @@ confirmed is marked "Not planned" in `~/r/RAZ-GAPS.md`.
 
 - Several values are assigned at once only from a call — two statements say it; `a, b := b, a` would need a rule that every right side is read before any is stored.
 - No conditional compilation — a constant module chosen by `-I` is the Wirth idiom, and `if Fake then` on a constant already reads as one program.
-- Records don't compare with `=` — padding, reals (`-0.0`, NaN) and slices make a byte compare wrong; a `same` procedure says what equal means.
+- Records don't compare with `=` — padding, reals (`-0.0`, NaN) and slices make a byte compare wrong; a `same` procedure says what equal means. Confirmed by the owner, 2026-10-22.
 - No type of its own for an array — a one-field record keeps two hashes apart, as it keeps generic arrays (owner's idiom).
 - No exporting a record's fields as a whole — each `*` is the reader's mark of what is public; `Mxlib` is a C mirror, made by a program.
 - An exported array can't be read as a slice outside its module — a slice can be written through; "A slice that can't be written: `[]const T`" in PROPOSALS.md would answer it.
@@ -2861,7 +2861,7 @@ confirmed is marked "Not planned" in `~/r/RAZ-GAPS.md`.
 - `Vec` gives no pointer to an element already in it — `Nodes.all(v)[k].next := m` already sets a field in place.
 - No lenient base64 reader in `Str` — mail's junk is rmime's to handle; its 30 lines serve the one reader that meets it.
 - `Check.int` takes `I64` — an `I32` widening to `I64` is the language's question, and one call site converts.
-- `Rand` has no shuffle — `Rand` isn't generic, and Fisher and Yates over `below` is four lines.
+- `Rand` has no shuffle — `Rand` isn't generic, and Fisher and Yates over `below` is four lines. Confirmed by the owner, 2026-10-22.
 - `Fmt.real(x, n)` rounds the binary value, not the decimal text — the Pascal double rounding is left; the round-trip need is met by `Fmt.short` above.
 
 ### Freestanding programs and tools
