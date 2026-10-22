@@ -1590,3 +1590,92 @@ already knows, and it is also what a view through raw memory wants,
 kernel's `code` procedures would want if their operands take constants.
 
 Met in mosaico and rx11.
+
+## The compiler on another host: `Host`, and what it asks of the library
+
+**Status.** Built on the branch `moss-platform-boundary` (3eded0c),
+which Moss pins: there raz compiles programs, rebuilds itself byte for
+byte, and builds again after a restart (moss c606069,
+`docs/native-raz.md`). Waiting for the owner's word on the questions
+below before it is rebased and merged.
+
+The host is the system the compiler runs on; the target, the system
+its program will run on. Until the branch they were one, Linux, and
+the compiler reached Linux outside `Sys`: `Parse.identity` read a
+`struct stat` by `SYSCALL(4)` into a guessed `[18]INT`; `Raz` read
+`ARGC()` and `ARGV()`, found the library through `/proc/self/exe`,
+probed two loader paths for musl, and ran a program by `memfd_create`
+and `execve`; `Elf` set mode 755. The branch does three things.
+
+**1. A file's identity from `Sys.info`** (2644329). Its `dev` and
+`ino`, so the parser makes no system call of its own. A plain fix:
+merge it.
+
+**2. A main file at the root, and a directory ending in `/`**
+(3eded0c). `/Main.raz` has `/` as its directory, not `""`, and a
+directory given as `lib/` doesn't make `lib//Sys.raz`. A plain fix:
+merge it.
+
+**3. `Host`, a module of what the compiler asks of its host**
+(bb03e48): `argCount`, `arg`, `libraryDir`, `preferMusl`, `canRun`,
+`canLinkC`, `writeExecutable`, `prepareRun`, `execute`. `src/Host.raz`
+is Linux's; Moss stages the compiler's sources with its own
+`Host.raz` (27 lines: the library at `/lib`, no run, no C, no mode
+bits) and its own `Sys`, `Rt` and `Files`.
+
+Questions before the merge:
+
+**a. A smaller `Host`.** Two of its nine procedures are there only
+because `Raz` reads the command line by built-ins:
+- `argCount` and `arg` go if the library has the count beside
+  `Files.arg`: a `Files.argCount()`, which Moss's `Files` gives from
+  `Sys.argc`. `Files.arg` is already the library's, and Moss already
+  replaces it.
+- `preferMusl` and `canLinkC` are one question, which C library to
+  link against: `Host.cLibrary(): CLib` with `CLib = (none, glibc,
+  musl)`, or keep the two booleans.
+- `canRun` goes if `prepareRun` is called while the command line is
+  read, before any source, so that its error is the refusal.
+That leaves `libraryDir`, `cLibrary`, `writeExecutable`, `prepareRun`
+and `execute`: five procedures, each a real difference between hosts.
+
+**b. How a host is chosen.** The branch stages: copy `src/`, put the
+host's `Host.raz` in place of raz's, build. The main directory is
+searched first, so `-I` alone can't replace it, which is right: a
+module isn't silently replaced. The other way is a target name, as
+`Sys.linux-x86_64.raz` is chosen today from fixed suffixes: a
+`-os moss` that makes the suffixes `.moss-x86_64`, `.moss`, `.x86_64`,
+`""`, so that `Host.moss.raz` and `Sys.moss.raz` are found beside the
+generic files. That puts Moss's files in raz's tree, and raz would
+then know of Moss. The proposal is to keep staging, raz knowing
+nothing of any host but Linux, and to document it in
+`doc/compiler.md` as the one way to build for another host.
+
+**c. What the compiler asks of the library, written down.** Moss's
+`Sys` has 23 exported procedures against Linux's 104, and is enough.
+`doc/compiler.md` should list what the compiler and the modules it
+imports (`Rt`, `Mem`, `Heap`, `Lock`, `Arena`, `Out`, `Fmt`, `Buf`,
+`Str`, `Bytes`, `Files`) use of `Sys`, `Rt` and `Files`, as Moss's
+`docs/raz-port.md` measured it, and a test should hold it: the
+compiler built against a `Sys` with only those exports. Then a change
+to the compiler that reaches for one more of `Sys` is seen in raz,
+not in Moss's next build. The test host on the branch
+(`test/host/Host.raz`) checks the `Host` side only.
+
+**d. The stack.** A self-build passed in 64 KiB of stack on Linux,
+but 64 nested parentheses don't, and Moss gives a stored program 1
+MiB. That is "Implementation limits, and a compiler for a small
+stack", above; the merge needn't wait for it.
+
+**e. The tests in Python.** The branch adds `test/compiler-host.py`
+(177 lines) and grows `test/library-path.py`, which came with
+RAZ_PATH. raz's tests are otherwise `sh`, as a public project's
+should be, needing nothing but a shell to run. The proposal is to
+write both in `sh` before the merge.
+
+**f. Before the merge, in any case.** The system call numbers in
+`Host.raz` named as constants, as `Raz` had them (`MemfdCreate`,
+`MfdCloexec`, `Execve`); a comment on every procedure; the new section
+of `doc/compiler.md` made as short and plain as the rest; a rebase on
+main (`doc/compiler.md` and `src/Raz.raz` conflict). Moss's
+`RAZ_PORT.lock` then pins a commit on main.
