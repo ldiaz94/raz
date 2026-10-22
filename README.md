@@ -304,7 +304,10 @@ A version of the report is named by its month and a count; the report's
 last section says what each version changed.
 
 Since v0.5.0 the language is frozen, softly: it changes only to mend a
-defect, and the library grows only by what breaks no program. Wishes
+defect, and the library grows only by what breaks no program. A library
+change that must break programs keeps the old form for one minor version
+beside the new; the release notes list the old forms, and the next
+version removes them. Wishes
 wait in `PROPOSALS.md`, for a later thaw; v0.6.0 was one, for a
 language anyone can build again from its report.
 

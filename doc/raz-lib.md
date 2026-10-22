@@ -6,6 +6,11 @@ refers to the first's sections by number, as "section 6.8". Only the
 core binds every implementation (appendix A of the first volume); the
 rest is the standard library, `Rand`, `Check` and `Prop` among it.
 
+The library grows only by what breaks no program written for it. If a
+change must break programs, the old form stays for one minor version
+beside the new; the release notes list the old forms, and the next
+version removes them. Nothing marks an old form in the source.
+
 Modules written in raz, in the compiler's `lib` directory:
 
 | Module | What |
