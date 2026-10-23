@@ -240,3 +240,6 @@ at the time.
   bits (or members of a set) of a word of an unsigned integer type, an
   `INT`, and of constants are a constant (sections 4, 6.1 and 6.8). A
   predeclared name may be hidden (section 2), so it breaks no program.
+  A `BOOL` also converts to an integer, 0 for `false` and 1 for `true`
+  (6.7), a constant too; there is still none from an integer to a
+  `BOOL`. It breaks no program.

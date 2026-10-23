@@ -52,7 +52,7 @@ starts at, even an empty one (section 6.8); it breaks no program.
 rotated (sections 6.1 and 6.8); it breaks no program. 2026-10.36 is a
 twelfth: `MIN(T)` and `MAX(T)`, the limits of an integer type, and
 `CLZ`, `CTZ` and `POPCOUNT`, which count bits (sections 6.1 and 6.8);
-it breaks no program.
+and `INT(b)`, a `BOOL` as an integer (section 6.7); it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -939,18 +939,21 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 | `F64` | `F32` | the nearest `F32`; too big a value gives an infinity |
 | enumeration | integer | its position |
 | integer | enumeration | the name at that position; a position out of range is a failed check (6.5), and in a constant an error |
+| `BOOL` | integer | 0 for `false`, 1 for `true` |
 | set | integer | its bits |
 | integer | set | the low bits, as many as the set has |
 | `INT`, `UINT` | pointer, procedure | the address |
 | pointer, procedure | `INT`, `UINT` | the address |
 | pointer, procedure | pointer, procedure | the same address, seen as the new type |
 
-There are no others: no conversion between `BOOL` and integers, none
-between pointers and integers other than `INT` and `UINT`, and none to
+There are no others: none from an integer to `BOOL` (`x # 0` says it),
+none between pointers and integers other than `INT` and `UINT`, and none to
 or from records, arrays, slices, variants or `ERROR`. An untyped integer constant converts to a pointer as an `INT` does, as
 in `^VOLATILE U32(0FEE00000H)`; it isn't assigned to a pointer without
 the conversion. A conversion of a constant is made by the compiler, by
-the same rules: `U8(300)` is 44.
+the same rules: `U8(300)` is 44. `U64(a = b)` is 0 or 1, and
+`0 - U64(a = b)` is a mask; this is how a comparison is used with no
+`if`.
 
 ### 6.8 Built-in procedures
 
