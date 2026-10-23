@@ -1,0 +1,4 @@
+module OffsetVariant;
+type Shape = variant circle(r: I32); square(side: I64); end;
+const At = OFFSET(Shape, circle);
+end OffsetVariant.

@@ -1,0 +1,5 @@
+conform/err/OffsetPath.raz:4:31: error: OFFSET takes one field name, not a path
+    4 | const At = OFFSET(Outer, inner.hi);
+      |                               ^
+help: add the offset within inner's type: OFFSET(Outer, inner) + OFFSET(Pair, hi)
+raz: 1 error

@@ -1,0 +1,4 @@
+conform/err/OffsetNotRecord.raz:3:19: error: OFFSET needs a record type, found Cells
+    3 | const At = OFFSET(Cells, len);
+      |                   ^^^^^
+raz: 1 error

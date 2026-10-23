@@ -353,3 +353,8 @@ otherwise.
   count of 0 to the width; `POPCOUNT` by `Bytes.count`'s sums of two,
   four and eight bits and a multiply by `0101...H`, in rax and rdx. A
   set's `POPCOUNT` counts its bits the same way.
+- `SIZE(T.f)` and `OFFSET(T, f)` (report 2026-10.36): the type is read
+  by `parseType`, where a name before a `.` must be a module's, so
+  `M.T` is read whole and a `.` past the type is a field's,
+  `SIZE(M.T.f)` too. `T` must be a record type (a variant is refused,
+  with help); a path `a.b` is refused, its help naming `a`'s type.

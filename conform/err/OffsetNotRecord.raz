@@ -1,0 +1,4 @@
+module OffsetNotRecord;
+type Cells = [4]U32;
+const At = OFFSET(Cells, len);
+end OffsetNotRecord.

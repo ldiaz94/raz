@@ -1,0 +1,4 @@
+module OffsetUnknown;
+type Pair = record lo, hi: U16; end;
+const At = OFFSET(Pair, high);
+end OffsetUnknown.

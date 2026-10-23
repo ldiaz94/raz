@@ -1,0 +1,4 @@
+module SizeNotRecord;
+type Cells = [4]U32;
+const N = SIZE(Cells.len);
+end SizeNotRecord.

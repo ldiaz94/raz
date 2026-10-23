@@ -1,0 +1,48 @@
+(* OFFSET(T, f) and SIZE(T.f), where a field lies in a record type and
+   how big it is (report sections 5.5 and 6.8): fields aligned to their
+   size, with padding before them; a nested record's field; a packed
+   record's, with none; another module's record, M.T; and both in a
+   constant. *)
+module Offsets;
+import Out, Layout;
+
+type
+    Mixed = record a: U8; b: I32; c: U16; d: I64; e: U8; end;
+    Pair = record lo, hi: U16; end;
+    Outer = record flag: U8; inner: Pair; tail: [3]I32; end;
+    Tight = packed record a: U8; b: I32; c: U16; end;
+
+const
+    EndOfD = OFFSET(Mixed, d) + SIZE(Mixed.d);
+    HiAt = OFFSET(Outer, inner) + OFFSET(Pair, hi);
+    LenAt = OFFSET(Layout.Head, len);
+    IdSize = SIZE(Layout.Head.id);
+    Typed = U8(OFFSET(Mixed, e) + 250);   (* 24 + 250 wraps to 18 *)
+
+(* name, then the offset and the size of a field *)
+proc row(name: []U8; off, size: INT);
+begin
+    Out.str(name); Out.str(" "); Out.int(off); Out.str(" "); Out.int(size); Out.ln;
+end;
+
+proc main*;
+begin
+    row("Mixed.a", OFFSET(Mixed, a), SIZE(Mixed.a));
+    row("Mixed.b", OFFSET(Mixed, b), SIZE(Mixed.b));
+    row("Mixed.c", OFFSET(Mixed, c), SIZE(Mixed.c));
+    row("Mixed.d", OFFSET(Mixed, d), SIZE(Mixed.d));
+    row("Mixed.e", OFFSET(Mixed, e), SIZE(Mixed.e));
+    row("Mixed", 0, SIZE(Mixed));
+    row("Outer.flag", OFFSET(Outer, flag), SIZE(Outer.flag));
+    row("Outer.inner", OFFSET(Outer, inner), SIZE(Outer.inner));
+    row("Outer.tail", OFFSET(Outer, tail), SIZE(Outer.tail));
+    row("Pair.hi", OFFSET(Pair, hi), SIZE(Pair.hi));
+    row("Tight.b", OFFSET(Tight, b), SIZE(Tight.b));
+    row("Tight.c", OFFSET(Tight, c), SIZE(Tight.c));
+    row("Head.len", OFFSET(Layout.Head, len), SIZE(Layout.Head.len));
+    row("Head.id", OFFSET(Layout.Head, id), SIZE(Layout.Head.id));
+    Out.int(EndOfD); Out.str(" "); Out.int(HiAt); Out.str(" "); Out.int(LenAt); Out.str(" ");
+    Out.int(IdSize); Out.str(" "); Out.int(I64(Typed)); Out.ln;
+end;
+
+end Offsets.

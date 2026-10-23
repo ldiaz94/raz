@@ -1,0 +1,15 @@
+Mixed.a 0 1
+Mixed.b 4 4
+Mixed.c 8 2
+Mixed.d 16 8
+Mixed.e 24 1
+Mixed 0 32
+Outer.flag 0 1
+Outer.inner 2 4
+Outer.tail 8 12
+Pair.hi 2 2
+Tight.b 1 4
+Tight.c 5 2
+Head.len 4 4
+Head.id 8 2
+24 4 4 2 18

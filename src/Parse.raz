@@ -1002,8 +1002,42 @@ begin
     return Item.startOf(x, newPtr(e, false));
 end;
 
+(* The field f of SIZE(T.f) or OFFSET(T, f), at its name, of the type
+   t written at at. T is a record type: a variant's cases share their
+   place, so have none of their own. f is one name, not a path a.b,
+   which would be a field of f's type, asked of that type. *)
+proc typeField(t: PType; at: Diag.Pos; isOffset: BOOL): (PObj, ERROR);
+var f: PObj; what, s, hint, g: []U8; dot: Diag.Pos;
+begin
+    if isOffset then what := "OFFSET"; else what := "SIZE(T.f)"; end;
+    if t^.form # Sym.fRecord then
+        s := say2("{} needs a record type, found {}", what, Sym.typeName(t));
+        if t^.form = Sym.fVariant then
+            return nil, Scan.markHelp(at, s, "a variant's cases share one place, so have no offset or size of their own");
+        end;
+        return nil, Scan.markAt(at, s);
+    end;
+    if Scan.tok # Scan.sIdent then return nil, expected("a field"); end;
+    f := try fieldOf(t);
+    Scan.next;
+    if Scan.tok = Scan.sPeriod then
+        dot := Scan.tokPos();
+        Scan.next;
+        if Scan.tok = Scan.sIdent then g := nameOf(Scan.id); else g := "g"; end;
+        if isOffset then
+            hint := Diag.say("add the offset within {}'s type: OFFSET({}, {}) + OFFSET({}, {})",
+                [Fmt.str(nameOf(f^.name)), Fmt.str(Sym.typeName(t)), Fmt.str(nameOf(f^.name)),
+                    Fmt.str(Sym.typeName(f^.typ)), Fmt.str(g)]);
+        else
+            hint := Diag.say("ask {}'s type: SIZE({}.{})", [Fmt.str(nameOf(f^.name)), Fmt.str(Sym.typeName(f^.typ)), Fmt.str(g)]);
+        end;
+        return nil, Scan.markHelp(dot, say1("{} takes one field name, not a path", what), hint);
+    end;
+    return f, nil;
+end;
+
 proc builtin(var x: TItem): ERROR;
-var which, n: INT; y: TItem; t: PType; start: Diag.Pos;
+var which, n, start: INT; y: TItem; t: PType; f: PObj; at: Diag.Pos;
 begin
     which := INT(x.obj^.val);
     if (which = Sym.bFence) or (which = Sym.bArgc) or (which = Sym.bArgv) then
@@ -1023,8 +1057,26 @@ begin
     try expect(Scan.sLparen);
     match which of
     | Sym.bSize:
+        (* SIZE(T) or SIZE(T.f): parseType reads M.T whole, since the
+           name before a "." there must be a module's; so a "." past the
+           type is always a field's *)
+        start := Scan.tokStart();
         t := try parseType();
-        Item.makeConst(x, Sym.tConst, t^.size);
+        if Scan.tok = Scan.sPeriod then
+            at := Scan.spanFromAt(start);
+            Scan.next;
+            f := try typeField(t, at, false);
+            Item.makeConst(x, Sym.tConst, f^.typ^.size);
+        else
+            Item.makeConst(x, Sym.tConst, t^.size);
+        end;
+    | Sym.bOffset:
+        start := Scan.tokStart();
+        t := try parseType();
+        at := Scan.spanFromAt(start);
+        try expect(Scan.sComma);
+        f := try typeField(t, at, true);
+        Item.makeConst(x, Sym.tConst, f^.val);   (* a field's val is its offset *)
     | Sym.bAdr:
         try expression(y, nil);
         try Item.notReadOnly(y);
@@ -1103,9 +1155,9 @@ begin
         try expression(y, nil);
         try Item.rotate(x, y, which = Sym.bRol);
     | Sym.bMin, Sym.bMax:
-        start := Scan.tokPos();
+        at := Scan.tokPos();
         t := try parseType();
-        try Item.limit(x, t, which = Sym.bMax, Scan.spanFrom(start));
+        try Item.limit(x, t, which = Sym.bMax, Scan.spanFrom(at));
     | Sym.bClz, Sym.bCtz, Sym.bPopcount:
         try expression(x, nil);
         try Item.countBits(x, which);

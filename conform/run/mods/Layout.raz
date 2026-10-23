@@ -1,0 +1,6 @@
+module Layout;
+
+(* a record another module asks OFFSET and SIZE of *)
+type Head* = record tag*: U8; len*: U32; id*: U16; end;
+
+end Layout.

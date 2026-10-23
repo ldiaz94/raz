@@ -1,0 +1,4 @@
+conform/err/SizeNotRecord.raz:3:16: error: SIZE(T.f) needs a record type, found Cells
+    3 | const N = SIZE(Cells.len);
+      |                ^^^^^
+raz: 1 error

@@ -1650,6 +1650,16 @@ The built-in procedures are in `builtin` (and `new_`, `atomic`): each
 parses its own arguments, since `SIZE` takes a type and `INC` a
 variable.
 
+`SIZE(T.f)` and `OFFSET(T, f)` (report 2026-10.36) read the type with
+`parseType` and then the field with `typeField`. The name before a `.`
+in a type can only be a module's, so `parseType` reads `M.T` whole,
+and a `.` after the type is always a field's: `SIZE(M.T.f)` is field
+`f` of `M.T`, with nothing read ahead. `typeField` refuses a type that
+isn't a record, with help for a variant, whose cases share one place,
+and a path, `a.b`, with help that asks `a`'s type instead. Each is an
+untyped constant, the field's size or its `val`, the offset
+`recordType` gave it, so both may stand in a constant.
+
 `PTR(s)` (report 2026-10.34) is `ptrOf`, which refuses what isn't a
 slice, an array or a string with a message that says what PTR is for
 (and, for a pointer, what to write), and Item's `startOf`, which makes

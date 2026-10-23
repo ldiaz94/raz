@@ -1,0 +1,4 @@
+conform/err/OffsetUnknown.raz:3:25: error: Pair has no field high
+    3 | const At = OFFSET(Pair, high);
+      |                         ^^^^
+raz: 1 error

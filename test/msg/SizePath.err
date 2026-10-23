@@ -1,0 +1,5 @@
+conform/err/SizePath.raz:4:27: error: SIZE(T.f) takes one field name, not a path
+    4 | const N = SIZE(Outer.inner.hi);
+      |                           ^
+help: ask inner's type: SIZE(Pair.hi)
+raz: 1 error

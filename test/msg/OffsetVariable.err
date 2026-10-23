@@ -1,0 +1,4 @@
+conform/err/OffsetVariable.raz:7:17: error: p isn't a type
+    7 |     n := OFFSET(p, hi);
+      |                 ^
+raz: 1 error

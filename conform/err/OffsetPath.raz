@@ -1,0 +1,5 @@
+module OffsetPath;
+type Pair = record lo, hi: U16; end;
+    Outer = record flag: U8; inner: Pair; end;
+const At = OFFSET(Outer, inner.hi);
+end OffsetPath.

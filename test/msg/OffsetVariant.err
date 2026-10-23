@@ -1,0 +1,5 @@
+conform/err/OffsetVariant.raz:3:19: error: OFFSET needs a record type, found Shape
+    3 | const At = OFFSET(Shape, circle);
+      |                   ^^^^^
+help: a variant's cases share one place, so have no offset or size of their own
+raz: 1 error

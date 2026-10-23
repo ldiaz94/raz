@@ -1,0 +1,9 @@
+module OffsetVariable;
+type Pair = record lo, hi: U16; end;
+var p: Pair;
+proc main*;
+var n: INT;
+begin
+    n := OFFSET(p, hi);
+end;
+end OffsetVariable.
