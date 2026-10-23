@@ -1371,7 +1371,7 @@ and rcrypto (`--version`).
 
 ## Sys for a server
 
-**Status.** Approved in part by the owner on 2026-10-23 and implemented in both backends: `closeWrite`, `peer` (its record is `Remote`, since `Peer` is taken by `receive` and `reply`), `socketPair`, `nonblocking` and `errConnAborted`. `closeOnExec` is unneeded now that every open closes on exec. A send that doesn't wait (`sendNow`), a fifo (`makeFifo`) and an owner (`Info.uid`, `Info.gid`, `chown`) followed on 2026-10-23. Keepalive and an abstract Unix socket wait for a second program.
+**Status.** Approved in part by the owner on 2026-10-23 and implemented in both backends: `closeWrite`, `peer` (its record is `Remote`, since `Peer` is taken by `receive` and `reply`), `socketPair`, `nonblocking` and `errConnAborted`. `closeOnExec` is unneeded now that every open closes on exec. A send that doesn't wait (`sendNow`), a fifo (`makeFifo`) and an owner (`Info.uid`, `Info.gid`, `chown`) followed on 2026-10-23. `poll`, waiting on any number of descriptors, and the abstract Unix socket followed on 2026-10-23. Keepalive waits for a second program.
 
 Library growth that breaks no program. Programs that serve sockets
 (rabble's relay and daemon, dwa's broker, rdbus, awizo, arno's te
