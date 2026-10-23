@@ -763,8 +763,9 @@ type Arg* = variant
     char(c: U8);
     bool(b: BOOL);
     real(r: F64; places: INT);
-    short(r: F64);
 end;
+const ShortMost* = 24;                      (* the longest Fmt.short *)
+proc short*(x: F64; var out: [ShortMost]U8): []U8; (* x in the fewest digits that read back, in out *)
 proc print*(f: []U8; args: []Arg);              (* to standard output *)
 proc eprint*(f: []U8; args: []Arg);             (* to standard error, once Out is flushed *)
 proc write*(var b: Buf.Buf; f: []U8; args: []Arg); (* added to b *)
@@ -968,12 +969,17 @@ has them, to within the last bit or so; `roundEven` is IEEE 754's
 default rounding, as Pascal's `Round`, where `round` is C's. `Fmt.real(x, places)` writes
 `x` with `places` digits after the point, at most 9, rounded to the
 nearest; from 1E15 on, with an exponent, as `1.50E17`; and `nan`,
-`inf` and `-inf` as themselves. `Fmt.short(x)` writes `x` in the
-fewest significant digits that `Math.toReal` reads back as the same
+`inf` and `-inf` as themselves. `Fmt.short(x, out)` writes `x` into
+`out`, from 0, and gives those bytes: the fewest significant digits
+that `Math.toReal` reads back as the same
 `F64`, and of two such the nearer `x`: `0.1`, not
 `0.10000000000000001`; `42`, with no point; `0.0001`; and below 1E-4
 or from 1E15 on with an exponent, as `1.5E17` or `5E-324`. Zero keeps
 its sign, `0` or `-0`, and `nan` and `inf` are as `real` writes them.
+The longest is `Fmt.ShortMost` bytes, so a call is
+`var d: [Fmt.ShortMost]U8; Fmt.print("{}", [Fmt.str(Fmt.short(x, d))]);`,
+and a width goes with `str`. The bytes are `out`'s: a second call with the same
+`out` overwrites them.
 `hex` writes capitals and `lowHex`
 lower case, neither with a `0x`. A width between the braces pads an
 argument to that many bytes: `{2}` with spaces on the left, `{02}`

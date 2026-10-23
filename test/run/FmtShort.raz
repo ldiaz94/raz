@@ -6,6 +6,7 @@ import Fmt, Math, Buf, Heap;
 
 var
     text, fewer: Buf.Buf;
+    digitsOut: [Fmt.ShortMost]U8;
     tried, bad: INT;
 
 (* What toReal reads s as; a nan if it reads nothing. *)
@@ -61,7 +62,7 @@ var d: U64; e: INT;
 begin
     INC(tried);
     Buf.reset(text);
-    Fmt.write(text, "{}", [Fmt.short(x)]);
+    Fmt.write(text, "{}", [Fmt.str(Fmt.short(x, digitsOut))]);
     if not same(read(Buf.bytes(text)), x) then
         INC(bad);
         Fmt.print("{} reads back as another F64\n", [Fmt.str(Buf.bytes(text))]);

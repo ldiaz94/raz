@@ -21,17 +21,13 @@ const
     TwoStep = 29;        (* doublings at once: 10^9 * 2^29 < 2^63 *)
     FiveStep = 13;       (* fives multiplied at once: 10^9 * 5^13 < 2^63 *)
 
+const ShortMost* = 24;   (* the longest short: -2.2250738585072014E-308 *)
+
 type
     (* An argument, and how it is printed. A real has places digits
        after the point, at most 9, rounded to the nearest, half away
        from zero; from 1E15 on, it has the exponent that makes it less
-       than 10, as 1.50E17; nan and inf are spelled so. A short has the
-       fewest significant digits that Math.toReal reads back as the
-       same F64, the nearer of two such, and of two as near the one
-       whose last digit is even; it is written as 0.0001, 0.1, 42 or
-       123456789012345, and with an exponent below 1E-4 and from 1E15
-       on, as 1.5E17 or 5E-324. Zero is 0 or -0, keeping its sign so
-       that it too reads back; nan and inf are spelled as real's. *)
+       than 10, as 1.50E17; nan and inf are spelled so. *)
     Arg* = variant
         int(i: I64);       (* in decimal *)
         uint(u: U64);      (* in decimal *)
@@ -41,7 +37,6 @@ type
         char(c: U8);       (* the one byte *)
         bool(b: BOOL);     (* true or false *)
         real(r: F64; places: INT);
-        short(r: F64);
     end;
 
     (* Where the pieces go: to out if slice is set, else to b, or to
@@ -361,32 +356,52 @@ begin
     end;
 end;
 
-(* x as Arg's short says, but for the minus sign, which arg writes. *)
-proc putShort(var k: Sink; x: F64);
-var s: Short; d: [24]U8; at, e: INT;
+(* s added to out at n, which moves past it. *)
+proc emit(var out: [ShortMost]U8; var n: INT; s: []U8);
 begin
-    if x # x then put(k, "nan"); return; end;
-    if x < 0.0 then x := -x; end;
-    if x > 1.7976931348623157E308 then put(k, "inf"); return; end;
-    if x = 0.0 then put(k, "0"); return; end;   (* -0.0 too *)
+    COPY(out[n..n + LEN(s)], s);
+    INC(n, LEN(s));
+end;
+
+(* x in the fewest digits Math.toReal reads back as x, the nearer of
+   two such, and of two as near the one whose last digit is even,
+   written into out from 0: those bytes. From 1E-4 to below 1E15 it is
+   plain, as 0.0001, 0.1, 42 or 123456789012345; else a digit, a point
+   and the rest, an E and the exponent, as 1.5E17 or 5E-324. Zero is 0
+   or -0, keeping its sign so that it too reads back; nan, inf and
+   -inf are spelled so. The longest is ShortMost, 24 bytes, as
+   -2.2250738585072014E-308: a sign, 17 digits, a point and E-308; the
+   longest plain one, -0.00012345678901234567, has 22. *)
+proc short*(x: F64; var out: [ShortMost]U8): []U8;
+var s: Short; d: [24]U8; n, at, e, z: INT;
+begin
+    n := 0;
+    if x # x then emit(out, n, "nan"); return out[0..n]; end;
+    if bits(x) shr 63 = 1 then emit(out, n, "-"); x := -x; end;   (* -0.0 too *)
+    if x > 1.7976931348623157E308 then emit(out, n, "inf"); return out[0..n]; end;
+    if x = 0.0 then emit(out, n, "0"); return out[0..n]; end;
     shortest(x, s);
     if (s.e >= -3) and (s.e <= 15) then         (* from 1E-4 to below 1E15 *)
         if s.e <= 0 then
-            put(k, "0."); fill(k, '0', -s.e); put(k, s.d[0..s.n]);
+            emit(out, n, "0.");
+            for z := 1 to -s.e do emit(out, n, "0"); end;
+            emit(out, n, s.d[0..s.n]);
         elsif s.e >= s.n then
-            put(k, s.d[0..s.n]); fill(k, '0', s.e - s.n);
+            emit(out, n, s.d[0..s.n]);
+            for z := 1 to s.e - s.n do emit(out, n, "0"); end;
         else
-            put(k, s.d[0..s.e]); put(k, "."); put(k, s.d[s.e..s.n]);
+            emit(out, n, s.d[0..s.e]); emit(out, n, "."); emit(out, n, s.d[s.e..s.n]);
         end;
     else
-        put(k, s.d[0..1]);
-        if s.n > 1 then put(k, "."); put(k, s.d[1..s.n]); end;
-        put(k, "E");
+        emit(out, n, s.d[0..1]);
+        if s.n > 1 then emit(out, n, "."); emit(out, n, s.d[1..s.n]); end;
+        emit(out, n, "E");
         e := s.e - 1;
-        if e < 0 then put(k, "-"); e := -e; end;
+        if e < 0 then emit(out, n, "-"); e := -e; end;
         d, at := digits(U64(e), 10, 'A');
-        put(k, d[at..24]);
+        emit(out, n, d[at..24]);
     end;
+    return out[0..n];
 end;
 
 (* Whether a is printed with a minus sign. *)
@@ -396,7 +411,6 @@ begin
     match a of
     | int(i): neg := i < 0;
     | real(r, _places): neg := r < 0.0;
-    | short(r): neg := (r = r) and (bits(r) shr 63 = 1);   (* -0.0 too, but no nan *)
     | else: neg := false;
     end;
     return neg;
@@ -421,7 +435,6 @@ begin
     | char(c):   one[0] := c; put(k, one);
     | bool(t):   if t then put(k, "true"); else put(k, "false"); end;
     | real(r, places): putReal(k, r, places);
-    | short(r):  putShort(k, r);
     end;
 end;
 
@@ -550,9 +563,19 @@ begin
     return k.n, true;
 end;
 
+(* Each of xs, shorts, with a space between, added to b. *)
+proc shorts(var b: Buf.Buf; xs: []F64);
+var d: [ShortMost]U8; i: INT;
+begin
+    for i := 0 to LEN(xs) - 1 do
+        if i > 0 then Buf.add(b, ' '); end;
+        Buf.str(b, short(xs[i], d));
+    end;
+end;
+
 (* The module's test: formats into a buffer over an arena. *)
 proc main*;
-var ar: Arena.Arena; b: Buf.Buf; zero: F64; small: [8]U8; n: INT; whole: BOOL;
+var ar: Arena.Arena; b: Buf.Buf; zero: F64; small: [8]U8; d: [ShortMost]U8; n: INT; whole: BOOL;
 begin
     if not Arena.init(ar, 1 shl 16) then Rt.stop("Fmt: no arena"); end;
     Buf.init(b, ADR(ar.base));
@@ -580,19 +603,19 @@ begin
     write(b, "{x} {2x} {0} {-} {a} {1", [int(1), int(2)]);
     if Buf.bytes(b) # "x 2x 1 - a 1" then Rt.stop("Fmt: a { that is no width"); end;
     Buf.reset(b);
-    write(b, "{} {} {} {} {} {} {} {}", [short(0.1), short(1.0 / 3.0), short(-2.5), short(100.0), short(42.0E3),
-        short(0.0001), short(0.00012), short(123456789012345.0)]);
+    shorts(b, [0.1, 1.0 / 3.0, -2.5, 100.0, 42.0E3, 0.0001, 0.00012, 123456789012345.0]);
     if Buf.bytes(b) # "0.1 0.3333333333333333 -2.5 100 42000 0.0001 0.00012 123456789012345" then Rt.stop("Fmt.short"); end;
     Buf.reset(b);
-    write(b, "{} {} {} {} {} {} {}", [short(1.0E15), short(1.5E17), short(9.9E-5), short(5.0E-324),
-        short(1.7976931348623157E308), short(2.2250738585072014E-308), short(9007199254740992.0)]);
+    shorts(b, [1.0E15, 1.5E17, 9.9E-5, 5.0E-324, 1.7976931348623157E308, 2.2250738585072014E-308,
+        9007199254740992.0]);
     if Buf.bytes(b) # "1E15 1.5E17 9.9E-5 5E-324 1.7976931348623157E308 2.2250738585072014E-308 9.007199254740992E15" then
         Rt.stop("Fmt.short: an exponent");
     end;
     Buf.reset(b);
-    write(b, "{} {} {} {} {} {6}|{-6}|{06}", [short(zero), short(-zero), short(1.0 / zero), short(-1.0 / zero),
-        short(zero / zero), short(0.5), short(0.5), short(-0.5)]);
-    if Buf.bytes(b) # "0 -0 inf -inf nan    0.5|0.5   |-000.5" then Rt.stop("Fmt.short: zero, inf, nan and a width"); end;
+    shorts(b, [zero, -zero, 1.0 / zero, -1.0 / zero, zero / zero]);
+    write(b, " {6}|{-6}", [str(short(0.5, d)), str(short(0.5, d))]);
+    if Buf.bytes(b) # "0 -0 inf -inf nan    0.5|0.5   " then Rt.stop("Fmt.short: zero, inf, nan and a width"); end;
+    if LEN(short(-2.2250738585072014E-308, d)) # ShortMost then Rt.stop("Fmt.short: the longest"); end;
     n, whole := into(small, "{}:{02}", [int(-3), int(7)]);
     if (small[0..n] # "-3:07") or not whole then Rt.stop("Fmt.into"); end;
     n, whole := into(small, "line {}, {}", [int(12), str("x")]);
