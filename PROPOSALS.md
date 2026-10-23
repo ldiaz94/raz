@@ -1949,42 +1949,101 @@ is; a string constant is an error, as writing its bytes isn't defined.
 The bytes are in the target's order (appendix A), as a view's are.
 
 It is `PTR` and `SIZE` made one checked expression, about 30 lines in
-the compiler. It breaks nothing. It also gives "Filling bytes:
-`Bytes.fill`", below, every array of words: `Bytes.fill(BYTES(a), 0)`.
+the compiler. It breaks nothing. An array of words is zeroed by
+"Filling: `FILL(d, x)`", below, as `FILL(a, 0)`; `BYTES` is for its
+bytes as such.
 
 Met in raudio, surco and rcrypto.
 
 **Recommendation:** take; it replaces an unchecked pointer and a
 hand-written length with one checked expression.
 
-## Filling bytes: `Bytes.fill`
+## Filling: `FILL(d, x)`
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Proposed 2026-10-22 as `Bytes.fill`, collated from
+RAZ-GAPS.md; amended 2026-10-23 to a built-in, from rat.
 
-`COPY` copies and `NEW` zeroes, but nothing sets the bytes of a slice
-already in hand. rttf clears each glyph's raster a byte at a time
-(`clear`), its `Pgm` the same for an image, a `Buf.spare` slice is
-cleared by a loop, and raudio zeroes a `[576]F32` with a loop or a
-helper. Pascal has `FillChar`, C `memset`.
+`COPY` copies and `NEW` zeroes, but nothing sets the elements of an
+array or a slice already in hand. rttf clears each glyph's raster a
+byte at a time (`clear`), its `Pgm` the same for an image, a
+`Buf.spare` slice is cleared by a loop, and raudio zeroes a `[576]F32`
+with a loop or a helper. Pascal has `FillChar`, C `memset`.
 
-The proposal: library growth in `Bytes`, beside `index` and `count`.
+rat fills with a value that isn't zero, on its hottest path: each
+pixel row of a cell's background is `U32` pixels of the cell's colour,
+some 4 million pixels for a full redraw of a 3440 by 1440 window. The
+loop for it was most of `Draw.paint`'s time, itself 81 per cent of
+rat's on full redraws, as its counter had lost its register to
+`paint`'s busier variables; moved into a procedure of its own it has
+one, and rat's time on full redraws fell by 30 per cent. Even then a fill does better:
+libc's `wmemset`, against the loop with its counter in a register,
+fills runs of 10 `U32`s in 0.6 of the time, and of 4 million in a
+third. A `Bytes.fill(s: []U8; b: U8)`, as this proposal first was,
+can't serve it: a colour's four bytes differ.
 
-    (* Sets every byte of s to b. *)
-    proc fill*(s: []U8; b: U8);
+The proposal: one built-in procedure, a statement, as `COPY` is.
 
-It writes eight bytes at a time as `Bytes` reads them, and
-`Bytes.x86_64.raz` may use `rep stosb`. With `BYTES`, above, an array
-of words is zeroed in one statement: `Bytes.fill(BYTES(a), 0)`. A
-built-in `FILL(d, x)` for any element type was weighed and left: a
-value other than zero for words is rare, and a loop says it.
+| Call | Result |
+|---|---|
+| `FILL(d, x)` | sets every element of `d`, an array or a slice of elements of type `T`, to `x`, a value of `T` |
 
-It breaks nothing. It is not a wipe: an optimizer may leave out a fill
-that nothing reads after, as it may any write (7.6).
+```
+FILL(w^.band[row..row + w^.cellW], U32(l.bg));    (* a row of pixels *)
+FILL(window, 0.0);                                (* window: [576]F32 *)
+FILL(raster, 0);                                  (* raster: []U8 *)
+```
 
-Met in rttf and raudio.
+`d` is written as `COPY`'s destination is, and `x` is assigned to each
+element as by `:=`. An element of one, two, four or eight bytes is
+stored with `rep stos` of that width, or with moves when there are
+few, as `zeroBytes` does; any other is stored once and copied forward
+from there. A zero of any type is `rep stosb`, as `NEW`'s zeroing is.
 
-**Recommendation:** take; one procedure for a loop every buffer-handling
-program writes.
+It breaks nothing, and leaves `Bytes.fill` out: a slice of bytes is
+filled as any other. It is not a wipe: an optimizer may leave out a
+fill that nothing reads after, as it may any write (7.6). Its size in
+the compiler is not yet measured.
+
+Met in rttf, raudio and rat.
+
+**Recommendation:** take; one statement for a loop every buffer-handling
+program writes, as fast as the machine fills, for any element type.
+
+## `COPY` forwards unless it must go back
+
+**Status.** Proposed 2026-10-23, from rat.
+
+`COPY` is right when its two sides overlap (6.8), and the compiler
+makes it so by copying backwards whenever the destination is above
+the source (`Gen.copySlice`): `std`, `rep movsb` down from the last
+byte, `cld`. That is right, but it goes backwards for every copy to a
+higher address, overlapping or not, and a backward `rep movsb` gets
+none of the processor's fast copying: it moves a byte at a time. Ten
+million copies between the two halves of one `[4096]U32`, never
+overlapping:
+
+| Elements | Down | Up |
+|---|---|---|
+| 10 `U32`s | 66 ms | 510 ms |
+| 1000 `U32`s | 390 ms | 9,800 ms |
+
+rat meets it drawing a scaled font: each pixel row of a cell is copied
+to the rows under it, a higher address in the same image, for every
+cell drawn.
+
+The proposal, the compiler's alone, as the report already says what
+`COPY` does: copy backwards only when the destination starts inside
+the source (`rsi < rdi < rsi + rcx`, one more comparison), and
+forwards otherwise. A backward copy that must be made could go by
+words, eight bytes at a time down to the last few, rather than by
+`rep movsb`.
+
+It breaks nothing: no program can tell, but by its time.
+
+Met in rat.
+
+**Recommendation:** take; one comparison in `copySlice` for a copy up
+to eight times faster at ten elements and twenty-five at a thousand.
 
 ## A slice of a `const` parameter, returned
 
