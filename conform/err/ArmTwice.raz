@@ -1,0 +1,12 @@
+module ArmTwice;
+type Kind = (start, done);
+proc main*;
+var k: Kind;
+begin
+    match k of
+    | done:
+    | Kind.done:
+    | else:
+    end;
+end;
+end ArmTwice.

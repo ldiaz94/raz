@@ -294,8 +294,11 @@ otherwise.
   widen; a conversion's does, `U8(a + b)` too.
 - An enumeration's name shared in its scope with another enumeration's
   is written with its type; shared with anything else, the name alone is
-  that other declaration. A `match` arm on an enumeration takes the
-  type's names alone or with the type, which must be the matched one.
+  that other declaration. A `match` arm on an enumeration or a variant
+  (report 2026-10.36, 7.4) takes a case alone, found among the matched
+  type's own whatever the scope holds, or qualified as anywhere else
+  (`Kind.done`, `Xml.done`, `Xml.Kind.done`), read by `qualIdent`; a
+  qualified case of another type is an error naming both.
 - `Width` follows glibc's `wcwidth` but gives a control 0, and 0 to the
   format characters glibc counts as 1 (Egyptian hieroglyph controls,
   interlinear annotation), but for the prepended concatenation marks.

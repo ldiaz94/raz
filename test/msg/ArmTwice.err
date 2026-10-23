@@ -1,0 +1,4 @@
+conform/err/ArmTwice.raz:8:7: error: done has two arms
+    8 |     | Kind.done:
+      |       ^^^^^^^^^
+raz: 1 error

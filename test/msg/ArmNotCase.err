@@ -1,0 +1,4 @@
+conform/err/ArmNotCase.raz:9:7: error: expected a case of Kind
+    9 |     | EnumKinds.Style:
+      |       ^^^^^^^^^^^^^^^
+raz: 1 error

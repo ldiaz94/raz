@@ -1,0 +1,5 @@
+conform/err/ArmOtherCase.raz:8:7: error: the match is on Style, not EnumKinds.Style
+    8 |     | EnumKinds.Style.bold:
+      |       ^^^^^^^^^^^^^^^^^^^^
+help: Style has a bold of its own: write it alone
+raz: 1 error

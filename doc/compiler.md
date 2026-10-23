@@ -23,7 +23,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,594 | 1,310 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,688 | 1,902 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,378 | 1,909 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,459 | 3,851 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,476 | 3,864 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -1611,8 +1611,12 @@ the target's assembler) and bodies (`body`).
 `enumType`) build `Sym.Type`s. `qualIdent` reads a name, `M.x` too, and
 `Elem.bold`, a name of an enumeration with its type (`enumName`); it
 refuses a name two enumerations share (`twinError`). An arm of a `match`
-on an enumeration takes its names from the type, written alone or with
-it (`typeFirst`). `compareIface` passes over an enumeration's names,
+on an enumeration or a variant names its case (`armCase`): a name
+alone is looked for among the type's own cases (`caseNamed`), whatever
+the scope holds, so `| done:` serves a type of another module; a name
+followed by a dot, `Kind.done`, `Xml.done` or `Xml.Kind.done`, is read
+by `qualIdent`, as it is in an expression, and must then be a case of
+the matched type, or the message names both types. `compareIface` passes over an enumeration's names,
 which its type's fingerprint has.
 
 Last, modules, at the end of the file. `compileFile` reads one module.

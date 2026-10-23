@@ -1,0 +1,13 @@
+module ArmNotCase;
+import EnumKinds;
+type Kind = (start, done);
+proc main*;
+var k: Kind;
+begin
+    match k of
+    | Kind.start:
+    | EnumKinds.Style:
+    | else:
+    end;
+end;
+end ArmNotCase.

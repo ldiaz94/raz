@@ -2237,31 +2237,53 @@ begin
     if elseAt # Gen.NoLabel then Gen.jumpBack(elseAt); end;
 end;
 
-(* In an arm of a match on the enumeration t, a name may be written
-   with its type, | Elem.rule: (report section 5.7). If it is, skips the
-   type and the dot, which must name t itself. *)
-proc typeFirst(t: PType): ERROR;
-var st: Scan.State; o: PObj;
+(* The case of t, an enumeration or a variant, named n, or nil *)
+proc caseNamed(t: PType; n: INT): PObj;
+var c: PObj;
 begin
-    o := Sym.lookup(Scan.id);
-    if (o = nil) or (o^.cls # Sym.oType) then return nil; end;
+    c := t^.fields;
+    while (c # nil) and (c^.name # n) do c := c^.next; end;
+    return c;
+end;
+
+(* The case of t, an enumeration or a variant, that an arm of a match
+   names (report section 7.4). A name alone is looked for among t's own,
+   whatever the scope holds. A qualified one, Kind.done, Xml.done or
+   Xml.Kind.done, is read by qualIdent, as it is anywhere else, and must
+   be one of t's. *)
+proc armCase(t: PType): (PObj, ERROR);
+var st: Scan.State; c: PObj; at: Diag.Pos; qualified: BOOL; msg: []U8;
+begin
+    at := Scan.tokPos();
     Scan.saveScan(st);
     Scan.next;
-    if Scan.tok # Scan.sPeriod then Scan.restoreScan(st); return nil; end;
-    if not Sym.same(o^.typ, t) then
-        Scan.restoreScan(st);
-        return Scan.mark(say2("the match is on {}, not {}", Sym.typeName(t), Sym.typeName(o^.typ)));
+    qualified := Scan.tok = Scan.sPeriod;
+    Scan.restoreScan(st);
+    if not qualified then
+        c := caseNamed(t, Scan.id);
+        if c = nil then
+            return nil, Scan.mark(say2("{} isn't a case of {}", nameOf(Scan.id), Sym.typeName(t)));
+        end;
+        Scan.next;
+        return c, nil;
     end;
-    named(o);
-    Scan.next;
-    if Scan.tok # Scan.sIdent then return expected("a name"); end;
-    return nil;
+    c := try qualIdent();
+    if (c^.cls # Sym.oCase) and not c^.ofEnum then
+        return nil, Scan.markAt(Scan.spanFrom(at), say1("expected a case of {}", Sym.typeName(t)));
+    end;
+    if not Sym.same(c^.typ, t) then
+        msg := say2("the match is on {}, not {}", Sym.typeName(t), Sym.typeName(c^.typ));
+        if caseNamed(t, c^.name) = nil then return nil, Scan.markAt(Scan.spanFrom(at), msg); end;
+        return nil, Scan.markHelp(Scan.spanFrom(at), msg,
+            say2("{} has a {} of its own: write it alone", Sym.typeName(t), nameOf(c^.name)));
+    end;
+    return c, nil;
 end;
 
 proc matchStatement(start: Diag.Pos; ind: INT): ERROR;
 var
     x: TItem; t: PType; c, f, o: PObj; p: I64; L, endL, n, first, disp, elseAt: INT;
-    seen: [256]BOOL; hasElse, all, byValue, isStr, onlyRead: BOOL; endAt: Diag.Pos; ls: Labels;
+    seen: [256]BOOL; hasElse, all, byValue, isStr, onlyRead: BOOL; endAt, at: Diag.Pos; ls: Labels;
 begin
     Scan.next;
     try expression(x, nil);
@@ -2305,17 +2327,12 @@ begin
             L := Gen.NoLabel;
             repeat
                 if Scan.tok # Scan.sIdent then return expected("a case"); end;
-                if t^.form = Sym.fEnum then try typeFirst(t); end;
-                c := t^.fields;
-                while (c # nil) and (c^.name # Scan.id) do c := c^.next; end;
-                if c = nil then
-                    return Scan.mark(say2("{} isn't a case of {}", nameOf(Scan.id), Sym.typeName(t)));
-                end;
+                at := Scan.tokPos();
+                c := try armCase(t);
                 if (c^.val <= 255) and seen[c^.val] then
-                    return Scan.mark(say1("{} has two arms", nameOf(c^.name)));
+                    return Scan.markAt(Scan.spanFrom(at), say1("{} has two arms", nameOf(c^.name)));
                 end;
                 if c^.val <= 255 then seen[c^.val] := true; end;
-                Scan.next;
                 if t^.form # Sym.fEnum then
                     Item.matchTag(p, c^.val, L);
                     break;

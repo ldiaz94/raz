@@ -1,0 +1,41 @@
+(* An arm names its case as it is written anywhere else: alone, with
+   its type, with its module, or with both (report section 7.4). *)
+module MatchQualified;
+import Out, EnumKinds, Shared;
+
+type Kind = (start, done);
+
+proc kind(k: Kind);
+begin
+    match k of
+    | Kind.start: Out.str("start ");
+    | done:       Out.str("done ");
+    end;
+end;
+
+proc elem(e: EnumKinds.Elem);
+begin
+    match e of
+    | EnumKinds.Elem.para:   Out.str("para ");
+    | EnumKinds.rule:        Out.str("rule ");
+    | bold:                  Out.str("bold ");
+    end;
+end;
+
+proc shape(s: Shared.Shape);
+begin
+    match s of
+    | Shared.dot:       Out.str("dot ");
+    | Shared.circle(r): Out.int(r); Out.str(" ");
+    end;
+end;
+
+proc main*;
+begin
+    kind(start); kind(done);
+    elem(EnumKinds.Elem.para); elem(EnumKinds.Elem.bold); elem(EnumKinds.rule);
+    shape(Shared.dot); shape(Shared.circle(3));
+    Out.ln;
+end;
+
+end MatchQualified.

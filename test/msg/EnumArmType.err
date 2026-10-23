@@ -1,4 +1,5 @@
 conform/err/EnumArmType.raz:9:7: error: the match is on Elem, not Style
     9 |     | Style.bold:
-      |       ^^^^^
+      |       ^^^^^^^^^^
+help: Elem has a bold of its own: write it alone
 raz: 1 error

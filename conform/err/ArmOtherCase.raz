@@ -1,0 +1,12 @@
+module ArmOtherCase;
+import EnumKinds;
+type Style = (plain, bold);
+proc main*;
+var s: Style;
+begin
+    match s of
+    | EnumKinds.Style.bold:
+    | else:
+    end;
+end;
+end ArmOtherCase.
