@@ -58,7 +58,9 @@ bytes of a variable or a slice (sections 4 and 6.8); `FILL(d, x)`, an
 array or a slice set to one value (section 6.8); a qualified case in a
 `match` arm (section 7.4); a slice part written as a literal, and an
 `ERROR` constant named by another (sections 4 and 5.8); and a `const`
-parameter's slice returned (section 7.3); it breaks no program.
+parameter's slice returned (section 7.3); and a procedure type's
+parameter or result may name a type declared later in its `type`
+section (sections 4 and 5.9); it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -381,7 +383,9 @@ IdentList   = IdentDef { "," IdentDef } .
 
 A name must be declared before it is used, with two exceptions: the
 base type of a pointer may name a type declared later in the same
-`type` section (so that two records can point at each other), and a
+`type` section (so that two records can point at each other), and so
+may a parameter or a result of a procedure type there, however passed
+(so that a record's callback can take the record, section 5.9); and a
 procedure may be declared `forward` and defined later (section 8).
 
 **Constants** are evaluated by the compiler. Their expressions use only
@@ -670,6 +674,18 @@ signature, as big as an address, or `nil`. Two signatures are alike when
 their parameters have the same types, each `var`, `const` or neither
 alike, in order, and their results are the same types; the parameters'
 names don't matter.
+
+A parameter or a result of a procedure type in a `type` section may
+name a type declared later in it, a record that is being declared too:
+
+```
+type Lines = record each: proc(var r: Lines; s: []U8); n: INT; end;
+```
+
+A procedure value is an address whatever its signature, so the record's
+size doesn't depend on it; the type is whole when a call is made. A
+field of the record's own type, by value, is still an error, since
+nothing would be big enough.
 
 ### 5.10 Same and assignable
 

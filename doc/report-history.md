@@ -252,5 +252,8 @@ at the time.
   elsewhere, `| Xml.done:` (section 7.4). A constant's slice part may
   be an array literal, `[[1, 2], [3]]`, and an `ERROR` constant may be
   another `ERROR` constant, the same error (sections 4 and 5.8). A
-  slice of a `const` parameter may be returned (section 7.3). Appendix
-  A says what a wipe can't reach. It breaks no program.
+  slice of a `const` parameter may be returned (section 7.3). A
+  parameter or a result of a procedure type may name a type declared
+  later in the same `type` section, so that a record's callback can
+  take the record (sections 4 and 5.9). Appendix A says what a wipe
+  can't reach. It breaks no program.
