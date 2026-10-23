@@ -2968,6 +2968,7 @@ array, parked with `[]const T`.
 ### Freestanding programs and tools
 
 
-- `Doc` fills a list — rcrypto's paragraphs read as well, and a line
-  indented further already means code, which a list's continuation
-  would muddle.
+- `Doc` fills a list. Done (owner, 2026-10-23), by lazy continuation: a
+  line starting with `- ` at a comment's margin begins a bullet, the
+  lines at the margin after it continue it, and a blank line or code
+  ends it, so an indented line is still code.

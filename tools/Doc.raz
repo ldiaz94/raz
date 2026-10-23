@@ -9,7 +9,8 @@
    prints the same of each module, in mdoc, for a library's manual page:
    the module's name a heading, each declaration a literal display,
    each comment filled text, indented, but for its lines indented
-   further, which are code. It writes the modules only; the page's
+   further, which are code; a line of the text that starts with "- "
+   begins a list's bullet (see comment). It writes the modules only; the page's
    head (its date, name and description, up to .Sh MODULES) and tail
    are files of the library's own, put around it by its Makefile.
 
@@ -33,6 +34,7 @@ var
     man: BOOL;                (* writing mdoc *)
     atStart: BOOL;            (* emit is at the start of a line *)
     shown: BOOL;              (* a literal display of mdoc's is open *)
+    listed: BOOL;             (* a bullet list of mdoc's is open *)
     groupStart, groupEnd: INT; (* the comment that heads the group being read, not yet written, or -1 *)
 
 (* On to the next symbol that isn't a comment, keeping where the last
@@ -71,6 +73,13 @@ begin
     Out.str(s);
     Out.ln;
     atStart := true;
+end;
+
+(* the bullet list, if open, closed *)
+proc closeList;
+begin
+    if listed then control(".El"); end;
+    listed := false;
 end;
 
 (* the literal display, if open, closed *)
@@ -167,7 +176,10 @@ end;
    indented by four; in mdoc, filled, each sentence starting a line,
    but for the lines indented past its own, which are code, kept as
    they are in a literal display. mdoc's displays don't nest, so the
-   filled one ends where the code starts and starts again after. *)
+   filled one ends where the code starts and starts again after. A line
+   that starts with "- " at the text's own margin starts a bullet of a
+   list; the lines at the margin after it continue it, and a blank line
+   or code ends it. *)
 proc comment(start, stop: INT);
 var i, j, k, m, n, deep, indent: INT;
 begin
@@ -185,6 +197,7 @@ begin
         n := 0;
         while (i + n < k) and (src[i + n] = ' ') do INC(n); end;
         if man and (n > deep) and (indent < 0) then
+            closeList;
             control(".Ed");
             control(".Bd -literal -offset indent -compact");
             indent := n;
@@ -193,9 +206,17 @@ begin
             control(".Bd -filled -offset indent -compact");
             indent := -1;
         end;
-        if man and (n = k - i) and (indent < 0) then control(".Pp");
+        if man and (n = k - i) and (indent < 0) then
+            closeList;
+            control(".Pp");
         elsif man and (indent < 0) then
             m := i + n;
+            if (m + 1 < k) and (src[m] = '-') and (src[m + 1] = ' ') then
+                if not listed then control(".Bl -bullet -compact"); listed := true; end;
+                control(".It");
+                INC(m, 2);
+                while (m < k) and (src[m] = ' ') do INC(m); end;
+            end;
             while m < k do
                 if (src[m] = ' ') and sentenceEnds(i + n, m) then
                     emit(10);
@@ -214,7 +235,7 @@ begin
         end;
         i := k + 1;
     end;
-    if man then control(".Ed"); end;
+    if man then closeList; control(".Ed"); end;
 end;
 
 (* The comment that heads a group of constants, types or variables,

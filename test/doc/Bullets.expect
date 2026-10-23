@@ -1,0 +1,14 @@
+module Bullets;
+    Bullets: a comment's list.
+    Doc's test of it.
+
+proc f*;
+    What it takes:
+    - a first item;
+    - a second item that runs on
+    to a second line at the margin;
+    - a third.
+    
+    Text after the list, with a dash - in the middle.
+    code after
+    - a dash that is further in, so code

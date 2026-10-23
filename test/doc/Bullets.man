@@ -1,0 +1,29 @@
+.Ss Bullets
+.Bd -literal
+module Bullets;
+.Ed
+.Bd -filled -offset indent -compact
+Bullets: a comment's list.
+Doc's test of it.
+.Ed
+.Bd -literal
+proc f*;
+.Ed
+.Bd -filled -offset indent -compact
+What it takes:
+.Bl -bullet -compact
+.It
+a first item;
+.It
+a second item that runs on
+to a second line at the margin;
+.It
+a third.
+.El
+.Pp
+Text after the list, with a dash - in the middle.
+.Ed
+.Bd -literal -offset indent -compact
+code after
+- a dash that is further in, so code
+.Ed
