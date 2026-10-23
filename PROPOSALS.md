@@ -888,6 +888,8 @@ Met in tery's `udivmod`, a loop of 64 rounds.
 
 ## Inlining a procedure that only returns
 
+**Status.** Approved by the owner on 2026-10-23 and implemented: a call of a procedure whose body is `return e`, with no locals and one scalar result, is made in place, its arguments in temporaries; a failed check in `e` is told at the callee's line, and the callee is in no trace (scanning 887 ms to 638, grep 268 to 199).
+
 Not the language's but the compiler's: a call of a procedure whose
 body is `return` and an expression, as `Grep.zeros` and
 `Scan.tokPos` are, made in place of the call. One pass keeps no
@@ -1476,6 +1478,8 @@ counts as breaking.
 and it is `execvp`'s choice.
 
 ## An investigation: where a hot loop's time goes
+
+**Status.** Done 2026-10-23: neither a register allocator nor statement inlining earns its lines; an array parameter indexed as `[pointer + index * size]`, kept parameters in callee-saved registers, and inlining a procedure that only returns, were.
 
 Not a change: a measurement, whose report would say whether register
 allocation, inlining (see "Inlining a procedure that only returns"),
