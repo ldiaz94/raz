@@ -1,0 +1,102 @@
+(* Fmt.short against Math.toReal: what it writes reads back as the
+   same F64, and one digit fewer does not. Tried on powers of ten, a
+   few numbers known to be hard, and random bit patterns. *)
+module FmtShort;
+import Fmt, Math, Buf, Heap;
+
+var
+    text, fewer: Buf.Buf;
+    tried, bad: INT;
+
+(* What toReal reads s as; a nan if it reads nothing. *)
+proc read(s: []U8): F64;
+var x: F64; ok: BOOL;
+begin
+    x, ok := Math.toReal(s);
+    if not ok then x := Math.fromBits(7FF8000000000000H); end;
+    return x;
+end;
+
+(* Whether y is x, -0.0 not being 0.0. *)
+proc same(x, y: F64): BOOL;
+begin
+    return Math.bits(x) = Math.bits(y);
+end;
+
+(* The significant digits of s, as short writes it, as a whole number,
+   and the power of ten it is to be taken to: 1.5E17 is 15 and 16. *)
+proc parse(s: []U8): (U64, INT);
+var d: U64; e, i, ex: INT; point, neg: BOOL;
+begin
+    while (i < LEN(s)) and (s[i] # 'E') do
+        if s[i] = '.' then
+            point := true;
+        elsif s[i] # '-' then
+            d := d * 10 + U64(s[i] - '0');
+            if point then DEC(e); end;
+        end;
+        INC(i);
+    end;
+    if i < LEN(s) then
+        INC(i);
+        if s[i] = '-' then neg := true; INC(i); end;
+        while i < LEN(s) do ex := ex * 10 + INT(s[i] - '0'); INC(i); end;
+        if neg then ex := -ex; end;
+    end;
+    while (d > 0) and (d mod 10 = 0) do d := d div 10; INC(e); end;
+    return d, e + ex;
+end;
+
+(* Whether d times 10^e reads back as x. *)
+proc readsBack(d: U64; e: INT; x: F64): BOOL;
+begin
+    Buf.reset(fewer);
+    Fmt.write(fewer, "{}E{}", [Fmt.uint(d), Fmt.int(e)]);
+    return same(read(Buf.bytes(fewer)), x);
+end;
+
+(* x, finite and not 0, tried. *)
+proc check(x: F64);
+var d: U64; e: INT;
+begin
+    INC(tried);
+    Buf.reset(text);
+    Fmt.write(text, "{}", [Fmt.short(x)]);
+    if not same(read(Buf.bytes(text)), x) then
+        INC(bad);
+        Fmt.print("{} reads back as another F64\n", [Fmt.str(Buf.bytes(text))]);
+        return;
+    end;
+    (* one digit fewer: the two numbers of that many digits around x *)
+    if x < 0.0 then x := -x; end;
+    d, e := parse(Buf.bytes(text));
+    if (d >= 10) and (readsBack(d div 10, e + 1, x) or readsBack(d div 10 + 1, e + 1, x)) then
+        INC(bad);
+        Fmt.print("{} reads back in fewer digits\n", [Fmt.str(Buf.bytes(text))]);
+    end;
+end;
+
+proc main*;
+var x: F64; u: U64; i: INT;
+begin
+    Buf.init(text, Heap.heap);
+    Buf.init(fewer, Heap.heap);
+    x := 1.0E-323;
+    while x < 1.0E308 do check(x); check(-x); x := x * 10.0; end;
+    x := 1.0;
+    for i := 0 to 1073 do x := x / 2.0; end;
+    check(x);    (* the least F64, 5E-324 *)
+    check(0.1); check(0.2); check(0.3); check(1.0 / 3.0); check(2.0 / 3.0);
+    check(1.7976931348623157E308); check(2.2250738585072014E-308); check(2.2250738585072009E-308);
+    check(9007199254740992.0); check(9007199254740993.0); check(5.0E-324); check(123456789.0);
+    (* random bit patterns, nan and inf left out *)
+    u := 12345;
+    for i := 1 to 20000 do
+        u := u * 6364136223846793005 + 1442695040888963407;
+        x := Math.fromBits(u);
+        if (x = x) and (x - x = 0.0) and (x # 0.0) then check(x); end;
+    end;
+    Fmt.print("{} values tried, {} bad\n", [Fmt.int(tried), Fmt.int(bad)]);
+end;
+
+end FmtShort.

@@ -10,11 +10,28 @@
 module Fmt;
 import Out, Buf, Arena, Rt, Sys;
 
+const
+    Limb = 1000000000;   (* a Big's base, 10^9 *)
+    LimbDigits = 9;      (* the decimal digits of a limb *)
+    LimbsMax = 90;       (* limbs of the largest Big: 769 digits, for the least F64's lo *)
+    MostDigits = 17;     (* digits that always read back as the F64 they came from *)
+    MantBits = 52;       (* an F64's fraction bits *)
+    ExpBias = 1075;      (* its exponent's bias, with the fraction a whole number *)
+    ExpMask = 7FFH;      (* its exponent's bits, shifted down *)
+    TwoStep = 29;        (* doublings at once: 10^9 * 2^29 < 2^63 *)
+    FiveStep = 13;       (* fives multiplied at once: 10^9 * 5^13 < 2^63 *)
+
 type
     (* An argument, and how it is printed. A real has places digits
        after the point, at most 9, rounded to the nearest, half away
        from zero; from 1E15 on, it has the exponent that makes it less
-       than 10, as 1.50E17; nan and inf are spelled so. *)
+       than 10, as 1.50E17; nan and inf are spelled so. A short has the
+       fewest significant digits that Math.toReal reads back as the
+       same F64, the nearer of two such, and of two as near the one
+       whose last digit is even; it is written as 0.0001, 0.1, 42 or
+       123456789012345, and with an exponent below 1E-4 and from 1E15
+       on, as 1.5E17 or 5E-324. Zero is 0 or -0, keeping its sign so
+       that it too reads back; nan and inf are spelled as real's. *)
     Arg* = variant
         int(i: I64);       (* in decimal *)
         uint(u: U64);      (* in decimal *)
@@ -24,6 +41,7 @@ type
         char(c: U8);       (* the one byte *)
         bool(b: BOOL);     (* true or false *)
         real(r: F64; places: INT);
+        short(r: F64);
     end;
 
     (* Where the pieces go: to out if slice is set, else to b, or to
@@ -43,6 +61,26 @@ type
     Spec = record
         width: INT;
         zero, left: BOOL;
+    end;
+
+    (* A whole number, not negative, in base 10^9, the lowest limb
+       first. *)
+    Big = record
+        v: [LimbsMax]U64;
+        n: INT;                           (* the limbs in use *)
+    end;
+
+    (* A number above 0, exactly in decimal: 0.d times 10^e, its first
+       digit not 0. *)
+    Exact = record
+        d: [LimbsMax * LimbDigits]U8;     (* '0' to '9' *)
+        n, e: INT;                        (* how many digits, and the exponent *)
+    end;
+
+    (* A number above 0 as short writes it, in the same way. *)
+    Short = record
+        d: [MostDigits]U8;
+        n, e: INT;
     end;
 
 (* The digits of u in base, at the end of the array: it and where they
@@ -129,6 +167,228 @@ begin
     end;
 end;
 
+(* ---- short: the fewest digits that read back ----
+
+   An F64 x is m times 2^k, m and k whole numbers. Every number between
+   the halves to the F64s on either side of x reads back as x, so short
+   looks for the fewest digits that land between those halves, lo and
+   hi:
+
+       below      lo     x     hi      above      the F64s around x
+         |--------|------*------|--------|
+
+   x, lo and hi are written out exactly in decimal, each an Exact, and
+   compared digit by digit with each try, so nothing is rounded on the
+   way. For p digits the tries are x cut to p digits and that one more
+   in its last place: the two numbers of p digits nearest x. The first
+   p for which one of them lies between lo and hi gives the answer; if
+   both do, the nearer x is taken. 17 digits are always enough.
+
+   An exact value is made in a Big, a whole number in base 10^9: for k
+   at least 0, m times 2^k is m doubled k times; for k below 0, it is m
+   times 5^-k with the point -k places from the right, since 2^-k is
+   5^-k / 10^-k. *)
+
+(* The bits of x. *)
+proc bits(x: F64): U64;
+var p: ^U64;
+begin
+    p := ^U64(ADR(x));
+    return p^;
+end;
+
+(* b times f, which is at most 2^31. *)
+proc bigMul(var b: Big; f: U64);
+var i: INT; t, carry: U64;
+begin
+    carry := 0;
+    for i := 0 to b.n - 1 do
+        t := b.v[i] * f + carry;
+        carry := t div Limb;
+        b.v[i] := t - carry * Limb;
+    end;
+    while carry > 0 do
+        b.v[b.n] := carry mod Limb;
+        carry := carry div Limb;
+        INC(b.n);
+    end;
+end;
+
+(* b times 2^k, or 5^k if five, a few steps at once. *)
+proc bigPow(var b: Big; k: INT; five: BOOL);
+var step, i: INT; f: U64;
+begin
+    while k > 0 do
+        if five then step := FiveStep; else step := TwoStep; end;
+        if k < step then step := k; end;
+        f := 1;
+        for i := 1 to step do
+            if five then f := f * 5; else f := f * 2; end;
+        end;
+        bigMul(b, f);
+        DEC(k, step);
+    end;
+end;
+
+(* m times 2^k, m not 0, exactly in decimal, into w. *)
+proc expand(m: U64; k: INT; var w: Exact);
+var b: Big; d: [24]U8; at, i, j, point: INT; v: U64;
+begin
+    b.n := 0;
+    while m > 0 do
+        b.v[b.n] := m mod Limb;
+        m := m div Limb;
+        INC(b.n);
+    end;
+    point := 0;
+    if k < 0 then point := -k; bigPow(b, -k, true); else bigPow(b, k, false); end;
+    (* the top limb without leading zeros, then nine digits a limb *)
+    d, at := digits(b.v[b.n - 1], 10, 'A');
+    w.n := 24 - at;
+    COPY(w.d[0..w.n], d[at..24]);
+    for i := b.n - 2 to 0 by -1 do
+        v := b.v[i];
+        for j := LimbDigits - 1 to 0 by -1 do
+            w.d[w.n + j] := U8(v mod 10) + '0';
+            v := v div 10;
+        end;
+        INC(w.n, LimbDigits);
+    end;
+    w.e := w.n - point;
+end;
+
+(* -1, 0 or 1 as 0.d times 10^e, d's first digit not 0, is below, at or
+   above w. *)
+proc compare(d: []U8; e: INT; const w: Exact): INT;
+var i, n: INT; a, c: U8;
+begin
+    if e # w.e then
+        if e < w.e then return -1; end;
+        return 1;
+    end;
+    n := w.n;
+    if LEN(d) > n then n := LEN(d); end;
+    for i := 0 to n - 1 do
+        a := '0'; c := '0';   (* past its end each has zeros *)
+        if i < LEN(d) then a := d[i]; end;
+        if i < w.n then c := w.d[i]; end;
+        if a # c then
+            if a < c then return -1; end;
+            return 1;
+        end;
+    end;
+    return 0;
+end;
+
+(* Whether s reads back as the F64 that lo and hi are the halves around:
+   it lies between them, or on one of them if ends, as the F64 whose m
+   is even takes a tie. *)
+proc between(const s: Short; const lo, hi: Exact; ends: BOOL): BOOL;
+var below, above: INT;
+begin
+    below := compare(s.d[0..s.n], s.e, lo);
+    above := compare(s.d[0..s.n], s.e, hi);
+    return ((below > 0) or (below = 0) and ends) and ((above < 0) or (above = 0) and ends);
+end;
+
+(* s one more in its last place, carrying, without the zeros that leaves
+   at the end: 129 becomes 13, and 99 becomes 1 with the point moved. *)
+proc up(var s: Short);
+var i: INT;
+begin
+    i := s.n - 1;
+    while (i >= 0) and (s.d[i] = '9') do DEC(i); end;
+    if i >= 0 then
+        INC(s.d[i]);
+        s.n := i + 1;
+    else
+        s.d[0] := '1';
+        s.n := 1;
+        INC(s.e);
+    end;
+end;
+
+(* Whether x, cut where rest begins, is nearer the number one more in
+   the last place than to the cut one: rest is above a half, or a half
+   and last, the cut one's last digit, odd. *)
+proc nearerUp(rest: []U8; last: U8): BOOL;
+var i: INT;
+begin
+    if rest[0] # '5' then return rest[0] > '5'; end;
+    for i := 1 to LEN(rest) - 1 do
+        if rest[i] # '0' then return true; end;
+    end;
+    return (last - '0') & 1 = 1;
+end;
+
+(* The fewest digits that read back as x, finite and above 0, into s. *)
+proc shortest(x: F64; var s: Short);
+var u, m: U64; k, p: INT; mid, lo, hi: Exact; ends, downOk, upOk: BOOL; next: Short;
+begin
+    (* x as m times 2^k: the fraction with its hidden 1 but for the
+       smallest exponent, the F64s below 2^-1022 *)
+    u := bits(x);
+    m := u & (U64(1) shl MantBits - 1);
+    k := INT(u shr MantBits & ExpMask);
+    if k = 0 then k := 1; else m := m | U64(1) shl MantBits; end;
+    DEC(k, ExpBias);
+    (* the halves to the F64s around x; the one below a power of two is
+       half as far as the one above, but at the smallest exponent *)
+    expand(m, k, mid);
+    expand(2 * m + 1, k - 1, hi);
+    if (m = U64(1) shl MantBits) and (k > 1 - ExpBias) then
+        expand(4 * m - 1, k - 2, lo);
+    else
+        expand(2 * m - 1, k - 1, lo);
+    end;
+    ends := m & 1 = 0;
+    for p := 1 to MostDigits do
+        s.n := p;
+        if p >= mid.n then s.n := mid.n; end;   (* x itself has no more digits *)
+        s.e := mid.e;
+        COPY(s.d[0..s.n], mid.d[0..s.n]);
+        if s.n = mid.n then return; end;
+        next := s;
+        up(next);
+        downOk := between(s, lo, hi, ends);
+        upOk := between(next, lo, hi, ends);
+        if upOk and (not downOk or nearerUp(mid.d[p..mid.n], s.d[p - 1])) then
+            s := next;
+            return;
+        elsif downOk then
+            return;
+        end;
+    end;
+end;
+
+(* x as Arg's short says, but for the minus sign, which arg writes. *)
+proc putShort(var k: Sink; x: F64);
+var s: Short; d: [24]U8; at, e: INT;
+begin
+    if x # x then put(k, "nan"); return; end;
+    if x < 0.0 then x := -x; end;
+    if x > 1.7976931348623157E308 then put(k, "inf"); return; end;
+    if x = 0.0 then put(k, "0"); return; end;   (* -0.0 too *)
+    shortest(x, s);
+    if (s.e >= -3) and (s.e <= 15) then         (* from 1E-4 to below 1E15 *)
+        if s.e <= 0 then
+            put(k, "0."); fill(k, '0', -s.e); put(k, s.d[0..s.n]);
+        elsif s.e >= s.n then
+            put(k, s.d[0..s.n]); fill(k, '0', s.e - s.n);
+        else
+            put(k, s.d[0..s.e]); put(k, "."); put(k, s.d[s.e..s.n]);
+        end;
+    else
+        put(k, s.d[0..1]);
+        if s.n > 1 then put(k, "."); put(k, s.d[1..s.n]); end;
+        put(k, "E");
+        e := s.e - 1;
+        if e < 0 then put(k, "-"); e := -e; end;
+        d, at := digits(U64(e), 10, 'A');
+        put(k, d[at..24]);
+    end;
+end;
+
 (* Whether a is printed with a minus sign. *)
 proc negative(a: Arg): BOOL;
 var neg: BOOL;
@@ -136,6 +396,7 @@ begin
     match a of
     | int(i): neg := i < 0;
     | real(r, _places): neg := r < 0.0;
+    | short(r): neg := (r = r) and (bits(r) shr 63 = 1);   (* -0.0 too, but no nan *)
     | else: neg := false;
     end;
     return neg;
@@ -160,6 +421,7 @@ begin
     | char(c):   one[0] := c; put(k, one);
     | bool(t):   if t then put(k, "true"); else put(k, "false"); end;
     | real(r, places): putReal(k, r, places);
+    | short(r):  putShort(k, r);
     end;
 end;
 
@@ -317,6 +579,20 @@ begin
     Buf.reset(b);
     write(b, "{x} {2x} {0} {-} {a} {1", [int(1), int(2)]);
     if Buf.bytes(b) # "x 2x 1 - a 1" then Rt.stop("Fmt: a { that is no width"); end;
+    Buf.reset(b);
+    write(b, "{} {} {} {} {} {} {} {}", [short(0.1), short(1.0 / 3.0), short(-2.5), short(100.0), short(42.0E3),
+        short(0.0001), short(0.00012), short(123456789012345.0)]);
+    if Buf.bytes(b) # "0.1 0.3333333333333333 -2.5 100 42000 0.0001 0.00012 123456789012345" then Rt.stop("Fmt.short"); end;
+    Buf.reset(b);
+    write(b, "{} {} {} {} {} {} {}", [short(1.0E15), short(1.5E17), short(9.9E-5), short(5.0E-324),
+        short(1.7976931348623157E308), short(2.2250738585072014E-308), short(9007199254740992.0)]);
+    if Buf.bytes(b) # "1E15 1.5E17 9.9E-5 5E-324 1.7976931348623157E308 2.2250738585072014E-308 9.007199254740992E15" then
+        Rt.stop("Fmt.short: an exponent");
+    end;
+    Buf.reset(b);
+    write(b, "{} {} {} {} {} {6}|{-6}|{06}", [short(zero), short(-zero), short(1.0 / zero), short(-1.0 / zero),
+        short(zero / zero), short(0.5), short(0.5), short(-0.5)]);
+    if Buf.bytes(b) # "0 -0 inf -inf nan    0.5|0.5   |-000.5" then Rt.stop("Fmt.short: zero, inf, nan and a width"); end;
     n, whole := into(small, "{}:{02}", [int(-3), int(7)]);
     if (small[0..n] # "-3:07") or not whole then Rt.stop("Fmt.into"); end;
     n, whole := into(small, "line {}, {}", [int(12), str("x")]);

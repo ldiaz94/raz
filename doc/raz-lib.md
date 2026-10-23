@@ -704,6 +704,7 @@ type Arg* = variant
     char(c: U8);
     bool(b: BOOL);
     real(r: F64; places: INT);
+    short(r: F64);
 end;
 proc print*(f: []U8; args: []Arg);              (* to standard output *)
 proc eprint*(f: []U8; args: []Arg);             (* to standard error, once Out is flushed *)
@@ -908,7 +909,13 @@ has them, to within the last bit or so; `roundEven` is IEEE 754's
 default rounding, as Pascal's `Round`, where `round` is C's. `Fmt.real(x, places)` writes
 `x` with `places` digits after the point, at most 9, rounded to the
 nearest; from 1E15 on, with an exponent, as `1.50E17`; and `nan`,
-`inf` and `-inf` as themselves. `hex` writes capitals and `lowHex`
+`inf` and `-inf` as themselves. `Fmt.short(x)` writes `x` in the
+fewest significant digits that `Math.toReal` reads back as the same
+`F64`, and of two such the nearer `x`: `0.1`, not
+`0.10000000000000001`; `42`, with no point; `0.0001`; and below 1E-4
+or from 1E15 on with an exponent, as `1.5E17` or `5E-324`. Zero keeps
+its sign, `0` or `-0`, and `nan` and `inf` are as `real` writes them.
+`hex` writes capitals and `lowHex`
 lower case, neither with a `0x`. A width between the braces pads an
 argument to that many bytes: `{2}` with spaces on the left, `{02}`
 with zeros on the left, after a sign (`{04}` of -7 is `-007`), `{-10}`
