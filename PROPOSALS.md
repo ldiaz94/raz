@@ -1309,6 +1309,8 @@ Met in rnet, whose `Smtp` copied `Ws`'s (2026-10-22); listed in
 
 ## A library that says which raz it was written for
 
+**Status.** Approved by the owner on 2026-10-22 and implemented: the deprecation step as policy alone, with no mark (`doc/raz-lib.md`, `README.md`); the note from a library's `RAZ-VERSION` (`Diag`, `Parse`); and `--version` naming the commit with no tag (`Makefile`).
+
 0.19 moved the library from pointers to `var` and `const` parameters,
 and every library pinned to an older raz stopped building: rnet, rjson,
 rfetch, rj and arno needed fixes, and alba, clima and linia carried
@@ -1419,6 +1421,8 @@ files, processes".
 
 ## Sys for running a program
 
+**Status.** Approved by the owner on 2026-10-22 and implemented in both `Sys` backends, all four. `spawn` also gives -13 (EACCES), as `exec` does, for a program found that can't be run.
+
 Library growth, but two of the four change what `spawn` and `wait`
 do, so they need the owner's word on whether a change of behaviour
 counts as breaking.
@@ -1481,6 +1485,8 @@ is slow" and "No procedure is inlined".
 
 ## A width in `Fmt`
 
+**Status.** Approved by the owner on 2026-10-22 and implemented in `lib/Fmt.raz`, with `lowHex` as a case of `Arg`; a width is at most four digits.
+
 Library growth that breaks no program. `Fmt` has only `{}`, so seven
 programs pad by hand: arno, rat, notis and poczta each have a
 two-digit helper for times, surco writes `m:ss` and its cover files'
@@ -1534,6 +1540,8 @@ Met in znaczy, raudio, rcrypto and linia (the slice) and rx11 (the
 dereference).
 
 ## The limits of an integer type: `MIN(T)` and `MAX(T)`
+
+**Status.** Approved by the owner on 2026-10-22, a twelfth thaw. In the report, 2026-10.36 (sections 4, 6.1 and 6.8); the compiler waits for the owner's review of that text.
 
 Programs write `7FFFFFFFFFFFFFFFH` for the largest `I64` and `-10^12`
 for "below anything real", and nothing ties either to its type: change
@@ -1858,7 +1866,7 @@ mask has no other plain spelling.
 
 ## Counting bits: `CLZ`, `CTZ` and `POPCOUNT`
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-22, with `MIN` and `MAX`. In the report, 2026-10.36; the compiler waits for the owner's review of that text.
 
 raz has `ROL` and `ROR` (report 2026-10.35) but nothing that counts
 bits, so programs loop. raudio's Rice decoder finds the one bit that
@@ -2102,7 +2110,7 @@ stands alone; each is in both `Sys.raz` (the C library) and
 
 ## Files: what programs write over Sys
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-22 and implemented in `lib/Files.raz`, all three; `Files.write` is written over `writeAll`.
 
 Library growth that breaks no program. Each is portable, written in
 `Files.raz` over procedures `Sys` already has, so neither backend nor
@@ -2331,6 +2339,8 @@ library's to do once.
 
 ### One exponent letter: `Fmt` writes `E`
 
+**Status.** Approved by the owner on 2026-10-22 and implemented in `lib/Fmt.raz`.
+
 A change to output. `Fmt.real` writes `1.50e17`; the language reads a
 real's exponent as `E` only (report section 2), so a value a program
 prints can't be pasted into code (rayo). `Math.toReal` reads both.
@@ -2351,6 +2361,8 @@ Met in rayo.
 **Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
 
 ### An allocator that stops when memory runs out: `Heap.sure`
+
+**Status.** Approved by the owner on 2026-10-22 and implemented in `lib/Heap.raz`.
 
 Library growth that breaks no program. `Buf` and `Vec` stop the program
 when the allocator has no room; `NEW(p, Heap.heap)` and `Mem.alloc`
