@@ -1,0 +1,20 @@
+(* Rt.exitStatus is 0 in main and the status exit was given in the
+   procedures atExit registered, also when a check or stop ends the
+   program. *)
+module ExitStatus;
+import Out, Rt;
+
+proc report;
+begin
+    Out.str("ending with "); Out.int(Rt.exitStatus()); Out.str("\n");
+end;
+
+proc main*: INT;
+begin
+    _ := Rt.atExit(report);
+    Out.int(Rt.exitStatus()); Out.str(" in main\n");
+    Rt.exit(7);
+    return 0;
+end;
+
+end ExitStatus.

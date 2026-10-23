@@ -1,0 +1,20 @@
+(* A failed check ends the program with 2, which the procedures atExit
+   registered can see. *)
+module StopStatus;
+import Out, Rt;
+
+proc report;
+begin
+    Out.str("ending with "); Out.int(Rt.exitStatus()); Out.str("\n");
+end;
+
+proc main*: INT;
+var a: [2]INT; i: INT;
+begin
+    _ := Rt.atExit(report);
+    i := 5;
+    a[i] := 1;
+    return 0;
+end;
+
+end StopStatus.

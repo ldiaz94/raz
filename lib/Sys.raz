@@ -1164,16 +1164,25 @@ begin
     return s[0..n];
 end;
 
-(* The value of the environment variable name; "" if it isn't set. *)
-proc env*(name: []U8): []U8;
+(* The value of the environment variable name and true, or "" and
+   false if it isn't set: "" and true if it is set to nothing. *)
+proc findEnv*(name: []U8): ([]U8, BOOL);
 var a: [4096]U8; s: ^U8; n: INT;
 begin
-    if not cstr(name, a) then return ""; end;
+    if not cstr(name, a) then return "", false; end;
     s := C.getenv(ADR(a[0]));
-    if s = nil then return ""; end;
+    if s = nil then return "", false; end;
     n := 0;
     while s[n] # 0 do INC(n); end;
-    return s[0..n];
+    return s[0..n], true;
+end;
+
+(* The value of the environment variable name; "" if it isn't set. *)
+proc env*(name: []U8): []U8;
+var v: []U8;
+begin
+    v, _ := findEnv(name);
+    return v;
 end;
 
 (* The environment's ith NAME=value, from 0, and true; "" and false
@@ -1351,6 +1360,22 @@ begin
     n := 0;
     while host[n] # 0 do INC(n); end;
     return host[0..n], 0;
+end;
+
+(* The number of processors this program may run on, at least 1. *)
+proc processors*: INT;
+var mask: [1024]U8; i, b, count: INT;
+begin
+    for i := 0 to LEN(mask) - 1 do mask[i] := 0; end;   (* the C library fills in as many bytes as the system has processors' bits *)
+    if C.sched_getaffinity(0, UINT(LEN(mask)), ADR(mask[0])) # 0 then return 1; end;
+    count := 0;
+    for i := 0 to LEN(mask) - 1 do
+        for b := 0 to 7 do
+            if (INT(mask[i]) shr b) & 1 = 1 then INC(count); end;
+        end;
+    end;
+    if count < 1 then return 1; end;
+    return count;
 end;
 
 (* The struct timeval at p, in ns *)
@@ -1588,8 +1613,9 @@ begin
     return h^ = 1;
 end;
 
-(* Whether this program ignores the signal sig. *)
-proc ignored(sig: INT): BOOL;
+(* Whether the signal sig does nothing now, as ignore(sig, true) or the
+   program that started this one left it: its handler is SIG_IGN. *)
+proc ignored*(sig: INT): BOOL;
 var a: Sigaction;
 begin
     _ := C.sigaction(I32(sig), nil, ^U8(ADR(a)));
@@ -2199,6 +2225,23 @@ begin
     close(l);
 end;
 
+(* The test of what a program asks of itself: a signal ignored or not,
+   an environment variable unset or empty, and the processors. *)
+proc testProcess;
+var v: []U8; found: BOOL;
+begin
+    if (ignore(sigUsr1, true) # 0) or not ignored(sigUsr1) then exit(2); end;
+    if (ignore(sigUsr1, false) # 0) or ignored(sigUsr1) then exit(2); end;
+    v, found := findEnv("RAZ_NO_SUCH_VARIABLE");
+    if found or (LEN(v) # 0) then exit(2); end;
+    if setEnv("RAZ_SYS_TEST_EMPTY", "") # 0 then exit(2); end;
+    v, found := findEnv("RAZ_SYS_TEST_EMPTY");
+    if not found or (LEN(v) # 0) then exit(2); end;
+    v, found := findEnv("PATH");
+    if not found or (LEN(v) = 0) then exit(2); end;
+    if processors() < 1 then exit(2); end;
+end;
+
 (* The module's test, as Linux's Sys has it: a file written, read back
    and closed; a directory made, listed and emptied; no terminal; a
    socket, sent to after its end; programs; time and the network. *)
@@ -2424,6 +2467,7 @@ begin
     testPrograms;
     testShell;
     testNet;
+    testProcess;
 end;
 
 end Sys.

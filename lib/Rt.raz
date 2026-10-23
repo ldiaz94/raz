@@ -70,6 +70,7 @@ type
 var
     atExits: [MaxAtExit]proc;
     numAtExit: INT;
+    ending: INT;                (* the status exit was given, once it has been *)
     cExit: proc(status: I32);   (* C's exit, set first thing in a program that uses C *)
     (* Set first thing too: where the line table is in them, where the
        program's code starts and stops, the numbers of procedures and
@@ -116,6 +117,13 @@ end;
 
 proc profile; forward;
 
+(* The status exit was given, while the procedures atExit registered
+   run; 0 before. A failed check and stop both end with 2. *)
+proc exitStatus*: INT;
+begin
+    return ending;
+end;
+
 (* Runs the procedures registered with atExit, the last first, then
    ends the program with status: through C's exit in a program that
    uses C, so that C flushes its buffers too. Each procedure is taken
@@ -124,6 +132,7 @@ proc profile; forward;
 proc exit*(status: INT);
 var p: proc;
 begin
+    ending := status;
     while numAtExit > 0 do
         DEC(numAtExit);
         p := atExits[numAtExit];

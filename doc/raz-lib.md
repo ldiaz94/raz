@@ -15,8 +15,8 @@ Modules written in raz, in the compiler's `lib` directory:
 
 | Module | What |
 |---|---|
-| `Rt` | ending the program, `exit` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `lockShared`, `close`, `closeChecked`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `makeDirMode`, `chmod`, `setTime`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; errors, by name, and what one means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others, which takes what each C library fixes from `CAbi` |
+| `Rt` | ending the program, `exit`, `exitStatus` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `lockShared`, `close`, `closeChecked`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `makeDirMode`, `chmod`, `setTime`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `findEnv`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; errors, by name, and what one means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others, which takes what each C library fixes from `CAbi` |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -55,6 +55,7 @@ module Rt;
 const Full*: ERROR = "too many procedures to run at exit";
 proc atExit*(p: proc): ERROR;   (* p run when the program ends by exit *)
 proc exit*(status: INT);        (* the atExit procedures, the last first, then the end *)
+proc exitStatus*: INT;          (* the status exit was given, in an atExit procedure; 0 before *)
 proc stop*(msg: []U8);          (* msg, and a line feed, on standard error, then exit with status 2 *)
 proc trace*;                    (* the calls under way, and their variables, on standard error *)
 ```
@@ -64,6 +65,9 @@ the handlers of the signals that stop a program (section 10). `exit`
 takes each procedure off the list before it runs it, so it runs once
 even if it fails or calls `exit` itself; in a program that uses C, it
 ends through C's `exit`, so that C flushes its buffers too.
+`exitStatus` is the status `exit` was given, which a procedure `atExit`
+registered can read, to note a crash: a failed check and `stop` both end
+with 2. It is 0 before `exit` is called.
 
 ```
 module Mem;
@@ -302,6 +306,7 @@ proc setBlocking*(fd: INT; yes: BOOL): INT;   (* if not yes, a read or write tha
 proc errorText*(err: INT): []U8;   (* what errno err, or minus it, means, as C's strerror says *)
 
 proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
+proc findEnv*(name: []U8): ([]U8, BOOL);   (* the value and true; "" and false if unset, "" and true if empty *)
 proc envAt*(i: INT): ([]U8, BOOL); (* the environment's ith NAME=value, from 0; false past the last *)
 proc setEnv*(name, value: []U8): INT;   (* name set to value, for env and the programs started *)
 proc workDir*: ([]U8, INT);        (* the working directory, good until the next call *)
@@ -325,6 +330,7 @@ proc foregroundOf*(fd: INT): INT;  (* the group the terminal on fd gives its key
 proc uid*: INT;                    (* the user this program runs as *)
 proc euid*: INT;                   (* the user whose rights it has: 0 is root *)
 proc hostName*: ([]U8, INT);       (* this machine's name, good until the next call *)
+proc processors*: INT;             (* the processors this program may run on, at least 1 *)
 proc cpuTime*(children: BOOL): (I64, I64);   (* ns used in the program and in the system; or by its children *)
 proc limit*(which: INT): (I64, I64, INT);    (* the soft limit and the hard; -1 for none *)
 proc setLimit*(which: INT; soft, hard: I64): INT;
@@ -332,6 +338,7 @@ proc setLimit*(which: INT; soft, hard: I64): INT;
 proc catch*(sigs: []INT): INT;     (* sigs caught: an fd to wait on *)
 proc caught*(fd: INT): INT;        (* the next signal caught, or 0 if none is waiting *)
 proc ignore*(sig: INT; yes: BOOL): INT;  (* sig ignored; or, if not yes, back to what it does at first *)
+proc ignored*(sig: INT): BOOL;     (* whether sig does nothing now *)
 proc handle*(sig: INT): INT;       (* sig noted, for came; a system call it comes during is -4 *)
 proc came*(sig: INT): BOOL;        (* whether sig came since the last time it was asked *)
 
@@ -520,7 +527,9 @@ alone can't say; an empty `how` asks only whether it is there.
 taken away from the mode of every file this program, and those it
 starts, make, and says what they were. `envAt` gives the environment
 one variable at a time, from 0, for a shell to list it and to pass it
-on whole with `onlyEnv`. `setEnv` refuses a name that is empty or
+on whole with `onlyEnv`. `env` gives "" for a variable that is unset
+and for one set to nothing; `findEnv` tells them apart, as `TZ` needs,
+unset meaning the local time and empty meaning UTC. `setEnv` refuses a name that is empty or
 holds an `=`, and a 0 in either, with -22; as C's `setenv`, it isn't
 safe while another thread reads the environment, and what `env` gave
 for a variable may be gone once it sets that variable again. `getMode` reads a terminal's modes, and
@@ -534,7 +543,9 @@ limit, `limitFiles` say, soft and hard, and `setLimit` sets them, as
 `ulimit` does: a program may raise its soft limit up to the hard one,
 and lower either. `uid` is the user this program runs as, `euid` the
 one whose rights it has, 0 for root, as a prompt shows `#`; `hostName`
-is the machine's name.
+is the machine's name. `processors` counts the processors the program
+may run on, as the system's affinity mask allows, for a program that
+makes a thread to each; it is never less than 1.
 
 `wait` waits for the program `pid` to change, for any of this
 program's if `pid` is -1, or for any of the group `g` if `pid` is
@@ -559,6 +570,10 @@ signals `Rt` reports, SIGSEGV and SIGFPE, is -22 (EINVAL). `ignore`
 makes a signal do nothing, as a shell ignores `sigTtou` so that it can
 take its terminal back, and `ignore(sig, false)` gives it back what it
 does at first. A program that `spawn` starts begins with neither.
+`ignored(sig)` says whether a signal does nothing now, because the
+program ignored it or because the one that started this one left it
+so, as a program in the background or under `nohup` finds `sigInt` and
+`sigHup`: it should leave those alone, and `handle` or `catch` the rest.
 
 `handle` is for a program that must see a signal while it waits in a
 system call, as a shell waiting for its foreground program, or for a

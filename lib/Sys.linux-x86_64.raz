@@ -1241,11 +1241,12 @@ begin
     return (n = LEN(name)) and (s[n] = '=');
 end;
 
-(* The value of the environment variable name; "" if it isn't set.
-   Every program calls it, from Rt, so it reads the environment itself
+(* The value of the environment variable name and true, or "" and
+   false if it isn't set: "" and true if it is set to nothing. Every
+   program calls env, from Rt, so this reads the environment itself
    rather than through environment and named, which would add their
    code to every executable. *)
-proc env*(name: []U8): []U8;
+proc findEnv*(name: []U8): ([]U8, BOOL);
 var e: ^^U8; s: ^U8; i, n, m: INT;
 begin
     e := envp;
@@ -1258,11 +1259,19 @@ begin
         if (n = LEN(name)) and (s[n] = '=') then
             m := n + 1;
             while s[m] # 0 do INC(m); end;
-            return s[n + 1..m];
+            return s[n + 1..m], true;
         end;
         INC(i);
     end;
-    return "";
+    return "", false;
+end;
+
+(* The value of the environment variable name; "" if it isn't set. *)
+proc env*(name: []U8): []U8;
+var v: []U8;
+begin
+    v, _ := findEnv(name);
+    return v;
 end;
 
 (* The environment's ith NAME=value, from 0, and true; "" and false
@@ -1477,6 +1486,21 @@ begin
     n := 0;
     while (n < 64) and (uts[65 + n] # 0) do INC(n); end;   (* the nodename, at 65 *)
     return uts[65..65 + n], 0;
+end;
+
+(* The number of processors this program may run on, at least 1. *)
+proc processors*: INT;
+var mask: [1024]U8; n, i, b, count: INT;
+begin
+    n := SYSCALL(204, 0, LEN(mask), ADR(mask));         (* sched_getaffinity: this thread, the bytes it filled in *)
+    count := 0;
+    for i := 0 to n - 1 do
+        for b := 0 to 7 do
+            if (INT(mask[i]) shr b) & 1 = 1 then INC(count); end;
+        end;
+    end;
+    if count < 1 then return 1; end;                    (* n < 0: it failed *)
+    return count;
 end;
 
 (* The time on the processor, in ns, that this program has used, or,
@@ -1695,8 +1719,9 @@ begin
     return 0;
 end;
 
-(* Whether this program ignores the signal sig: SIG_IGN is 1. *)
-proc ignored(sig: INT): BOOL;
+(* Whether the signal sig does nothing now, as ignore(sig, true) or the
+   program that started this one left it: its handler is SIG_IGN, 1. *)
+proc ignored*(sig: INT): BOOL;
 var act: [4]U64;                                        (* struct sigaction *)
 begin
     _ := SYSCALL(13, sig, 0, ADR(act), 8);              (* rt_sigaction *)
@@ -2258,6 +2283,23 @@ begin
     close(l);
 end;
 
+(* The test of what a program asks of itself: a signal ignored or not,
+   an environment variable unset or empty, and the processors. *)
+proc testProcess;
+var v: []U8; found: BOOL;
+begin
+    if (ignore(sigUsr1, true) # 0) or not ignored(sigUsr1) then exit(2); end;
+    if (ignore(sigUsr1, false) # 0) or ignored(sigUsr1) then exit(2); end;
+    v, found := findEnv("RAZ_NO_SUCH_VARIABLE");
+    if found or (LEN(v) # 0) then exit(2); end;
+    if setEnv("RAZ_SYS_TEST_EMPTY", "") # 0 then exit(2); end;
+    v, found := findEnv("RAZ_SYS_TEST_EMPTY");
+    if not found or (LEN(v) # 0) then exit(2); end;
+    v, found := findEnv("PATH");
+    if not found or (LEN(v) = 0) then exit(2); end;
+    if processors() < 1 then exit(2); end;
+end;
+
 (* The module's test: a file written, read back and closed; a
    directory made, listed and emptied; no terminal; a socket, sent to
    after its end; programs; time and the network. *)
@@ -2484,6 +2526,7 @@ begin
     testPrograms;
     testShell;
     testNet;
+    testProcess;
 end;
 
 end Sys.

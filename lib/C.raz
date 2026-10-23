@@ -86,6 +86,7 @@ extern proc geteuid*: U32;
 extern proc gethostname*(name: ^U8; n: UINT): I32;
 extern proc access*(path: ^U8; how: I32): I32;
 extern proc umask*(mask: U32): U32;
+extern proc sched_getaffinity*(pid: I32; size: UINT; mask: ^U8): I32;
 extern proc getrusage*(who: I32; usage: ^U8): I32;
 extern proc getrlimit*(which: I32; limit: ^U8): I32;
 extern proc setrlimit*(which: I32; limit: ^U8): I32;

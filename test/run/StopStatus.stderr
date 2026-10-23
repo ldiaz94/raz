@@ -1,0 +1,2 @@
+test/run/StopStatus.raz:16:7: index 5 is out of range for a length of 2
+  in StopStatus.main at test/run/StopStatus.raz:16:7: i = 5
