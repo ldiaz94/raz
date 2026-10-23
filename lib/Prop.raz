@@ -288,20 +288,6 @@ begin
     until not better or (runs >= Budget);
 end;
 
-(* s as a decimal U64, and true; false if it is not one. *)
-proc decimal(s: []U8): (U64, BOOL);
-var v, d: U64; i: INT;
-begin
-    if LEN(s) = 0 then return 0, false; end;
-    for i := 0 to LEN(s) - 1 do
-        if not Str.isDigit(s[i]) then return 0, false; end;
-        d := U64(s[i] - '0');
-        if v > (0FFFFFFFFFFFFFFFFH - d) div 10 then return 0, false; end;
-        v := v * 10 + d;
-    end;
-    return v, true;
-end;
-
 (* Stops the program: the environment variable called key is not a
    number, as it must be. *)
 proc badEnv(key: []U8);
@@ -326,7 +312,7 @@ proc envSeed(): U64;
 var v: U64; ok: BOOL;
 begin
     if LEN(Sys.env("PROP_SEED")) = 0 then return Rand.seed(); end;
-    v, ok := decimal(Sys.env("PROP_SEED"));
+    v, ok := Str.toU64(Sys.env("PROP_SEED"));
     if not ok then badEnv("PROP_SEED"); end;
     return v;
 end;
@@ -526,16 +512,10 @@ end;
 
 (* Small private procedures. *)
 proc testHelpers;
-var v: U64; ok: BOOL; h: [16]U8;
+var h: [16]U8;
 begin
     h := hex(0123456789ABCDEFH);
     Check.str("hex", h, "0123456789abcdef");
-    v, ok := decimal("18446744073709551615");
-    Check.ok(ok and (v = 0FFFFFFFFFFFFFFFFH), "decimal largest");
-    v, ok := decimal("18446744073709551616");
-    Check.ok(not ok, "decimal too big");
-    v, ok := decimal("12a");
-    Check.ok(not ok, "decimal not digits");
     Check.ok(simpler("ab", "abc") and simpler("ab", "ac") and not simpler("ab", "ab"), "simpler");
 end;
 

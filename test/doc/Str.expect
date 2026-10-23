@@ -127,27 +127,55 @@ proc toHex*(s: []U8): (U64, BOOL);
     s in hexadecimal, digits only, capitals or not; false if it isn't
     that, or a U64 can't hold it.
 
+const Base64* = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    The digits of RFC 4648: section 4's base64, and section 5's, which
+    has - and _ for + and / and is safe in a URL or a file name.
+
+const Base64Url* = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
 proc base64Size*(n: INT): INT;
     The bytes base64 makes of n bytes: 4 for each 3, or part of 3.
 
+proc base64With*(s, out, alphabet: []U8; pad: BOOL): INT;
+    s in base64 into out, which holds base64Size(LEN(s)) bytes at least;
+    a shorter out stops the program at the byte it lacks, as any slice
+    does. alphabet holds the 64 digits (Base64 or Base64Url, or one's
+    own). A last group of 1 or 2 bytes is padded with = to four if pad,
+    and else has 2 or 3 digits. The bytes written.
+
 proc base64*(s, out: []U8): INT;
-    s in base64 (RFC 4648, section 4) into out, which holds
-    base64Size(LEN(s)) bytes at least; a shorter out stops the program
-    at the byte it lacks, as any slice does. The bytes written. A last
-    group of 1 or 2 bytes is padded with = to four.
+    s in base64 (RFC 4648, section 4), padded, into out as base64With
+    writes it.
+
+proc unbase64With*(s, out, alphabet: []U8; pad: BOOL): (INT, BOOL);
+    s, base64 with the digits of alphabet, decoded into out, which holds
+    (LEN(s) + 3) div 4 * 3 bytes at least; a shorter out stops the
+    program at the byte it lacks, as any slice does. The bytes written,
+    and true; or 0 and false, with out left in no state to use, if s is
+    not base64 as the RFC writes it and in no other way. With pad: its
+    length a multiple of 4, every byte a digit but the last one or two,
+    which may be = (and then both of the last two are, or the last
+    alone). Without: no =, and a length that is not 1 more than a
+    multiple of 4. Either way the bits of the last digit that no byte
+    uses are 0, so a byte string has the one spelling that base64 gives
+    it (RFC 4648, section 3.5 allows a decoder to take that). Line
+    breaks, and padding or its lack, are the caller's to mend first.
 
 proc unbase64*(s, out: []U8): (INT, BOOL);
-    s, base64 (RFC 4648, section 4), decoded into out, which holds
-    LEN(s) div 4 * 3 bytes at least; a shorter out stops the program at
-    the byte it lacks, as any slice does. The bytes written, and true;
-    or 0 and false, with out left in no state to use, if s is not base64
-    as the RFC writes it and in no other way: its length a multiple of
-    4, every byte a digit but the last one or two, which may be =
-    (and then both of the last two are, or the last alone), and the bits
-    of the digit before the padding that no byte uses are 0, so a byte
-    string has the one spelling that base64 gives it (RFC 4648, section
-    3.5 allows a decoder to take that). Line breaks and padding left off
-    are the caller's to mend first.
+    s, base64 (RFC 4648, section 4), padded, decoded into out as
+    unbase64With reads it; out holds LEN(s) div 4 * 3 bytes at least.
+
+proc toU64*(s: []U8): (U64, BOOL);
+    s as a decimal number, digits only; false if it isn't one, or a U64
+    can't hold it.
+
+proc fromC*(p: ^U8): []U8;
+    The bytes at p up to its zero byte, not copied; "" for nil.
+
+proc toC*(s, out: []U8): ^U8;
+    s copied into out with a zero byte after it, for C: out holds
+    LEN(s) + 1 bytes at least, or the program stops at the byte it
+    lacks, as any slice does. The pointer C is given, PTR(out).
 
 proc fromInt*(n: I64): ([20]U8, INT);
     n in decimal, as Out.int writes it: its bytes, the first of the 20,

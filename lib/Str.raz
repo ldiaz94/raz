@@ -385,7 +385,11 @@ begin
     return v, true;
 end;
 
-const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";   (* RFC 4648 section 4's base64 digits *)
+const
+    (* The digits of RFC 4648: section 4's base64, and section 5's, which
+       has - and _ for + and / and is safe in a URL or a file name. *)
+    Base64* = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    Base64Url* = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 (* The bytes base64 makes of n bytes: 4 for each 3, or part of 3. *)
 proc base64Size*(n: INT): INT;
@@ -393,11 +397,12 @@ begin
     return (n + 2) div 3 * 4;
 end;
 
-(* s in base64 (RFC 4648, section 4) into out, which holds
-   base64Size(LEN(s)) bytes at least; a shorter out stops the program
-   at the byte it lacks, as any slice does. The bytes written. A last
-   group of 1 or 2 bytes is padded with = to four. *)
-proc base64*(s, out: []U8): INT;
+(* s in base64 into out, which holds base64Size(LEN(s)) bytes at least;
+   a shorter out stops the program at the byte it lacks, as any slice
+   does. alphabet holds the 64 digits (Base64 or Base64Url, or one's
+   own). A last group of 1 or 2 bytes is padded with = to four if pad,
+   and else has 2 or 3 digits. The bytes written. *)
+proc base64With*(s, out, alphabet: []U8; pad: BOOL): INT;
 var i, k, v, left: INT;
 begin
     k := 0;
@@ -409,48 +414,93 @@ begin
         if left > 2 then v := v | INT(s[i + 2]); end;
         out[k] := alphabet[v shr 18];
         out[k + 1] := alphabet[(v shr 12) & 63];
-        if left > 1 then out[k + 2] := alphabet[(v shr 6) & 63]; else out[k + 2] := '='; end;
-        if left > 2 then out[k + 3] := alphabet[v & 63]; else out[k + 3] := '='; end;
+        INC(k, 2);
+        if left > 1 then
+            out[k] := alphabet[(v shr 6) & 63];
+            INC(k);
+        elsif pad then
+            out[k] := '=';
+            INC(k);
+        end;
+        if left > 2 then
+            out[k] := alphabet[v & 63];
+            INC(k);
+        elsif pad then
+            out[k] := '=';
+            INC(k);
+        end;
         INC(i, 3);
-        INC(k, 4);
     end;
     return k;
 end;
 
-(* c's value as a base64 digit, 0 to 63, or -1 if it isn't one; = is -1. *)
-proc base64Val(c: U8): INT;
+(* s in base64 (RFC 4648, section 4), padded, into out as base64With
+   writes it. *)
+proc base64*(s, out: []U8): INT;
 begin
-    if (c >= 'A') and (c <= 'Z') then return INT(c - 'A'); end;
-    if (c >= 'a') and (c <= 'z') then return INT(c - 'a') + 26; end;
-    if (c >= '0') and (c <= '9') then return INT(c - '0') + 52; end;
-    if c = '+' then return 62; end;
-    if c = '/' then return 63; end;
+    return base64With(s, out, Base64, true);
+end;
+
+(* c's value as a digit of alphabet, 0 to 63, or -1 if it isn't one; = is -1. *)
+proc base64Val(c: U8; alphabet: []U8): INT;
+var i: INT;
+begin
+    for i := 0 to 63 do
+        if alphabet[i] = c then return i; end;
+    end;
     return -1;
 end;
 
-(* s, base64 (RFC 4648, section 4), decoded into out, which holds
-   LEN(s) div 4 * 3 bytes at least; a shorter out stops the program at
-   the byte it lacks, as any slice does. The bytes written, and true;
-   or 0 and false, with out left in no state to use, if s is not base64
-   as the RFC writes it and in no other way: its length a multiple of
-   4, every byte a digit but the last one or two, which may be =
-   (and then both of the last two are, or the last alone), and the bits
-   of the digit before the padding that no byte uses are 0, so a byte
-   string has the one spelling that base64 gives it (RFC 4648, section
-   3.5 allows a decoder to take that). Line breaks and padding left off
-   are the caller's to mend first. *)
-proc unbase64*(s, out: []U8): (INT, BOOL);
-var i, k, a, b, c, d, v: INT; last: BOOL;
+(* The last 2 or 3 digits of an unpadded s, at s, decoded into out:
+   the bytes written, 1 or 2; or -1 if a digit isn't one, or the bits
+   that no byte uses aren't 0. *)
+proc unbase64Tail(s, out, alphabet: []U8): INT;
+var a, b, c: INT;
 begin
-    if LEN(s) mod 4 # 0 then return 0, false; end;
+    a := base64Val(s[0], alphabet);
+    b := base64Val(s[1], alphabet);
+    if (a < 0) or (b < 0) then return -1; end;
+    out[0] := U8(((a shl 6) | b) shr 4);
+    if LEN(s) = 2 then
+        if b & 15 # 0 then return -1; end;   (* b's low 4 bits belong to no byte *)
+        return 1;
+    end;
+    c := base64Val(s[2], alphabet);
+    if (c < 0) or (c & 3 # 0) then return -1; end;   (* c's low 2 bits belong to no byte *)
+    out[1] := U8((((a shl 12) | (b shl 6) | c) shr 2) & 255);
+    return 2;
+end;
+
+(* s, base64 with the digits of alphabet, decoded into out, which holds
+   (LEN(s) + 3) div 4 * 3 bytes at least; a shorter out stops the
+   program at the byte it lacks, as any slice does. The bytes written,
+   and true; or 0 and false, with out left in no state to use, if s is
+   not base64 as the RFC writes it and in no other way. With pad: its
+   length a multiple of 4, every byte a digit but the last one or two,
+   which may be = (and then both of the last two are, or the last
+   alone). Without: no =, and a length that is not 1 more than a
+   multiple of 4. Either way the bits of the last digit that no byte
+   uses are 0, so a byte string has the one spelling that base64 gives
+   it (RFC 4648, section 3.5 allows a decoder to take that). Line
+   breaks, and padding or its lack, are the caller's to mend first. *)
+proc unbase64With*(s, out, alphabet: []U8; pad: BOOL): (INT, BOOL);
+var i, k, a, b, c, d, v, whole, n: INT; last: BOOL;
+begin
+    whole := LEN(s);   (* the bytes in groups of 4 *)
+    if pad then
+        if LEN(s) mod 4 # 0 then return 0, false; end;
+    else
+        whole := LEN(s) div 4 * 4;
+        if LEN(s) mod 4 = 1 then return 0, false; end;
+    end;
     k := 0;
     i := 0;
-    while i < LEN(s) do
+    while i < whole do
         last := i + 4 = LEN(s);   (* padding is for the last group only *)
-        a := base64Val(s[i]);
-        b := base64Val(s[i + 1]);
-        c := base64Val(s[i + 2]);
-        d := base64Val(s[i + 3]);
+        a := base64Val(s[i], alphabet);
+        b := base64Val(s[i + 1], alphabet);
+        c := base64Val(s[i + 2], alphabet);
+        d := base64Val(s[i + 3], alphabet);
         if (a < 0) or (b < 0) then return 0, false; end;
         v := (a shl 6) | b;
         out[k] := U8(v shr 4);
@@ -460,19 +510,66 @@ begin
             if d >= 0 then
                 out[k + 2] := U8(((v shl 6) | d) & 255);
                 INC(k, 3);
-            elsif last and (s[i + 3] = '=') and (c & 3 = 0) then
+            elsif pad and last and (s[i + 3] = '=') and (c & 3 = 0) then
                 INC(k, 2);   (* "xxx=": c's low 2 bits belong to no byte *)
             else
                 return 0, false;
             end;
-        elsif last and (s[i + 2] = '=') and (s[i + 3] = '=') and (b & 15 = 0) then
+        elsif pad and last and (s[i + 2] = '=') and (s[i + 3] = '=') and (b & 15 = 0) then
             INC(k);   (* "xx==": b's low 4 bits belong to no byte *)
         else
             return 0, false;
         end;
         INC(i, 4);
     end;
+    if whole < LEN(s) then
+        n := unbase64Tail(s[whole..LEN(s)], out[k..LEN(out)], alphabet);
+        if n < 0 then return 0, false; end;
+        INC(k, n);
+    end;
     return k, true;
+end;
+
+(* s, base64 (RFC 4648, section 4), padded, decoded into out as
+   unbase64With reads it; out holds LEN(s) div 4 * 3 bytes at least. *)
+proc unbase64*(s, out: []U8): (INT, BOOL);
+begin
+    return unbase64With(s, out, Base64, true);
+end;
+
+(* s as a decimal number, digits only; false if it isn't one, or a U64
+   can't hold it. *)
+proc toU64*(s: []U8): (U64, BOOL);
+var v, d: U64; i: INT;
+begin
+    if LEN(s) = 0 then return 0, false; end;
+    for i := 0 to LEN(s) - 1 do
+        if not isDigit(s[i]) then return 0, false; end;
+        d := U64(s[i] - '0');
+        if v > (0FFFFFFFFFFFFFFFFH - d) div 10 then return 0, false; end;
+        v := v * 10 + d;
+    end;
+    return v, true;
+end;
+
+(* The bytes at p up to its zero byte, not copied; "" for nil. *)
+proc fromC*(p: ^U8): []U8;
+var n: INT;
+begin
+    if p = nil then return ""; end;
+    while p[n] # 0 do INC(n); end;
+    return p[0..n];
+end;
+
+(* s copied into out with a zero byte after it, for C: out holds
+   LEN(s) + 1 bytes at least, or the program stops at the byte it
+   lacks, as any slice does. The pointer C is given, PTR(out). *)
+proc toC*(s, out: []U8): ^U8;
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do out[i] := s[i]; end;
+    out[LEN(s)] := 0;
+    return PTR(out);
 end;
 
 (* n in decimal, as Out.int writes it: its bytes, the first of the 20,
@@ -697,6 +794,20 @@ end;
 proc testNumbers;
 var u: U64; ok: BOOL; d: [20]U8; n: INT;
 begin
+    u, ok := toU64("18446744073709551615");
+    if not ok or (u # 0FFFFFFFFFFFFFFFFH) then Rt.stop("Str.toU64: the largest"); end;
+    u, ok := toU64("18446744073709551616");
+    if ok then Rt.stop("Str.toU64: past the largest"); end;
+    u, ok := toU64("0042");
+    if not ok or (u # 42) then Rt.stop("Str.toU64: 0042"); end;
+    u, ok := toU64("");
+    if ok then Rt.stop("Str.toU64: empty"); end;
+    u, ok := toU64("+1");
+    if ok then Rt.stop("Str.toU64: +1"); end;
+    u, ok := toU64("-1");
+    if ok then Rt.stop("Str.toU64: -1"); end;
+    u, ok := toU64("12a");
+    if ok then Rt.stop("Str.toU64: 12a"); end;
     u, ok := toHex("ff");
     if not ok or (u # 255) then Rt.stop("Str.toHex: ff"); end;
     u, ok := toHex("FFFFFFFFFFFFFFFF");
@@ -715,6 +826,22 @@ begin
     if d[0..n] # "-9223372036854775808" then Rt.stop("Str.fromInt: the smallest"); end;
     d, n := fromInt(9223372036854775807);
     if d[0..n] # "9223372036854775807" then Rt.stop("Str.fromInt: the largest"); end;
+end;
+
+(* fromC and toC. *)
+proc testC;
+var room: [4]U8; c: [4]U8; p: ^U8;
+begin
+    if LEN(fromC(nil)) # 0 then Rt.stop("Str.fromC: nil"); end;
+    c := "abc\x00";
+    if fromC(ADR(c[0])) # "abc" then Rt.stop("Str.fromC: abc"); end;
+    c[0] := 0;
+    if LEN(fromC(ADR(c[0]))) # 0 then Rt.stop("Str.fromC: empty"); end;
+    room := "xxxx";
+    p := toC("abc", room);
+    if (p # ADR(room[0])) or (room[0..3] # "abc") or (room[3] # 0) then Rt.stop("Str.toC: abc"); end;
+    p := toC("", room);
+    if room[0] # 0 then Rt.stop("Str.toC: empty"); end;
 end;
 
 (* One of the RFC 4648 section 10 vectors: plain codes to coded and back. *)
@@ -749,6 +876,56 @@ begin
     end;
 end;
 
+(* plain in the other alphabet and unpadded, and back; in the padded
+   form too, with the - and _ of base64url. *)
+proc testUrlVector(plain, bare, padded: []U8);
+var buf: [16]U8; n: INT; ok: BOOL;
+begin
+    n := base64With(plain, buf[0..base64Size(LEN(plain))], Base64Url, false);
+    if buf[0..n] # bare then Rt.stop("Str.base64With: unpadded"); end;
+    n, ok := unbase64With(bare, buf[0..(LEN(bare) + 3) div 4 * 3], Base64Url, false);
+    if not ok or (buf[0..n] # plain) then Rt.stop("Str.unbase64With: unpadded"); end;
+    n := base64With(plain, buf[0..base64Size(LEN(plain))], Base64Url, true);
+    if buf[0..n] # padded then Rt.stop("Str.base64With: padded"); end;
+    n, ok := unbase64With(padded, buf[0..LEN(padded) div 4 * 3], Base64Url, true);
+    if not ok or (buf[0..n] # plain) then Rt.stop("Str.unbase64With: padded"); end;
+end;
+
+(* s must not decode, unpadded, in base64url's alphabet. *)
+proc testUrlBad(s: []U8);
+var buf: [16]U8; ok: BOOL;
+begin
+    _, ok := unbase64With(s, buf[0..(LEN(s) + 3) div 4 * 3], Base64Url, false);
+    if ok then Rt.stop("Str.unbase64With: took a bad string"); end;
+end;
+
+(* RFC 4648 section 5's alphabet, padded and not. *)
+proc testBase64Url;
+var buf: [8]U8; ok: BOOL;
+begin
+    testUrlVector("", "", "");
+    testUrlVector("f", "Zg", "Zg==");
+    testUrlVector("fo", "Zm8", "Zm8=");
+    testUrlVector("foo", "Zm9v", "Zm9v");
+    testUrlVector("foob", "Zm9vYg", "Zm9vYg==");
+    testUrlVector("fooba", "Zm9vYmE", "Zm9vYmE=");
+    testUrlVector("foobar", "Zm9vYmFy", "Zm9vYmFy");
+    testUrlVector("\xfb\xff", "-_8", "-_8=");
+    testUrlBad("Z");        (* one digit over *)
+    testUrlBad("Zm9vY");
+    testUrlBad("Zg==");     (* padding, unpadded *)
+    testUrlBad("Zm8=");
+    testUrlBad("Zm+v");     (* base64's digit *)
+    testUrlBad("Zm/v");
+    testUrlBad("Zh");       (* the low 4 bits of h are not 0 *)
+    testUrlBad("Zm9");      (* the low 2 bits of 9 are not 0 *)
+    testUrlBad("Zm9v\n");
+    _, ok := unbase64With("Zg", buf[0..3], Base64, true);   (* padding left off *)
+    if ok then Rt.stop("Str.unbase64With: padding left off"); end;
+    _, ok := unbase64With("Zm-v", buf[0..3], Base64, true);
+    if ok then Rt.stop("Str.unbase64With: base64url's digit in base64"); end;
+end;
+
 proc testBase64;
 begin
     testVector("", "");
@@ -775,6 +952,7 @@ begin
     testBad("Zm9=");       (* the low 2 bits of 9 are not 0 *)
     testBad("Zm8=Zm9v");   (* padding, then another group *)
     testBase64Round;
+    testBase64Url;
 end;
 
 (* The module's test: stops the program if something is wrong. *)
@@ -802,6 +980,7 @@ begin
     testUtf8;
     testToInt;
     testNumbers;
+    testC;
     testBase64;
     testOrder;
 end;

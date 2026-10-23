@@ -667,6 +667,12 @@ proc valid*(s: []U8): BOOL;           (* s is UTF-8, every character rightly spe
 proc chars*(s: []U8): INT;            (* the characters in s, as decode reads them *)
 proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
 proc toHex*(s: []U8): (U64, BOOL);    (* s, in hexadecimal; false if it isn't a number a U64 holds *)
+proc toU64*(s: []U8): (U64, BOOL);    (* s, decimal digits only; false if it isn't one, or a U64 can't hold it *)
+proc fromC*(p: ^U8): []U8;            (* the bytes at p up to its zero byte, not copied; "" for nil *)
+proc toC*(s, out: []U8): ^U8;         (* s copied into out with a zero byte after it, which holds LEN(s) + 1 bytes at least: PTR(out) *)
+const Base64*, Base64Url*;            (* the digits of RFC 4648, sections 4 and 5 *)
+proc base64With*(s, out, alphabet: []U8; pad: BOOL): INT;   (* s in base64 with alphabet's 64 digits into out, which holds base64Size(LEN(s)) bytes at least, padded with = if pad: the bytes written *)
+proc unbase64With*(s, out, alphabet: []U8; pad: BOOL): (INT, BOOL);   (* s, base64 as base64With wrote it, into out, which holds (LEN(s) + 3) div 4 * 3 bytes at least: the bytes written; false if s is not that *)
 proc base64Size*(n: INT): INT;        (* the bytes base64 makes of n bytes: 4 for each 3, or part of 3 *)
 proc base64*(s, out: []U8): INT;      (* s in base64 into out, which holds base64Size(LEN(s)) bytes at least: the bytes written *)
 proc unbase64*(s, out: []U8): (INT, BOOL);   (* s, base64, into out, which holds LEN(s) div 4 * 3 bytes at least: the bytes written; false if s is not base64 *)
@@ -838,9 +844,22 @@ a string literal's (section 5.10). `join` and `replace` add to a
 and nothing else. `toHex` reads hexadecimal digits, capitals or not,
 and nothing else: no sign, `0x` or `H`. `fromInt` writes a number as
 `Out.int` does, with a `-` if it is negative, its bytes the first of
-the 20 it gives.
+the 20 it gives. `toU64` reads a decimal number as `toInt` does, but
+digits only (no sign), up to the largest `U64`: what `Fmt.uint` writes.
 
-`base64` writes `s` as RFC 4648 (section 4) does: the digits `A` to
+`fromC` and `toC` are the two ends of a call to C. `fromC` makes a
+slice of the bytes at a pointer up to its zero byte, without copying
+them; `nil` gives `""`. `toC` copies `s` into `out`, puts a zero after
+it and gives `PTR(out)`, so a call reads `C.realpath(Str.toC(path,
+room), ...)`. `out` holds `LEN(s) + 1` bytes at least; a shorter one
+stops the program, as any slice does.
+
+`base64With` and `unbase64With` take the 64 digits as `alphabet` and
+say with `pad` whether `=` pads a last group: `Base64Url` is section
+5's, with `-` and `_`, and `Base64` section 4's. Without padding a last
+group has 2 or 3 digits, and a length 1 more than a multiple of 4 is
+no base64. `base64` and `unbase64` are `Base64` with padding. In
+detail, `base64` writes `s` as RFC 4648 (section 4) does: the digits `A` to
 `Z`, `a` to `z`, `0` to `9`, `+` and `/`, and `=` to pad a last group
 of 1 or 2 bytes to four. `unbase64` reads that and nothing else: its
 length a multiple of 4, `=` only as the last one or two bytes, and the
