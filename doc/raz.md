@@ -1017,10 +1017,13 @@ the slice must not make a value mean nothing: a `BOOL`, a set, an
 enumeration, a slice, a variant, a procedure type, `ERROR`, or a record
 or array holding one, is an error. The slice is made, and checked, as
 any slice of the variable is, so its bytes follow the rules for it: the
-bytes of a local can't be returned (section 7.3), and a `const`
-parameter, a view, a volatile variable and a string constant are
-errors, as they are for `ADR`. The bytes are in the target's order
-(appendix A).
+bytes of a local can't be returned (section 7.3). Of a slice they are
+its elements, as `PTR(s)` gives them, whatever holds the slice. Of any
+other variable they are its own, as `ADR` gives them: a `const`
+parameter, another module's variable, a view and a field of a packed
+record are errors, as they are for `ADR`, and so is a volatile variable.
+`x` must be a variable: a constant, a string constant too, is an error.
+The bytes are in the target's order (appendix A).
 
 `PTR(s)` is the first of the two words of `s` (section 5.3), and is not
 checked. For a slice that isn't empty it is `ADR(s[0])`; for an empty
