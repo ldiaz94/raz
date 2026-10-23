@@ -2463,6 +2463,8 @@ check at each.
 
 ### Freeing back to a mark: `Arena.mark` and `Arena.release`
 
+**Status.** Approved by the owner on 2026-10-23 and implemented in `lib/Arena.raz`.
+
 Library growth that breaks no program. `Arena` frees only everything at
 once, so fdn's recursive walk, which makes a few strings per entry,
 gives each back to the heap by hand. An arena that goes back to where
@@ -2483,6 +2485,8 @@ Met in fdn.
 **Recommendation:** take; two lines in `Arena` replace a free per string.
 
 ### Inserting and removing in the middle of a `Vec`
+
+**Status.** Approved by the owner on 2026-10-23 and implemented in `lib/Vec.raz`.
 
 Library growth that breaks no program. dwa's edit takes lines out and
 puts others in by resizing around a `COPY` by hand, twice, where the
