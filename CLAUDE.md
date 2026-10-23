@@ -129,11 +129,19 @@ library. rat, rlX11 and rloc are other users of `Sys`.
 
 **The freeze.** Since v0.5.0 the language changes only to mend a
 defect, and the library grows only by what breaks no program written
-for it. A wish for more, the owner's or yours, goes in
-`PROPOSALS.md`, for a later thaw; it isn't built. Thaws happen only by the
-owner's word (v0.6.0, reports 2026-10.13 to 10.23, 10.25 for strings,
-10.26 for `INT` and views, 10.33 for `const` parameters, variants
-in constants and the library by `var`, and 10.34 for `PTR`).
+for it. Thaws happen only by the owner's word (v0.6.0, reports
+2026-10.13 to 10.23, 10.25 for strings, 10.26 for `INT` and views, 10.33
+for `const` parameters, variants in constants and the library by `var`,
+10.34 for `PTR`, and 10.35 and 10.36 for what `PROPOSALS.md` collated).
+
+**The hard freeze** (owner, 2026-10-23). raz takes no more proposals:
+nothing new goes in `PROPOSALS.md`, and a wish, the owner's or yours,
+isn't recorded. What is open there, the safety thaw and the Moss work
+(`Host`, a freestanding program stated, the assembler's instructions,
+implementation limits), is the last. Once it is done the language is in
+a hard freeze: no more thaws, and the language and the library change
+only to mend a defect, the compiler or the library doing other than the
+report says.
 
 **The reserved words and the module names are settled.** That a word
 is reserved, however common (`code`, `to`, `packed`, `forward`, `set`,

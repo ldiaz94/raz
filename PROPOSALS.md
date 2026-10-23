@@ -4,6 +4,11 @@ What the language or the library might have, met while writing raz.
 None is built while the freeze holds; each waits for a later thaw, by
 the owner's word, and goes into the report before any code.
 
+**Closed to new proposals** (owner, 2026-10-23). Nothing new is added.
+What is still open here, the safety thaw and the Moss work, is the
+last; once it is done the language is in a hard freeze, and the
+language and the library change only to mend a defect.
+
 ## Installed source libraries and RAZ_PATH
 
 **Status.** Approved by the owner on 2026-10-19 and implemented after
