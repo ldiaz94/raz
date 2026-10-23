@@ -1,0 +1,5 @@
+conform/err/BoolOfConst.raz:2:18: error: can't convert an integer constant to BOOL
+    2 | const Yes = BOOL(1);
+      |                  ^
+help: a comparison says it: 1 # 0
+raz: 1 error

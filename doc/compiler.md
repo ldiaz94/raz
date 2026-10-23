@@ -22,7 +22,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,605 | 1,318 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,666 | 1,885 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,293 | 1,841 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Item.raz` | 2,297 | 1,844 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,403 | 3,803 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
@@ -1395,6 +1395,12 @@ and `convert` clears, so that `U8(a + b)` widens. `return f(x)` passes
 results on as they are, so `resultsFit` takes only `INT` to `I64`.
 `assign` stores, or
 copies records and arrays. `convert` is the written conversion, `T(x)`.
+A `BOOL` converts to an integer (report 2026-10.36) as an integer
+does, with no code of its own: its value is already 0 or 1, in a
+variable's byte and where `value` makes a condition's (by `setcc` and
+`movzx`, or 1 and 0 where `and` and `or` jump to), so `U64(a = b)` is
+the compare and `setcc`, and a constant `BOOL`'s is folded. An integer to `BOOL` stays an error, with help
+that says `x # 0`.
 
 Views, `v.(T)` (report section 6.9): a view is the item of `v` with
 `T` for its type. It is at the same place, so nothing is copied or

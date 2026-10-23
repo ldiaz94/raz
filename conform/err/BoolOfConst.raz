@@ -1,0 +1,3 @@
+module BoolOfConst;
+const Yes = BOOL(1);
+end BoolOfConst.

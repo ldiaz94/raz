@@ -1640,7 +1640,8 @@ begin
     end;
     x.made := false;   (* what a conversion gives widens, U8(a + b) too *)
     if Sym.same(s, t) then return nil; end;
-    if (Sym.isInt(s) or (s^.form in {Sym.fEnum, Sym.fSet})) and (t^.form = Sym.fInt) then
+    (* a BOOL is 0 or 1, as a comparison's value is, so it converts as an integer does *)
+    if (Sym.isInt(s) or (s^.form in {Sym.fEnum, Sym.fSet, Sym.fBool})) and (t^.form = Sym.fInt) then
         if x.mode = mConst then x.val := cut(x.val, t);
         else try value(x); Gen.narrow(INT(t^.size), t^.signed); end;
     elsif Sym.isInt(s) and (t^.form = Sym.fEnum) then
@@ -1687,6 +1688,9 @@ begin
         if x.mode # mConst then try value(x); end;
     elsif (s^.form in {Sym.fPtr, Sym.fProc}) and isWord(t) then
         try value(x);
+    elsif Sym.isInt(s) and (t^.form = Sym.fBool) then
+        return Scan.markHelp(x.pos, say1("can't convert {} to BOOL", Sym.typeName(s)),
+            say1("a comparison says it: {} # 0", Diag.source(x.pos)));
     else
         return Scan.markAt(x.pos, say2("can't convert {} to {}", Sym.typeName(s), Sym.typeName(t)));
     end;

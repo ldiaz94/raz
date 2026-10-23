@@ -197,7 +197,10 @@ otherwise.
   is an alias. A hex literal above high(I64) is a `U64`.
 - `p^.f` and `p^[i]` are explicit; `p[i]` on a pointer to an array is
   an error. A statement starts with a name, so `^T(x)^ := v` isn't one.
-- No `BOOL` to integer conversion (left out until needed).
+- A `BOOL` converts to every integer type, 0 or 1 (report 2026-10.36),
+  in `convert`'s integer branch with no code of its own, as a `BOOL`'s
+  value is already 0 or 1; of a constant it folds. No integer to
+  `BOOL`: the error's help says `x # 0`.
 - `for`: the step is a constant; the loop never steps past the limit, so
   it can't wrap; afterwards the variable holds the last value it took;
   the body may assign it. Leave as is.

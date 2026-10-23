@@ -1,0 +1,7 @@
+module BoolToReal;
+proc main*;
+var b: BOOL; r: F64;
+begin
+    r := F64(b);
+end;
+end BoolToReal.

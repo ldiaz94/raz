@@ -1,0 +1,4 @@
+conform/err/BoolToReal.raz:5:14: error: can't convert BOOL to F64
+    5 |     r := F64(b);
+      |              ^
+raz: 1 error

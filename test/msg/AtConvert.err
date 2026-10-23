@@ -1,4 +1,5 @@
-conform/err/AtConvert.raz:5:14: error: can't convert BOOL to I64
-    5 |     x := I64(b);
-      |              ^
+conform/err/AtConvert.raz:5:15: error: can't convert I64 to BOOL
+    5 |     b := BOOL(x);
+      |               ^
+help: a comparison says it: x # 0
 raz: 1 error
