@@ -1,0 +1,8 @@
+module MaxEnum;
+type Color = (red, green, blue);
+proc main*;
+var n: INT;
+begin
+    n := MAX(Color);
+end;
+end MaxEnum.

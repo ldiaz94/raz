@@ -1,0 +1,4 @@
+conform/err/MaxEnum.raz:6:14: error: MAX needs an integer type, found Color
+    6 |     n := MAX(Color);
+      |              ^^^^^
+raz: 1 error

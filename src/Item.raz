@@ -1560,6 +1560,27 @@ begin
     return nil;
 end;
 
+(* MIN(T), or MAX(T) if max: the smallest or the largest value of the
+   integer type t, an untyped constant (report section 6.1); p is where
+   T is written. MAX(U64) and MAX(UINT) are above high(I64), where the
+   untyped constants end, so they keep their type, as a hexadecimal
+   number above it is a U64 (report section 3). *)
+proc limit*(var x: Item; t: ^Sym.Type; max: BOOL; p: Diag.Pos): ERROR;
+var name: []U8; ones: U64; v: I64;
+begin
+    if t^.form # Sym.fInt then
+        if max then name := "MAX"; else name := "MIN"; end;
+        return Scan.markAt(p, say2("{} needs an integer type, found {}", name, Sym.typeName(t)));
+    end;
+    ones := (~U64(0)) shr (64 - bits(t));   (* as many ones as t has bits *)
+    if t^.signed then ones := ones shr 1; end;
+    if max then v := I64(ones);
+    elsif t^.signed then v := -I64(ones) - 1;
+    else v := 0; end;
+    if max and (v < 0) then makeConst(x, t, v); else makeConst(x, Sym.tConst, v); end;
+    return nil;
+end;
+
 proc convert*(var x: Item; t: ^Sym.Type): ERROR;
 var s: ^Sym.Type; r: F64;
 begin

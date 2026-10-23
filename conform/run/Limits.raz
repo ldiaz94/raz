@@ -1,0 +1,41 @@
+(* MIN(T) and MAX(T), the smallest and the largest value of each integer
+   type (report section 6.1), untyped constants: in a constant, in
+   arithmetic of their own, and given to each type. MAX(U64) and
+   MAX(UINT) are above the largest I64. *)
+module Limits;
+import Out;
+
+const
+    Byte = MAX(U8) + 1;          (* untyped: no wrap at 255 *)
+    Span = MAX(I16) - MIN(I16);
+    All = MAX(U64);
+
+var
+    i8: I8; i16: I16; i32: I32; i64: I64; int: INT;
+    u8: U8; u16: U16; u32: U32; u64: U64; uint: UINT;
+
+proc main*;
+begin
+    Out.int(MIN(I8)); Out.str(" "); Out.int(MAX(I8)); Out.ln;
+    Out.int(MIN(I16)); Out.str(" "); Out.int(MAX(I16)); Out.ln;
+    Out.int(MIN(I32)); Out.str(" "); Out.int(MAX(I32)); Out.ln;
+    Out.int(MIN(I64)); Out.str(" "); Out.int(MAX(I64)); Out.ln;
+    Out.int(MIN(INT)); Out.str(" "); Out.int(MAX(INT)); Out.ln;
+    Out.int(MIN(U8)); Out.str(" "); Out.int(MAX(U8)); Out.ln;
+    Out.int(MIN(U16)); Out.str(" "); Out.int(MAX(U16)); Out.ln;
+    Out.int(MIN(U32)); Out.str(" "); Out.int(MAX(U32)); Out.ln;
+    Out.int(MIN(U64)); Out.str(" "); Out.hex(MAX(U64), 16); Out.ln;
+    Out.int(MIN(UINT)); Out.str(" "); Out.hex(U64(MAX(UINT)), 16); Out.ln;
+    Out.int(Byte); Out.str(" "); Out.int(Span); Out.str(" "); Out.hex(All, 16); Out.ln;
+    (* each into its own type, and one past it wraps *)
+    i8 := MAX(I8); i16 := MIN(I16); i32 := MAX(I32); i64 := MIN(I64); int := MAX(INT);
+    u8 := MAX(U8); u16 := MAX(U16); u32 := MAX(U32); u64 := MAX(U64); uint := MAX(UINT);
+    INC(i8); DEC(i16); INC(i32); DEC(i64); INC(int);
+    INC(u8); INC(u16); INC(u32); INC(u64); INC(uint);
+    Out.int(I64(i8)); Out.str(" "); Out.int(I64(i16)); Out.str(" "); Out.int(I64(i32)); Out.str(" ");
+    Out.int(i64); Out.str(" "); Out.int(int); Out.ln;
+    Out.int(I64(u8)); Out.str(" "); Out.int(I64(u16)); Out.str(" "); Out.int(I64(u32)); Out.str(" ");
+    Out.hex(u64, 1); Out.str(" "); Out.hex(U64(uint), 1); Out.ln;
+end;
+
+end Limits.

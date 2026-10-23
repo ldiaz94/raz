@@ -1,0 +1,4 @@
+conform/err/MaxValue.raz:5:14: error: x isn't a type
+    5 |     n := MAX(x);
+      |              ^
+raz: 1 error

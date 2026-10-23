@@ -1003,7 +1003,7 @@ begin
 end;
 
 proc builtin(var x: TItem): ERROR;
-var which, n: INT; y: TItem; t: PType;
+var which, n: INT; y: TItem; t: PType; start: Diag.Pos;
 begin
     which := INT(x.obj^.val);
     if (which = Sym.bFence) or (which = Sym.bArgc) or (which = Sym.bArgv) then
@@ -1102,6 +1102,10 @@ begin
         try expect(Scan.sComma);
         try expression(y, nil);
         try Item.rotate(x, y, which = Sym.bRol);
+    | Sym.bMin, Sym.bMax:
+        start := Scan.tokPos();
+        t := try parseType();
+        try Item.limit(x, t, which = Sym.bMax, Scan.spanFrom(start));
     | Sym.bCopy:
         try expression(x, nil);
         try Item.copyDest(x);

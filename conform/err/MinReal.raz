@@ -1,0 +1,3 @@
+module MinReal;
+const Least = MIN(F64);
+end MinReal.

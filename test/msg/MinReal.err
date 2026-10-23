@@ -1,0 +1,4 @@
+conform/err/MinReal.raz:2:19: error: MIN needs an integer type, found F64
+    2 | const Least = MIN(F64);
+      |                   ^^^
+raz: 1 error

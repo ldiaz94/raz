@@ -339,3 +339,7 @@ otherwise.
   width as a shift's is, `n & (w - 1)`: `ROL(x, -1)` is `ROR(x, 1)`.
   The result is a built-in's, not an operator's, and widens (`made`
   is false). Of two constants they fold, in a constant too.
+- `MIN(T)` and `MAX(T)` (report 2026-10.36) are untyped constants, but
+  `MAX(U64)` and `MAX(UINT)`, above `high(I64)`, keep their type, as a
+  hex literal above it is a `U64`. A `T` not an integer type is an
+  error; `MAX(x)` of a variable is "x isn't a type".

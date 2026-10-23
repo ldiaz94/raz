@@ -1,0 +1,7 @@
+module MaxValue;
+proc main*;
+var n, x: INT;
+begin
+    n := MAX(x);
+end;
+end MaxValue.

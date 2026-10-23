@@ -33,7 +33,7 @@
 
 (defconst raz-builtins
   '("SIZE" "ADR" "LEN" "PTR" "NEW" "MSG" "SYSCALL" "FENCE" "CAS" "XCHG" "XADD"
-    "ARGC" "ARGV" "INC" "DEC" "COPY" "ROL" "ROR"))
+    "ARGC" "ARGV" "INC" "DEC" "COPY" "ROL" "ROR" "MIN" "MAX"))
 
 (defvar raz-mode-syntax-table
   (let ((st (make-syntax-table)))
