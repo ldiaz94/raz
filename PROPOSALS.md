@@ -842,6 +842,8 @@ lifetimes out, and so the first false alarm above, on purpose.
 
 ## A minus sign after an operator
 
+**Status.** Not planned (owner, 2026-10-23): dropped for good; `x & (-8)` or `x & ~7` stays the spelling.
+
 `x & -8` and `n * -1` are errors: a unary minus belongs to the start
 of a `SimpleExpr` (6), not to a factor, so after an operator it needs
 parentheses, `x & (-8)`, or another spelling, `x & ~7`. This is the
@@ -858,8 +860,6 @@ The cost is that a minus means two things by where it stands, which
 the report would say in a line.
 
 Met in tery's `aligned`, `(a + 7) & -8`.
-
-**Status.** Deferred by the owner on 2026-10-22: not soon, if at all.
 
 ## Dividing 128 bits by 64
 
