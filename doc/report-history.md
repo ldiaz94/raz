@@ -236,6 +236,8 @@ at the time.
   not core. And a twelfth thaw, by the owner's word: `MIN(T)` and
   `MAX(T)`, the smallest and largest value of an integer type, untyped
   constants but for `MAX(U64)` and `MAX(UINT)`, which keep their type;
+  `ABS(x)`, a number without its sign, of `x`'s type, an integer or a
+  real, and of a constant a constant (sections 4, 6.1 and 6.8);
   and `CLZ(x)`, `CTZ(x)` and `POPCOUNT(x)`, which count the
   zero bits above the highest one, below the lowest one, and the one
   bits (or members of a set) of a word of an unsigned integer type, an

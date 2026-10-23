@@ -52,6 +52,7 @@ starts at, even an empty one (section 6.8); it breaks no program.
 rotated (sections 6.1 and 6.8); it breaks no program. 2026-10.36 is a
 twelfth: `MIN(T)` and `MAX(T)`, the limits of an integer type, and
 `CLZ`, `CTZ` and `POPCOUNT`, which count bits (sections 6.1 and 6.8);
+`ABS(x)`, a number without its sign (sections 6.1 and 6.8);
 `INT(b)`, a `BOOL` as an integer (section 6.7); `OFFSET(T, f)` and
 `SIZE(T.f)`, where a field lies and how big it is; `BYTES(x)`, the
 bytes of a variable or a slice (sections 4 and 6.8); `FILL(d, x)`, an
@@ -390,8 +391,8 @@ procedure may be declared `forward` and defined later (section 8).
 
 **Constants** are evaluated by the compiler. Their expressions use only
 literals, other constants, operators, conversions, `SIZE`, `OFFSET`, the `LEN`
-of arrays and strings, `MIN`, `MAX`, `ROL`, `ROR`, `CLZ`, `CTZ`,
-`POPCOUNT`, and a variant's cases. A constant is an integer,
+of arrays and strings, `MIN`, `MAX`, `ABS`, `ROL`, `ROR`, `CLZ`,
+`CTZ`, `POPCOUNT`, and a variant's cases. A constant is an integer,
 a real, a `BOOL`, a name of an enumeration, a set, a string, an array,
 a record, a variant or an `ERROR`. A constant of an integer type wraps as the
 program would: `U8(250) + 10` is 4. Dividing by zero in a constant is
@@ -862,6 +863,14 @@ integer type `T`, untyped constants: `MAX(U8)` is 255 and `MIN(I16)` is
 own type, as a hexadecimal number above it has (section 2). Each of the five, given constants, is a
 constant (section 4).
 
+`ABS(x)` (section 6.8) is `x` without its sign, of `x`'s type, for an
+integer or a real. For a signed integer it is `-x` if `x < 0`, so the
+smallest value of the type gives itself, as `-x` does; for an unsigned
+type it is `x`. For a real it clears the sign bit: `ABS(-0.0)` is 0.0,
+`ABS` of a NaN is a NaN, and of minus infinity is infinity. Of a
+constant it is a constant; of an untyped one, the untyped absolute
+value, `ABS(-5)` is 5, which doesn't wrap.
+
 Relations compare as signed or unsigned according to the type.
 
 ### 6.2 Booleans
@@ -1008,6 +1017,7 @@ the same rules: `U8(300)` is 44. `U64(a = b)` is 0 or 1, and
 | `CAS(p, old, new)` | if `p^ = old`, sets `p^ := new` and returns `true`; atomically |
 | `XCHG(p, x)` | sets `p^ := x` and returns the value before, atomically |
 | `XADD(p, x)` | adds `x` to `p^` and returns the value before, atomically |
+| `ABS(x)` | `x` without its sign, of `x`'s type; for an integer, `-x` if `x < 0`, so the smallest `I64` gives itself, as `-x` does; for a real, the sign cleared; `x` of a numeric type (section 6.1) |
 | `ROL(x, n)`, `ROR(x, n)` | `x` rotated left, or right, by `n` bits modulo its width; `x` of an unsigned integer type (section 6.1) |
 | `CLZ(x)`, `CTZ(x)` | the number of zero bits above the highest one in `x`, or below the lowest one, an `INT`; the width of `x`'s type if `x` is 0; `x` of an unsigned integer type |
 | `POPCOUNT(x)` | the number of one bits in `x`, or of members of the set `x`, an `INT`; `x` of an unsigned integer type or a set |
