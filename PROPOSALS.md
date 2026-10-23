@@ -1013,6 +1013,8 @@ compiler needs a PE writer and Microsoft's calling convention.
 
 ## An enumeration's name read against the type it is given to
 
+**Status.** Not planned (owner, 2026-10-23): 5.7's rule, that the type is never taken from where the name stands, keeps reading local.
+
 Two enumerations of a scope may share a name, and then the name alone
 is an error: "the type is never taken from where the name stands"
 (5.7). So a table of records, which names its enumerations on every
