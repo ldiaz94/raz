@@ -616,7 +616,9 @@ caught and gives the same fd. Catching `sigKill` or `sigStop`, or the
 signals `Rt` reports, SIGSEGV and SIGFPE, is -22 (EINVAL). `ignore`
 makes a signal do nothing, as a shell ignores `sigTtou` so that it can
 take its terminal back, and `ignore(sig, false)` gives it back what it
-does at first. A program that `spawn` starts begins with neither.
+does at first. On a signal that `catch` took, either gives it up: the
+signal is no longer caught, with its default action or ignored, and
+`catch`'s fd gives the signals still caught. A program that `spawn` starts begins with neither.
 `ignored(sig)` says whether a signal does nothing now, because the
 program ignored it or because the one that started this one left it
 so, as a program in the background or under `nohup` finds `sigInt` and

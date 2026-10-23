@@ -2044,7 +2044,8 @@ begin
 end;
 
 (* Makes the signal sig do nothing, or, if not yes, what it does at
-   first: 0, or minus an errno. *)
+   first: 0, or minus an errno. A signal catch took is given up: it is
+   caught no more (a number already on catch's fd is still given). *)
 proc ignore*(sig: INT; yes: BOOL): INT;
 var act: Sigaction;
 begin
@@ -2453,6 +2454,44 @@ begin
     close(l);
 end;
 
+(* Runs a copy of this program that catches sigUsr1 and sigUsr2, gives
+   up sigUsr1 by ignore(sigUsr1, yes) and sends itself send. The copy
+   exits 0 if sigUsr1 then does nothing, or sigUsr2 still comes on
+   catch's fd, and 1 if not; this says how it ended. *)
+proc giveUpChild(yes: BOOL; send: INT): (Status, INT);
+var child, c, fd: INT; st: Status;
+begin
+    child := fork();
+    if child = 0 then
+        fd := catch([sigUsr1, sigUsr2]);
+        if fd < 0 then exit(3); end;
+        while caught(fd) # 0 do end;                    (* what the parent had left there *)
+        if (ignore(sigUsr1, yes) # 0) or (kill(pid(), send) # 0) then exit(3); end;
+        if send = sigUsr1 then
+            if ready(fd, 100) then exit(1); end;     (* it ought to have ended, or be ignored *)
+            exit(0);
+        end;
+        if not ready(fd, 1000) or (caught(fd) # sigUsr2) then exit(1); end;
+        exit(0);
+    end;
+    _, st, c := wait(child, true);
+    return st, c;
+end;
+
+(* The test of giving a caught signal up: with the default back it
+   ends the program; ignored it does nothing; and the signals still
+   caught still come on catch's fd. *)
+proc testGiveUp;
+var st: Status; c: INT;
+begin
+    st, c := giveUpChild(false, sigUsr1);
+    if (st # killed) or (c # sigUsr1) then exit(2); end;
+    st, c := giveUpChild(true, sigUsr1);
+    if (st # exited) or (c # 0) then exit(2); end;
+    st, c := giveUpChild(false, sigUsr2);
+    if (st # exited) or (c # 0) then exit(2); end;
+end;
+
 (* The test of what a program asks of itself: a signal ignored or not,
    an environment variable unset or empty, and the processors. *)
 proc testProcess;
@@ -2820,6 +2859,7 @@ begin
     testShell;
     testNet;
     testProcess;
+    testGiveUp;
     testServer;
     testMaps;
 end;
