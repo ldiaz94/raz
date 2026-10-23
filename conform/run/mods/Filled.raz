@@ -1,0 +1,93 @@
+(* A generic module for the test Fill: FILL of slices of T, and of
+   arrays of T, of 0 to 100 elements, each with elements around it that
+   must keep what they held. Elements are compared by their bytes, so T
+   may be a record, which = doesn't compare. *)
+module Filled(T);
+import Out;
+
+(* The lengths of the slices filled *)
+const Lens: [7]INT = [0, 1, 2, 7, 8, 9, 100];
+
+(* An array of n elements of T, with one before it and one after it *)
+type
+    G1 = record pre: T; a: [1]T; post: T; end;
+    G2 = record pre: T; a: [2]T; post: T; end;
+    G7 = record pre: T; a: [7]T; post: T; end;
+    G8 = record pre: T; a: [8]T; post: T; end;
+    G9 = record pre: T; a: [9]T; post: T; end;
+    G100 = record pre: T; a: [100]T; post: T; end;
+
+var
+    buf: [102]T;   (* slices are cut from it, from its second element *)
+    g1: G1; g2: G2; g7: G7; g8: G8; g9: G9; g100: G100;
+    filled: INT;   (* elements filled, and checked *)
+    wrong: INT;    (* elements that hold what they shouldn't *)
+
+(* The bytes of the T at p: BYTES takes no BOOL, set or enumeration *)
+proc bytesAt(p: ^T): []U8;
+var q: ^U8;
+begin
+    q := ^U8(p);
+    return q[0..SIZE(T)];
+end;
+
+(* Counts the elements of a that aren't v *)
+proc count(a: []T; v: T);
+var i: INT;
+begin
+    for i := 0 to LEN(a) - 1 do
+        if bytesAt(ADR(a[i])) # bytesAt(ADR(v)) then INC(wrong); end;
+    end;
+end;
+
+(* Sets every element of a to s, by a loop *)
+proc reset(a: []T; s: T);
+var i: INT;
+begin
+    for i := 0 to LEN(a) - 1 do a[i] := s; end;
+end;
+
+(* Fills slices of buf with v, the rest s *)
+proc slices(v, s: T);
+var k, n: INT;
+begin
+    for k := 0 to LEN(Lens) - 1 do
+        n := Lens[k];
+        reset(buf, s);
+        FILL(buf[1..1 + n], v);
+        count(buf[0..1], s);
+        count(buf[1..1 + n], v);
+        count(buf[1 + n..102], s);
+        INC(filled, n);
+    end;
+end;
+
+(* Fills each array with v, its guards and what it held before s *)
+proc arrays(v, s: T);
+begin
+    g1.pre := s; g1.post := s; reset(g1.a, s); FILL(g1.a, v);
+    count(g1.a, v); count([g1.pre, g1.post], s); INC(filled, LEN(g1.a));
+    g2.pre := s; g2.post := s; reset(g2.a, s); FILL(g2.a, v);
+    count(g2.a, v); count([g2.pre, g2.post], s); INC(filled, LEN(g2.a));
+    g7.pre := s; g7.post := s; reset(g7.a, s); FILL(g7.a, v);
+    count(g7.a, v); count([g7.pre, g7.post], s); INC(filled, LEN(g7.a));
+    g8.pre := s; g8.post := s; reset(g8.a, s); FILL(g8.a, v);
+    count(g8.a, v); count([g8.pre, g8.post], s); INC(filled, LEN(g8.a));
+    g9.pre := s; g9.post := s; reset(g9.a, s); FILL(g9.a, v);
+    count(g9.a, v); count([g9.pre, g9.post], s); INC(filled, LEN(g9.a));
+    g100.pre := s; g100.post := s; reset(g100.a, s); FILL(g100.a, v);
+    count(g100.a, v); count([g100.pre, g100.post], s); INC(filled, LEN(g100.a));
+end;
+
+(* Fills slices and arrays with v, around s, and says how many elements
+   were filled and how many are wrong, after name *)
+proc check*(name: []U8; v, s: T);
+begin
+    filled := 0;
+    wrong := 0;
+    slices(v, s);
+    arrays(v, s);
+    Out.str(name); Out.char(' '); Out.int(filled); Out.char(' '); Out.int(wrong); Out.ln;
+end;
+
+end Filled.

@@ -1173,6 +1173,15 @@ begin
         try Item.copyFrom(x, y);
         Item.makeConst(x, Sym.tNone, 0);
         x.mode := Item.mNone;
+    | Sym.bFill:
+        try expression(x, nil);
+        t := x.typ;
+        try Item.fillDest(x);
+        try expect(Scan.sComma);
+        try expression(y, x.typ^.base);
+        try Item.fillWith(x, y, t);
+        Item.makeConst(x, Sym.tNone, 0);
+        x.mode := Item.mNone;
     | else:
     end;
     return expect(Scan.sRparen);
@@ -2873,12 +2882,13 @@ begin
 end;
 
 (* Whether naming o may make a call: a procedure, a procedure variable,
-   or NEW, SYSCALL or COPY, which use the registers a call would *)
+   or NEW, SYSCALL, COPY or FILL, which use the registers a call would *)
 proc calls(o: PObj): BOOL;
 begin
     if o = nil then return false; end;
     return ((o^.cls = Sym.oProc) and (o^.inl = 0)) or ((o^.cls = Sym.oVar) and (o^.typ^.form = Sym.fProc))
-        or ((o^.cls = Sym.oBuiltin) and ((o^.val = Sym.bNew) or (o^.val = Sym.bSyscall) or (o^.val = Sym.bCopy)));
+        or ((o^.cls = Sym.oBuiltin) and ((o^.val = Sym.bNew) or (o^.val = Sym.bSyscall) or (o^.val = Sym.bCopy)
+            or (o^.val = Sym.bFill)));
 end;
 
 (* Puts the busiest variables of the procedure, whose parameters are

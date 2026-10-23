@@ -1,0 +1,25 @@
+module FillReals;
+import Out, F32s := Filled(F32), F64s := Filled(F64);
+
+var window: [576]F32; w: []F64; ws: [3]F64;
+
+proc main*;
+var i: INT; t: F64;
+begin
+    F32s.check("F32", 1.5, -2.25);
+    F64s.check("F64", -1.0E300, 3.5);
+
+    for i := 0 to 575 do window[i] := F32(i); end;
+    FILL(window, 0.0);
+    t := 0.0;
+    for i := 0 to 575 do t := t + F64(window[i]); end;
+    Out.int(I64(t)); Out.char(' ');
+    w := ws;
+    FILL(w, 0.25);
+    FILL(w[1..2], -0.0);   (* not zero bits *)
+    Out.int(I64(4.0 * (ws[0] + ws[2]))); Out.char(' ');
+    if (ws[1] = 0.0) and (1.0 / ws[1] < 0.0) then Out.str("-0"); end;
+    Out.ln;
+end;
+
+end FillReals.

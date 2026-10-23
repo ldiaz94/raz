@@ -372,3 +372,16 @@ otherwise.
   is no variable. `T` is refused by the view's `notPlain`. The result
   keeps `x`'s `frame`, so the bytes of a local are caught by
   `notOfFrame` as far as a slice of it is.
+- `FILL(d, x)` (report 2026-10.36) takes `d` as `COPY` does
+  (`destSlice`), then `x` as `:=` would, with `:=`'s messages, read
+  once before any element is written. A scalar element of 1, 2, 4 or 8
+  bytes is stored from `rax`, a real's bits as an integer's: by a store
+  each into an array of 16 elements or fewer, else by a loop for fewer
+  than 16 at run time and `rep stos` of its width from 16 up. A
+  constant zero into an array is `zeroBytes`, as `NEW`'s zeroing is;
+  into a slice it is stored as any scalar, which is as fast. Another
+  element is copied into `d[0]` and forward from there by `rep movsb`.
+  A record literal of zeros isn't seen as a zero. A const parameter's
+  or another module's array, as `d`, says why it can't be changed, for
+  `COPY` too. `seqSlice` copies no slice that is a temporary already
+  (a slice just cut): nothing `s` or `x` does can change it.

@@ -33,7 +33,7 @@
 
 (defconst raz-builtins
   '("SIZE" "OFFSET" "ADR" "LEN" "PTR" "BYTES" "NEW" "MSG" "SYSCALL" "FENCE" "CAS" "XCHG" "XADD"
-    "ARGC" "ARGV" "INC" "DEC" "COPY" "ROL" "ROR" "MIN" "MAX"
+    "ARGC" "ARGV" "INC" "DEC" "COPY" "FILL" "ROL" "ROR" "MIN" "MAX"
     "CLZ" "CTZ" "POPCOUNT"))
 
 (defvar raz-mode-syntax-table

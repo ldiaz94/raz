@@ -1,0 +1,30 @@
+conform/err/FillInto.raz:6:10: error: a is only read here, and can't be changed
+    6 |     FILL(a, 0);
+      |          ^
+help: a const parameter, a constant, and the names a match gives their fields, are only read: take a var parameter to change it
+conform/err/FillInto.raz:11:10: error: FILL fills an array variable or a slice, found a string
+   11 |     FILL("abc", 0);
+      |          ^^^^^
+conform/err/FillInto.raz:12:10: error: FILL fills an array variable or a slice, found I64
+   12 |     FILL(x, 0);
+      |          ^
+conform/err/FillInto.raz:13:10: error: FILL fills an array variable or a slice, found [3]I64
+   13 |     FILL(A, 0);
+      |          ^
+conform/err/FillInto.raz:14:10: error: Owner.a is Owner's, and can't be changed outside it
+   14 |     FILL(Owner.a, 0);
+      |          ^^^^^^^
+conform/err/FillInto.raz:15:13: error: can't use a string as I64
+   15 |     FILL(a, "abc");
+      |             ^^^^^
+conform/err/FillInto.raz:16:13: error: can't use a real constant as I64
+   16 |     FILL(a, 1.5);
+      |             ^^^
+conform/err/FillInto.raz:17:13: error: 256 doesn't fit U8
+   17 |     FILL(s, 256);
+      |             ^^^
+conform/err/FillInto.raz:18:13: error: can't use U8 as I64
+   18 |     FILL(a, U8(1));
+      |             ^^^^^
+help: U8 widens to I64 only as written, I64(U8(1))
+raz: 9 errors

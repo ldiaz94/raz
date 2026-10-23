@@ -796,7 +796,7 @@ begin
     if size > MaxMoves then
         X.movRI(RAX, 0);
         X.movRI(RCX, size);
-        X.repStosb();
+        X.repStos(1);
         return;
     end;
     o := 0;
@@ -1351,7 +1351,7 @@ begin
     X.movRR(RDI, r);
     X.movRI(RCX, size);
     X.movRI(RAX, 0);
-    X.repStosb();
+    X.repStos(1);
     X.fixLink(L);
 end;
 
@@ -1899,6 +1899,115 @@ begin
     X.fixLink(L);
     X.repMovsb();
     X.fixLink(E);
+end;
+
+(* The most elements FILL stores one by one: as for MaxMoves, a store
+   each costs less than rep stos takes to start, which at 10 elements
+   is twice the time. *)
+const FewFills = 16;
+
+(* rax, an element of size bytes, 1, 2, 4 or 8, into each of the
+   elements of the slice in the frame at dOff, of which there are n if
+   n isn't -1. Few, as of a short array, are a store each; else, at run
+   time, a loop of stores for fewer than FewFills, or rep stos of the
+   element's width:
+
+       mov rdi, [rbp + dOff]
+       mov rcx, [rbp + dOff + 8]
+       cmp rcx, 16
+       jae many
+       test rcx, rcx
+       jz out
+   top: mov [rdi], eax      ; for a U32
+       add rdi, 4
+       sub rcx, 1
+       jne top
+       jmp out
+   many: rep stosd
+   out: *)
+proc fillScalar(dOff, size, n: I64);
+var i: I64; many, out, top: INT;
+begin
+    X.load(RDI, X.mem(RBP, dOff), 8, false);
+    if (n >= 0) and (n <= FewFills) then
+        for i := 0 to n - 1 do X.store(X.mem(RDI, i * size), RAX, INT(size)); end;
+        return;
+    end;
+    X.load(RCX, X.mem(RBP, dOff + 8), 8, false);
+    many := NoLabel;
+    out := NoLabel;
+    X.aluI(X.aluCmp, RCX, FewFills);
+    X.jcc(X.ccAE, many);
+    X.testRR(RCX, RCX);
+    X.jcc(X.ccE, out);
+    top := Chunk.pc;
+    X.store(X.mem(RDI, 0), RAX, INT(size));
+    X.aluI(X.aluAdd, RDI, INT(size));
+    X.aluI(X.aluSub, RCX, 1);
+    X.jccBack(X.ccNE, top);
+    X.jmp(out);
+    X.fixLink(many);
+    X.repStos(INT(size));
+    X.fixLink(out);
+end;
+
+(* The size bytes at rsi into each element of the slice in the frame at
+   dOff: into the first by copyBytes, and from there forward by rep
+   movsb, from d[0] on to d[1] on. A forward copy reads each byte after it has written it, size
+   bytes before, so the first element repeats through the rest:
+
+       mov rdi, [rbp + dOff]
+       mov rdx, [rbp + dOff + 8]
+       test rdx, rdx
+       jz out               ; nothing to fill
+       ...                  ; copyBytes(size): d[0] := x
+       mov rsi, [rbp + dOff]
+       lea rdi, [rsi + size]
+       lea rcx, [rdx - 1]
+       imul rcx, size       ; the bytes of d[1..n]
+       rep movsb
+   out: *)
+proc fillCopy(dOff, size: I64);
+var out: INT;
+begin
+    X.load(RDI, X.mem(RBP, dOff), 8, false);
+    X.load(RDX, X.mem(RBP, dOff + 8), 8, false);
+    X.testRR(RDX, RDX);
+    out := NoLabel;
+    X.jcc(X.ccE, out);
+    copyBytes(size);
+    X.load(RSI, X.mem(RBP, dOff), 8, false);
+    X.lea(RDI, X.mem(RSI, size));
+    X.lea(RCX, X.mem(RDX, -1));
+    mulI(RCX, size);
+    X.repMovsb();
+    X.fixLink(out);
+end;
+
+(* FILL: every element of the slice in the frame at dOff, of size bytes
+   each, set to the value on top of the stack if the element is a
+   scalar, or else to the size bytes at the address on top. n is how
+   many elements the slice has if that is known, as for an array, else
+   -1. A scalar goes into rax and is stored as it is, a real's bits as
+   an integer's (fillScalar); but a constant zero into an array of n
+   elements is n * size zero bytes, as NEW's zeroing is: by moves, or
+   rep stosb (zeroBytes). Any other element is copied (fillCopy). *)
+proc fillSlice*(dOff, size, n: I64; scalar: BOOL);
+var isConst: BOOL; v: I64;
+begin
+    clobberArgs();
+    isConst, v := topConst();
+    if scalar and isConst and (v = 0) and (n >= 0) then
+        drop();
+        X.load(RDI, X.mem(RBP, dOff), 8, false);
+        zeroBytes(n * size);
+    elsif scalar then
+        popTo(RAX);
+        fillScalar(dOff, size, n);
+    else
+        popTo(RSI);
+        fillCopy(dOff, size);
+    end;
 end;
 
 (* Pops a pointer, lo and hi, and makes the slice p[lo..hi] at tmp. Its
@@ -2472,7 +2581,7 @@ begin
             X.load(RDI, X.mem(RBP, retSlot), 8, false);
             X.movRI(RCX, resType^.size);
             X.movRI(RAX, 0);
-            X.repStosb();
+            X.repStos(1);
             X.load(RAX, X.mem(RBP, retSlot), 8, false);
         else
             X.movRI(RAX, 0);

@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 11,500 lines of code (the
+The compiler is eleven files of raz, about 12,200 lines of code (the
 budget is 14,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 724 | 582 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 725 | 583 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,594 | 1,310 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,688 | 1,902 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,381 | 1,912 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,518 | 3,890 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/X64.raz` | 1,605 | 1,318 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,797 | 1,961 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 2,414 | 1,938 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,528 | 3,900 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -314,7 +314,7 @@ bought less than 2% on both was taken out again.
    `indexSlice` and `slice` compare with the length's and add the
    pointer's, a failed check takes the length from its register
    (`inRegister`), and `copyTo` loads both. What wants a slice's
-   memory, a comparison or `COPY`, has its words stored in a
+   memory, a comparison, `COPY` or `FILL`, has its words stored in a
    temporary first (`copyToTemp`). rat 5% faster, the heap sort 5%,
    the search 4%.
 
@@ -330,7 +330,7 @@ bought less than 2% on both was taken out again.
    ```
 
    In a procedure that names no procedure, a procedure variable, `NEW`,
-   `SYSCALL` or `COPY`, as `chooseRegs` sees reading ahead, the
+   `SYSCALL`, `COPY` or `FILL`, as `chooseRegs` sees reading ahead, the
    parameters that arrive in `rdi` and `rsi` stay there, which only a
    call or a copy needs: nothing is saved or moved, and `s[i]` is read
    through `rdi` itself (`keepArrived`). Where Gen needs them after
@@ -1091,6 +1091,7 @@ This is the only unit that knows the machine. The calls it answers:
   `copyBlock`, `copyTo`, `zeroVar`, and `copySlice` for `COPY`, a `rep
   movsb`, or a loop going down (`copyDown`) when the destination starts
   inside the source; the small ones by moves (`copyBytes`, `zeroBytes`);
+  and `fillSlice` for `FILL` (`fillScalar`, `fillCopy`);
 - jumps: `jump`, `jumpIf` (on a `BOOL`), `jumpCmp` (on two integers),
   `jumpOut` (`jumpCmp` from within an expression) and `condValue` for
   `and` and `or`, `fix` where the label is, and `joinJumps`;
@@ -1148,6 +1149,78 @@ Ten million copies between the two halves of a `[4096]U32`, upward:
 576 ms to 71 at 10 elements, 10,900 to 410 at 1,000, as fast as
 downward; and one a single element up inside itself, 539 to 57 and
 10,800 to 1,600.
+
+`FILL(d, x)` makes `d` a slice in the frame, as `COPY` does
+(`Item.fillDest`), then `x`, of `d`'s element type, and stores it in
+each element (`fillSlice`). An element of 1, 2, 4 or 8 bytes, a scalar,
+goes into `rax`, a real's bits as an integer's, and is stored with
+`rep stos` of its width. That takes some thirty cycles to start, twice
+the time of ten stores, so a short slice is filled by a loop instead,
+and an array of 16 elements or fewer by a store each (`fillScalar`):
+
+```
+mov rax, r8                ; x
+mov rdi, [rbp - 48]        ; d's pointer and length
+mov rcx, [rbp - 40]
+cmp rcx, 16
+jae many
+test rcx, rcx
+jz out
+top: mov [rdi], eax
+add rdi, 4
+sub rcx, 1
+jne top
+jmp out
+many: rep stosd
+out:
+```
+
+A constant zero into an array is its bytes zeroed, by `zeroBytes`, as
+a variable's are. Any other element, a record or an array, is copied
+into `d[0]` from `x`'s address, then `d[0..n - 1]`'s bytes into
+`d[1..n]`'s by `rep movsb`, forward (`fillCopy`): each byte it reads it
+wrote `SIZE(T)` bytes before, so `d[0]` repeats through the rest.
+
+```
+mov rdx, [rbp - 40]        ; the length
+test rdx, rdx
+jz out
+...                        ; copyBytes: d[0] := x, from [rsi]
+mov rsi, [rbp - 48]        ; from d[0]
+lea rdi, [rsi + 24]        ; to d[1], for a 24-byte record
+lea rcx, [rdx - 1]
+imul rcx, 24
+rep movsb
+out:
+```
+
+`x` is read once, before any element is written, so `FILL(a, a[3])`
+fills `a` with what `a[3]` held. Ten million fills of a row of
+`U32`s at one of 64 places in a `[4096]U32`, as rat paints a cell's
+background, against the loop in a procedure of its own: 52 ms to 37 at 10
+elements, 2,500 to 490 at 1,000.
+
+At 10 it was 65 ms, slower than the loop, until `seqSlice`, which
+gives `COPY`, `FILL` and a comparison their slices in the frame,
+stopped copying a slice that is already a temporary of its own, as one
+just cut is. It had copied every slice, lest `s` or `x` change a
+variable it read, and so the pointer and length went through memory
+twice before `rdi` and `rcx` had them:
+
+```
+mov [rbp - 48], rax        ; band[at..at + n], cut
+lea rsi, [rbp - 48]
+lea rdi, [rbp - 64]
+mov rcx, [rsi]             ; copied
+mov [rdi], rcx
+mov rcx, [rsi + 8]
+mov [rdi + 8], rcx
+...
+mov rdi, [rbp - 64]
+mov rcx, [rbp - 56]
+```
+
+Now `rdi` and `rcx` are loaded from `[rbp - 48]` and `[rbp - 40]`.
 
 A variable's place is an `Adr`: relative to the frame (`bFrame`), to a
 chunk (`bGlobal`), to an address on the stack (`bStack`), or to one

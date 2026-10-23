@@ -692,9 +692,20 @@ begin
     say("rep movsb"); Chunk.put1(0F3H); Chunk.put1(0A4H);
 end;
 
-proc repStosb*;
+(* rep stos of an element of n bytes, 1, 2, 4 or 8: al, ax, eax or rax
+   into rcx elements from [rdi] up. The width is that of stosb, with 66H
+   for a word, or with REX.W for a quadword. *)
+proc repStos*(n: INT);
 begin
-    say("rep stosb"); Chunk.put1(0F3H); Chunk.put1(0AAH);
+    match n of
+    | 1: say("rep stosb");
+    | 2: say("rep stosw"); Chunk.put1(66H);
+    | 4: say("rep stosd");
+    | else: say("rep stosq");
+    end;
+    Chunk.put1(0F3H);
+    if n = 8 then Chunk.put1(48H); end;
+    if n = 1 then Chunk.put1(0AAH); else Chunk.put1(0ABH); end;
 end;
 
 proc repeCmpsb*;

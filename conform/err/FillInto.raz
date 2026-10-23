@@ -1,0 +1,20 @@
+module FillInto;
+import Owner;
+const A: [3]I64 = [1, 2, 3];
+proc p(const a: [3]I64);
+begin
+    FILL(a, 0);
+end;
+proc main*;
+var a: [3]I64; x: I64; s: []U8;
+begin
+    FILL("abc", 0);
+    FILL(x, 0);
+    FILL(A, 0);
+    FILL(Owner.a, 0);
+    FILL(a, "abc");
+    FILL(a, 1.5);
+    FILL(s, 256);
+    FILL(a, U8(1));
+end;
+end FillInto.

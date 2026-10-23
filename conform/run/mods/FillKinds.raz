@@ -1,0 +1,10 @@
+(* Types for the test Fill, which imports Filled with each *)
+module FillKinds;
+
+type
+    Colour* = (red, green, blue);
+    Colours* = set of Colour;
+    Rgb* = record r*, g*, b*: U8; end;              (* 3 bytes *)
+    Span* = record lo*, hi*: I64; tag*: [8]U8; end;   (* 24 bytes *)
+
+end FillKinds.

@@ -15,7 +15,7 @@ syntax keyword razKeyword repeat return set shl shr then to try type until
 syntax keyword razKeyword var variant VOLATILE while xor
 syntax keyword razType I8 I16 I32 I64 INT UINT U8 U16 U32 U64 BOOL F32 F64 ERROR
 syntax keyword razBuiltin SIZE OFFSET ADR LEN PTR BYTES NEW MSG SYSCALL FENCE CAS XCHG XADD
-syntax keyword razBuiltin ARGC ARGV INC DEC COPY ROL ROR MIN MAX
+syntax keyword razBuiltin ARGC ARGV INC DEC COPY FILL ROL ROR MIN MAX
 syntax keyword razBuiltin CLZ CTZ POPCOUNT
 syntax keyword razConstant true false nil
 

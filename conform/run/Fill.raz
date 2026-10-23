@@ -1,0 +1,89 @@
+module Fill;
+import Out, FillKinds, U8s := Filled(U8), U16s := Filled(U16), U32s := Filled(U32),
+    U64s := Filled(U64), I8s := Filled(I8), Bools := Filled(BOOL), Ptrs := Filled(^I64),
+    Sets := Filled(FillKinds.Colours), Colours := Filled(FillKinds.Colour),
+    Rgbs := Filled(FillKinds.Rgb), Spans := Filled(FillKinds.Span);
+
+var
+    calls: INT;           (* how many times next has been called *)
+    a: [9]U32; big: [100]U64; s: []U32; ps: [3]^I64; spans: [5]FillKinds.Span;
+    x, y: I64;
+
+(* 7, counting the call *)
+proc next(): U32;
+begin
+    INC(calls);
+    return 7;
+end;
+
+(* A span of n, counting the call *)
+proc span(n: I64): FillKinds.Span;
+begin
+    INC(calls);
+    return {lo: n, hi: -n, tag: "spanspan"};
+end;
+
+(* The sum of the elements of s *)
+proc sum(s: []U32): I64;
+var i: INT; t: I64;
+begin
+    t := 0;
+    for i := 0 to LEN(s) - 1 do INC(t, I64(s[i])); end;
+    return t;
+end;
+
+(* An array a var parameter gives *)
+proc fives(var b: [9]U32);
+begin
+    FILL(b, 5);
+end;
+
+proc main*;
+var i: INT; t: I64; p: ^[100]U64;
+begin
+    U8s.check("U8", 0A5H, 1);
+    U16s.check("U16", 0A55AH, 1);
+    U32s.check("U32", 0DEADBEEFH, 1);
+    U64s.check("U64", 0123456789ABCDEFH, 1);
+    I8s.check("I8", -2, 3);
+    Bools.check("BOOL", true, false);
+    Ptrs.check("pointer", ADR(x), ADR(y));
+    Sets.check("set", {FillKinds.red, FillKinds.blue}, {FillKinds.green});
+    Colours.check("enumeration", FillKinds.blue, FillKinds.green);
+    Rgbs.check("3-byte record", {r: 1, g: 2, b: 3}, {r: 9, g: 9, b: 9});
+    Spans.check("24-byte record", {lo: 1, hi: 2, tag: "abcdefgh"}, {lo: -1, hi: -2, tag: "zzzzzzzz"});
+
+    (* x is evaluated once, before any element is written *)
+    FILL(a, next());
+    s := a;
+    FILL(s[2..5], next() + 1);
+    Out.int(calls); Out.char(' '); Out.int(sum(a)); Out.ln;
+    FILL(spans, span(4));
+    Out.int(calls); Out.char(' '); Out.int(spans[0].lo + spans[4].hi); Out.char(' ');
+    Out.str(spans[4].tag[0..8]); Out.ln;
+    a[3] := 100;
+    FILL(a, a[3]);   (* read once, though FILL writes a[3] *)
+    Out.int(sum(a)); Out.ln;
+    fives(a);
+    Out.int(sum(a)); Out.ln;
+
+    (* zeros *)
+    FILL(a, 0);
+    Out.int(sum(a)); Out.char(' ');
+    FILL(a, 1);
+    FILL(s[1..8], 0);
+    Out.int(sum(a)); Out.char(' ');
+    for i := 0 to 99 do big[i] := U64(i); end;
+    p := ADR(big);
+    FILL(p^[10..100], 0);
+    t := 0;
+    for i := 0 to 99 do INC(t, I64(big[i])); end;
+    Out.int(t); Out.char(' ');
+    FILL(p^, 0);
+    FILL(ps, ADR(x));
+    FILL(ps, nil);
+    if (big[1] = 0) and (ps[2] = nil) then Out.str("zero"); end;
+    Out.ln;
+end;
+
+end Fill.

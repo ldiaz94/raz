@@ -1158,7 +1158,9 @@ begin
     t := Sym.newType(Sym.fSlice, 16, 8);
     t^.base := elemOf(x.typ);
     if x.typ^.form = Sym.fSlice then
-        x.typ := t; try copyToTemp(x);
+        (* a temporary, as a slice just cut is, nothing else can change *)
+        if (x.mode # mVar) or (x.base # Gen.bFrame) or x.isVar or (x.obj # nil) then try copyToTemp(x); end;
+        x.typ := t;
     elsif x.mode = mStr then
         try address(x); sliceOf(x, t, x.val);
     else
@@ -2326,15 +2328,46 @@ begin
     return nil;
 end;
 
-(* COPY(d, s): d, an array variable or a slice, as a slice in the frame,
-   before s is read *)
+(* COPY(d, s) or FILL(d, x): d, an array variable or a slice, as a slice
+   in the frame, before s or x is read; text says what the built-in
+   writes into, for an error *)
+proc destSlice(var d: Item; text: []U8): ERROR;
+begin
+    if (d.typ^.form = Sym.fArray) and (d.mode = mVar) then try notReadOnly(d); end;
+    if not isSeq(d.typ) or (d.mode = mStr) or ((d.typ^.form = Sym.fArray) and ((d.mode # mVar) or not d.isVar)) then
+        return Scan.markAt(d.pos, say1(text, what(d)));
+    end;
+    return seqSlice(d);
+end;
+
 proc copyDest*(var d: Item): ERROR;
 begin
-    if not isSeq(d.typ) or (d.mode = mStr) or ((d.typ^.form = Sym.fArray) and ((d.mode # mVar) or not d.isVar)) then
-        return Scan.markAt(d.pos, say1("COPY copies into an array variable or a slice, found {}", what(d)));
+    return destSlice(d, "COPY copies into an array variable or a slice, found {}");
+end;
+
+proc fillDest*(var d: Item): ERROR;
+begin
+    return destSlice(d, "FILL fills an array variable or a slice, found {}");
+end;
+
+(* ... and each of its elements set to x, as by :=; t is d's type as it
+   was written, so that an array's length is known *)
+proc fillWith*(var d, x: Item; t: ^Sym.Type): ERROR;
+var e: ^Sym.Type; n: I64;
+begin
+    e := d.typ^.base;
+    try coerce(x, e);
+    if Sym.isScalar(e) then
+        try value(x);
+    else
+        if x.vol then return Scan.markAt(x.pos, "can't copy through a volatile pointer"); end;
+        if (x.mode = mVar) and (x.base = Gen.bReg) then try copyToTemp(x); end;   (* a slice in registers *)
+        try address(x);
     end;
-    if d.typ^.form = Sym.fArray then try notReadOnly(d); end;
-    return seqSlice(d);
+    n := -1;
+    if t^.form = Sym.fArray then n := t^.len; end;
+    Gen.fillSlice(d.off, e^.size, n, Sym.isScalar(e));
+    return nil;
 end;
 
 (* ... and the elements of s copied to its start *)
