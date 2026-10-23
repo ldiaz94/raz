@@ -66,4 +66,8 @@ proc fail*(const p: Parser; text: []U8);
     The program's own mistake, written as Opt's are but alone, and
     status 2.
 
+proc misuse*(const p: Parser; text: []U8);
+    The program's own mistake, written as Opt's are, with the scope's
+    synopsis lines after it, and status 2.
+
 proc main*;

@@ -225,6 +225,21 @@ begin
     Rt.exit(0);
 end;
 
+(* Whether the scope has an option whose letter is a digit, as head's
+   -5 is; if not, a word like -33.87 is an operand. *)
+proc hasDigitOption(const p: Parser): BOOL;
+var i: INT;
+begin
+    for i := 0 to LEN(p.table) - 1 do
+        match p.table[i] of
+        | option(s, letter, _long, _v, _help):
+            if (s = p.scope) and (letter >= '0') and (letter <= '9') then return true; end;
+        | else:
+        end;
+    end;
+    return false;
+end;
+
 (* The next option, a word or a letter of one, into p: read1, or
    readEnd at the end of the options. A mistake is refused, or, if
    quiet, passed over, as readSkip. *)
@@ -237,6 +252,10 @@ begin
         if p.ended or (p.at >= ARGC()) then p.ended := true; return readEnd; end;
         w := Files.arg(p.at);
         if (LEN(w) < 2) or (w[0] # '-') then p.ended := true; return readEnd; end;   (* an operand *)
+        if (w[1] >= '0') and (w[1] <= '9') and not hasDigitOption(p) then   (* a negative number *)
+            p.ended := true;
+            return readEnd;
+        end;
         INC(p.at);
         if w = "--" then p.ended := true; return readEnd; end;
         if w[1] # '-' then
@@ -437,6 +456,13 @@ begin
     Rt.exit(2);
 end;
 
+(* The program's own mistake, written as Opt's are, with the scope's
+   synopsis lines after it, and status 2. *)
+proc misuse*(const p: Parser; text: []U8);
+begin
+    mistake(p, "{}", [Fmt.str(text)]);
+end;
+
 (* The module's test. main runs itself once for each case, with the
    case's words and OPTTEST in its environment, which makes it keep, the
    program of getopt's page, or a program with a bad table, or one with
@@ -486,6 +512,30 @@ begin
     Fmt.print(":", []);
     for i := at(p) to ARGC() - 1 do Fmt.print(" {}", [Fmt.str(Files.arg(i))]); end;
     Fmt.print("\n", []);
+end;
+
+(* A scope with no digit option, and one with -5. *)
+proc digits;
+var p: Parser; w: []U8; ok: BOOL; n: INT;
+begin
+    init(p, "digits", [
+        usage("", "digits [-v] x y"),
+        option("", 'v', "", "", "say more"),
+        sub("", "five", "the scope with -5"),
+        option("five", '5', "", "", "five")]);
+    while next(p) do Fmt.print("{}\n", [Fmt.char(p.letter)]); end;
+    w, ok := operand(p);
+    if ok and (w = "five") then
+        scope(p, "five");
+        while next(p) do Fmt.print("{}\n", [Fmt.char(p.letter)]); end;
+        w, ok := operand(p);
+    end;
+    while ok do
+        INC(n);
+        Fmt.print("operand {}\n", [Fmt.str(w)]);
+        w, ok := operand(p);
+    end;
+    if n = 0 then misuse(p, "no operands"); end;
 end;
 
 proc badTableTest;
@@ -567,6 +617,7 @@ begin
     if mode = "keep" then keep; return;
     elsif mode = "bad" then badTableTest; return;
     elsif mode = "plain" then plain; return;
+    elsif mode = "digits" then digits; return;
     end;
     cases := [
         {mode: k, args: ["keep", "-v", "--wait=30", "start", "-b", "web", "site", "python", "-m", "http.server", "--port", "8000"],
@@ -611,6 +662,11 @@ begin
         {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "--color", "always", "-f"], out: "c color=\n"},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "add", "-f", "--help"],
             out: "usage: plain remote add\n\n  -f, --force          even if it is there\n  -h, --here           only here\n  -c, --color[=when]   colour it: always, never or auto\n      --help           print this and exit\n"},
+        {mode: "OPTTEST=digits", args: ["digits", "-33.87", "151.21"], out: "operand -33.87\noperand 151.21\n"},
+        {mode: "OPTTEST=digits", args: ["digits", "-v", "-5", "-v"], out: "v\noperand -5\noperand -v\n"},
+        {mode: "OPTTEST=digits", args: ["digits", "five", "-5", "x"], out: "5\noperand x\n"},
+        {mode: "OPTTEST=digits", args: ["digits", "-x"], err: "digits: unknown option -x\nusage: digits [-v] x y\n", status: 2},
+        {mode: "OPTTEST=digits", args: ["digits"], err: "digits: no operands\nusage: digits [-v] x y\n", status: 2},
         {mode: "OPTTEST=plain", args: ["plain", "remote", "-h"], out: "usage: plain remote\n\n  add          add one\n  -h, --help   print this and exit\n"}];
     for i := 0 to LEN(cases) - 1 do run(cases[i], i); end;
 end;

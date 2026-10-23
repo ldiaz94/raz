@@ -958,6 +958,7 @@ proc scope*(var p: Parser; name: []U8);               (* subcommand name's optio
 proc number*(const p: Parser; lo, hi: I64): I64;      (* the value just read, a number from lo to hi *)
 proc refuse*(const p: Parser; wants: []U8);           (* the value just read refused, as number refuses one *)
 proc fail*(const p: Parser; text: []U8);              (* the program's own mistake *)
+proc misuse*(const p: Parser; text: []U8);            (* the program's own mistake, with the synopsis *)
 ```
 
 `Opt` reads a command line by the rules of the C library's `getopt`,
@@ -1019,6 +1020,10 @@ The rules are `getopt`'s:
 - `--` ends the options, and isn't an operand; `-` alone is one. The
   options end at the first operand, so in `keep start site python -m
   http.server` the `-m` is python's.
+- In a scope with no option whose letter is a digit, a word of `-` and
+  a digit, such as `-33.87`, is an operand, and so ends the options. A
+  scope that gives a digit a letter, as `head -5` has, reads it as an
+  option.
 - Each scope has its own options. An option given twice is read twice.
 
 `number` reads the value as `Str.toInt` does. `operand` reads what
@@ -1072,7 +1077,9 @@ no spaces")` writes `keep: -b wants a label with no spaces, not 'a b'`,
 and the synopsis lines. `p.spelt` is that spelling, for the program's
 own sentences. `fail` writes the program's own
 mistakes the same way, but alone, so that the sentence can say where
-the help is: `keep: no command; see keep -h`.
+the help is: `keep: no command; see keep -h`. `misuse` writes one with
+the scope's synopsis lines after it, for a mistake in the operands:
+`Opt.misuse(p, "no tests named")`.
 
 A mistake in the table is the program's, not its user's. `init` checks
 the table before it reads a word, and ends the program with status 1:
