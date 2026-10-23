@@ -2352,7 +2352,10 @@ end;
 proc errorChunk*(var x: Item; home, name: INT): (INT, ERROR);
 var c, xs, xl: INT; p: ^U8; q: ^I64;
 begin
-    if x.mode # mStr then return 0, Scan.markAt(x.pos, "an error is made from a string"); end;
+    if x.mode # mStr then
+        return 0, Scan.markHelp(x.pos, say1("an error is made from a string, found {}", what(x)),
+            "or from another ERROR constant, which is the same error");
+    end;
     xl := INT(x.val);
     p := Scan.grab(xl + 8);
     q := ^I64(p);

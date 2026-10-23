@@ -1,0 +1,27 @@
+(* An ERROR constant named by another is that same error; only a string
+   makes a new one (report section 5.8). *)
+module ErrorConstNamed;
+import Out, PictBase;
+
+const
+    Short*: ERROR = PictBase.Short;
+    Again: ERROR = Short;
+    Mine: ERROR = "too short";
+    Errs: [2]ERROR = [Short, Mine];
+
+proc main*;
+var e: ERROR;
+begin
+    e := PictBase.read(2);
+    if e = Short then Out.str("same "); end;
+    if Short = PictBase.Short then Out.str("same "); end;
+    if Again = PictBase.Short then Out.str("same "); end;
+    if Errs[0] = e then Out.str("same "); end;
+    if Mine # PictBase.Short then Out.str("different "); end;
+    if Errs[1] # e then Out.str("different "); end;
+    if Short # PictBase.Bad then Out.str("different "); end;
+    Out.str(MSG(Again));
+    Out.ln;
+end;
+
+end ErrorConstNamed.

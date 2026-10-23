@@ -1,0 +1,4 @@
+module ErrorConstVar;
+var last: ERROR;
+const E: ERROR = last;
+end ErrorConstVar.

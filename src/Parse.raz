@@ -3623,7 +3623,12 @@ begin
     o := Sym.newObj(Sym.oConst, n, x.typ);
     o^.pos := at;
     o^.exported := exp and top;
-    if t = Sym.tError then
+    if (t = Sym.tError) and (x.mode = Item.mConst) and (x.typ = Sym.tError) and (x.val > 0) then
+        (* another ERROR constant (report, 5.8): that same error, its
+           chunk, so that the two compare equal; only a string makes one *)
+        o^.typ := Sym.tError;
+        o^.val := x.val;
+    elsif t = Sym.tError then
         o^.typ := Sym.tError;
         c := try Item.errorChunk(x, Sym.curModule^.sname, n);
         o^.val := c + 1;

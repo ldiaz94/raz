@@ -1,0 +1,3 @@
+module ErrorConstNil;
+const E: ERROR = nil;
+end ErrorConstNil.

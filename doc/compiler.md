@@ -22,8 +22,8 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,594 | 1,310 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,688 | 1,902 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,378 | 1,909 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,513 | 3,887 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Item.raz` | 2,381 | 1,912 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,518 | 3,890 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -1407,6 +1407,14 @@ and variants too:
 
     const Rows: [][]INT = [[1, 2], [3]];    (* read as *)
     const R0: [2]INT = [1, 2];  R1: [1]INT = [3];  Rows: [][]INT = [R0, R1];
+
+An `ERROR` constant is a chunk of read-only data, its message's length
+and then its bytes, made by `errorChunk` (`Item.raz`) from a string;
+the constant's `val` is that chunk plus one, so that `nil` is 0, and
+errors compare by it. One whose value is another `ERROR` constant,
+`const Short*: ERROR = PictBase.Short;`, takes that one's `val` in
+`constDecl`, and no chunk: it is the same error, and `Short =
+PictBase.Short` holds. Only a string makes a new one.
 
 `makeItem` makes it an
 `mVar` there that isn't `isVar`, so it is read, indexed, sliced and

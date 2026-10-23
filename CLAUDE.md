@@ -280,7 +280,8 @@ otherwise.
   `LEN` of it is no constant. A constant's slice part takes `[]`, names
   a constant whole, of any module, by its type, not its text, and takes
   an array literal (report 2026-10.36), an array constant of its own in
-  a chunk with no name, nested to any depth.
+  a chunk with no name, nested to any depth. An `ERROR` constant given
+  another takes its chunk: the same error.
 - An array a call returns is a temporary of the statement (report
   2026-10.28, 8): a slice of it kept past the statement is undefined
   (10), and isn't caught.

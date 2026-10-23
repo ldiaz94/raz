@@ -1,0 +1,5 @@
+conform/err/ErrorConstNil.raz:2:18: error: an error is made from a string, found nil
+    2 | const E: ERROR = nil;
+      |                  ^^^
+help: or from another ERROR constant, which is the same error
+raz: 1 error

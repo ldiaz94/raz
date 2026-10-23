@@ -1,0 +1,14 @@
+(* Errors that another module passes on, for ErrorConstNamed *)
+module PictBase;
+
+const
+    Short*: ERROR = "too short";
+    Bad*: ERROR = "bad header";
+
+proc read*(n: INT): ERROR;
+begin
+    if n < 4 then return Short; end;
+    return nil;
+end;
+
+end PictBase.
