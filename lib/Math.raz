@@ -7,7 +7,7 @@
 
    Left out: sinh, cosh, fmod and hypot, until a program needs them. *)
 module Math;
-import Check;
+import Check, Rt;
 
 const
     pi* = 3.141592653589793;   (* the F64 nearest to pi *)
@@ -441,6 +441,24 @@ code
     mul rsi;
     ret;
 end mul;
+
+(* hi, lo divided by d, by the machine's one instruction; it faults if hi >= d. *)
+proc div128(hi, lo, d: U64): (U64, U64);
+code
+    mov rcx, rdx;
+    mov rdx, rdi;
+    mov rax, rsi;
+    div rcx;
+    ret;
+end div128;
+
+(* hi, lo (a 128-bit number, hi its high word) divided by d: the quotient and the remainder.
+   hi >= d, whose quotient doesn't fit a word, and d = 0 stop the program, as a division by zero does. *)
+proc divMod*(hi, lo, d: U64): (U64, U64);
+begin
+    if hi >= d then Rt.stop("Math.divMod: hi >= d, the quotient doesn't fit a word"); end;
+    return div128(hi, lo, d);
+end divMod;
 
 (* 64 bits of t from bit s on, the first bit of t[0] being 0. *)
 proc window(t: []U64; s: INT): U64;
@@ -1031,6 +1049,37 @@ begin
 end;
 
 (* The module's test. *)
+(* divMod against mul: the product of a and b, divided by b, gives a back. *)
+proc testDiv;
+var a, b, hi, lo, q, r, x: U64;
+    i: INT;
+begin
+    q, r := divMod(0, 7, 2);
+    Check.ok((q = 3) and (r = 1), "Math.divMod small");
+    q, r := divMod(0, 12345, 1);
+    Check.ok((q = 12345) and (r = 0), "Math.divMod by 1");
+    q, r := divMod(5, 9, 6);
+    Check.ok((q = 0D555555555555556H) and (r = 5), "Math.divMod known");
+    q, r := divMod(0FFFFFFFFFFFFFFFEH, 0FFFFFFFFFFFFFFFFH, 0FFFFFFFFFFFFFFFFH);
+    Check.ok((q = 0FFFFFFFFFFFFFFFFH) and (r = 0FFFFFFFFFFFFFFFEH), "Math.divMod maximal hi");
+    x := 88172645463325252;
+    for i := 1 to 20 do
+        x := x xor (x shl 13); x := x xor (x shr 7); x := x xor (x shl 17);
+        a := x;
+        x := x xor (x shl 13); x := x xor (x shr 7); x := x xor (x shl 17);
+        b := x | 1;
+        lo, hi := mul(a, b);
+        q, r := divMod(hi, lo, b);
+        Check.ok((q = a) and (r = 0), "Math.divMod of a product");
+        if b > 1 then
+            r := b - 1;
+            if lo + r >= lo then q, r := divMod(hi, lo + r, b); (* no carry out of lo *)
+                Check.ok((q = a) and (r = b - 1), "Math.divMod with a remainder");
+            end;
+        end;
+    end;
+end;
+
 proc main*;
 var inf, nan, hard: F64;
 begin
@@ -1087,6 +1136,7 @@ begin
         or not negative(roundEven(-0.5)) or negative(roundEven(0.5)) or (roundEven(0.49999999999999994) # 0.0)
         or (roundEven(4503599627370495.5) # 4503599627370496.0) or (roundEven(4503599627370497.0) # 4503599627370497.0)
         or (roundEven(-1.0E300) # -1.0E300) or (roundEven(inf) # inf) or (roundEven(nan) = roundEven(nan))), "Math.roundEven");
+    testDiv;
     testToReal;
 end;
 

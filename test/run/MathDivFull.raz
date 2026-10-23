@@ -1,0 +1,13 @@
+module MathDivFull;
+(* Math.divMod with hi >= d, whose quotient doesn't fit a word, stops the
+   program as a division by zero does *)
+import Math, Out;
+
+proc main*;
+var q, r: U64;
+begin
+    q, r := Math.divMod(5, 0, 5);
+    Out.hex(q + r, 1);
+end;
+
+end MathDivFull.

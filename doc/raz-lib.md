@@ -838,6 +838,7 @@ proc atan2*(y, x: F64): F64;          (* the angle of (x, y) from the x axis, fr
 proc bits*(x: F64): U64;              (* the bits of x, as IEEE 754 lays them out *)
 proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
 proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
+proc divMod*(hi, lo, d: U64): (U64, U64); (* hi, lo divided by d: the quotient and the remainder; hi < d *)
 proc toReal*(s: []U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn't one *)
 ```
 
