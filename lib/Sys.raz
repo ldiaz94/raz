@@ -921,32 +921,38 @@ begin
     return INT(field(p, CAbi.saFamilyAt, CAbi.saFamilyLen));
 end;
 
-(* path as a Unix socket's address in a, or false if it is too long. *)
-proc unixAddr(path: []U8; a: ^Sockaddr): BOOL;
+(* path as a Unix socket's address in a, and the address's length, or
+   -36 (ENAMETOOLONG) if it is too long. A path that starts with a zero
+   byte is one of Linux's abstract names, which has no file and no
+   trailing zero: its length ends with the name's. *)
+proc unixAddr(path: []U8; a: ^Sockaddr): INT;
 var p: ^U8;
 begin
-    if LEN(path) >= CAbi.sunPathLen then return false; end;
+    if LEN(path) >= CAbi.sunPathLen then return -36; end;
     p := ^U8(a);
     setFamily(p, CAbi.afUnix, CAbi.sockaddrUnLen);
     COPY(p[CAbi.sunPathAt..CAbi.sunPathAt + LEN(path)], path);
-    return true;
+    if (LEN(path) > 0) and (path[0] = 0) then return CAbi.sunPathAt + LEN(path); end;
+    return CAbi.sockaddrUnLen;
 end;
 
 (* A stream socket connected to the Unix socket at path. *)
 proc connect*(path: []U8): INT;
-var a: Sockaddr;
+var a: Sockaddr; size: INT;
 begin
-    if not unixAddr(path, ADR(a)) then return -36; end;    (* ENAMETOOLONG *)
-    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(ADR(a)), CAbi.sockaddrUnLen, false);
+    size := unixAddr(path, ADR(a));
+    if size < 0 then return size; end;
+    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(ADR(a)), size, false);
 end;
 
 (* A stream socket made at path, which must not be there yet, taking
    connections. *)
 proc listen*(path: []U8): INT;
-var a: Sockaddr;
+var a: Sockaddr; size: INT;
 begin
-    if not unixAddr(path, ADR(a)) then return -36; end;
-    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(ADR(a)), CAbi.sockaddrUnLen, true);
+    size := unixAddr(path, ADR(a));
+    if size < 0 then return size; end;
+    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(ADR(a)), size, true);
 end;
 
 (* addr, an IPv4 or IPv6 address as numbers, and port, in a: the size
@@ -2545,9 +2551,10 @@ end;
 
 (* poll over 100 socket pairs with a byte sent on three, so that all
    three are reported in one call, at their places; a timeout, 0; a
-   closed descriptor, ready, and -9 from a read. *)
+   closed descriptor, ready, and -9 from a read; and an abstract Unix
+   socket, whose name starts with a zero byte. *)
 proc testPoll;
-var a: [100]Poll; ends: [100]INT; ps: []Poll; buf: [4]U8; x, y, r, i: INT;
+var a: [100]Poll; ends: [100]INT; ps: []Poll; nm: [18]U8; buf: [4]U8; x, y, r, i, l, c, s: INT;
 begin
     for i := 0 to 99 do
         x, y, r := socketPair();
@@ -2574,6 +2581,16 @@ begin
         close(ends[i]);
         if i # 5 then close(a[i].fd); end;
     end;
+    nm[0] := 0;                                             (* an abstract name: a zero byte, then 17 *)
+    COPY(nm[1..18], "raz-abstract-test");
+    l := listen(nm);
+    c := connect(nm);
+    if (l < 0) or (c < 0) or (readyOf([c, l], 1000) # l) then exit(2); end;
+    s := accept(l);
+    if (s < 0) or (send(s, "x") # 1) or (readyOf([l, c], 1000) # c) then exit(2); end;
+    close(s);
+    close(c);
+    close(l);
 end;
 
 (* The module's test, as Linux's Sys has it: a file written, read back

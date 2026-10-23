@@ -712,7 +712,9 @@ that listens to a server and a terminal both; a descriptor at its end,
 or failed, counts as ready, since a read of it won't wait. It looks at
 the first 64 of `fds`, and `connect` and `listen` take a path of at
 most 107 bytes, as `struct sockaddr_un` holds; a longer one is -36
-(ENAMETOOLONG).
+(ENAMETOOLONG). A path that starts with a zero byte is one of Linux's
+abstract names (D-Bus's `unix:abstract=`), which has no file: the
+address is as long as the name, with no zero after it.
 
 `poll` is `readyFor` without its limits. Each `Poll` names a
 descriptor `fd` and whether to wait to `read` from it, to `write` to
