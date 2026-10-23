@@ -1,0 +1,16 @@
+module BoolRel;
+(* A = or # of two BOOLs beside and or or binds first, as written; the
+   others, in parentheses or of integers, are quiet. *)
+var a, b, c: BOOL; i, n: INT;
+proc main*;
+begin
+    a := (b = c) and a;
+    a := a and (b # c);
+    a := (b # c) or (a = b) and c;
+    a := (i < n) and (i # 0);
+    a := i < n and i # 0;
+    a := b = c;
+    a := a # b and c;
+    a := a or b = c;
+end;
+end BoolRel.

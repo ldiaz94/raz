@@ -1,0 +1,5 @@
+test/err/ZeroDigit.raz:12:13: error: \0 is a zero byte and the digit after it is itself
+   12 |     s := "\0\01234567890-=";
+      |             ^^^
+help: write \x00 to keep them apart
+raz: 1 error

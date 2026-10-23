@@ -17,13 +17,13 @@ library, made from `lib/` by `tools/Doc.raz`.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,148 | 949 | Symbols, literals, comments, positions |
+| `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 715 | 573 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,584 | 1,304 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,592 | 1,843 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,223 | 1,785 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,323 | 3,735 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,396 | 3,796 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -921,6 +921,7 @@ blanks off the start of each line if the string is indented (the
 report's section 2), and leaving carriage returns out. `readReal` turns a real's
 digits into the nearest `F64` exactly, as a fraction of two big integers
 (`Big`), since a library's reader can be one bit off.
+`zeroDigit` reads the text of the current string again, for a `\0` before a digit, which the parser warns of.
 
 Identifiers are *interned*: `intern` puts each distinct name once in a
 pool and hands back a small integer, so every later comparison of names
@@ -1606,8 +1607,8 @@ with no errors, `warnings` merges the two lists by position and `warn`
 reports what isn't exported, doesn't start with `_`, and was never
 used, or, for a variable, only assigned, and a procedure with results
 that may reach its end (`openEnd`, from `ends`, which each statement
-sets). The calls that drop results are a third list, `drops`, in
-order: `compileFile` notes where the module's own begin (`numDrops`),
+sets). The calls that drop results, and the other doubts, are a third list, `doubts`, in
+order: `compileFile` notes where the module's own begin (`numDoubts`),
 since the instances it makes along the way add theirs and take them
 back. A
 generic module's instances
@@ -1837,8 +1838,19 @@ this one does.
   way through its statements must end in a `return`, an `if` with an
   `else`, a `match`, a `while true` or a `repeat ... until false`
   with no `break`. So is a call standing on its own that drops a
-  result (`drops`, kept by `noteDrop` and told by `dropped`);
-  `_ := f(x)` drops one on purpose. Warnings don't stop the compile;
+  result (`doubts`, kept by `noteDrop` and told by `dropped`);
+  `_ := f(x)` drops one on purpose. Two more are noted the same way,
+  by `noteDoubt`, which keeps the words to say. A relation binds
+  tighter than `and` and `or`, so `a # b and c` is `(a # b) and c`, as
+  a Pascal reader doesn't expect: `relation` sets `bareBoolRel` when it
+  read an `=` or `#` of two `BOOL`s (a parenthesised one is a factor,
+  and the relation around it sets it false), and `conjunct` and
+  `expression` ask `noteBoolRel` of each operand of an `and` or an
+  `or`. And a string with `\0` before a digit, `"\01"`, is a zero byte
+  and a `1`, not C's octal escape: `Scan.zeroDigit` looks for it in the
+  text of the string, and `factor` notes it (`noteZeroDigit`); `\x00`
+  keeps the two apart. A text the compiler reads twice, a `while`'s
+  condition, is noted once. Warnings don't stop the compile;
   `raz -Werror`, an option of this compiler's, makes each an error.
 - **Registers for variables.** Up to five of a procedure's single
   values, not reals, whose address is never taken, live in `rbx` and

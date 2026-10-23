@@ -62,7 +62,7 @@ const
     MaxNames = 64;        (* names in one declaration, and the like *)
     MaxFwd = 256;         (* pointers to types not yet declared *)
     MaxDefers = 64;       (* defer statements in force *)
-    MaxDrops = 4096;      (* calls that drop results, in one module *)
+    MaxDoubts = 4096;     (* places to warn of, noted while a module is read *)
     MaxDeferred = 64;     (* generic imports not yet made *)
     MaxLabels = 1024;     (* labels of one match *)
     MaxElements = 1024;   (* elements of an array literal *)
@@ -108,12 +108,15 @@ var
     stray: BOOL;         (* an "end" in this procedure stood left of its statement's line *)
     strayAt: Diag.Pos;   (* ... the first such statement *)
     elseIf: BOOL;        (* an "else if" in this procedure *)
-    drops: [MaxDrops]record
-        at: Diag.Pos;    (* a call standing on its own that drops results *)
-        n: INT;          (* ... how many *)
+    doubts: [MaxDoubts]record
+        at: Diag.Pos;    (* a place the module's end warns of *)
+        n: INT;          (* a call standing on its own that drops this many results, or *)
+        msg, hint: []U8; (* any other doubt, in words (msg is empty for a drop) *)
     end;
-    numDrops: INT;       (* the module being compiled has those from its
+    numDoubts: INT;      (* the module being compiled has those from its
                             first one, saved by compileFile, to here *)
+    bareBoolRel: BOOL;   (* the relation just read is an = or # of two BOOLs,
+                            not in parentheses *)
     ends: BOOL;          (* the statements just read never go on past
                             their end: each way through them returns *)
     useAt: Diag.Pos;     (* ... which is here *)
@@ -1548,6 +1551,33 @@ begin
     return nil;
 end;
 
+(* A doubt other than a drop, to be warned of at p with msg and hint.
+   Text read twice, as a while's condition is, is noted once. *)
+proc noteDoubt(p: Diag.Pos; msg, hint: []U8);
+var i: INT;
+begin
+    for i := 0 to numDoubts - 1 do
+        if (doubts[i].at.f = p.f) and (doubts[i].at.a = p.a) then return; end;
+    end;
+    if numDoubts < MaxDoubts then
+        doubts[numDoubts].at := p;
+        doubts[numDoubts].msg := msg;
+        doubts[numDoubts].hint := hint;
+        INC(numDoubts);
+    end;
+end;
+
+(* Notes the string at the scanner if it has a \0 before a digit *)
+proc noteZeroDigit;
+var at: Diag.Pos; yes: BOOL;
+begin
+    at, yes := Scan.zeroDigit();
+    if yes then
+        noteDoubt(at, "\\0 is a zero byte and the digit after it is itself",
+            "write \\x00 to keep them apart");
+    end;
+end;
+
 proc factor(var x: TItem; want: PType): ERROR;
 var called, vol, several: BOOL; t: PType; start: INT; s: []U8;
 begin
@@ -1565,6 +1595,7 @@ begin
         Scan.next;
     | sString:
         Item.makeStr(x);
+        noteZeroDigit();
         Scan.next;
     | sIdent:
         try designator(x, called);
@@ -1684,19 +1715,35 @@ begin
     return nil;
 end;
 
+(* A relation. It sets bareBoolRel, for the and or or that may follow:
+   a relation binds tighter than and and or, so the # in "a # b and c"
+   is read first, as (a # b) and c, which a Pascal reader doesn't expect. *)
 proc relation(var x: TItem; want: PType): ERROR;
-var op: Scan.Sym; y: TItem; L: INT;
+var op: Scan.Sym; y: TItem; L: INT; bools: BOOL;
 begin
     try simpleExpr(x, want);
+    bools := false;
     if isRelOp() then
         op := Scan.tok;
         Scan.next;
         try Item.op1(op, x, L);
         if op = Scan.sIn then try simpleExpr(y, nil); else try simpleExpr(y, x.typ); end;
+        bools := ((op = Scan.sEql) or (op = Scan.sNeq)) and (x.typ = Sym.tBool) and (y.typ = Sym.tBool);
         try Item.op2(op, x, y, L);
         x.pos := Diag.join(x.pos, y.pos);
     end;
+    bareBoolRel := bools;   (* a relation in parentheses comes here as a factor, and sets it false *)
     return nil;
+end;
+
+(* Notes x, an operand of the and or or (word) just read, if it is an
+   unparenthesised = or # of two BOOLs *)
+proc noteBoolRel(const x: TItem; word: []U8);
+begin
+    if bareBoolRel then
+        noteDoubt(x.pos, say2("{} is read first: = and # bind tighter than {}", Diag.source(x.pos), word),
+            "put the = or # of two BOOLs in parentheses");
+    end;
 end;
 
 (* and binds tighter than or, and both below the relations *)
@@ -1705,12 +1752,17 @@ var y: TItem; L: INT; start: INT;
 begin
     start := Scan.tokStart();
     try relation(x, want);
-    while Scan.tok = Scan.sAnd do
-        Scan.next;
-        try Item.op1(Scan.sAnd, x, L);
-        try relation(y, nil);
-        try Item.op2(Scan.sAnd, x, y, L);
-        x.pos := Scan.spanFromAt(start);
+    if Scan.tok = Scan.sAnd then
+        noteBoolRel(x, "and");
+        repeat
+            Scan.next;
+            try Item.op1(Scan.sAnd, x, L);
+            try relation(y, nil);
+            noteBoolRel(y, "and");
+            try Item.op2(Scan.sAnd, x, y, L);
+            x.pos := Scan.spanFromAt(start);
+        until Scan.tok # Scan.sAnd;
+        bareBoolRel := false;   (* x is a conjunction now *)
     end;
     return nil;
 end;
@@ -1720,12 +1772,17 @@ var y: TItem; L: INT; start: INT;
 begin
     start := Scan.tokStart();
     try conjunct(x, want);
-    while Scan.tok = Scan.sOr do
-        Scan.next;
-        try Item.op1(Scan.sOr, x, L);
-        try conjunct(y, nil);
-        try Item.op2(Scan.sOr, x, y, L);
-        x.pos := Scan.spanFromAt(start);
+    if Scan.tok = Scan.sOr then
+        noteBoolRel(x, "or");
+        repeat
+            Scan.next;
+            try Item.op1(Scan.sOr, x, L);
+            try conjunct(y, nil);
+            noteBoolRel(y, "or");
+            try Item.op2(Scan.sOr, x, y, L);
+            x.pos := Scan.spanFromAt(start);
+        until Scan.tok # Scan.sOr;
+        bareBoolRel := false;   (* x is a disjunction now *)
     end;
     return nil;
 end;
@@ -2464,10 +2521,11 @@ end;
    to be warned of *)
 proc noteDrop(const x: TItem);
 begin
-    if (x.mode # Item.mNone) and (numDrops < MaxDrops) then
-        drops[numDrops].at := x.pos;
-        if x.typ^.tuple then drops[numDrops].n := INT(x.typ^.len); else drops[numDrops].n := 1; end;
-        INC(numDrops);
+    if (x.mode # Item.mNone) and (numDoubts < MaxDoubts) then
+        doubts[numDoubts].at := x.pos;
+        doubts[numDoubts].msg := "";
+        if x.typ^.tuple then doubts[numDoubts].n := INT(x.typ^.len); else doubts[numDoubts].n := 1; end;
+        INC(numDoubts);
     end;
 end;
 
@@ -2955,7 +3013,7 @@ end;
 proc body(p: PObj; sig: PType; line: INT): ERROR;
 var
     q, params, last, o, before: PObj; old: PType; st: Scan.State;
-    mark: Gen.CodeMark; drops0, errs: INT;
+    mark: Gen.CodeMark; doubts0, errs: INT;
 begin
     try Sym.openScope(Sym.newScope());
     params := nil; last := nil;
@@ -2986,7 +3044,7 @@ begin
     placeLocals(params, before);
     (* the body, made again if a variable in a register must be in memory *)
     Scan.saveScan(st);
-    Gen.markCode(mark); drops0 := numDrops; errs := Diag.errors;
+    Gen.markCode(mark); doubts0 := numDoubts; errs := Diag.errors;
     old := curResult;
     repeat
         Item.setDemoted(false);
@@ -3008,7 +3066,7 @@ begin
                 o := o^.next;
             end;
         end;
-        numDrops := drops0;
+        numDoubts := doubts0;
         Gen.redo(mark);
         placeLocals(params, before);
         Scan.restoreScan(st);
@@ -3798,20 +3856,25 @@ end;
 
 (* The warnings of module m, by where each declaration is: its own
    declarations and its procedures' are two lists, each in order, and
-   firstDrop on are the calls that drop results. The
+   firstDoubt on are the calls that drop results and the other doubts. The
    instances of a generic module share its text, and so its warnings:
    only the first is warned of. *)
-proc warnings(m: PModule; firstDrop: INT);
+proc warnings(m: PModule; firstDoubt: INT);
 var a, b: PObj; n: PModule; i: INT;
 begin
     n := firstModule;
     while (n # nil) and (n^.name # m^.name) do n := n^.next; end;
     if n # nil then return; end;
     a := m^.first; b := m^.locals;
-    i := firstDrop;
-    while (a # nil) or (b # nil) or (i < numDrops) do
-        if (i < numDrops) and ((a = nil) or (drops[i].at.a < a^.pos.a)) and ((b = nil) or (drops[i].at.a < b^.pos.a)) then
-            dropped(drops[i].at, drops[i].n);
+    i := firstDoubt;
+    while (a # nil) or (b # nil) or (i < numDoubts) do
+        if (i < numDoubts) and ((a = nil) or (doubts[i].at.a < a^.pos.a)) and ((b = nil) or (doubts[i].at.a < b^.pos.a)) then
+            if LEN(doubts[i].msg) = 0 then
+                dropped(doubts[i].at, doubts[i].n);
+            else
+                Diag.warning(doubts[i].at, doubts[i].msg);
+                Diag.help(doubts[i].hint);
+            end;
             INC(i);
         elsif (b = nil) or ((a # nil) and (a^.pos.a < b^.pos.a)) then
             warn(a);
@@ -3869,9 +3932,9 @@ var
     st: Scan.State; saved: [Sym.MaxDepth]INT; d: INT;
     oldMod: PModule; oldCheck, oldChecks: BOOL; m: PModule;
     lib: ^Sym.Lib; start: Diag.Pos; alias, mname, line, oldPath: INT; o: PObj; bodyChunk: INT; iargs: Sym.Args;
-    generic: BOOL; argsAt: Scan.State; why: []U8; firstDrop: INT;
+    generic: BOOL; argsAt: Scan.State; why: []U8; firstDoubt: INT;
 begin
-    firstDrop := numDrops;
+    firstDoubt := numDoubts;
     Scan.saveScan(st);
     d := Sym.saveScopes(saved[0..Sym.MaxDepth]);
     oldMod := Sym.curModule; oldCheck := checkMode; oldPath := Chunk.curFilePath(); oldChecks := Item.checks;
@@ -4020,8 +4083,8 @@ begin
         end;
         o := o^.chain;
     end;
-    if (Diag.errors = 0) and not checkOnly then warnings(m, firstDrop); end;
-    numDrops := firstDrop;
+    if (Diag.errors = 0) and not checkOnly then warnings(m, firstDoubt); end;
+    numDoubts := firstDoubt;
     if Diag.errors > 0 then Diag.finish(); end;   (* a module with errors stops the compiler after it *)
     Sym.closeScope();
     m^.done := true;

@@ -1,0 +1,9 @@
+test/err/BoolRel.raz:13:10: error: a # b is read first: = and # bind tighter than and
+   13 |     a := a # b and c;
+      |          ^^^^^
+help: put the = or # of two BOOLs in parentheses
+test/err/BoolRel.raz:14:15: error: b = c is read first: = and # bind tighter than or
+   14 |     a := a or b = c;
+      |               ^^^^^
+help: put the = or # of two BOOLs in parentheses
+raz: 2 errors
