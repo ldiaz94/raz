@@ -472,6 +472,12 @@ copied to the start of
 as one block, even if they overlap; past
 .Fn LEN d ,
 a failed check.
+.It Fn FILL d x
+Every element of the array or slice
+.Ar d
+set to
+.Ar x ,
+a value of its type.
 .It Fn INC v k , Fn DEC v k
 .Ar v
 plus or minus
@@ -558,6 +564,8 @@ and an
 which any
 .Cm match
 may end with.
+An imported case may be written qualified,
+.Cm "| Xml.done:" .
 .It Cm return
 With the results, several separated by commas, or
 .Cm "return f(x)" ,

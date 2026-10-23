@@ -53,9 +53,12 @@ rotated (sections 6.1 and 6.8); it breaks no program. 2026-10.36 is a
 twelfth: `MIN(T)` and `MAX(T)`, the limits of an integer type, and
 `CLZ`, `CTZ` and `POPCOUNT`, which count bits (sections 6.1 and 6.8);
 `INT(b)`, a `BOOL` as an integer (section 6.7); `OFFSET(T, f)` and
-`SIZE(T.f)`, where a field lies and how big it is; and `BYTES(x)`, the
-bytes of a variable or a slice (sections 4 and 6.8); it breaks no
-program.
+`SIZE(T.f)`, where a field lies and how big it is; `BYTES(x)`, the
+bytes of a variable or a slice (sections 4 and 6.8); `FILL(d, x)`, an
+array or a slice set to one value (section 6.8); a qualified case in a
+`match` arm (section 7.4); a slice part written as a literal, and an
+`ERROR` constant named by another (sections 4 and 5.8); and a `const`
+parameter's slice returned (section 7.3); it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -405,9 +408,11 @@ record or a variant, and the value of an array or record constant is a
 literal (section 6.5) of constants, that of a variant one a case built
 from constants, as a program builds one (section 5.6). Its elements
 and fields are integers, reals, `BOOL`s, enumerations, sets, `ERROR`s,
-procedures, `nil`, a string for a `[]U8`, an array constant or the
-empty slice for a slice of its element type, and arrays, records and
-variants of these; no other pointer. A variant constant must have a
+procedures, `nil`, a string for a `[]U8`, an array constant, an array
+literal or the empty slice for a slice of its element type, and
+arrays, records and variants of these; no other pointer. A named
+constant stands for its literal wherever an array, record or variant is
+wanted. A variant constant must have a
 type: `const D = dot;` is an error, `const D: Shape = dot;` isn't.
 
 ```
@@ -415,6 +420,7 @@ const Primes: [5]I64 = [2, 3, 5, 7, 11];
 type Rule = record class: []U8; tag: INT; float: BOOL; end;
 const Rules: [2]Rule = [{class: "firefox", tag: 2}, {class: "mpv", float: true}];
 const Shapes: []Shape = [circle(1.0), rect(2.0, 3.0), dot];   (* Shape of section 5.6 *)
+const Rows: [][]INT = [[1, 2], [3]];       (* each row an array constant of its own *)
 ...
 p := Primes[i];
 ```
@@ -636,7 +642,11 @@ deal with a failure itself passes it on with `try` (section 7.8).
 by a constant declared as above, and each such declaration makes an
 error different from every other, whatever its message: two modules that
 both declare `"not found"` have two different errors. A generic module
-makes its errors once per instance. `nil` is no error.
+makes its errors once per instance. `nil` is no error. Only a string
+makes a new error: an `ERROR` constant whose value is another `ERROR`
+constant is that same error, so `const Short*: ERROR = PictBase.Short;`
+passes on an error of another module, and `Short = PictBase.Short`
+holds.
 
 Errors compare with `=` and `#` only, by which declaration made them,
 never by their message. `MSG(e)` is the message, a `[]U8`; `MSG(nil)`
@@ -974,6 +984,7 @@ the same rules: `U8(300)` is 44. `U64(a = b)` is 0 or 1, and
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
 | `MSG(e)` | the message of the error `e`, a `[]U8` |
 | `COPY(d, s)` | copies the elements of `s` to the start of `d`, both arrays or slices of one type `T`; `LEN(s)` must be at most `LEN(d)` |
+| `FILL(d, x)` | sets every element of `d`, an array or a slice of elements of type `T`, to `x`, a value of `T` |
 | `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six arguments, each a pointer or an integer no wider than `INT`; the raw result, an `INT` (a negative number is `-errno`) |
 | `INC(v)`, `INC(v, k)` | adds 1, or `k`, to the integer variable `v`; it wraps, like `+` |
 | `DEC(v)`, `DEC(v, k)` | subtracts 1, or `k`, from `v` |
@@ -1053,6 +1064,17 @@ elements as one block, as an assignment of an array does, and is right
 when `d` and `s` overlap, as in `COPY(a[1..n], a[0..n - 1])`. It is
 checked as a slice is: past `LEN(d)`, it stops the program, unless the
 module says `check off;`.
+
+`FILL` is a statement too. `d` is written as `COPY`'s destination is,
+and `x` is assigned to each element as by `:=`:
+
+```
+FILL(row[a..b], U32(bg));    (* a row of pixels *)
+FILL(window, 0.0);           (* window: [576]F32 *)
+```
+
+It is no wipe: it may be left out when nothing reads what it wrote, as
+any write may (section 7.6).
 
 `INC` and `DEC` evaluate `v` once, so `INC(a[f(i)])` calls `f` once. They
 read `v` and then write it: two accesses, even through a `^VOLATILE`
@@ -1174,7 +1196,7 @@ Statement  = Designator [ ":=" Expr ]
            | "continue"
            | "defer" Statement
            | "try" Designator .
-Arm        = ( ident [ "(" ident { "," ident } ")" ]
+Arm        = ( ident { "." ident } [ "(" ident { "," ident } ")" ]
              | Label { "," Label } | "else" ) ":" Statements .
 Label      = Expr [ ".." Expr ] .
 Target     = Designator | "_" .
@@ -1262,9 +1284,10 @@ begin
 end;
 ```
 
-A slice of a `var` parameter, of a module variable, or of what a
-pointer points at may be returned: none of them is this procedure's
-frame. A slice of a frame that leaves it some other way isn't caught,
+A slice of a `var` or `const` parameter, of a module variable, or of
+what a pointer points at may be returned: none of them is this
+procedure's frame. For a `const` parameter given a temporary, the slice
+lives to the end of the caller's statement (section 8). A slice of a frame that leaves it some other way isn't caught,
 and is the exception of section 10: one held in a local slice
 variable, or in a record, that is returned; one stored in a module
 variable or through a pointer; and one that came back from a call, as
@@ -1304,6 +1327,11 @@ end;
 Every name must have an arm, and only one, unless there is an `| else:`
 arm. A variant's arm names one case: the fields it may name belong to
 that case alone.
+
+An arm on an enumeration or a variant names its case alone or as it is
+written anywhere else, with its type, its module, or both (`done`,
+`Kind.done`, `Xml.done`, `Xml.Kind.done`), and a qualified name must be
+a case of the matched type.
 
 `match` on an integer runs the arm whose labels hold its value:
 
@@ -1843,6 +1871,14 @@ that it follows this report: it passes them all, its reals aside where its targe
   what a program that fails says on standard error: conformance is
   judged by a program's standard output and exit status, never by its
   standard error.
+- **Copies.** A procedure's frame may hold copies of its variables
+  that the program can't name: registers saved to it, temporaries of
+  its statements, its value parameters, and arrays its calls return.
+  An implementation may leave them where they are when the procedure
+  returns, until the stack is used again. A wipe (section 7.6) reaches
+  only the variables it is given. A secret is best kept in one
+  variable, passed by `var` or `const` or by pointer, never by value,
+  and wiped there.
 - **The command line.** How the compiler is run, its options, and
   where its library lives (sections 1 and 3).
 
@@ -1942,7 +1978,7 @@ Statement  = Designator [ ":=" Expr ]
            | "continue"
            | "defer" Statement
            | "try" Designator .
-Arm        = ( ident [ "(" ident { "," ident } ")" ]
+Arm        = ( ident { "." ident } [ "(" ident { "," ident } ")" ]
              | Label { "," Label } | "else" ) ":" Statements .
 Label      = Expr [ ".." Expr ] .
 Target     = Designator | "_" .

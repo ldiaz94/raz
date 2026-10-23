@@ -246,5 +246,11 @@ at the time.
   `BOOL`. `OFFSET(T, f)` and `SIZE(T.f)` are the offset of a field in
   a record type and its size, untyped constants (sections 4 and 6.8);
   and `BYTES(x)` is the bytes of a variable or a slice as a `[]U8`,
-  of a type a view may take (sections 6.8, 6.9 and 7.3). It breaks no
-  program.
+  of a type a view may take (sections 6.8, 6.9 and 7.3). `FILL(d, x)`
+  sets every element of an array or a slice to `x` (section 6.8). An
+  arm of a `match` may name an imported case as it is written
+  elsewhere, `| Xml.done:` (section 7.4). A constant's slice part may
+  be an array literal, `[[1, 2], [3]]`, and an `ERROR` constant may be
+  another `ERROR` constant, the same error (sections 4 and 5.8). A
+  slice of a `const` parameter may be returned (section 7.3). Appendix
+  A says what a wipe can't reach. It breaks no program.
