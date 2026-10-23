@@ -138,7 +138,9 @@ for `const` parameters, variants in constants and the library by `var`,
 nothing new goes in `PROPOSALS.md`, and a wish, the owner's or yours,
 isn't recorded. What is open there, the safety thaw and the Moss work
 (`Host`, a freestanding program stated, the assembler's instructions,
-implementation limits), is the last. Once it is done the language is in
+implementation limits), is the last. `PLAN.md` gives the order: v0.22.0 for what is
+done, the safety thaw, the Moss work, the hard freeze, a clean-up, then
+1.0 when use shows it. Once it is done the language is in
 a hard freeze: no more thaws. The language changes only to mend a
 defect, the compiler or the library doing other than the report says;
 the library's core (appendix A) only to mend a defect or to plug a very
