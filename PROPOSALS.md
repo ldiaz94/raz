@@ -6,8 +6,10 @@ the owner's word, and goes into the report before any code.
 
 **Closed to new proposals** (owner, 2026-10-23). Nothing new is added.
 What is still open here, the safety thaw and the Moss work, is the
-last; once it is done the language is in a hard freeze, and the
-language and the library change only to mend a defect.
+last; once it is done the language is in a hard freeze: the language
+and the library's core change only to mend a defect, or the core to
+plug a very big gap, and the rest of the library grows only
+conservatively.
 
 ## Installed source libraries and RAZ_PATH
 

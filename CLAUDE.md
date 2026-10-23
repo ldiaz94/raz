@@ -139,9 +139,11 @@ nothing new goes in `PROPOSALS.md`, and a wish, the owner's or yours,
 isn't recorded. What is open there, the safety thaw and the Moss work
 (`Host`, a freestanding program stated, the assembler's instructions,
 implementation limits), is the last. Once it is done the language is in
-a hard freeze: no more thaws, and the language and the library change
-only to mend a defect, the compiler or the library doing other than the
-report says.
+a hard freeze: no more thaws. The language changes only to mend a
+defect, the compiler or the library doing other than the report says;
+the library's core (appendix A) only to mend a defect or to plug a very
+big gap; and the rest of the library grows only conservatively, by what
+breaks no program, on the owner's word.
 
 **The reserved words and the module names are settled.** That a word
 is reserved, however common (`code`, `to`, `packed`, `forward`, `set`,
