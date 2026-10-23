@@ -1161,6 +1161,8 @@ in raz?" (2026-10-17).
 
 ## `Sys.setsid`: a session of a process's own
 
+**Status.** Approved by the owner on 2026-10-23 and implemented in both backends.
+
 Library growth that breaks no program: one procedure, beside `fork`,
 in `Sys.raz` (C's `setsid`) and `Sys.linux-x86_64.raz` (system call
 112).
@@ -1251,6 +1253,8 @@ Met in moss (`docs/raz-port.md`): its stored programs get a guarded
 (2026-10-22).
 
 ## `Sys.blocking`: whether a descriptor's reads and writes wait
+
+**Status.** Approved by the owner on 2026-10-23 and implemented in both backends.
 
 Library growth that breaks no program: one procedure, beside
 `setBlocking`, in `Sys.raz` (C's `fcntl` with `F_GETFL`) and
@@ -2026,7 +2030,7 @@ program writes, as fast as the machine fills, for any element type.
 
 ## `COPY` forwards unless it must go back
 
-**Status.** Proposed 2026-10-23, from rat.
+**Status.** Approved by the owner on 2026-10-23 and implemented in `Gen.copySlice`: backwards only when the destination starts inside the source, and then by words; up copies 8 to 25 times faster.
 
 `COPY` is right when its two sides overlap (6.8), and the compiler
 makes it so by copying backwards whenever the destination is above
@@ -2832,7 +2836,7 @@ for a form that already doesn't change.
 
 ## `Doc` for a library's pages
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23 and implemented in `tools/Doc.raz`, both.
 
 `tools/Doc.raz` writes raz-lib(3) from `lib/`, and other libraries
 have started to use it for their own pages. Two changes let them.
