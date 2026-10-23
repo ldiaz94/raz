@@ -16,7 +16,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | Module | What |
 |---|---|
 | `Rt` | ending the program, `exit`, `exitStatus` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
-| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `lockShared`, `close`, `closeChecked`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `makeDirMode`, `chmod`, `setTime`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `findEnv`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; errors, by name, and what one means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others, which takes what each C library fixes from `CAbi` |
+| `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `lockShared`, `close`, `closeChecked`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `mapRead`, `protect`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `makeDirMode`, `chmod`, `setTime`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `findEnv`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; errors, by name, and what one means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others, which takes what each C library fixes from `CAbi` |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
@@ -256,7 +256,7 @@ type
 
 proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
 proc read*(fd: INT; buf: []U8): INT;    (* the bytes read; 0 at the end *)
-proc open*(path: []U8; how: Accesses): INT;   (* its fd *)
+proc open*(path: []U8; how: Accesses): INT;   (* its fd, closed on exec *)
 proc openMode*(path: []U8; how: Accesses; mode: INT): INT;   (* open, a file it makes given mode *)
 proc openRead*(path: []U8): INT;         (* open(path, {reading}) *)
 proc create*(path: []U8): INT;           (* open(path, {writing, creating, truncating}) *)
@@ -272,8 +272,10 @@ proc closeChecked*(fd: INT): INT;        (* close, and 0 or minus the errno it f
 proc dup*(fd: INT): INT;                 (* a new fd for the same file, the lowest free *)
 proc dupTo*(fd, into: INT): INT;         (* into made the same file as fd, closing what it was *)
 proc dupAbove*(fd, least: INT): INT;     (* a new fd for the same file, the lowest free from least on, closed on exec *)
-proc keepOnExec*(fd: INT; yes: BOOL): INT;   (* fd left open, or not, in the program exec runs *)
+proc keepOnExec*(fd: INT; yes: BOOL): INT;   (* fd left open, or not (as at first for a file made by open or pipe), in the program exec runs *)
 proc isTerminal*(fd: INT): BOOL;
+proc mapRead*(fd, size: INT): ^U8;     (* the first size bytes of fd, which may be open only to read, mapped read only; or nil *)
+proc protect*(p: ^U8; size: INT; read, write: BOOL): INT;   (* the pages at p readable and writable as asked; neither, and touching them stops the program *)
 proc mmap*(size: INT): ^U8;              (* size bytes of zeroed memory, in whole pages; or nil *)
 proc munmap*(p: ^U8; size: INT);
 proc yield*;                             (* the processor given to another thread *)
@@ -501,8 +503,10 @@ of its own, `setGroup(0, 0)`.
 shell's `exec cmd` does, found and started as `spawn` would start it,
 `p.tty`, `p.group`, `p.foreground`, `p.fds` and `p.dir` included,
 except that it keeps this program's other open files: each stays open
-in the program unless `keepOnExec(fd, false)` was said of it, as it is
-of `pipe`'s, and those of `p.more` are kept. It returns only if the
+in the program unless it is closed on exec, as the files `open`,
+`pipe`, a socket or `memFile` gives are, unless `keepOnExec(fd, true)`
+was said of them; `dup` and `dupTo` give files that stay open; and
+those of `p.more` are kept. It returns only if the
 program can't run: -2 (ENOENT) or -13 (EACCES) if there is none to
 run, with nothing done; or, if the program is found but won't start,
 minus the errno, with what `p` asks of the terminal, the group, the
@@ -533,11 +537,16 @@ terminal waits until it is `foregroundOf(0)` before it takes it.
 `access` says whether this user, by its real ids, may read, write or
 execute a file, as `test -r`, `-w` and `-x` ask, which `Info.mode`
 alone can't say; an empty `how` asks only whether it is there.
-`open` refuses `executing`, with -22 (EINVAL). `nonblocking` opens a file without waiting: a fifo opened to write
-waits for a reader and a fifo opened to read waits for a writer, but
-with `nonblocking` the open returns at once (-6, ENXIO, for a write
-with no reader), and a read or write that would wait is -11 later, as
-`setBlocking(fd, false)` makes it. `umask` sets the bits
+`open` refuses `executing`, with -22 (EINVAL). `nonblocking` opens a
+file without waiting: a fifo opened to write waits for a reader and a
+fifo opened to read waits for a writer, but with `nonblocking` the open
+returns at once (-6, ENXIO, for a write with no reader), and a read or
+write that would wait is -11 later, as `setBlocking(fd, false)` makes
+it. A file `open`, `openMode`, `openRead` or `create` gives is closed in
+a program `exec` or `execve` starts, as `pipe`'s are, so that a fifo or
+a log one program holds doesn't reach every program it runs;
+`keepOnExec(fd, true)` keeps one open, and `spawn` is unchanged, since
+it passes its `fds` and `more` as before. `umask` sets the bits
 taken away from the mode of every file this program, and those it
 starts, make, and says what they were. `envAt` gives the environment
 one variable at a time, from 0, for a shell to list it and to pass it
@@ -653,6 +662,15 @@ program exec starts. `memFile` makes a file that lives in memory, of
 what one program writes there another sees at once: so a program hands
 an X server or a Wayland compositor its pixels, by `sendFds` of a
 `memFile` both map, rather than by copying them down a socket.
+`mapFile` needs a file open to read and write; `mapRead` maps one that
+is open only to read, a dictionary that isn't the user's to write, for
+reading only: a write there stops the program. `protect` changes what
+may be done with pages `mmap` gave, from a page boundary: read, write,
+both, or neither, so that touching them stops the program, as a guard
+page after a buffer does, or a reserve mapped in full and opened as it
+fills. It takes the address as the system does, so with a C library it
+is that library's whether an address not on a page boundary is -22
+(EINVAL) or rounded down.
 
 `readyOf` waits on several file descriptors at once, as a program does
 that listens to a server and a terminal both; a descriptor at its end,

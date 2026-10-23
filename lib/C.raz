@@ -10,6 +10,7 @@ extern proc creat*(path: ^U8; mode: U32): I32;
 extern proc close*(fd: I32): I32;
 extern proc mmap*(addr: ^U8; n: UINT; prot, flags, fd: I32; off: I64): ^U8;
 extern proc munmap*(addr: ^U8; n: UINT): I32;
+extern proc mprotect*(addr: ^U8; n: UINT; prot: I32): I32;
 extern proc isatty*(fd: I32): I32;
 extern proc exit*(status: I32);
 extern proc _exit*(status: I32);

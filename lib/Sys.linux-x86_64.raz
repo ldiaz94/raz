@@ -193,11 +193,11 @@ begin
     return true;
 end;
 
-(* open's flags for how; Linux's numbers *)
+(* open's flags for how, with O_CLOEXEC; Linux's numbers *)
 proc flags(how: Accesses): I32;
 var f: I32;
 begin
-    f := 0;                                         (* O_RDONLY *)
+    f := 80000H;                                    (* O_CLOEXEC, with O_RDONLY *)
     if writing in how then
         f := 1;                                     (* O_WRONLY *)
         if reading in how then f := 2; end;         (* O_RDWR *)
@@ -210,9 +210,9 @@ begin
     return f;
 end;
 
-(* The file at path, opened as how asks: its file descriptor, or minus
-   an errno. A file it creates has the permission bits mode, less
-   those the umask takes away. *)
+(* The file at path, opened as how asks: its file descriptor, closed in
+   a program exec starts, or minus an errno. A file it creates has the
+   permission bits mode, less those the umask takes away. *)
 proc openMode*(path: []U8; how: Accesses; mode: INT): INT;
 var buf: [4096]U8;
 begin
@@ -228,13 +228,15 @@ begin
     return openMode(path, how, 1A4H);               (* 644 *)
 end;
 
-(* The file at path, opened for reading. *)
+(* The file at path, opened for reading, closed in a program exec
+   starts. *)
 proc openRead*(path: []U8): INT;
 begin
     return open(path, {reading});
 end;
 
-(* The file at path, made empty or new, opened for writing. *)
+(* The file at path, made empty or new, opened for writing, closed in a
+   program exec starts. *)
 proc create*(path: []U8): INT;
 begin
     return open(path, {writing, creating, truncating});
@@ -337,7 +339,8 @@ begin
 end;
 
 (* Whether fd stays open in the program exec runs in this one's place:
-   yes, or no, closed then, as pipe's fds are at first. 0, or minus an
+   yes, or no, closed then, as the fds open, pipe and socket give are at
+   first. 0, or minus an
    errno. *)
 proc keepOnExec*(fd: INT; yes: BOOL): INT;
 var f: INT;
@@ -386,6 +389,29 @@ begin
     p := SYSCALL(9, 0, size, 3, 1, fd, 0);      (* mmap: read, write; MAP_SHARED *)
     if p < 0 then return nil; end;
     return ^U8(p);
+end;
+
+(* The first size bytes of the file fd, which may be open only to
+   read, mapped to be read only: writing there stops the program. nil
+   if it can't be; munmap gives them back. *)
+proc mapRead*(fd, size: INT): ^U8;
+var p: INT;
+begin
+    p := SYSCALL(9, 0, size, 1, 2, fd, 0);      (* mmap: read; MAP_PRIVATE *)
+    if p < 0 then return nil; end;
+    return ^U8(p);
+end;
+
+(* Lets the pages from p, size bytes from a page boundary, be read and
+   written as read and write say; neither, and touching them stops the
+   program. 0, or minus an errno. *)
+proc protect*(p: ^U8; size: INT; read, write: BOOL): INT;
+var prot: INT;
+begin
+    prot := 0;                                  (* PROT_NONE *)
+    if read then prot := 1; end;
+    if write then prot := prot | 2; end;
+    return SYSCALL(10, p, size, prot);          (* mprotect *)
 end;
 
 (* Whether the file descriptor fd is a terminal: whether it has a
@@ -593,7 +619,7 @@ begin
     d.pos := 0;
     d.len := 0;
     if not cstr(path, a) then return -36; end;
-    d.fd := SYSCALL(2, ADR(a), 10000H);            (* open, O_RDONLY, O_DIRECTORY *)
+    d.fd := SYSCALL(2, ADR(a), 90000H);            (* open, O_RDONLY, O_DIRECTORY, O_CLOEXEC *)
     if d.fd < 0 then return d.fd; end;
     return 0;
 end;
@@ -1770,7 +1796,11 @@ begin
         if p.foreground then _ := foreground(0, SYSCALL(111)); end;   (* getpgrp *)
     end;
     for i := 0 to 2 do
-        if p.fds[i] # 0 then _ := SYSCALL(33, p.fds[i], i); end;   (* dup2 *)
+        if p.fds[i] = i then
+            _ := keepOnExec(i, true);   (* dup2 of a file onto itself would leave it closed on exec *)
+        elsif p.fds[i] # 0 then
+            _ := SYSCALL(33, p.fds[i], i);                  (* dup2 *)
+        end;
     end;
     if LEN(p.dir) > 0 then return SYSCALL(80, ADR(dir[0])); end;   (* chdir *)
     return 0;
@@ -1836,7 +1866,8 @@ end;
 
 (* Runs the program p describes in this one's place, as spawn would
    start it, but keeping this program's other fds as they are, open
-   unless keepOnExec said no; the fds of p.more are kept. It returns
+   unless closed on exec (as open and pipe give) and not kept by
+   keepOnExec; the fds of p.more are kept. It returns
    only if it can't: -2 (ENOENT) or -13 (EACCES) if there is no
    program to run, before anything is done; or, once the program's
    terminal, group, fds and working directory are as p asks, which
@@ -2398,6 +2429,33 @@ begin
     _ := remove("/tmp/raz-sys-fifo");
 end;
 
+(* The test of memory and files mapped: a file open only to read, mapped
+   to be read, and not to be written; and pages that change what may be
+   done with them. *)
+proc testMaps;
+var fd: INT; p, q: ^U8;
+begin
+    fd := create("/tmp/raz-sys-map");
+    if (fd < 0) or (write(fd, "hello") # 5) then exit(2); end;
+    close(fd);
+    fd := openRead("/tmp/raz-sys-map");
+    if (fd < 0) or (mapFile(fd, 5) # nil) then exit(2); end;    (* shared and writable: not for a file open to read *)
+    p := mapRead(fd, 5);
+    if (p = nil) or (p[0..5] # "hello") then exit(2); end;
+    munmap(p, 5);
+    close(fd);
+    _ := remove("/tmp/raz-sys-map");
+    p := mmap(8192);
+    if p = nil then exit(2); end;
+    p[0] := 1;
+    q := p + 4096;
+    if (protect(q, 4096, true, false) # 0) or (q[0] # 0) then exit(2); end;
+    if protect(q, 4096, true, true) # 0 then exit(2); end;
+    q[0] := 2;
+    if (protect(p, 4096, false, false) # 0) or (protect(p, 4096, true, true) # 0) or (p[0] # 1) then exit(2); end;   (* its bytes stay *)
+    munmap(p, 8192);
+end;
+
 (* The module's test: a file written, read back and closed; a
    directory made, listed and emptied; no terminal; a socket, sent to
    after its end; programs; time and the network. *)
@@ -2626,6 +2684,7 @@ begin
     testNet;
     testProcess;
     testServer;
+    testMaps;
 end;
 
 end Sys.

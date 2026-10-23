@@ -1,0 +1,17 @@
+(* Over the C library: a file open gives is closed in the program exec
+   runs, unless keepOnExec says to keep it: of two opened files, sh sees
+   the second. *)
+module ExecOpenedC;
+import Sys;
+
+proc main*: INT;
+var a, b: INT;
+begin
+    a := Sys.openRead("/dev/null");
+    b := Sys.create("/dev/null");
+    if (a # 3) or (b # 4) or (Sys.keepOnExec(b, true) # 0) then return 1; end;
+    return Sys.exec({path: "sh",
+        args: ["sh", "-c", "for n in 3 4; do if [ -e /proc/self/fd/$n ]; then echo open $n; else echo closed $n; fi; done"]});
+end;
+
+end ExecOpenedC.
