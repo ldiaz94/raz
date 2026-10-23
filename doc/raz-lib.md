@@ -616,6 +616,15 @@ program ignored it or because the one that started this one left it
 so, as a program in the background or under `nohup` finds `sigInt` and
 `sigHup`: it should leave those alone, and `handle` or `catch` the rest.
 
+To wait for a child, a signal or a time, whichever is first, `catch`
+`sigChld` with the other signals and wait in `ready` on `catch`'s fd:
+a child that ends makes `sigChld` ready there, as a signal that came
+before the wait does, since `catch` holds it until `caught` takes it,
+so none falls between a `wait` that found nothing and the sleep after
+it. When the fd is ready, call `caught`, then `wait(pid, false)`.
+`handle` can't do this: a signal noted just before the call it should
+break isn't seen by it.
+
 `handle` is for a program that must see a signal while it waits in a
 system call, as a shell waiting for its foreground program, or for a
 key, sees Ctrl-C: the signal is noted, and the call it comes during,

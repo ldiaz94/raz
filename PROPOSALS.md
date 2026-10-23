@@ -2878,11 +2878,13 @@ options to replace two small files is the larger.
 **Recommendation:** take; it makes `Doc man` serve any library, and
 `Doc.raz` loses its fixed text and its date.
 
-## Left out, to confirm
+## Left out
 
-What the collation of 2026-10-22 recommends leaving out, each with its
-reason. The owner confirms or moves an item into a proposal; what is
-confirmed is marked "Not planned" in `~/r/RAZ-GAPS.md`.
+What the collation of 2026-10-22 recommended leaving out, each with its
+reason; it is marked "Not planned" in `~/r/RAZ-GAPS.md`.
+
+**Status.** Confirmed by the owner on 2026-10-23, but for the exported
+array, parked with `[]const T`.
 
 ### The language
 
@@ -2892,7 +2894,7 @@ confirmed is marked "Not planned" in `~/r/RAZ-GAPS.md`.
 - Records don't compare with `=` — padding, reals (`-0.0`, NaN) and slices make a byte compare wrong; a `same` procedure says what equal means. Confirmed by the owner, 2026-10-22.
 - No type of its own for an array — a one-field record keeps two hashes apart, as it keeps generic arrays (owner's idiom).
 - No exporting a record's fields as a whole — each `*` is the reader's mark of what is public; `Mxlib` is a C mirror, made by a program.
-- An exported array can't be read as a slice outside its module — a slice can be written through; "A slice that can't be written: `[]const T`" in PROPOSALS.md would answer it.
+- An exported array can't be read as a slice outside its module — a slice can be written through; "A slice that can't be written: `[]const T`" in PROPOSALS.md would answer it. Parked by the owner on 2026-10-23, with `[]const T`, for the safety thaw.
 - An exported variable can't be assigned from outside — Oberon's read-only export; a setter shows who writes.
 - A generic instance isn't reachable through the module that imported it — no bug: an import's name is never exported (3); export a type of the instance, or import it again.
 - `I32` doesn't widen to `INT` — `INT` may be 16 bits (5.1), so the widening would not hold everywhere.
@@ -2929,7 +2931,7 @@ confirmed is marked "Not planned" in `~/r/RAZ-GAPS.md`.
   answered: `catch` SIGCHLD with the others and wait in `ready` on
   catch's fd (child, signal or deadline at once), then `wait(pid,
   false)`; `ignore(sig, false)` gives a caught signal its default back.
-  Worth a paragraph in the library volume, not a procedure.
+  Worth a paragraph in the library volume (written there), not a procedure.
 - No word from the kernel when a file changes — inotify is Linux's,
   with no match in the C backend's other systems or Moss; a 300 ms
   look serves.
