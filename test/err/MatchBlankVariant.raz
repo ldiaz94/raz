@@ -1,0 +1,14 @@
+module MatchBlankVariant;
+(* The arm for every other case of a variant is else, not _ *)
+type Arg = variant int(i: INT); real(r: F64; places: INT); end;
+
+proc f(a: Arg);
+begin
+    match a of
+    | int(i): return;
+    | _: return;
+    end;
+end;
+
+begin
+end MatchBlankVariant.

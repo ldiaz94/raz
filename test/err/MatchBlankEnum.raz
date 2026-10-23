@@ -1,0 +1,14 @@
+module MatchBlankEnum;
+(* The arm for every other case of an enumeration is else, not _ *)
+type Colour = (red, green);
+
+proc f(c: Colour);
+begin
+    match c of
+    | red: return;
+    | _: return;
+    end;
+end;
+
+begin
+end MatchBlankEnum.

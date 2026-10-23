@@ -1,0 +1,5 @@
+test/err/MatchBlankEnum.raz:9:7: error: _ matches nothing: it is the blank, which stands only left of :=
+    9 |     | _: return;
+      |       ^
+help: the arm for every other case is | else:
+raz: 1 error

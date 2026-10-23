@@ -1,0 +1,12 @@
+module MatchBlankInt;
+(* The arm for every other value of an integer is else, not _ *)
+proc f(n: INT);
+begin
+    match n of
+    | 1: return;
+    | _: return;
+    end;
+end;
+
+begin
+end MatchBlankInt.

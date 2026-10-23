@@ -1,0 +1,18 @@
+module MatchUnusedField;
+(* A name an arm gives a field it never reads is warned of, and the help says to call it _ and the field's name *)
+type Arg = variant int(i: INT); real(r: F64; places: INT); end;
+
+proc negative(a: Arg): BOOL;
+var neg: BOOL;
+begin
+    neg := false;
+    match a of
+    | int(i): neg := i < 0;
+    | real(r, places): neg := r < 0.0;
+    end;
+    return neg;
+end;
+
+begin
+    _ := negative(int(1));
+end MatchUnusedField.

@@ -1,0 +1,12 @@
+module MatchBlankString;
+(* The arm for every other string is else, not _ *)
+proc f(s: []U8);
+begin
+    match s of
+    | "x": return;
+    | _: return;
+    end;
+end;
+
+begin
+end MatchBlankString.

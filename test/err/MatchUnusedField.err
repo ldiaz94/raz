@@ -1,0 +1,5 @@
+test/err/MatchUnusedField.raz:11:15: error: variable places is never used
+   11 |     | real(r, places): neg := r < 0.0;
+      |               ^^^^^^
+help: an arm names all the fields of a case or none: call one it doesn't read _places
+raz: 1 error

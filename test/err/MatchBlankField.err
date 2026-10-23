@@ -1,0 +1,5 @@
+test/err/MatchBlankField.raz:9:15: error: a field is named, not blanked
+    9 |     | real(r, _): return;
+      |               ^
+help: call one the arm doesn't read _places
+raz: 1 error

@@ -1,0 +1,14 @@
+module MatchBlankField;
+(* An arm names a field, it doesn't blank it: the help gives the name to use *)
+type Arg = variant int(i: INT); real(r: F64; places: INT); end;
+
+proc f(a: Arg);
+begin
+    match a of
+    | int(i): return;
+    | real(r, _): return;
+    end;
+end;
+
+begin
+end MatchBlankField.

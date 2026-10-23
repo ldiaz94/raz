@@ -61,3 +61,10 @@ tests a property of its code, one that must hold for any input, with
 `Prop`, drawing bytes or numbers from its `Source`. A test that passes
 says nothing. The core modules, and those the compiler imports, keep
 their own checks, since they can't import a standard-library module.
+
+## A match arm names every field
+
+An arm of a `match` on a variant names all of a case's fields, in
+order, or none. A field the arm doesn't read is named with `_` before
+its field's name, as in `| real(r, _places):`, so a reader sees it was
+left unread on purpose and `-Werror` doesn't warn of it.

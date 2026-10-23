@@ -2165,6 +2165,10 @@ begin
     while Scan.tok = Scan.sBar do
         Scan.next;
         if hasElse then return Scan.mark("else must be the last arm"); end;
+        if Scan.tok = Scan.sBlank then
+            return Scan.markHelp(Scan.tokPos(), "_ matches nothing: it is the blank, which stands only left of :=",
+                "the arm for every other case is | else:");
+        end;
         if Scan.tok = Scan.sElse then
             Scan.next;
             try expect(Scan.sColon);
@@ -2208,6 +2212,10 @@ begin
                 f := c^.fields;
                 n := 0;
                 repeat
+                    if (Scan.tok = Scan.sBlank) and (f # nil) then
+                        return Scan.markHelp(Scan.tokPos(), "a field is named, not blanked",
+                            say1("call one the arm doesn't read _{}", nameOf(f^.name)));
+                    end;
                     if Scan.tok # Scan.sIdent then return expected("a name"); end;
                     if f = nil then
                         return Scan.mark(say1("more names than {} has fields", nameOf(c^.name)));
@@ -3763,8 +3771,10 @@ begin
     else
         Diag.warning(o^.pos, say1("{} is never used", t));
     end;
-    if not o^.used and (o^.param or o^.ind) then
+    if not o^.used and o^.param then
         Diag.help(say1("if it must be there, call it _{}", s));
+    elsif not o^.used and o^.ind then   (* not a parameter, so a name a match arm gives *)
+        Diag.help(say1("an arm names all the fields of a case or none: call one it doesn't read _{}", s));
     end;
 end;
 
