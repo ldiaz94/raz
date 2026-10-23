@@ -928,6 +928,8 @@ and `verify` 0.95 s against 0.48: the hashing.
 
 ## Less that is undefined
 
+**Status.** Parked by the owner on 2026-10-23 for the safety thaw that follows once the proposals are cleared, with `MEM_PROPOSAL.md`.
+
 Section 10 lists what isn't defined: a stale or made-up pointer,
 indexing through a pointer, a slice kept after its frame is gone, a
 slice of an array a call returned kept past its statement, an index
@@ -996,6 +998,8 @@ a thaw.
 
 ## Windows
 
+**Status.** Not planned (owner, 2026-10-23).
+
 A Windows target would keep volume 2 as it is: it describes the
 library on a Unix target. Windows has no stable system calls, no
 signals, no fork, no termios, and fds that are handles, so its `Sys`
@@ -1047,6 +1051,8 @@ Met in mosaico's `Mconfig`, where `MenuAction.run` and a status block's
 kind `run` met; the block's kind was renamed `command`.
 
 ## A slice that can't be written: `[]const T`
+
+**Status.** Parked by the owner on 2026-10-23 for the safety thaw that follows once the proposals are cleared, with `MEM_PROPOSAL.md`.
 
 raz has no slice whose elements can't be written. A `const` parameter
 (report 2026-10.33, section 8) is shallow: the procedure can't change
@@ -1114,6 +1120,8 @@ constant slices?"
 
 ## For a kernel: three changes to the compiler
 
+**Status.** Done in v0.21.0 (2026-10-17), all three: `raz -base`, `raz -bare`, and the privileged instructions.
+
 Not the language's but this compiler's, kept together since they serve
 one end: a raz program run on the bare machine, a unikernel, with no
 operating system under it. None is needed for one: a kernel can be
@@ -1174,6 +1182,8 @@ Met in rabble, whose daemon (its `PLAN.md`, from 0.2.0) is started by
 the client with `fork` and must outlive the terminal (2026-10-21).
 
 ## The local time zone
+
+**Status.** Not planned (owner, 2026-10-23): rzone answers it outside raz.
 
 Library growth that breaks no program: a module, `Zone`, that tells
 the offset from UTC of the user's time zone at a given time, so that a
