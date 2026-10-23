@@ -97,6 +97,8 @@ const
     solSocket* = 1;
     soReuseaddr* = 2;
     soError* = 4;
+    soPeercred* = 17;
+    shutWr* = 1;
     msgNosignal* = 16384;
     msgCmsgCloexec* = 1073741824;
     scmRights* = 1;
@@ -113,6 +115,10 @@ const
     sockaddrIn6Len* = 28;
     sin6PortAt* = 2;
     sin6AddrAt* = 8;
+    ucPidAt* = 0;
+    ucPidLen* = 4;
+    ucUidAt* = 4;
+    ucUidLen* = 4;
     msghdrLen* = 56;
     msgIovAt* = 16;
     msgIovlenAt* = 24;

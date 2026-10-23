@@ -30,15 +30,16 @@ const
     errNotDir* = -20; errIsDir* = -21; errInvalid* = -22;
     errNotTerminal* = -25; errNoSpace* = -28; errPipe* = -32;
     errNameTooLong* = -36; errNotEmpty* = -39; errLoop* = -40;
-    errAddrInUse* = -98; errNetUnreach* = -101; errConnReset* = -104;
+    errAddrInUse* = -98; errNetUnreach* = -101; errConnAborted* = -103; errConnReset* = -104;
     errTimedOut* = -110; errRefused* = -111; errHostUnreach* = -113;
     errInProgress* = -115;
 
 type
     (* What open is asked for: reading, writing or both, and what else
-       it does to the file. *)
+       it does to the file; nonblocking, that open doesn't wait (for a
+       fifo's other end) and reads and writes on the file don't either. *)
     Access* = (reading, writing, creating, exclusive, truncating,
-        appending, executing);
+        appending, executing, nonblocking);
     Accesses* = set of Access;   (* what open is given *)
 
     (* What info says of a file. *)
@@ -117,6 +118,14 @@ type
     Peer* = record
         a: Sockaddr;
         size: INT;
+    end;
+    (* Who is at the other end of a connected socket, as peer says. *)
+    Remote* = record
+        unix*: BOOL;    (* a Unix socket: uid and pid say who; no addr or port *)
+        ipv6*: BOOL;    (* addr is an IPv6 address, 16 bytes; else an IPv4 one, 4 bytes then zeros *)
+        addr*: [16]U8;  (* an IP peer's address *)
+        port*: INT;     (* an IP peer's port *)
+        uid*, pid*: INT;    (* a Unix peer's user and process, as the system recorded them when it connected *)
     end;
     (* struct msghdr, what sendmsg and recvmsg take: no address, one
        buffer, and a control message; the sizes and flags are ints
@@ -197,6 +206,7 @@ begin
     if exclusive in how then f := f | 80H; end;
     if truncating in how then f := f | 200H; end;
     if appending in how then f := f | 400H; end;
+    if nonblocking in how then f := f | 800H; end;     (* O_NONBLOCK *)
     return f;
 end;
 
@@ -918,6 +928,53 @@ end;
 proc accept*(fd: INT): INT;
 begin
     return SYSCALL(288, fd, 0, 0, 80000H);              (* accept4, SOCK_CLOEXEC *)
+end;
+
+(* Ends this side's writing to the socket fd, so that the other end
+   reads an end of input and can still answer on it. 0, or minus an
+   errno. *)
+proc closeWrite*(fd: INT): INT;
+begin
+    return SYSCALL(48, fd, 1);                          (* shutdown, SHUT_WR *)
+end;
+
+(* Who is at the other end of the connected socket fd, and 0; or minus
+   an errno. *)
+proc peer*(fd: INT): (Remote, INT);
+var r: Remote; a: Sockaddr; size, credSize: I32; cred: [3]I32; e: INT;
+begin
+    r := {unix: false, ipv6: false};
+    size := I32(SIZE(Sockaddr));
+    e := SYSCALL(52, fd, ADR(a), ADR(size));            (* getpeername *)
+    if e < 0 then return r, e; end;
+    if a.family = 1 then                                (* AF_UNIX: ask who made the connection *)
+        credSize := I32(4 * LEN(cred));
+        e := SYSCALL(55, fd, 1, 17, ADR(cred), ADR(credSize));   (* getsockopt: SOL_SOCKET, SO_PEERCRED *)
+        if e < 0 then return r, e; end;
+        r.unix := true;
+        r.pid := INT(cred[0]);
+        r.uid := INT(cred[1]);
+    else
+        r.port := (INT(a.port[0]) shl 8) | INT(a.port[1]);
+        if a.family = 10 then                           (* AF_INET6 *)
+            r.ipv6 := true;
+            COPY(r.addr[0..16], a.data[4..20]);
+        else
+            COPY(r.addr[0..4], a.data[0..4]);
+        end;
+    end;
+    return r, 0;
+end;
+
+(* Two connected stream sockets, as a Unix socket and the one that
+   connects to it make: their fds and 0, closed in a program exec
+   starts; or -1, -1 and minus an errno. *)
+proc socketPair*: (INT, INT, INT);
+var fds: [2]I32; r: INT;
+begin
+    r := SYSCALL(53, 1, 1 | 80000H, 0, ADR(fds));       (* socketpair: AF_UNIX, SOCK_STREAM, SOCK_CLOEXEC *)
+    if r < 0 then return -1, -1, r; end;
+    return INT(fds[0]), INT(fds[1]), 0;
 end;
 
 (* Writes s to the socket fd, as write does, but returns -32 (EPIPE)
@@ -2300,6 +2357,47 @@ begin
     if processors() < 1 then exit(2); end;
 end;
 
+(* The test of what a server needs: a pair of sockets, one end told
+   it has no more to read, who is at the other end of a Unix socket and
+   of a TCP one, and a fifo opened without waiting. *)
+proc testServer;
+var a, b, l, c, s, port, child, r, how: INT; buf: [8]U8; w: Remote; st: Status;
+begin
+    a, b, r := socketPair();
+    if (r # 0) or (send(a, "hi") # 2) or (read(b, buf) # 2) or (buf[0..2] # "hi") then exit(2); end;
+    if (closeWrite(a) # 0) or (read(b, buf) # 0) then exit(2); end;     (* b reads an end, *)
+    if (send(b, "yo") # 2) or (read(a, buf) # 2) or (buf[0..2] # "yo") then exit(2); end;   (* and can still answer *)
+    w, r := peer(a);
+    if (r # 0) or not w.unix or (w.pid # pid()) or (w.uid # uid()) or (w.port # 0) or (w.addr[0] # 0) then exit(2); end;
+    close(a);
+    close(b);
+    _, r := peer(-1);
+    if r # errBadFd then exit(2); end;
+    l := listenTcp("127.0.0.1", 0);
+    port := localPort(l);
+    c := connectTcp("127.0.0.1", port);
+    s := accept(l);
+    if (l < 0) or (c < 0) or (s < 0) then exit(2); end;
+    w, r := peer(c);
+    if (r # 0) or w.unix or w.ipv6 or (w.port # port) or (w.addr[0..4] # "\x7f\x00\x00\x01") then exit(2); end;
+    w, r := peer(s);
+    if (r # 0) or (w.port = port) or (w.addr[3] # 1) or (w.addr[4] # 0) then exit(2); end;
+    close(s);
+    close(c);
+    close(l);
+    _ := remove("/tmp/raz-sys-fifo");
+    child := spawn({path: "mkfifo", args: ["mkfifo", "/tmp/raz-sys-fifo"]});
+    r, st, how := waitExit(child);
+    if (st # exited) or (how # 0) then exit(2); end;
+    if open("/tmp/raz-sys-fifo", {writing, nonblocking}) # -6 then exit(2); end;     (* ENXIO: no reader, and it didn't wait *)
+    a := open("/tmp/raz-sys-fifo", {reading, nonblocking});
+    b := open("/tmp/raz-sys-fifo", {writing, nonblocking});
+    if (a < 0) or (b < 0) or (read(a, buf) # errAgain) then exit(2); end;     (* nothing to read, and it didn't wait *)
+    close(a);
+    close(b);
+    _ := remove("/tmp/raz-sys-fifo");
+end;
+
 (* The module's test: a file written, read back and closed; a
    directory made, listed and emptied; no terminal; a socket, sent to
    after its end; programs; time and the network. *)
@@ -2527,6 +2625,7 @@ begin
     testShell;
     testNet;
     testProcess;
+    testServer;
 end;
 
 end Sys.

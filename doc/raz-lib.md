@@ -208,12 +208,12 @@ const
     errNotDir* = -20; errIsDir* = -21; errInvalid* = -22;
     errNotTerminal* = -25; errNoSpace* = -28; errPipe* = -32;
     errNameTooLong* = -36; errNotEmpty* = -39; errLoop* = -40;
-    errAddrInUse* = -98; errNetUnreach* = -101; errConnReset* = -104;
+    errAddrInUse* = -98; errNetUnreach* = -101; errConnAborted* = -103; errConnReset* = -104;
     errTimedOut* = -110; errRefused* = -111; errHostUnreach* = -113;
     errInProgress* = -115;
 
 type
-    Access* = (reading, writing, creating, exclusive, truncating, appending, executing);
+    Access* = (reading, writing, creating, exclusive, truncating, appending, executing, nonblocking);
     Accesses* = set of Access;
     Info* = record
         size*: I64;      (* in bytes *)
@@ -246,6 +246,13 @@ type
     Status* = (running, exited, killed, stopped);
     Mode* = record ... end;   (* a terminal's modes; its fields are the target's *)
     Peer* = record ... end;   (* whom a datagram came from *)
+    Remote* = record          (* who is at the other end of a connected socket *)
+        unix*: BOOL;          (* a Unix socket: uid and pid say who *)
+        ipv6*: BOOL;          (* addr is 16 bytes of IPv6, else 4 bytes of IPv4 then zeros *)
+        addr*: [16]U8;
+        port*: INT;
+        uid*, pid*: INT;
+    end;
 
 proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
 proc read*(fd: INT; buf: []U8): INT;    (* the bytes read; 0 at the end *)
@@ -359,6 +366,9 @@ proc listenUdp*(addr: []U8; port: INT): INT;   (* a socket of datagrams on port 
 proc receive*(fd: INT; buf: []U8): (INT, Peer);   (* the next datagram, in buf, and who sent it *)
 proc reply*(fd: INT; peer: Peer; s: []U8): INT;   (* s, as one datagram, to peer *)
 proc localPort*(fd: INT): INT;     (* the port the socket fd is bound to *)
+proc closeWrite*(fd: INT): INT;    (* no more writing to the socket fd; the other end reads an end *)
+proc peer*(fd: INT): (Remote, INT);   (* who is at the other end of the connected socket fd *)
+proc socketPair*: (INT, INT, INT); (* two connected stream sockets, and 0 *)
 proc sendFds*(fd: INT; s: []U8; fds: []INT): INT;   (* send, and with it fds, to a Unix socket *)
 proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);   (* read, and the fds that came with it *)
 
@@ -523,7 +533,11 @@ terminal waits until it is `foregroundOf(0)` before it takes it.
 `access` says whether this user, by its real ids, may read, write or
 execute a file, as `test -r`, `-w` and `-x` ask, which `Info.mode`
 alone can't say; an empty `how` asks only whether it is there.
-`open` refuses `executing`, with -22 (EINVAL). `umask` sets the bits
+`open` refuses `executing`, with -22 (EINVAL). `nonblocking` opens a file without waiting: a fifo opened to write
+waits for a reader and a fifo opened to read waits for a writer, but
+with `nonblocking` the open returns at once (-6, ENXIO, for a write
+with no reader), and a read or write that would wait is -11 later, as
+`setBlocking(fd, false)` makes it. `umask` sets the bits
 taken away from the mode of every file this program, and those it
 starts, make, and says what they were. `envAt` gives the environment
 one variable at a time, from 0, for a shell to list it and to pass it
@@ -615,6 +629,18 @@ milliseconds, with -110 (ETIMEDOUT).
 datagrams from anyone, as a name server has. `receive` gives the next
 datagram, at most `LEN(buf)` bytes of it, the rest lost, and a `Peer`
 that `reply` sends an answer to.
+
+`closeWrite` ends this side's writing to a socket, so that the other
+end reads an end of input and can still answer on the same socket: a
+client sends its request, says it is done, and reads the reply. `peer`
+says who is at the other end of a connected socket: for a TCP one its
+address and port; for a Unix one the user and process that made the
+connection, as the system recorded them, so that a server can check
+that its client is the same user instead of trusting a directory's
+mode. `socketPair` makes two connected stream sockets at once, as a
+`listen`, `connect` and `accept` would, with no name on disk. Each is
+closed in a program exec starts. `accept` gives -103 (`errConnAborted`)
+for a client that went before it was taken.
 
 **Passing files and sharing memory.** A program can give another an
 open file over a Unix socket: `sendFds` sends `s`, at least one byte,

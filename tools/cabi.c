@@ -151,7 +151,8 @@ int main(int argc, char **argv) {
     K("sockStream", SOCK_STREAM); K("sockDgram", SOCK_DGRAM);
     K("sockCloexec", SOCK_CLOEXEC); K("sockNonblock", SOCK_NONBLOCK);
     K("solSocket", SOL_SOCKET); K("soReuseaddr", SO_REUSEADDR);
-    K("soError", SO_ERROR); K("msgNosignal", MSG_NOSIGNAL);
+    K("soError", SO_ERROR); K("soPeercred", SO_PEERCRED);   /* Linux's */
+    K("shutWr", SHUT_WR); K("msgNosignal", MSG_NOSIGNAL);
     K("msgCmsgCloexec", MSG_CMSG_CLOEXEC); K("scmRights", SCM_RIGHTS);
     K("sockaddrLen", sizeof(struct sockaddr_storage));
     READ("saFamily", struct sockaddr, sa_family);
@@ -168,6 +169,7 @@ int main(int argc, char **argv) {
     K("sockaddrIn6Len", sizeof(struct sockaddr_in6));
     AT("sin6Port", struct sockaddr_in6, sin6_port);
     AT("sin6Addr", struct sockaddr_in6, sin6_addr);
+    READ("ucPid", struct ucred, pid); READ("ucUid", struct ucred, uid);
     K("msghdrLen", sizeof(struct msghdr));
     AT("msgIov", struct msghdr, msg_iov);
     WRITE("msgIovlen", struct msghdr, msg_iovlen, msg_control);
