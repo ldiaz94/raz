@@ -2318,7 +2318,7 @@ Met in raz's `Prop`.
 
 ### `ABS`, and `min`, `max` and `clamp` of integers
 
-**Status.** `ABS` approved by the owner on 2026-10-23, with the twelfth thaw, and in the report, 2026-10.36 (6.1 and 6.8); the compiler waits for the owner's review of that text. `min`, `max` and `clamp` dropped (owner, 2026-10-23): a two-line `if` each.
+**Status.** `ABS` approved by the owner on 2026-10-23, with the twelfth thaw, and in the report, 2026-10.36 (6.1 and 6.8); and in the compiler (2026-10-23): `neg` and `cmovs` for a signed integer, the sign bit cleared for a real. `min`, `max` and `clamp` dropped (owner, 2026-10-23): a two-line `if` each.
 
 Library and language growth that breaks no program. `Math` is `F64`
 only and there are no built-ins, so rat writes `min` and `max` in Draw,
