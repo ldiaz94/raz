@@ -1712,7 +1712,7 @@ main (`doc/compiler.md` and `src/Raz.raz` conflict). Moss's
 
 ## Constants built from constants
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36, and in the compiler (2026-10-23).
 
 Three small changes to what a constant may be written with, and a defect. Each stands
 alone; none changes what a program that compiles today means.
@@ -1796,7 +1796,7 @@ every call.
 
 ## A `match` arm names its case as everywhere else
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36, and in the compiler (2026-10-23).
 
 An arm takes a case written alone, or with its type when the type is
 the module's own (`| K.a:`). An imported case can't be written as
@@ -1983,8 +1983,7 @@ hand-written length with one checked expression.
 
 ## Filling: `FILL(d, x)`
 
-**Status.** Proposed 2026-10-22 as `Bytes.fill`, collated from
-RAZ-GAPS.md; amended 2026-10-23 to a built-in, from rat.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (6.8), and in the compiler (2026-10-23): `rep stos` of the element's width, a loop of stores for a short run, or a record copied forward.
 
 `COPY` copies and `NEW` zeroes, but nothing sets the elements of an
 array or a slice already in hand. rttf clears each glyph's raster a
@@ -2070,7 +2069,7 @@ to eight times faster at ten elements and twenty-five at a thousand.
 
 ## A slice of a `const` parameter, returned
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36, and in the compiler (2026-10-23).
 
 7.3 says a slice of a `var` parameter, of a module variable, or of
 what a pointer points at may be returned, and says nothing of a
@@ -2104,7 +2103,7 @@ does.
 
 ## What wiping can't reach, said in appendix A
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36, and in the compiler (2026-10-23).
 
 A wipe through `^VOLATILE U8` is never left out (7.6), but it writes
 only what the program can name. A spilled register, a statement's
