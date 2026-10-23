@@ -1353,6 +1353,8 @@ and rcrypto (`--version`).
 
 ## Sys for a server
 
+**Status.** Approved in part by the owner on 2026-10-23 and implemented in both backends: `closeWrite`, `peer` (its record is `Remote`, since `Peer` is taken by `receive` and `reply`), `socketPair`, `nonblocking` and `errConnAborted`. `closeOnExec` is unneeded now that every open closes on exec. A send that doesn't wait, a fifo, an owner, keepalive and an abstract Unix socket wait.
+
 Library growth that breaks no program. Programs that serve sockets
 (rabble's relay and daemon, dwa's broker, rdbus, awizo, arno's te
 protocol) each declare a few C procedures or make system calls with
@@ -1516,6 +1518,8 @@ Settled by "One exponent letter: `Fmt` writes `E`", below.
 
 ## Selectors after a `^T(e)` conversion
 
+**Status.** Not planned (owner, 2026-10-23): it makes unchecked code shorter and adds nothing a named pointer type can't do; `BYTES` serves the checked uses.
+
 A conversion through a pointer type's name is a designator, so
 selectors follow it: with `PR = ^R` and `PU = ^U8`, `PR(ADR(r))^.b`
 and `PU(ADR(r))[0..4]` compile today. The same conversion written out
@@ -1566,6 +1570,8 @@ taken among the built-ins, which a program can't declare anyway.
 Met in mosaico, rfuzz and raudio.
 
 ## `OFFSET(T, f)`, and `SIZE` of a field
+
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (4, 6.1 and 6.8); the compiler waits for the owner's review of that text.
 
 A record handed to C by pointer must match C's struct byte for byte;
 a field one word off is read wrong with no error. mosaico and rx11 test
@@ -1805,7 +1811,7 @@ message that doesn't say what to write.
 
 ## Two warnings
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23 and implemented in `Parse` and `Scan`.
 
 Compiler warnings, which are the implementation's own (10, appendix
 A): no change to the report, and `-Werror` builds break only where the
@@ -1839,7 +1845,7 @@ text is in fact doubtful.
 
 ## A `BOOL` as an integer: `INT(b)`
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (6.7); the compiler waits for the owner's review of that text.
 
 Moved here from the list of what to leave out, because three programs
 met it and one of them for a reason an `if` can't serve. 6.7 says
@@ -1911,7 +1917,7 @@ and multiplies that each need a paragraph.
 
 ## The bytes of a variable or a slice: `BYTES(x)`
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (6.8 and 7.3); the compiler waits for the owner's review of that text.
 
 A view, `v.(T)`, reads one value from bytes, and can't be sliced,
 since it has no address (6.9). So a program that has words and wants
@@ -1949,9 +1955,8 @@ is; a string constant is an error, as writing its bytes isn't defined.
 The bytes are in the target's order (appendix A), as a view's are.
 
 It is `PTR` and `SIZE` made one checked expression, about 30 lines in
-the compiler. It breaks nothing. An array of words is zeroed by
-"Filling: `FILL(d, x)`", below, as `FILL(a, 0)`; `BYTES` is for its
-bytes as such.
+the compiler. It breaks nothing. With "Filling bytes: `Bytes.fill`", below, an array
+of words is zeroed as `Bytes.fill(BYTES(a), 0)`.
 
 Met in raudio, surco and rcrypto.
 
@@ -2116,7 +2121,7 @@ wipes must know.
 
 ## Sys for files and memory
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23 and implemented in both backends, all items: `mapRead`, `protect`, and `open`, `openMode`, `openRead`, `create` and `openDir` closing on exec, with `keepOnExec(fd, true)` to keep one.
 
 Library growth, but the last item changes what `open` does, so it
 needs the owner's word on whether that counts as breaking. Each item
@@ -2218,7 +2223,7 @@ Moss's `Sys` grows.
 
 ## Sys for signals and the process
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23 and implemented in both `Sys` backends and `Rt`, all four: `ignored`, `findEnv` (which `env` is written over), `processors` and `Rt.exitStatus`.
 
 Library growth that breaks no program. The first three are in both
 `Sys` backends; the last is in `Rt`.
@@ -2274,7 +2279,7 @@ Library growth that breaks no program. The first three are in both
 
 ## Numbers in the library
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved in part by the owner (2026-10-22 and 23) and implemented: `Str.toU64`, `Math.tanh`, `Math.roundEven`, `Fmt.short` and `Fmt` writing `E`. `ABS`, `min`, `max` and `clamp` wait.
 
 ### An unsigned decimal reader: `Str.toU64`
 
@@ -2488,7 +2493,7 @@ get wrong by hand.
 
 ## Strings, base64 and text for C
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23 and implemented in `lib/Str.raz` and `lib/Fmt.raz`: `fromC`, `toC`, `base64With` and `unbase64With` with `Base64` and `Base64Url`, and `Fmt.into`.
 
 ### A slice of a C string, and a C string of a slice
 
@@ -2573,7 +2578,7 @@ Met in rxml.
 
 ## `Opt`
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23 and implemented in `lib/Opt.raz`, both.
 
 ### A negative number as an operand
 
