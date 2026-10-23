@@ -1769,7 +1769,7 @@ alone; none changes what a program that compiles today means.
 
 ## A record's procedure field that takes the record
 
-**Status.** Proposed 2026-10-22, collated from RAZ-GAPS.md.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (4 and 5.9), and in the compiler (2026-10-23): a bare name a procedure type's parameter or result names before its declaration waits, as a pointer's base does.
 
 A record that carries its own callback can't give the callback the
 record:
