@@ -20,8 +20,8 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 724 | 582 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,605 | 1,318 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,666 | 1,885 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/X64.raz` | 1,594 | 1,310 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,688 | 1,902 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,378 | 1,909 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,459 | 3,851 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
@@ -1089,8 +1089,8 @@ This is the only unit that knows the machine. The calls it answers:
   `notBool`, `narrow` (to a narrow integer's width), the conversions
   between integers and reals, `compareSeq` (of two slices), and copying:
   `copyBlock`, `copyTo`, `zeroVar`, and `copySlice` for `COPY`, a `rep
-  movsb` that goes down when the destination is above the source; the
-  small ones by moves (`copyBytes`, `zeroBytes`);
+  movsb`, or a loop going down (`copyDown`) when the destination starts
+  inside the source; the small ones by moves (`copyBytes`, `zeroBytes`);
 - jumps: `jump`, `jumpIf` (on a `BOOL`), `jumpCmp` (on two integers),
   `jumpOut` (`jumpCmp` from within an expression) and `condValue` for
   `and` and `or`, `fix` where the label is, and `joinJumps`;
@@ -1103,6 +1103,51 @@ This is the only unit that knows the machine. The calls it answers:
   (`deferBegin`, `deferEnd`, `runDefer`), the built-ins that are
   instructions (`atomic`, `sysCall`, `fence`), and the program's entry
   point (`entryPoint`).
+
+`COPY` must come out right when its two sides overlap (6.8 of the
+report). `copySlice` once went backwards whenever the destination was
+above the source, overlapping or not:
+
+```
+cmp rdi, rsi
+jbe forwards
+lea rsi, [rsi + rcx - 1]   ; the last byte of each
+lea rdi, [rdi + rcx - 1]
+std                        ; rep movsb runs down
+rep movsb
+cld
+```
+
+But a `rep movsb` going down gets none of the processor's fast copying:
+it moves a byte at a time. Now only a destination that starts inside
+the source, `rsi < rdi < rsi + rcx`, goes backwards, and by a loop of
+words from the ends, then one of bytes for the last few
+(`copyDown(8)`, `copyDown(1)`); a word is loaded whole before it is
+stored, so the loop is right however near the two are:
+
+```
+cmp rdi, rsi
+jbe forwards
+lea rax, [rsi + rcx]
+cmp rdi, rax
+jae forwards               ; above, but past the source's end
+add rsi, rcx               ; one past the ends
+add rdi, rcx
+words: cmp rcx, 8
+jb bytes
+sub rsi, 8
+sub rdi, 8
+sub rcx, 8
+mov rax, [rsi]
+mov [rdi], rax
+jmp words
+bytes: ...                 ; the same, by 1
+```
+
+Ten million copies between the two halves of a `[4096]U32`, upward:
+576 ms to 71 at 10 elements, 10,900 to 410 at 1,000, as fast as
+downward; and one a single element up inside itself, 539 to 57 and
+10,800 to 1,600.
 
 A variable's place is an `Adr`: relative to the frame (`bFrame`), to a
 chunk (`bGlobal`), to an address on the stack (`bStack`), or to one

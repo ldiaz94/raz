@@ -1,0 +1,77 @@
+module CopyOverlap;
+(* COPY within one array, every pair of places in its first 24
+   elements and every length that fits, for elements of 1, 4 and 3
+   bytes: the destination inside the source, the source inside it,
+   the two the same, touching above and below, and apart. Each is
+   checked against a copy made through a second array. *)
+import Out;
+const N = 40; Most = 24;
+type Rgb = record r, g, b: U8; end;
+var bytes, bytesWant: [N]U8; words, wordsWant: [N]U32; rgbs, rgbsWant: [N]Rgb;
+    cases, wrong: INT;
+
+(* Says where a copy came out wrong. *)
+proc fail(kind: []U8; d, s, n: INT);
+begin
+    Out.str(kind); Out.str(" wrong: d "); Out.int(I64(d)); Out.str(" s "); Out.int(I64(s));
+    Out.str(" n "); Out.int(I64(n)); Out.ln;
+    INC(wrong);
+end;
+
+(* n bytes from s to d. *)
+proc tryBytes(d, s, n: INT);
+var i: INT; tmp: [N]U8;
+begin
+    for i := 0 to N - 1 do bytes[i] := U8(i + 1); end;
+    bytesWant := bytes;
+    for i := 0 to n - 1 do tmp[i] := bytesWant[s + i]; end;
+    for i := 0 to n - 1 do bytesWant[d + i] := tmp[i]; end;
+    COPY(bytes[d..d + n], bytes[s..s + n]);
+    if bytes # bytesWant then fail("U8", d, s, n); end;
+end;
+
+(* n words from s to d. *)
+proc tryWords(d, s, n: INT);
+var i: INT; tmp: [N]U32;
+begin
+    for i := 0 to N - 1 do words[i] := U32(i * 65537 + 1); end;
+    wordsWant := words;
+    for i := 0 to n - 1 do tmp[i] := wordsWant[s + i]; end;
+    for i := 0 to n - 1 do wordsWant[d + i] := tmp[i]; end;
+    COPY(words[d..d + n], words[s..s + n]);
+    if words # wordsWant then fail("U32", d, s, n); end;
+end;
+
+(* n records of 3 bytes from s to d. *)
+proc tryRgbs(d, s, n: INT);
+var i: INT; tmp: [N]Rgb;
+begin
+    for i := 0 to N - 1 do rgbs[i] := {r: U8(i), g: U8(i + 100), b: U8(i + 200)}; end;
+    rgbsWant := rgbs;
+    for i := 0 to n - 1 do tmp[i] := rgbsWant[s + i]; end;
+    for i := 0 to n - 1 do rgbsWant[d + i] := tmp[i]; end;
+    COPY(rgbs[d..d + n], rgbs[s..s + n]);
+    for i := 0 to N - 1 do
+        if (rgbs[i].r # rgbsWant[i].r) or (rgbs[i].g # rgbsWant[i].g) or (rgbs[i].b # rgbsWant[i].b) then
+            fail("Rgb", d, s, n);
+            return;
+        end;
+    end;
+end;
+
+proc main*;
+var d, s, n: INT;
+begin
+    for d := 0 to Most do
+        for s := 0 to Most do
+            for n := 0 to N - Most do
+                tryBytes(d, s, n);
+                tryWords(d, s, n);
+                tryRgbs(d, s, n);
+                INC(cases);
+            end;
+        end;
+    end;
+    Out.int(I64(cases)); Out.str(" cases, "); Out.int(I64(wrong)); Out.str(" wrong"); Out.ln;
+end;
+end CopyOverlap.

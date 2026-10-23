@@ -692,17 +692,6 @@ begin
     say("rep movsb"); Chunk.put1(0F3H); Chunk.put1(0A4H);
 end;
 
-(* the direction flag, which has rep movsb go down, and back up *)
-proc std*;
-begin
-    say("std"); Chunk.put1(0FDH);
-end;
-
-proc cld*;
-begin
-    say("cld"); Chunk.put1(0FCH);
-end;
-
 proc repStosb*;
 begin
     say("rep stosb"); Chunk.put1(0F3H); Chunk.put1(0AAH);

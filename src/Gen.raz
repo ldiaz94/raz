@@ -1843,10 +1843,32 @@ begin
     X.store(X.mem(RBP, tmp), RAX, 8);
 end;
 
+(* The rcx bytes below rsi to those below rdi, n at a time while rcx
+   holds n or more, through rax, moving rsi, rdi and rcx down: COPY's
+   backward copy, as a loop, since rep movsb going down (std) moves a
+   byte at a time. *)
+proc copyDown(n: INT);
+var top, out: INT;
+begin
+    top := Chunk.pc;
+    X.aluI(X.aluCmp, RCX, n);
+    out := NoLabel;
+    X.jcc(X.ccB, out);
+    X.aluI(X.aluSub, RSI, n);
+    X.aluI(X.aluSub, RDI, n);
+    X.aluI(X.aluSub, RCX, n);
+    X.load(RAX, X.mem(RSI, 0), n, false);
+    X.store(X.mem(RDI, 0), RAX, n);
+    X.jmpBack(top);
+    X.fixLink(out);
+end;
+
 (* COPY: the elements of the slice in the frame at sOff, of size bytes
    each, to the start of the one at dOff, which must be at least as long
-   (the source may be shorter), as one block; backwards when the
-   destination is above the source, so that an overlap comes out right. *)
+   (the source may be shorter), as one block. It goes forwards, by rep
+   movsb, but backwards when the destination starts inside the source,
+   so that an overlap comes out right: by words from the ends, then the
+   last few bytes one by one. *)
 proc copySlice*(dOff, sOff, size: I64; checked: BOOL; p: Diag.Pos);
 var ml: X.Mem; L, E: INT;
 begin
@@ -1862,16 +1884,16 @@ begin
     mulI(RCX, size);
     X.load(RSI, X.mem(RBP, sOff), 8, false);
     X.load(RDI, X.mem(RBP, dOff), 8, false);
-    X.alu(X.aluCmp, RDI, RSI);
     L := NoLabel;
+    X.alu(X.aluCmp, RDI, RSI);
     X.jcc(X.ccBE, L);   (* the destination is not above: forwards, at L *)
-    (* backwards: std makes rep movsb run downward, so it starts at the
-       last byte of each *)
-    X.lea(RSI, X.memIdx(RSI, RCX, 1, -1));
-    X.lea(RDI, X.memIdx(RDI, RCX, 1, -1));
-    X.std();
-    X.repMovsb();
-    X.cld();
+    X.lea(RAX, X.memIdx(RSI, RCX, 1, 0));
+    X.alu(X.aluCmp, RDI, RAX);
+    X.jcc(X.ccAE, L);   (* nor does it start inside the source *)
+    X.alu(X.aluAdd, RSI, RCX);   (* backwards, from the ends *)
+    X.alu(X.aluAdd, RDI, RCX);
+    copyDown(8);
+    copyDown(1);
     E := NoLabel;
     X.jmp(E);
     X.fixLink(L);
