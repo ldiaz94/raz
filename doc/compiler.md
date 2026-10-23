@@ -23,7 +23,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,605 | 1,318 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,800 | 1,963 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,414 | 1,938 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,592 | 3,942 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,611 | 3,956 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -335,8 +335,9 @@ bought less than 2% on both was taken out again.
    call or a copy needs: nothing is saved or moved, and `s[i]` is read
    through `rdi` itself (`keepArrived`). Where Gen needs them after
    all, to copy a record or compare two slices, it sets `lost`, and
-   `body` compiles the procedure again with the parameters in memory,
-   as for a variable demoted. The trap report shows a parameter kept
+   `body` compiles the procedure again with the parameters in
+   callee-saved registers no variable has, or in memory (`unkeep`, in
+   "Array parameters, measured"), as for a variable demoted. The trap report shows a parameter kept
    so: `Rt.fail` is given `rdi` and `rsi` as the failing code had
    them, and the signal handler takes them from the context the
    kernel saved. The search 9% faster, rat 1.5%, its text 0.7%
@@ -913,6 +914,29 @@ convention (report 2026-10.33) made common.
    its own. The sum over a `const` array 145 ms to 82, the speed of
    the sum over a slice; ChaCha's `quarter(var x: [16]U32; ...)` 560
    ms to 283 (2.0 times), in 58% fewer instructions.
+
+2. **A parameter that loses `rdi` or `rsi` takes a free register.**
+   A procedure that calls nothing keeps its parameters where they
+   arrive (`keepArrived`); when it copies an array after all, `lost`
+   sends them to memory for the second try at the body, though `rbx`
+   and `r12` to `r15` may be free. `block(const st: [16]U32; var out:
+   [16]U32)`, which starts `out := st`, loaded `out`'s pointer at
+   each use:
+
+   ```
+   mov r8, [rbp - 16]
+   mov r8d, [r8]             now:   mov r9d, [r13 + 16]
+   mov r9, [rbp - 16]               mov r8d, [r13]
+   mov r9d, [r9 + 16]               add r8, r9
+   add r8, r9
+   ```
+
+   `unkeep` gives such a parameter the registers of `VarRegs` that
+   `regsOf` finds free, one, or two for a slice, if it is used enough
+   for a register by `chooseRegs`'s count; else it goes to memory as
+   before. The prologue saves those registers and moves the parameter
+   there, as it does for a procedure that calls. ChaCha's block with
+   the copy 1,132 ms to 684, 35% fewer instructions.
 
 ## Diag.raz: messages
 
@@ -1917,7 +1941,9 @@ address wanted after all, by a `var` parameter, say, comes to
 `Item.address`, which puts the variable back in memory and
 sets `Item.demoted`: `body` then throws the procedure's code away
 (`Gen.markCode`, `Gen.redo`), places the locals again, and compiles its
-statements again. Its notes for
+statements again. So it does when Gen wanted a parameter's `rdi` or
+`rsi` (`Gen.lost`), the parameter moved to a free register or memory
+(`unkeep`). Its notes for
 the trap report are made after, by `varKind`, which marks a variable
 in a register with the register's number.
 

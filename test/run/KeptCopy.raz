@@ -1,0 +1,102 @@
+(* A procedure that calls nothing keeps its first parameters in rdi and
+   rsi; when it copies an array, which needs them, it is compiled again
+   with those parameters in callee-saved registers where some are free
+   and they are used enough, or in memory. The copy and the uses after
+   it must agree either way, and a failed check still says their
+   values. *)
+module KeptCopy;
+import Out;
+
+const N = 8;
+
+type Row = [N]I64;
+
+var r1, r2: Row; total: I64;
+
+(* out a copy of st, then each element worked on through both pointers *)
+proc mix(const st: Row; var out: Row; k: INT);
+var i: INT;
+begin
+    out := st;
+    for i := 0 to N - 1 do out[i] := out[i] * 3 + st[N - 1 - i] + k; end;
+    for i := 1 to N - 1 do out[i] := out[i] + out[i - 1]; end;
+end;
+
+(* a slice, kept in both registers, then a copy, then the slice read:
+   one callee-saved register is left, too few for it, so it goes to
+   memory *)
+proc sumAfter(s: []I64; var a: Row; const b: Row): I64;
+var i: INT; t: I64;
+begin
+    a := b;
+    t := 0;
+    for i := 0 to LEN(s) - 1 do t := t + s[i] * a[i mod N]; end;
+    return t;
+end;
+
+(* the same, with registers enough left for the slice's two *)
+proc sumThen(s: []I64; var a: Row): I64;
+var i: INT; t: I64;
+begin
+    a := r1;
+    t := 0;
+    for i := 0 to LEN(s) - 1 do t := t + s[i] * s[LEN(s) - 1 - i]; end;
+    return t + a[0];
+end;
+
+(* five busy locals take every callee-saved register: the pointers go
+   to memory *)
+proc busy(var out: Row; const st: Row): I64;
+var a, b, c, d, e, i: INT;
+begin
+    out := st;
+    a := 1; b := 2; c := 3; d := 4; e := 5;
+    for i := 0 to N - 1 do
+        a := a + b; b := b + c; c := c + d; d := d + e; e := e + a;
+        out[i] := out[i] + a + b + c + d + e + st[i];
+    end;
+    return out[N - 1];
+end;
+
+(* a pointer used once only goes to memory *)
+proc once(var out: Row; const st: Row);
+begin
+    out := st;
+    out[0] := 99;
+end;
+
+(* the element at k of a copy, which may be out of range *)
+proc pick(const st: Row; var out: Row; k: INT): I64;
+var i: INT;
+begin
+    out := st;
+    for i := 0 to N - 1 do out[i] := out[i] + st[i]; end;
+    return out[k] + st[0];
+end;
+
+proc say(const r: Row);
+var i: INT;
+begin
+    for i := 0 to N - 1 do Out.int(r[i]); Out.char(' '); end;
+    Out.ln;
+end;
+
+proc main*;
+var i: INT;
+begin
+    for i := 0 to N - 1 do r1[i] := I64(i * i - 10); end;
+    mix(r1, r2, 7);
+    say(r2);
+    total := sumAfter(r1[1..N], r2, r1);
+    Out.int(total); Out.ln;
+    say(r2);
+    Out.int(sumThen(r1[2..N], r2)); Out.ln;
+    Out.int(busy(r2, r1)); Out.ln;
+    say(r2);
+    once(r2, r1);
+    say(r2);
+    Out.int(pick(r1, r2, 3)); Out.ln;
+    Out.int(pick(r1, r2, N + 1)); Out.ln;
+end;
+
+end KeptCopy.

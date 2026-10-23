@@ -3148,6 +3148,25 @@ begin
     return m;
 end;
 
+(* Parameter o, kept where it arrived until a call or a copy wanted rdi
+   or rsi, takes the registers of VarRegs that m, the taken ones, leaves,
+   if it is used enough for them (chooseRegs's weight of 3) and there
+   are enough; else it goes to memory. *)
+proc unkeep(o: PObj; m: INT);
+var k: INT; two: BOOL;
+begin
+    two := o^.reg2 # 0;
+    o^.reg := 0; o^.reg2 := 0;
+    if weight[candidate(o^.name)] < 3 then return; end;
+    for k := 0 to 4 do
+        if (m & (1 shl k)) = 0 then
+            if o^.reg = 0 then o^.reg := Gen.VarRegs[k];
+            elsif two and (o^.reg2 = 0) then o^.reg2 := Gen.VarRegs[k]; end;
+        end;
+    end;
+    if two and (o^.reg2 = 0) then o^.reg := 0; end;
+end;
+
 (* Gives each local not in a register its slot in the frame, the slots
    the prologue zeroes, and then tells Gen which registers the
    variables are in. A variable in a register has no slot: it starts at
@@ -3221,12 +3240,12 @@ begin
         Chunk.noteLine(Scan.curLine(), Scan.curCol());
         try expect(Scan.sEnd);
         if not (Item.demoted or Gen.lost) or (Diag.errors # errs) then break; end;
-        (* a parameter kept where it arrived goes to memory: a call or a copy
-           wanted its register *)
+        (* a parameter kept where it arrived goes to a free register of
+           VarRegs, or to memory: a call or a copy wanted its register *)
         if Gen.lost then
             o := params;
             while o # nil do
-                if Gen.keptIn(o) then o^.reg := 0; o^.reg2 := 0; end;
+                if Gen.keptIn(o) then unkeep(o, regsOf(params, before)); end;
                 o := o^.next;
             end;
         end;

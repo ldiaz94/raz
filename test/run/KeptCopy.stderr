@@ -1,0 +1,3 @@
+test/run/KeptCopy.raz:74:16: index 9 is out of range for a length of 8
+  in KeptCopy.pick at test/run/KeptCopy.raz:74:16: k = 9, i = 7
+  in KeptCopy.main at test/run/KeptCopy.raz:99:5: i = 7
