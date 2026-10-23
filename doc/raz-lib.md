@@ -311,6 +311,7 @@ proc ready*(fd, ms: INT): BOOL;          (* something to read within ms, or ever
 proc readyOf*(fds: []INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
 proc readyFor*(reads, writes: []INT; ms: INT): INT;   (* readyOf, and the first of writes with room to write *)
 proc setBlocking*(fd: INT; yes: BOOL): INT;   (* if not yes, a read or write that would wait is -11 at once *)
+proc blocking*(fd: INT): INT;            (* 1 if reads and writes wait, 0 if they are -11 at once, or minus an errno *)
 
 proc errorText*(err: INT): []U8;   (* what errno err, or minus it, means, as C's strerror says *)
 
@@ -328,6 +329,7 @@ proc spawn*(p: Program): INT;      (* a program started: its process id *)
 proc exec*(p: Program): INT;       (* p run in this program's place; returns only if it can't *)
 proc execve*(path: []U8; args, env: [][]U8): INT;   (* as the kernel's execve: no search *)
 proc fork*: INT;                   (* this program copied: 0 in the copy, its process id in this one *)
+proc setsid*: INT;                 (* a session of its own, led by this program: its process id, or minus an errno *)
 proc wait*(pid: INT; block: BOOL): (INT, Status, INT);   (* which program, how, and its code *)
 proc waitExit*(pid: INT): (INT, Status, INT);   (* as wait, but only for a program to end *)
 proc kill*(pid, signal: INT): INT;
@@ -532,6 +534,7 @@ in the copy and the copy's process id in this one, as a shell runs a
 builtin or a procedure as a stage of a pipe. Only the thread that
 calls it is copied, so a program with threads mustn't; and what `Out`
 keeps is copied too, to be written twice, so `Out.flush` comes first.
+`setsid` gives the copy a session of its own, with no controlling terminal, as a daemon does so that closing its terminal doesn't reach it; it is -1 (EPERM) for a program that leads a process group already, which the copy doesn't.
 `group` is the process group this program is in: a shell starting on a
 terminal waits until it is `foregroundOf(0)` before it takes it.
 `access` says whether this user, by its real ids, may read, write or
@@ -542,7 +545,8 @@ file without waiting: a fifo opened to write waits for a reader and a
 fifo opened to read waits for a writer, but with `nonblocking` the open
 returns at once (-6, ENXIO, for a write with no reader), and a read or
 write that would wait is -11 later, as `setBlocking(fd, false)` makes
-it. A file `open`, `openMode`, `openRead` or `create` gives is closed in
+it, and `blocking(fd)` says which: 1 if they wait, 0 if not. A file
+`open`, `openMode`, `openRead` or `create` gives is closed in
 a program `exec` or `execve` starts, as `pipe`'s are, so that a fifo or
 a log one program holds doesn't reach every program it runs;
 `keepOnExec(fd, true)` keeps one open, and `spawn` is unchanged, since

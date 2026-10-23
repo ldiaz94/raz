@@ -1110,6 +1110,17 @@ begin
     return 0;
 end;
 
+(* Whether reads and writes on fd wait, as they do at first: 1 if they
+   do, 0 if they return -11 (EAGAIN) at once, or minus an errno. *)
+proc blocking*(fd: INT): INT;
+var flags: I32;
+begin
+    flags := C.fcntl(I32(fd), CAbi.fGetfl, 0);
+    if flags < 0 then return failed(); end;
+    if flags & CAbi.oNonblock # 0 then return 0; end;
+    return 1;
+end;
+
 (* A stream socket connected to port at addr, as connectTcp makes it,
    or -110 (ETIMEDOUT) if it isn't connected within ms milliseconds.
    It starts to connect without waiting, then waits for the socket to
@@ -2003,6 +2014,18 @@ begin
     return INT(r);
 end;
 
+(* A new session and process group, led by this program, with no
+   controlling terminal: its process id, or minus an errno (-1, EPERM,
+   if it leads a process group already, as a program just forked
+   doesn't). *)
+proc setsid*: INT;
+var r: I32;
+begin
+    r := C.setsid();
+    if r < 0 then return failed(); end;
+    return INT(r);
+end;
+
 (* Gives the processor to another thread. *)
 proc yield*;
 begin
@@ -2073,6 +2096,30 @@ begin
     if (n # -11) or (readyFor([r], [w], 0) # w) or (setBlocking(w, true) # 0) then exit(2); end;
     close(r);
     close(w);
+
+    (* blocking: a fresh pipe waits, a non-blocking one doesn't, a closed fd is -9 *)
+    r, w := pipe();
+    if (blocking(r) # 1) or (setBlocking(r, false) # 0) or (blocking(r) # 0) then exit(2); end;
+    if (setBlocking(r, true) # 0) or (blocking(r) # 1) then exit(2); end;
+    close(r);
+    close(w);
+    if blocking(r) # -9 then exit(2); end;
+
+    (* setsid: a forked child leads a session of its own, once; a group leader can't *)
+    child := fork();
+    if child = 0 then
+        if (setsid() # pid()) or (setsid() # -1) then exit(2); end;
+        exit(0);
+    end;
+    r, st, c := wait(child, true);
+    if (r # child) or (st # exited) or (c # 0) then exit(2); end;
+    child := fork();
+    if child = 0 then
+        if (setGroup(0, 0) # 0) or (setsid() # -1) then exit(2); end;
+        exit(0);
+    end;
+    r, st, c := wait(child, true);
+    if (r # child) or (st # exited) or (c # 0) then exit(2); end;
 
     child := spawn({path: "/bin/sleep", args: ["sleep", "10"], group: -1});
     r, st, c := wait(child, false);
