@@ -2069,7 +2069,7 @@ to eight times faster at ten elements and twenty-five at a thousand.
 
 ## A slice of a `const` parameter, returned
 
-**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36, and in the compiler (2026-10-23).
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (7.3), which the compiler already did; a conformance test holds it.
 
 7.3 says a slice of a `var` parameter, of a module variable, or of
 what a pointer points at may be returned, and says nothing of a
@@ -2103,7 +2103,7 @@ does.
 
 ## What wiping can't reach, said in appendix A
 
-**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36, and in the compiler (2026-10-23).
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (appendix A); no code.
 
 A wipe through `^VOLATILE U8` is never left out (7.6), but it writes
 only what the program can name. A spilled register, a statement's
