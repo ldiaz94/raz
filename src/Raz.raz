@@ -1,6 +1,6 @@
 (* Raz: the command line.
 
-     raz [-I dir]... [-o file] [-Werror] [-S] [-libc glibc|musl] [-base addr] [-bare] Main.raz
+     raz [-I dir]... [-o file] [-Werror] [-S] [-libc glibc|musl] [-base addr] [-bare|-moss] Main.raz
      raz run [-I dir]... Main.raz [arg]...
      raz --version
 
@@ -132,6 +132,7 @@ begin
     Out.str("  -base addr   loads the program at addr, not 400000H: a multiple of 4096\n");
     Out.str("               in the low or the top 2 GB, as 0FFFFFFFF80000000H\n");
     Out.str("  -noprofile   leaves out the profiler, which RAZ_PROFILE turns on\n");
+    Out.str("  -moss        bare Moss application: initialize arguments through wire version 1\n");
     Out.str("  -bare        for the bare machine, a kernel: reads no argc and argv, and\n");
     Out.str("               runs no body of Rt, which sets the signals' handlers\n");
     Out.str("  -libc name   links a program that uses C against glibc or musl; by\n");
@@ -228,7 +229,7 @@ var
     path, outPath, s: []U8;
     i, first, entry, last, base: INT;
     m, rt, thread: ^Sym.Module; mainObj: ^Sym.Obj;
-    run, noProfile, listing, dynamic, libcSaid, ok, bare: BOOL; err: ERROR;
+    run, noProfile, listing, dynamic, libcSaid, ok, bare, moss: BOOL; err: ERROR;
 begin
     path := "";
     outPath := "";
@@ -265,6 +266,8 @@ begin
             noProfile := true;
         elsif s = "-bare" then
             bare := true;
+        elsif s = "-moss" then
+            bare := true; moss := true;
         elsif s = "-libc" then
             INC(i);
             s := Host.arg(i);
@@ -358,7 +361,7 @@ begin
             addCLink("pthread_join", objIn(thread, "cJoin"));
         end;
     end;
-    entry := Gen.entryPoint(dynamic, bare, Parse.firstModule, mainObj, cLinks[0..numCLinks], numCLinks,
+    entry := Gen.entryPoint(dynamic, bare, moss, Parse.firstModule, mainObj, cLinks[0..numCLinks], numCLinks,
         objIn(rt, "exit")^.chunk, links[0..numLinks], numLinks);
 
     Link.markLive(entry);

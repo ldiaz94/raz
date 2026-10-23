@@ -1771,6 +1771,14 @@ stores alone, so a failed check says where it was; but `Rt.fail` and
 `Rt.exit` end in system calls, which the kernel catches or replaces. A
 program that uses C is refused.
 
+`raz -moss` implies `-bare` and opts into Moss startup wire version 1.
+Its entry probes service call 20 through `int 80H`, then copies call 17
+arguments into a private 1024-byte stack area before module bodies run.
+At most eight arguments of 63 bytes are accepted. `ARGC()` and `ARGV()`
+are published only after all copies succeed; strings and the pointer array
+are NUL-terminated. Unsupported service versions leave both builtins zero.
+The ordinary `-bare` entry and Linux `SYSCALL` emission are unchanged.
+
 `raz -S` lists the code (`X64.list`) instead of writing
 it. `raz run` writes the executable to a memfd, a file only in memory, and
 executes it through `/proc/self/fd` in raz's own place, handing it the

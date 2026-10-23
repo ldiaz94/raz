@@ -2404,6 +2404,37 @@ begin
     X.callBack(at);
 end;
 
+(* Explicit Moss startup version 1. The kernel retains its legacy initial
+   register/stack contract: only this opt-in entry copies syscall arguments.
+   A fixed private stack reservation outlives all module and main calls. *)
+proc mossArguments;
+var done, next, i: INT;
+begin
+    done := NoLabel;
+    X.movRI(RAX, 20); X.movRI(RDI, 0); X.mossCall();
+    cmpI(RAX, 1); X.jcc(X.ccNE, done);
+    X.movRI(RAX, 17); X.movRI(RDI, -1); X.mossCall();
+    cmpI(RAX, 8); X.jcc(X.ccA, done);
+    X.movRR(X.R12, RAX);
+    X.aluI(X.aluSub, RSP, 1024);
+    X.movRI(RAX, 0);
+    for i := 0 to 8 do X.store(X.mem(RSP, i * 8), RAX, 8); end;
+    for i := 0 to 7 do
+        next := NoLabel;
+        cmpI(X.R12, i); X.jcc(X.ccBE, next);
+        X.lea(RSI, X.mem(RSP, 80 + i * 64));
+        X.store(X.mem(RSP, i * 8), RSI, 8);
+        X.movRI(RAX, 17); X.movRI(RDI, i); X.movRI(RDX, 64); X.mossCall();
+        cmpI(RAX, 63); X.jcc(X.ccA, done);
+        X.alu(X.aluAdd, RSI, RAX);
+        X.movRI(RAX, 0); X.store(X.mem(RSI, 0), RAX, 1);
+        X.fixLink(next);
+    end;
+    X.store(X.memRip(argcChunk, 0), X.R12, 8);
+    X.store(X.memRip(argvChunk, 0), RSP, 8);
+    X.fixLink(done);
+end;
+
 (* The entry point, _start, and its chunk: it saves argc and argv, and
    the address of the places for Rt; runs every used module's body, then
    main; and ends with Rt.exit, its status main's or 0. A dynamic program
@@ -2426,7 +2457,7 @@ end;
    only Linux leaves on the stack, so that ARGC() is 0; and runs no body
    of Rt, whose system calls, to set the signals' handlers, would fault
    there. A kernel's own module sets up what Rt's body would. *)
-proc entryPoint*(dynamic, bare: BOOL; first: ^Sym.Module; mainObj: ^Sym.Obj; cLinks: []Link; numCLinks, exitProc: INT; links: []Link; numLinks: INT): INT;
+proc entryPoint*(dynamic, bare, moss: BOOL; first: ^Sym.Module; mainObj: ^Sym.Obj; cLinks: []Link; numCLinks, exitProc: INT; links: []Link; numLinks: INT): INT;
 var entry, start, i: INT; m: ^Sym.Module;
 begin
     entry := Chunk.newChunk(Chunk.secText, -1, internStr("_start"));
@@ -2459,6 +2490,7 @@ begin
     elsif bare then
         start := entry;
         Chunk.beginChunk(entry);
+        if moss then mossArguments(); end;
     else
         start := entry;
         Chunk.beginChunk(entry);

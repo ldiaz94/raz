@@ -631,6 +631,12 @@ begin
     say("syscall"); Chunk.put1(0FH); Chunk.put1(05H);
 end;
 
+(* Moss explicitly uses its interrupt gate, not Linux SYSCALL. *)
+proc mossCall*;
+begin
+    say("int 80H"); Chunk.put1(0CDH); Chunk.put1(80H);
+end;
+
 proc mfence*;
 begin
     say("mfence"); Chunk.put1(0FH); Chunk.put1(0AEH); Chunk.put1(0F0H);
