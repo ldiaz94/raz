@@ -52,6 +52,17 @@ const
     errInProgress* = -115;
 
 type
+    (* One descriptor poll waits on: whether to wait to read from it, to
+       write to it, or both, and, when poll returns, whether it may be.
+       One that has reached its end, has failed or isn't open is ready
+       too, so that a read or a write finds out. *)
+    Poll* = record
+        fd*: INT;           (* the file descriptor; a negative one is never ready *)
+        read*: BOOL;        (* wait until it has something to read *)
+        write*: BOOL;       (* wait until it has room to write *)
+        ready*: BOOL;       (* set by poll: a read or a write on it won't wait *)
+    end;
+
     (* What open is asked for: reading, writing or both, and what else
        it does to the file; nonblocking, that open doesn't wait (for a
        fifo's other end) and reads and writes on the file don't either. *)
@@ -1095,32 +1106,68 @@ begin
     return r;
 end;
 
+(* Waits up to ms milliseconds (ms < 0: as long as it takes) until one
+   of fds may be read or written as each one's read and write say, and
+   sets each one's ready. The number ready, 0 on a timeout, or minus an
+   errno. It takes as many as it is given: the system's list is built
+   on the stack for 64 or fewer, else in memory from mmap, given back
+   before it returns (-12 if there is none). A signal that a catch took
+   doesn't end the wait; one that handle took does, with -4. *)
+proc poll*(var fds: []Poll; ms: INT): INT;
+var small: [64]Pollfd; list: []Pollfd; big: ^Pollfd; n, i, r, e: INT; events: I16;
+begin
+    n := LEN(fds);
+    big := nil;
+    if n <= LEN(small) then
+        list := small[0..n];
+    else
+        big := ^Pollfd(mmap(n * SIZE(Pollfd)));
+        if big = nil then return -12; end;              (* ENOMEM *)
+        list := big[0..n];
+    end;
+    for i := 0 to n - 1 do
+        events := 0;
+        if fds[i].read then events := CAbi.pollin; end;
+        if fds[i].write then events := events | CAbi.pollout; end;
+        list[i] := {fd: I32(fds[i].fd), events: events};
+    end;
+    _ := XCHG(ADR(broke), 0);
+    repeat r := INT(C.poll(^U8(PTR(list)), UINT(n), I32(ms))); until (r >= 0) or not again();
+    e := 0;
+    if r < 0 then e := failed(); end;
+    for i := 0 to n - 1 do
+        fds[i].ready := (r > 0) and (list[i].revents # 0);
+    end;
+    if big # nil then munmap(^U8(big), n * SIZE(Pollfd)); end;
+    if r < 0 then return e; end;
+    return r;
+end;
+
 (* The first of reads that has something to read within ms
    milliseconds, or of writes that has room to write, or that has
    reached its end or failed, so that a read or a write won't wait; -1
    if none has. ms < 0 waits as long as it takes. At most 64 fds in
    all. *)
 proc readyFor*(reads, writes: []INT; ms: INT): INT;
-var p: [64]Pollfd; n, i: INT; r: I32;
+var p: [64]Poll; ps: []Poll; n, i: INT;
 begin
     n := 0;
     for i := 0 to LEN(reads) - 1 do
         if n < LEN(p) then
-            p[n] := {fd: I32(reads[i]), events: CAbi.pollin};
+            p[n] := {fd: reads[i], read: true};
             INC(n);
         end;
     end;
     for i := 0 to LEN(writes) - 1 do
         if n < LEN(p) then
-            p[n] := {fd: I32(writes[i]), events: CAbi.pollout};
+            p[n] := {fd: writes[i], write: true};
             INC(n);
         end;
     end;
-    _ := XCHG(ADR(broke), 0);
-    repeat r := C.poll(^U8(ADR(p)), UINT(n), I32(ms)); until (r >= 0) or not again();
-    if r <= 0 then return -1; end;
+    ps := p[0..n];
+    if poll(ps, ms) <= 0 then return -1; end;
     for i := 0 to n - 1 do
-        if p[i].revents # 0 then return INT(p[i].fd); end;
+        if p[i].ready then return p[i].fd; end;
     end;
     return -1;
 end;
@@ -2496,12 +2543,46 @@ begin
     munmap(p, 8192);
 end;
 
+(* poll over 100 socket pairs with a byte sent on three, so that all
+   three are reported in one call, at their places; a timeout, 0; a
+   closed descriptor, ready, and -9 from a read. *)
+proc testPoll;
+var a: [100]Poll; ends: [100]INT; ps: []Poll; buf: [4]U8; x, y, r, i: INT;
+begin
+    for i := 0 to 99 do
+        x, y, r := socketPair();
+        if r # 0 then exit(2); end;
+        a[i] := {fd: x, read: true};
+        ends[i] := y;
+    end;
+    ps := a[0..100];
+    if poll(ps, 0) # 0 then exit(2); end;                   (* a timeout *)
+    for i := 3 to 77 by 37 do                               (* 3, 40, 77 *)
+        if send(ends[i], "x") # 1 then exit(2); end;
+    end;
+    if poll(ps, 1000) # 3 then exit(2); end;
+    for i := 0 to 99 do
+        if a[i].ready # ((i = 3) or (i = 40) or (i = 77)) then exit(2); end;
+    end;
+    for i := 3 to 77 by 37 do
+        if read(a[i].fd, buf) # 1 then exit(2); end;
+    end;
+    if poll(ps, 0) # 0 then exit(2); end;
+    close(a[5].fd);                                         (* not open: ready, and a read says why *)
+    if (poll(ps, 0) # 1) or not a[5].ready or (read(a[5].fd, buf) # -9) then exit(2); end;
+    for i := 0 to 99 do
+        close(ends[i]);
+        if i # 5 then close(a[i].fd); end;
+    end;
+end;
+
 (* The module's test, as Linux's Sys has it: a file written, read back
    and closed; a directory made, listed and emptied; no terminal; a
    socket, sent to after its end; programs; time and the network. *)
 proc main*;
 var free, total: I64; fd, n, err, w, h, l, c, a, m, k, o: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i, j: Info; d: Dir; name: []U8; ok: BOOL;
 begin
+    testPoll();
     fd := create("/tmp/raz-sys-test");
     if fd < 0 then exit(2); end;
     if write(fd, "hello") # 5 then exit(2); end;

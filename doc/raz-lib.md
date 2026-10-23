@@ -257,6 +257,11 @@ type
         port*: INT;
         uid*, pid*: INT;
     end;
+    Poll* = record            (* a descriptor for poll to wait on *)
+        fd*: INT;
+        read*, write*: BOOL;  (* wait until it may be read, written *)
+        ready*: BOOL;         (* set by poll *)
+    end;
 
 proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
 proc read*(fd: INT; buf: []U8): INT;    (* the bytes read; 0 at the end *)
@@ -316,6 +321,7 @@ proc termSize*(fd: INT): (INT, INT);   (* columns and rows; 80 and 24 if unknown
 proc ready*(fd, ms: INT): BOOL;          (* something to read within ms, or ever if ms < 0 *)
 proc readyOf*(fds: []INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
 proc readyFor*(reads, writes: []INT; ms: INT): INT;   (* readyOf, and the first of writes with room to write *)
+proc poll*(var fds: []Poll; ms: INT): INT;   (* sets each fd's ready, as each read and write say; the number ready, 0 on a timeout, or minus an errno *)
 proc setBlocking*(fd: INT; yes: BOOL): INT;   (* if not yes, a read or write that would wait is -11 at once *)
 proc blocking*(fd: INT): INT;            (* 1 if reads and writes wait, 0 if they are -11 at once, or minus an errno *)
 
@@ -707,6 +713,20 @@ or failed, counts as ready, since a read of it won't wait. It looks at
 the first 64 of `fds`, and `connect` and `listen` take a path of at
 most 107 bytes, as `struct sockaddr_un` holds; a longer one is -36
 (ENAMETOOLONG).
+
+`poll` is `readyFor` without its limits. Each `Poll` names a
+descriptor `fd` and whether to wait to `read` from it, to `write` to
+it, or both; `poll` waits up to `ms` milliseconds (as long as it takes
+if `ms < 0`), sets every one's `ready`, and gives how many are: all of
+them, in one call, not the first. It takes any number of descriptors
+(the list the system wants is on the stack for 64 or fewer, and in
+memory from `mmap`, given back before it returns, for more; -12 if
+there is none). A descriptor at its end or failed is ready, as for
+`readyOf`; so is one that isn't open, and a read or a write of it is
+-9 (EBADF); a negative `fd` is never ready. A timeout is 0 and a
+failure minus an errno (-4, if a signal `handle` took broke in), where
+`readyFor` gives -1 for both. `readyFor` and `readyOf` are written over
+it.
 
 A program that both reads from a descriptor and writes much to it, as
 a terminal writes what is pasted to its program while it reads what
