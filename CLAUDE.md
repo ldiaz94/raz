@@ -48,7 +48,7 @@ tools and the library's tests: they must have no warnings.
 
 - The compiler, `src/`, is raz, in the language of the report and with
   the library of `lib/`; it must build with the release `BOOT` names
-  (v0.20.0), so it, and the modules of `lib/` it imports, use nothing
+  (v0.22.0), so it, and the modules of `lib/` it imports, use nothing
   that release doesn't know until `BOOT` names a newer one.
 - Work goes by milestones, each a release, set by the owner. A milestone
   starts only on the owner's explicit go-ahead; within it, one commit
@@ -95,13 +95,15 @@ record, and `ROL` and `ROR` (10.35); library growth (`Fmt`'s widths and
 `short`, `Str`, `Files`, `Sys`'s `poll`, processes, servers and signals,
 `Math`, `Opt`, `Heap.sure`, `Vec`, `Arena`); and code made faster
 (inlining a procedure that only returns, `COPY`, `FILL`, array
-parameters). `BOOT` still names v0.20.0; moving it to v0.22.0 is the
-next step of `PLAN.md`.
+parameters). `BOOT` names v0.22.0 (2026-10-23), so `src/` and the library
+it imports may use all of 10.36. CI couldn't run for it (GitHub's
+billing), so its release and tarball were made here by `make dist`, the
+same bytes CI would make.
 v0.21.0, report 2026-10.34, before it, the language unchanged, is for a kernel:
 the assembler knows a kernel's instructions (`cli`, `lgdt`, `mov` to
 `cr3`, `in`, `out`, ...); `raz -base` sets the load address, in the low
 or the top 2 GB; `raz -bare` makes a program for the bare machine, which
-reads no arguments and runs no body of `Rt`. `BOOT` names v0.20.0, and
+reads no arguments and runs no body of `Rt`; `BOOT` named v0.20.0, and
 `Sys` takes `PTR` where it had its private `bytes`. `MEM_PROPOSAL.md`
 proposes a memory-safe raz, for a thaw.
 v0.20.0, report 2026-10.34, before it: v0.19.0 builds `src/` and the

@@ -8,6 +8,10 @@ commit per piece, the report first for any change to the language.
 
 ## 1. Release what is done: v0.22.0
 
+**Done** 2026-10-23: tagged, its release and tarball made here by `make
+dist` (CI was refused by GitHub's billing), and `BOOT` moved to it.
+`make alpine` couldn't pull its image without a Docker Hub login.
+
 Report 2026-10.36, the twelfth thaw: `MIN`, `MAX`, `ABS`, `CLZ`, `CTZ`,
 `POPCOUNT`, `INT(b)`, `OFFSET`, `SIZE(T.f)`, `BYTES`, `FILL`, a qualified
 case in an arm, slice and `ERROR` constants, a record's procedure field
