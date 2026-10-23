@@ -72,6 +72,8 @@ type
         dev*: U64;      (* the file system it is on; with ino, it names the file *)
         links*: U64;    (* how many names it has: 1 for a file no hard link shares *)
         special*: INT;  (* its set-user-id, set-group-id and sticky bits, as chmod takes them: 800H, 400H, 200H *)
+        uid*: INT;      (* its owner's user number *)
+        gid*: INT;      (* its group's number *)
     end;
 
     (* What a directory says a name in it is, without asking the file:
@@ -546,6 +548,27 @@ begin
     return 0;
 end;
 
+(* Makes a fifo (a named pipe) at path with the permission bits mode,
+   less those the umask takes away. 0, or minus an errno. *)
+proc makeFifo*(path: []U8; mode: INT): INT;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    if C.mkfifo(ADR(a[0]), U32(mode & 1FFH)) # 0 then return failed(); end;
+    return 0;
+end;
+
+(* Sets the owner and group of what path names, following a symbolic
+   link: a user or group number, or -1 to leave it as it is. Only
+   root may give a file away. 0, or minus an errno. *)
+proc chown*(path: []U8; uid, gid: INT): INT;
+var a: [4096]U8;
+begin
+    if not cstr(path, a) then return -36; end;
+    if C.chown(ADR(a[0]), U32(uid & 0FFFFFFFFH), U32(gid & 0FFFFFFFFH)) # 0 then return failed(); end;
+    return 0;
+end;
+
 (* Sets when the contents of what path names last changed, and when it
    was last read, to sec seconds and nsec nanoseconds since 1970, as a
    program copying a file keeps its time: Info.seconds gives sec back,
@@ -626,6 +649,8 @@ begin
     i.seconds := field(p, CAbi.stMtimeAt, CAbi.stMtimeLen);
     i.mode := INT(field(p, CAbi.stModeAt, CAbi.stModeLen)) & 1FFH;
     i.special := INT(field(p, CAbi.stModeAt, CAbi.stModeLen)) & 0E00H;
+    i.uid := INT(field(p, CAbi.stUidAt, CAbi.stUidLen));
+    i.gid := INT(field(p, CAbi.stGidAt, CAbi.stGidLen));
     i.dir := fileType(st) = CAbi.sIfdir;
     i.file := fileType(st) = CAbi.sIfreg;
     return i;
@@ -1055,6 +1080,17 @@ var r: INT;
 begin
     if LEN(s) = 0 then return 0; end;
     r := C.send(I32(fd), ADR(s[0]), UINT(LEN(s)), CAbi.msgNosignal);
+    if r < 0 then return failed(); end;
+    return r;
+end;
+
+(* send, but never waits: returns -11 (EAGAIN) where send would wait for
+   room, and doesn't make reads on fd non-blocking too. *)
+proc sendNow*(fd: INT; s: []U8): INT;
+var r: INT;
+begin
+    if LEN(s) = 0 then return 0; end;
+    r := C.send(I32(fd), ADR(s[0]), UINT(LEN(s)), CAbi.msgNosignal | CAbi.msgDontwait);
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -2383,9 +2419,10 @@ end;
 
 (* The test of what a server needs: a pair of sockets, one end told
    it has no more to read, who is at the other end of a Unix socket and
-   of a TCP one, and a fifo opened without waiting. *)
+   of a TCP one, a send that doesn't wait, and a fifo opened without
+   waiting. *)
 proc testServer;
-var a, b, l, c, s, port, child, r, how: INT; buf: [8]U8; w: Remote; st: Status;
+var a, b, l, c, s, port, n, r: INT; buf: [8]U8; full: [4096]U8; w: Remote; j: Info;
 begin
     a, b, r := socketPair();
     if (r # 0) or (send(a, "hi") # 2) or (read(b, buf) # 2) or (buf[0..2] # "hi") then exit(2); end;
@@ -2393,6 +2430,13 @@ begin
     if (send(b, "yo") # 2) or (read(a, buf) # 2) or (buf[0..2] # "yo") then exit(2); end;   (* and can still answer *)
     w, r := peer(a);
     if (r # 0) or not w.unix or (w.pid # pid()) or (w.uid # uid()) or (w.port # 0) or (w.addr[0] # 0) then exit(2); end;
+    close(a);
+    close(b);
+    a, b, r := socketPair();                                            (* sendNow gives -11 once the socket is full, *)
+    if r # 0 then exit(2); end;
+    n := 0;
+    while sendNow(a, full) = LEN(full) do INC(n); end;
+    if (n = 0) or (sendNow(a, full) # errAgain) then exit(2); end;     (* where send would wait *)
     close(a);
     close(b);
     _, r := peer(-1);
@@ -2410,9 +2454,12 @@ begin
     close(c);
     close(l);
     _ := remove("/tmp/raz-sys-fifo");
-    child := spawn({path: "mkfifo", args: ["mkfifo", "/tmp/raz-sys-fifo"]});
-    r, st, how := waitExit(child);
-    if (st # exited) or (how # 0) then exit(2); end;
+    if makeFifo("/tmp/raz-sys-fifo", 1A4H) # 0 then exit(2); end;
+    j, r := info("/tmp/raz-sys-fifo");
+    if (r # 0) or j.file or j.dir then exit(2); end;     (* a fifo is neither *)
+    if j.uid # uid() then exit(2); end;     (* made by this user *)
+    if (chown("/tmp/raz-sys-fifo", j.uid, j.gid) # 0) or (chown("/tmp/raz-sys-fifo", -1, -1) # 0) then exit(2); end;
+    if chown("/no/such/file", -1, -1) # -2 then exit(2); end;
     if open("/tmp/raz-sys-fifo", {writing, nonblocking}) # -6 then exit(2); end;     (* ENXIO: no reader, and it didn't wait *)
     a := open("/tmp/raz-sys-fifo", {reading, nonblocking});
     b := open("/tmp/raz-sys-fifo", {writing, nonblocking});

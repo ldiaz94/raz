@@ -54,6 +54,10 @@ const
     stModeLen* = 4;
     stSizeAt* = 48;
     stSizeLen* = 8;
+    stUidAt* = 28;
+    stUidLen* = 4;
+    stGidAt* = 32;
+    stGidLen* = 4;
     stMtimeAt* = 88;
     stMtimeLen* = 8;
     stMtimeNsAt* = 96;
@@ -100,6 +104,7 @@ const
     soPeercred* = 17;
     shutWr* = 1;
     msgNosignal* = 16384;
+    msgDontwait* = 64;
     msgCmsgCloexec* = 1073741824;
     scmRights* = 1;
     sockaddrLen* = 128;

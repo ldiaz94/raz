@@ -24,6 +24,8 @@ extern proc unlink*(path: ^U8): I32;
 extern proc mkdir*(path: ^U8; mode: U32): I32;
 extern proc rmdir*(path: ^U8): I32;
 extern proc chmod*(path: ^U8; mode: U32): I32;
+extern proc chown*(path: ^U8; uid, gid: U32): I32;
+extern proc mkfifo*(path: ^U8; mode: U32): I32;
 extern proc utimensat*(dir: I32; path, times: ^U8; flags: I32): I32;
 extern proc readlink*(path, buf: ^U8; n: UINT): INT;
 extern proc lseek*(fd: I32; off: I64; whence: I32): I64;

@@ -126,6 +126,7 @@ int main(int argc, char **argv) {
     READ("stDev", struct stat, st_dev); READ("stIno", struct stat, st_ino);
     READ("stNlink", struct stat, st_nlink); READ("stMode", struct stat, st_mode);
     READ("stSize", struct stat, st_size);
+    READ("stUid", struct stat, st_uid); READ("stGid", struct stat, st_gid);
     READ("stMtime", struct stat, st_mtim.tv_sec);
     READ("stMtimeNs", struct stat, st_mtim.tv_nsec);
     K("sIfmt", S_IFMT); K("sIfdir", S_IFDIR); K("sIfreg", S_IFREG);
@@ -153,6 +154,7 @@ int main(int argc, char **argv) {
     K("solSocket", SOL_SOCKET); K("soReuseaddr", SO_REUSEADDR);
     K("soError", SO_ERROR); K("soPeercred", SO_PEERCRED);   /* Linux's */
     K("shutWr", SHUT_WR); K("msgNosignal", MSG_NOSIGNAL);
+    K("msgDontwait", MSG_DONTWAIT);
     K("msgCmsgCloexec", MSG_CMSG_CLOEXEC); K("scmRights", SCM_RIGHTS);
     K("sockaddrLen", sizeof(struct sockaddr_storage));
     READ("saFamily", struct sockaddr, sa_family);

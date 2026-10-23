@@ -229,6 +229,8 @@ type
         dev*: U64;       (* the file system it is on; with ino, it names the file *)
         links*: U64;     (* how many names it has: 1 for a file no hard link shares *)
         special*: INT;   (* its set-user-id, set-group-id and sticky bits, as chmod takes them: 800H, 400H, 200H *)
+        uid*: INT;       (* its owner's user number *)
+        gid*: INT;       (* its group's number *)
     end;
     Kind* = (unknown, isFile, isDir, isLink, isOther);   (* what a directory says a name in it is *)
     Dir* = record ... end;   (* an open directory; its fields are the target's *)
@@ -289,6 +291,8 @@ proc removeDir*(path: []U8): INT;        (* an empty directory *)
 proc makeDir*(path: []U8): INT;          (* readable by all, writable by its owner *)
 proc makeDirMode*(path: []U8; mode: INT): INT;   (* makeDir, given mode *)
 proc chmod*(path: []U8; mode: INT): INT;
+proc chown*(path: []U8; uid, gid: INT): INT;   (* its owner and group; -1 leaves one as it is *)
+proc makeFifo*(path: []U8; mode: INT): INT;    (* a named pipe, given mode *)
 proc setTime*(path: []U8; sec: I64; nsec: INT): INT;   (* its mtime, and the time it was read, made sec and nsec *)
 proc access*(path: []U8; how: Accesses): INT;   (* 0 if this user may read, write or execute it *)
 proc umask*(mask: INT): INT;             (* the bits taken from every file made; the mask it was *)
@@ -367,6 +371,7 @@ proc listen*(path: []U8): INT;     (* a Unix socket made at path, taking connect
 proc listenTcp*(addr: []U8; port: INT): INT;
 proc accept*(fd: INT): INT;        (* the next connection, waiting for one *)
 proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
+proc sendNow*(fd: INT; s: []U8): INT;   (* send, but -11 (EAGAIN) where it would wait *)
 proc connectTcpWithin*(addr: []U8; port, ms: INT): INT;   (* connectTcp, or -110 (ETIMEDOUT) after ms *)
 proc listenUdp*(addr: []U8; port: INT): INT;   (* a socket of datagrams on port at addr *)
 proc receive*(fd: INT; buf: []U8): (INT, Peer);   (* the next datagram, in buf, and who sent it *)
@@ -446,7 +451,14 @@ writes to a file named elsewhere too; 0 on a target that doesn't say.
 1EDH (755) for a program, 1A4H (644) for data; `Info.special` holds
 the three above them, set-user-id 800H, set-group-id 400H and sticky
 200H, which `chmod` sets too, with `mode | special`, as a program that
-copies a file keeps them. `makeDirMode` is `makeDir` that gives the
+copies a file keeps them. `Info.uid` and `Info.gid` are the owner's
+and the group's numbers; `chown` sets them, with -1 for one to leave
+as it is, so that a program that saves a file by writing another and
+renaming it over the first can give it the first's owner (only root may
+give a file to another user). `makeFifo` makes a named pipe, given the
+bits `mode` as `makeDirMode` is; `Info` of one has `file` and `dir`
+false, and `open` with `nonblocking` doesn't wait for its other end.
+`makeDirMode` is `makeDir` that gives the
 directory the bits `mode`, less those the umask takes away, as
 `openMode` gives a file: 1C0H (700) for one only its owner may enter.
 Of the three above them, Linux gives a new directory only sticky; it
@@ -652,7 +664,9 @@ says who is at the other end of a connected socket: for a TCP one its
 address and port; for a Unix one the user and process that made the
 connection, as the system recorded them, so that a server can check
 that its client is the same user instead of trusting a directory's
-mode. `socketPair` makes two connected stream sockets at once, as a
+mode. `sendNow` is `send` that never waits: where the socket has no
+room it gives -11 (`errAgain`), without making reads on it
+non-blocking too. `socketPair` makes two connected stream sockets at once, as a
 `listen`, `connect` and `accept` would, with no name on disk. Each is
 closed in a program exec starts. `accept` gives -103 (`errConnAborted`)
 for a client that went before it was taken.
