@@ -87,7 +87,17 @@ repository. `site/README.md` gives the build, release records and
 checks. `site/releases` lists website releases whose tags aren't
 pushed yet (none now); it never makes a tag.
 
-v0.21.0, report 2026-10.34, the language unchanged, is for a kernel:
+v0.22.0, report 2026-10.36, is the twelfth thaw, what `PROPOSALS.md`
+collated: `MIN`, `MAX`, `ABS`, `CLZ`, `CTZ`, `POPCOUNT`, `INT(b)`,
+`OFFSET`, `SIZE(T.f)`, `BYTES` and `FILL`; a qualified case in an arm,
+slice and `ERROR` constants, a record's procedure field that takes the
+record, and `ROL` and `ROR` (10.35); library growth (`Fmt`'s widths and
+`short`, `Str`, `Files`, `Sys`'s `poll`, processes, servers and signals,
+`Math`, `Opt`, `Heap.sure`, `Vec`, `Arena`); and code made faster
+(inlining a procedure that only returns, `COPY`, `FILL`, array
+parameters). `BOOT` still names v0.20.0; moving it to v0.22.0 is the
+next step of `PLAN.md`.
+v0.21.0, report 2026-10.34, before it, the language unchanged, is for a kernel:
 the assembler knows a kernel's instructions (`cli`, `lgdt`, `mov` to
 `cr3`, `in`, `out`, ...); `raz -base` sets the load address, in the low
 or the top 2 GB; `raz -bare` makes a program for the bare machine, which
