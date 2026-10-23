@@ -1545,7 +1545,7 @@ dereference).
 
 ## The limits of an integer type: `MIN(T)` and `MAX(T)`
 
-**Status.** Approved by the owner on 2026-10-22, a twelfth thaw. In the report, 2026-10.36 (sections 4, 6.1 and 6.8); the compiler waits for the owner's review of that text.
+**Status.** Approved by the owner on 2026-10-22, a twelfth thaw. In the report, 2026-10.36 (sections 4, 6.1 and 6.8), and in the compiler (2026-10-23).
 
 Programs write `7FFFFFFFFFFFFFFFH` for the largest `I64` and `-10^12`
 for "below anything real", and nothing ties either to its type: change
@@ -1571,7 +1571,7 @@ Met in mosaico, rfuzz and raudio.
 
 ## `OFFSET(T, f)`, and `SIZE` of a field
 
-**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (4, 6.1 and 6.8); the compiler waits for the owner's review of that text.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (4, 6.1 and 6.8), and in the compiler (2026-10-23).
 
 A record handed to C by pointer must match C's struct byte for byte;
 a field one word off is read wrong with no error. mosaico and rx11 test
@@ -1845,7 +1845,7 @@ text is in fact doubtful.
 
 ## A `BOOL` as an integer: `INT(b)`
 
-**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (6.7); the compiler waits for the owner's review of that text.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (6.7), and in the compiler (2026-10-23).
 
 Moved here from the list of what to leave out, because three programs
 met it and one of them for a reason an `if` can't serve. 6.7 says
@@ -1872,7 +1872,7 @@ mask has no other plain spelling.
 
 ## Counting bits: `CLZ`, `CTZ` and `POPCOUNT`
 
-**Status.** Approved by the owner on 2026-10-22, with `MIN` and `MAX`. In the report, 2026-10.36; the compiler waits for the owner's review of that text.
+**Status.** Approved by the owner on 2026-10-22, with `MIN` and `MAX`. In the report, 2026-10.36, and in the compiler (2026-10-23).
 
 raz has `ROL` and `ROR` (report 2026-10.35) but nothing that counts
 bits, so programs loop. raudio's Rice decoder finds the one bit that
@@ -1917,7 +1917,7 @@ and multiplies that each need a paragraph.
 
 ## The bytes of a variable or a slice: `BYTES(x)`
 
-**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (6.8 and 7.3); the compiler waits for the owner's review of that text.
+**Status.** Approved by the owner on 2026-10-23, with the twelfth thaw. In the report, 2026-10.36 (6.8 and 7.3), and in the compiler (2026-10-23).
 
 A view, `v.(T)`, reads one value from bytes, and can't be sliced,
 since it has no address (6.9). So a program that has words and wants
