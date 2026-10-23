@@ -1,0 +1,15 @@
+(* A check that fails in a procedure made in place of its call is told
+   at the procedure's line, in its file; the trap report names the
+   procedure that called it, which the code is part of. *)
+module InlineCheck;
+import Out, InlAt;
+
+proc main*;
+var a: [3]INT; i: INT;
+begin
+    a := [1, 2, 3];
+    for i := 0 to 3 do
+        Out.int(InlAt.at(a, i)); Out.ln;
+    end;
+end;
+end InlineCheck.

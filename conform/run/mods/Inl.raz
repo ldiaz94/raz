@@ -1,0 +1,25 @@
+(* Procedures that only return, for Inline: imported, one reading a
+   variable this module hides, one calling a generic module's. *)
+module Inl;
+import Box := Cell(INT);
+
+var hidden: INT;
+
+proc twice*(x: INT): INT;
+begin
+    return 2 * x;
+end;
+
+proc plusHidden*(x: INT): INT;
+begin
+    return x + hidden;
+end;
+
+proc boxed*(x: INT): INT;
+begin
+    return Box.add(x, 1);
+end;
+
+begin
+    hidden := 100;
+end Inl.

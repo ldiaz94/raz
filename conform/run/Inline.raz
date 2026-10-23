@@ -1,0 +1,130 @@
+(* Calls of procedures whose body is only return e mean what any call
+   means: each argument evaluated once, left to right, and converted as
+   for a call; a var or const parameter the variable itself; the result
+   of the procedure's type. *)
+module Inline;
+import Out, Inl;
+
+type Pair = record a, b: INT; end;
+
+var trace: [16]INT; numTrace: INT;
+
+(* v, noted in trace: an argument with a side effect *)
+proc note(v: INT): INT;
+begin
+    trace[numTrace] := v;
+    INC(numTrace);
+    return v;
+end;
+
+proc sub(a, b: INT): INT;
+begin
+    return a - b;
+end;
+
+proc square(a: INT): INT;
+begin
+    return a * a;
+end;
+
+proc subSquares(a, b: INT): INT;
+begin
+    return sub(square(a), square(b));
+end;
+
+proc isLower(c: U8): BOOL;
+begin
+    return U8(c - 97) < 26;
+end;
+
+proc wide(x: U8): INT;
+begin
+    return x;
+end;
+
+proc low(x: INT): U8;
+begin
+    return U8(x & 255);
+end;
+
+proc add8(a, b: U8): U8;
+begin
+    return a + b;
+end;
+
+proc half(r: F64): F64;
+begin
+    return r / 2.0;
+end;
+
+proc sumOf(const p: Pair): INT;
+begin
+    return p.a + p.b;
+end;
+
+proc incr(var n: INT): INT;
+begin
+    INC(n);
+    return n;
+end;
+
+proc bumped(var n: INT): INT;
+begin
+    return incr(n);
+end;
+
+proc second(s: []U8): U8;
+begin
+    return s[1];
+end;
+
+proc odd(n: INT): BOOL; forward;
+
+(* recursive through odd, which is made in place here and there *)
+proc even(n: INT): BOOL;
+begin
+    return (n = 0) or odd(n - 1);
+end;
+
+proc odd(n: INT): BOOL;
+begin
+    return (n # 0) and even(n - 1);
+end;
+
+proc show(s: []U8; n: INT);
+begin
+    Out.str(s); Out.str(" "); Out.int(n); Out.ln;
+end;
+
+proc main*;
+var i, n: INT; s: []U8; p: Pair; f: proc(a, b: INT): INT; c: U8;
+begin
+    show("sub", sub(note(10), note(3)));
+    show("order", trace[0] * 10 + trace[1]);
+    show("count", numTrace);
+    show("nested", subSquares(note(5), note(4)));
+    show("count", numTrace);
+    s := "abcD";
+    i := 0;
+    while (i < LEN(s)) and isLower(s[i]) do INC(i); end;
+    show("lower", i);
+    c := 200;
+    show("wide", wide(c) + wide(c));
+    show("low", INT(low(-1)));
+    n := add8(200, 100);
+    show("add8", n);
+    if half(3.0) = 1.5 then show("half", 1); end;
+    p := {a: 3, b: 4};
+    show("const", sumOf(p));
+    show("literal", sumOf({a: 1, b: 2}));
+    n := 7;
+    show("var", bumped(n));
+    show("var after", n);
+    show("slice", INT(second(s)));
+    if even(10) and odd(7) and not even(3) then show("even", 1); end;
+    f := sub;
+    show("value", f(9, 2));
+    show("imported", Inl.twice(Inl.plusHidden(1)));
+    show("generic", Inl.boxed(41));
+end;
+end Inline.

@@ -1008,17 +1008,17 @@ procedure ends.
 module Fail;
 import Out;
 
-proc get(a: []INT; i: INT): INT;
+proc show(a: []INT; i: INT);
 begin
-    return a[i];
+    Out.int(a[i]);
+    Out.ln;
 end;
 
 proc main*;
 var a: [3]INT; i: INT;
 begin
     for i := 0 to 3 do
-        Out.int(get(a, i));
-        Out.ln;
+        show(a, i);
     end;
 end;
 
@@ -1028,9 +1028,9 @@ end Fail.
 0
 0
 0
-Fail.raz:6:14: index 3 is out of range for a length of 3
-  in Fail.get at Fail.raz:6:14: i = 3
-  in Fail.main at Fail.raz:13:9: i = 3
+Fail.raz:6:15: index 3 is out of range for a length of 3
+  in Fail.show at Fail.raz:6:15: i = 3
+  in Fail.main at Fail.raz:14:9: i = 3
 .Ed
 .Pp
 Every index and slice is checked.

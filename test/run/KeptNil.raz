@@ -10,12 +10,14 @@ begin
     return p^.x + k;
 end;
 
+(* called through a procedure value, so that get isn't made in place *)
 proc main*;
-var r: Rec;
+var r: Rec; f: proc(p: ^Rec; k: INT): INT;
 begin
     r.x := 1;
-    Out.int(get(ADR(r), 2)); Out.ln;
-    Out.int(get(nil, 5)); Out.ln;
+    f := get;
+    Out.int(f(ADR(r), 2)); Out.ln;
+    Out.int(f(nil, 5)); Out.ln;
 end;
 
 end KeptNil.

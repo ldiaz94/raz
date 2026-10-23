@@ -43,6 +43,17 @@ type
         home*: ^Module;    (* the module that built it *)
     end;
 
+    (* A procedure whose body is only return e, made in place of a call:
+       e is read again from where it begins (Parse's inlined) *)
+    Inline* = record
+        at*: Scan.State;   (* at the return, before e *)
+        path*: INT;        (* its file, as Chunk knows it *)
+        checks*: BOOL;     (* its module's checks are made *)
+        calls*: BOOL;      (* e calls a procedure *)
+        busy*: BOOL;       (* being read in place now: not again inside, so
+                              that a recursion ends *)
+    end;
+
     Obj* = record
         cls*: Class;
         name*: INT;
@@ -69,6 +80,8 @@ type
                               xmm0, made in place of a call (Gen.oneRealOp);
                               0 if not *)
         openEnd*: BOOL;    (* oProc: has results, and may reach its end *)
+        ret*: ^Inline;     (* oProc: its body is only return e, made in place
+                              of a call; nil if not *)
         reg*: INT;         (* oVar: the register it lives in, or 0 if in memory;
                               for a slice, the one its pointer is in *)
         reg2*: INT;        (* oVar: a slice in registers: the one its length is in *)

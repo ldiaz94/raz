@@ -1,0 +1,9 @@
+(* A generic module whose procedure only returns, for Inline *)
+module Cell(T);
+
+proc add*(a, b: T): T;
+begin
+    return a + b;
+end;
+
+end Cell.

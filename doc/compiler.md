@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 724 | 582 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 737 | 590 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,620 | 1,329 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,828 | 1,978 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Gen.raz` | 2,833 | 1,982 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,442 | 1,959 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,614 | 3,959 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,748 | 4,046 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -938,6 +938,78 @@ convention (report 2026-10.33) made common.
    there, as it does for a procedure that calls. ChaCha's block with
    the copy 1,132 ms to 684, 35% fewer instructions.
 
+## Inlining a procedure that only returns
+
+A call of a procedure whose body is only `return e`, with no locals,
+is made in place of the call, as PROPOSALS.md's "Inlining a procedure
+that only returns" has it. One pass keeps no tree to copy, but it can
+read source again, as `while` reads its condition again: `body` notes
+such a procedure (`onlyReturns`), keeping in its `Obj` an `Inline`
+(`Sym.raz`): the scanner's state at the `return`, its file, whether
+its module makes checks, and whether `e` calls anything. `call` hands
+a call of it to `inlined`, which:
+
+1. reads and converts the arguments as for a call (`Item.passArg`),
+   which leaves them on Gen's stack where `Gen.call` would take them;
+2. pops them, the last on top first, into temporaries of the
+   statement, so each is evaluated once and in order: a parameter by
+   address (`var`, `const`, a record or an array) becomes a slot
+   holding the address the call would pass (`ind`, as a parameter
+   passed so is), a slice its two words, any other its value;
+3. opens, in place of the caller's scopes, the procedure's module's
+   and one of its own that names the parameters as those temporaries,
+   puts the scanner back at the `return`, with the module, its file
+   and its checks, and reads `e`;
+4. loads the result, as a call's comes back and widening as one does,
+   unless it is a condition, which stays one for `if` and `while` to
+   jump on; and puts back what it changed. What `e` notes for the
+   warnings was noted when the procedure was compiled, so its doubts
+   are dropped, and no warning comes or goes.
+
+Kept narrow: the result a single value (no slice, record or several),
+no `try` in `e`, and not a procedure already being made in place, so
+that a recursion ends in a call. A procedure of another module is made
+in place as one of this module is, its source kept as every file's is,
+for messages; so is one of a generic module's instance. A procedure
+taken as a value, or called before its body is read, is called; its
+body is compiled all the same, and tree shaking drops it if nothing
+calls it. `chooseRegs` doesn't count a call of one whose `e` calls
+nothing (`calls`), so the caller can stay a leaf.
+
+```
+proc isLower(c: U8): BOOL; begin return U8(c - 97) < 26; end;
+...
+while (i < LEN(s)) and isLower(s[i]) do INC(i); end;
+
+before:  movzx edi, byte [r12 + rbx]     after:  movzx r8d, byte [r12 + rbx]
+         call T.isLower                          mov [rbp - 50], r8b
+         mov r8, rax                             movzx r8d, byte [rbp - 50]
+         movzx r8d, r8b                          sub r8, 97
+         test r8, r8                             movzx r8d, r8b
+         jne loop                                cmp r8, 26
+   (isLower: push rbp ... cmp r8, 26;            jb loop
+    setb r8b; movzx r8d, r8b; mov rax, r8;
+    leave; ret)
+```
+
+A word count of 16 MiB sixteen times with that test, 887 ms to 638
+(586 with `check off`; 516 with the test written in place by hand);
+test/bench's Grep, whose `zeros` and `lowest` only return, 268 ms to
+199 (194 by hand). What is left is the store and load of each
+temporary. The compiler built by itself runs 3% fewer instructions,
+the same time, and is 17 KB larger.
+
+What the trace and a debugger see: the procedure has no frame, so it
+isn't in the trap report's list of calls, nor in gdb's backtrace; its
+caller is, with the caller's variables. A failed check in `e` is told
+at `e`'s line, in its file (Gen's `check` works out the place while
+`e` is read, and `endFails` notes it in that file), and a gdb
+breakpoint at that line stops on the failing code, and in the
+procedure's own body if it is kept. A signal in `e` is told at the
+caller's statement, as the line notes inside a statement are its own.
+A test that wants the procedure's own frame calls it through a
+procedure value (`test/run/KeptCheck.raz`).
+
 ## Diag.raz: messages
 
 Every message the compiler prints is made here. A position, `Pos`, is a
@@ -1376,7 +1448,10 @@ That code puts the values involved where `Rt.fail` wants them and calls
 a stub for its kind of failure (`failStubs`, made by `entryPoint`),
 which says the kind and passes the address it was called from, by which
 `Rt` finds the place: the failing code has the place of the offending
-expression (`lineCol` in `Scan.raz`). It leaves `rdi` and `rsi` as they
+expression (`lineCol` in `Scan.raz`), worked out when the check is
+made, while the source read is the expression's, and noted in its
+file, so that a check in a procedure made in place of its call is told
+at that procedure's line. It leaves `rdi` and `rsi` as they
 were, so that the stub can pass them on, for the trap report to show a
 parameter kept in them. A check costs a compare and a jump where it
 stands, and a dozen bytes out of the way. Code is aligned to 32 bytes,
@@ -1698,7 +1773,9 @@ it: `.field`, `^`, `[i]`, `[lo..hi]`, a call, a conversion, a view
 calls the matching routine in `Item.raz` on the item it has. The
 `want` parameter carries the type an expression must have, where it is
 known, so that `[1, 2, 3]`, `{x: 1}` and `{red}` know what to build
-(`arrayLiteral`, `recordLiteral`, `setLiteral`).
+(`arrayLiteral`, `recordLiteral`, `setLiteral`). A call of a
+procedure that only returns is made in place by `inlined` (see
+"Inlining a procedure that only returns").
 
 Then statements: `statement` makes each one a recovery point (below)
 and `oneStatement` dispatches; `ifStatement`,

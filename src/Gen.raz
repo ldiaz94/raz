@@ -185,7 +185,9 @@ type
 
     (* a check of the procedure, whose failure endFails makes *)
     Fail = record
-        L, what, ra, name, at: INT;
+        L, what, ra, name: INT;
+        path, line, col: INT;   (* the place, told now: an inlined procedure's
+                                   is in its own file (Parse's inlined) *)
         m: X.Mem;
         n: I64;
     end;
@@ -1589,9 +1591,9 @@ end;
    in them, for the trap report to show: so a goes to the stub in rax.
    The failing code is out of the way, at the
    procedure's end (endFails), so that a check that holds costs a jump
-   not taken; it has p for its place (at is p's offset in the source),
-   never returns, and may use any register once it has read what it
-   needs. *)
+   not taken; it has p for its place (its line and column, worked out
+   now, while the source read is p's), never returns, and may use any
+   register once it has read what it needs. *)
 proc check(cc, what: INT; p: Diag.Pos; ra: INT; m: X.Mem; n: I64; name: INT);
 begin
     if numFails > LEN(fails) - 1 then
@@ -1605,7 +1607,8 @@ begin
     fails[numFails].m := m;
     fails[numFails].n := n;
     fails[numFails].name := name;
-    fails[numFails].at := p.a;
+    fails[numFails].path := Chunk.curFilePath();
+    fails[numFails].line, fails[numFails].col := Scan.lineCol(p.a);
     INC(numFails);
 end;
 
@@ -1613,13 +1616,15 @@ end;
    and the place of the offending expression, through a stub for its
    kind, which takes the place from where it was called *)
 proc endFails;
-var i, line, col: INT; f: Fail;
+var i, path: INT; f: Fail;
 begin
+    path := Chunk.curFilePath();
     for i := 0 to numFails - 1 do
         f := fails[i];
         X.fixLink(f.L);
-        line, col := Scan.lineCol(f.at);
-        Chunk.noteLine(line, col);
+        Chunk.setCurFile(f.path);
+        Chunk.noteLine(f.line, f.col);
+        Chunk.setCurFile(path);
         if f.ra # RAX then X.movRR(RAX, f.ra); end;
         if f.m.base = NoBase then X.movRI(RCX, f.n);
         elsif f.m.base = ARegister then X.movRR(RCX, f.m.index);

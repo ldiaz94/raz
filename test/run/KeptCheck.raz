@@ -10,10 +10,13 @@ begin
     return a[i] + I64(b);
 end;
 
+(* called through a procedure value, so that at isn't made in place *)
 proc main*;
+var f: proc(i: INT; b: U8): I64;
 begin
-    Out.int(at(3, 1)); Out.ln;
-    Out.int(at(4, 200)); Out.ln;
+    f := at;
+    Out.int(f(3, 1)); Out.ln;
+    Out.int(f(4, 200)); Out.ln;
 end;
 
 end KeptCheck.

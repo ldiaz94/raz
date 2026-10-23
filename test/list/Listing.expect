@@ -3,32 +3,17 @@ Listing.twice:
              0  lea rax, [rdi + rdi]
              4  ret
 
-Listing.add:
-    12  proc add(a, b: I64): I64;
-             0  push rbp
-             1  mov rbp, rsp
-             4  sub rsp, 16
-    14      return a + b * 2;
-            11  mov r9, rsi
-            14  shl r9, 1
-            18  mov r8, rdi
-            21  add r8, r9
-            24  mov rax, r8
-    15  end add;
-            27  leave
-            28  ret
-
 Listing.main:
     17  proc main*;
              0  push rbp
              1  mov rbp, rsp
-             4  sub rsp, 16
+             4  sub rsp, 32
             11  mov [rbp - 8], rbx
             15  xor ebx, ebx
     20      for i := 1 to 3 do
             17  mov rbx, 1
             22  cmp rbx, 3
-            26  jg 156
+            26  jg 168
             32  jmp 68
             37  nop
             45  nop
@@ -37,25 +22,28 @@ Listing.main:
             64  add rbx, 1
     21          if i # 2 then total := add(total, twice(i)); end;
             68  cmp rbx, 2
-            72  je 122
+            72  je 134
             78  mov r8, [Listing.total]
             85  mov [rbp - 16], r8
             89  mov rdi, rbx
             92  call Listing.twice
             97  mov r9, rax
-           100  mov rdi, [rbp - 16]
-           104  mov rsi, r9
-           107  call Listing.add
-           112  mov r8, rax
-           115  mov [Listing.total], r8
-           122  cmp rbx, 3
-           126  jl 64
-           132  cmp rbx, 3
-           136  je 156
-           142  add rbx, 1
-           146  cmp rbx, 3
-           150  jle 68
+           100  mov [rbp - 24], r9
+           104  mov r8, [rbp - 16]
+           108  mov [rbp - 32], r8
+           112  mov r9, [rbp - 24]
+           116  shl r9, 1
+           120  mov r8, [rbp - 32]
+           124  add r8, r9
+           127  mov [Listing.total], r8
+           134  cmp rbx, 3
+           138  jl 64
+           144  cmp rbx, 3
+           148  je 168
+           154  add rbx, 1
+           158  cmp rbx, 3
+           162  jle 68
     23  end main;
-           156  mov rbx, [rbp - 8]
-           160  leave
-           161  ret
+           168  mov rbx, [rbp - 8]
+           172  leave
+           173  ret

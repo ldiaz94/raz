@@ -1,0 +1,2 @@
+test/run/mods/InlAt.raz:7:14: index 3 is out of range for a length of 3
+  in InlineCheck.main at test/run/mods/InlAt.raz:7:14: i = 3

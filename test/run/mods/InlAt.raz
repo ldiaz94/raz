@@ -1,0 +1,10 @@
+(* A procedure that only returns, made in place in InlineCheck: its
+   check is told here, at its own line. *)
+module InlAt;
+
+proc at*(s: []INT; i: INT): INT;
+begin
+    return s[i];
+end;
+
+end InlAt.

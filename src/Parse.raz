@@ -138,6 +138,12 @@ var
        in the procedure (chooseRegs); numFors counts them as compiled. *)
     limitK, numFors: INT;
     limitIn: [MaxFors]BOOL;
+    (* For a body that is only return e (inlined): where the body's first
+       return statement ends, its ";" with it, or -1; whether a try was
+       read; and the calls made, which an inlined one doesn't count *)
+    returnEnd: INT;
+    sawTry: BOOL;
+    numCalls: INT;
 
 proc expression(var x: TItem; want: PType): ERROR; forward;
 proc parseType: (PType, ERROR); forward;
@@ -958,6 +964,104 @@ end;
 
 (* Expressions *)
 
+(* Inlining a procedure that only returns
+
+   A call of a procedure whose body is only return e, with no locals, is
+   made in place: e is read again from where it begins, the scanner put
+   back there, as a while loop reads its condition again. The arguments,
+   read and converted as for a call and left on Gen's stack as the call
+   would take them, go to temporaries, the last on top first, so each is
+   evaluated once and in order; a scope names the parameters as them.
+   e is read in the procedure's own module's scope, with its module's
+   checks, so it means what it means there. For
+
+       proc isLower(c: U8): BOOL; begin return U8(c - 97) < 26; end;
+       ... if isLower(s[i]) then ...
+
+   the code was, before,
+
+       movzx edi, byte [s + i]; call isLower
+       mov r8, rax; movzx r8d, r8b; test r8, r8; je else
+       (isLower: push rbp ... cmp r8, 26; setb r8b; movzx r8d, r8b;
+        mov rax, r8; leave; ret)
+
+   and is now, after,
+
+       movzx r8d, byte [s + i]; mov [rbp - t], r8b
+       movzx r8d, byte [rbp - t]; sub r8, 97; movzx r8d, r8b
+       cmp r8, 26; jae else
+
+   A parameter by address (var, const, a record or an array) is a slot
+   holding the address the call would have passed (ind), a slice its two
+   words, any other its value. A failed check in e is told at e's own
+   line, in its own file (Gen's check notes the place while e is read);
+   the procedure isn't in the trap report's list, nor in a debugger's
+   backtrace, as it has no frame. The procedure itself is still
+   compiled, for a call through a procedure value or before its body
+   is read. *)
+proc inlined(var c: Gen.CallInfo; var x: TItem): ERROR;
+var
+    p: PObj; inl: ^Sym.Inline; q, o: PObj; params: [64]PObj; n, i: INT; t: I64;
+    st: Scan.State; saved: [Sym.MaxDepth]INT; d, path, doubts0: INT; home: PModule;
+    checks: BOOL; res: PType; err: ERROR;
+begin
+    p := c.obj; inl := p^.ret; res := c.sig^.base;
+    n := 0;
+    q := c.sig^.fields;
+    while q # nil do
+        o := Sym.newObj(Sym.oVar, q^.name, q^.typ);
+        o^.pos := q^.pos; o^.lev := 1; o^.param := true;
+        o^.isVar := q^.isVar; o^.isConst := q^.isConst;
+        params[n] := o;
+        INC(n);
+        q := q^.next;
+    end;
+    for i := n - 1 to 0 by -1 do
+        o := params[i];
+        if o^.isVar or (Sym.isAggregate(o^.typ) and (o^.typ^.form # Sym.fSlice)) then
+            t := Gen.allocTemp(8, 8);
+            Gen.popVar(Item.frameAdr(t), 8);
+            o^.ind := true;
+        elsif o^.typ^.form = Sym.fSlice then
+            t := Gen.allocTemp(16, 8);
+            Gen.popVar(Item.frameAdr(t + 8), 8);   (* the length, on top *)
+            Gen.popVar(Item.frameAdr(t), 8);
+        else
+            t := Gen.allocTemp(o^.typ^.size, o^.typ^.align);
+            Gen.popVar(Item.frameAdr(t), Item.scalarSize(o^.typ));
+        end;
+        o^.val := t;
+    end;
+    (* e in the procedure's module, and back; what it notes for warnings
+       was noted when the procedure was compiled *)
+    Scan.saveScan(st);
+    d := Sym.saveScopes(saved[0..Sym.MaxDepth]);
+    home := Sym.curModule; path := Chunk.curFilePath(); checks := Item.checks; doubts0 := numDoubts;
+    Sym.setCurModule(p^.home); Chunk.setCurFile(inl^.path); Item.setChecks(inl^.checks);
+    err := Sym.openScope(p^.home^.scope);
+    if err = nil then err := Sym.openScope(Sym.newScope()); end;
+    for i := 0 to n - 1 do
+        if err = nil then err := Sym.insert(params[i], Sym.topScope()); end;
+    end;
+    Scan.restoreScan(inl^.at);
+    Scan.next;   (* past the return *)
+    inl^.busy := true;
+    if err = nil then err := expression(x, res); end;
+    (* a condition stays one, for if and while to jump on; anything else
+       is loaded, as a call's result is, and widens as one does (made) *)
+    if (err = nil) and (x.mode # Item.mCond) then
+        err := Item.coerce(x, res);
+        if err = nil then err := Item.value(x); end;
+        x.made := false;
+    end;
+    inl^.busy := false;
+    numDoubts := doubts0;
+    Sym.setCurModule(home); Chunk.setCurFile(path); Item.setChecks(checks);
+    Sym.restoreScopes(d, saved[0..Sym.MaxDepth]);
+    Scan.restoreScan(st);
+    return err;
+end;
+
 proc call(var x: TItem): ERROR;
 var c: Gen.CallInfo; a: TItem; want: PType;
 begin
@@ -973,6 +1077,11 @@ begin
         until false;
     end;
     try expect(Scan.sRparen);
+    if (c.param = nil) and (c.obj # nil) and (c.obj^.ret # nil) and not c.obj^.ret^.busy
+        and (Gen.codeChunk >= 0) then
+        return inlined(c, x);
+    end;
+    INC(numCalls);
     return Item.endCall(c, x);
 end;
 
@@ -1634,6 +1743,7 @@ var
 begin
     start := Scan.tokPos();
     Scan.next;
+    sawTry := true;
     if deferring then return Scan.markAt(Scan.spanFrom(start), "try can't leave a deferred statement"); end;
     if curResult = nil then
         return Scan.markAt(Scan.spanFrom(start), "try needs a procedure that ends in an ERROR result, and this returns nothing");
@@ -2782,6 +2892,10 @@ begin
             end;
             Gen.returnJump();
             ends := true;
+            if returnEnd < 0 then
+                returnEnd := Scan.afterPrev().a;
+                if Scan.tok = Scan.sSemicolon then returnEnd := Scan.tokStart() + 1; end;
+            end;
         end;
     | sBreak:
         Scan.next;
@@ -2958,12 +3072,13 @@ begin
     end;
 end;
 
-(* Whether naming o may make a call: a procedure, a procedure variable,
+(* Whether naming o may make a call: a procedure (not one made in place
+   whose expression calls none), a procedure variable,
    or NEW, SYSCALL, COPY or FILL, which use the registers a call would *)
 proc calls(o: PObj): BOOL;
 begin
     if o = nil then return false; end;
-    return ((o^.cls = Sym.oProc) and (o^.inl = 0)) or ((o^.cls = Sym.oVar) and (o^.typ^.form = Sym.fProc))
+    return ((o^.cls = Sym.oProc) and (o^.inl = 0) and ((o^.ret = nil) or o^.ret^.calls)) or ((o^.cls = Sym.oVar) and (o^.typ^.form = Sym.fProc))
         or ((o^.cls = Sym.oBuiltin) and ((o^.val = Sym.bNew) or (o^.val = Sym.bSyscall) or (o^.val = Sym.bCopy)
             or (o^.val = Sym.bFill)));
 end;
@@ -3196,10 +3311,23 @@ begin
     Gen.useRegs(regsOf(params, before));
 end;
 
+(* p, whose body is only return e, e read from at, is made in place of
+   a call (inlined) if it returns a single value. *)
+proc onlyReturns(p: PObj; sig: PType; const at: Scan.State; calls: BOOL);
+begin
+    if (sig^.base = nil) or not Sym.isScalar(sig^.base) then return; end;
+    NEW(p^.ret, Heap.heap);
+    if p^.ret = nil then Diag.fatal("out of memory"); end;
+    p^.ret^.at := at;
+    p^.ret^.path := Chunk.curFilePath();
+    p^.ret^.checks := Item.checks;
+    p^.ret^.calls := calls;
+end;
+
 proc body(p: PObj; sig: PType; line: INT): ERROR;
 var
-    q, params, last, o, before: PObj; old: PType; st: Scan.State;
-    mark: Gen.CodeMark; doubts0, errs: INT;
+    q, params, last, o, before: PObj; old: PType; st, at: Scan.State;
+    mark: Gen.CodeMark; doubts0, errs, calls0: INT; first, only: BOOL;
 begin
     try Sym.openScope(Sym.newScope());
     params := nil; last := nil;
@@ -3238,7 +3366,10 @@ begin
         curResult := sig^.base;
         Gen.enterBody(p^.chunk, line);
         stray := false; elseIf := false; deferSlot := 0; numFors := 0;
+        first := Scan.tok = Scan.sReturn;
+        Scan.saveScan(at); returnEnd := -1; sawTry := false; calls0 := numCalls;
         try statements();
+        only := first and (Scan.tok = Scan.sEnd) and (Scan.afterPrev().a = returnEnd) and not sawTry;
         p^.openEnd := (curResult # nil) and not ends;
         Chunk.noteLine(Scan.curLine(), Scan.curCol());
         try expect(Scan.sEnd);
@@ -3258,6 +3389,9 @@ begin
         Scan.restoreScan(st);
     until false;
     try Gen.endProc(p^.chunk, p^.openEnd);
+    if only and (Sym.curModule^.lastLocal = before) and (Diag.errors = errs) then
+        onlyReturns(p, sig, at, numCalls # calls0);
+    end;
     (* its parameters and variables, for the trap report *)
     o := firstLocal(before);
     q := params;

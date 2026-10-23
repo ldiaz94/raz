@@ -1,3 +1,2 @@
 test/run/IndexParam.raz:106:14: index 8 is out of range for a length of 8
-  in IndexParam.at at test/run/IndexParam.raz:106:14: k = 7
-  in IndexParam.main at test/run/IndexParam.raz:151:5: i = 7
+  in IndexParam.main at test/run/IndexParam.raz:106:14: i = 7

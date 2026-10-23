@@ -399,3 +399,15 @@ otherwise.
   or another module's array, as `d`, says why it can't be changed, for
   `COPY` too. `seqSlice` copies no slice that is a temporary already
   (a slice just cut): nothing `s` or `x` does can change it.
+- A call of a procedure whose body is only `return e`, with no locals,
+  a single value its result and no `try` in `e`, is made in place
+  (`Parse.inlined`): the arguments read and converted as for a call,
+  each once and in order, into temporaries the parameters are named
+  as (a `var` or `const` one, a record or an array, by the address the
+  call would pass), then `e` read again in its own module's scope,
+  with that module's checks. Another module's procedure and a generic
+  instance's too; not one already being made in place, nor a call
+  through a procedure value. The procedure has no frame: it is in
+  neither the trap report's calls nor gdb's backtrace; a failed check
+  in `e` is told at `e`'s line, a signal at the caller's statement.
+  A test that wants its frame calls it through a procedure value.

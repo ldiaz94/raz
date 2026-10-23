@@ -1,4 +1,3 @@
 Heap: out of memory
   in Heap.allocSure at lib/Heap.raz:122:9: a = 0x?, size = 9223372036854775803, align = 8, p = nil
-  in Mem.alloc at lib/Mem.raz:33:5: a = 0x?, size = 9223372036854775803, align = 8
   in HeapSure.main at test/run/HeapSure.raz:8:5
