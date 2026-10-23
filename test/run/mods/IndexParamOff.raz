@@ -1,0 +1,59 @@
+(* IndexParam's procedures again, with no checks: an element of an array
+   parameter of 1, 2, 4 or 8 bytes is read and written as the operand
+   [pointer + index * size], where the index comes with no check. *)
+module IndexParamOff;
+check off;
+
+const N = 8;
+
+type
+    Bytes* = [N]U8;
+    Shorts* = [N]I16;
+    Words* = [N]U32;
+    Longs* = [N]I64;
+
+(* a sum of a's elements, picked by indices worked out several ways *)
+proc sumBytes*(const a: Bytes): INT;
+var i, t: INT;
+begin
+    t := 0;
+    for i := 0 to N - 1 do t := t + a[i] + INT(a[N - 1 - i]) * 2; end;
+    for i := 0 to N div 2 - 1 do t := t + a[2 * i + 1] + a[a[i] mod N]; end;
+    return t;
+end;
+
+proc sumShorts*(const a: Shorts): INT;
+var i, t: INT;
+begin
+    t := 0;
+    for i := 1 to N - 1 do t := t + INT(a[i]) * a[i - 1]; end;
+    return t;
+end;
+
+proc sumWords*(const a: Words): U32;
+var i: INT; t: U32;
+begin
+    t := 0;
+    for i := 0 to N - 2 do t := t + a[i + 1] xor a[i]; end;
+    return t;
+end;
+
+(* each element of a made twice the one before, plus d[i] *)
+proc double*(var a: Longs; const d: Longs);
+var i: INT;
+begin
+    for i := 1 to N - 1 do a[i] := a[i - 1] * 2 + d[i]; end;
+end;
+
+(* the bytes of a turned round, two at a time from either end *)
+proc swap*(var a: Bytes);
+var i: INT; c: U8;
+begin
+    for i := 0 to N div 2 - 1 do
+        c := a[i];
+        a[i] := a[N - 1 - i];
+        a[N - 1 - i] := c;
+    end;
+end;
+
+end IndexParamOff.

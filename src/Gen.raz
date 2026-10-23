@@ -1785,18 +1785,21 @@ end;
 (* Pops an index, checked, and makes the address of the element it
    picks of the array at a. An element of 1, 2,
    4 or 8 bytes is only noted, as the operand [base + index * size]
-   (lIdx): an array in the frame has rbp as its base, and one in a
-   chunk its address as the displacement (X.memAbs), with no lea. Any
-   other is added up. *)
+   (lIdx): an array in the frame has rbp as its base, one reached
+   through a pointer in a register (a var or const parameter) that
+   register, and one in a chunk its address as the displacement
+   (X.memAbs), with no lea. Any other is added up. *)
 proc indexArray*(a: Adr; size: I64);
 var r: INT; o: I64;
 begin
-    if (((size = 1) or (size = 2) or (size = 4) or (size = 8))) and ((a.base = bFrame) or (a.base = bGlobal)) then
+    if (((size = 1) or (size = 2) or (size = 4) or (size = 8))) and (a.base in {bFrame, bGlobal, bPtr}) then
         o := indexOff(size, a.off);
         r := peek(depth - 1);
         drop();
         if a.base = bFrame then
             newMem(lIdx, X.memIdx(RBP, r, INT(size), o), kWord, 8, false);
+        elsif a.base = bPtr then
+            newMem(lIdx, X.memIdx(a.chunk, r, INT(size), o), kWord, 8, false);
         else
             newMem(lIdx, X.memAbs(a.chunk, r, INT(size), INT(o)), kWord, 8, false);
         end;

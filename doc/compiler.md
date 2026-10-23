@@ -21,7 +21,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Sym.raz` | 723 | 581 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,605 | 1,318 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,797 | 1,961 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Gen.raz` | 2,800 | 1,963 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,414 | 1,938 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,592 | 3,942 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
@@ -884,6 +884,36 @@ came with their loops unchanged. Grep (1.14 times FPC's) and Jacobi (1.24) are w
 ahead. The compiler, built by itself, runs 0.9% fewer instructions on
 the 348,000-line program, in the same time.
 
+## Array parameters, measured
+
+Two gaps in what the earlier sections built, found by timing loops
+over arrays passed as parameters, which the library's `const`
+convention (report 2026-10.33) made common.
+
+1. **An array parameter's element as an operand.** `indexArray` noted
+   an element as `[base + index * size]` (`lIdx`) for an array in the
+   frame or a chunk, but an array reached through a pointer (`bPtr`,
+   a `var` or `const` parameter whose address is in a register) was
+   added up, though the pointer was in a register already. A sum over
+   `const s: [N]INT`:
+
+   ```
+   mov r9, r12
+   shl r9, 3
+   lea r10, [rdi]     now:   add rbx, [rdi + r12 * 8]
+   add r9, r10
+   mov r9, [r9]
+   add rbx, r9
+   ```
+
+   The pointer's register is the base, as `rbp` is for the frame. It
+   is a variable's register, not one of the stack's, so the value
+   owns only its index's, as for the frame. One in a frame slot
+   (`bSlot`) is added up still: the pointer would need a register of
+   its own. The sum over a `const` array 145 ms to 82, the speed of
+   the sum over a slice; ChaCha's `quarter(var x: [16]U32; ...)` 560
+   ms to 283 (2.0 times), in 58% fewer instructions.
+
 ## Diag.raz: messages
 
 Every message the compiler prints is made here. A position, `Pos`, is a
@@ -1097,8 +1127,8 @@ This is the only unit that knows the machine. The calls it answers:
   `and` and `or`, `fix` where the label is, and `joinJumps`;
 - checks: `checkIndex`, `checkView`, `checkEnum`, and `indexSlice`, `slice` and
   `slicePtr`, which check as they make their address or slice; and
-  `indexArray`, an element's address in an array in the frame or a
-  chunk, the index checked before;
+  `indexArray`, an element's address in an array in the frame, a
+  chunk or behind a parameter's pointer, the index checked before;
 - calls (`call`), frames (`beginProc`, `enterBody`, `returnJump`,
   `endProc`, the temporaries of `allocTemp`), deferred statements
   (`deferBegin`, `deferEnd`, `runDefer`), the built-ins that are
