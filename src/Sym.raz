@@ -39,7 +39,6 @@ type
         len*: I64;         (* fArray: elements; fProc: parameters; fVariant: cases; a tuple: results *)
         fields*: ^Obj;     (* fRecord: fields; fVariant: cases; fProc: parameters *)
         scope*: INT;       (* fRecord: the scope of its fields *)
-        fwd*: INT;         (* fPtr whose base isn't declared yet: its name, else -1 *)
         obj*: ^Obj;        (* the declaration that names it, or nil *)
         home*: ^Module;    (* the module that built it *)
     end;
@@ -163,7 +162,6 @@ begin
     t^.form := form;
     t^.size := size;
     t^.align := align;
-    t^.fwd := -1;
     t^.home := curModule;
     return t;
 end;

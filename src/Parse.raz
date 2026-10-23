@@ -53,6 +53,17 @@ type
         at: Diag.Pos;        (* the import *)
     end;
 
+    (* A type a type section names before it declares it (report, 4):
+       a pointer's base, or a procedure type's parameter or result. A
+       placeholder stands for it in its owner until the section's end,
+       when resolveLaters puts the type declared in its place. *)
+    Later = record
+        name: INT;           (* the name of the type *)
+        at: Diag.Pos;        (* where it is named *)
+        held: PType;         (* the placeholder, a type of form fNone *)
+        owner: PType;        (* the pointer or procedure type that holds it *)
+    end;
+
 const
     (* Whether the target has reals (report, appendix A): x86-64 always has
        SSE2. Without them, used code that computes with one is an error,
@@ -60,7 +71,7 @@ const
     HasReals* = true;
 
     MaxNames = 64;        (* names in one declaration, and the like *)
-    MaxFwd = 256;         (* pointers to types not yet declared *)
+    MaxLater = 256;       (* types named before they are declared *)
     MaxDefers = 64;       (* defer statements in force *)
     MaxDoubts = 4096;     (* places to warn of, noted while a module is read *)
     MaxDeferred = 64;     (* generic imports not yet made *)
@@ -81,10 +92,9 @@ var
     firstModule*, lastModule*: PModule;   (* in the order they were finished *)
 
     checkMode: BOOL;     (* reading a file only for its interface *)
-    inTypes: BOOL;       (* in a type section: ^T may name a later type *)
-    fwdTypes: [MaxFwd]PType;
-    fwdPos: [MaxFwd]Diag.Pos;    (* where each names its type *)
-    numFwd: INT;
+    inTypes: BOOL;       (* in a type section: ^T, and a procedure type, may name a later type *)
+    laters: [MaxLater]Later;
+    numLater: INT;
     lastCalled: PObj;    (* the procedure the last call was of, if it had a name *)
     passOn: BOOL;        (* the next factor may be a call with several results, for return *)
     curProc: PObj;       (* the procedure being compiled, or nil *)
@@ -600,6 +610,86 @@ end;
 
 (* Types *)
 
+(* Lays the results t holds out as C would, each field at its offset;
+   again by resolveLaters, if one names a type declared later. *)
+proc layOut(t: PType);
+var f: PObj; off: I64;
+begin
+    off := 0;
+    t^.align := 1;
+    f := t^.fields;
+    while f # nil do
+        off := Sym.alignUp(off, f^.typ^.align);
+        f^.val := off;
+        off := off + f^.typ^.size;
+        if f^.typ^.align > t^.align then t^.align := f^.typ^.align; end;
+        f := f^.next;
+    end;
+    t^.size := Sym.alignUp(off, t^.align);
+end;
+
+(* A type that owner, a pointer or a procedure type, holds. In a type
+   section it may name a type not declared yet (report, 4): a
+   placeholder of its own stands for it, noted in laters, and
+   resolveLaters puts the type in its place at the section's end. A
+   pointer is a word and a procedure value an address, so neither's
+   size waits for it. *)
+proc laterType(owner: PType): (PType, ERROR);
+var held: PType;
+begin
+    if not inTypes or (Scan.tok # Scan.sIdent) or (Sym.lookup(Scan.id) # nil) then return parseType(); end;
+    if numLater >= MaxLater then return nil, Scan.mark(tooMany(MaxLater, "types named before they are declared")); end;
+    held := Sym.newType(Sym.fNone, 0, 1);
+    laters[numLater].name := Scan.id;
+    laters[numLater].at := Scan.tokPos();
+    laters[numLater].held := held;
+    laters[numLater].owner := owner;
+    INC(numLater);
+    Scan.next;
+    return held, nil;
+end;
+
+(* Gives t to each of the list f whose type is the placeholder held *)
+proc putFor(f: PObj; held, t: PType);
+begin
+    while f # nil do
+        if f^.typ = held then f^.typ := t; end;
+        f := f^.next;
+    end;
+end;
+
+(* Puts in place of each placeholder of laters the type it names, now
+   that the type section is read: in a pointer's base, a procedure
+   type's parameters and result, and its results, laid out again as
+   their sizes are now known. A name that isn't a type is poison. *)
+proc resolveLaters;
+var i: INT; o: PObj; held, t, owner: PType;
+begin
+    for i := 0 to numLater - 1 do
+        held := laters[i].held;
+        owner := laters[i].owner;
+        o := Sym.lookup(laters[i].name);
+        if (o # nil) and (o^.typ = Sym.tPoison) then
+            t := Sym.tPoison;   (* its declaration had an error, told already *)
+        elsif (o = nil) or (o^.cls # Sym.oType) then
+            notDeclared(laters[i].at, laters[i].name);
+            t := Sym.tPoison;
+        else
+            t := o^.typ;
+            named(o);
+        end;
+        if owner^.base = held then owner^.base := t; end;
+        if owner^.form = Sym.fProc then
+            putFor(owner^.fields, held, t);
+            if (owner^.base # nil) and owner^.base^.tuple then
+                putFor(owner^.base^.fields, held, t);
+                layOut(owner^.base);
+            end;
+        end;
+    end;
+    numLater := 0;
+end;
+
 proc recordType: (PType, ERROR);
 var
     t, ft: PType; f, last: PObj; names: [MaxNames]INT;
@@ -699,23 +789,19 @@ begin
     return t, nil;
 end;
 
-(* Several results: a record of them, laid out as C would, and
-   returned in rax and rdx if they are two words (inTwoRegs), or else
-   through a hidden pointer. *)
-proc results: (PType, ERROR);
-var t, ft: PType; f, last: PObj; off: I64;
+(* The results of the procedure type sig: a record of them, laid out
+   as C would, and returned in rax and rdx if they are two words
+   (inTwoRegs), or else through a hidden pointer. One alone in
+   parentheses is the result itself. *)
+proc results(sig: PType): (PType, ERROR);
+var t: PType; f, last: PObj;
 begin
     Scan.next;
     t := Sym.newType(Sym.fRecord, 0, 1);
     t^.tuple := true;
-    off := 0; last := nil;
+    last := nil;
     repeat
-        ft := try parseType();
-        off := Sym.alignUp(off, ft^.align);
-        f := Sym.newObj(Sym.oField, -1, ft);
-        f^.val := off;
-        off := off + ft^.size;
-        if ft^.align > t^.align then t^.align := ft^.align; end;
+        f := Sym.newObj(Sym.oField, -1, try laterType(sig));
         if last = nil then t^.fields := f; else last^.next := f; end;
         last := f;
         INC(t^.len);
@@ -723,8 +809,8 @@ begin
         Scan.next;
     until false;
     try expect(Scan.sRparen);
-    t^.size := Sym.alignUp(off, t^.align);
     if t^.len = 1 then return t^.fields^.typ, nil; end;
+    layOut(t);
     return t, nil;
 end;
 
@@ -762,7 +848,7 @@ begin
                     Scan.next;
                 until false;
                 try expect(Scan.sColon);
-                pt := try parseType();
+                pt := try laterType(t);
                 while first # nil do first^.typ := pt; first := first^.next; end;
                 if Scan.tok # Scan.sSemicolon then break; end;
                 Scan.next;
@@ -773,7 +859,7 @@ begin
     t^.len := n;
     if Scan.tok = Scan.sColon then
         Scan.next;
-        if Scan.tok = Scan.sLparen then t^.base := try results(); else t^.base := try parseType(); end;
+        if Scan.tok = Scan.sLparen then t^.base := try results(t); else t^.base := try laterType(t); end;
     end;
     return t, nil;
 end;
@@ -854,20 +940,8 @@ begin
         Scan.next;
         vol := Scan.tok = Scan.sVolatile;
         if vol then Scan.next; end;
-        if inTypes and (Scan.tok = Scan.sIdent) and (Sym.lookup(Scan.id) = nil) then
-            (* a type declared later in this section *)
-            t := newPtr(nil, vol);
-            t^.fwd := Scan.id;
-            if numFwd >= MaxFwd then
-                return nil, Scan.mark(tooMany(MaxFwd, "pointers to types not yet declared"));
-            end;
-            fwdTypes[numFwd] := t;
-            fwdPos[numFwd] := Scan.tokPos();
-            INC(numFwd);
-            Scan.next;
-        else
-            t := newPtr(try parseType(), vol);
-        end;
+        t := newPtr(nil, vol);
+        t^.base := try laterType(t);
     | sPacked, sRecord: t := try recordType();
     | sVariant: t := try variantType();
     | sProc: Scan.next; t := try signature();
@@ -3765,7 +3839,7 @@ begin
 end;
 
 proc declarations(top: BOOL);
-var i: INT; o: PObj; k: Scan.Sym;
+var k: Scan.Sym;
 begin
     repeat
         k := Scan.tok;
@@ -3775,20 +3849,10 @@ begin
             while Scan.tok = Scan.sIdent do declaration(k, top); end;
         | sType:
             Scan.next;
-            numFwd := 0;
+            numLater := 0;
             while Scan.tok = Scan.sIdent do declaration(Scan.sType, top); end;
             inTypes := false;
-            for i := 0 to numFwd - 1 do
-                o := Sym.lookup(fwdTypes[i]^.fwd);
-                if (o = nil) or (o^.cls # Sym.oType) then
-                    notDeclared(fwdPos[i], fwdTypes[i]^.fwd);
-                    fwdTypes[i]^.base := Sym.tPoison;
-                else
-                    fwdTypes[i]^.base := o^.typ;
-                    named(o);
-                end;
-                fwdTypes[i]^.fwd := -1;
-            end;
+            resolveLaters();
         | sProc, sExtern: declaration(k, top);
         | else: return;
         end;
@@ -4420,7 +4484,7 @@ end;
 proc makeInstance(i: INT; at: Diag.Pos): ERROR;
 var
     d: Deferred; st: Scan.State; args: Sym.Args; types, exported, ext, wasQuiet: BOOL; nf, nd: INT;
-    ft: [MaxFwd]PType; fp: [MaxFwd]Diag.Pos; decl: [MaxNames]INT;
+    lt: [MaxLater]Later; decl: [MaxNames]INT;
 begin
     d := deferred[i];
     DEC(numDeferred);
@@ -4434,10 +4498,10 @@ begin
     Scan.restoreScan(st);
     args.at := d.at;
     types := inTypes; exported := declExported; ext := inExtern; wasQuiet := Diag.quiet;
-    nf := numFwd; ft := fwdTypes; fp := fwdPos; nd := numDeclaring; decl := declaring;
+    nf := numLater; lt := laters; nd := numDeclaring; decl := declaring;
     d.o^.home := try importModule(d.mname, args);
     inTypes := types; declExported := exported; inExtern := ext; Diag.setQuiet(wasQuiet);
-    numFwd := nf; fwdTypes := ft; fwdPos := fp; numDeclaring := nd; declaring := decl;
+    numLater := nf; laters := lt; numDeclaring := nd; declaring := decl;
     addImport(Sym.curModule, d.o^.home);
     return nil;
 end;

@@ -1,0 +1,89 @@
+module LaterCallback;
+(* A procedure type's parameter or result may name a type declared later
+   in its type section, however passed (report, 4 and 5.9). *)
+import Out;
+
+type
+    Lines = record
+        each: proc(var r: Lines; s: []U8);
+        look: proc(const r: Lines): INT;
+        copy: proc(r: Lines): Lines;
+        at: proc(p: ^Lines): (INT, Lines);
+        n: INT;
+    end;
+
+    (* two records whose callbacks name each other *)
+    Ping = record
+        hit: proc(var p: Pong): INT;
+        sent: INT;
+    end;
+    Pong = record
+        back: proc(var p: Ping; q: Pong);
+        got: INT;
+    end;
+
+    (* a procedure type of its own, naming a later record *)
+    Visit = proc(t: Tree; depth: INT): Tree;
+    Tree = record
+        size: INT;
+        name: [8]U8;
+    end;
+
+proc count(var r: Lines; s: []U8);
+begin
+    INC(r.n, LEN(s));
+end;
+
+proc look(const r: Lines): INT;
+begin
+    return r.n;
+end;
+
+proc copy(r: Lines): Lines;
+begin
+    r.n := r.n * 10;
+    return r;
+end;
+
+proc at(p: ^Lines): (INT, Lines);
+begin
+    return p^.n, p^;
+end;
+
+proc hit(var p: Pong): INT;
+begin
+    INC(p.got);
+    return p.got;
+end;
+
+proc back(var p: Ping; q: Pong);
+begin
+    p.sent := p.sent + q.got;
+end;
+
+proc grow(t: Tree; depth: INT): Tree;
+begin
+    t.size := t.size + depth;
+    return t;
+end;
+
+var
+    r, c: Lines; k: INT; pi: Ping; po: Pong; v: Visit; t: Tree;
+begin
+    r.each := count; r.look := look; r.copy := copy; r.at := at;
+    r.each(r, "abc");
+    r.each(r, "de");
+    Out.int(r.look(r)); Out.ln;
+    c := r.copy(r);
+    Out.int(c.n); Out.char(' '); Out.int(r.n); Out.ln;
+    k, c := r.at(ADR(r));
+    Out.int(k); Out.char(' '); Out.int(c.n); Out.ln;
+    pi.hit := hit; po.back := back;
+    Out.int(pi.hit(po)); Out.char(' '); Out.int(pi.hit(po)); Out.ln;
+    po.back(pi, po);
+    Out.int(pi.sent); Out.ln;
+    v := grow;
+    t.size := 1;
+    t := v(v(t, 2), 3);
+    Out.int(t.size); Out.ln;
+end LaterCallback.

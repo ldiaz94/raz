@@ -1,0 +1,8 @@
+module LaterVar;
+(* only a type section may name a type declared later (4) *)
+var v: proc(var r: R);
+type
+    R = record
+        n: INT;
+    end;
+end LaterVar.

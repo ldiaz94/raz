@@ -1,0 +1,8 @@
+module LaterOwnField;
+(* a field of the record's own type, by value, is still an error (5.9) *)
+type
+    R = record
+        each: proc(var r: R);
+        r: R;
+    end;
+end LaterOwnField.

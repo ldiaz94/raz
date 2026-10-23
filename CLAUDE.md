@@ -305,11 +305,18 @@ otherwise.
 - `Width` follows glibc's `wcwidth` but gives a control 0, and 0 to the
   format characters glibc counts as 1 (Egyptian hieroglyph controls,
   interlinear annotation), but for the prepended concatenation marks.
+- A pointer's base, and a procedure type's parameter or result (report
+  2026-10.36, 4 and 5.9), may name a type declared later in its `type`
+  section, if the name is a bare one that nothing in scope declares yet
+  (`[]Later` or `[2]Later` doesn't wait): a placeholder of form `fNone`
+  stands for it until the section's end (`laterType`,
+  `resolveLaters`), which lays several results out again. A procedure
+  type outside a `type` section, a variable's, waits for nothing.
 - An `extern` module variable is read-only for an importer, as the
   report says of every exported variable (3).
 - Warnings come only for a module with no errors. A procedure naming
-  itself doesn't use it; a type named by a pointer in its own
-  declaration does. An enumeration's names are never warned of, nor a
+  itself doesn't use it; a type named by a pointer, or by a procedure
+  type's parameter or result, in its own declaration does. An enumeration's names are never warned of, nor a
   generic module's parameters; a generic module is warned of in its
   first instance only. Assigning a variable whole (`x :=`, `a, b :=`)
   doesn't read it; anything else does.

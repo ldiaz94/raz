@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 725 | 583 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 723 | 581 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,605 | 1,318 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,797 | 1,961 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,414 | 1,938 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,528 | 3,900 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,592 | 3,942 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -1704,7 +1704,20 @@ two of the six integer registers and a slice result going in rax and
 rdx, and has gen's `codeProc` run
 the target's assembler) and bodies (`body`).
 `parseType` and its helpers (`recordType`, `variantType`, `signature`,
-`enumType`) build `Sym.Type`s. `qualIdent` reads a name, `M.x` too, and
+`enumType`) build `Sym.Type`s. In a `type` section (`inTypes`) a
+pointer's base and a procedure type's parameter or result may name a
+type declared later (report, 4), so that two records can point at each
+other and a record's callback can take the record: `laterType` reads
+the name, and if nothing is declared by it yet gives a placeholder, a
+type of form `fNone` of its own, noting it in `laters` with its owner,
+the pointer or the procedure type. When the section ends,
+`resolveLaters` puts the type declared in each placeholder's place, in
+the owner's base, parameters or results, and lays several results out
+again (`layOut`), as their sizes are known only now. Nothing waits on
+the size: a pointer is a word and a procedure value an address, and no
+call is made inside a `type` section. A field by value is read by
+`parseType` alone, so a record holding itself is still "isn't
+declared". `qualIdent` reads a name, `M.x` too, and
 `Elem.bold`, a name of an enumeration with its type (`enumName`); it
 refuses a name two enumerations share (`twinError`). An arm of a `match`
 on an enumeration or a variant names its case (`armCase`): a name

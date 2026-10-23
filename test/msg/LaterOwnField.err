@@ -1,0 +1,4 @@
+conform/err/LaterOwnField.raz:6:12: error: R isn't declared
+    6 |         r: R;
+      |            ^
+raz: 1 error

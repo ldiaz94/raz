@@ -1,0 +1,4 @@
+conform/err/LaterMissing.raz:4:33: error: Missing isn't declared
+    4 |         each: proc(var r: R; m: Missing);
+      |                                 ^^^^^^^
+raz: 1 error

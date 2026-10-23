@@ -1,0 +1,10 @@
+conform/err/LaterVar.raz:3:20: error: R isn't declared
+    3 | var v: proc(var r: R);
+      |                    ^
+conform/err/LaterVar.raz:5:5: error: R is declared twice
+    5 |     R = record
+      |     ^
+conform/err/LaterVar.raz:3:20: note: the first one is here
+    3 | var v: proc(var r: R);
+      |                    ^
+raz: 2 errors
