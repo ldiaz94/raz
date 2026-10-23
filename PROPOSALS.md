@@ -863,6 +863,8 @@ Met in tery's `aligned`, `(a + 7) & -8`.
 
 ## Dividing 128 bits by 64
 
+**Status.** Approved by the owner on 2026-10-23 and implemented in `lib/Math.raz` as `divMod`, since `div` is a reserved word: a code procedure over `div`, with `hi >= d` stopped first.
+
 `Math.mul` gives the 128-bit product of two `U64`s; there is nothing
 to divide such a number back down. Forth's `UM/MOD` and `M*/`, and
 any arithmetic on numbers wider than a word (a bignum, a fixed-point
@@ -1369,7 +1371,7 @@ and rcrypto (`--version`).
 
 ## Sys for a server
 
-**Status.** Approved in part by the owner on 2026-10-23 and implemented in both backends: `closeWrite`, `peer` (its record is `Remote`, since `Peer` is taken by `receive` and `reply`), `socketPair`, `nonblocking` and `errConnAborted`. `closeOnExec` is unneeded now that every open closes on exec. A send that doesn't wait, a fifo, an owner, keepalive and an abstract Unix socket wait.
+**Status.** Approved in part by the owner on 2026-10-23 and implemented in both backends: `closeWrite`, `peer` (its record is `Remote`, since `Peer` is taken by `receive` and `reply`), `socketPair`, `nonblocking` and `errConnAborted`. `closeOnExec` is unneeded now that every open closes on exec. A send that doesn't wait (`sendNow`), a fifo (`makeFifo`) and an owner (`Info.uid`, `Info.gid`, `chown`) followed on 2026-10-23. Keepalive and an abstract Unix socket wait for a second program.
 
 Library growth that breaks no program. Programs that serve sockets
 (rabble's relay and daemon, dwa's broker, rdbus, awizo, arno's te
