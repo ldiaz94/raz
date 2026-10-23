@@ -1,0 +1,48 @@
+(* ABS(x) of a real clears its sign bit (report section 6.1): of F32
+   and F64 variables, ordinary values, minus zero, infinities and NaNs,
+   each shown by its bits, and of constants, in a constant too. *)
+module AbsReal;
+import Out;
+
+const
+    Half = ABS(-0.5);           (* untyped *)
+    Wide = ABS(F64(-2.0E300));
+    Narrow = ABS(F32(-1.5));
+    Zero = ABS(-0.0);
+
+proc f64(x: F64);
+var y: F64;
+begin
+    y := ABS(x);
+    Out.hex(y.(U64), 16); Out.char(' ');
+end;
+
+proc f32(x: F32);
+var y: F32;
+begin
+    y := ABS(x);
+    Out.hex(U64(y.(U32)), 8); Out.char(' ');
+end;
+
+proc main*;
+var zero, inf, nan, d: F64; zero32, inf32, nan32: F32;
+begin
+    zero := 0.0; inf := 1.0 / zero; nan := zero / zero;
+    zero32 := 0.0; inf32 := 1.0 / zero32; nan32 := zero32 / zero32;
+
+    f64(1.5); f64(-1.5); f64(-0.0); f64(0.0); f64(inf); f64(-inf); f64(nan); f64(-nan); Out.ln;
+    f32(1.5); f32(-1.5); f32(-0.0); f32(0.0); f32(inf32); f32(-inf32); f32(nan32); f32(-nan32); Out.ln;
+
+    (* beside other values on the stack *)
+    d := -3.0;
+    Out.int(I64(10.0 * ABS(d) + ABS(d - 4.0) * ABS(-d))); Out.ln;
+    if ABS(nan) # ABS(nan) then Out.str("NaN"); Out.ln; end;
+
+    Out.int(I64(Half * 4.0)); Out.char(' ');
+    Out.int(I64(Wide / 1.0E300)); Out.char(' ');
+    Out.int(I64(Narrow * 2.0)); Out.char(' ');
+    d := Zero;
+    Out.hex(d.(U64), 16); Out.ln;
+end;
+
+end AbsReal.

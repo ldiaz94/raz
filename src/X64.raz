@@ -847,6 +847,21 @@ begin
     Chunk.put1(bit);
 end;
 
+(* btr r, bit: the bit cleared, 0F BA /6 *)
+proc btr*(r, bit: INT);
+begin
+    if listing then say(text2("btr", rn(r), num(bit))); end;
+    opR(0, true, 0BA0FH, 6, r, false);
+    Chunk.put1(bit);
+end;
+
+(* cmovcc r, x: r := x if the condition holds, 0F 40+cc *)
+proc cmov*(cc, r, x: INT);
+begin
+    if listing then say(text2(Diag.say("cmov{}", [Fmt.str(CondNames[cc])]), rn(r), rn(x))); end;
+    opR(0, true, 400FH + (cc shl 8), r, x, false);
+end;
+
 (* Jumps. A label not yet placed is the chain of the jumps to it, each
    rel32 field holding the position of the one before, NoLabel ending
    it. Placing the label walks the chain and patches each. *)

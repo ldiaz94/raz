@@ -1,0 +1,4 @@
+conform/err/AbsSet.raz:9:14: error: ABS needs an integer or a real, found Days
+    9 |     s := ABS(s);
+      |              ^
+raz: 1 error

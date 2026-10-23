@@ -1,0 +1,4 @@
+conform/err/AbsPtr.raz:6:14: error: ABS needs an integer or a real, found ^INT
+    6 |     p := ABS(p);
+      |              ^
+raz: 1 error

@@ -1,0 +1,11 @@
+module AbsSet;
+type
+    Day = (mon, tue, wed);
+    Days = set of Day;
+proc main*;
+var s: Days;
+begin
+    s := {mon, wed};
+    s := ABS(s);
+end;
+end AbsSet.

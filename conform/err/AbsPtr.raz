@@ -1,0 +1,8 @@
+module AbsPtr;
+proc main*;
+var p: ^INT;
+begin
+    p := nil;
+    p := ABS(p);
+end;
+end AbsPtr.

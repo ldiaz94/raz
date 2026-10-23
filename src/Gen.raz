@@ -1138,6 +1138,34 @@ begin
     stack[depth - 1].k := kWord;
 end;
 
+(* ABS of the real, or the signed integer of size bytes, on top (report
+   section 6.1); an unsigned one needs no code. A real's sign bit is
+   cleared, in rax, as neg flips it. An integer is negated, and its copy
+   in rax taken back if the negation is negative (SF), as it is for a
+   positive one. The smallest value negates to itself, negative, and so
+   gives itself, as -x does, with no branch and no check. A narrow
+   value is negated on all 64 bits, where its smallest is not the
+   smallest, so it is cut back to its width after, as neg does:
+   -128 in an I8 negates to 128, which is -128 again in 8 bits.
+
+       movq rax, x; btr rax, 63; movq x, rax     (F64; 31 for an F32)
+       mov rax, r; neg r; cmovs r, rax           (I64; then movsx r, r for a narrow one) *)
+proc abs*(k: Kind; size: INT);
+var r: INT;
+begin
+    r := top();
+    if k in {kF32, kF64} then
+        X.movqRX(RAX, r);
+        if k = kF32 then X.btr(RAX, 31); else X.btr(RAX, 63); end;
+        X.movqXR(r, RAX);
+    else
+        X.movRR(RAX, r);
+        X.unary(3, r);   (* neg *)
+        X.cmov(X.ccS, r, RAX);
+        if size < 8 then X.extend(r, size, true); end;
+    end;
+end;
+
 (* The left op the right of the two values on top, as a BOOL *)
 proc compare*(sy: Scan.Sym; k: Kind; signed: BOOL);
 var f: BOOL; r, x, y, i: INT; v: I64; c: BOOL; m: X.Mem;

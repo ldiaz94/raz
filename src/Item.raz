@@ -1643,6 +1643,34 @@ begin
     return nil;
 end;
 
+(* ABS(x): x without its sign, of x's type, an integer or a real (report
+   section 6.1). A signed integer's smallest value gives itself, as -x
+   does, with no check, as -x has none; an untyped constant's, whose
+   result would be beyond the I64s, is an error, as it is for -x. An
+   unsigned integer is itself. Of a constant it is folded: a real's
+   sign bit, the top one of the F64 it is held as, cleared. *)
+proc absolute*(var x: Item): ERROR;
+begin
+    if x.mode in {mType, mBuiltin, mNone, mCase} then return notValue(x); end;
+    if (x.mode = mStr) or not (Sym.isInt(x.typ) or (x.typ^.form = Sym.fReal)) then
+        return Scan.markAt(x.pos, say1("ABS needs an integer or a real, found {}", what(x)));
+    end;
+    if x.mode = mConst then
+        if x.typ^.form = Sym.fReal then
+            x.val := x.val & MaxI64;
+        elsif (x.typ^.form = Sym.fConst) and (x.val = MinI64) then
+            return Scan.markAt(x.pos, "the constant is too big for I64");
+        elsif signed(x.typ) and (x.val < 0) then
+            x.val := cut(-x.val, x.typ);
+        end;
+    else
+        try value(x);
+        if signed(x.typ) or (x.typ^.form = Sym.fReal) then Gen.abs(Gen.kindOf(x.typ), intSize(x.typ)); end;
+    end;
+    x.made := false;   (* a built-in's result, not an operator's *)
+    return nil;
+end;
+
 (* CLZ, CTZ or POPCOUNT, which, of v, a value w bits wide, folded *)
 proc countOf(which: INT; v: U64; w: I64): I64;
 var n, i: I64;

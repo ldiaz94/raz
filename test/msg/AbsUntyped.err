@@ -1,0 +1,4 @@
+conform/err/AbsUntyped.raz:2:15: error: the constant is too big for I64
+    2 | const N = ABS(MIN(I64));
+      |               ^^^^^^^^
+raz: 1 error

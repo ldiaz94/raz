@@ -355,6 +355,13 @@ otherwise.
   width as a shift's is, `n & (w - 1)`: `ROL(x, -1)` is `ROR(x, 1)`.
   The result is a built-in's, not an operator's, and widens (`made`
   is false). Of two constants they fold, in a constant too.
+- `ABS(x)` (report 2026-10.36) is of `x`'s type and widens (`made` is
+  false). A signed integer's is `mov rax, r; neg r; cmovs r, rax`, then
+  cut to a narrow width as `neg` is, so the smallest value gives itself
+  with no check, as `-x` does; an unsigned one's is no code; a real's
+  is `btr` of its sign bit in rax, as `neg`'s `btc`. Of a constant it
+  folds, a real's top bit cleared; of the smallest untyped constant it
+  is `neg`'s error, "too big for I64". A string is refused as no number.
 - `MIN(T)` and `MAX(T)` (report 2026-10.36) are untyped constants, but
   `MAX(U64)` and `MAX(UINT)`, above `high(I64)`, keep their type, as a
   hex literal above it is a `U64`. A `T` not an integer type is an

@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 12,300 lines of code (the
+The compiler is eleven files of raz, about 12,400 lines of code (the
 budget is 14,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 723 | 581 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 724 | 582 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,605 | 1,318 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,800 | 1,963 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,414 | 1,938 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,611 | 3,956 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/X64.raz` | 1,620 | 1,329 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,828 | 1,978 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 2,442 | 1,959 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,614 | 3,959 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -1354,6 +1354,22 @@ eight bytes into the top one, in rax and rdx beside `x`'s register:
     mov rax, r; shr rax, 4; add r, rax; mov rdx, 0F0F...H; and r, rdx
     mov rdx, 0101...H; imul r, rdx; shr r, 56
 
+`abs` makes `ABS` of a signed integer with no branch: it negates `x`
+and takes back the copy it kept in rax if the negation is negative, as
+it is for a positive `x`. The smallest value negates to itself, which
+is negative, and so gives itself, as `-x` does, with no check, as `-x`
+has none. A narrow value is negated in 64 bits, where its smallest
+isn't the smallest, and cut back to its width after, as `neg` does:
+-128 in an `I8` negates to 128, which in 8 bits is -128 again. A real
+has its sign bit cleared in rax, as `neg` flips it; an unsigned integer
+needs no code.
+
+    ABS(x), an I32              ABS(x), an F64
+        mov rax, r                  movq rax, x
+        neg r                       btr rax, 63
+        cmovs r, rax                movq x, rax
+        movsxd r, r
+
 Checks: `check` jumps, when the check fails, to code at the end of the
 procedure (`endFails`), so that a check that holds is a jump not taken.
 That code puts the values involved where `Rt.fail` wants them and calls
@@ -1923,6 +1939,13 @@ above it is a `U64`.
 type, as `rotand` does; folds a constant by counting its bits one by one
 (`countOf`); or has `Gen.countZeros` or `Gen.popCount` count them. The
 result is an `INT`.
+
+`ABS(x)` (report 2026-10.36) is Item's `absolute`, which refuses an `x`
+not an integer or a real; folds a constant, as `neg` does, a real's by
+clearing the top bit of the `F64` it is held as and the smallest
+untyped constant an error, as its negation is beyond the `I64`s; or,
+for a signed integer or a real, has `Gen.abs` make it. The result is
+of `x`'s type, a built-in's, not an operator's, and widens.
 
 Two mismatches in `coerce` that people meet on the way to it, a slice
 where its element's pointer is wanted and a pointer where a slice is,

@@ -1,0 +1,70 @@
+(* ABS(x) is x without its sign, of x's type (report section 6.1): of
+   each signed type at its own width, where the smallest value gives
+   itself, as -x does; of each unsigned type, which is x itself; of an
+   operator's result, beside other values; and of constants, typed and
+   untyped, in a constant too. *)
+module Abs;
+import Out;
+
+const
+    Five = ABS(-5);                (* untyped *)
+    Big = ABS(MIN(I64) + 1);       (* untyped, the largest I64 *)
+    Byte = ABS(I8(-128));          (* typed, gives itself *)
+    Word = ABS(U16(65535));
+    Sum = ABS(-2) + ABS(3) * 10;   (* 32 *)
+
+proc show(n: I64);
+begin
+    Out.int(n); Out.char(' ');
+end;
+
+proc i8(x: I8);
+begin
+    show(I64(ABS(x))); show(I64(-x));
+end;
+
+proc i16(x: I16);
+begin
+    show(I64(ABS(x))); show(I64(-x));
+end;
+
+proc i32(x: I32);
+begin
+    show(I64(ABS(x))); show(I64(-x));
+end;
+
+proc i64(x: I64);
+begin
+    show(I64(ABS(x))); show(I64(-x));
+end;
+
+proc int(x: INT);
+begin
+    show(I64(ABS(x))); show(I64(-x));
+end;
+
+proc main*;
+var a, b: I8; u8: U8; u16: U16; u32: U32; u64: U64; n: INT; t: I8;
+begin
+    i8(0); i8(7); i8(-7); i8(127); i8(-127); i8(-128); Out.ln;
+    i16(5); i16(-5); i16(32767); i16(-32768); Out.ln;
+    i32(9); i32(-9); i32(2147483647); i32(-2147483648); Out.ln;
+    i64(1); i64(-1); i64(MAX(I64)); i64(MIN(I64)); Out.ln;
+    int(-42); int(42); int(MIN(INT)); Out.ln;
+
+    u8 := 200; u16 := 65535; u32 := 0FFFFFFFFH; u64 := 0FFFFFFFFFFFFFFFFH;
+    show(I64(ABS(u8))); show(I64(ABS(u16))); show(I64(ABS(u32))); Out.hex(ABS(u64), 16); Out.ln;
+
+    (* the sum wraps to -128 in an I8, which ABS keeps *)
+    a := 100; b := 28;
+    t := a + b;
+    show(I64(t)); show(I64(ABS(I8(a + b)))); show(I64(ABS(a - b - 100))); Out.ln;
+
+    (* beside other values on the stack *)
+    n := -3;
+    show(10 * ABS(n) + ABS(n - 4) * ABS(-n)); Out.ln;
+
+    show(Five); show(Big); show(I64(Byte)); show(I64(Word)); show(Sum); Out.ln;
+end;
+
+end Abs.

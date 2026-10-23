@@ -1,0 +1,4 @@
+conform/err/AbsString.raz:2:15: error: ABS needs an integer or a real, found a string
+    2 | const N = ABS("ten");
+      |               ^^^^^
+raz: 1 error

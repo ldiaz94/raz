@@ -1,0 +1,4 @@
+conform/err/AbsBool.raz:5:14: error: ABS needs an integer or a real, found BOOL
+    5 |     b := ABS(true);
+      |              ^^^^
+raz: 1 error

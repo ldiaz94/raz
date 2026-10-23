@@ -1,0 +1,7 @@
+module AbsBool;
+proc main*;
+var b: BOOL;
+begin
+    b := ABS(true);
+end;
+end AbsBool.

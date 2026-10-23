@@ -1,0 +1,3 @@
+module AbsUntyped;
+const N = ABS(MIN(I64));
+end AbsUntyped.
