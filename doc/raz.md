@@ -868,8 +868,9 @@ integer or a real. For a signed integer it is `-x` if `x < 0`, so the
 smallest value of the type gives itself, as `-x` does; for an unsigned
 type it is `x`. For a real it clears the sign bit: `ABS(-0.0)` is 0.0,
 `ABS` of a NaN is a NaN, and of minus infinity is infinity. Of a
-constant it is a constant; of an untyped one, the untyped absolute
-value, `ABS(-5)` is 5, which doesn't wrap.
+constant it is a constant; of an untyped one, an untyped one,
+`ABS(-5)` is 5, and a result beyond the `I64`s, `ABS(MIN(I64))`, is an
+error, as for any arithmetic on untyped constants (section 2).
 
 Relations compare as signed or unsigned according to the type.
 
