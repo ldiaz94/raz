@@ -1,0 +1,7 @@
+module ClzUntyped;
+proc main*;
+var n: INT;
+begin
+    n := CLZ(1);
+end;
+end ClzUntyped.

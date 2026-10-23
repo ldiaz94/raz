@@ -1106,6 +1106,9 @@ begin
         start := Scan.tokPos();
         t := try parseType();
         try Item.limit(x, t, which = Sym.bMax, Scan.spanFrom(start));
+    | Sym.bClz, Sym.bCtz, Sym.bPopcount:
+        try expression(x, nil);
+        try Item.countBits(x, which);
     | Sym.bCopy:
         try expression(x, nil);
         try Item.copyDest(x);

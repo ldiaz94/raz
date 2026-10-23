@@ -1,0 +1,9 @@
+module ClzSet;
+type Day = (mon, tue);
+    Days = set of Day;
+proc main*;
+var n: INT; s: Days;
+begin
+    n := CLZ(s);
+end;
+end ClzSet.

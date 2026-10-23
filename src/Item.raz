@@ -1560,6 +1560,55 @@ begin
     return nil;
 end;
 
+(* CLZ, CTZ or POPCOUNT, which, of v, a value w bits wide, folded *)
+proc countOf(which: INT; v: U64; w: I64): I64;
+var n, i: I64;
+begin
+    n := 0;
+    if which = Sym.bPopcount then
+        for i := 0 to w - 1 do n := n + I64((v shr i) & 1); end;
+    elsif which = Sym.bClz then
+        while (n < w) and (((v shr (w - 1 - n)) & 1) = 0) do INC(n); end;
+    else
+        while (n < w) and (((v shr n) & 1) = 0) do INC(n); end;
+    end;
+    return n;
+end;
+
+(* CLZ(x), CTZ(x) or POPCOUNT(x), which: the zero bits of x above its
+   highest one, below its lowest, or its one bits, an INT (report
+   section 6.1). x is of an unsigned integer type, whose width is what
+   0 counts, or for POPCOUNT a set; an untyped constant has no width.
+   Of a constant the count is folded. *)
+proc countBits*(var x: Item; which: INT): ERROR;
+var name, s: []U8; ok: BOOL;
+begin
+    if x.mode in {mType, mBuiltin, mNone, mCase, mStr} then return notValue(x); end;
+    if which = Sym.bClz then name := "CLZ"; elsif which = Sym.bCtz then name := "CTZ"; else name := "POPCOUNT"; end;
+    if which = Sym.bPopcount then
+        s := say2("{} needs an unsigned integer or a set, found {}", name, what(x));
+    else
+        s := say2("{} needs an unsigned integer, found {}", name, what(x));
+    end;
+    if x.typ = Sym.tConst then
+        return Scan.markHelp(x.pos, s,
+            say1("an untyped constant has no width to count in: give it a type, as in U32({})", Diag.source(x.pos)));
+    end;
+    ok := (x.typ^.form = Sym.fInt) and not x.typ^.signed;
+    if (x.typ^.form = Sym.fSet) and (which = Sym.bPopcount) then ok := true; end;
+    if not ok then return Scan.markAt(x.pos, s); end;
+    if x.mode = mConst then
+        makeConst(x, Sym.tInt, countOf(which, U64(x.val), bits(x.typ)));
+        return nil;
+    end;
+    try value(x);
+    if which = Sym.bPopcount then Gen.popCount(); else Gen.countZeros(which = Sym.bClz, intSize(x.typ)); end;
+    x.typ := Sym.tInt;
+    x.mode := mStack;
+    x.made := false;   (* a built-in's result, not an operator's *)
+    return nil;
+end;
+
 (* MIN(T), or MAX(T) if max: the smallest or the largest value of the
    integer type t, an untyped constant (report section 6.1); p is where
    T is written. MAX(U64) and MAX(UINT) are above high(I64), where the

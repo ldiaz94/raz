@@ -1,0 +1,4 @@
+conform/err/PopcountReal.raz:2:20: error: POPCOUNT needs an unsigned integer or a set, found 1.5
+    2 | const N = POPCOUNT(1.5);
+      |                    ^^^
+raz: 1 error

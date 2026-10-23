@@ -132,7 +132,7 @@ const
     bSize* = 0; bAdr* = 1; bLen* = 2; bNew* = 3; bMsg* = 4; bSyscall* = 5;
     bFence* = 6; bCas* = 7; bXchg* = 8; bXadd* = 9; bArgc* = 10; bArgv* = 11;
     bInc* = 12; bDec* = 13; bCopy* = 14; bPtr* = 15; bRol* = 16; bRor* = 17;
-    bMin* = 18; bMax* = 19;
+    bMin* = 18; bMax* = 19; bClz* = 20; bCtz* = 21; bPopcount* = 22;
 
     MaxDepth* = 64;   (* scopes open at once *)
 
@@ -715,4 +715,7 @@ begin
     enter("ROR", oBuiltin, nil, bRor);
     enter("MIN", oBuiltin, nil, bMin);
     enter("MAX", oBuiltin, nil, bMax);
+    enter("CLZ", oBuiltin, nil, bClz);
+    enter("CTZ", oBuiltin, nil, bCtz);
+    enter("POPCOUNT", oBuiltin, nil, bPopcount);
 end Sym.

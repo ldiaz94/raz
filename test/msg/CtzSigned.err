@@ -1,0 +1,4 @@
+conform/err/CtzSigned.raz:5:14: error: CTZ needs an unsigned integer, found I32
+    5 |     n := CTZ(x);
+      |              ^
+raz: 1 error

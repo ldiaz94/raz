@@ -1,0 +1,5 @@
+conform/err/ClzUntyped.raz:5:14: error: CLZ needs an unsigned integer, found 1
+    5 |     n := CLZ(1);
+      |              ^
+help: an untyped constant has no width to count in: give it a type, as in U32(1)
+raz: 1 error

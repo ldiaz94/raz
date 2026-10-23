@@ -1,0 +1,3 @@
+module PopcountReal;
+const N = POPCOUNT(1.5);
+end PopcountReal.

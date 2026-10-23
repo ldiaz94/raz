@@ -1065,6 +1065,79 @@ begin
     stack[depth - 1].k := kWord;
 end;
 
+(* CLZ, if leading, or CTZ of the unsigned integer of size bytes on top
+   (report section 6.1). bsr finds the place h of its highest one bit,
+   and the zeros above it are the width less 1 less h; bsf finds the
+   place of its lowest, which is the zeros below it. Neither finds a
+   place in 0, the one value with no one bit, and both say so by ZF:
+   then the count is the whole width, as if h were -1, or the lowest
+   one at the width. The bits above size bytes are zero, so a scan of
+   all 64 sees the value's own. The baseline x86-64 lacks lzcnt and
+   tzcnt, which would count 0 by themselves. For a U32:
+
+           bsr r, r            bsf r, r
+           jnz L               jnz L
+           mov r, -1           mov r, 32
+       L:  neg r           L:
+           add r, 31                             *)
+proc countZeros*(leading: BOOL; size: INT);
+var r, w, L: INT;
+begin
+    r := top();
+    w := size * 8;
+    L := NoLabel;
+    X.bitScan(leading, r);
+    X.jcc(X.ccNE, L);
+    if leading then X.movRI(r, -1); else X.movRI(r, w); end;
+    X.fixLink(L);
+    if leading then
+        X.unary(3, r);   (* neg *)
+        X.aluI(X.aluAdd, r, w - 1);
+    end;
+    stack[depth - 1].k := kWord;
+end;
+
+(* POPCOUNT of the integer or set on top (report section 6.1), counted
+   as lib/Bytes.raz counts bytes, without a loop: each two bits are
+   made the sum of their ones, then each four, then each byte, and a
+   multiplication by 0101...H adds the eight bytes' sums into the top
+   byte. The baseline x86-64 lacks popcnt. rax and rdx are
+   free between the stack machine's operations.
+
+       mov rax, r; shr rax, 1; mov rdx, 5555...H; and rax, rdx; sub r, rax
+       mov rax, r; shr rax, 2; mov rdx, 3333...H; and rax, rdx; and r, rdx; add r, rax
+       mov rax, r; shr rax, 4; add r, rax; mov rdx, 0F0F...H; and r, rdx
+       mov rdx, 0101...H; imul r, rdx; shr r, 56 *)
+proc popCount*;
+var r: INT;
+begin
+    r := top();
+    (* each two bits: their value less its upper bit, which is its ones *)
+    X.movRR(RAX, r);
+    X.shiftI(X.shShr, RAX, 1);
+    X.movRI(RDX, 5555555555555555H);
+    X.alu(X.aluAnd, RAX, RDX);
+    X.alu(X.aluSub, r, RAX);
+    (* each four bits: the sums of its two pairs *)
+    X.movRR(RAX, r);
+    X.shiftI(X.shShr, RAX, 2);
+    X.movRI(RDX, 3333333333333333H);
+    X.alu(X.aluAnd, RAX, RDX);
+    X.alu(X.aluAnd, r, RDX);
+    X.alu(X.aluAdd, r, RAX);
+    (* each byte: the sums of its two halves, at most 8, which fits four bits *)
+    X.movRR(RAX, r);
+    X.shiftI(X.shShr, RAX, 4);
+    X.alu(X.aluAdd, r, RAX);
+    X.movRI(RDX, 0F0F0F0F0F0F0F0FH);
+    X.alu(X.aluAnd, r, RDX);
+    (* the top byte of r times 0101...H is the sum of all eight *)
+    X.movRI(RDX, 0101010101010101H);
+    X.imul(r, RDX);
+    X.shiftI(X.shShr, r, 56);
+    stack[depth - 1].k := kWord;
+end;
+
 (* The left op the right of the two values on top, as a BOOL *)
 proc compare*(sy: Scan.Sym; k: Kind; signed: BOOL);
 var f: BOOL; r, x, y, i: INT; v: I64; c: BOOL; m: X.Mem;

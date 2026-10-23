@@ -343,3 +343,10 @@ otherwise.
   `MAX(U64)` and `MAX(UINT)`, above `high(I64)`, keep their type, as a
   hex literal above it is a `U64`. A `T` not an integer type is an
   error; `MAX(x)` of a variable is "x isn't a type".
+- `CLZ(x)`, `CTZ(x)` and `POPCOUNT(x)` (report 2026-10.36) give an
+  `INT`, a constant of one when `x` is. They use only baseline x86-64,
+  no `lzcnt`, `tzcnt` or `popcnt`: `bsr` or `bsf` on all 64 bits (a
+  narrow value's upper ones are zero), with `jnz` past setting the
+  count of 0 to the width; `POPCOUNT` by `Bytes.count`'s sums of two,
+  four and eight bits and a multiply by `0101...H`, in rax and rdx. A
+  set's `POPCOUNT` counts its bits the same way.

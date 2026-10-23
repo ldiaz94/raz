@@ -1,0 +1,7 @@
+module CtzSigned;
+proc main*;
+var n: INT; x: I32;
+begin
+    n := CTZ(x);
+end;
+end CtzSigned.

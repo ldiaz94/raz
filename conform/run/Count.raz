@@ -1,0 +1,73 @@
+(* CLZ(x), CTZ(x) and POPCOUNT(x) count the bits of x (report section
+   6.1): of each unsigned type, at its own width, with 0 counting the
+   whole width; of variables, of a value an operator wrapped, beside
+   other values, and of constants, in a constant too; and POPCOUNT of a
+   set. Each line is CLZ, CTZ and POPCOUNT of one value. *)
+module Count;
+import Out;
+
+type
+    Day = (mon, tue, wed, thu, fri, sat, sun);
+    Days = set of Day;
+
+const
+    Top = CLZ(U64(1));                  (* 63 *)
+    Low = CTZ(U16(8));                  (* 3 *)
+    Ones = POPCOUNT(U32(0F0F0H));       (* 8 *)
+    Week = POPCOUNT({mon, wed, sun});   (* 3 *)
+    None = CLZ(U8(0)) + CTZ(U32(0));    (* 8 + 32 *)
+
+proc show(a, b, c: INT);
+begin
+    Out.int(a); Out.str(" "); Out.int(b); Out.str(" "); Out.int(c); Out.ln;
+end;
+
+proc u8(x: U8);
+begin
+    show(CLZ(x), CTZ(x), POPCOUNT(x));
+end;
+
+proc u16(x: U16);
+begin
+    show(CLZ(x), CTZ(x), POPCOUNT(x));
+end;
+
+proc u32(x: U32);
+begin
+    show(CLZ(x), CTZ(x), POPCOUNT(x));
+end;
+
+proc u64(x: U64);
+begin
+    show(CLZ(x), CTZ(x), POPCOUNT(x));
+end;
+
+proc uint(x: UINT);
+begin
+    show(CLZ(x), CTZ(x), POPCOUNT(x));
+end;
+
+proc main*;
+var c: U32; d: U64; n: INT; s, none: Days;
+begin
+    u8(0); u8(1); u8(80H); u8(0FFH); u8(28H);
+    u16(0); u16(1); u16(8000H); u16(0FFFFH); u16(0F00H);
+    u32(0); u32(1); u32(80000000H); u32(0FFFFFFFFH); u32(10100H);
+    u64(0); u64(1); u64(8000000000000000H); u64(0FFFFFFFFFFFFFFFFH); u64(0F0000000000000F0H);
+    uint(0); uint(1); uint(UINT(1) shl 63); uint(UINT(0FFFFFFFFFFFFFFFFH)); uint(UINT(6) shl 40);
+    (* constants *)
+    show(Top, Low, Ones);
+    show(Week, None, POPCOUNT(U64(0FFFFFFFFFFFFFFFFH)));
+    show(CLZ(U16(1)), CTZ(U8(0)), POPCOUNT(U8(0)));
+    (* a U32 that wrapped to 0 is 0, whatever the machine held above it *)
+    c := 80000000H;
+    show(CLZ(c + c), CTZ(c + c), POPCOUNT(c + c));
+    (* beside other values on the stack *)
+    d := 0F0H;
+    n := 1000 + CLZ(d) * 10 + CTZ(d) * 100 + POPCOUNT(d) * (POPCOUNT(d) + 1);
+    Out.int(n); Out.ln;
+    s := {tue, thu, sat, sun};
+    show(POPCOUNT(s), POPCOUNT(s - {sun}), POPCOUNT(none));
+end;
+
+end Count.

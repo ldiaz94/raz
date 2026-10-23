@@ -533,6 +533,17 @@ begin
     if n >= 0 then Chunk.put1(n); end;
 end;
 
+(* bsr r, r, if reverse, or bsf r, r: the place of r's highest, or
+   lowest, one bit, 0F BD and 0F BC. ZF is set if r is 0, which has no
+   one bit, and r is then left undefined. *)
+proc bitScan*(reverse: BOOL; r: INT);
+var opc: INT; name: []U8;
+begin
+    if reverse then opc := 0BD0FH; name := "bsr"; else opc := 0BC0FH; name := "bsf"; end;
+    if listing then say(text2(name, rn(r), rn(r))); end;
+    opR(0, true, opc, r, r, false);
+end;
+
 (* F7 /ext: 2 not, 3 neg, 6 div, 7 idiv *)
 proc unary*(ext, r: INT);
 begin

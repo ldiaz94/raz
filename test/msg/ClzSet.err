@@ -1,0 +1,4 @@
+conform/err/ClzSet.raz:7:14: error: CLZ needs an unsigned integer, found Days
+    7 |     n := CLZ(s);
+      |              ^
+raz: 1 error

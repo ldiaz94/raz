@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 718 | 576 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 721 | 579 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,584 | 1,304 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,592 | 1,843 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,244 | 1,800 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,400 | 3,800 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/X64.raz` | 1,605 | 1,318 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,666 | 1,885 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 2,293 | 1,841 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,403 | 3,803 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -1156,6 +1156,32 @@ a `U8` come back in at its other end; and its count needs no mask, as
 x86 takes it modulo 32, or 64, and a byte's or a word's rotation then
 goes round modulo 8 or 16 itself, the count modulo the width.
 
+The counts of bits, `CLZ`, `CTZ` and `POPCOUNT`, are made with what
+every x86-64 has, as `lzcnt`, `tzcnt` and `popcnt` came later and the
+compiler doesn't ask which machine it is on. As a narrow integer's
+bits above its width are zero, all of them count in 64 bits.
+`countZeros` makes `CLZ` from `bsr`, the place of the highest one bit,
+and `CTZ` from `bsf`, the place of the lowest; neither has a place to
+give for 0, which they say by the zero flag, and 0 counts the whole
+width. For a `U32`:
+
+    CLZ(x)                      CTZ(x)
+        bsr r, r                    bsf r, r
+        jnz L                       jnz L
+        mov r, -1                   mov r, 32
+    L:  neg r                   L:
+        add r, 31
+
+`popCount` adds up the ones as `lib/Bytes.raz`'s `count` does, with
+no loop: each two bits become the number of their ones, then each
+four, then each byte, and a multiplication by `0101...H` adds the
+eight bytes into the top one, in rax and rdx beside `x`'s register:
+
+    mov rax, r; shr rax, 1; mov rdx, 5555...H; and rax, rdx; sub r, rax
+    mov rax, r; shr rax, 2; mov rdx, 3333...H; and rax, rdx; and r, rdx; add r, rax
+    mov rax, r; shr rax, 4; add r, rax; mov rdx, 0F0F...H; and r, rdx
+    mov rdx, 0101...H; imul r, rdx; shr r, 56
+
 Checks: `check` jumps, when the check fails, to code at the end of the
 procedure (`endFails`), so that a check that holds is a jump not taken.
 That code puts the values involved where `Rt.fail` wants them and calls
@@ -1644,6 +1670,13 @@ and minus that less 1 is a signed `MIN`. They are untyped constants
 but for `MAX(U64)` and `MAX(UINT)`, which are above `high(I64)`, where
 an untyped constant ends, and keep their type, as a hexadecimal number
 above it is a `U64`.
+
+`CLZ(x)`, `CTZ(x)` and `POPCOUNT(x)` (report 2026-10.36) are Item's
+`countBits`, which refuses an `x` not of an unsigned type, or a set for
+`POPCOUNT`, and an untyped constant with help that says to give it a
+type, as `rotand` does; folds a constant by counting its bits one by one
+(`countOf`); or has `Gen.countZeros` or `Gen.popCount` count them. The
+result is an `INT`.
 
 Two mismatches in `coerce` that people meet on the way to it, a slice
 where its element's pointer is wanted and a pointer where a slice is,
