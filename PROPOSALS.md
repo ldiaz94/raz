@@ -2318,6 +2318,8 @@ Met in raz's `Prop`.
 
 ### `ABS`, and `min`, `max` and `clamp` of integers
 
+**Status.** `ABS` approved by the owner on 2026-10-23, with the twelfth thaw, and in the report, 2026-10.36 (6.1 and 6.8); the compiler waits for the owner's review of that text. `min`, `max` and `clamp` dropped (owner, 2026-10-23): a two-line `if` each.
+
 Library and language growth that breaks no program. `Math` is `F64`
 only and there are no built-ins, so rat writes `min` and `max` in Draw,
 Font, Layout and Shapes, `abs` in Shapes and `clamp` in Rat; raudio's
