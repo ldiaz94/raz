@@ -414,6 +414,18 @@ variable can't be viewed.
 The size of type
 .Ar T ,
 an untyped constant.
+.It Fn SIZE T.f
+The size of field
+.Ar f
+of the record type
+.Ar T ,
+an untyped constant.
+.It Fn OFFSET T f
+The byte offset of field
+.Ar f
+in the record type
+.Ar T ,
+an untyped constant.
 .It Fn ADR x
 The address of the variable
 .Ar x .
@@ -439,6 +451,16 @@ from the allocator
 a
 .Cm ^Mem.Allocator ,
 or to nil.
+.It Fn BYTES x
+The bytes of the variable
+.Ar x
+as a
+.Li []U8 :
+for a
+.Li []T
+its
+.Li LEN(s) * SIZE(T)
+bytes; of a type a view may take.
 .It Fn MSG e
 The message of an
 .Cm ERROR .

@@ -52,7 +52,10 @@ starts at, even an empty one (section 6.8); it breaks no program.
 rotated (sections 6.1 and 6.8); it breaks no program. 2026-10.36 is a
 twelfth: `MIN(T)` and `MAX(T)`, the limits of an integer type, and
 `CLZ`, `CTZ` and `POPCOUNT`, which count bits (sections 6.1 and 6.8);
-and `INT(b)`, a `BOOL` as an integer (section 6.7); it breaks no program.
+`INT(b)`, a `BOOL` as an integer (section 6.7); `OFFSET(T, f)` and
+`SIZE(T.f)`, where a field lies and how big it is; and `BYTES(x)`, the
+bytes of a variable or a slice (sections 4 and 6.8); it breaks no
+program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -379,7 +382,7 @@ base type of a pointer may name a type declared later in the same
 procedure may be declared `forward` and defined later (section 8).
 
 **Constants** are evaluated by the compiler. Their expressions use only
-literals, other constants, operators, conversions, `SIZE`, the `LEN`
+literals, other constants, operators, conversions, `SIZE`, `OFFSET`, the `LEN`
 of arrays and strings, `MIN`, `MAX`, `ROL`, `ROR`, `CLZ`, `CTZ`,
 `POPCOUNT`, and a variant's cases. A constant is an integer,
 a real, a `BOOL`, a name of an enumeration, a set, a string, an array,
@@ -793,8 +796,8 @@ a conversion's operand, any integer type will do, and its value is
 taken. On a target whose `INT` is narrower, a pointer's offset is cut
 to an `INT`.
 
-`SIZE(T)`, and `LEN` of an array or a string constant, are untyped
-constants, like a literal.
+`SIZE(T)`, `SIZE(T.f)`, `OFFSET(T, f)`, and `LEN` of an array or a
+string constant, are untyped constants, like a literal.
 
 `div` rounds toward zero and `mod` takes the sign of the dividend, as
 in C: `-7 div 2` is `-3`, `-7 mod 2` is `-1`. Dividing by zero, and
@@ -960,9 +963,12 @@ the same rules: `U8(300)` is 44. `U64(a = b)` is 0 or 1, and
 | Call | Result |
 |---|---|
 | `SIZE(T)` | the size of type `T` in bytes, an untyped constant; `T` is a type, not a variable |
+| `SIZE(T.f)` | the size of field `f` of the record type `T`, an untyped constant |
+| `OFFSET(T, f)` | the byte offset of field `f` in the record type `T`, an untyped constant |
 | `ADR(x)` | the address of variable `x`, a `^T` |
 | `LEN(a)` | the number of elements of an array or a string constant (an untyped constant) or of a slice (an `INT`) |
 | `PTR(s)` | the address the slice `s` starts at, a `^T` for `s: []T`, unchecked; for an array `a`, that of `a[0..LEN(a)]` |
+| `BYTES(x)` | the bytes of `x` as a `[]U8`: for a slice `s: []T`, its `LEN(s) * SIZE(T)` bytes; for a variable of any other type `T`, its `SIZE(T)` bytes |
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
 | `MSG(e)` | the message of the error `e`, a `[]U8` |
 | `COPY(d, s)` | copies the elements of `s` to the start of `d`, both arrays or slices of one type `T`; `LEN(s)` must be at most `LEN(d)` |
@@ -988,6 +994,31 @@ system call interface, and their modules call the C library instead
 alignment of `T`, and zeroes the bytes it gets if they aren't `nil`.
 `Mem.Allocator` (the library, `doc/raz-lib.md`) is the one type of the library the
 language names.
+
+`SIZE(T.f)` and `OFFSET(T, f)` ask about a type's field, not about
+storage, so `SIZE` still takes no variable. `f` is one field name: not
+a path, `a.b`, and not a case of a variant, whose cases share their
+place. A record handed to C is checked against C's struct with them,
+as C checks one with `offsetof` and `sizeof`.
+
+`BYTES(x)` is the bytes of `x`, as a `[]U8` that can be read and
+written: for a slice `s: []T`, the `LEN(s) * SIZE(T)` bytes it holds;
+for a variable of any other type `T`, its `SIZE(T)` bytes.
+
+```
+n := Sys.write(fd, BYTES(samples));     (* samples: []I32 *)
+n := Sys.read(fd, BYTES(h));             (* fills h: Header, a record *)
+```
+
+`T` must be a type a view may take (section 6.9), since writing through
+the slice must not make a value mean nothing: a `BOOL`, a set, an
+enumeration, a slice, a variant, a procedure type, `ERROR`, or a record
+or array holding one, is an error. The slice is made, and checked, as
+any slice of the variable is, so its bytes follow the rules for it: the
+bytes of a local can't be returned (section 7.3), and a `const`
+parameter, a view, a volatile variable and a string constant are
+errors, as they are for `ADR`. The bytes are in the target's order
+(appendix A).
 
 `PTR(s)` is the first of the two words of `s` (section 5.3), and is not
 checked. For a slice that isn't empty it is `ADR(s[0])`; for an empty
@@ -1215,7 +1246,8 @@ as a variable of its type starts (section 4).
 A slice returned must not point into the procedure's own frame, which
 is gone once it returns. It is an error to return, as a slice, a local
 array, a value parameter that is an array, an array literal other than
-`[]`, or an array a call returns, or a slice of one, a field or an
+`[]`, or an array a call returns, or a slice of one, or the `BYTES` of
+a local variable, a field or an
 element of one included:
 
 ```

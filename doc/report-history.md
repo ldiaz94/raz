@@ -242,4 +242,8 @@ at the time.
   predeclared name may be hidden (section 2), so it breaks no program.
   A `BOOL` also converts to an integer, 0 for `false` and 1 for `true`
   (6.7), a constant too; there is still none from an integer to a
-  `BOOL`. It breaks no program.
+  `BOOL`. `OFFSET(T, f)` and `SIZE(T.f)` are the offset of a field in
+  a record type and its size, untyped constants (sections 4 and 6.8);
+  and `BYTES(x)` is the bytes of a variable or a slice as a `[]U8`,
+  of a type a view may take (sections 6.8, 6.9 and 7.3). It breaks no
+  program.
