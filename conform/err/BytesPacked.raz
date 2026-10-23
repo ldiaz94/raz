@@ -1,0 +1,8 @@
+module BytesPacked;
+type R = packed record tag: U8; word: I32; end;
+proc main*;
+var r: R; b: []U8;
+begin
+    b := BYTES(r.word);
+end;
+end BytesPacked.

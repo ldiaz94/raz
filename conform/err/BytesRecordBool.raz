@@ -1,0 +1,8 @@
+module BytesRecordBool;
+type Entry = record key: U32; live: BOOL; end;
+proc main*;
+var e: Entry; b: []U8;
+begin
+    b := BYTES(e);
+end;
+end BytesRecordBool.

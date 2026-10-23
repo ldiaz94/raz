@@ -32,7 +32,7 @@
   '("I8" "I16" "I32" "I64" "INT" "UINT" "U8" "U16" "U32" "U64" "BOOL" "F32" "F64" "ERROR"))
 
 (defconst raz-builtins
-  '("SIZE" "OFFSET" "ADR" "LEN" "PTR" "NEW" "MSG" "SYSCALL" "FENCE" "CAS" "XCHG" "XADD"
+  '("SIZE" "OFFSET" "ADR" "LEN" "PTR" "BYTES" "NEW" "MSG" "SYSCALL" "FENCE" "CAS" "XCHG" "XADD"
     "ARGC" "ARGV" "INC" "DEC" "COPY" "ROL" "ROR" "MIN" "MAX"
     "CLZ" "CTZ" "POPCOUNT"))
 

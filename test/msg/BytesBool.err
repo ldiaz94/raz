@@ -1,0 +1,5 @@
+conform/err/BytesBool.raz:5:16: error: BYTES can't take BOOL
+    5 |     b := BYTES(done);
+      |                ^^^^
+help: some bytes are no BOOL: BYTES takes integers, reals and pointers, and records and arrays of them
+raz: 1 error

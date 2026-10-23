@@ -1,0 +1,7 @@
+module BytesConst;
+type Header = record magic: U32; count: U32; end;
+proc send(const h: Header): INT;
+begin
+    return LEN(BYTES(h));
+end;
+end BytesConst.

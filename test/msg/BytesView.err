@@ -1,0 +1,5 @@
+conform/err/BytesView.raz:5:16: error: BYTES can't take a view
+    5 |     b := BYTES(mem[3].(I64));
+      |                ^^^^^^^^^^^^
+help: a view has no address, since it may be misaligned: copy it to a variable
+raz: 1 error

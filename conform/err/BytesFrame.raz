@@ -1,0 +1,52 @@
+module BytesFrame;
+(* the bytes of a local can't be returned, a field or an element of one
+   included (report section 7.3); those of a var parameter, a module
+   variable, what a pointer points at, or a slice given, can *)
+
+type
+    Header = record magic: U32; count: U32; end;
+
+var g: Header;
+
+proc local: []U8;
+var h: Header;
+begin
+    return BYTES(h);                (* the procedure's own variable *)
+end;
+
+proc field: []U8;
+var h: Header;
+begin
+    return BYTES(h.count);          (* a field of one *)
+end;
+
+proc element(i: INT): ([]U8, INT);
+var a: [4]I32;
+begin
+    return BYTES(a[i]), i;          (* an element of one, one of several results *)
+end;
+
+proc param(h: Header): []U8;
+begin
+    return BYTES(h);                (* the procedure's copy *)
+end;
+
+proc scalar: []U8;
+var n: I64;
+begin
+    n := 1;
+    return BYTES(n);                (* a local that may live in a register *)
+end;
+
+proc part: []U8;
+var a: [4]I32;
+begin
+    return BYTES(a[1..3]);          (* a slice of a local array *)
+end;
+
+proc ok(var h: Header; s: []I32; p: ^Header): ([]U8, []U8, []U8, []U8);
+begin
+    return BYTES(h), BYTES(s), BYTES(p^), BYTES(g);
+end;
+
+end BytesFrame.

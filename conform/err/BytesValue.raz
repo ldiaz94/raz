@@ -1,0 +1,11 @@
+module BytesValue;
+proc seven: I64;
+begin
+    return 7;
+end;
+proc main*;
+var b: []U8;
+begin
+    b := BYTES(seven());
+end;
+end BytesValue.

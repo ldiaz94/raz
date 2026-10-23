@@ -1,0 +1,8 @@
+module BytesString;
+const Hello = "hello";
+proc main*;
+var b: []U8;
+begin
+    b := BYTES(Hello);
+end;
+end BytesString.

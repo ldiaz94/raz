@@ -1,0 +1,7 @@
+module BytesBool;
+proc main*;
+var done: BOOL; b: []U8;
+begin
+    b := BYTES(done);
+end;
+end BytesBool.

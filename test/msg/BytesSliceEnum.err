@@ -1,0 +1,5 @@
+conform/err/BytesSliceEnum.raz:5:18: error: BYTES can't take []Colour, which holds Colour
+    5 |     return BYTES(s);
+      |                  ^
+help: some bytes are no Colour: BYTES takes integers, reals and pointers, and records and arrays of them
+raz: 1 error

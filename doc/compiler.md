@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 721 | 579 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 724 | 582 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,605 | 1,318 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,666 | 1,885 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,297 | 1,844 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,403 | 3,803 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Item.raz` | 2,378 | 1,909 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,459 | 3,851 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -1671,6 +1671,24 @@ would refuse the slice of all of it:
 
     ADR(s[0])    check 0 < LEN(s), then s's first word   (stops on "")
     PTR(s)       s's first word                         (no check)
+
+`BYTES(x)` (report 2026-10.36) is Item's `bytesOf`. It is made as a
+slice of `x` is, and refused where one is: a string constant, another
+constant or a call's result, what is only read, a volatile variable, a
+packed record's field and a view, each with its message; and
+`bytesType` refuses a type a view may not take, by `notPlain`, its help
+naming the record's field that holds it. The call becomes a slice in a
+temporary of the statement:
+
+    BYTES(s)     {PTR(s), LEN(s) * SIZE(T)}             s: []T
+    BYTES(v)     {ADR(v), SIZE(T)}                      v: T, anything else
+
+A slice's two words are read as `PTR` and `LEN` read them, so one
+reached through an address on the stack, or a call's two words, goes
+to a temporary first. `ADR(v)` is `address`, which puts a variable kept
+in a register in memory. The slice keeps `x`'s `frame`, so `notOfFrame`
+refuses `return BYTES(h)` of a local `h`, a field or an element of one
+too, as it refuses a slice of one.
 
 `ROL(x, n)` and `ROR(x, n)` (report 2026-10.35) are Item's `rotand`,
 which refuses an `x` not of an unsigned type, an untyped constant with

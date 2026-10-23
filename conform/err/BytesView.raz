@@ -1,0 +1,7 @@
+module BytesView;
+proc main*;
+var mem: [16]U8; b: []U8;
+begin
+    b := BYTES(mem[3].(I64));
+end;
+end BytesView.

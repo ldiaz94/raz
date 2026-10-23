@@ -1,0 +1,9 @@
+module BytesVolatile;
+type Regs = record ctrl: U32; status: U32; end;
+proc main*;
+var r: ^VOLATILE Regs; b: []U8;
+begin
+    r := ^VOLATILE Regs(0FEE00000H);
+    b := BYTES(r^);
+end;
+end BytesVolatile.

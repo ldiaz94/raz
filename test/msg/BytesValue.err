@@ -1,0 +1,5 @@
+conform/err/BytesValue.raz:9:16: error: BYTES needs a variable
+    9 |     b := BYTES(seven());
+      |                ^^^^^^^
+help: a constant, or the result of a call or an operator, has no bytes of its own: copy it to a variable
+raz: 1 error

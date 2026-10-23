@@ -358,3 +358,11 @@ otherwise.
   `M.T` is read whole and a `.` past the type is a field's,
   `SIZE(M.T.f)` too. `T` must be a record type (a variant is refused,
   with help); a path `a.b` is refused, its help naming `a`'s type.
+  `BYTES(x)`: of a slice, its `PTR` and `LEN * SIZE(T)`, with no check
+  of what holds the slice (a `const` one, another module's, a field of
+  a packed record), as for `PTR`; of anything else, a variable's
+  address and size, refused, as `ADR` refuses, for what is only read,
+  and, beyond `ADR`, for a volatile variable; a constant of any kind
+  is no variable. `T` is refused by the view's `notPlain`. The result
+  keeps `x`'s `frame`, so the bytes of a local are caught by
+  `notOfFrame` as far as a slice of it is.

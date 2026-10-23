@@ -1,0 +1,79 @@
+(* BYTES(x), the bytes of x as a []U8 (report section 6.8): of a
+   record, an array and a []I32 slice, read and written through; their
+   lengths, SIZE(T) or LEN(s) * SIZE(T); an empty slice's; and the
+   bytes of a field and an element, of what a pointer points at, of a
+   var parameter, and of a slice a call returns. Bytes are compared
+   with a view of the same place, which is the target's order too. *)
+module BytesOf;
+import Out;
+
+type
+    Header = record magic: U32; count: U16; flags: U8; end;
+
+var g: [4]I32;
+
+(* the bytes of h, given as a var parameter, written zero *)
+proc clear(var h: Header);
+var b: []U8; i: INT;
+begin
+    b := BYTES(h);
+    for i := 0 to LEN(b) - 1 do b[i] := 0; end;
+end;
+
+(* the module's array, as a slice a call returns *)
+proc whole: []I32;
+begin
+    return g;
+end;
+
+(* the bytes of the module's array, returned: they outlive the call *)
+proc gBytes: []U8;
+begin
+    return BYTES(g);
+end;
+
+proc main*;
+var h: Header; a: [3]I16; s, none: []I32; b: []U8; p: ^Header; n: I32; i: INT;
+begin
+    h := {magic: 1, count: 2, flags: 3};
+    b := BYTES(h);
+    Out.int(LEN(b)); Out.str(" "); Out.int(SIZE(Header)); Out.ln;
+    Out.int(LEN(BYTES(h.count))); Out.str(" "); Out.int(LEN(BYTES(h.flags))); Out.ln;
+    b[OFFSET(Header, magic)].(U32) := 0CAFEF00DH;   (* written through the bytes *)
+    BYTES(h.count)[0].(U16) := 513;
+    Out.hex(U64(h.magic), 8); Out.str(" "); Out.int(I64(h.count)); Out.str(" "); Out.int(I64(h.flags)); Out.ln;
+    Out.int(I64(BYTES(h)[OFFSET(Header, flags)])); Out.ln;
+
+    a := [1, -1, 256];
+    b := BYTES(a);
+    Out.int(LEN(b)); Out.str(" "); Out.int(I64(b[2].(I16))); Out.str(" "); Out.int(I64(b[4].(I16))); Out.ln;
+    BYTES(a[1])[0] := 7; BYTES(a[1])[1] := 0;
+    Out.int(I64(a[1])); Out.ln;
+
+    s := g[1..4];
+    g := [10, 20, 30, 40];
+    b := BYTES(s);
+    Out.int(LEN(b)); Out.str(" "); Out.int(LEN(s) * SIZE(I32)); Out.ln;
+    for i := 0 to LEN(s) - 1 do
+        b[i * SIZE(I32)].(I32) := b[i * SIZE(I32)].(I32) + 1;
+    end;
+    Out.int(I64(g[0])); Out.str(" "); Out.int(I64(g[1])); Out.str(" "); Out.int(I64(g[3])); Out.ln;
+    Out.int(LEN(BYTES(s[1..2]))); Out.str(" "); Out.int(LEN(BYTES(whole()))); Out.ln;
+    Out.int(LEN(BYTES(none))); Out.str(" "); Out.int(LEN(BYTES(g[2..2]))); Out.ln;
+    Out.int(LEN(gBytes())); Out.str(" "); Out.int(I64(gBytes()[4].(I32))); Out.ln;
+
+    p := ADR(h);
+    n := 0;
+    for i := 0 to OFFSET(Header, flags) do   (* not the padding after *)
+        INC(n, I32(BYTES(p^)[i]));
+    end;
+    Out.int(I64(n)); Out.ln;
+    clear(h);
+    Out.int(I64(h.magic)); Out.str(" "); Out.int(I64(h.count)); Out.ln;
+
+    n := 01020304H;
+    b := BYTES(n);
+    Out.int(LEN(b)); if b[0].(I32) = n then Out.str(" same"); end; Out.ln;
+end;
+
+end BytesOf.

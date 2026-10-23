@@ -1,0 +1,5 @@
+conform/err/BytesString.raz:6:16: error: BYTES can't take a string constant
+    6 |     b := BYTES(Hello);
+      |                ^^^^^
+help: a string constant is only read: where a []U8 is wanted, the string itself will do
+raz: 1 error

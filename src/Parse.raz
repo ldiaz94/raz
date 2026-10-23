@@ -1112,6 +1112,10 @@ begin
         try expression(y, nil);
         try ptrOf(y);
         x := y;
+    | Sym.bBytes:
+        try expression(y, nil);
+        try Item.bytesOf(y);
+        x := y;
     | Sym.bSyscall:
         n := 0;
         repeat

@@ -1,0 +1,5 @@
+conform/err/BytesRecordBool.raz:6:16: error: BYTES can't take Entry, which holds BOOL
+    6 |     b := BYTES(e);
+      |                ^
+help: its field live is of type BOOL, and some bytes are no BOOL
+raz: 1 error

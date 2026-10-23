@@ -934,6 +934,87 @@ begin
     return Scan.markHelp(x.pos, text, "a view is an integer, a real or a pointer, or a record or array made of them");
 end;
 
+(* What BYTES(x) refuses of its type, t, or of a slice's elements, t:
+   a type a view may not take (report section 6.8), since bytes written
+   through the slice must still be a value of it. In a record, the help
+   names the field that holds it. *)
+proc bytesType(x: Item; t: ^Sym.Type): ERROR;
+var u: ^Sym.Type; f: ^Sym.Obj; text, hint: []U8;
+begin
+    u := notPlain(t);
+    if u = nil then return nil; end;
+    if u # x.typ then
+        text := say2("BYTES can't take {}, which holds {}", Sym.typeName(x.typ), Sym.typeName(u));
+    else
+        text := say1("BYTES can't take {}", Sym.typeName(u));
+    end;
+    hint := say1("some bytes are no {}: BYTES takes integers, reals and pointers, and records and arrays of them",
+        Sym.typeName(u));
+    if t^.form = Sym.fRecord then
+        f := t^.fields;
+        while (f # nil) and (notPlain(f^.typ) = nil) do f := f^.next; end;
+        if f # nil then
+            hint := Diag.say("its field {} is of type {}, and some bytes are no {}",
+                [Fmt.str(Scan.nameOf(f^.name)), Fmt.str(Sym.typeName(f^.typ)), Fmt.str(Sym.typeName(u))]);
+        end;
+    end;
+    return Scan.markHelp(x.pos, text, hint);
+end;
+
+(* BYTES(x), the bytes of x as a []U8 (report section 6.8), made as a
+   slice of x is, refused where one is, and keeping x's frame mark, so
+   that returnValue refuses the bytes of a local as a slice of one:
+
+       BYTES(s)    {PTR(s), LEN(s) * SIZE(T)}   for a slice s: []T
+       BYTES(v)    {ADR(v), SIZE(T)}            for v: T, anything else
+
+   A slice's words are read as PTR and LEN read them, once it is where
+   both can be read: a call's two words, or a slice reached through an
+   address on the stack, go to a temporary first. *)
+proc bytesOf*(var x: Item): ERROR;
+var t: ^Sym.Type; inFrame: BOOL; y: Item; s: I64;
+begin
+    if x.mode = mStr then
+        return Scan.markHelp(x.pos, "BYTES can't take a string constant",
+            "a string constant is only read: where a []U8 is wanted, the string itself will do");
+    end;
+    t := x.typ;
+    inFrame := x.frame;
+    if t^.form = Sym.fSlice then
+        try bytesType(x, t^.base);
+        if (x.mode # mVar) or (x.base = Gen.bStack) then try copyToTemp(x); end;
+        y := x;
+        y.typ := Sym.tInt;
+        try value(y);                    (* its first word, where it starts *)
+        x.off := x.off + 8;
+        x.typ := Sym.tInt;
+        try value(x);                    (* its second, the number of elements *)
+        scaleBy(t^.base^.size);
+        s := Gen.allocTemp(16, 8);
+        Gen.popVar(frameAdr(s + 8), 8);
+        Gen.popVar(frameAdr(s), 8);
+        tempItem(x, Sym.tBytes, s);
+        x.frame := inFrame;
+        return nil;
+    end;
+    try notReadOnly(x);
+    if (x.mode # mVar) or not x.isVar then
+        return Scan.markHelp(x.pos, "BYTES needs a variable",
+            "a constant, or the result of a call or an operator, has no bytes of its own: copy it to a variable");
+    end;
+    if x.vol then
+        return Scan.markHelp(x.pos, "BYTES can't take a volatile variable",
+            "reading and writing its bytes through a slice wouldn't be volatile accesses");
+    end;
+    if x.odd then return Scan.markAt(x.pos, "BYTES can't take a field of a packed record, which has no address"); end;
+    if x.view then return noAddress(x, "BYTES can't take a view"); end;
+    try bytesType(x, t);
+    try address(x);
+    sliceOf(x, Sym.tBytes, t^.size);
+    x.frame := inFrame;
+    return nil;
+end;
+
 (* x becomes the view of itself as a T, its type changed and nothing
    else: the bytes are where x's are. A variable in a register has no
    bytes to view, so it goes to memory. *)

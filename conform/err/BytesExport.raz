@@ -1,0 +1,8 @@
+module BytesExport;
+import Owner;
+proc main*;
+var b: []U8;
+begin
+    b := BYTES(Owner.n);
+end;
+end BytesExport.

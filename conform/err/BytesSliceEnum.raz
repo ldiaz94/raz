@@ -1,0 +1,7 @@
+module BytesSliceEnum;
+type Colour = (red, green, blue);
+proc paint(s: []Colour): []U8;
+begin
+    return BYTES(s);
+end;
+end BytesSliceEnum.

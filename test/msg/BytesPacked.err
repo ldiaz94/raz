@@ -1,0 +1,4 @@
+conform/err/BytesPacked.raz:6:16: error: BYTES can't take a field of a packed record, which has no address
+    6 |     b := BYTES(r.word);
+      |                ^^^^^^
+raz: 1 error
