@@ -832,7 +832,9 @@ untyped constant has none, so `CLZ(1)` is an error, and `CLZ(U64(1))`
 is 63. `POPCOUNT(x)` may also take a set, and counts its members.
 `MIN(T)` and `MAX(T)` are the smallest and the largest value of the
 integer type `T`, untyped constants: `MAX(U8)` is 255 and `MIN(I16)` is
--32768. Each of the five, given constants, is a constant (section 4).
+-32768; `MAX(U64)` and `MAX(UINT)`, above the largest `I64`, have their
+own type, as a hexadecimal number above it has (section 2). Each of the five, given constants, is a
+constant (section 4).
 
 Relations compare as signed or unsigned according to the type.
 

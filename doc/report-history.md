@@ -235,7 +235,8 @@ at the time.
   `Prop`, property tests and fuzzing with shrinking (volume 2). They are
   not core. And a twelfth thaw, by the owner's word: `MIN(T)` and
   `MAX(T)`, the smallest and largest value of an integer type, untyped
-  constants; and `CLZ(x)`, `CTZ(x)` and `POPCOUNT(x)`, which count the
+  constants but for `MAX(U64)` and `MAX(UINT)`, which keep their type;
+  and `CLZ(x)`, `CTZ(x)` and `POPCOUNT(x)`, which count the
   zero bits above the highest one, below the lowest one, and the one
   bits (or members of a set) of a word of an unsigned integer type, an
   `INT`, and of constants are a constant (sections 4, 6.1 and 6.8). A
