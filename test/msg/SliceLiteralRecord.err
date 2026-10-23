@@ -1,0 +1,4 @@
+conform/err/SliceLiteralRecord.raz:3:45: error: expected INT, found an array literal
+    3 | const Rules: [1]Rule = [{name: "up", keys: [[1]]}];
+      |                                             ^
+raz: 1 error

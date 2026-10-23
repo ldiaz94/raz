@@ -23,7 +23,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,594 | 1,310 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,688 | 1,902 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,378 | 1,909 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,476 | 3,864 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,513 | 3,887 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -1394,6 +1394,19 @@ takes `[]` for any slice part, and an empty slice constant named there,
 by leaving the part's bytes zero:
 
     const E: []I64 = [];    (* read as the bytes of *)    var E: []I64;
+
+A slice part written as an array literal is an array constant of its
+own: `constPart` has `literalArray` make its type `[n]T`, and
+`constChunk` read it into a chunk of its own, with no name, before the
+constant around it is done; the part is then its address, a data fixup,
+and its length, as for a named array constant. `constChunk` keeps the
+outer constant's bytes aside while it reads the inner one, and puts the
+inner one's fixups in `fixes` after the outer one's, taking them off
+again when its chunk is made, so literals nest to any depth, in records
+and variants too:
+
+    const Rows: [][]INT = [[1, 2], [3]];    (* read as *)
+    const R0: [2]INT = [1, 2];  R1: [1]INT = [3];  Rows: [][]INT = [R0, R1];
 
 `makeItem` makes it an
 `mVar` there that isn't `isVar`, so it is read, indexed, sliced and

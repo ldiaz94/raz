@@ -3382,13 +3382,33 @@ begin
     return n;
 end;
 
+(* A constant typed []T, or an array literal for a slice part of one,
+   is an array constant whose length is its literal's (report, 4): t,
+   the slice type, becomes [n]T, as if n had been written, with n
+   counted ahead (literalLength). With no element, [], it stays []T:
+   the empty slice, kept as 16 zero bytes. *)
+proc literalArray(t: PType): (PType, ERROR);
+var a: PType; n: INT;
+begin
+    if Scan.tok # Scan.sLbrak then
+        return nil, Scan.markAt(Scan.tokPos(), say1("expected a literal of {}", Sym.typeName(t)));
+    end;
+    n := literalLength();
+    if n = 0 then return t, nil; end;
+    a := Sym.newType(Sym.fArray, I64(n) * t^.base^.size, t^.base^.align);
+    a^.len := I64(n);
+    a^.base := t^.base;
+    return a, nil;
+end;
+
+proc constPart(t: PType; off: INT): ERROR; forward;
+proc constChunk(t: PType; n: INT): (INT, ERROR); forward;
+
 (* A variant's case built from constants, at offset off of the constant
    (report section 4): its number, then each field where the case lays
    it out, as constructCase builds one in a program; the rest stays
    zero. The case is read here, by its name, since expression would
    make the code that builds one. *)
-proc constPart(t: PType; off: INT): ERROR; forward;
-
 proc constCase(t: PType; off: INT): ERROR;
 var c, f: PObj; at: Diag.Pos;
 begin
@@ -3415,13 +3435,27 @@ end;
 
 (* The part of type t at offset off of the constant *)
 proc constPart(t: PType; off: INT): ERROR;
-var e: TItem; f: PObj; k: INT; r: F32; start: Diag.Pos; src: ^U8; st, fx: INT;
+var e: TItem; f: PObj; k, c: INT; r: F32; start: Diag.Pos; src: ^U8; st, fx: INT; a: PType;
 begin
     start := Scan.tokPos();
-    if (t^.form = Sym.fSlice) and (Scan.tok = Scan.sLbrak) and (literalLength() = 0) then
-        (* [], the empty slice (report, 4): its bytes stay zero, ptr nil and len 0 *)
-        Scan.next;
-        return expect(Scan.sRbrak);
+    if (t^.form = Sym.fSlice) and (Scan.tok = Scan.sLbrak) then
+        a := try literalArray(t);
+        if a = t then
+            (* [], the empty slice (report, 4): its bytes stay zero, ptr nil and len 0 *)
+            Scan.next;
+            return expect(Scan.sRbrak);
+        end;
+        (* an array literal (report, 4) is an array constant of its own,
+           in a chunk of its own, made before this one is; the slice
+           points at it, as it would at a named one:
+               const Rows: [][]INT = [[1, 2], [3]];
+           is laid out as
+               const R0: [2]INT = [1, 2]; R1: [1]INT = [3];
+               const Rows: [][]INT = [R0, R1]; *)
+        c := try constChunk(a, -1);
+        try constFix(off, c);
+        putBytes(off + 8, 8, a^.len);
+        return nil;
     end;
     if (t^.form = Sym.fArray) and (Scan.tok = Scan.sLbrak) then
         Scan.next;
@@ -3460,6 +3494,9 @@ begin
         return expect(Scan.sRbrace);
     end;
     if (t^.form = Sym.fVariant) and (Scan.tok = Scan.sIdent) then return constCase(t, off); end;
+    if Scan.tok = Scan.sLbrak then   (* an array literal where neither an array nor a slice is *)
+        return Scan.mark(say1("expected {}, found an array literal", Sym.typeName(t)));
+    end;
     try expression(e, t);
     if (e.mode = Item.mStr) and ((t^.form = Sym.fSlice) or (t^.form = Sym.fArray)) and (t^.base = Sym.tU8) then
         if t^.form = Sym.fSlice then
@@ -3476,7 +3513,7 @@ begin
            it, which has a type of its own: the element's, or a slice's *)
         if (e.mode # Item.mVar) or (e.obj = nil) or (e.obj^.cls # Sym.oConst) or (e.typ # e.obj^.typ)
             or not (e.typ^.form in {Sym.fArray, Sym.fSlice}) or not Sym.same(e.typ^.base, t^.base) then
-            return Scan.markAt(e.pos, say1("a constant slice is a string, an array constant of its elements or [], found {}", Item.what(e)));
+            return Scan.markAt(e.pos, say1("a constant slice is a string, an array constant or literal of its elements, or [], found {}", Item.what(e)));
         end;
         if e.typ^.form = Sym.fArray then   (* else an empty slice constant, whose bytes stay zero *)
             try constFix(off, e.chunk);
@@ -3517,37 +3554,37 @@ begin
     return nil;
 end;
 
-(* The chunk of n, a constant of type t whose literal is next *)
-proc aggregateConst(t: PType; n: INT): (INT, ERROR);
-var c, i, size: INT;
+(* The chunk of n, a constant of type t whose literal is next, or of
+   an array literal in a constant's slice part, with n -1. That one is
+   made while the constant around it is still being read: its bytes are
+   its own, and the constant's are put back after; its addresses go on
+   in fixes after the constant's, from base, and are taken off again. *)
+proc constChunk(t: PType; n: INT): (INT, ERROR);
+var c, i, size, base: INT; outer: ^U8;
 begin
+    outer := constBytes;
+    base := numFixes;
     size := INT(t^.size);
     constBytes := Scan.grab(size + 8);
     for i := 0 to size + 7 do constBytes[i] := 0; end;
-    numFixes := 0;
     try constPart(t, 0);
-    c := Chunk.newChunk(Chunk.secRodata, Sym.curModule^.sname, n);
+    if n < 0 then
+        c := Chunk.newChunk(Chunk.secRodata, -1, -1);
+    else
+        c := Chunk.newChunk(Chunk.secRodata, Sym.curModule^.sname, n);
+    end;
     Chunk.setData(c, constBytes, size, INT(t^.align));
-    for i := 0 to numFixes - 1 do Chunk.addDataFixup(c, fixes[i].off, fixes[i].chunk, 0); end;
+    for i := base to numFixes - 1 do Chunk.addDataFixup(c, fixes[i].off, fixes[i].chunk, 0); end;
+    numFixes := base;
+    constBytes := outer;
     return c, nil;
 end;
 
-(* A constant typed []T is an array constant whose length is its
-   literal's (report, 4): t, the slice type, becomes [n]T, as if n had
-   been written, with n counted ahead (literalLength). With no element,
-   [], it stays []T: the empty slice, kept as 16 zero bytes. *)
-proc literalArray(t: PType): (PType, ERROR);
-var a: PType; n: INT;
+(* The chunk of n, a constant of type t whose literal is next *)
+proc aggregateConst(t: PType; n: INT): (INT, ERROR);
 begin
-    if Scan.tok # Scan.sLbrak then
-        return nil, Scan.markAt(Scan.tokPos(), say1("expected a literal of {}", Sym.typeName(t)));
-    end;
-    n := literalLength();
-    if n = 0 then return t, nil; end;
-    a := Sym.newType(Sym.fArray, I64(n) * t^.base^.size, t^.base^.align);
-    a^.len := I64(n);
-    a^.base := t^.base;
-    return a, nil;
+    numFixes := 0;   (* none left over from a constant an error broke off *)
+    return constChunk(t, n);
 end;
 
 proc constDecl(top: BOOL): ERROR;

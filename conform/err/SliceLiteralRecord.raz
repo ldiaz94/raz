@@ -1,0 +1,4 @@
+module SliceLiteralRecord;
+type Rule = record name: []U8; keys: []INT; end;
+const Rules: [1]Rule = [{name: "up", keys: [[1]]}];
+end SliceLiteralRecord.

@@ -1,0 +1,4 @@
+conform/err/SliceLiteralElem.raz:2:36: error: can't use BOOL as INT
+    2 | const Rows: [][]INT = [[1, 2], [3, true]];
+      |                                    ^^^^
+raz: 1 error

@@ -1,0 +1,4 @@
+conform/err/SliceLiteralPart.raz:2:32: error: a constant slice is a string, an array constant or literal of its elements, or [], found 3
+    2 | const Rows: [][]INT = [[1, 2], 3];
+      |                                ^
+raz: 1 error
