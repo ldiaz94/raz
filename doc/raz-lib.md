@@ -746,6 +746,7 @@ proc pow*(x, y: F64): F64;            (* x to the power y *)
 proc floor*(x: F64): F64;
 proc ceil*(x: F64): F64;
 proc round*(x: F64): F64;             (* to the nearest whole number; a half away from 0 *)
+proc roundEven*(x: F64): F64;         (* to the nearest whole number; a half to the even one *)
 proc exp*(x: F64): F64;
 proc ln*(x: F64): F64;
 proc log2*(x: F64): F64;
@@ -753,6 +754,7 @@ proc log10*(x: F64): F64;
 proc sin*(x: F64): F64;
 proc cos*(x: F64): F64;
 proc tan*(x: F64): F64;
+proc tanh*(x: F64): F64;              (* from -1 to 1 *)
 proc asin*(x: F64): F64;              (* from -pi/2 to pi/2 *)
 proc acos*(x: F64): F64;              (* from 0 to pi *)
 proc atan*(x: F64): F64;              (* from -pi/2 to pi/2 *)
@@ -882,7 +884,8 @@ end;
 `Sort.sort` puts `s` in the order `less` gives, in place, without
 memory of its own, in time `n log n` at most; two elements equal by
 `less` may change places. `Math`'s procedures are as C's `math.h`
-has them, to within the last bit or so. `Fmt.real(x, places)` writes
+has them, to within the last bit or so; `roundEven` is IEEE 754's
+default rounding, as Pascal's `Round`, where `round` is C's. `Fmt.real(x, places)` writes
 `x` with `places` digits after the point, at most 9, rounded to the
 nearest; from 1E15 on, with an exponent, as `1.50E17`; and `nan`,
 `inf` and `-inf` as themselves. `hex` writes capitals and `lowHex`

@@ -5,8 +5,7 @@
    polynomials' coefficients are fdlibm's. Each is within an ulp, a
    unit in the result's last place.
 
-   Left out: the hyperbolic functions, fmod and hypot, until a program
-   needs them. *)
+   Left out: sinh, cosh, fmod and hypot, until a program needs them. *)
 module Math;
 import Check;
 
@@ -69,6 +68,21 @@ begin
     return t;
 end;
 
+(* The whole number nearest x, a half to the even one, as IEEE 754's
+   default and Pascal's Round have it. As for round, the distance to
+   floor(|x|) is exact, where x + 0.5 may round up. *)
+proc roundEven*(x: F64): F64;
+var a, t, d: F64;
+begin
+    a := fromBits(bits(x) & 7FFFFFFFFFFFFFFFH);
+    if not (a < 4503599627370496.0) then return x; end;   (* whole already, or NaN *)
+    t := floor(a);
+    d := a - t;
+    if (d > 0.5) or ((d = 0.5) and (INT(t) & 1 = 1)) then t := t + 1.0; end;
+    if negative(x) then return -t; end;
+    return t;
+end;
+
 (* x times 2^k, for k from -1075 to 1024: 2^k is made from its bits,
    in two steps where k is past what an F64's exponent holds. *)
 proc scale(x: F64; k: INT): F64;
@@ -96,6 +110,70 @@ begin
         + rr * (6.61375632143793436117E-05 + rr * (-1.65339022054652515390E-06
         + rr * 4.13813679705723846039E-08))));
     return scale(1.0 + (r * c / (2.0 - c) - lo + hi), k);
+end;
+
+(* e^x - 1, for x from -45 to 45, as fdlibm's expm1: like exp, but
+   the 1 is taken out of the sum, so that no digit is lost near 0.
+   With x = k ln 2 + r, e^x - 1 = 2^k (e^r - 1) + 2^k - 1, and c is
+   the rounding error of r, put back at the end. *)
+proc expm1(x: F64): F64;
+var a, hi, lo, c, hfx, hxs, r1, t, e, y: F64; k: INT;
+begin
+    a := fromBits(bits(x) & 7FFFFFFFFFFFFFFFH);
+    k := 0;
+    c := 0.0;
+    if a > 0.34657359027997264 then   (* more than ln 2 / 2 *)
+        if a < 1.0397207708399179 then   (* less than 3 ln 2 / 2 *)
+            if negative(x) then k := -1; else k := 1; end;
+        elsif negative(x) then k := INT(x * 1.44269504088896338700 - 0.5);
+        else k := INT(x * 1.44269504088896338700 + 0.5);
+        end;
+        hi := x - F64(k) * ln2hi;
+        lo := F64(k) * ln2lo;
+        x := hi - lo;
+        c := (hi - x) - lo;
+    elsif a < 5.551115123125783E-17 then return x;   (* below 2^-54 *)
+    end;
+    hfx := 0.5 * x;
+    hxs := x * hfx;
+    r1 := 1.0 + hxs * (-3.33333333333331316428E-02 + hxs * (1.58730158725481460165E-03
+        + hxs * (-7.93650757867487942473E-05 + hxs * (4.00821782732936239552E-06
+        + hxs * (-2.01099218183624371326E-07)))));
+    t := 3.0 - r1 * hfx;
+    e := hxs * ((r1 - t) / (6.0 - x * t));
+    if k = 0 then return x - (x * e - hxs); end;
+    e := (x * (e - c) - c) - hxs;
+    if k = -1 then return 0.5 * (x - e) - 0.5; end;
+    if k = 1 then
+        if x < -0.25 then return -2.0 * (e - (x + 0.5)); end;
+        return 1.0 + 2.0 * (x - e);
+    end;
+    if k <= -2 then return scale(1.0 - (e - x), k) - 1.0; end;
+    if k < 20 then y := (1.0 - scale(1.0, -k)) - (e - x);
+    else y := (x - (e + scale(1.0, -k))) + 1.0;
+    end;
+    return scale(y, k);
+end;
+
+(* The hyperbolic tangent of x, from -1 to 1: fdlibm's, from
+   expm1(2|x|), which is accurate for a small x where 1 - 2/(e^2x + 1)
+   would lose every digit. From 22 on it is 1 to the last bit. *)
+proc tanh*(x: F64): F64;
+var a, t, z: F64;
+begin
+    if x # x then return x; end;
+    a := fromBits(bits(x) & 7FFFFFFFFFFFFFFFH);
+    if a >= 22.0 then z := 1.0;
+    elsif a < 2.7755575615628914E-17 then return x;   (* below 2^-55: tanh x = x; keeps -0 *)
+    elsif a >= 1.0 then
+        t := expm1(2.0 * a);
+        z := 1.0 - 2.0 / (t + 2.0);
+    else
+        t := expm1(-2.0 * a);
+        z := -t / (t + 2.0);
+    end;
+    if negative(x) then return -z; end;
+    return z;
 end;
 
 (* ln x = k ln 2 + ln m, with m from sqrt(2)/2 to sqrt(2): ln m is
@@ -999,6 +1077,16 @@ begin
         or not near(acos(-0.2), 1.7721542475852274) or (acos(1.0) # 0.0) or (acos(-1.0) # pi)
         or not near(atan(0.5), 0.4636476090008061) or not near(atan(-1.0E10), -1.5707963266948965)
         or (atan(inf) # pi / 2.0) or not negative(atan(-0.0))), "Math.asin, acos, atan");
+    Check.ok(not (not near(tanh(0.5), 0.46211715726000974) or not near(tanh(1.0), 0.7615941559557649)
+        or not near(tanh(-0.3), -0.2913126124515909) or not near(tanh(3.0), 0.9950547536867305)
+        or not near(tanh(1.0E-10), 1.0E-10) or (tanh(-1.0E-300) # -1.0E-300) or (tanh(20.0) # 1.0)
+        or (tanh(-30.0) # -1.0) or (tanh(inf) # 1.0) or not negative(tanh(-0.0)) or (tanh(nan) = tanh(nan))),
+        "Math.tanh");
+    Check.ok(not ((roundEven(0.5) # 0.0) or (roundEven(1.5) # 2.0) or (roundEven(2.5) # 2.0) or (roundEven(3.5) # 4.0)
+        or (roundEven(-2.5) # -2.0) or (roundEven(-3.5) # -4.0) or (roundEven(2.6) # 3.0) or (roundEven(-2.4) # -2.0)
+        or not negative(roundEven(-0.5)) or negative(roundEven(0.5)) or (roundEven(0.49999999999999994) # 0.0)
+        or (roundEven(4503599627370495.5) # 4503599627370496.0) or (roundEven(4503599627370497.0) # 4503599627370497.0)
+        or (roundEven(-1.0E300) # -1.0E300) or (roundEven(inf) # inf) or (roundEven(nan) = roundEven(nan))), "Math.roundEven");
     testToReal;
 end;
 
