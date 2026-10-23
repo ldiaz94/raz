@@ -1,0 +1,35 @@
+(* A slice of a const parameter may be returned: it is the caller's
+   array, not the procedure's frame. Given a temporary, the slice lives
+   to the end of the caller's statement (report sections 7.3 and 8). *)
+module ConstParamSlice;
+import Out;
+
+type Line = record text: [8]U8; len: INT; end;
+
+var line: Line;
+
+proc used(const l: Line): []U8;
+begin
+    return l.text[0..l.len];
+end;
+
+proc make(s: []U8): Line;
+var l: Line;
+begin
+    COPY(l.text, s);
+    l.len := LEN(s);
+    return l;
+end;
+
+proc main*;
+var s: []U8;
+begin
+    line := make("hello");
+    s := used(line);
+    line.text[0] := 'j';
+    Out.str(s); Out.ln;                   (* the caller's array: jello *)
+    Out.str(used(make("temp"))); Out.ln;  (* a temporary, read within the statement *)
+    Out.int(LEN(used({text: "abc", len: 2}))); Out.ln;
+end;
+
+end ConstParamSlice.

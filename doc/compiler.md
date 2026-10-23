@@ -1425,7 +1425,9 @@ the check of an enumeration's position.
 
 The frame: an item's `frame` says, for an array or record, that it lies
 in the procedure's own frame (a local, a value parameter, which is a
-copy even when passed by address, or a temporary), and for a slice,
+copy even when passed by address, or a temporary; not a `var` or
+`const` parameter, the caller's, even when that is a temporary of the
+caller's statement), and for a slice,
 that it points there. `makeItem` and `tempItem` set it; `field` and
 `index` keep it for a part of the array, and drop it for an element of
 a slice or a slice kept in a field, which may point anywhere; `deref`
