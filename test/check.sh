@@ -169,7 +169,8 @@ want=${lag:-$want}
 if ./raz --version | grep -qF "report $want"; then pass=$((pass + 1))
 else echo "FAIL raz --version: not report $want"; fail=$((fail + 1)); fi
 
-# tools/Doc.raz: on every library module, and as test/doc expects
+# tools/Doc.raz: on every library module, and as test/doc expects (X.expect
+# for Doc, X.man for Doc man)
 if ./raz -Werror -o $out/Doc tools/Doc.raz 2>$out/Doc.cerr; then
     for f in lib/*.raz; do
         if ! $out/Doc $f > $out/doc.out; then echo "FAIL Doc $f"; fail=$((fail + 1)); fi
@@ -178,8 +179,15 @@ if ./raz -Werror -o $out/Doc tools/Doc.raz 2>$out/Doc.cerr; then
         name=$(basename $f .expect)
         m=lib/$name.raz
         [ -f $m ] || m=lib/$name.linux-x86_64.raz
+        [ -f $m ] || m=test/doc/$name.raz
         if $out/Doc $m | cmp -s - $f; then pass=$((pass + 1))
         else echo "FAIL Doc $m: output differs"; fail=$((fail + 1)); fi
+    done
+    # Doc man, for the modules that have a test/doc/X.man
+    for f in test/doc/*.man; do
+        m=test/doc/$(basename $f .man).raz
+        if $out/Doc man $m | cmp -s - $f; then pass=$((pass + 1))
+        else echo "FAIL Doc man $m: output differs"; fail=$((fail + 1)); fi
     done
 
     # the report's examples that are whole modules: each compiles, and

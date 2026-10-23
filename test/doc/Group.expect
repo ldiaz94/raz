@@ -1,0 +1,21 @@
+module Group;
+    Group: a comment before const, type or var heads its group.
+    Doc's test of it.
+
+    Colours, one bit each.
+
+const Red* = 1;      (* the first *)
+
+const Green* = 2;
+
+const Blue* = 4;     (* the last *)
+
+    Where it is.
+
+type Point* = record x*, y*: INT; end;   (* one place *)
+
+    A comment that stands alone.
+
+var count*: INT;
+
+proc main*;

@@ -95,15 +95,17 @@ loc:
 	@rloc -c src/*.raz
 
 # raz-lib(3), the library's manual page, made by tools/Doc.raz from
-# its sources, in the order of doc/raz-lib.md
+# its sources, in the order of doc/raz-lib.md, between the page's own
+# head (with its date) and tail
 LIBDOC = Rt Mem Heap Arena Lock Thread.linux-x86_64 Out Sys.linux-x86_64 \
 	Str Bytes.x86_64 Buf Fmt List Map Vec Sort Math Files Opt Width Rand Check Prop C
 
 man: build/raz-lib.3
 
-build/raz-lib.3: raz tools/Doc.raz tools/Scan.raz lib/*.raz | build
+build/raz-lib.3: raz tools/Doc.raz tools/Scan.raz lib/*.raz doc/raz-lib.head doc/raz-lib.tail | build
 	./raz -Werror -o build/Doc tools/Doc.raz
-	build/Doc man $(LIBDOC:%=lib/%.raz) > $@
+	build/Doc man $(LIBDOC:%=lib/%.raz) > build/raz-lib.modules
+	cat doc/raz-lib.head build/raz-lib.modules doc/raz-lib.tail > $@
 
 # the two volumes of the report as PDFs, by pandoc and Chromium; not
 # part of check, as CI has neither

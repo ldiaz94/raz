@@ -6,10 +6,17 @@
    before it.
 
        Doc man Module.raz ...
-   prints the same of each module, as the manual page raz-lib(3), in
-   mdoc: the module's name a heading, each declaration a literal
-   display, each comment filled text, indented, but for its lines
-   indented further, which are code.
+   prints the same of each module, in mdoc, for a library's manual page:
+   the module's name a heading, each declaration a literal display,
+   each comment filled text, indented, but for its lines indented
+   further, which are code. It writes the modules only; the page's
+   head (its date, name and description, up to .Sh MODULES) and tail
+   are files of the library's own, put around it by its Makefile.
+
+   A comment on lines of its own just before const, type or var heads
+   that group: it is written once, before the group's declarations,
+   as a module's own comment is, and each declaration keeps the comment
+   just before it.
 
        Doc examples report.md dir
        Doc examples page.7 dir
@@ -19,8 +26,6 @@
 module Doc;
 import Out, Rt, Str, Buf, Heap, Scan, Files;
 
-const Date = "October 22, 2026";   (* raz-lib(3)'s, when the library last changed *)
-
 var
     sc: Scan.Scanner;         (* the text being read, at the current symbol *)
     src: []U8;
@@ -28,6 +33,7 @@ var
     man: BOOL;                (* writing mdoc *)
     atStart: BOOL;            (* emit is at the start of a line *)
     shown: BOOL;              (* a literal display of mdoc's is open *)
+    groupStart, groupEnd: INT; (* the comment that heads the group being read, not yet written, or -1 *)
 
 (* On to the next symbol that isn't a comment, keeping where the last
    comment that starts a line was: one after code on its line belongs
@@ -211,12 +217,24 @@ begin
     if man then control(".Ed"); end;
 end;
 
+(* The comment that heads a group of constants, types or variables,
+   written once, before the group's first exported declaration. *)
+proc heading;
+begin
+    if not man then Out.ln;
+    else close;
+    end;
+    comment(groupStart, groupEnd);
+    groupStart := -1;
+end;
+
 (* One declaration, from its first token, the comment before it kept.
    In mdoc a module's test, its main, is left out, and declarations
    with no comment share a display. *)
 proc declaration(prefix: []U8; exported: BOOL; start, ds, de, stop: INT);
 begin
     if not exported then return; end;
+    if (groupStart >= 0) and (LEN(prefix) > 0) then heading; end;
     if not man then Out.ln;
     elsif Str.hasPrefix(src[start..stop], "proc main*") then return;
     elsif not shown then control(".Bd -literal"); shown := true;
@@ -279,6 +297,7 @@ proc section;
 var word: []U8; start, ds, de, stop: INT; exp: BOOL;
 begin
     word := text();
+    groupStart := docStart; groupEnd := docEnd;
     next;
     while (sc.kind = Scan.word) and not reserved() do
         start := sc.start; ds := docStart; de := docEnd;
@@ -288,6 +307,7 @@ begin
         declaration(word, exp, start, ds, de, stop);
         next;
     end;
+    groupStart := -1;
 end;
 
 proc external;
@@ -304,6 +324,7 @@ end;
 proc document(path: []U8);
 var b: Buf.Buf; start, ds, de: INT;
 begin
+    groupStart := -1;
     Buf.init(b, Heap.heap);
     if not Files.read(path, b) then Rt.stop("Doc: can't read the file"); end;
     src := Buf.bytes(b);
@@ -420,44 +441,18 @@ begin
     end;
 end;
 
-(* raz-lib(3): the modules named from argument 2 on, under a head and
-   above a tail of the page's own. *)
+(* The modules named from argument 2 on, as mdoc: what goes between a
+   manual page's .Sh MODULES and its next heading. The page's head and
+   tail, and its date, belong to the page, not to this tool: raz's
+   Makefile puts doc/raz-lib.head and doc/raz-lib.tail around it. *)
 proc page;
 var i: INT;
 begin
     man := true;
     atStart := true;
-    control(".\\\" raz-lib(3) - the library; made by tools/Doc.raz from lib/");
-    Out.str(".Dd "); Out.str(Date); emit(10);
-    control(".Dt RAZ-LIB 3");
-    control(".Os");
-    control(".Sh NAME");
-    control(".Nm raz-lib");
-    control(".Nd the library of the raz language");
-    control(".Sh DESCRIPTION");
-    control("The modules a raz program imports from");
-    control(".Pa lib/ ,");
-    control("beside the compiler, each as its source gives it: the module's own");
-    control("comment, then every declaration it exports, as it is written, with");
-    control("the comment just before it.");
-    control("A module's");
-    control(".Ic main ,");
-    control("where it has one, is its test, and is left out.");
-    control(".Pp");
-    control("The report's second volume says what the library promises, and which");
-    control("of its modules every target has.");
-    control(".Sh MODULES");
+    groupStart := -1;
     for i := 2 to ARGC() - 1 do document(Files.arg(i)); end;
     close;
-    control(".Sh SEE ALSO");
-    control(".Xr raz 1 ,");
-    control(".Xr raz 7 ,");
-    control(".Xr raz-tutorial 7 ;");
-    control("the report,");
-    control(".Pa doc/raz.md ,");
-    control("and its second volume,");
-    control(".Pa doc/raz-lib.md ,");
-    control("in raz's sources.");
 end;
 
 proc main*;

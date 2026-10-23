@@ -1,0 +1,20 @@
+.\" raz-lib(3) - the library; made by tools/Doc.raz from lib/
+.Dd October 22, 2026
+.Dt RAZ-LIB 3
+.Os
+.Sh NAME
+.Nm raz-lib
+.Nd the library of the raz language
+.Sh DESCRIPTION
+The modules a raz program imports from
+.Pa lib/ ,
+beside the compiler, each as its source gives it: the module's own
+comment, then every declaration it exports, as it is written, with
+the comment just before it.
+A module's
+.Ic main ,
+where it has one, is its test, and is left out.
+.Pp
+The report's second volume says what the library promises, and which
+of its modules every target has.
+.Sh MODULES

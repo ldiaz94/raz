@@ -1,0 +1,28 @@
+(* Group: a comment before const, type or var heads its group.
+   Doc's test of it. *)
+module Group;
+
+(* Colours, one bit each. *)
+const
+    Red* = 1;      (* the first *)
+    Green* = 2;
+    Blue* = 4;     (* the last *)
+
+(* A group of nothing exported, so no heading. *)
+const hidden = 0;
+
+(* Where it is. *)
+type
+    Point* = record x*, y*: INT; end;   (* one place *)
+
+(* A comment that stands alone. *)
+
+var
+    count*: INT;
+
+proc main*;
+begin
+    count := Red + hidden;
+end;
+
+end Group.

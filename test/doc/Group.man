@@ -1,0 +1,28 @@
+.Ss Group
+.Bd -literal
+module Group;
+.Ed
+.Bd -filled -offset indent -compact
+Group: a comment before const, type or var heads its group.
+Doc's test of it.
+.Ed
+.Bd -filled -offset indent -compact
+Colours, one bit each.
+.Ed
+.Bd -literal
+const Red* = 1;      (* the first *)
+const Green* = 2;
+const Blue* = 4;     (* the last *)
+.Ed
+.Bd -filled -offset indent -compact
+Where it is.
+.Ed
+.Bd -literal
+type Point* = record x*, y*: INT; end;   (* one place *)
+.Ed
+.Bd -filled -offset indent -compact
+A comment that stands alone.
+.Ed
+.Bd -literal
+var count*: INT;
+.Ed
