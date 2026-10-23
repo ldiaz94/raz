@@ -26,12 +26,15 @@ type
         real(r: F64; places: INT);
     end;
 
-    (* Where the pieces go: to b, or to standard output if b is nil.
+    (* Where the pieces go: to out if slice is set, else to b, or to
+       standard output if b is nil. n counts the bytes given, so a
+       slice holds the first LEN(out) of them and the rest are cut.
        With dry set nothing is written and n only counts the bytes
        that would be, to know how much a width must pad. *)
     Sink = record
         b: ^Buf.Buf;
-        dry: BOOL;
+        out: []U8;
+        slice, dry: BOOL;
         n: INT;
     end;
 
@@ -57,12 +60,30 @@ begin
     return d, i;
 end;
 
+(* A sink that writes to b, or to standard output if b is nil. *)
+proc sink(b: ^Buf.Buf): Sink;
+var k: Sink;
+begin
+    k.b := b; k.out := []; k.slice := false; k.dry := false; k.n := 0;
+    return k;
+end;
+
 (* s to k. *)
 proc put(var k: Sink; s: []U8);
+var at, room: INT;
 begin
+    at := k.n;
     INC(k.n, LEN(s));
-    if k.dry then return; end;
-    if k.b = nil then Out.str(s); else Buf.str(k.b^, s); end;
+    if k.dry then
+    elsif k.slice then
+        room := LEN(k.out) - at;   (* what is past the end is cut *)
+        if room > LEN(s) then room := LEN(s); end;
+        if room > 0 then COPY(k.out[at..at + room], s[0..room]); end;
+    elsif k.b = nil then
+        Out.str(s);
+    else
+        Buf.str(k.b^, s);
+    end;
 end;
 
 (* n copies of c to k. *)
@@ -154,7 +175,7 @@ end;
 proc field(var k: Sink; a: Arg; const s: Spec);
 var dry: Sink; pad: INT;
 begin
-    dry.b := nil; dry.dry := true; dry.n := 0;
+    dry := sink(nil); dry.dry := true;
     arg(dry, a);
     pad := s.width - dry.n;
     if s.left then
@@ -184,10 +205,10 @@ begin
     return -1;
 end;
 
-proc format(b: ^Buf.Buf; f: []U8; args: []Arg);
-var i, start, n, close: INT; k: Sink; s: Spec;
+(* f to k, each {} replaced by the next of args. *)
+proc format(var k: Sink; f: []U8; args: []Arg);
+var i, start, n, close: INT; s: Spec;
 begin
-    k.b := b; k.dry := false; k.n := 0;
     i := 0; start := 0; n := 0;
     while i < LEN(f) do
         if (f[i] = '{') or (f[i] = '}') then
@@ -215,8 +236,10 @@ end;
 
 (* Writes f to standard output, each {} replaced by the next of args. *)
 proc print*(f: []U8; args: []Arg);
+var k: Sink;
 begin
-    format(nil, f, args);
+    k := sink(nil);
+    format(k, f, args);
 end;
 
 (* Writes f to standard error as print writes it, after flushing Out,
@@ -227,12 +250,13 @@ end;
    are mapped as they are written, and a text of more than a megabyte
    stops the program, as a Buf does when it can't grow. *)
 proc eprint*(f: []U8; args: []Arg);
-var ar: Arena.Arena; b: Buf.Buf; s: []U8; n: INT;
+var ar: Arena.Arena; b: Buf.Buf; k: Sink; s: []U8; n: INT;
 begin
     Out.flush;
     if not Arena.init(ar, 1 shl 20) then Rt.stop("Fmt.eprint: no arena"); end;
     Buf.init(b, ADR(ar.base));
-    format(ADR(b), f, args);
+    k := sink(ADR(b));
+    format(k, f, args);
     s := Buf.bytes(b);
     while LEN(s) > 0 do
         n := Sys.write(Sys.stderr, s);
@@ -245,13 +269,28 @@ end;
 
 (* Appends f to b, each {} replaced by the next of args. *)
 proc write*(var b: Buf.Buf; f: []U8; args: []Arg);
+var k: Sink;
 begin
-    format(ADR(b), f, args);   (* format's nil is standard output *)
+    k := sink(ADR(b));   (* a sink's nil is standard output *)
+    format(k, f, args);
+end;
+
+(* Formats f into out as write formats it: the bytes written, and false
+   if out was too short and the text is cut there. It needs no memory
+   of its own. *)
+proc into*(out: []U8; f: []U8; args: []Arg): (INT, BOOL);
+var k: Sink;
+begin
+    k := sink(nil);
+    k.out := out; k.slice := true;
+    format(k, f, args);
+    if k.n > LEN(out) then return LEN(out), false; end;
+    return k.n, true;
 end;
 
 (* The module's test: formats into a buffer over an arena. *)
 proc main*;
-var ar: Arena.Arena; b: Buf.Buf; zero: F64;
+var ar: Arena.Arena; b: Buf.Buf; zero: F64; small: [8]U8; n: INT; whole: BOOL;
 begin
     if not Arena.init(ar, 1 shl 16) then Rt.stop("Fmt: no arena"); end;
     Buf.init(b, ADR(ar.base));
@@ -278,6 +317,12 @@ begin
     Buf.reset(b);
     write(b, "{x} {2x} {0} {-} {a} {1", [int(1), int(2)]);
     if Buf.bytes(b) # "x 2x 1 - a 1" then Rt.stop("Fmt: a { that is no width"); end;
+    n, whole := into(small, "{}:{02}", [int(-3), int(7)]);
+    if (small[0..n] # "-3:07") or not whole then Rt.stop("Fmt.into"); end;
+    n, whole := into(small, "line {}, {}", [int(12), str("x")]);
+    if (small[0..n] # "line 12,") or whole then Rt.stop("Fmt.into: cut short"); end;
+    n, whole := into(small[0..0], "{}", [int(1)]);
+    if (n # 0) or whole then Rt.stop("Fmt.into: no room"); end;
     Arena.done(ar);
 end;
 

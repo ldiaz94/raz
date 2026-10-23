@@ -708,6 +708,7 @@ end;
 proc print*(f: []U8; args: []Arg);              (* to standard output *)
 proc eprint*(f: []U8; args: []Arg);             (* to standard error, once Out is flushed *)
 proc write*(var b: Buf.Buf; f: []U8; args: []Arg); (* added to b *)
+proc into*(out: []U8; f: []U8; args: []Arg): (INT, BOOL); (* into out: the bytes, and false if cut short *)
 
 module List(T);
 type
@@ -914,7 +915,10 @@ with zeros on the left, after a sign (`{04}` of -7 is `-007`), `{-10}`
 with spaces on the right. A longer argument is written whole. A `{`
 followed by anything but `}` or a width is dropped, as before.
 `Fmt.print("{2}:{02} U+{04}", [Fmt.int(3), Fmt.int(7), Fmt.hex(0E9H)])`
-writes ` 3:07 U+00E9`.
+writes ` 3:07 U+00E9`. `Fmt.into` formats into a slice the caller
+gives, with no memory of its own, for a library that has no heap: it
+gives the bytes written, and false if the slice was too short and the
+text is cut there.
 
 **Files and Opt** are what most programs need of their command line.
 `Files.writeAll` writes again after a short write or a signal, as a
