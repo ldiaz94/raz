@@ -1,0 +1,16 @@
+module ArenaRelease;
+(* a mark from before the arena's present position is released; one past
+   where the arena stands stops the program *)
+import Arena, Mem, Rt;
+
+proc main*;
+var ar: Arena.Arena; m: INT;
+begin
+    if not Arena.init(ar, 4096) then Rt.stop("no arena"); end;
+    _ := Mem.alloc(ADR(ar.base), 10, 1);
+    m := Arena.mark(ar);
+    Arena.release(ar, 0);
+    Arena.release(ar, m);
+end;
+
+end ArenaRelease.

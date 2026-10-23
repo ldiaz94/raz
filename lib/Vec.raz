@@ -115,6 +115,28 @@ begin
     v.len := n;
 end;
 
+(* n zero elements opened at i, those from i on moved up; i from 0 to
+   v.len. Stops the program, as push does, if there is no room. *)
+proc insert*(var v: Vec; i, n: INT);
+var zero: T; k: INT;
+begin
+    if (i < 0) or (i > v.len) or (n < 0) then Rt.stop("Vec.insert: out of range"); end;
+    need(v, n);
+    (* COPY goes the right way for the overlap *)
+    COPY(v.data[i + n..v.len + n], v.data[i..v.len]);
+    for k := i to i + n - 1 do v.data[k] := zero; end;
+    v.len := v.len + n;
+end;
+
+(* The n elements from i taken out, those after them moved down; i + n
+   at most v.len. *)
+proc remove*(var v: Vec; i, n: INT);
+begin
+    if (i < 0) or (n < 0) or (i + n > v.len) then Rt.stop("Vec.remove: out of range"); end;
+    COPY(v.data[i..v.len - n], v.data[i + n..v.len]);
+    v.len := v.len - n;
+end;
+
 (* The elements, until the array next grows. *)
 proc all*(const v: Vec): []T;
 var none: []T;

@@ -1,0 +1,52 @@
+module VecEdit;
+(* Vec's insert and remove: at the start, the middle and the end, n of 0,
+   growth past the first block, and removing everything. *)
+import Fmt, Heap, Rt, Ints := Vec(INT);
+
+(* Says the elements of v on one line. *)
+proc show(const v: Ints.Vec);
+var s: []INT; i: INT;
+begin
+    s := Ints.all(v);
+    for i := 0 to LEN(s) - 1 do Fmt.print("{} ", [Fmt.int(s[i])]); end;
+    Fmt.print("({})\n", [Fmt.int(v.len)]);
+end;
+
+(* Fills v with 1 to n. *)
+proc fill(var v: Ints.Vec; n: INT);
+var i: INT;
+begin
+    Ints.reset(v);
+    for i := 1 to n do Ints.push(v, i); end;
+end;
+
+proc main*;
+var v: Ints.Vec; i: INT; s: []INT;
+begin
+    Ints.init(v, Heap.heap);
+    fill(v, 5);
+    Ints.insert(v, 0, 2);  show(v);
+    Ints.insert(v, 7, 1);  show(v);
+    Ints.insert(v, 3, 2);  show(v);
+    Ints.insert(v, 3, 0);  show(v);
+    s := Ints.all(v);
+    s[3] := 8; s[4] := 9;
+    show(v);
+    Ints.remove(v, 0, 2);  show(v);
+    Ints.remove(v, 1, 3);  show(v);
+    Ints.remove(v, v.len - 1, 1);  show(v);
+    Ints.remove(v, 1, 0);  show(v);
+    Ints.remove(v, 0, v.len);  show(v);
+    Ints.insert(v, 0, 3);  show(v);
+    fill(v, 16);
+    Ints.insert(v, 8, 100);
+    s := Ints.all(v);
+    if (v.len # 116) or (s[7] # 8) or (s[8] # 0) or (s[107] # 0) or (s[108] # 9) or (s[115] # 16) then
+        Rt.stop("VecEdit: growth");
+    end;
+    for i := 1 to 100 do Ints.remove(v, 8, 1); end;
+    show(v);
+    Ints.done(v);
+end;
+
+end VecEdit.

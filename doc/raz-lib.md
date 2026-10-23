@@ -92,6 +92,8 @@ type Arena* = record
     ...
 end;
 proc init*(var ar: Arena; size: INT): BOOL;   (* an arena of size bytes; false if the system has none *)
+proc mark*(const ar: Arena): INT;             (* where ar stands now, for release *)
+proc release*(var ar: Arena; m: INT);         (* all allocated since mark m freed; a mark past where it stands stops the program *)
 proc reset*(var ar: Arena);                   (* every allocation forgotten; the memory used again *)
 proc done*(var ar: Arena);                    (* its memory given back *)
 ```
@@ -804,6 +806,8 @@ proc add*(var v: Vec): ^T;               (* a new element at the end, zero, to f
 proc tryPush*(var v: Vec; x: T): BOOL;   (* push; false, and v as it was, if there is no room *)
 proc tryAdd*(var v: Vec): (^T, BOOL);    (* add; nil and false, and v as it was, if there is no room *)
 proc resize*(var v: Vec; n: INT);        (* n elements: cut short, or the new ones zero *)
+proc insert*(var v: Vec; i, n: INT);     (* n zero elements opened at i; stops the program if there is no room *)
+proc remove*(var v: Vec; i, n: INT);     (* the n elements from i taken out, those after moved down *)
 proc all*(const v: Vec): []T;            (* the elements, until it next grows *)
 proc reset*(var v: Vec);                 (* emptied, its memory kept *)
 proc done*(var v: Vec);                  (* its memory given back *)

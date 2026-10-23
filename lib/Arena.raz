@@ -36,10 +36,24 @@ begin
     return ar.buf # nil;
 end;
 
+(* Where ar stands now, for release. *)
+proc mark*(const ar: Arena): INT;
+begin
+    return ar.used;
+end;
+
+(* Everything allocated from ar since mark m freed at once; a mark past
+   where it stands stops the program. *)
+proc release*(var ar: Arena; m: INT);
+begin
+    if (m < 0) or (m > ar.used) then Rt.stop("Arena.release: mark past the arena's end"); end;
+    ar.used := m;
+end;
+
 (* Forgets every allocation; the memory is used again. *)
 proc reset*(var ar: Arena);
 begin
-    ar.used := 0;
+    release(ar, 0);
 end;
 
 (* Gives the arena's block back to the system; what it handed out is
@@ -53,7 +67,7 @@ end;
 
 (* The module's test. *)
 proc main*;
-var ar: Arena; a: ^Mem.Allocator; p, q: ^U8;
+var ar: Arena; a: ^Mem.Allocator; p, q: ^U8; m: INT;
 begin
     if not init(ar, 4096) then Rt.stop("Arena.init"); end;
     a := ADR(ar.base);
@@ -64,6 +78,11 @@ begin
     if Mem.alloc(a, -1, 1) # nil then Rt.stop("Arena: negative"); end;
     reset(ar);
     if Mem.alloc(a, 4096, 1) # p then Rt.stop("Arena.reset"); end;
+    m := mark(ar);
+    p := Mem.alloc(a, 100, 1);
+    q := Mem.alloc(a, 100, 1);
+    release(ar, m);
+    if (mark(ar) # m) or (Mem.alloc(a, 100, 1) # p) then Rt.stop("Arena.release"); end;
     done(ar);
 end;
 
