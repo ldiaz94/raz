@@ -1287,9 +1287,9 @@ end;
 A slice of a `var` or `const` parameter, of a module variable, or of
 what a pointer points at may be returned: none of them is this
 procedure's frame. For a `const` parameter given a temporary, the slice
-lives to the end of the caller's statement (section 8). A slice of a frame that leaves it some other way isn't caught,
-and is the exception of section 10: one held in a local slice
-variable, or in a record, that is returned; one stored in a module
+lives to the end of the caller's statement (section 8). A slice of a
+frame that leaves it some other way isn't caught, and is the
+exception of section 10: one held in a local slice variable, or in a record, that is returned; one stored in a module
 variable or through a pointer; and one that came back from a call, as
 the slice of a `var` parameter does to the caller whose local it is.
 
