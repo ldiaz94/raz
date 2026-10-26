@@ -53,5 +53,5 @@ are checked.
 
 ## What comes next
 
-Not started; each the owner's call. `PROPOSALS.md` and
-`MEM_PROPOSAL.md` hold what waits for a later thaw.
+Not started; each the owner's call. `PLAN.md` says what is left before
+1.0.

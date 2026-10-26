@@ -110,7 +110,7 @@ What the port found in the seed, which the seed kept; a record now.
   same; whether the compiler built from this is slower for it is for
   the speed test of step 4 to say. A `const` parameter (a hint that
   the callee won't change it, so that the caller may pass its address)
-  would be a language change: it is in `../PROPOSALS.md`. (It came in
+  would be a language change. (It came in
   report 2026-10.33; since v0.20.0, built by v0.19.0, which has it,
   the routines that every program's compile goes through take their
   `Item` as `const`, measured, as `doc/compiler.md` says.)

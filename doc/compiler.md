@@ -941,8 +941,8 @@ convention (report 2026-10.33) made common.
 ## Inlining a procedure that only returns
 
 A call of a procedure whose body is only `return e`, with no locals,
-is made in place of the call, as PROPOSALS.md's "Inlining a procedure
-that only returns" has it. One pass keeps no tree to copy, but it can
+is made in place of the call, as the proposal "Inlining a procedure
+that only returns" had it. One pass keeps no tree to copy, but it can
 read source again, as `while` reads its condition again: `body` notes
 such a procedure (`onlyReturns`), keeping in its `Obj` an `Inline`
 (`Sym.raz`): the scanner's state at the `return`, its file, whether

@@ -3,8 +3,8 @@
 Read `doc/raz.md` (the language report, volume 1) and
 `doc/compiler.md` (the guide to the compiler) first; `doc/raz-lib.md`
 is volume 2, the library, `doc/report-history.md` what each version of
-the report changed, and `PROPOSALS.md` what waits for a thaw. The
-report defines the language.
+the report changed, and `PLAN.md` what is left before 1.0. The report
+defines the language.
 
 ## Setup and checks
 
@@ -103,7 +103,7 @@ mode. Every old form is still taken: a literal into a `[]U8`, the bare
 built-ins, what `SYSTEM` fences without it, an atomic given `ADR(x)`.
 `BOOT` names v0.23.0 (2026-10-26), so `src/` and the library it imports
 may use all of 10.37. CI couldn't run for it either; `make dist` made its tarball here.
-v0.22.0, report 2026-10.36, before it, is the twelfth thaw, what `PROPOSALS.md`
+v0.22.0, report 2026-10.36, before it, is the twelfth thaw, what the proposals
 collated: `MIN`, `MAX`, `ABS`, `CLZ`, `CTZ`, `POPCOUNT`, `INT(b)`,
 `OFFSET`, `SIZE(T.f)`, `BYTES` and `FILL`; a qualified case in an arm,
 slice and `ERROR` constants, a record's procedure field that takes the
@@ -120,7 +120,7 @@ the assembler knows a kernel's instructions (`cli`, `lgdt`, `mov` to
 or the top 2 GB; `raz -bare` makes a program for the bare machine, which
 reads no arguments and runs no body of `Rt`; `BOOT` named v0.20.0, and
 `Sys` takes `PTR` where it had its private `bytes`. `MEM_PROPOSAL.md`
-proposes a memory-safe raz, for a thaw.
+proposed a memory-safe raz (the safety thaw took part of it).
 v0.20.0, report 2026-10.34, before it: v0.19.0 builds `src/` and the
 Pascal seed is gone; `Buf.bytes`, `Sys.entryKind` and `src/`'s `Item`s
 only read take `const`; and the tenth thaw, by the owner's word,
@@ -159,16 +159,17 @@ defect, and the library grows only by what breaks no program written
 for it. Thaws happen only by the owner's word (v0.6.0, reports
 2026-10.13 to 10.23, 10.25 for strings, 10.26 for `INT` and views, 10.33
 for `const` parameters, variants in constants and the library by `var`,
-10.34 for `PTR`, and 10.35 and 10.36 for what `PROPOSALS.md` collated).
+10.34 for `PTR`, and 10.35 and 10.36 for what the proposals collated).
 
 **The hard freeze** (owner, 2026-10-23). raz takes no more proposals:
-nothing new goes in `PROPOSALS.md`, and a wish, the owner's or yours,
-isn't recorded. What is open there, the safety thaw and the Moss work
-(`Host`, a freestanding program stated, the assembler's instructions,
-implementation limits), is the last. `PLAN.md` gives the order: v0.22.0 for what is
-done, the safety thaw, the Moss work, the hard freeze, a clean-up, then
-1.0 when use shows it. Once it is done the language is in
-a hard freeze: no more thaws. The language changes only to mend a
+a wish, the owner's or yours, isn't recorded. `PROPOSALS.md` and
+`MEM_PROPOSAL.md` are gone (2026-10-26; in git before). What was left
+open, the safety thaw (done, v0.24.0) and the Moss work (`Host`, a
+freestanding program stated, the assembler's instructions,
+implementation limits, in `PLAN.md`'s appendix), is the last. `PLAN.md`
+gives the order: v0.22.0 for what is done, the safety thaw, the Moss
+work, the hard freeze, a clean-up, then 1.0 when use shows it. Once it
+is done the language is in a hard freeze: no more thaws. The language changes only to mend a
 defect, the compiler or the library doing other than the report says;
 the library's core (appendix A) only to mend a defect or to plug a very
 big gap; and the rest of the library grows only conservatively, by what
@@ -312,8 +313,8 @@ otherwise.
 - A returned slice of the frame (report 2026-10.27, 7.3) is caught by
   `Item.frame`, which sees only the expression: a slice held first in a
   local slice variable or a record, stored, or come back from a call,
-  isn't, and is left undefined (10). `ret` and `keep`, in
-  PROPOSALS.md, would close it; the owner keeps it open for now.
+  isn't, and is left undefined (10). `ret` and `keep`, once
+  proposed, would close it; the owner keeps it open for now.
 - An empty slice constant, `const E: []T = [];` (report 2026-10.32),
   is 16 zero bytes in read-only data, read as an array constant is;
   `LEN` of it is no constant. A constant's slice part takes `[]`, names

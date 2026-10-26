@@ -48,7 +48,6 @@ ELF executable itself, with no assembler or linker, and compiles about
 | `conform/` | The conformance suite: what every implementation must do |
 | `sbcl/` | An example: a second compiler, in Common Lisp for SBCL, written from the report alone and kept as a reference; it passes `conform/` and builds `src/` into a compiler that makes the same bytes. Not part of the build |
 | `test/` | This compiler's own tests, and the scripts that run them |
-| `PROPOSALS.md` | What the language might have, waiting for a later thaw |
 
 ## Building
 
@@ -307,9 +306,10 @@ Since v0.5.0 the language is frozen, softly: it changes only to mend a
 defect, and the library grows only by what breaks no program. A library
 change that must break programs keeps the old form for one minor version
 beside the new; the release notes list the old forms, and the next
-version removes them. Wishes
-wait in `PROPOSALS.md`, for a later thaw; v0.6.0 was one, for a
-language anyone can build again from its report.
+version removes them. Thaws, by the owner's word, changed it since;
+the last, for safety, was v0.24.0. After the Moss work (v0.25.0) it is
+frozen hard: no more thaws, the language mended only where it does
+other than the report says.
 
 ## Not here
 
