@@ -7,6 +7,13 @@ module Files;
 import Sys, Buf, Heap, Rt;
 import SYSTEM;
 
+(* The number of arguments, the program's name included; argument i
+   exists for i below it. *)
+proc argCount*: INT;
+begin
+    return ARGC();
+end;
+
 (* Argument i, a C string, as a slice; empty if there is no argument i,
    as for i below 0 or from ARGC() on. *)
 proc arg*(i: INT): []const U8;
@@ -327,7 +334,8 @@ begin
     if load("/tmp/raz-files-test", b) # Sys.errNoEntry then Rt.stop("Files.load: no such file"); end;
     if load("/", b) # -21 then Rt.stop("Files.load: a directory"); end;
     if read("/", b) or (b.len # 6) then Rt.stop("Files.read: a directory"); end;
-    if (LEN(arg(ARGC())) # 0) or (LEN(arg(-1)) # 0) then Rt.stop("Files.arg: past the arguments"); end;
+    if (argCount() < 1) or (LEN(arg(0)) = 0) then Rt.stop("Files.argCount"); end;
+    if (LEN(arg(argCount())) # 0) or (LEN(arg(-1)) # 0) then Rt.stop("Files.arg: past the arguments"); end;
     Buf.done(b);
     testPipe;
     testTree;

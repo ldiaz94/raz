@@ -1107,6 +1107,7 @@ holds; a symbolic link is removed itself and never followed.
 
 ```
 module Files;
+proc argCount*: INT;                                (* how many arguments there are, the program's name included *)
 proc arg*(i: INT): []const U8;                     (* argument i; 0 is the program's name; "" if there is none *)
 proc read*(path: []const U8; var b: Buf.Buf): BOOL;   (* the whole file added to b *)
 proc load*(path: []const U8; var b: Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
