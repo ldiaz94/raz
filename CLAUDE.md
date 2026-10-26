@@ -48,7 +48,7 @@ tools and the library's tests: they must have no warnings.
 
 - The compiler, `src/`, is raz, in the language of the report and with
   the library of `lib/`; it must build with the release `BOOT` names
-  (v0.23.0), so it, and the modules of `lib/` it imports, use nothing
+  (v0.25.0), so it, and the modules of `lib/` it imports, use nothing
   that release doesn't know until `BOOT` names a newer one.
 - Work goes by milestones, each a release, set by the owner. A milestone
   starts only on the owner's explicit go-ahead; within it, one commit
@@ -97,8 +97,8 @@ linked only as `Rt` declares them; `push` of a constant, `cld`, `std`
 and the SHA and shuffle instructions; and in `doc/compiler.md`, a
 program with its own `Rt`, the machine as the code leaves it, the
 recipe for an interrupt's entry, and what `src/` asks of `lib/`.
-Module lookup keeps the root, `/`. `BOOT` names v0.23.0. The tests need
-no Python.
+Module lookup keeps the root, `/`. The tests need no Python. `BOOT`
+names v0.25.0 (2026-10-26), so `src/` may use all of 10.38.
 
 v0.24.0, report 2026-10.37 still, ends the safety thaw (`PLAN.md` 2): the
 old forms are errors. What `SYSTEM` fences is refused outside a module
