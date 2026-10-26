@@ -106,6 +106,16 @@ library it imports (`Buf`, `Files`, `Fmt`, `Heap`, `Mem`, `Out`, `Rt`,
 
 ## 3. The Moss work: v0.25.0
 
+The scope, by the owner's word of 2026-10-26: what makes raz a better
+freestanding and portable compiler, nothing for Moss alone. `Host` is
+in. `-moss` (the branch `moss-startup-args-v1`) is not: Moss supplies
+its own start under item 4's contract, so raz knows no system's calls
+but Linux's. Of the implementation limits, the report's least and this
+compiler's errors past its own are in; compiling imports from the
+leaves and queuing instances, so the compiler fits a small stack, are
+dropped for good: Moss gives the compiler a larger stack instead.
+Report 2026-10.38 (993cd63) holds the language's part.
+
 1. Merge the branch `moss-platform-boundary`'s two plain fixes (a file's
    identity from `Sys.info`; a main file at the root), rebased on main.
 2. `Host`, as "The compiler on another host" in the appendix asks:
@@ -115,8 +125,8 @@ library it imports (`Buf`, `Files`, `Fmt`, `Heap`, `Mem`, `Out`, `Rt`,
 3. What the compiler asks of `Sys`, `Rt` and `Files`, written down in
    `doc/compiler.md` and held by a test.
 4. "A freestanding program, stated", "The assembler's instructions" and
-   "Implementation limits, and a compiler for a small stack", in the
-   appendix.
+   "Implementation limits, and a compiler for a small stack" (the
+   report's least and the errors only), in the appendix.
 5. Release.
 
 ## 4. The hard freeze
