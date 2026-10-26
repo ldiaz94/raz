@@ -25,7 +25,7 @@ fast.
 - Tag `v0.22.0`; then, as a step of its own, move `BOOT` to it, so that
   `src/` and the library it imports may use what 10.36 brought.
 
-## 2. The safety thaw: v0.23.0
+## 2. The safety thaw: v0.23.0, then v0.24.0
 
 The scope, by the owner's word of 2026-10-26, after reviewing
 `MEM_PROPOSAL.md` whole with its appendices. raz doesn't promise memory
@@ -74,17 +74,29 @@ go to a pointer parameter only dereferenced, mended by `var` or
 3,000 uses, most in `lib/` (`Sys`, `Rt`, `Heap`, `Map`) and `src/`
 (`Scan`, `Link`, `Chunk`). All 31 atomics take `ADR`.
 
-1. The report's text, for the owner to review.
-2. `tools/Mutate.raz` taught the two rewrites: `ADR` at a parameter
-   only dereferenced to `var` or `const`, and `SYSTEM.` where an
-   address is kept.
-3. The compiler, a commit a piece; the library; the programs in `~/r`
-   it breaks, each mended.
-4. Release, and the report's pages checked; then, a step of its own,
-   `BOOT` moved, `src/` imports `SYSTEM`, and the warning becomes an
-   error.
+Two releases, by the owner's word of 2026-10-26, since `src/` and the
+library it imports (`Buf`, `Files`, `Fmt`, `Heap`, `Mem`, `Out`, `Rt`,
+`Str`, `Sys`, and `Lock` and `Bytes` under them) must build with
+`BOOT`, which knows neither `[]const` nor `SYSTEM`:
 
-## 3. The Moss work: v0.24.0
+1. The report's text, for the owner to review (drafted 2026-10-26).
+2. **v0.23.0, which breaks nothing.** The compiler, a commit a piece,
+   each with its part of the report: an array a call returns kept to
+   the end of its procedure; atomics on a variable; `[]const T`;
+   `SYSTEM`. The old forms are still taken, silently: a string literal
+   into a `[]U8`, `ADR` and the rest without `SYSTEM`, an atomic given
+   a pointer. The library: `Task`, `Guarded`, `Heap`'s debugging mode.
+   `tools/Mutate.raz` taught the rewrites: `ADR` at a parameter only
+   dereferenced to `var` or `const`, `SYSTEM.` where an address is
+   kept, an atomic's `ADR` dropped, `[]const` where a slice is only
+   read. Release, and the report's pages checked.
+3. `BOOT` moved to v0.23.0, a step of its own.
+4. **v0.24.0, which enforces it.** `lib/`, `src/`, `tools/`,
+   `examples/` and the tests rewritten by `Mutate`, then the old forms
+   made errors; the programs in `~/r` mended, each its own commit.
+   Release.
+
+## 3. The Moss work: v0.25.0
 
 1. Merge the branch `moss-platform-boundary`'s two plain fixes (a file's
    identity from `Sys.info`; a main file at the root), rebased on main.
@@ -100,12 +112,12 @@ go to a pointer parameter only dereferenced, mended by `var` or
 
 ## 4. The hard freeze
 
-From v0.24.0 on: no more thaws. The language changes only to mend a
+From v0.25.0 on: no more thaws. The language changes only to mend a
 defect; the library's core (appendix A) only to mend a defect or plug a
 very big gap; the rest of the library grows only conservatively, by
 what breaks no program, on the owner's word.
 
-## 5. Clean-up: v0.25.0, the last before 1.0
+## 5. Clean-up: v0.26.0, the last before 1.0
 
 The files that served the thaws are made a record, short and true:
 
@@ -126,6 +138,6 @@ The files that served the thaws are made a record, short and true:
 
 ## 6. 1.0
 
-No date. raz is 1.0 when use shows it: programs written against v0.25.0
+No date. raz is 1.0 when use shows it: programs written against v0.26.0
 for long enough that no defect is outstanding. Until then it is
-0.25.x, mending defects only.
+0.26.x, mending defects only.
