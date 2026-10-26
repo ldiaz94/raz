@@ -306,9 +306,11 @@ otherwise.
   an array literal (report 2026-10.36), an array constant of its own in
   a chunk with no name, nested to any depth. An `ERROR` constant given
   another takes its chunk: the same error.
-- An array a call returns is a temporary of the statement (report
-  2026-10.28, 8): a slice of it kept past the statement is undefined
-  (10), and isn't caught.
+- An array a call returns, or a record or variant holding one, and a
+  `const` parameter's temporary holding one, is a slot of the
+  procedure (report 2026-10.37, 8: `Sym.holdsArray`, `allocPerm`): a
+  slice of it may be kept to the end of the procedure, and returning
+  it is caught only as 7.3 catches a slice of the frame.
 - `Buf.add`, `str` and `spare`, and `Vec`'s growing, stop the program
   when the allocator has no room; `room` asks first.
 - `Sys.handle`'s handler only notes the signal, with `XCHG`; it is

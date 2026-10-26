@@ -1896,8 +1896,8 @@ end;
 
 (* A const parameter's argument that isn't a variable, or is one with no
    address of its own (a packed record's field, a view, through ^VOLATILE),
-   in a temporary of the statement, whose address then goes (report
-   section 8): a slice's two words, a record or an array copied, or a
+   in a temporary of the statement, or of the procedure if it holds an
+   array, whose address then goes (report section 8): a slice's two words, a record or an array copied, or a
    single value stored. *)
 proc constTemp(var x: Item): ERROR;
 var t: I64;
@@ -1909,7 +1909,13 @@ begin
         Gen.popVar(frameAdr(t), 8);
     elsif Sym.isAggregate(x.typ) then
         if x.view then return noAddress(x, "a view of a record or an array can't be a const parameter"); end;
-        return copyToTemp(x);
+        if not Sym.holdsArray(x.typ) then return copyToTemp(x); end;
+        (* a slice of it may come back and be kept to the end of the
+           procedure (report 8), so its slot lasts as long *)
+        if x.vol then return Scan.markAt(x.pos, "can't copy through a volatile pointer"); end;
+        try address(x);
+        t := Gen.allocPerm(x.typ^.size, x.typ^.align);
+        Gen.copyTo(frameAdr(t), x.typ^.size);
     else
         try value(x);
         t := Gen.allocTemp(x.typ^.size, x.typ^.align);

@@ -431,6 +431,33 @@ begin
     return t^.form in {fArray, fSlice, fRecord, fVariant};
 end;
 
+(* Whether t is an array, or a record or variant with one among its
+   fields, at any depth: a value a slice may be cut from (report 8, an
+   array a call returns) *)
+proc holdsArray*(t: ^Type): BOOL;
+var f, c: ^Obj;
+begin
+    if t^.form = fArray then return true; end;
+    if t^.form = fRecord then
+        f := t^.fields;
+        while f # nil do
+            if holdsArray(f^.typ) then return true; end;
+            f := f^.next;
+        end;
+    elsif t^.form = fVariant then
+        c := t^.fields;
+        while c # nil do
+            f := c^.fields;
+            while f # nil do
+                if holdsArray(f^.typ) then return true; end;
+                f := f^.next;
+            end;
+            c := c^.next;
+        end;
+    end;
+    return false;
+end;
+
 (* Whether a result field f is a single value of at most a word, not a real *)
 proc oneWord(f: ^Obj): BOOL;
 begin

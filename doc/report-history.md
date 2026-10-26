@@ -259,3 +259,9 @@ at the time.
   later in the same `type` section, so that a record's callback can
   take the record (sections 4 and 5.9). Appendix A says what a wipe
   can't reach. It breaks no program.
+- **2026-10.37.** A defect mended: an array a call returns, or a
+  record or variant holding one, lives to the end of the procedure the
+  call is in, not of its statement, and so does a `const` parameter's
+  temporary holding one; a slice of it may be kept in a variable for
+  the rest of the procedure (sections 7.3, 8 and 10). It breaks no
+  program.

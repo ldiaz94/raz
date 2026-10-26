@@ -1503,9 +1503,13 @@ temporaries, since each is written before it is read; `endProc` writes
 the epilogue and patches the frame's size in. Within a statement,
 scratch space comes from `allocTemp` and is given back by
 `releaseTemps`; `allocPerm` reserves space for the whole procedure.
-An array a call returns is such a temporary, so it lives to the end of
-its statement, as the report says (section 8), and a slice of it kept
-past that reads what the next statement puts there.
+A result that holds an array (`Sym.holdsArray`), and a `const`
+parameter's temporary that holds one (`constTemp`), is given an
+`allocPerm` slot instead, so that it lives to the end of the procedure,
+as the report says (section 8): a slice of it may be kept in a local.
+Before, it was an `allocTemp` slot, and the next statement wrote over
+it. Each call has a slot of its own, so the frame grows by each such
+result; in a loop, one call's slot holds its latest result.
 
 Register variables: the parser chooses them (`chooseRegs`, in
 Parse.raz), then gives the locals left in memory their slots

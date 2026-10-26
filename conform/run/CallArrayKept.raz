@@ -1,0 +1,52 @@
+(* An array a call returns, or a record holding one, lives to the end of
+   the procedure the call is in (report section 8): a slice of it kept in
+   a variable still reads it after later statements, each call has its
+   own, and a const parameter's temporary holding one lives as long. *)
+module CallArrayKept;
+import Out;
+
+type R = record n: INT; a: [8]U8; end;
+
+(* "name-00" and c *)
+proc name(c: U8): [8]U8;
+var a: [8]U8;
+begin
+    a := "name-000";
+    a[7] := c;
+    return a;
+end;
+
+(* A record holding name(c) *)
+proc rec(c: U8): R;
+begin
+    return {n: 1, a: name(c)};
+end;
+
+(* The array in r, as a slice *)
+proc bytes(const r: R): []U8;
+begin
+    return r.a[0..8];
+end;
+
+proc main*;
+var s, t, u, v: []U8; i: INT;
+begin
+    s := name('a')[0..8];
+    t := name('b')[0..8];
+    u := rec('c').a[0..8];
+    v := bytes(rec('d'));
+    for i := 0 to 1 do
+        Out.str(name('x')[0..8]);
+        Out.char(' ');
+    end;
+    Out.str(s);
+    Out.char(' ');
+    Out.str(t);
+    Out.char(' ');
+    Out.str(u);
+    Out.char(' ');
+    Out.str(v);
+    Out.char(10);
+end;
+
+end CallArrayKept.

@@ -36,7 +36,8 @@
    (behindPointer), where C would send a small struct back in registers.
 
    A procedure's frame holds its parameters, its variables, and the
-   temporaries of the statement running. The variables are zeroed on
+   temporaries of the statement running, and the results of its calls
+   that hold an array (report 8). The variables are zeroed on
    entry.
 
    Depends on: Scan and Diag for errors, Sym for types, Chunk for code
@@ -311,6 +312,7 @@ begin
 end;
 
 proc loaded(i: INT): INT; forward;
+proc allocPerm*(size, align: I64): I64; forward;
 proc allocTemp*(size, align: I64): I64; forward;
 
 (* The value i, in a register, goes to a frame slot; one noted that
@@ -2091,7 +2093,12 @@ begin
     res := c.sig^.base;
     c.ret := 0;
     ni := 0; nf := 0;
-    if (res # nil) and (Sym.behindPointer(res) or (res^.form = Sym.fSlice)) then
+    if (res # nil) and Sym.holdsArray(res) then
+        (* a slice of it may be kept for the rest of the procedure
+           (report 8), so its slot lasts as long *)
+        c.ret := allocPerm(res^.size, res^.align);
+        ni := 1;
+    elsif (res # nil) and (Sym.behindPointer(res) or (res^.form = Sym.fSlice)) then
         c.ret := allocTemp(res^.size, res^.align);
         if Sym.behindPointer(res) then ni := 1; end;
     end;

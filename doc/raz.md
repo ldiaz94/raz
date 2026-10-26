@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.36 of the report; section 11 says where each
+This is version 2026-10.37 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -62,6 +62,10 @@ array or a slice set to one value (section 6.8); a qualified case in a
 parameter's slice returned (section 7.3); and a procedure type's
 parameter or result may name a type declared later in its `type`
 section (sections 4 and 5.9); it breaks no program.
+2026-10.37 mends a defect: an array a call returns, or a record or
+variant holding one, lives to the end of the procedure the call is in,
+not of its statement, so a slice of it may be kept (section 8); it
+breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -1314,7 +1318,7 @@ end;
 A slice of a `var` or `const` parameter, of a module variable, or of
 what a pointer points at may be returned: none of them is this
 procedure's frame. For a `const` parameter given a temporary, the slice
-lives to the end of the caller's statement (section 8). A slice of a
+lives to the end of the caller's procedure (section 8). A slice of a
 frame that leaves it some other way isn't caught, and is the
 exception of section 10: one held in a local slice variable, or in a record, that is returned; one stored in a module
 variable or through a pointer; and one that came back from a call, as
@@ -1602,8 +1606,8 @@ to read, is a slice like any other, which writes the caller's array if
 written through. `const` keeps the procedure from changing the
 variable by its name, not every path to its bytes. Its argument is any expression of the
 parameter's type: a variable or a constant is passed in place, anything
-else as a temporary of the statement, as an array a call returns is
-(below). If the variable changes while the procedure runs, through a
+else as a temporary, of the procedure if it holds an array, as an
+array a call returns is (below). If the variable changes while the procedure runs, through a
 `var` parameter, a pointer or another thread, the procedure sees the
 change.
 
@@ -1634,14 +1638,17 @@ which then returns them as they are: `return divmod(n, 2);`. A
 procedure that can fail has an `ERROR` as its last result (section
 5.8), which `try` passes on (section 7.8).
 
-An array a call returns lives to the end of the statement the call is
-in. A slice of it may be used there, indexed, passed or compared; one
-kept past the statement, in a variable or anywhere else, points at
-what is gone, and is the exception of section 10:
+An array a call returns, or a record or variant holding one, is a
+hidden variable of the procedure the call is in, as an array literal
+used as a slice is (section 6.5), and lives to the end of that
+procedure's call. A slice of it may be kept in a variable and used for
+the rest of the procedure; in a loop, the hidden variable holds what
+the latest call returned. Like any slice of the frame, it may not be
+returned (section 7.3):
 
 ```
-s := f('a')[0..4];     (* f returns a [8]U8: s is undefined after this *)
-Out.str(f('a')[0..4]);   (* used in its statement: defined *)
+s := f('a')[0..4];     (* f returns a [8]U8: s is good to the end of the procedure *)
+t := f('b')[0..4];     (* a hidden variable of its own: s is unchanged *)
 ```
 
 ```
@@ -1798,9 +1805,7 @@ and indexing arrays and slices is checked, so a program's behaviour is
 defined by this report, with one exception: memory reached other than
 through a checked variable. Dereferencing a stale or made-up pointer,
 indexing through a pointer, a slice kept after the call whose frame
-holds what it points at (section 7.3), a slice of an array a call
-returned, or of a temporary given to a `const` parameter, kept past
-its statement (section 8), an index out of range in a
+holds what it points at (section 7.3), an index out of range in a
 module that says `check off;`, writing a string's bytes, a code procedure that
 breaks its rules, and C code can read or write any memory, and what
 follows isn't defined. Dereferencing `nil`, dividing

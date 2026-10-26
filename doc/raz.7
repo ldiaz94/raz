@@ -626,7 +626,8 @@ and a pointer only for what it keeps.
 returns several results.
 Returning a slice of a local array, of a value parameter, or of an
 array literal is an error: the frame it points into is gone [7.3].
-An array a call returns lives to the end of its statement [8].
+An array a call returns lives to the end of the procedure the call
+is in [8].
 A procedure is a value of its type,
 .Cm "proc(a, b: INT): BOOL" ,
 or nil.
