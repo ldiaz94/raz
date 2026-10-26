@@ -420,5 +420,8 @@ if test/editors.sh; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
 # Installed source libraries: default, explicit and isolated lookup.
 if test/library-path.sh "$raz"; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
 
+# The compiler built with another host (test/host/Host.raz).
+if test/compiler-host.sh "$raz"; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
+
 echo "$pass passed, $fail failed"
 [ $fail = 0 ]

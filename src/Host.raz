@@ -1,0 +1,103 @@
+(* Host: what the compiler asks of the system it runs on, beyond the
+   library. The host is the system running raz; the target, the one its
+   program will run on. This file is Linux's.
+
+   Another host stages its own file in its place: copy src/ to a
+   directory, put that host's Host.raz there instead of this one, and
+   build the copy with the host's library (doc/compiler.md says how).
+   Raz and Elf import only this module for what follows, so a host
+   gives these five procedures and keeps every export:
+
+     libraryDir     where the standard library is, as a directory path
+     cLibrary       which C library a program that uses C is linked
+                    against by default, or none if the host can't make one
+     writeExecutable  the file at path made to hold an executable
+     prepareRun     the path raz run writes its program to, or an error
+                    if this host can't run it; asked first, before any
+                    source is read, so its error is the refusal
+     execute        replaces the compiler with the program written there
+
+   A host that can't run programs refuses in prepareRun and gives
+   execute any body; one that has no C gives cLibrary the value none.
+   Strings it returns must live until the compiler exits.
+
+   Depends on: Sys and Files for Linux's services, Scan for memory that
+   lasts until exit, Diag and Fmt for paths. Leaves out: compiling and
+   the ELF format, which are Parse and Elf's. *)
+module Host;
+import Sys, Files, Fmt, Diag, Scan;
+import SYSTEM;
+
+type
+    CLib* = (none, glibc, musl);   (* the C library to link against *)
+
+const
+    LoaderGlibc = "/lib64/ld-linux-x86-64.so.2";
+    LoaderMusl = "/lib/ld-musl-x86_64.so.1";
+    MemfdCreate = 319;    (* the system calls raz run makes *)
+    MfdCloexec = 1;       (* an ELF still executes: the kernel opens it first *)
+    Execve = 59;
+    Mode755 = 1EDH;       (* rwxr-xr-x *)
+    CreateRun: ERROR = "can't create a memfd";
+
+(* The directory of the library, ending in what the name of raz leaves,
+   "lib": the one beside raz as the system says (a link to raz is
+   followed), or, with no /proc, beside argument 0 as it was typed *)
+proc libraryDir*: []const U8;
+var path: []const U8; error, i: INT;
+begin
+    path, error := Sys.readLink("/proc/self/exe");
+    if error # 0 then path := Files.arg(0); end;
+    i := LEN(path);
+    while (i > 0) and (path[i - 1] # '/') do DEC(i); end;
+    if i = 0 then return "lib"; end;
+    return Diag.say("{}lib", [Fmt.str(path[0..i])]);
+end;
+
+(* The C library a program that uses C is linked against when -libc
+   doesn't say: glibc, or musl only if the machine has musl's loader and
+   not glibc's, as Alpine has *)
+proc cLibrary*: CLib;
+begin
+    if (Sys.access(LoaderGlibc, {}) # 0) and (Sys.access(LoaderMusl, {}) = 0) then return musl; end;
+    return glibc;
+end;
+
+(* The file at path made to hold data, an executable: written, then
+   given mode 755. False if either failed. *)
+proc writeExecutable*(path, data: []const U8): BOOL;
+begin
+    return Files.write(path, data) and (Sys.chmod(path, Mode755) >= 0);
+end;
+
+(* s as a C string, in memory that is never freed *)
+proc cstr(s: []const U8): ^U8;
+var p: ^U8;
+begin
+    p := Scan.grab(LEN(s) + 1);
+    if LEN(s) > 0 then COPY(p[0..LEN(s)], s); end;
+    p[LEN(s)] := 0;
+    return p;
+end;
+
+(* The path raz run writes its program to: a memfd, a file that lives
+   only in memory. Its descriptor stays open until execute, whose
+   close-on-exec flag lets the kernel release it, or until the compiler
+   ends after an error. *)
+proc prepareRun*: ([]const U8, ERROR);
+var fd: INT;
+begin
+    fd := SYSTEM.SYSCALL(MemfdCreate, cstr("raz"), MfdCloexec);
+    if fd < 0 then return "", CreateRun; end;
+    return Diag.say("/proc/self/fd/{}", [Fmt.int(fd)]), nil;
+end;
+
+(* The program at path runs in the compiler's place, with the compiler's
+   arguments from number first on as its own, first as its argument 0,
+   and the environment. It returns only if that failed: minus the errno. *)
+proc execute*(path: []const U8; first: INT): INT;
+begin
+    return SYSTEM.SYSCALL(Execve, cstr(path), SYSTEM.ARGV() + first, SYSTEM.ARGV() + (Files.argCount() + 1));
+end;
+
+end Host.

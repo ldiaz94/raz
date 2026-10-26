@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 12,700 lines of code (the
+The compiler is twelve files of raz, about 12,700 lines of code (the
 budget is 14,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -26,7 +26,8 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Parse.raz` | 4,816 | 4,098 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 408 | 316 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Raz.raz` | 419 | 334 | The command line |
+| `src/Host.raz` | 103 | 52 | The system running the compiler |
+| `src/Raz.raz` | 394 | 316 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -2190,7 +2191,7 @@ loader and the first library are glibc's,
 `/lib64/ld-linux-x86-64.so.2` and `libc.so.6`, or musl's,
 `/lib/ld-musl-x86_64.so.1` and `libc.so`, which musl's loader, being
 the library itself, takes to mean itself (`Elf.setMusl`). `-libc`
-chooses; left out, `Raz.muslHere` chooses musl where the machine has
+chooses; left out, `Host.cLibrary` does: musl where the machine has
 its loader and not glibc's, as Alpine does. A symbol that isn't live
 gets no relocation, so a program runs over a C library that lacks a
 procedure it declares but never reaches. `sizeTables` and `putTables` lay these out in the room `Link.raz` left
@@ -2200,6 +2201,48 @@ Line numbers are DWARF 4: the line table `makeLines` made from the
 notes `Chunk.noteLine` made, and the single compile unit gdb needs to find
 it, which `putDebug` writes. There are no types or variables in it;
 gdb can stop at a line and show where it is, not print a variable.
+
+## Host.raz: the system running the compiler
+
+The host is the system running raz; the target is the system its
+program will run on. Everything the compiler asks of its host that the
+library doesn't give is in `Host.raz`, five procedures, each a real
+difference between hosts. Nothing else in `src/` makes a system call,
+reads `argv`, opens `/proc` or sets a file's mode; it reads, writes and
+lists files, the environment and the working directory through the
+library (`Sys`, `Files`), and `Files.argCount` and `Files.arg` give it
+its command line.
+
+- `libraryDir`: the directory of the standard library. Linux's is the
+  `lib` beside raz, found by `/proc/self/exe` so that a link to raz
+  works, or, with no `/proc`, beside argument 0.
+- `cLibrary`: `CLib = (none, glibc, musl)`, the C library a program that
+  uses C is linked against when `-libc` doesn't say. `none` says the
+  host can't make such a program, and `Raz` refuses one when it finds
+  the program uses C. Linux's is glibc, or musl where only its loader
+  is there.
+- `writeExecutable`: the bytes `Elf` made, written as an executable.
+  Linux's writes the file and sets mode 755. It returns false on any
+  failure, which `Elf` reports.
+- `prepareRun`: the path `raz run` writes to, or an error, which is the
+  refusal of a host that can't run a program. Linux's is a memfd,
+  `/proc/self/fd/N`, kept open until `execute`.
+- `execute`: replaces the compiler with the program at that path, whose
+  arguments are the compiler's from number `first` on (so its argument 0
+  is `Main.raz`), and the environment. It returns only on failure.
+
+**Building for another host.** Stage the sources: copy `src/` to a
+directory, put that host's `Host.raz` there in place of raz's, and
+build `Raz.raz` from the copy with that host's library. This is the one
+way; raz knows no host but Linux. A module in the main file's
+directory is found first, so `-I` alone can't replace `Host.raz`, which
+is right: a module is never replaced silently. The new file keeps every
+export, `CLib` too, and opens with what it is, as raz's does.
+`test/host/Host.raz` is such a file (its library from the environment,
+no run, no C), and `test/compiler-host.sh` builds the compiler with it
+and checks the four differences. The host changes nothing of the target:
+a program for another system still needs that system's `Sys` and `Rt`,
+and for a kernel the options `-bare`, `-s` and `-base`.
 
 ## Raz.raz: the command line
 
@@ -2212,8 +2255,8 @@ each with the variable it goes in, found by name (`addCLink`): `exit`
 for `Rt.cExit`, and, if the program has `Thread`, `pthread_create` and
 `pthread_join` for `Thread.cCreate` and `Thread.cJoin`. Then it has
 gen's `entryPoint` write the entry point, and `Link.markLive` mark what it
-reaches. The program is `proc main*: INT`; where raz is, for the library
-beside it, it reads from `/proc/self/exe`, and the version it prints is
+reaches. The program is `proc main*: INT`; `Host` says where the library is and
+which C library to use by default (below), and the version it prints is
 the module `Version`, which the build makes from `git describe`. On a target
 without reals (`HasReals`, a constant of `Parse`; x86-64 has
 them), a live chunk that computes with one is an error at the first
@@ -2235,10 +2278,13 @@ stores alone, so a failed check says where it was; but `Rt.fail` and
 program that uses C is refused.
 
 `raz -S` lists the code (`X64.list`) instead of writing
-it. `raz run` writes the executable to a memfd, a file only in memory, and
-executes it through `/proc/self/fd` in raz's own place, handing it the
-rest of raz's `argv`. Nothing is left on disk, and the program's
-status is the command's.
+it. `raz run` writes the executable to the path `Host.prepareRun` gives
+and has `Host.execute` run it in raz's own place, handing it the rest
+of raz's arguments. On Linux the path is a memfd, a file only in
+memory, so nothing is left on disk, and the program's status is the
+command's. `prepareRun` is called as soon as the command line is read,
+before any source, so a host that can't run refuses there. The
+arguments are read through `Files.argCount` and `Files.arg`.
 
 Before compiling, `userLibraries` reads `RAZ_PATH` with `Sys.envAt`,
 which distinguishes an unset variable from an explicitly empty one.

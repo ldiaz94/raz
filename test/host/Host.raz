@@ -1,0 +1,46 @@
+(* A compiler host for test/compiler-host.sh: the library is where the
+   environment's RAZ_TEST_LIBRARY says, raz run is refused and a program
+   that uses C is not made. With RAZ_TEST_WRITE=refuse the executable
+   can't be written. Linux still supplies the runtime and the files. *)
+module Host;
+import Sys, Files;
+
+type
+    CLib* = (none, glibc, musl);   (* as raz's Host.raz has it *)
+
+const
+    RunRefused: ERROR = "this test host cannot run programs";
+    CannotWrite = "refuse";   (* RAZ_TEST_WRITE's value that fails the write *)
+
+(* The library the test sets up *)
+proc libraryDir*: []const U8;
+begin
+    return Sys.env("RAZ_TEST_LIBRARY");
+end;
+
+(* No C *)
+proc cLibrary*: CLib;
+begin
+    return none;
+end;
+
+(* The file written as it is, or not at all when the test says so *)
+proc writeExecutable*(path, data: []const U8): BOOL;
+begin
+    if Sys.env("RAZ_TEST_WRITE") = CannotWrite then return false; end;
+    return Files.write(path, data) and (Sys.chmod(path, 1EDH) >= 0);
+end;
+
+(* Refused *)
+proc prepareRun*: ([]const U8, ERROR);
+begin
+    return "", RunRefused;
+end;
+
+(* Never reached, since prepareRun refuses *)
+proc execute*(_path: []const U8; _first: INT): INT;
+begin
+    return -38;
+end;
+
+end Host.
