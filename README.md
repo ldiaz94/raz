@@ -72,7 +72,7 @@ the same file.
 
 Both take `PREFIX=/usr/local` (or another place) instead of `~/.local`.
 
-The tests need a shell and Python 3; the editor checks run if vim or
+The tests need only a shell; the editor checks run if vim or
 emacs is installed.
 
     make check      # every example and test, against what it should give

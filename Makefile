@@ -53,7 +53,7 @@ gdb: raz
 # the compiler's speed, on a generated program of about 350,000 lines,
 # the best of three runs; fails below 400,000 lines a second
 bench: raz | build
-	python3 test/genbench.py 12000 > build/Bench.raz
+	sh test/genbench.sh 12000 > build/Bench.raz
 	@lines=$$(wc -l < build/Bench.raz); best=0; \
 	for i in 1 2 3; do \
 	    start=$$(date +%s%N); ./raz build/Bench.raz || exit 1; end=$$(date +%s%N); \
