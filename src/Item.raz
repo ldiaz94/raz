@@ -1974,19 +1974,21 @@ end;
 
 (* An address given where a var or const parameter of its type wants the
    variable itself, as ADR(b) for var b: Buf: an error that says what to
-   write instead, b for ADR(b) and p^ for a pointer p. Mostly met in
+   write instead, b for SYSTEM.ADR(b) or ADR(b), and p^ for a pointer p. Mostly met in
    programs written before the library took var (report 2026-10.33). *)
 proc givenAddress(const a: Item; p: ^Sym.Obj): ERROR;
-var s, kind: []const U8;
+var s, kind: []const U8; k: INT;
 begin
     if (a.typ^.form # Sym.fPtr) or (a.typ^.base = nil) or not Sym.same(a.typ^.base, p^.typ) then
         return nil;
     end;
     if p^.isConst then kind := "const"; else kind := "var"; end;
     s := Diag.source(a.pos);
-    if (LEN(s) > 5) and (s[0..4] = "ADR(") and (s[LEN(s) - 1] = ')') then
+    k := 0;   (* past SYSTEM., as ADR is written in a module that imports it *)
+    if (LEN(s) > 7) and (s[0..7] = "SYSTEM.") then k := 7; end;
+    if (LEN(s) > k + 5) and (s[k..k + 4] = "ADR(") and (s[LEN(s) - 1] = ')') then
         s := Diag.say("write {} for {}: the parameter is the variable itself, not its address",
-            [Fmt.str(s[4..LEN(s) - 1]), Fmt.str(s)]);
+            [Fmt.str(s[k + 4..LEN(s) - 1]), Fmt.str(s)]);
     else
         s := Diag.say("write {}^ for {}: the parameter is the variable itself, not a pointer to it",
             [Fmt.str(s), Fmt.str(s)]);
