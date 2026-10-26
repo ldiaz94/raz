@@ -49,7 +49,9 @@
    error back, so it is shown and the call goes on without doing what
    it could not (see newEntry and check): the compile ends with the
    message, and the parser's recovery makes the stack right again with
-   resetStack. endProc returns its error, for the parser to pass up.
+   resetStack. A full stack (newEntry) ends the compile at once: the pops
+   after it would go below the stack. endProc returns its error, for the
+   parser to pass up.
 
    What the parser sets, `inPlace`, has a setter, as the exported
    variables can't be set from outside. The seed's types lose their T
@@ -195,6 +197,7 @@ type
     end;
 
 const
+    MaxStack = 1024;   (* values waiting in one expression: 63 nested calls of up to 15 arguments each *)
     StubNames: [8][]const U8 = ["check0", "check1", "check2", "check3", "check4", "check5", "check6", "check7"];
     (* the registers of the stack: the value at depth d is in Regs[d mod
        NumRegs]. rax, rdx and rcx, which division and shifts need, and rsi
@@ -205,7 +208,7 @@ const
     IntRegs: [6]INT = [RDI, RSI, RDX, RCX, R8, R9];
 
 var
-    stack: [256]Entry;
+    stack: [MaxStack]Entry;
     owner: [NumRegs]INT;          (* the value in each register, or -1 *)
     frameTop, frameMax, permTop: I64;
     frameFix: INT;                (* where the frame size is patched in *)
@@ -432,12 +435,14 @@ begin
     return loaded(depth - 1);
 end;
 
-(* A value on the stack's top. At the stack's last place it is shown as
-   an error and nothing is pushed: see the head of this unit. *)
+(* A value on the stack's top. At the stack's last place the error is shown
+   and the compile ends there: with nothing pushed, the pops after it would
+   go below the stack. See the head of this unit. *)
 proc newEntry(k: Kind; loc: Loc; v: I64);
 begin
     if depth > LEN(stack) - 1 then
-        _ := Scan.mark("the expression is too deep");
+        _ := Scan.mark(Diag.say("more than {} values waiting in one expression", [Fmt.int(MaxStack)]));
+        Diag.finish();   (* ends the compile: an error was counted *)
         return;
     end;
     stack[depth].k := k;

@@ -21,9 +21,9 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Sym.raz` | 815 | 652 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 364 | 280 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,621 | 1,330 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,841 | 1,987 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Gen.raz` | 2,846 | 1,989 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,816 | 4,098 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,835 | 4,116 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 408 | 316 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Host.raz` | 103 | 52 | The system running the compiler |
@@ -1961,7 +1961,7 @@ each routine that calls one passes it up with `try`, until it reaches a
 recovery point, `statement` or `declaration`, which looks at what came
 back. At the start of its construct it called `guard`, which notes in a
 `Recover` the scanner's state and the parser's (the scopes, gen's stack,
-the loop, the deferred statements, `quiet`). On an error `restore` puts
+the loop, the deferred statements, how deep it is nested, `quiet`). On an error `restore` puts
 the state back, the construct's first symbol current again, and
 `skipConstruct` reads past it, counting the words that open and close
 blocks. A symbol at the start of a line ends the skip: by the usual
@@ -2533,6 +2533,35 @@ this one does.
   and so does a module with errors, after it. Two errors at the same
   place are told as one. Any error is status 1, and no executable is
   written.
+- **Limits.** The least of the report's section 10, and what this
+  compiler takes. Past its own, each stops with an error that names the
+  limit (`tooMany`, `Parse.raz`); `test/err` has a program for each,
+  and `conform/run/Limit*.raz` holds the report's least.
+
+  | | report's least | this compiler |
+  |---|---|---|
+  | statements, expressions and types nested | 63 levels of statements, 63 of parentheses and calls | 256 together (`MaxNest`) |
+  | values waiting in one expression | none given | 1,024 (`MaxStack`, `Gen.raz`) |
+  | chain of imports | 15 modules | 63 (`MaxPending`) |
+  | names declared together | 31 | 64 (`MaxNames`) |
+  | variables assigned together | 15 | 16 |
+  | elements in an array literal | 1,023 | 1,024 (`MaxElements`); a constant's has no limit of its own |
+  | labels in one `match` | 255 | 1,024 (`MaxLabels`) |
+  | deferred statements in force | 31 | 64 (`MaxDefers`) |
+  | type arguments to a generic module | 8 | 8 |
+
+  `nest` is the parser's own depth, so that a deeply nested program
+  can't overflow the compiler's stack. It counts a statement, a factor
+  (an operand, a parenthesis, a call, `not`) and a type; `guard` notes
+  it and `restore` sets it back, as for the rest of the parser's
+  state. A level costs at most about 3 KiB of stack (an operand, which
+  goes through `factor`, `term`, `simpleExpr`, `relation`, `conjunct`
+  and `expression`; a statement about 1.5 KiB, a type less), so 256
+  levels use under 1 MiB of the main thread's 8. The stack of values
+  is full before `MaxNest` when each level leaves several waiting, as a
+  call of many arguments does (63 nested calls of 15 arguments fit);
+  the compile then ends at once with the error, as the pops after it
+  would have no place to go.
 - **Warnings.** Of a declaration never used, or a variable only
   assigned (`warn`, `Parse.raz`): not of what is exported, a name that
   starts with `_`, an enumeration's names or a generic module's

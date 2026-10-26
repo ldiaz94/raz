@@ -1,0 +1,5 @@
+module DeepChain50;
+import N := DeepChain51;
+proc depth*: INT;
+begin return N.depth() + 1; end;
+end DeepChain50.

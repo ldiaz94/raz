@@ -1,0 +1,4 @@
+test/err/StmtManyLabels.raz:1032:7: error: more than 1024 labels in one match
+ 1032 |     | 1025: Out.int(1025);
+      |       ^^^^
+raz: 1 error

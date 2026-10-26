@@ -1,0 +1,7 @@
+(* A chain of 64 modules importing each the next: at most 63 (MaxPending). *)
+module DeclDeepImports;
+import Out;
+import DeepChain01;
+begin
+    Out.int(DeepChain01.depth()); Out.char('\n');
+end DeclDeepImports.

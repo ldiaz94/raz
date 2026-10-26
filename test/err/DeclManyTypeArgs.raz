@@ -1,0 +1,7 @@
+(* A ninth type argument: a module takes at most 8. *)
+module DeclManyTypeArgs;
+import Out;
+import M := ManyArgs(INT, INT, INT, INT, INT, INT, INT, INT, INT);
+begin
+    M.put(5); Out.int(M.get()); Out.char('\n');
+end DeclManyTypeArgs.

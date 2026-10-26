@@ -1,0 +1,7 @@
+test/err/DeclDeepTypes.raz:4:257: error: more than 256 statements, expressions and types nested
+    4 | ...^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^INT;
+      |                                                      ^
+test/err/DeclDeepTypes.raz:3:9: error: expected "end", found "^"
+    3 | type T =
+      |         ^
+raz: 2 errors

@@ -1,0 +1,4 @@
+test/err/StmtManyValues.raz:8:3377: error: more than 1024 values waiting in one expression
+    8 | ...2, 3, 4, 5, 6, 7, f(1, 2, 3, 4, 5, 6, 7, f(1, 2, 3, 4, 5, 6, 7, f(1, 2, 3, 4, 5, 6, 7, 1))))))))))))...
+      |                                                      ^
+raz: 1 error

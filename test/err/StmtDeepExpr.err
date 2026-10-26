@@ -1,0 +1,7 @@
+test/err/StmtDeepExpr.raz:8:265: error: more than 256 statements, expressions and types nested
+    8 | ...(((((((((((((((((((((((((((((((((((((((((((((((((((1))))))))))))))))))))))))))))))))))))))))))))))))...
+      |                                                      ^
+test/err/StmtDeepExpr.raz:10:775: error: more than 256 statements, expressions and types nested
+   10 | ...d(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(2))))))))))))))))))))))))))))))))))))))))))))))...
+      |                                                      ^^
+raz: 2 errors

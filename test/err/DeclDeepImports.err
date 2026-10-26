@@ -1,0 +1,4 @@
+test/err/mods/DeepChain64.raz:1:1: error: more than 64 imports nested deep
+    1 | module DeepChain64;
+      | ^
+raz: 1 error

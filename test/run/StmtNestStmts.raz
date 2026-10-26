@@ -1,0 +1,517 @@
+(* 254 statements nested, and the ones in them: 256 (MaxNest). *)
+module StmtNestStmts;
+import Out;
+proc p;
+var x: INT;
+begin
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    if true then
+    x := 7; Out.int(x); Out.char('\n');
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+    end;
+begin p; end StmtNestStmts.

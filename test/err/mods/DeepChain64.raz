@@ -1,0 +1,4 @@
+module DeepChain64;
+proc depth*: INT;
+begin return 1; end;
+end DeepChain64.

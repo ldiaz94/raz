@@ -1,0 +1,4 @@
+test/err/StmtDeepStmts.raz:262:8: error: more than 256 statements, expressions and types nested
+  262 |     if true then
+      |        ^^^^
+raz: 1 error

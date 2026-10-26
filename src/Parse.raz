@@ -81,6 +81,7 @@ const
     MaxFixes = 4096;      (* addresses in one constant *)
     MaxPending = 64;      (* modules being compiled at once *)
     MaxFors = 256;        (* for loops of a procedure whose limit may go in a register *)
+    MaxNest = 256;        (* statements, expressions and types nested; each level is a few recursive calls of the parser *)
     Suffixes: [4][]const U8 = [".linux-x86_64", ".linux", ".x86_64", ""];
 
 var
@@ -102,6 +103,7 @@ var
     declExported: BOOL;  (* the export mark of the declaration being read *)
     curLoop: PLoop;      (* the innermost loop, or nil *)
     defers: [MaxDefers]INT;   (* the defer statements in force, their code's addresses *)
+    nest: INT;           (* statements, expressions and types being read, one inside the other *)
     numDefers: INT;
     deferring: BOOL;     (* compiling a defer statement's statement *)
     directDefer: BOOL;   (* ... as the statement itself, not in a list *)
@@ -148,6 +150,7 @@ var
 
 proc expression(var x: TItem; want: PType): ERROR; forward;
 proc parseType: (PType, ERROR); forward;
+proc typeBody: (PType, ERROR); forward;
 proc statements: ERROR; forward;
 proc statement: ERROR; forward;
 
@@ -206,6 +209,13 @@ end;
 proc tooMany(n: INT; what: []const U8): []const U8;
 begin
     return Diag.say("more than {} {}", [Fmt.int(n), Fmt.str(what)]);
+end;
+
+(* The error for a statement or an expression nested too deep: the parser calls itself
+   for each level, so its depth is bounded to keep the stack well inside 8 MiB *)
+proc tooDeep: ERROR;
+begin
+    return Scan.mark(tooMany(MaxNest, "statements, expressions and types nested"));
 end;
 
 (* After an error at p: if a comment closed just before it, it most
@@ -346,7 +356,7 @@ end;
 type
     Recover = record
         scan: Scan.State;
-        scopes, depth, pushed, numDefers: INT;
+        scopes, depth, pushed, numDefers, nest: INT;
         guards: INT;
         loop: PLoop;
         result: PType;
@@ -357,7 +367,7 @@ proc guard(var r: Recover);
 begin
     Scan.saveScan(r.scan);
     r.guards := guards;
-    r.scopes := Sym.scopeDepth(); r.depth := Gen.depth; r.pushed := Gen.pushed; r.numDefers := numDefers;
+    r.scopes := Sym.scopeDepth(); r.depth := Gen.depth; r.pushed := Gen.pushed; r.numDefers := numDefers; r.nest := nest;
     r.loop := curLoop; r.result := curResult;
     r.deferring := deferring; r.directDefer := directDefer; r.quiet := Diag.quiet;
     INC(guards);
@@ -379,7 +389,7 @@ begin
     Scan.setSkipping(true);
     Sym.cutScopes(r.scopes);
     Gen.resetStack(r.depth, r.pushed);
-    numDefers := r.numDefers;
+    numDefers := r.numDefers; nest := r.nest;
     curLoop := r.loop; curResult := r.result;
     deferring := r.deferring; directDefer := r.directDefer;
     inTypes := false; declExported := false; inExtern := false; making := false;
@@ -913,7 +923,19 @@ begin
     return t, nil;
 end;
 
+(* A type, read as typeBody does, counted as one more level of nesting, so that
+   a type of types of types ... can't overflow the stack *)
 proc parseType: (PType, ERROR);
+var t: PType; err: ERROR;
+begin
+    INC(nest);
+    if nest > MaxNest then return nil, tooDeep(); end;
+    t, err := typeBody();
+    DEC(nest);
+    return t, err;
+end;
+
+proc typeBody: (PType, ERROR);
 var t: PType; o: PObj; n: I64; vol: BOOL; start: Diag.Pos;
 begin
     start := Scan.tokPos();
@@ -1877,6 +1899,8 @@ end;
 proc factor(var x: TItem; want: PType): ERROR;
 var called, vol, several: BOOL; t: PType; start: INT; s: []const U8;
 begin
+    INC(nest);
+    if nest > MaxNest then return tooDeep(); end;
     several := passOn;
     passOn := false;
     start := Scan.tokStart();
@@ -1945,6 +1969,7 @@ begin
     | else: return expected("an expression");
     end;
     x.pos := Scan.spanFromAt(start);
+    DEC(nest);
     return nil;
 end;
 
@@ -2967,8 +2992,10 @@ var r: Recover; m: I64; err: ERROR;
 begin
     m := Gen.tempMark();
     guard(r);
-    err := oneStatement();
+    INC(nest);
+    if nest > MaxNest then err := tooDeep(); else err := oneStatement(); end;
     if err = nil then
+        DEC(nest);
         skipped := false;
     else
         restore(r);
@@ -4086,7 +4113,9 @@ var o: PObj; start: Diag.Pos;
 begin
     Scan.next;
     repeat
-        if args.n >= 8 then return Scan.mark(say1("too many type arguments for {}", mname)); end;
+        if args.n >= LEN(args.o) then
+            return Scan.mark(tooMany(LEN(args.o), say1("type arguments to {}", mname)));
+        end;
         args.o[args.n] := nil;
         start := Scan.tokPos();
         if Scan.tok = Scan.sIdent then

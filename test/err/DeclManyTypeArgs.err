@@ -1,0 +1,4 @@
+test/err/DeclManyTypeArgs.raz:4:62: error: more than 8 type arguments to ManyArgs
+    4 | import M := ManyArgs(INT, INT, INT, INT, INT, INT, INT, INT, INT);
+      |                                                              ^^^
+raz: 1 error
