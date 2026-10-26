@@ -87,6 +87,19 @@ repository. `site/README.md` gives the build, release records and
 checks. `site/releases` lists website releases whose tags aren't
 pushed yet (none now); it never makes a tag.
 
+v0.25.0, report 2026-10.38, the Moss work (`PLAN.md` 3), the last before
+the hard freeze: a code procedure names a procedure or a global in
+`call p`, `jmp p` and `lea r, [v]`; the report's least an implementation
+accepts, and this compiler's errors past its own limits (a nesting of
+256, 1024 values waiting); `Host`, the compiler's five asks of the
+system it runs on, and `Files.argCount`; `-lib DIR`; `Rt`'s places
+linked only as `Rt` declares them; `push` of a constant, `cld`, `std`
+and the SHA and shuffle instructions; and in `doc/compiler.md`, a
+program with its own `Rt`, the machine as the code leaves it, the
+recipe for an interrupt's entry, and what `src/` asks of `lib/`.
+Module lookup keeps the root, `/`. `BOOT` names v0.23.0. The tests need
+no Python.
+
 v0.24.0, report 2026-10.37 still, ends the safety thaw (`PLAN.md` 2): the
 old forms are errors. What `SYSTEM` fences is refused outside a module
 that imports it; strings, constants' slices and `MSG` are `[]const`;
@@ -414,6 +427,21 @@ otherwise.
   indexed), a constant's slice (`ofConst`), `MSG` and a slice of a
   `const` parameter's array are `[]const`; a constant's slice part must
   be declared `[]const`.
+- A procedure or a global in a code procedure (report 2026-10.38, 8)
+  is found by `Parse.asmName`, beside `asmConst`, after the
+  procedure's labels, which `X64.findLabels` enters first: a label
+  wins wherever it is written. `call p` and `jmp p` are E8 and E9 with
+  a fixup, `[v]` rip-relative, as ordinary code's; `[v]` stands alone
+  (`[g + 8]` is an error), a label is only for a jump, and C's names
+  are refused, their chunk holding C's address. A variable another
+  module exports may be written through `lea`: its type isn't
+  checked. A code procedure's body has a scope of its own, so a name
+  not yet declared is poison there only.
+- The limits (report 2026-10.38, 10): one count, `Parse.nest`, of
+  statements, expressions and types nested, to 256; 1024 values
+  waiting in one expression (`Gen.MaxStack`), past which the compile
+  ends; the other limits are `Parse`'s constants, listed under "This
+  compiler's choices".
 - `ROL(x, n)` and `ROR(x, n)` (report 2026-10.35) are done at `x`'s
   own width, `rol al, cl` for a `U8`, with no mask of the count: x86
   takes it modulo 32 or 64, and a byte's or a word's rotation goes

@@ -127,7 +127,7 @@ Report 2026-10.38 (993cd63) holds the language's part.
 4. "A freestanding program, stated", "The assembler's instructions" and
    "Implementation limits, and a compiler for a small stack" (the
    report's least and the errors only), in the appendix.
-5. Release.
+5. Release. Done 2026-10-26: v0.25.0, report 2026-10.38.
 
 ## 4. The hard freeze
 

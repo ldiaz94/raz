@@ -255,16 +255,16 @@ needs a deployed registry and its publisher secret.
 The compiler says its own version and that of the report it follows:
 
     $ ./raz --version
-    raz 0.24.0, report 2026-10.37
+    raz 0.25.0, report 2026-10.38
 
 The compiler's version is git's name for the commit it was built from:
-`0.24.0` at the tag `v0.24.0`, `0.24.0-5-g38d29a8` five commits past it.
+`0.25.0` at the tag `v0.25.0`, `0.25.0-5-g38d29a8` five commits past it.
 To release, check `main` and tag it; the tag's message is what
 `raz --version` will print:
 
     $ make check
-    $ git tag -a v0.24.0 -m 'raz 0.24.0, report 2026-10.37'
-    $ git push origin v0.24.0
+    $ git tag -a v0.25.0 -m 'raz 0.25.0, report 2026-10.38'
+    $ git push origin v0.25.0
 
 GitHub then builds and checks the tag, and makes a release of it with
 a tarball of `raz`, its `lib/` and its manual pages, made by `make
@@ -273,7 +273,7 @@ Actions tab: run "ci" with its name. Then `make site` adds the new
 tag's tarball to the website's `download/` (it builds it from the tag,
 apart from the tree at hand); commit `site/public/` and push to publish
 it. A release whose tag isn't pushed yet goes there too, by `make site
-RELEASES="v0.24.0=COMMIT"`: `make dist REV=COMMIT VERSION=0.24.0` makes
+RELEASES="v0.25.0=COMMIT"`: `make dist REV=COMMIT VERSION=0.25.0` makes
 the tarball the tag will, byte for byte. Every release since 0.7.1 stays there, at its own name, and is
 never made again, so that its SHA-256 holds: programs pin raz by it.
 From 0.15.0 on, `make dist` makes the same tarball, byte for byte,
@@ -307,8 +307,8 @@ defect, and the library grows only by what breaks no program. A library
 change that must break programs keeps the old form for one minor version
 beside the new; the release notes list the old forms, and the next
 version removes them. Thaws, by the owner's word, changed it since;
-the last, for safety, was v0.24.0. After the Moss work (v0.25.0) it is
-frozen hard: no more thaws, the language mended only where it does
+the last, for safety, was v0.24.0, and v0.25.0 the last change. It is
+now frozen hard: no more thaws, the language mended only where it does
 other than the report says.
 
 ## Not here
