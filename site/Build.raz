@@ -1,0 +1,806 @@
+(* Build: the website, plain files in site/public/, made from
+   site/content/ and the repository.
+
+       Build [vX.Y.Z=COMMIT ...]
+
+   Run from the repository root, by make site, with ./raz and the
+   report's PDFs (make pdf) built, and pandoc and pdfinfo on PATH.
+   site/releases records website distributions whose tags are not
+   pushed yet. Each additional vX.Y.Z=COMMIT is another such
+   distribution: it is offered as if the tag were at COMMIT, its
+   tarball made by make dist with VERSION, the same tarball the tag
+   will give.
+
+   The site is plain files: open public/index.html, or put the folder
+   on any web server. Nothing runs in the reader's browser; the code on
+   the tour's pages is run here, by ./raz, and the output shown is what
+   it printed, so a lesson that stops working fails the build. The
+   home page offers every release's tarball, made by make dist from
+   its tag.
+
+   Lessons are site/content/<tour>/NN-name.txt, one folder to a tour
+   (see Tours below):
+
+       title: Hello, world          (the first lines are "key: value")
+       part: Raz                    (the lessons are grouped in parts)
+       summary: a line for the contents page
+       ---
+       Paragraphs, separated by blank lines.  `code`, **bold**,
+       [links](url), "- " lists and pipe tables are understood, and
+       nothing else.
+
+       ```raz Name run
+       ```
+
+   A fenced block "raz Name" is a module, written as Name.raz in a
+   folder of its own for the lesson. "run" has the build run it and
+   show what it printed; "fail" runs it and shows the failure it ends
+   in. A block with nothing in it is taken from doc/raz-tutorial.7,
+   whose programs make check already runs, by the module's name.
+
+   Two other blocks: "```text" is shown as written, and "```sh" is a
+   shell session: each line that starts with "$ " is run in the
+   lesson's folder, with raz on the path, and shown with what it
+   printed.
+
+   It depends on Site, Releases, Markup and Sha256, and leaves out
+   running anything in the reader's browser. *)
+module Build;
+import Sys, Files, Buf, Str, Heap, Fmt, Site, Releases, Markup, Sha256;
+import Names := Vec([]const U8);
+import Lessons := Vec(Lesson);
+import Rels := Vec(Releases.Release);
+import Tars := Vec(Tarball);
+
+const
+    SiteUrl = "https://raz.lucelad.workers.dev";   (* where the pages live, for the preview image *)
+    Usage = "usage: Build [vX.Y.Z=COMMIT ...]";
+    (* the head of every page: the arguments are the title (twice), the
+       site's address, then the way up to the root (six times), the
+       navigation, the body and the way up again *)
+    Page = `
+        <!doctype html>
+        <html lang="en">
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>{}</title>
+        <meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+        <meta name="theme-color" content="#E07A5F">
+        <meta property="og:title" content="{}">
+        <meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+        <meta property="og:image" content="{}/social.png">
+        <meta name="twitter:card" content="summary_large_image">
+        <link rel="icon" href="{}favicon.svg" type="image/svg+xml">
+        <link rel="icon" href="{}favicon-32.png" type="image/png" sizes="32x32">
+        <link rel="apple-touch-icon" href="{}apple-touch-icon.png">
+        <link rel="stylesheet" href="{}style.css">
+        </head>
+        <body>
+        <header><nav><a class="mark" href="{}index.html"><img src="{}logo.svg" width="26" height="26" alt="">raz</a>{}</nav></header>
+        <main>
+        {}
+        </main>
+        <footer>raz is under the ISC license. <a href="{}source/index.html">Source</a></footer>
+        </body>
+        </html>
+        `;
+
+type
+    (* A tour: a folder of lessons. *)
+    Tour = record
+        folder: []const U8;   (* in site/content/ *)
+        outDir: []const U8;   (* in site/public/ *)
+        name: []const U8;     (* shown on its pages *)
+        intro: []const U8;    (* the file in site/content/ with the sentence under the name *)
+    end;
+
+    (* A lesson, as its file says. *)
+    Lesson = record
+        title: []const U8;
+        part: []const U8;     (* the group it is listed in *)
+        summary: []const U8;  (* its line on the contents page *)
+        slug: []const U8;     (* its file name without number or .txt *)
+        body: []const U8;     (* what follows the --- line *)
+    end;
+
+    (* A release's tarball: its version, file name and SHA-256 as hex. *)
+    Tarball = record
+        version: []const U8;
+        name: []const U8;
+        digest: []const U8;
+    end;
+
+    (* A fenced block of a lesson, as places in its text: the line of its
+       opening fence, its info line, its code and the end of its closing
+       fence. *)
+    Fence = record
+        start: INT;
+        infoLo, infoHi: INT;
+        codeLo, codeHi: INT;
+        stop: INT;
+    end;
+
+    (* A program's output: what it wrote, and the status it ended with. *)
+    Run = record
+        out, err: Buf.Buf;
+        status: INT;
+    end;
+
+const
+    Tours: [2]Tour = [
+        {folder: "tour", outDir: "tour", name: "Raz, Set, Go", intro: "tour-intro.html"},
+        {folder: "advanced", outDir: "advanced", name: "More Raz", intro: "advanced-intro.html"}];
+
+var
+    root: []const U8;      (* the repository, as an absolute path *)
+    outDir: []const U8;    (* site/public *)
+    raz: []const U8;       (* the compiler, ./raz *)
+
+(* ---- the tutorial's programs -------------------------------------- *)
+
+(* Adds line as roff wrote it with the escapes undone: a backslash is
+   written \e, a backquote \(ga and a dot at a line's start \&. *)
+proc unescape(var b: Buf.Buf; line: []const U8);
+var a, c, d: Buf.Buf;
+begin
+    Buf.init(a, Heap.heap);
+    Buf.init(c, Heap.heap);
+    Buf.init(d, Heap.heap);
+    Str.replace(a, line, "\\&", "");
+    Str.replace(c, Buf.bytes(a), "\\(ga", "`");
+    Str.replace(d, Buf.bytes(c), "\\e", "\\");
+    Buf.str(b, Buf.bytes(d));
+    Buf.done(a);
+    Buf.done(c);
+end;
+
+(* Whether the block text has a line that starts "module name" and goes
+   on with something that isn't part of a word. *)
+proc declares(block, name: []const U8): BOOL;
+var all: [][]const U8; line: []const U8; head: []const U8; i: INT;
+begin
+    head := Site.cat(["module ", name]);
+    all := Site.lines(block);
+    for i := 0 to LEN(all) - 1 do
+        line := all[i];
+        if Str.hasPrefix(line, head) then
+            line := line[LEN(head)..LEN(line)];
+            if (LEN(line) = 0) or not (Str.isLetter(line[0]) or Str.isDigit(line[0]) or (line[0] = '_')) then
+                return true;
+            end;
+        end;
+    end;
+    return false;
+end;
+
+(* The first literal block of the manual page that declares module
+   name, as raz source; the build stops if there is none. *)
+proc tutorialModule(name: []const U8): []const U8;
+var all: [][]const U8; block: Buf.Buf; inside: BOOL; i, n: INT;
+begin
+    all := Site.lines(Site.read(Site.cat([root, "/doc/raz-tutorial.7"])));
+    for i := 0 to LEN(all) - 1 do
+        if Str.hasPrefix(all[i], ".Bd -literal") then
+            inside := true;
+            n := 0;
+            Buf.init(block, Heap.heap);
+        elsif inside and (all[i] = ".Ed") then
+            inside := false;
+            Buf.add(block, '\n');
+            if declares(Buf.bytes(block), name) then return Buf.bytes(block); end;
+        elsif inside then
+            if n > 0 then Buf.add(block, '\n'); end;
+            INC(n);
+            unescape(block, all[i]);
+        end;
+    end;
+    Site.die("no program {} in the tutorial", [Fmt.str(name)]);
+    return "";
+end;
+
+(* ---- running ------------------------------------------------------ *)
+
+(* Compiles and runs the module name in dir with raz run -Werror, and
+   says what it wrote and how it ended. *)
+proc runModule(dir, name: []const U8): Run;
+var r: Run;
+begin
+    Buf.init(r.out, Heap.heap);
+    Buf.init(r.err, Heap.heap);
+    r.status := Site.capture([raz, "run", "-Werror", Site.cat([name, ".raz"])], dir, [], false, r.out, r.err);
+    if r.status < 0 then Site.die("can't run {}", [Fmt.str(raz)]); end;
+    return r;
+end;
+
+(* Adds a shell session: each "$ command" line of script run in dir,
+   with raz on the path, and its output. *)
+proc shellHtml(var b: Buf.Buf; dir, script: []const U8);
+var
+    bin, shortcut: []const U8; env: [2][]const U8; all: [][]const U8; out, err: Buf.Buf;
+    text: []const U8; i: INT;
+begin
+    bin := Site.cat([dir, "/.bin"]);
+    Site.makeDirs(bin);
+    shortcut := Site.cat([bin, "/raz"]);
+    if not Site.exists(shortcut) then _ := Sys.symlink(raz, shortcut); end;   (* raz finds lib/ by its real path *)
+    env[0] := Site.cat(["PATH=", bin, ":", Sys.env("PATH")]);
+    env[1] := Site.cat(["RAZLIB=", root, "/lib"]);
+    Buf.str(b, "<pre class=\"output term\"><code>");
+    all := Site.lines(script);
+    (* a final empty line is not a line *)
+    i := LEN(all);
+    while (i > 0) and (LEN(all[i - 1]) = 0) do DEC(i); end;
+    all := all[0..i];
+    for i := 0 to LEN(all) - 1 do
+        if i > 0 then Buf.add(b, '\n'); end;
+        if not Str.hasPrefix(all[i], "$ ") then
+            Markup.escape(b, all[i], true);
+        else
+            Buf.str(b, "<span class=\"cmd\">");
+            Markup.escape(b, all[i], true);
+            Buf.str(b, "</span>");
+            Buf.init(out, Heap.heap);
+            Buf.init(err, Heap.heap);
+            _ := Site.capture(["/bin/sh", "-c", all[i][2..LEN(all[i])]], dir, env, true, out, err);
+            text := Buf.bytes(out);
+            while (LEN(text) > 0) and (text[LEN(text) - 1] = '\n') do text := text[0..LEN(text) - 1]; end;
+            if LEN(text) > 0 then
+                Buf.add(b, '\n');
+                Markup.escape(b, text, true);
+            end;
+        end;
+    end;
+    Buf.str(b, "</code></pre>");
+end;
+
+(* Adds what a program wrote: its output, and its errors in a span. *)
+proc outputHtml(var b: Buf.Buf; const r: Run);
+begin
+    Buf.str(b, "<pre class=\"output\"><code>");
+    Markup.escape(b, Buf.bytes(r.out), true);
+    if r.err.len > 0 then
+        Buf.str(b, "<span class=\"err\">");
+        Markup.escape(b, Buf.bytes(r.err), true);
+        Buf.str(b, "</span>");
+    end;
+    Buf.str(b, "</code></pre>");
+end;
+
+(* ---- lessons ------------------------------------------------------ *)
+
+(* s without the line feeds at its end. *)
+proc chop(s: []const U8): []const U8;
+begin
+    while (LEN(s) > 0) and (s[LEN(s) - 1] = '\n') do s := s[0..LEN(s) - 1]; end;
+    return s;
+end;
+
+(* The lesson in the file at path. Its head is lines of "key: value"
+   up to a line of ---; the rest is its body. *)
+proc readLesson(path: []const U8): Lesson;
+var head, name: []const U8; all: [][]const U8; l: Lesson; key, value: []const U8; found: BOOL; i: INT;
+begin
+    head, l.body, found := Str.cut(Site.read(path), "\n---\n");
+    all := Site.lines(Str.trim(head));
+    for i := 0 to LEN(all) - 1 do
+        key, value, found := Str.cut(all[i], ": ");
+        if not found then Site.die("{}: not \"key: value\": {}", [Fmt.str(path), Fmt.str(all[i])]); end;
+        if key = "title" then l.title := value;
+        elsif key = "part" then l.part := value;
+        elsif key = "summary" then l.summary := value;
+        end;
+    end;
+    name := path[Str.findLast(path, "/") + 1..LEN(path)];
+    name := name[0..LEN(name) - 4];   (* without .txt *)
+    i := 0;
+    while (i < LEN(name)) and Str.isDigit(name[i]) do INC(i); end;
+    if (i > 0) and (i < LEN(name)) and (name[i] = '-') then name := name[i + 1..LEN(name)]; end;
+    l.slug := name;
+    return l;
+end;
+
+(* Finds the first fenced block of s that starts on a line after from (from the very start, if from is 0): a line of "```" and an info
+   line ("raz Name flags", "text" or "sh"), the code, and a line of only
+   "```". False if there is none. *)
+proc nextFence(s: []const U8; from: INT; var f: Fence): BOOL;
+var p, eol, q, next: INT; info: []const U8;
+begin
+    p := from;
+    if from > 0 then
+        p := Str.findFrom(s, "\n", from);
+        if p < 0 then return false; end;
+        INC(p);
+    end;
+    while p < LEN(s) do
+        eol := Str.findFrom(s, "\n", p);
+        if eol < 0 then return false; end;
+        if (eol - p >= 3) and Str.hasPrefix(s[p..eol], "```") then
+            info := s[p + 3..eol];
+            q := eol + 1;
+            while ((info = "text") or (info = "sh") or Str.hasPrefix(info, "raz ")) and (q < LEN(s)) do
+                if Str.hasPrefix(s[q..LEN(s)], "```") and ((q + 3 = LEN(s)) or (s[q + 3] = '\n')) then
+                    f := {start: p, infoLo: p + 3, infoHi: eol, codeLo: eol + 1, codeHi: q, stop: q + 3};
+                    return true;
+                end;
+                next := Str.findFrom(s, "\n", q);
+                if next < 0 then break; end;
+                q := next + 1;
+            end;
+        end;
+        p := eol + 1;
+    end;
+    return false;
+end;
+
+(* Starts a new part of the lesson in b: after a line feed, unless it is
+   the first. *)
+proc newPart(var b: Buf.Buf);
+begin
+    if b.len > 0 then Buf.add(b, '\n'); end;
+end;
+
+(* Adds a "raz Name flags" block of a lesson: its code, taken from the
+   tutorial if it has none, written to dir as Name.raz, and, if flags
+   say run or fail, the output of running it. *)
+proc razBlock(var b: Buf.Buf; const l: Lesson; dir, info, written: []const U8);
+var words: [][]const U8; name, source: []const U8; r: Run; run, fail: BOOL; i: INT;
+begin
+    words := Site.words(info);
+    if LEN(words) < 2 then Site.die("{}: a raz block needs a name", [Fmt.str(l.slug)]); end;
+    name := words[1];
+    source := written;
+    if LEN(Str.trim(source)) = 0 then source := tutorialModule(name); end;
+    Site.write(Site.cat([dir, "/", name, ".raz"]), source);
+    newPart(b);
+    Buf.str(b, "<div class=\"file\"><span>"); Buf.str(b, name); Buf.str(b, ".raz</span></div>");
+    Buf.str(b, "<pre class=\"code\"><code>");
+    Markup.highlight(b, chop(source));
+    Buf.str(b, "</code></pre>");
+    for i := 2 to LEN(words) - 1 do
+        run := run or (words[i] = "run");
+        fail := fail or (words[i] = "fail");
+    end;
+    if run or fail then
+        r := runModule(dir, name);
+        if fail = (r.status = 0) then
+            Site.die("{}: {} ended with status {}\n{}{}", [Fmt.str(l.slug), Fmt.str(name), Fmt.int(r.status),
+                Fmt.str(Buf.bytes(r.out)), Fmt.str(Buf.bytes(r.err))]);
+        end;
+        newPart(b);
+        outputHtml(b, r);
+    end;
+end;
+
+(* The lesson's page content, one part to a line; it runs its programs
+   in a folder of its own. *)
+proc lessonBody(const l: Lesson): []const U8;
+var b: Buf.Buf; dir, info: []const U8; f: Fence; pos, textEnd: INT; found: BOOL;
+begin
+    Buf.init(b, Heap.heap);
+    dir := Site.tempDir();
+    pos := 0;
+    repeat
+        found := nextFence(l.body, pos, f);
+        textEnd := LEN(l.body);
+        if found then textEnd := f.start; end;
+        if LEN(Str.trim(l.body[pos..textEnd])) > 0 then
+            newPart(b);
+            Markup.prose(b, l.body[pos..textEnd]);
+        end;
+        if found then
+            info := l.body[f.infoLo..f.infoHi];
+            if info = "text" then
+                newPart(b);
+                Buf.str(b, "<pre class=\"code\"><code>");
+                Markup.escape(b, chop(l.body[f.codeLo..f.codeHi]), true);
+                Buf.str(b, "</code></pre>");
+            elsif info = "sh" then
+                newPart(b);
+                shellHtml(b, dir, l.body[f.codeLo..f.codeHi]);
+            else
+                razBlock(b, l, dir, info, l.body[f.codeLo..f.codeHi]);
+            end;
+            pos := f.stop;
+        end;
+    until not found;
+    _ := Files.removeTree(dir);
+    return Buf.bytes(b);
+end;
+
+(* ---- pages -------------------------------------------------------- *)
+
+(* The way up from a page depth folders down: "../" depth times. *)
+proc wayUp(depth: INT): []const U8;
+var b: Buf.Buf; i: INT;
+begin
+    Buf.init(b, Heap.heap);
+    for i := 1 to depth do Buf.str(b, "../"); end;
+    return Buf.bytes(b);
+end;
+
+(* Adds a link of the navigation bar, marked if it is the current one. *)
+proc navLink(var b: Buf.Buf; up, key, current, href, label: []const U8);
+begin
+    Buf.str(b, "<a href=\""); Buf.str(b, up); Buf.str(b, href); Buf.str(b, "\"");
+    if key = current then Buf.str(b, " aria-current=\"page\""); end;
+    Buf.add(b, '>'); Buf.str(b, label); Buf.str(b, "</a>");
+end;
+
+(* A whole page: title, body, how many folders down it is and which
+   navigation entry it belongs to. *)
+proc page(title, body: []const U8; depth: INT; current: []const U8): []const U8;
+var b, nav: Buf.Buf; up, t: []const U8;
+begin
+    up := wayUp(depth);
+    t := Markup.escaped(title, true);
+    Buf.init(nav, Heap.heap);
+    navLink(nav, up, "tour", current, "tour/index.html", "Raz, Set, Go");
+    navLink(nav, up, "advanced", current, "advanced/index.html", "More Raz");
+    navLink(nav, up, "spec", current, "spec.html", "Report");
+    navLink(nav, up, "source", current, "source/index.html", "Source");
+    navLink(nav, up, "get", current, "index.html#download", "Download");
+    Buf.init(b, Heap.heap);
+    Fmt.write(b, Page, [Fmt.str(t), Fmt.str(t), Fmt.str(SiteUrl), Fmt.str(up), Fmt.str(up), Fmt.str(up),
+        Fmt.str(up), Fmt.str(up), Fmt.str(up), Fmt.str(Buf.bytes(nav)), Fmt.str(body), Fmt.str(up)]);
+    Buf.done(nav);
+    return Buf.bytes(b);
+end;
+
+(* Writes text to path under site/public. *)
+proc put(path, text: []const U8);
+begin
+    Site.write(Site.cat([outDir, "/", path]), text);
+end;
+
+(* The parts the lessons are grouped in, in order of first appearance. *)
+proc partsOf(lessons: []Lesson): [][]const U8;
+var v: Names.Vec; i, k: INT; seen: BOOL;
+begin
+    Names.init(v, Heap.heap);
+    for i := 0 to LEN(lessons) - 1 do
+        seen := false;
+        for k := 0 to v.len - 1 do seen := seen or (Names.all(v)[k] = lessons[i].part); end;
+        if not seen then Names.push(v, lessons[i].part); end;
+    end;
+    return Names.all(v);
+end;
+
+(* The number of the first lesson of part. *)
+proc firstOf(lessons: []Lesson; part: []const U8): INT;
+var i: INT;
+begin
+    for i := 0 to LEN(lessons) - 1 do
+        if lessons[i].part = part then return i + 1; end;
+    end;
+    return 0;
+end;
+
+(* Adds the side list of the lesson n: every part and its lessons, the
+   one on show marked. *)
+proc contents(var b: Buf.Buf; lessons: []Lesson; parts: [][]const U8; n: INT);
+var p, i: INT;
+begin
+    for p := 0 to LEN(parts) - 1 do
+        if p > 0 then Buf.add(b, '\n'); end;
+        Fmt.write(b, "<h3>{}</h3><ol start='{}'>", [Fmt.str(parts[p]), Fmt.int(firstOf(lessons, parts[p]))]);
+        for i := 0 to LEN(lessons) - 1 do
+            if lessons[i].part = parts[p] then
+                Buf.add(b, '\n');
+                Fmt.write(b, "<li><a href=\"{}.html\"", [Fmt.str(lessons[i].slug)]);
+                if i = n then Buf.str(b, " aria-current=\"page\""); end;
+                Fmt.write(b, ">{}</a></li>", [Fmt.str(Markup.escaped(lessons[i].title, true))]);
+            end;
+        end;
+        Buf.str(b, "\n</ol>");
+    end;
+end;
+
+(* Adds the links under lesson n: the one before, the contents, the one
+   after, or, past the last, next, an (address, label) pair. *)
+proc pager(var b: Buf.Buf; lessons: []Lesson; n: INT; nextHref, nextLabel: []const U8);
+begin
+    if n > 0 then
+        Fmt.write(b, "<a href=\"{}.html\">&larr; {}</a>",
+            [Fmt.str(lessons[n - 1].slug), Fmt.str(Markup.escaped(lessons[n - 1].title, true))]);
+    end;
+    Buf.str(b, "<a href=\"index.html\">Contents</a>");
+    if n + 1 < LEN(lessons) then
+        Fmt.write(b, "<a class=\"next\" href=\"{}.html\">{} &rarr;</a>",
+            [Fmt.str(lessons[n + 1].slug), Fmt.str(Markup.escaped(lessons[n + 1].title, true))]);
+    else
+        Fmt.write(b, "<a class=\"next\" href=\"{}\">{} &rarr;</a>", [Fmt.str(nextHref), Fmt.str(nextLabel)]);
+    end;
+end;
+
+(* Writes the page of lesson n of a tour. *)
+proc lessonPage(const t: Tour; lessons: []Lesson; parts: [][]const U8; n: INT; nextHref, nextLabel: []const U8);
+var b, toc, pg: Buf.Buf; l: Lesson;
+begin
+    l := lessons[n];
+    Buf.init(toc, Heap.heap);
+    Buf.init(pg, Heap.heap);
+    Buf.init(b, Heap.heap);
+    contents(toc, lessons, parts, n);
+    pager(pg, lessons, n, nextHref, nextLabel);
+    Fmt.write(b, "<div class=\"tour\"><aside><h2>{}</h2>{}</aside><article><p class=\"kicker\">{} &middot; lesson {} of {}</p><h1>{}</h1>\n",
+        [Fmt.str(t.name), Fmt.str(Buf.bytes(toc)), Fmt.str(l.part), Fmt.int(n + 1), Fmt.int(LEN(lessons)),
+        Fmt.str(Markup.escaped(l.title, true))]);
+    Buf.str(b, lessonBody(l));
+    Buf.str(b, "<p class=\"tryit\">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p>");
+    Fmt.write(b, "<div class=\"pager\">{}</div></article></div>", [Fmt.str(Buf.bytes(pg))]);
+    put(Site.cat([t.outDir, "/", l.slug, ".html"]),
+        page(Site.cat([l.title, " - ", t.name]), Buf.bytes(b), 1, t.folder));
+    Buf.done(toc);
+    Buf.done(pg);
+end;
+
+(* Writes a tour's contents page. *)
+proc contentsPage(const t: Tour; lessons: []Lesson; parts: [][]const U8);
+var b: Buf.Buf; p, i: INT;
+begin
+    Buf.init(b, Heap.heap);
+    Buf.str(b, "<div class=\"contents\">");
+    Buf.str(b, Site.read(Site.cat([root, "/site/content/", t.intro])));
+    for p := 0 to LEN(parts) - 1 do
+        if p > 0 then Buf.add(b, '\n'); end;
+        Fmt.write(b, "<h2>{}</h2><ol start='{}'>", [Fmt.str(parts[p]), Fmt.int(firstOf(lessons, parts[p]))]);
+        for i := 0 to LEN(lessons) - 1 do
+            if lessons[i].part = parts[p] then
+                Fmt.write(b, "\n<li><a href=\"{}.html\">{}</a> <span>{}</span></li>",
+                    [Fmt.str(lessons[i].slug), Fmt.str(Markup.escaped(lessons[i].title, true)),
+                    Fmt.str(Markup.escaped(lessons[i].summary, true))]);
+            end;
+        end;
+        Buf.str(b, "\n</ol>");
+    end;
+    Buf.str(b, "</div>");
+    put(Site.cat([t.outDir, "/index.html"]), page(t.name, Buf.bytes(b), 1, t.folder));
+end;
+
+(* Writes a tour's pages: a page to each lesson and a contents page.
+   nextHref and nextLabel say what follows its last lesson. *)
+proc buildTour(const t: Tour; lessons: []Lesson; nextHref, nextLabel: []const U8);
+var parts: [][]const U8; n: INT;
+begin
+    parts := partsOf(lessons);
+    for n := 0 to LEN(lessons) - 1 do lessonPage(t, lessons, parts, n, nextHref, nextLabel); end;
+    contentsPage(t, lessons, parts);
+end;
+
+(* Whether name is a lesson's file: digits, a dash, anything, .txt *)
+proc isLesson(name: []const U8): BOOL;
+var i: INT;
+begin
+    while (i < LEN(name)) and Str.isDigit(name[i]) do INC(i); end;
+    return (i > 0) and (i < LEN(name)) and (name[i] = '-') and Str.hasSuffix(name, ".txt");
+end;
+
+(* The lessons of a tour's folder, in the order of their file names. *)
+proc readLessons(const t: Tour): []Lesson;
+var v: Lessons.Vec; names: [][]const U8; dir: []const U8; i: INT;
+begin
+    Lessons.init(v, Heap.heap);
+    dir := Site.cat([root, "/site/content/", t.folder]);
+    names := Site.dirNames(dir);
+    for i := 0 to LEN(names) - 1 do
+        if isLesson(names[i]) then Lessons.push(v, readLesson(Site.cat([dir, "/", names[i]]))); end;
+    end;
+    return Lessons.all(v);
+end;
+
+(* Writes the report's page, which pandoc makes of the two volumes. *)
+proc buildSpec;
+var out, body: Buf.Buf; status: INT;
+begin
+    Buf.init(out, Heap.heap);
+    (* --columns is wide enough that no row of a table is "long": pandoc
+       would otherwise give each column an equal share of the width *)
+    status := Site.captureOut(["pandoc", Site.cat([root, "/doc/raz.md"]), Site.cat([root, "/doc/raz-lib.md"]),
+        "-s", "--template", Site.cat([root, "/site/content/spec.tmpl"]), "--toc", "--toc-depth=1",
+        "--shift-heading-level-by=-1", "--no-highlight", "-t", "html", "--columns=10000"], "", [], out);
+    if status = Sys.errNoEntry then Site.die("pandoc makes the report's page: apt-get install pandoc", []); end;
+    if status # 0 then Site.die("pandoc failed", []); end;
+    Buf.init(body, Heap.heap);
+    Buf.str(body, "<div class=\"spec\">");
+    Buf.str(body, Buf.bytes(out));
+    Buf.str(body, "</div>");
+    put("spec.html", page("The raz report", Buf.bytes(body), 0, "spec"));
+end;
+
+(* ---- releases ----------------------------------------------------- *)
+
+(* The SHA-256 of the file at path, as hex. *)
+proc digestOf(path: []const U8): []const U8;
+var b: Buf.Buf;
+begin
+    Buf.init(b, Heap.heap);
+    Sha256.hex(Site.read(path), b);
+    return Buf.bytes(b);
+end;
+
+(* Makes the tarball of one release, if public/download/ lacks it, and
+   its checksum file: a release's tarball is made of its tag by make
+   dist, not of the tree at hand, and one already there is kept as it
+   is, never made again. Those before 0.14.0 were made before make dist
+   made the same tarball each time, so a new one would differ, and so
+   its SHA-256, which a program's CI may check. *)
+proc tarballOf(const r: Releases.Release): Tarball;
+var t: Tarball; made, checksum: []const U8; expected: [][]const U8; v: []const U8;
+begin
+    v := r.tag[1..LEN(r.tag)];
+    t.version := v;
+    t.name := Site.cat(["raz-", v, "-linux-x86_64.tar.gz"]);
+    made := Site.cat([outDir, "/download/", t.name]);
+    if not Site.exists(made) then
+        if Site.runQuiet(["make", "-s", "-C", root, "dist", Site.cat(["REV=", r.commit]), Site.cat(["VERSION=", v])]) # 0 then
+            Site.die("make dist failed for {}", [Fmt.str(r.tag)]);
+        end;
+        Site.copy(Site.cat([root, "/build/", t.name]), made);
+    end;
+    t.digest := digestOf(made);
+    checksum := Site.cat([made, ".sha256"]);
+    if Site.exists(checksum) then
+        expected := Site.words(Site.read(checksum));
+        if (LEN(expected) = 0) or (expected[0] # t.digest) then
+            Site.die("release archive does not match its published checksum: {}", [Fmt.str(made)]);
+        end;
+    end;
+    put(Site.cat(["download/", t.name, ".sha256"]), Site.cat([t.digest, "  ", t.name, "\n"]));
+    return t;
+end;
+
+(* Every release's tarball from v0.7.1 on, in public/download/ with its
+   SHA-256, and /download/latest leading to the newest; oldest first. A
+   program's CI can fetch the version it was written for by its name,
+   so none is ever taken away. *)
+proc buildDownloads(extra: []const Releases.Release): []Tarball;
+var all: []Releases.Release; why: []const U8; v: Tars.Vec; i: INT;
+begin
+    all, why := Releases.refs(root, extra);
+    if LEN(why) > 0 then Site.die("{}", [Fmt.str(why)]); end;
+    Tars.init(v, Heap.heap);
+    for i := 0 to LEN(all) - 1 do Tars.push(v, tarballOf(all[i])); end;
+    (* Cloudflare reads _redirects from the root of what it serves *)
+    put("_redirects", Site.cat(["/download/latest /download/", Tars.all(v)[v.len - 1].name, " 302\n"]));
+    return Tars.all(v);
+end;
+
+(* The number of pages of the PDF at path, as pdfinfo says. *)
+proc pageCount(path: []const U8): []const U8;
+var out: Buf.Buf; rest, text: []const U8; at: INT;
+begin
+    Buf.init(out, Heap.heap);
+    if Site.captureOut(["pdfinfo", path], "", [], out) # 0 then Site.die("pdfinfo failed", []); end;
+    at := Str.find(Buf.bytes(out), "Pages:");
+    if at < 0 then Site.die("pdfinfo says no page count", []); end;
+    text := Buf.bytes(out);
+    rest := Str.trimLeft(text[at + 6..LEN(text)]);
+    at := 0;
+    while (at < LEN(rest)) and Str.isDigit(rest[at]) do INC(at); end;
+    return rest[0..at];
+end;
+
+(* Replaces each place in text, in b, where old stands by new. *)
+proc replaceIn(var text: Buf.Buf; old, new: []const U8);
+var b: Buf.Buf;
+begin
+    Buf.init(b, Heap.heap);
+    Str.replace(b, Buf.bytes(text), old, new);
+    Buf.done(text);
+    text := b;
+end;
+
+(* Writes the home page: home.html with the example's text and output,
+   the page count and the downloads filled in. *)
+proc buildHome(releases: []Tarball);
+var
+    dir: []const U8; r: Run; text, snippetHtml, earlier: Buf.Buf; snippet: []const U8; last: Tarball; i: INT;
+begin
+    snippet := Site.read(Site.cat([root, "/site/content/home.raz"]));
+    dir := Site.tempDir();
+    Site.write(Site.cat([dir, "/Taste.raz"]), snippet);
+    r := runModule(dir, "Taste");
+    if r.status # 0 then Site.die("Taste failed:\n{}", [Fmt.str(Buf.bytes(r.err))]); end;
+    _ := Files.removeTree(dir);
+    Buf.init(text, Heap.heap);
+    Buf.str(text, Site.read(Site.cat([root, "/site/content/home.html"])));
+    Buf.init(snippetHtml, Heap.heap);
+    Markup.highlight(snippetHtml, chop(snippet));
+    replaceIn(text, "@SNIPPET@", Buf.bytes(snippetHtml));
+    replaceIn(text, "@OUTPUT@", Markup.escaped(chop(Buf.bytes(r.out)), true));
+    last := releases[LEN(releases) - 1];
+    Buf.init(earlier, Heap.heap);
+    for i := LEN(releases) - 2 to 0 by -1 do
+        if earlier.len > 0 then Buf.str(earlier, ", "); end;
+        Fmt.write(earlier, "<a href=\"download/{}\">{}</a>", [Fmt.str(releases[i].name), Fmt.str(releases[i].version)]);
+    end;
+    replaceIn(text, "@EARLIER@", Buf.bytes(earlier));
+    replaceIn(text, "@PAGES@", pageCount(Site.cat([root, "/build/raz.pdf"])));
+    replaceIn(text, "@VERSION@", last.version);
+    replaceIn(text, "@TARBALL@", last.name);
+    replaceIn(text, "@DIR@", last.name[0..LEN(last.name) - LEN(".tar.gz")]);
+    replaceIn(text, "@SHA256@", last.digest);
+    put("index.html", page("raz: a small systems language", Buf.bytes(text), 0, "home"));
+end;
+
+(* ---- the whole site ------------------------------------------------ *)
+
+(* Removes everything in public/ but the tarballs in download/, which
+   are never made again. *)
+proc clean;
+var names: [][]const U8; path: []const U8; i: INT;
+begin
+    if not Site.isDir(outDir) then return; end;
+    names := Site.dirNames(outDir);
+    for i := 0 to LEN(names) - 1 do
+        path := Site.cat([outDir, "/", names[i]]);
+        if names[i] = "download" then
+        elsif Site.isDir(path) then _ := Files.removeTree(path);
+        else _ := Sys.remove(path);
+        end;
+    end;
+end;
+
+(* Copies the style sheet, the logo and the icons into public/. *)
+proc copyAssets;
+var names: [][]const U8; i: INT;
+begin
+    Site.copy(Site.cat([root, "/site/style.css"]), Site.cat([outDir, "/style.css"]));
+    names := Site.dirNames(Site.cat([root, "/site/assets"]));
+    for i := 0 to LEN(names) - 1 do
+        if (names[i] # "social.html") and (names[i] # "render.sh") then
+            Site.copy(Site.cat([root, "/site/assets/", names[i]]), Site.cat([outDir, "/", names[i]]));
+        end;
+    end;
+end;
+
+(* The vX.Y.Z=COMMIT arguments, as releases; the build stops at a
+   mistake. *)
+proc extraReleases(): []Releases.Release;
+var v: Rels.Vec; tag, commit: []const U8; found, ok: BOOL; i: INT;
+begin
+    Rels.init(v, Heap.heap);
+    for i := 1 to Files.argCount() - 1 do
+        tag, commit, found := Str.cut(Files.arg(i), "=");
+        _, _, _, ok := Releases.version(tag);
+        if not found or not ok then Site.die(Usage, []); end;
+        Rels.push(v, {tag: tag, commit: commit});
+    end;
+    return Rels.all(v);
+end;
+
+proc main*;
+var extra: []Releases.Release; why: []const U8; err: INT; i: INT; counts: Buf.Buf; lessons: []Lesson; downloads: []Tarball;
+begin
+    root, err := Sys.workDir();
+    if err < 0 then Site.die("no working directory", []); end;
+    root := Site.cat([root]);
+    outDir := Site.cat([root, "/site/public"]);
+    raz := Site.cat([root, "/raz"]);
+    if not Site.exists(raz) then Site.die("make raz first", []); end;
+    extra := extraReleases();
+    _, why := Releases.refs(root, extra);   (* validate the release records before removing old pages *)
+    if LEN(why) > 0 then Site.die("{}", [Fmt.str(why)]); end;
+    clean;
+    Site.makeDirs(Site.cat([outDir, "/download"]));
+    copyAssets;
+    Buf.init(counts, Heap.heap);
+    for i := 0 to LEN(Tours) - 1 do
+        lessons := readLessons(Tours[i]);
+        if i + 1 < LEN(Tours) then
+            buildTour(Tours[i], lessons, Site.cat(["../", Tours[i + 1].outDir, "/index.html"]), Tours[i + 1].name);
+        else
+            buildTour(Tours[i], lessons, "../spec.html", "The report");
+        end;
+        if i > 0 then Buf.str(counts, " + "); end;
+        Fmt.write(counts, "{}", [Fmt.int(LEN(lessons))]);
+    end;
+    buildSpec;
+    Site.copy(Site.cat([root, "/build/raz.pdf"]), Site.cat([outDir, "/raz.pdf"]));        (* made by make pdf *)
+    Site.copy(Site.cat([root, "/build/raz-lib.pdf"]), Site.cat([outDir, "/raz-lib.pdf"]));
+    downloads := buildDownloads(extra);
+    buildHome(downloads);
+    Fmt.print("site/public: {} lessons\n", [Fmt.str(Buf.bytes(counts))]);
+end;
+end Build.

@@ -81,9 +81,11 @@ tools and the library's tests: they must have no warnings.
 
 The website's `/source/` browser and releases are built by ladle,
 pinned with its checksum under `site/tools/`. `make site` builds the
-main pages and then the source site. Wrangler runs `make site-source`
-before uploading, so the generated Git store stays out of this
-repository. `site/README.md` gives the build, release records and
+main pages and then the source site, with raz programs, `site/Build.raz`,
+`Source.raz` and `Verify.raz`, which the Makefile builds with this
+repository's `./raz` into `build/site/`. Wrangler runs `make site-source`
+(which builds `raz` first) before uploading, so the generated Git store
+stays out of this repository. `site/README.md` gives the build, release records and
 checks. `site/releases` lists website releases whose tags aren't
 pushed yet (none now); it never makes a tag.
 

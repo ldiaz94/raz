@@ -1,0 +1,438 @@
+(* Markup: the text of the site's pages as HTML: escaping, the colouring
+   of raz source, and the little markup the lessons are written in
+   (`code`, **bold**, [links](url), "- " lists and pipe tables). Each
+   procedure adds to a Buf. It needs only Buf, Str and Site. It leaves
+   out the rest of Markdown, and any letter but ASCII's in a word. *)
+module Markup;
+import Buf, Str, Heap, Site;
+import Names := Vec([]const U8);
+
+const
+    (* the reserved words that are coloured *)
+    Keywords = "and begin break by code const defer div do else elsif end extern for forward if import in link match mod module not of or packed proc record repeat return set shl shr then to try type until var variant VOLATILE while xor";
+    (* the predeclared names that are coloured *)
+    Predeclared = "INT UINT I8 I16 I32 I64 U8 U16 U32 U64 F32 F64 BOOL ERROR true false nil LEN ADR NEW SIZE INC DEC MSG XADD CAS XCHG";
+
+(* ---- escaping ---------------------------------------------------- *)
+
+(* Adds s with &, < and > written as entities, and, if quote, " and ' too:
+   the usual HTML escaping. *)
+proc escape*(var b: Buf.Buf; s: []const U8; quote: BOOL);
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do
+        if s[i] = '&' then Buf.str(b, "&amp;");
+        elsif s[i] = '<' then Buf.str(b, "&lt;");
+        elsif s[i] = '>' then Buf.str(b, "&gt;");
+        elsif quote and (s[i] = '"') then Buf.str(b, "&quot;");
+        elsif quote and (s[i] = '\'') then Buf.str(b, "&#x27;");
+        else Buf.add(b, s[i]);
+        end;
+    end;
+end;
+
+(* s escaped as escape does, as a string. *)
+proc escaped*(s: []const U8; quote: BOOL): []const U8;
+var b: Buf.Buf;
+begin
+    Buf.init(b, Heap.heap);
+    escape(b, s, quote);
+    return Buf.bytes(b);
+end;
+
+(* ---- raz source -------------------------------------------------- *)
+
+(* Whether c is a letter, a digit or an underscore. *)
+proc isWord(c: U8): BOOL;
+begin
+    return Str.isLetter(c) or Str.isDigit(c) or (c = '_');
+end;
+
+(* Whether c is a hexadecimal digit, capital or small. *)
+proc isHex(c: U8): BOOL;
+begin
+    return Str.hexVal(c) >= 0;
+end;
+
+(* Whether w is one of the words of list, which are separated by single
+   spaces. *)
+proc among(w, list: []const U8): BOOL;
+var i, j: INT;
+begin
+    i := 0;
+    while i < LEN(list) do
+        j := i;
+        while (j < LEN(list)) and (list[j] # ' ') do INC(j); end;
+        if list[i..j] = w then return true; end;
+        i := j + 1;
+    end;
+    return false;
+end;
+
+(* Where the comment that starts at i ends, or -1 if it has no end. *)
+proc commentEnd(s: []const U8; i: INT): INT;
+var j: INT;
+begin
+    if (i + 1 >= LEN(s)) or (s[i] # '(') or (s[i + 1] # '*') then return -1; end;
+    j := Str.findFrom(s, "*)", i + 2);
+    if j < 0 then return -1; end;
+    return j + 2;
+end;
+
+(* Where the string or quoted text that starts at i ends, or -1 if it
+   has none. A " or ' string stops at its line's end and takes a
+   backslash and the byte after it as one; a backquoted one may run on
+   over lines. *)
+proc stringEnd(s: []const U8; i: INT): INT;
+var q: U8; j: INT;
+begin
+    q := s[i];
+    if q = '`' then
+        j := Str.findFrom(s, "`", i + 1);
+        if j < 0 then return -1; end;
+        return j + 1;
+    end;
+    if (q # '"') and (q # '\'') then return -1; end;
+    j := i + 1;
+    while j < LEN(s) do
+        if s[j] = q then return j + 1;
+        elsif s[j] = '\\' then INC(j, 2);
+        elsif s[j] = '\n' then return -1;
+        else INC(j);
+        end;
+    end;
+    return -1;
+end;
+
+(* Whether a number may end at e: no letter, digit or underscore follows. *)
+proc numberStops(s: []const U8; e: INT): BOOL;
+begin
+    return (e >= LEN(s)) or not isWord(s[e]);
+end;
+
+(* Past the digits that start at p. *)
+proc digitsEnd(s: []const U8; p: INT): INT;
+begin
+    while (p < LEN(s)) and Str.isDigit(s[p]) do INC(p); end;
+    return p;
+end;
+
+(* The end of a number's last part, an H, from p, or -1: an H after p is
+   taken if the number can end past it, else the number ends at p. *)
+proc hexSuffixEnd(s: []const U8; p: INT): INT;
+begin
+    if (p < LEN(s)) and (s[p] = 'H') and numberStops(s, p + 1) then return p + 1; end;
+    if numberStops(s, p) then return p; end;
+    return -1;
+end;
+
+(* The end of a number from p with its exponent, E, a sign if any and
+   digits, tried before the number ends without one; or -1. *)
+proc exponentEnd(s: []const U8; p: INT): INT;
+var q, e: INT;
+begin
+    if (p < LEN(s)) and (s[p] = 'E') then
+        q := p + 1;
+        if (q < LEN(s)) and ((s[q] = '-') or (s[q] = '+')) then INC(q); end;
+        if (q < LEN(s)) and Str.isDigit(s[q]) then
+            e := hexSuffixEnd(s, digitsEnd(s, q));
+            if e >= 0 then return e; end;
+        end;
+    end;
+    return hexSuffixEnd(s, p);
+end;
+
+(* The end of a number from p with its fraction, a point and digits,
+   tried before the number ends without one; or -1. *)
+proc fractionEnd(s: []const U8; p: INT): INT;
+var e: INT;
+begin
+    if (p + 1 < LEN(s)) and (s[p] = '.') and Str.isDigit(s[p + 1]) then
+        e := exponentEnd(s, digitsEnd(s, p + 1));
+        if e >= 0 then return e; end;
+    end;
+    return exponentEnd(s, p);
+end;
+
+(* Where the number that starts at i ends, or -1. It starts with a digit
+   not in the middle of a word; goes on over hexadecimal digits as far
+   as that lets it end, as a regular expression would back off, then a
+   fraction, an exponent and an H. *)
+proc numberEnd(s: []const U8; i: INT): INT;
+var q, e: INT;
+begin
+    if not Str.isDigit(s[i]) or ((i > 0) and isWord(s[i - 1])) then return -1; end;
+    q := i + 1;
+    while (q < LEN(s)) and isHex(s[q]) do INC(q); end;
+    while q > i do
+        e := fractionEnd(s, q);
+        if e >= 0 then return e; end;
+        DEC(q);
+    end;
+    return -1;
+end;
+
+(* Where the word that starts at i ends, or -1 if none does. *)
+proc wordEnd(s: []const U8; i: INT): INT;
+begin
+    if not (Str.isLetter(s[i]) or (s[i] = '_')) then return -1; end;
+    while (i < LEN(s)) and isWord(s[i]) do INC(i); end;
+    return i;
+end;
+
+(* Adds src as HTML, its comments, strings, numbers and words in
+   spans. A token is looked for at each place in turn: a comment, a
+   string, a number, then a word. *)
+proc highlight*(var b: Buf.Buf; src: []const U8);
+var at, i, e: INT; class: []const U8;
+begin
+    at := 0;
+    i := 0;
+    while i < LEN(src) do
+        class := "";
+        e := commentEnd(src, i);
+        if e >= 0 then class := "comment"; end;
+        if e < 0 then e := stringEnd(src, i); if e >= 0 then class := "string"; end; end;
+        if e < 0 then e := numberEnd(src, i); if e >= 0 then class := "number"; end; end;
+        if e < 0 then
+            e := wordEnd(src, i);
+            if e >= 0 then
+                if among(src[i..e], Keywords) then class := "kw";
+                elsif among(src[i..e], Predeclared) then class := "ty";
+                end;
+            end;
+        end;
+        if e < 0 then
+            INC(i);
+        else
+            if LEN(class) > 0 then
+                escape(b, src[at..i], true);
+                Buf.str(b, "<span class=\"");
+                Buf.str(b, class);
+                Buf.str(b, "\">");
+                escape(b, src[i..e], true);
+                Buf.str(b, "</span>");
+                at := e;
+            end;
+            i := e;
+        end;
+    end;
+    escape(b, src[at..LEN(src)], true);
+end;
+
+(* ---- inline markup ----------------------------------------------- *)
+
+(* Adds s with each `text` made <code>text</code>. *)
+proc codePass(var b: Buf.Buf; s: []const U8);
+var i, j: INT;
+begin
+    i := 0;
+    while i < LEN(s) do
+        j := -1;
+        if s[i] = '`' then j := Str.findFrom(s, "`", i + 1); end;
+        if j > i + 1 then
+            Buf.str(b, "<code>"); Buf.str(b, s[i + 1..j]); Buf.str(b, "</code>");
+            i := j + 1;
+        else
+            Buf.add(b, s[i]);
+            INC(i);
+        end;
+    end;
+end;
+
+(* Adds s with each **text** made <strong>text</strong>; the text has
+   no star in it. *)
+proc strongPass(var b: Buf.Buf; s: []const U8);
+var i, j: INT;
+begin
+    i := 0;
+    while i < LEN(s) do
+        j := -1;
+        if (i + 1 < LEN(s)) and (s[i] = '*') and (s[i + 1] = '*') then
+            j := i + 2;
+            while (j < LEN(s)) and (s[j] # '*') do INC(j); end;
+            if (j = i + 2) or (j + 1 >= LEN(s)) or (s[j + 1] # '*') then j := -1; end;
+        end;
+        if j >= 0 then
+            Buf.str(b, "<strong>"); Buf.str(b, s[i + 2..j]); Buf.str(b, "</strong>");
+            i := j + 2;
+        else
+            Buf.add(b, s[i]);
+            INC(i);
+        end;
+    end;
+end;
+
+(* The index of the first c in s from i, or -1. *)
+proc indexOf(s: []const U8; c: U8; i: INT): INT;
+begin
+    while (i < LEN(s)) and (s[i] # c) do INC(i); end;
+    if i >= LEN(s) then return -1; end;
+    return i;
+end;
+
+(* Adds s with each [text](url) made <a href="url">text</a>. *)
+proc linkPass(var b: Buf.Buf; s: []const U8);
+var i, j, k: INT;
+begin
+    i := 0;
+    while i < LEN(s) do
+        k := -1;
+        if s[i] = '[' then
+            j := indexOf(s, ']', i + 1);
+            if (j > i + 1) and (j + 1 < LEN(s)) and (s[j + 1] = '(') then
+                k := indexOf(s, ')', j + 2);
+                if k <= j + 2 then k := -1; end;
+            end;
+        end;
+        if k >= 0 then
+            Buf.str(b, "<a href=\""); Buf.str(b, s[j + 2..k]); Buf.str(b, "\">");
+            Buf.str(b, s[i + 1..j]); Buf.str(b, "</a>");
+            i := k + 1;
+        else
+            Buf.add(b, s[i]);
+            INC(i);
+        end;
+    end;
+end;
+
+(* Adds s as HTML: escaped, then its `code`, **bold** and [links](url)
+   made tags, one kind after the other over the whole text. *)
+proc inline*(var b: Buf.Buf; s: []const U8);
+var plain, coded, bold: Buf.Buf;
+begin
+    Buf.init(plain, Heap.heap);
+    Buf.init(coded, Heap.heap);
+    Buf.init(bold, Heap.heap);
+    escape(plain, s, false);
+    codePass(coded, Buf.bytes(plain));
+    strongPass(bold, Buf.bytes(coded));
+    linkPass(b, Buf.bytes(bold));
+    Buf.done(plain);
+    Buf.done(coded);
+    Buf.done(bold);
+end;
+
+(* ---- blocks ------------------------------------------------------ *)
+
+(* The cells of a table row: its white space and the bars at its ends
+   cut, then split at the bars, each cell trimmed. *)
+proc cells(row: []const U8): [][]const U8;
+var v: Names.Vec; at, i: INT;
+begin
+    row := Str.trim(row);
+    while (LEN(row) > 0) and (row[0] = '|') do row := row[1..LEN(row)]; end;
+    while (LEN(row) > 0) and (row[LEN(row) - 1] = '|') do row := row[0..LEN(row) - 1]; end;
+    Names.init(v, Heap.heap);
+    at := 0;
+    for i := 0 to LEN(row) - 1 do
+        if row[i] = '|' then Names.push(v, Str.trim(row[at..i])); at := i + 1; end;
+    end;
+    Names.push(v, Str.trim(row[at..LEN(row)]));
+    return Names.all(v);
+end;
+
+(* Adds a pipe table (header, a |---| rule, rows) as HTML. Each cell
+   carries its column's name, which the style sheet shows when the
+   screen is too narrow for columns. *)
+proc table(var b: Buf.Buf; rows: [][]const U8);
+var head, row: [][]const U8; i, k: INT;
+begin
+    head := cells(rows[0]);
+    Buf.str(b, "<table><thead><tr>");
+    for k := 0 to LEN(head) - 1 do
+        Buf.str(b, "<th>"); inline(b, head[k]); Buf.str(b, "</th>");
+    end;
+    Buf.str(b, "</tr></thead><tbody>");
+    for i := 2 to LEN(rows) - 1 do
+        row := cells(rows[i]);
+        Buf.str(b, "<tr>");
+        for k := 0 to LEN(head) - 1 do
+            if k < LEN(row) then
+                Buf.str(b, "<td data-label=\"");
+                escape(b, head[k], true);
+                Buf.str(b, "\">");
+                inline(b, row[k]);
+                Buf.str(b, "</td>");
+            end;
+        end;
+        Buf.str(b, "</tr>");
+    end;
+    Buf.str(b, "</tbody></table>");
+end;
+
+(* The paragraphs of text: it is cut at each line feed that ends a blank
+   line, however many blank lines there are. *)
+proc paragraphs(text: []const U8): [][]const U8;
+var v: Names.Vec; start, i, k, last: INT;
+begin
+    Names.init(v, Heap.heap);
+    start := 0;
+    i := 0;
+    while i < LEN(text) do
+        last := -1;
+        if text[i] = '\n' then
+            k := i + 1;
+            while (k < LEN(text)) and Str.isSpace(text[k]) do
+                if text[k] = '\n' then last := k; end;
+                INC(k);
+            end;
+        end;
+        if last >= 0 then
+            Names.push(v, text[start..i]);
+            start := last + 1;
+            i := last + 1;
+        else
+            INC(i);
+        end;
+    end;
+    Names.push(v, text[start..LEN(text)]);
+    return Names.all(v);
+end;
+
+(* Whether every one of lines starts with prefix. *)
+proc allStart(lines: [][]const U8; prefix: []const U8): BOOL;
+var i: INT;
+begin
+    for i := 0 to LEN(lines) - 1 do
+        if not Str.hasPrefix(lines[i], prefix) then return false; end;
+    end;
+    return true;
+end;
+
+(* Adds a paragraph as HTML: a "## " heading, a table, a "- " list, or
+   a paragraph of its lines joined by blanks. *)
+proc paragraph(var b: Buf.Buf; para: []const U8);
+var lines: [][]const U8; joined: Buf.Buf; i: INT;
+begin
+    lines := Site.lines(para);
+    if Str.hasPrefix(para, "## ") then
+        Buf.str(b, "<h2>"); inline(b, para[3..LEN(para)]); Buf.str(b, "</h2>");
+    elsif allStart(lines, "|") then
+        table(b, lines);
+    elsif allStart(lines, "- ") then
+        Buf.str(b, "<ul>");
+        for i := 0 to LEN(lines) - 1 do
+            Buf.str(b, "<li>"); inline(b, lines[i][2..LEN(lines[i])]); Buf.str(b, "</li>");
+        end;
+        Buf.str(b, "</ul>");
+    else
+        Buf.init(joined, Heap.heap);
+        Str.join(joined, lines, " ");
+        Buf.str(b, "<p>"); inline(b, Buf.bytes(joined)); Buf.str(b, "</p>");
+        Buf.done(joined);
+    end;
+end;
+
+(* Adds the paragraphs of text as HTML, one to a line. *)
+proc prose*(var b: Buf.Buf; text: []const U8);
+var paras: [][]const U8; i: INT;
+begin
+    paras := paragraphs(Str.trim(text));
+    for i := 0 to LEN(paras) - 1 do
+        if i > 0 then Buf.add(b, '\n'); end;
+        paragraph(b, paras[i]);
+    end;
+end;
+
+end Markup.

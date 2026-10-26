@@ -1,0 +1,217 @@
+(* Releases: the release commits the home page (Build) and ladle's
+   download pages (Source) share. Tags supply the released versions;
+   site/releases records website distributions whose tags have not
+   been pushed. Both must name commits on main's first-parent line, and
+   a later tag must agree with the record. No tags or archives are
+   made here. It needs git, through Site. *)
+module Releases;
+import Site, Str, Heap, Buf, Fmt;
+import Entries := Vec(Release);
+import Commits := Map([]const U8, BOOL, Str.hash, Str.eq);
+import ByVersion := Sort(Release, older);
+
+type
+    (* A release: its version tag, vX.Y.Z, and the full commit hash. *)
+    Release* = record
+        tag*: []const U8;
+        commit*: []const U8;
+    end;
+
+    (* The state of one run of refs. *)
+    Pick = record
+        root: []const U8;      (* the repository *)
+        line: Commits.Map;     (* the commits of main's first-parent line *)
+        selected: Entries.Vec; (* the releases chosen so far *)
+        tagged: Entries.Vec;   (* every tag of the form vX.Y.Z, with its commit *)
+        why: Buf.Buf;          (* the message of the first mistake *)
+    end;
+
+const
+    OldestMinor = 7;   (* the oldest release is v0.7.1 *)
+    OldestPatch = 1;
+
+(* The number the digits of s make, and whether s is only digits. *)
+proc number(s: []const U8): (I64, BOOL);
+var i: INT;
+begin
+    if LEN(s) = 0 then return 0, false; end;
+    for i := 0 to LEN(s) - 1 do
+        if not Str.isDigit(s[i]) then return 0, false; end;
+    end;
+    return Str.toInt(s);
+end;
+
+(* The three numbers of a tag vX.Y.Z, and whether it is one. *)
+proc version*(tag: []const U8): (I64, I64, I64, BOOL);
+var rest, x, y, z: []const U8; a, b, c: I64; found, ok: BOOL;
+begin
+    if not Str.hasPrefix(tag, "v") then return 0, 0, 0, false; end;
+    x, rest, found := Str.cut(tag[1..LEN(tag)], ".");
+    if not found then return 0, 0, 0, false; end;
+    y, z, found := Str.cut(rest, ".");
+    if not found then return 0, 0, 0, false; end;
+    a, ok := number(x);
+    if not ok then return 0, 0, 0, false; end;
+    b, ok := number(y);
+    if not ok then return 0, 0, 0, false; end;
+    c, ok := number(z);
+    if not ok then return 0, 0, 0, false; end;
+    return a, b, c, true;
+end;
+
+(* Whether the release a is older than b. *)
+proc older(a, b: Release): BOOL;
+var a1, a2, a3, b1, b2, b3: I64;
+begin
+    a1, a2, a3, _ := version(a.tag);
+    b1, b2, b3, _ := version(b.tag);
+    if a1 # b1 then return a1 < b1; end;
+    if a2 # b2 then return a2 < b2; end;
+    return a3 < b3;
+end;
+
+(* Main locally, or the detached commit a deployment gives: "refs/heads/main"
+   or "HEAD", or false if there is neither. A build never silently publishes another local branch. The
+   publishing service selects main before checking out its commit. *)
+proc mainRef*(root: []const U8): ([]const U8, BOOL);
+begin
+    if Site.runQuiet(["git", "-C", root, "show-ref", "--verify", "--quiet", "refs/heads/main"]) = 0 then
+        return "refs/heads/main", true;
+    end;
+    if Site.runQuiet(["git", "-C", root, "symbolic-ref", "--quiet", "HEAD"]) # 0 then
+        return "HEAD", true;
+    end;
+    return "", false;
+end;
+
+(* The index of the release called tag in v, or -1. *)
+proc find(const v: Entries.Vec; tag: []const U8): INT;
+var i: INT;
+begin
+    for i := 0 to v.len - 1 do
+        if Entries.all(v)[i].tag = tag then return i; end;
+    end;
+    return -1;
+end;
+
+(* Says that the release tag is wrong, as why; false. *)
+proc mistake(var p: Pick; tag: []const U8; what: []const U8): BOOL;
+begin
+    Fmt.write(p.why, "release {}: {}", [Fmt.str(tag), Fmt.str(what)]);
+    return false;
+end;
+
+(* Considers the release tag at rev: one before v0.7.1 is ignored; one
+   not on main's line, or at odds with a tag or a record, is a mistake,
+   false. *)
+proc add(var p: Pick; tag, rev: []const U8): BOOL;
+var commit: []const U8; a, b, c: I64; ok: BOOL; i: INT; text: Buf.Buf;
+begin
+    a, b, c, ok := version(tag);
+    if not ok then
+        Fmt.write(p.why, "release version must be vX.Y.Z: {}", [Fmt.str(tag)]);
+        return false;
+    end;
+    if (a = 0) and ((b < OldestMinor) or ((b = OldestMinor) and (c < OldestPatch))) then return true; end;
+    commit := Site.git(p.root, ["rev-parse", "--verify", "--end-of-options", Site.cat([rev, "^{commit}"])]);
+    _, ok := Commits.get(p.line, commit);
+    if not ok then
+        Buf.init(text, Heap.heap);
+        Fmt.write(text, "{} is not on main's first-parent line", [Fmt.str(commit)]);
+        return mistake(p, tag, Buf.bytes(text));
+    end;
+    i := find(p.tagged, tag);
+    if (i >= 0) and (Entries.all(p.tagged)[i].commit # commit) then
+        return mistake(p, tag, "tag and recorded commits disagree");
+    end;
+    i := find(p.selected, tag);
+    if i < 0 then
+        Entries.push(p.selected, {tag: tag, commit: commit});
+    elsif Entries.all(p.selected)[i].commit # commit then
+        return mistake(p, tag, "tag and recorded commits disagree");
+    end;
+    return true;
+end;
+
+(* Adds the tags of the repository, those on main's line as releases. *)
+proc addTags(var p: Pick): BOOL;
+var all: [][]const U8; tag, commit: []const U8; i: INT; ok: BOOL;
+begin
+    all := Site.lines(Site.git(p.root, ["tag", "-l", "v*"]));
+    for i := 0 to LEN(all) - 1 do
+        tag := all[i];
+        _, _, _, ok := version(tag);
+        if ok then
+            (* Tags on another development line are not this site's releases. *)
+            commit := Site.git(p.root, ["rev-parse", "--verify", Site.cat([tag, "^{commit}"])]);
+            Entries.push(p.tagged, {tag: tag, commit: commit});
+            _, ok := Commits.get(p.line, commit);
+            if ok and not add(p, tag, commit) then return false; end;
+        end;
+    end;
+    return true;
+end;
+
+(* Adds the records of site/releases, one "vX.Y.Z FULL_COMMIT" a line,
+   # starting a comment. *)
+proc addManifest(var p: Pick): BOOL;
+var
+    path, line: []const U8; all, words: [][]const U8; i, j: INT; hash: BOOL;
+begin
+    path := Site.cat([p.root, "/site/releases"]);
+    all := Site.lines(Site.read(path));
+    for i := 0 to LEN(all) - 1 do
+        line, _, _ := Str.cut(all[i], "#");
+        words := Site.words(line);
+        if LEN(words) > 0 then
+            hash := (LEN(words) = 2) and (LEN(words[1]) = 40);
+            if hash then
+                for j := 0 to 39 do
+                    hash := hash and (Str.isDigit(words[1][j]) or ((words[1][j] >= 'a') and (words[1][j] <= 'f')));
+                end;
+            end;
+            if not hash then
+                Fmt.write(p.why, "{}:{}: expected vX.Y.Z and full commit hash", [Fmt.str(path), Fmt.int(i + 1)]);
+                return false;
+            end;
+            if not add(p, words[0], words[1]) then return false; end;
+        end;
+    end;
+    return true;
+end;
+
+(* The (version tag, full commit) pairs, oldest first, of the tags on
+   main's line and the records of site/releases, and of extra, the
+   optional vX.Y.Z=COMMIT arguments of make site. Conflicting records
+   are mistakes, so a build cannot quietly move an existing version to
+   another commit: then the list is empty and the message, otherwise
+   empty, says what is wrong. A shallow
+   checkout, as a deployment service makes, is completed from its
+   origin first, since the source browser needs the history and the
+   tags. *)
+proc refs*(root: []const U8; extra: []const Release): ([]Release, []const U8);
+var p: Pick; all: [][]const U8; ref: []const U8; ok: BOOL; i: INT;
+begin
+    if Site.git(root, ["rev-parse", "--is-shallow-repository"]) = "true" then
+        Fmt.print("site: fetching full history and tags from origin\n", []);
+        Site.must(["git", "-C", root, "fetch", "--unshallow", "--tags", "origin"]);
+    end;
+    ref, ok := mainRef(root);
+    if not ok then return [], "site build needs main or a detached deployment checkout"; end;
+    p.root := root;
+    Buf.init(p.why, Heap.heap);
+    Commits.init(p.line, Heap.heap);
+    Entries.init(p.selected, Heap.heap);
+    Entries.init(p.tagged, Heap.heap);
+    all := Site.lines(Site.git(root, ["rev-list", "--first-parent", ref]));
+    for i := 0 to LEN(all) - 1 do _ := Commits.put(p.line, all[i], true); end;
+    ok := addTags(p) and addManifest(p);
+    for i := 0 to LEN(extra) - 1 do
+        ok := ok and add(p, extra[i].tag, extra[i].commit);
+    end;
+    if not ok then return [], Buf.bytes(p.why); end;
+    ByVersion.sort(Entries.all(p.selected));
+    return Entries.all(p.selected), "";
+end;
+
+end Releases.

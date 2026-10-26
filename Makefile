@@ -80,11 +80,11 @@ stress: raz | build
 	build/Stress 40000 200
 	(ulimit -v 60000; build/Stress fail)
 
-# the formatter, tools/Pretty.raz: the library, examples and tools are
+# the formatter, tools/Pretty.raz: the library, examples, tools and site programs are
 # formatted already
 fmt: raz | build
 	./raz -o build/Pretty tools/Pretty.raz
-	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz src/*.raz src/test/*.raz; do \
+	@fail=0; for f in lib/*.raz examples/*.raz tools/*.raz site/*.raz src/*.raz src/test/*.raz; do \
 	    build/Pretty $$f | cmp -s - $$f || { echo "not formatted: $$f"; fail=1; }; \
 	done; test $$fail = 0
 
@@ -147,7 +147,7 @@ uninstall:
 # formatter, Doc and the Scan they share, and raztest) and the manual
 # pages, V being what raz --version says. It is made of the commit
 # REV, HEAD unless given: CI packs the tag it checked out, and
-# site/build.py each tag it lacks. A release whose tag isn't pushed yet
+# site/Build.raz each tag it lacks. A release whose tag isn't pushed yet
 # is made with VERSION, its version without the v: the same tarball as
 # the tag's, once the tag is at REV.
 #
@@ -180,21 +180,31 @@ dist:
 
 # The website, plain files in site/public/: its home page, the tour
 # "Raz, Set, Go" (whose programs are run here, so the output shown is
-# real), the report and the latest release's tarball. site/build.py
-# says how; it needs ./raz and pandoc. RELEASES, "vX.Y.Z=COMMIT ...",
+# real), the report and the latest release's tarball. site/Build.raz
+# says how; it needs ./raz, pandoc and pdfinfo. RELEASES, "vX.Y.Z=COMMIT ...",
 # adds release records to those kept in site/releases. site-source runs
 # ladle after the pages: its Git store and releases live under /source/,
 # with their headers merged at the upload's root. The pinned ladle is
 # bundled for Cloudflare; LADLE may name a locally built one instead.
+# The site's programs are raz programs, site/Build.raz, Source.raz and
+# Verify.raz, built by this raz into build/site/.
 LADLE ?=
-site: raz pdf
-	python3 site/build.py $(RELEASES)
+build/site/%: site/%.raz site/*.raz raz
+	mkdir -p build/site
+	./raz -Werror -o $@ site/$*.raz
+
+site: raz pdf build/site/Build
+	build/site/Build $(RELEASES)
 	$(MAKE) site-source
 
 # Wrangler runs this before deploying the committed pages. The generated
 # Git store must never be committed: otherwise later stores contain copies
 # of earlier ones. See site/README.md for the release and upload procedure.
-site-source:
-	python3 site/source.py $(if $(LADLE),--ladle $(LADLE)) $(RELEASES)
+site-source: build/site/Source
+	build/site/Source $(if $(LADLE),--ladle $(LADLE)) $(RELEASES)
 
-.PHONY: prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site site-source clean install uninstall
+# Checks the site's release selection against small real Git repositories.
+site-check: build/site/Verify
+	build/site/Verify
+
+.PHONY: prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site site-source site-check clean install uninstall

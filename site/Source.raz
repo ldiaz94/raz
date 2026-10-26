@@ -1,0 +1,410 @@
+(* Source: the static source browser and the releases, built by ladle
+   after Build has made the pages.
+
+       Source [--ladle path] [--url address] [vX.Y.Z=COMMIT ...]
+
+   Run from the repository root, by make site-source. It reads
+   committed main and the existing, checksummed compiler
+   distributions, and writes only site/public/source/ and the header
+   rules at its root. It does not build compilers, create tags, upload
+   files or deploy the site. The layout and the publishing rules are in
+   site/README.md. It needs git, gzip and ladle, which it runs, and
+   Site, Releases and Sha256. *)
+module Source;
+import Sys, Files, Buf, Str, Heap, Fmt, Opt, Site, Releases, Sha256;
+import Commits := Map([]const U8, BOOL, Str.hash, Str.eq);
+import Rels := Vec(Releases.Release);
+import Sizes := Vec(Sized);
+
+const
+    Url = "https://raz.lucelad.workers.dev/source/";   (* where the browser is, unless --url says *)
+    BeginHeaders = "# BEGIN ladle source\n";   (* the block of ladle's header rules in the root _headers *)
+    EndHeaders = "# END ladle source\n";
+    MaxFiles = 20000;                  (* files the host takes *)
+    MaxFileBytes = 25 * 1024 * 1024;   (* bytes of its largest file *)
+    LadleKey = 1;    (* the keys of --ladle and --url, which have no letter *)
+    UrlKey = 2;
+    Table: []Opt.Row = [
+        Opt.usage("", "Source [--ladle path] [--url address] [vX.Y.Z=COMMIT ...]"),
+        Opt.option("", LadleKey, "ladle", "path", "use this ladle instead of the checked-in static executable"),
+        Opt.option("", UrlKey, "url", "address", "the site's absolute /source/ address")];
+
+type
+    (* A file of the site and its size, for the host's limits. *)
+    Sized = record
+        path: []const U8;
+        size: I64;
+    end;
+
+(* ---- the clone ---------------------------------------------------- *)
+
+(* Adds the lines of text, none empty, to the set of commits m. *)
+proc addAll(var m: Commits.Map; text: []const U8);
+var all: [][]const U8; i: INT;
+begin
+    all := Site.lines(text);
+    for i := 0 to LEN(all) - 1 do
+        if LEN(all[i]) > 0 then _ := Commits.put(m, all[i], true); end;
+    end;
+end;
+
+(* Clones main of the repository at root independently into directory,
+   keeping only the tags whose commits it reaches; the clone's path.
+   A deployment checkout can be detached and have no local branch: its
+   commit is named main only inside this temporary published store. *)
+proc prepareStore*(root, directory: []const U8): []const U8;
+var
+    store, ref, tag, reached: []const U8; all: [][]const U8; known: Commits.Map;
+    out, err: Buf.Buf; local, ok: BOOL; i: INT;
+begin
+    store := Site.cat([directory, "/raz.git"]);
+    ref, ok := Releases.mainRef(root);
+    if not ok then Site.die("site build needs main or a detached deployment checkout", []); end;
+    local := ref # "HEAD";
+    if local then
+        Site.must(["git", "clone", "--quiet", "--bare", "--single-branch", "--no-local", "--branch", "main", root, store]);
+    else
+        Site.must(["git", "clone", "--quiet", "--bare", "--single-branch", "--no-local", root, store]);
+        _ := Site.git(store, ["update-ref", "refs/heads/main", Site.git(store, ["rev-parse", "HEAD"])]);
+        _ := Site.git(store, ["symbolic-ref", "HEAD", "refs/heads/main"]);
+    end;
+    Commits.init(known, Heap.heap);
+    addAll(known, Site.git(store, ["rev-list", "main"]));
+    all := Site.lines(Site.git(store, ["tag", "--list"]));
+    for i := 0 to LEN(all) - 1 do
+        tag := all[i];
+        if LEN(tag) > 0 then
+            (* Tags of trees or blobs are not cloneable releases. Ask quietly:
+               such a tag is valid git, simply outside the published history. *)
+            Buf.init(out, Heap.heap);
+            Buf.init(err, Heap.heap);
+            ok := Site.capture(Site.gitArgs(store, ["rev-parse", "--verify", Site.cat(["refs/tags/", tag, "^{commit}"])]),
+                "", [], false, out, err) = 0;
+            reached := Str.trim(Buf.bytes(out));
+            if ok then _, ok := Commits.get(known, reached); end;
+            if not ok then _ := Site.git(store, ["update-ref", "-d", Site.cat(["refs/tags/", tag])]); end;
+        end;
+    end;
+    _ := Site.git(store, ["repack", "-a", "-d", "--max-pack-size=20m"]);
+    _ := Site.git(store, ["update-server-info"]);
+    return store;
+end;
+
+(* ---- checksums ---------------------------------------------------- *)
+
+(* Where a file's published checksum is: its path and .sha256. *)
+proc sumPath(path: []const U8): []const U8;
+begin
+    return Site.cat([path, ".sha256"]);
+end;
+
+(* The SHA-256, as hex, of the file at path. *)
+proc digest(path: []const U8): []const U8;
+var b: Buf.Buf;
+begin
+    Buf.init(b, Heap.heap);
+    Sha256.hex(Site.read(path), b);
+    return Buf.bytes(b);
+end;
+
+(* The published checksum of the file at path, never replaced to fit
+   different bytes; the empty string and why if it isn't a SHA-256 and
+   the file's name. *)
+proc publishedSum(path: []const U8): ([]const U8, []const U8);
+var words: [][]const U8; name: []const U8; i: INT; hex: BOOL;
+begin
+    name := path[Str.findLast(path, "/") + 1..LEN(path)];
+    words := Site.words(Site.read(sumPath(path)));
+    hex := (LEN(words) = 2) and (LEN(words[0]) = 64) and (words[1] = name);
+    if hex then
+        for i := 0 to 63 do
+            hex := hex and (Str.isDigit(words[0][i]) or ((words[0][i] >= 'a') and (words[0][i] <= 'f')));
+        end;
+    end;
+    if not hex then
+        return "", Site.cat([sumPath(path), ": expected SHA-256 and ", name]);
+    end;
+    return words[0], "";
+end;
+
+(* The static builder: the checked-in ladle.gz, whose bytes must have its
+   recorded SHA-256, unpacked to executable, needing no compiler or
+   network; the executable's path, or the empty string and why. It is
+   renamed into place, a new inode: another build may still be running
+   the previous executable, which can't be overwritten on Linux. *)
+proc pinnedLadle*(archive, executable: []const U8): ([]const U8, []const U8);
+var want, why, temporary: []const U8; slash, fd, status: INT;
+begin
+    want, why := publishedSum(archive);
+    if LEN(why) > 0 then return "", why; end;
+    if digest(archive) # want then return "", Site.cat([archive, ": differs from its recorded SHA-256"]); end;
+    slash := Str.findLast(executable, "/");
+    Site.makeDirs(executable[0..slash]);
+    temporary := Site.cat([executable, ".new"]);
+    fd := Sys.create(temporary);
+    if fd < 0 then Site.die("can't make {}", [Fmt.str(temporary)]); end;
+    status := Site.run(["gzip", "-dc", archive], fd);
+    Sys.close(fd);
+    if status # 0 then Site.die("gzip can't unpack {}", [Fmt.str(archive)]); end;
+    if (Sys.chmod(temporary, 1EDH) < 0) or (Sys.rename(temporary, executable) < 0) then
+        Site.die("can't install {}", [Fmt.str(executable)]);
+    end;
+    return executable, "";
+end;
+
+(* ---- the releases ------------------------------------------------- *)
+
+(* Copies the compiler's distribution of version into directory from
+   public/download, checking its published checksum; why, if it differs. *)
+proc compilerArchive(root, version, directory: []const U8): []const U8;
+var name, original, copied, want, why: []const U8;
+begin
+    name := Site.cat(["raz-", version[1..LEN(version)], "-linux-x86_64.tar.gz"]);
+    original := Site.cat([root, "/site/public/download/", name]);
+    want, why := publishedSum(original);
+    if LEN(why) > 0 then return why; end;
+    copied := Site.cat([directory, "/", name]);
+    Site.copy(original, copied);
+    if digest(copied) # want then return Site.cat([original, ": differs from its published SHA-256"]); end;
+    return "";
+end;
+
+(* Archives exactly the commit, with no wall-clock time or file name in
+   gzip's header; why, if it can't. *)
+proc sourceArchive(store, version, commit, directory: []const U8): []const U8;
+var name, prefix: []const U8; fd, tar, zip: INT;
+begin
+    name := Site.cat([directory, "/raz-", version[1..LEN(version)], "-source.tar.gz"]);
+    prefix := Site.cat(["--prefix=raz-", version[1..LEN(version)], "/"]);
+    fd := Sys.create(name);
+    if fd < 0 then Site.die("can't make {}", [Fmt.str(name)]); end;
+    tar, zip := Site.pipeline(["git", "-C", store, "archive", "--format=tar", prefix, commit], ["gzip", "-9n"], fd);
+    Sys.close(fd);
+    if (tar # 0) or (zip # 0) then return Site.cat(["release ", version, ": git archive failed"]); end;
+    return "";
+end;
+
+(* Puts each selected release in directory/<version>/: its commit, its
+   notes if site/release-notes has them, its compiler and its source;
+   why, if one is wrong. *)
+proc stageReleases(root, store, directory: []const U8; selected: []const Releases.Release): []const U8;
+var line: Commits.Map; release, notes, why: []const U8; i: INT; ok: BOOL;
+begin
+    Commits.init(line, Heap.heap);
+    addAll(line, Site.git(store, ["rev-list", "--first-parent", "main"]));
+    Site.makeDirs(directory);
+    for i := 0 to LEN(selected) - 1 do
+        (* Ref resolution is shared with Build. Check against our snapshot
+           too, so a commit made during the build cannot split their histories. *)
+        _, ok := Commits.get(line, selected[i].commit);
+        if not ok then
+            return Site.cat(["release ", selected[i].tag, ": ", selected[i].commit, " is not in the cloned main history"]);
+        end;
+        release := Site.cat([directory, "/", selected[i].tag]);
+        Site.makeDirs(release);
+        Site.write(Site.cat([release, "/commit"]), Site.cat([selected[i].commit, "\n"]));
+        notes := Site.cat([root, "/site/release-notes/", selected[i].tag, ".md"]);
+        if Site.exists(notes) then Site.copy(notes, Site.cat([release, "/notes.md"])); end;
+        why := compilerArchive(root, selected[i].tag, release);
+        if LEN(why) > 0 then return why; end;
+        why := sourceArchive(store, selected[i].tag, selected[i].commit, release);
+        if LEN(why) > 0 then return why; end;
+    end;
+    return "";
+end;
+
+(* Copies only the dumb-HTTP store into output, never configuration or
+   local paths: HEAD, info/refs, objects/info/packs and objects/pack. *)
+proc exportStore(store, output: []const U8);
+var names: [][]const U8; i: INT;
+begin
+    Site.copy(Site.cat([store, "/HEAD"]), Site.cat([output, "/HEAD"]));
+    Site.copy(Site.cat([store, "/info/refs"]), Site.cat([output, "/info/refs"]));
+    Site.copy(Site.cat([store, "/objects/info/packs"]), Site.cat([output, "/objects/info/packs"]));
+    names := Site.dirNames(Site.cat([store, "/objects/pack"]));
+    Site.makeDirs(Site.cat([output, "/objects/pack"]));
+    for i := 0 to LEN(names) - 1 do
+        Site.copy(Site.cat([store, "/objects/pack/", names[i]]), Site.cat([output, "/objects/pack/", names[i]]));
+    end;
+end;
+
+(* ---- headers and limits ------------------------------------------- *)
+
+(* The root header file with our scoped block replaced by the rules ladle
+   generated, prefixed with /source, keeping the host's other rules;
+   and why, if the old block has no end. *)
+proc mergedHeaders(path, generated: []const U8): ([]const U8, []const U8);
+var existing, before, rest, after: []const U8; found: BOOL; b: Buf.Buf; all: [][]const U8; i: INT;
+begin
+    existing := "";
+    if Site.exists(path) then existing := Site.read(path); end;
+    if Str.find(existing, BeginHeaders) >= 0 then
+        before, rest, found := Str.cut(existing, BeginHeaders);
+        _, after, found := Str.cut(rest, EndHeaders);
+        if not found then return "", Site.cat([path, ": source header block has no closing marker"]); end;
+        existing := Site.cat([before, after]);
+    end;
+    Buf.init(b, Heap.heap);
+    Buf.str(b, Str.trimRight(existing));
+    Buf.str(b, "\n\n");
+    Buf.str(b, BeginHeaders);
+    all := Site.lines(generated);
+    if (LEN(all) > 0) and (LEN(all[LEN(all) - 1]) = 0) then all := all[0..LEN(all) - 1]; end;
+    for i := 0 to LEN(all) - 1 do
+        if i > 0 then Buf.add(b, '\n'); end;
+        if Str.hasPrefix(all[i], "/") then Buf.str(b, "/source"); end;
+        Buf.str(b, all[i]);
+    end;
+    Buf.add(b, '\n');
+    Buf.str(b, EndHeaders);
+    return Buf.bytes(b), "";
+end;
+
+(* Adds every file under dir to v with its size, skipping the top-level
+   names in skip. *)
+proc walk(dir: []const U8; skip: [][]const U8; var v: Sizes.Vec);
+var names: [][]const U8; f: Sys.Info; path: []const U8; err, i, k: INT; skipped: BOOL;
+begin
+    names := Site.dirNames(dir);
+    for i := 0 to LEN(names) - 1 do
+        skipped := false;
+        for k := 0 to LEN(skip) - 1 do skipped := skipped or (names[i] = skip[k]); end;
+        if not skipped then
+            path := Site.cat([dir, "/", names[i]]);
+            f, err := Sys.info(path);
+            if (err = 0) and f.dir then walk(path, [], v);
+            elsif (err = 0) and f.file then Sizes.push(v, {path: path, size: f.size});
+            end;
+        end;
+    end;
+end;
+
+(* Measures the complete proposed output: the files of public/ but the
+   old source tree and the root _headers, the new source tree, once,
+   and the new headers. why if one is too big or there are too many;
+   otherwise prints the totals for review against the hosting plan. *)
+proc checkLimits(public, output: []const U8; headers: []const U8): []const U8;
+var v: Sizes.Vec; all: []Sized; total, largest: I64; i: INT; b: Buf.Buf;
+begin
+    Sizes.init(v, Heap.heap);
+    walk(public, ["source", "_headers"], v);
+    walk(output, [], v);
+    Sizes.push(v, {path: Site.cat([public, "/_headers"]), size: I64(LEN(headers))});
+    all := Sizes.all(v);
+    for i := 0 to LEN(all) - 1 do
+        if all[i].size > MaxFileBytes then
+            Buf.init(b, Heap.heap);
+            Fmt.write(b, "{}: {} bytes exceeds the 25 MiB file limit", [Fmt.str(all[i].path), Fmt.int(all[i].size)]);
+            return Buf.bytes(b);
+        end;
+        total := total + all[i].size;
+        if all[i].size > largest then largest := all[i].size; end;
+    end;
+    if LEN(all) > MaxFiles then
+        Buf.init(b, Heap.heap);
+        Fmt.write(b, "site: {} files exceeds the {} file limit", [Fmt.int(LEN(all)), Fmt.int(MaxFiles)]);
+        return Buf.bytes(b);
+    end;
+    Fmt.print("site/public: {} files, {} bytes; largest file {} bytes\n",
+        [Fmt.int(LEN(all)), Fmt.int(total), Fmt.int(largest)]);
+    return "";
+end;
+
+(* ---- the build ---------------------------------------------------- *)
+
+(* Whether url is an HTTP(S) address ending in /source/ with no query or
+   fragment. *)
+proc validUrl(url: []const U8): BOOL;
+var rest: []const U8; slash: INT;
+begin
+    if Str.hasPrefix(url, "https://") then rest := url[8..LEN(url)];
+    elsif Str.hasPrefix(url, "http://") then rest := url[7..LEN(url)];
+    else return false;
+    end;
+    slash := Str.find(rest, "/");
+    return (slash > 0) and (rest[slash..LEN(rest)] = "/source/");
+end;
+
+(* Builds the browser in a temporary directory of build/site/, then
+   replaces public/source with it. A failed checksum, ladle run or
+   host-limit check leaves the previous browser in place: nothing reads
+   that output. The empty string, or why it failed. *)
+proc build(root, ladle, url: []const U8; extra: []const Releases.Release): []const U8;
+var
+    public, work, store, releases, output, headers, why, exe: []const U8; selected: []Releases.Release;
+begin
+    if not validUrl(url) then return "--url must be an HTTP(S) address ending in /source/"; end;
+    public := Site.cat([root, "/site/public"]);
+    if not Site.isDir(public) then return "site/public is missing; run Build first"; end;
+    selected, why := Releases.refs(root, extra);   (* completes a shallow deployment checkout before cloning *)
+    if LEN(why) > 0 then return why; end;
+    exe := ladle;
+    if LEN(exe) = 0 then
+        exe, why := pinnedLadle(Site.cat([root, "/site/tools/ladle.gz"]), Site.cat([root, "/build/site/ladle"]));
+        if LEN(why) > 0 then return why; end;
+    end;
+    Site.makeDirs(Site.cat([root, "/build/site"]));
+    work := Site.tempDirIn(Site.cat([root, "/build/site"]));
+    store := prepareStore(root, work);
+    releases := Site.cat([work, "/releases"]);
+    why := stageReleases(root, store, releases, selected);
+    output := Site.cat([work, "/source"]);
+    Site.makeDirs(output);
+    if LEN(why) = 0 then
+        exportStore(store, output);
+        if Site.run([exe, "-u", url, "-r", releases, "-t", Site.cat([root, "/site/source.theme"]), "-o", output, store], 0) # 0 then
+            why := "ladle failed";
+        end;
+    end;
+    if LEN(why) = 0 then
+        headers, why := mergedHeaders(Site.cat([public, "/_headers"]), Site.read(Site.cat([output, "/_headers"])));
+    end;
+    if LEN(why) = 0 then why := checkLimits(public, output, headers); end;
+    if LEN(why) = 0 then
+        _ := Files.removeTree(Site.cat([public, "/source"]));
+        if Sys.rename(output, Site.cat([public, "/source"])) < 0 then Site.die("can't move {}", [Fmt.str(output)]); end;
+        Site.write(Site.cat([public, "/_headers"]), headers);
+    end;
+    _ := Files.removeTree(work);
+    return why;
+end;
+
+(* The vX.Y.Z=COMMIT arguments given to Opt as releases; the empty
+   string and the first wrong word, if one is. *)
+proc readReleases(var p: Opt.Parser; var v: Rels.Vec): []const U8;
+var arg, tag, commit: []const U8; more, found: BOOL;
+begin
+    arg, more := Opt.operand(p);
+    while more do
+        tag, commit, found := Str.cut(arg, "=");
+        if not found or (LEN(commit) = 0) then return Site.cat([arg, ": expected vX.Y.Z=COMMIT"]); end;
+        Rels.push(v, {tag: tag, commit: commit});
+        arg, more := Opt.operand(p);
+    end;
+    return "";
+end;
+
+proc main*;
+var
+    p: Opt.Parser; ladle, url, root, why: []const U8; extra: Rels.Vec; err: INT;
+begin
+    ladle := "";
+    url := Url;
+    Opt.init(p, "Source", Table);
+    while Opt.next(p) do
+        if p.letter = LadleKey then ladle := p.value;
+        elsif p.letter = UrlKey then url := p.value;
+        end;
+    end;
+    Rels.init(extra, Heap.heap);
+    root, err := Sys.workDir();
+    if err < 0 then Site.die("source: no working directory", []); end;
+    root := Site.cat([root]);
+    if LEN(ladle) > 0 then
+        if ladle[0] # '/' then ladle := Site.cat([root, "/", ladle]); end;   (* as Path.resolve would *)
+    end;
+    why := readReleases(p, extra);
+    if LEN(why) = 0 then why := build(root, ladle, url, Rels.all(extra)); end;
+    if LEN(why) > 0 then Site.die("source: {}", [Fmt.str(why)]); end;
+end;
+end Source.

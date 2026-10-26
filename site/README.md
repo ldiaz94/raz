@@ -1,23 +1,26 @@
 # Building raz's website
 
 `make site` builds the pages, tours, reports and downloads with
-`build.py`, then the source browser and release pages with `source.py`.
-The latter needs git and Python 3 on x86-64 Linux. Its pinned static
-ladle executable is kept compressed under `tools/`, with a checksum
-and build instructions. The helper verifies the compressed bytes,
-unpacks it into `build/site/ladle` and runs it. No compiler or network
+`Build.raz`, then the source browser and release pages with `Source.raz`.
+Both are raz programs, as are `Verify.raz` and the modules they share
+(`Site`, `Releases`, `Markup` and `Sha256`): the Makefile builds them
+with this repository's `./raz` into `build/site/`. `Source` needs git,
+gzip and an x86-64 Linux; `Build` also pandoc, pdfinfo and make. Its
+pinned static ladle executable is kept compressed under `tools/`, with
+a checksum and build instructions. The helper verifies the compressed
+bytes, unpacks it into `build/site/ladle` and runs it. No network
 connection is needed with a full checkout. If a deployment service
 clones shallowly, the helper first fetches the full history and tags
 from that checkout's origin, using its existing repository access.
 
 The existing `/download/` URLs and archives stay as they are. Before
-attaching an archive to a release, `source.py` checks its bytes against
+attaching an archive to a release, `Source.raz` checks its bytes against
 the published checksum beside it. It fails if either is missing or
 the sum differs; it never replaces that checksum to fit new bytes.
 
 ## The source browser
 
-`source.py` makes a fresh bare clone of `main`, with its reachable
+`Source.raz` makes a fresh bare clone of `main`, with its reachable
 tags, using `--single-branch --no-local`. Other branches, reflogs and
 unreachable tags are not published. The store is repacked with a
 20 MiB target, and `git update-server-info` prepares it for cloning
@@ -41,7 +44,7 @@ after the normal downloads exist:
 make site-source
 ```
 
-Or run `python3 site/source.py` directly. `--ladle /path/to/ladle`
+Or run `build/site/Source` directly. `--ladle /path/to/ladle`
 overrides the bundled executable for development. `--url` may give
 another absolute address ending in `/source/`, for
 previewing the feeds and clone line. `source.theme` starts from
@@ -67,7 +70,7 @@ build never creates tags or compiler releases.
 `release-notes/vX.Y.Z.md`, when present, supplies that version's notes.
 Otherwise an annotated tag supplies them.
 
-Both builders read this list through `releases.py`, so the home page
+Both builders read this list through `Releases.raz`, so the home page
 and source browser offer the same versions. An existing distribution
 can also be given as `vX.Y.Z=COMMIT` on either helper's command line;
 `make site RELEASES='vX.Y.Z=COMMIT'` passes it to both. Permanent
@@ -79,7 +82,7 @@ ladle's header rules are prefixed with `/source` and merged into the
 root `public/_headers` between marked comments. Rebuilding replaces
 that block, preserving other root rules. Its general security policy
 therefore applies only to `/source/*`, including raw files and git
-objects. `source.py` never changes `_redirects`, so `/download/latest`
+objects. `Source.raz` never changes `_redirects`, so `/download/latest`
 continues to work. Cloudflare reads the root header file; the nested
 one is not enough.
 
@@ -96,13 +99,19 @@ release page, check it, then unpack it and compile Hello. Repeat the
 clone and download checks against the live address after deployment;
 a local file server does not test Cloudflare's headers.
 
-`python3 site/check.py` checks release identity and ordering against
-small real Git repositories, including shallow deployment checkouts,
-and rejects a damaged bundled builder. `make check` remains the
+`make site-check` (`Verify.raz`) checks release identity and ordering
+against small real Git repositories, including shallow deployment
+checkouts, and rejects a damaged bundled builder. `make check` remains the
 compiler's required check before committing.
 
 The Wrangler configuration runs `make site-source` before deployment.
 The usual `npx wrangler deploy` therefore generates the ignored source
 browser from the committed repository before uploading the assets.
-It uses the already generated main pages and distributions; it does
-not run the compiler, pandoc or the tours on the deployment machine.
+It uses the already generated main pages and distributions; it builds
+`raz` to compile `Source.raz` (`src/boot.sh` fetches the compiler
+`BOOT` names, unless `build/boot/` has it), but does not run pandoc or
+the tours on the deployment machine.
+
+The source archives' gzip bytes come from the `gzip` program (`gzip
+-9n`, as `make dist` packs the tarballs), so their checksums depend on
+its version.

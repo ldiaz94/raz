@@ -4,7 +4,7 @@
 `ldiaz94/ladle` at `509b9d314f6161a7430b8dc1354ba4ebe203ddb8`.
 Its pinned dependencies are sauce `35e0c186db6b8861745c25925ca5b2489219e48d`
 and rflate `c55b37888b071e98f57dcf18b97ab31f85595e76`.
-`ladle.gz.sha256` checks the compressed file; `source.py` verifies it
+`ladle.gz.sha256` checks the compressed file; `Source.raz` verifies it
 before unpacking the executable into `build/site/`.
 
 Keeping this small build tool with the site lets Cloudflare run the

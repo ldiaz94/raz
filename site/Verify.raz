@@ -1,0 +1,209 @@
+(* Verify: checks release selection with real git histories, and the
+   bundled builder's checksum:
+
+       raz run site/Verify.raz
+
+   Run from the repository root; it needs only the library, git and
+   Source's procedures. Every repository and download is temporary: no
+   release, working checkout or published file is changed. Each test
+   makes a small repository of three tagged commits and a record of a
+   fourth release in site/releases, and says its name, then what
+   fails, as Check does. It leaves out the rest of the site: Build and
+   Source are checked by building the site. *)
+module Verify;
+import Files, Buf, Str, Heap, Fmt, Check, Site, Releases, Source;
+import Names := Vec([]const U8);
+
+const
+    Versions: [3][]const U8 = ["v0.7.1", "v0.9.0", "v0.10.0"];   (* the tagged releases *)
+    (* the settings of the git a test runs: a name, an address, no signing *)
+    Identity: [6][]const U8 = ["-c", "user.name=Test", "-c", "user.email=test@example.org", "-c", "commit.gpgSign=false"];
+
+type
+    (* A repository for a test: where it is, and its three tagged commits. *)
+    Repo = record
+        dir: []const U8;          (* the temporary directory that holds everything *)
+        path: []const U8;         (* the repository, dir/repo *)
+        manifest: []const U8;     (* its site/releases *)
+        commits: [3][]const U8;   (* the commits of Versions *)
+    end;
+
+(* The text git writes for the command args in the repository at path,
+   run as a test user who signs nothing; the test stops if git fails. *)
+proc git(path: []const U8; args: [][]const U8): []const U8;
+var v: Names.Vec; out: Buf.Buf; i: INT;
+begin
+    Names.init(v, Heap.heap);
+    Names.push(v, "git"); Names.push(v, "-C"); Names.push(v, path);
+    for i := 0 to LEN(Identity) - 1 do Names.push(v, Identity[i]); end;
+    for i := 0 to LEN(args) - 1 do Names.push(v, args[i]); end;
+    Buf.init(out, Heap.heap);
+    if Site.captureOut(Names.all(v), "", [], out) # 0 then Site.die("git {} failed", [Fmt.str(args[0])]); end;
+    return Str.trim(Buf.bytes(out));
+end;
+
+(* Makes the test repository: three commits tagged v0.7.1, v0.9.0 and
+   v0.10.0, then a commit that records v0.20.0, not tagged yet, at the
+   last of them. *)
+proc setUp(var r: Repo);
+var i: INT; number: [20]U8; len: INT;
+begin
+    r.dir := Site.tempDir();
+    r.path := Site.cat([r.dir, "/repo"]);
+    r.manifest := Site.cat([r.path, "/site/releases"]);
+    Site.makeDirs(Site.cat([r.path, "/site"]));
+    _ := git(r.path, ["init", "--quiet", "--initial-branch=main"]);
+    for i := 0 to 2 do
+        number, len := Str.fromInt(I64(i));
+        Site.write(Site.cat([r.path, "/file"]), number[0..len]);
+        _ := git(r.path, ["add", "."]);
+        _ := git(r.path, ["commit", "--quiet", "-m", Versions[i]]);
+        r.commits[i] := git(r.path, ["rev-parse", "HEAD"]);
+        _ := git(r.path, ["tag", Versions[i]]);
+    end;
+    Site.write(r.manifest, Site.cat(["# not tagged yet\nv0.20.0 ", r.commits[2], "\n"]));
+    _ := git(r.path, ["add", "site/releases"]);
+    _ := git(r.path, ["commit", "--quiet", "-m", "record distribution"]);
+end;
+
+(* Whether the two lists of releases are the same. *)
+proc same(a, b: []const Releases.Release): BOOL;
+var i: INT;
+begin
+    if LEN(a) # LEN(b) then return false; end;
+    for i := 0 to LEN(a) - 1 do
+        if (a[i].tag # b[i].tag) or (a[i].commit # b[i].commit) then return false; end;
+    end;
+    return true;
+end;
+
+(* The releases of the repository at path; the test stops if they are
+   a mistake. *)
+proc releasesOf(path: []const U8): []Releases.Release;
+var list: []Releases.Release; why: []const U8;
+begin
+    list, why := Releases.refs(path, []);
+    Check.str("no mistake", why, "");
+    return list;
+end;
+
+(* Checks that refs of the repository at path is a mistake whose
+   message holds word. *)
+proc refuses(name, path, word: []const U8);
+var why: []const U8;
+begin
+    _, why := Releases.refs(path, []);
+    Check.ok(Str.find(why, word) >= 0, Site.cat([name, ": a mistake saying ", word, ", not \"", why, "\""]));
+end;
+
+(* Tags, in order, and a record, make the numeric order of releases:
+   v0.9.0 before v0.10.0, and the record last. *)
+proc testNumericTagsAndManifest;
+var r: Repo; want: [4]Releases.Release;
+begin
+    setUp(r);
+    want := [{tag: "v0.7.1", commit: r.commits[0]}, {tag: "v0.9.0", commit: r.commits[1]},
+        {tag: "v0.10.0", commit: r.commits[2]}, {tag: "v0.20.0", commit: r.commits[2]}];
+    Check.ok(same(releasesOf(r.path), want), "numeric tags and manifest");
+    _ := Files.removeTree(r.dir);
+end;
+
+(* A record can't move a tag to another commit. *)
+proc testManifestCannotMoveATag;
+var r: Repo;
+begin
+    setUp(r);
+    Site.write(r.manifest, Site.cat(["v0.9.0 ", r.commits[0], "\n"]));
+    refuses("manifest cannot move a tag", r.path, "disagree");
+    _ := Files.removeTree(r.dir);
+end;
+
+(* A record can't publish a commit of another line, and a tag added
+   later can't override a record. *)
+proc testManifestCannotPublishAnotherLine;
+var r: Repo; side: []const U8;
+begin
+    setUp(r);
+    _ := git(r.path, ["checkout", "--quiet", "-b", "side", r.commits[0]]);
+    Site.write(Site.cat([r.path, "/side"]), "a development branch\n");
+    _ := git(r.path, ["add", "side"]);
+    _ := git(r.path, ["commit", "--quiet", "-m", "side"]);
+    side := git(r.path, ["rev-parse", "HEAD"]);
+    _ := git(r.path, ["checkout", "--quiet", "main"]);
+    Site.write(r.manifest, Site.cat(["v0.20.0 ", side, "\n"]));
+    refuses("manifest cannot publish another line", r.path, "first-parent");
+    (* A new tag must not override the recorded distribution, even when
+       that tag would otherwise be skipped as off the main line. *)
+    Site.write(r.manifest, Site.cat(["v0.20.0 ", r.commits[2], "\n"]));
+    _ := git(r.path, ["tag", "v0.20.0", side]);
+    refuses("a tag cannot override a record", r.path, "disagree");
+    _ := Files.removeTree(r.dir);
+end;
+
+(* A shallow clone, as a deployment service makes, gets its history and
+   tags back from its origin. A file URL uses git's transport, so --depth
+   really is shallow. *)
+proc testShallowDeploy;
+var r: Repo; clone: []const U8;
+begin
+    setUp(r);
+    clone := Site.cat([r.dir, "/deploy"]);
+    _ := git(r.path, ["clone", "--quiet", "--depth=1", "--branch=main", Site.cat(["file://", r.path]), clone]);
+    Check.str("shallow before", git(clone, ["rev-parse", "--is-shallow-repository"]), "true");
+    Check.ok(same(releasesOf(clone), releasesOf(r.path)), "shallow deploy recovers history and tags");
+    Check.str("shallow after", git(clone, ["rev-parse", "--is-shallow-repository"]), "false");
+    _ := Files.removeTree(r.dir);
+end;
+
+(* A detached shallow checkout with no local main still has its releases,
+   and the published store names its commit main. *)
+proc testDetachedShallowDeploy;
+var r: Repo; clone, store: []const U8;
+begin
+    setUp(r);
+    clone := Site.cat([r.dir, "/deploy"]);
+    _ := git(r.path, ["clone", "--quiet", "--depth=1", "--branch=main", Site.cat(["file://", r.path]), clone]);
+    _ := git(clone, ["checkout", "--quiet", "--detach"]);
+    _ := git(clone, ["branch", "-D", "main"]);
+    Check.ok(same(releasesOf(clone), releasesOf(r.path)), "detached shallow deploy needs no local main");
+    store := Source.prepareStore(clone, r.dir);
+    Check.str("store's commit", git(store, ["rev-parse", "HEAD"]), git(clone, ["rev-parse", "HEAD"]));
+    Check.str("store's branch", git(store, ["symbolic-ref", "HEAD"]), "refs/heads/main");
+    _ := git(store, ["fsck", "--strict"]);
+    Check.str("clone stays detached", git(clone, ["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD");
+    _ := Files.removeTree(r.dir);
+end;
+
+(* A builder whose bytes are not the ones recorded is rejected before it
+   is unpacked. *)
+proc testModifiedBuilderIsRejected;
+var dir, archive, why: []const U8;
+begin
+    dir := Site.tempDir();
+    archive := Site.cat([dir, "/ladle.gz"]);
+    Site.write(archive, "not the published executable");
+    Site.write(Site.cat([archive, ".sha256"]), Site.cat(["0000000000000000000000000000000000000000000000000000000000000000", "  ladle.gz\n"]));
+    _, why := Source.pinnedLadle(archive, Site.cat([dir, "/ladle"]));
+    Check.ok(Str.find(why, "recorded SHA-256") >= 0, "modified builder is rejected");
+    Check.ok(not Site.exists(Site.cat([dir, "/ladle"])), "nothing is unpacked");
+    _ := Files.removeTree(dir);
+end;
+
+(* Says that the test t, which is called name, is running, and runs it:
+   Check says what fails, and at the end how many checks did. *)
+proc run(name: []const U8; t: proc);
+begin
+    Fmt.print("{}\n", [Fmt.str(name)]);
+    t();
+end;
+
+proc main*;
+begin
+    run("numeric tags and manifest", testNumericTagsAndManifest);
+    run("manifest cannot move a tag", testManifestCannotMoveATag);
+    run("manifest cannot publish another line", testManifestCannotPublishAnotherLine);
+    run("shallow deploy recovers history and tags", testShallowDeploy);
+    run("detached shallow deploy needs no local main", testDetachedShallowDeploy);
+    run("modified builder is rejected before unpacking", testModifiedBuilderIsRejected);
+end;
+end Verify.

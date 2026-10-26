@@ -81,12 +81,13 @@ emacs is installed.
     make kernels    # the code's speed against FPC -O2's (apt-get install fp-compiler)
     make stress     # 40,000 threads, started and joined
     make gdb        # gdb stops at a line of raz and names it
-    make fmt        # the library, examples and tools are formatted
+    make fmt        # the library, examples, tools and site programs are formatted
     make loc        # the compiler's lines
     make pdf        # build/raz.pdf and build/raz-lib.pdf, the two volumes, by pandoc and Chromium
     make dist       # build/raz-V-linux-x86_64.tar.gz, the release's tarball
-    make site       # site/public/, the website, by pandoc and python3
-    make site-source # /source/, its releases and HTTP clone store, by git and Python 3
+    make site       # site/public/, the website, by site/Build.raz, pandoc and pdfinfo
+    make site-source # /source/, its releases and HTTP clone store, by site/Source.raz, git and ladle
+    make site-check # the site's release selection, against small real repositories
 
 ## Using it
 
