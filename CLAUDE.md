@@ -87,7 +87,14 @@ repository. `site/README.md` gives the build, release records and
 checks. `site/releases` lists website releases whose tags aren't
 pushed yet (none now); it never makes a tag.
 
-v0.23.0, report 2026-10.37, is the safety thaw's first release, which
+v0.24.0, report 2026-10.37 still, ends the safety thaw (`PLAN.md` 2): the
+old forms are errors. What `SYSTEM` fences is refused outside a module
+that imports it; strings, constants' slices and `MSG` are `[]const`;
+atomics take only a variable. `lib/`, `src/`, the tools, examples and
+tests were mended against a temporary `-strict` first. `BOOT` names
+v0.23.0. The programs in `~/r` move to it one by one (dwa, concha,
+mosaico, rat and notis first).
+v0.23.0, report 2026-10.37, before it, the safety thaw's first release, which
 breaks no program (`PLAN.md` 2): an array a call returns lives to the
 end of its procedure; `CAS`, `XCHG` and `XADD` take a variable;
 `[]const T`; `import SYSTEM`, with `SYSTEM.ADR`, `.PTR`, `.SYSCALL` and
@@ -95,9 +102,7 @@ end of its procedure; `CAS`, `XCHG` and `XADD` take a variable;
 mode. Every old form is still taken: a literal into a `[]U8`, the bare
 built-ins, what `SYSTEM` fences without it, an atomic given `ADR(x)`.
 `BOOT` names v0.23.0 (2026-10-26), so `src/` and the library it imports
-may use all of 10.37. On main since 2026-10-26, for v0.24.0, the old
-forms are errors, and `lib/`, `src/`, the tools and the tests are
-mended; the programs in `~/r` come next. CI couldn't run for it either; `make dist` made its tarball here.
+may use all of 10.37. CI couldn't run for it either; `make dist` made its tarball here.
 v0.22.0, report 2026-10.36, before it, is the twelfth thaw, what `PROPOSALS.md`
 collated: `MIN`, `MAX`, `ABS`, `CLZ`, `CTZ`, `POPCOUNT`, `INT(b)`,
 `OFFSET`, `SIZE(T.f)`, `BYTES` and `FILL`; a qualified case in an arm,

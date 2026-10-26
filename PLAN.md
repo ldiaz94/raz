@@ -94,7 +94,9 @@ library it imports (`Buf`, `Files`, `Fmt`, `Heap`, `Mem`, `Out`, `Rt`,
 3. `BOOT` moved to v0.23.0, a step of its own. **Done** 2026-10-26.
 4. **v0.24.0, which enforces it.** Steps 1 to 3 done 2026-10-26: `raz -strict`
    first, `lib/`, `src/`, the tools and tests mended against it by
-   agents, then the old forms made errors and the option gone. `lib/`, `src/`, `tools/`,
+   agents, then the old forms made errors and the option gone.
+   Released 2026-10-26 as v0.24.0; the programs in `~/r` follow, the
+   owner's five first (dwa, concha, mosaico, rat, notis). `lib/`, `src/`, `tools/`,
    `examples/` and the tests mended where the old forms, made errors,
    are found (`ADR` at a parameter only dereferenced becomes `var` or
    `const`; `SYSTEM.` where an address is kept); the programs in `~/r`
