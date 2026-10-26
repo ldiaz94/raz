@@ -2294,6 +2294,102 @@ keeps its slices in `userDirs`, separate from the 16 `-I` directories. `searchDi
 puts them between those and the standard library, for both finding
 modules and checking duplicate names. No subdirectories are searched.
 
+## A program with its own Rt
+
+A hosted program uses `lib/Rt.raz`. A freestanding one, a kernel's
+(`raz -bare`), has to bring its own, and this says what the compiler
+asks of it and what a program's start may count on. Where this and the
+code disagree, the code (`Gen.entryPoint`, `Raz.raz`) is right.
+
+**Giving a program its own `Rt`.** A program has one module of each
+name, and the library is the `lib/` beside the compiler (`Raz.raz` finds
+it through `/proc/self/exe`), so an `Rt.raz` beside the main file meets
+`lib/Rt.raz` and is refused. What works today is staging: copy `raz`
+beside a `lib/` holding the program's own modules, and build with that
+copy. The library is then all of what is in that `lib/`, and nothing of
+raz's unless the program copies or links it there (a symbolic link
+chooses a module). `test/own` does it: `check.sh` copies `raz` to
+`build/check/own/`, with `test/own/lib/Rt.raz` as its whole library,
+and builds `test/own/Own.raz` and `OwnFail.raz` with it, under `-bare
+-s`.
+
+**What `Rt` must declare.** `Raz.raz` finds each name in `Rt`'s scope
+(`objIn`) and stops with "Rt has no X" where one is missing:
+
+| Name | What | Needed |
+|---|---|---|
+| `proc exit*(status: INT)` | Ends the program; never returns, so the compiler puts `ud2` after its call. | always |
+| `proc fail*(what, a, b, len: INT; at: UINT; name: ^U8; rdi, rsi: UINT)` | A failed check; never returns. | always |
+| variable `places` | The compiler stores the address of the places table in it, for `Rt` to say where a check failed. | unless `-s` |
+| `proc calls` and variable `teller` | `teller` is given the address of `calls`, which says the calls under way. | unless `-s` |
+| `proc place*` and variable `placer` | `placer` is given the address of `place`, which says where an address in the code comes from. | unless `-s` |
+| `proc startProfile*` and variable `profiler` | `profiler` is given `startProfile`, which `Rt`'s body calls when `RAZ_PROFILE` is set. | unless `-s`, `-noprofile` or `-bare` |
+| variable `cExit: proc(status: I32)` | Given C's `exit`. | only in a program that uses C, which `-bare` refuses |
+
+Each variable is 8 bytes, for an address stored with `lea` and a store
+at the entry. `-s` leaves out the places and what needs them, so a
+failure is told by its address, and a program built with it needs
+`Rt` to declare only `exit` and `fail` (this is what `test/own` does).
+Without `-s` the compiler links all of the `unless -s` rows, even
+under `-bare`, and a missing name stops it ("Rt has no places"): a
+kernel that wants its symbols for a debugger and no places has no way
+yet.
+
+**`fail`'s kinds.** The compiler's code calls `Rt.fail` through a stub,
+one for each kind it uses, that makes the call from where the check
+was (the parser gives a `fail` declared in a module called `Rt` the
+chunk `Gen.rtFail`; the stubs are `Rt.check0` to `Rt.check7`). `what`
+says why. These are the numbers `lib/Rt.raz` gives; an `Rt` that wants
+names for them writes constants:
+
+    const
+        Index = 0;          (* index a, of something of len elements *)
+        Slice = 1;          (* slice a..b, of something of len elements *)
+        Enum = 2;           (* a is no position of the enumeration called name *)
+        BackwardSlice = 3;  (* slice a..b of a pointer, which runs backwards *)
+        NilPointer = 4;     (* a nil pointer, reached more than NilPage bytes in *)
+        DivisionFault = 5;  (* not raised by the code: Rt's signal handler tells it *)
+        StackOverflow = 6;  (* nor this *)
+        View = 7;           (* a view at index a runs past len *)
+
+x86-64 code raises 0 to 4 and 7. Kinds 5 and 6 are what the machine
+catches itself, which `lib/Rt.raz`'s signal handlers tell with the same
+procedure; a kernel's fault handlers may too. The arguments `what, a,
+b, len, at, name` come in `rdi, rsi, rdx, rcx, r8, r9`, as System V
+gives the first six integers; `rdi` and `rsi` as the failing code had
+them (a parameter may live there; `Rt` shows them in the trap report)
+go on the stack, the seventh and eighth. `at` is an address inside the
+call, one byte before the return address, so that `Rt` finds the
+failing line. `name` is a zero-ended string, the enumeration's, for
+`Enum`, else unset. `rsp` is a multiple of 16 at the call. The stub puts
+`ud2` after it, so `fail` must end the program or halt the machine.
+That is the whole panic hook: a kernel's `fail` prints and halts.
+
+**What a program's start may count on.** The entry point, `_start`,
+does this and no more:
+
+- Hosted (not `-bare`, no C): reads `argc` from `[rsp]` and `argv` from
+  `rsp + 8` into the program's `argc` and `argv`, which `ARGC()` and
+  `SYSTEM.ARGV()` read. It aligns nothing: Linux enters a program
+  with `rsp` a multiple of 16, the compiler's calls count on it, and
+  `rbp` is left as it is (Linux gives 0).
+- Under `-bare`: reads nothing from the stack and aligns nothing, so
+  `ARGC()` is 0. The loader or boot stub enters it with `rsp` a
+  multiple of 16, the bss zeroed (the compiler's variables count on
+  it), the direction flag clear, and `rbp` 0, where a trace of frames
+  ends.
+- Both then store into `Rt`'s variables the addresses they are to hold
+  (the table above); call the body of every used module in the order
+  the modules were finished (a module after those it imports, `Rt`
+  early), except `Rt`'s own under `-bare`, whose body sets the signal
+  handlers by system calls the bare machine hasn't; then `main`, if the
+  program has one.
+- `main` may return. `Rt.exit` is then called with its result, or 0 for
+  `proc main*` or when there is no `main`.
+
+Under `-bare`, what `Rt`'s body does (handlers, tables, a first stack)
+a kernel does in a module body of its own, which runs before `main`.
+
 ## This compiler's choices
 
 What the report's appendix A leaves to an implementation, and what

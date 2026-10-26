@@ -1,0 +1,15 @@
+module Own;
+
+(* A program for the bare machine that brings its own Rt, test/own/lib's,
+   of exit and fail alone: it says hello by that Rt's system call, then
+   ends with main's result, 3. *)
+
+import Rt;
+
+proc main*: INT;
+begin
+    Rt.say("hello\n");
+    return 3;
+end;
+
+end Own.

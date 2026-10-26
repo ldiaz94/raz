@@ -1,0 +1,17 @@
+module OwnFail;
+
+(* As Own, but a check fails, an index out of range, which reaches the
+   program's own Rt.fail with kind 0: it says so and ends with status 2. *)
+import Rt;
+
+var a: [4]INT;
+
+proc main*;
+var i: INT;
+begin
+    i := 4;
+    a[i] := 1;
+    Rt.say("not reached\n");
+end;
+
+end OwnFail.

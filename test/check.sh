@@ -153,6 +153,21 @@ if [ $status = 139 ] && [ "$(cat $out/Bare.out)" = 0 ] && [ ! -s $out/Bare.err ]
     && cmp -s $out/Index.out $out/IndexBare.out; then pass=$((pass + 1))
 else echo "FAIL raz -bare: status $status"; cat $out/Bare.out $out/Bare.err $out/IndexBare.out; fail=$((fail + 1)); fi
 
+# a program with its own Rt (doc/compiler.md): the compiler copied
+# beside a lib/ of nothing but test/own/lib/Rt.raz, whose exit and
+# fail make their system calls themselves; Own ends with main's 3 after
+# saying hello, OwnFail with 2 after Rt.fail's kind 0, an index
+rm -rf $out/own; mkdir -p $out/own
+cp $raz $out/own/raz
+cp -r test/own/lib $out/own/lib
+$out/own/raz -Werror -bare -s -o $out/own/Own test/own/Own.raz
+status=$( { ( exec $out/own/Own ) > $out/own/Own.out 2>&1; echo $?; } 2>/dev/null )
+$out/own/raz -Werror -bare -s -o $out/own/OwnFail test/own/OwnFail.raz
+statusFail=$( { ( exec $out/own/OwnFail ) > $out/own/OwnFail.out 2>&1; echo $?; } 2>/dev/null )
+if [ $status = 3 ] && [ $statusFail = 2 ] && [ "$(cat $out/own/Own.out)" = hello ] \
+    && [ "$(cat $out/own/OwnFail.out)" = 'check failed: 0' ]; then pass=$((pass + 1))
+else echo "FAIL own Rt: status $status, $statusFail"; cat $out/own/Own.out $out/own/OwnFail.out; fail=$((fail + 1)); fi
+
 # raz -S: test/list/X.raz lists as X.expect
 for f in test/list/*.raz; do
     want=test/list/$(basename $f .raz).expect
