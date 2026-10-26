@@ -1,0 +1,39 @@
+(* 31 deferred statements in force in one procedure.
+   The least an implementation must accept (report section 10, Limits). *)
+module LimitDefers;
+import Out;
+proc p;
+begin
+    defer Out.int(1);
+    defer Out.int(2);
+    defer Out.int(3);
+    defer Out.int(4);
+    defer Out.int(5);
+    defer Out.int(6);
+    defer Out.int(7);
+    defer Out.int(8);
+    defer Out.int(9);
+    defer Out.int(0);
+    defer Out.int(1);
+    defer Out.int(2);
+    defer Out.int(3);
+    defer Out.int(4);
+    defer Out.int(5);
+    defer Out.int(6);
+    defer Out.int(7);
+    defer Out.int(8);
+    defer Out.int(9);
+    defer Out.int(0);
+    defer Out.int(1);
+    defer Out.int(2);
+    defer Out.int(3);
+    defer Out.int(4);
+    defer Out.int(5);
+    defer Out.int(6);
+    defer Out.int(7);
+    defer Out.int(8);
+    defer Out.int(9);
+    defer Out.int(0);
+    defer Out.int(1);
+end;
+begin p; Out.char('\n'); end LimitDefers.

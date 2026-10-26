@@ -1,0 +1,13 @@
+(* 63 levels of parentheses, and 63 calls nested, in one expression.
+   The least an implementation must accept (report section 10, Limits). *)
+module LimitParens;
+import Out;
+proc id(x: INT): INT;
+begin return x; end;
+var x: INT;
+begin
+    x := (((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))));
+    Out.int(x); Out.char('\n');
+    x := id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(id(2)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))));
+    Out.int(x); Out.char('\n');
+end LimitParens.

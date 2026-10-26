@@ -1,0 +1,8 @@
+(* A chain of 15 modules, each importing the next.
+   The least an implementation must accept (report section 10, Limits). *)
+module LimitModules;
+import Out;
+import LimChain01;
+begin
+    Out.int(LimChain01.depth()); Out.char('\n');
+end LimitModules.

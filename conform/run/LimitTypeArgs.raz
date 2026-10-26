@@ -1,0 +1,8 @@
+(* 8 type arguments to a generic module.
+   The least an implementation must accept (report section 10, Limits). *)
+module LimitTypeArgs;
+import Out;
+import M := LimitMany(INT, INT, INT, INT, INT, INT, INT, INT);
+begin
+    M.put(5); Out.int(M.get()); Out.char('\n');
+end LimitTypeArgs.

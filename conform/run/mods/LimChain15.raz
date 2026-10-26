@@ -1,0 +1,4 @@
+module LimChain15;
+proc depth*: INT;
+begin return 1; end;
+end LimChain15.

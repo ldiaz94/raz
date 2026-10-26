@@ -1,0 +1,5 @@
+module LimChain05;
+import N := LimChain06;
+proc depth*: INT;
+begin return N.depth() + 1; end;
+end LimChain05.

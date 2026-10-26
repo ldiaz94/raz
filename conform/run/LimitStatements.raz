@@ -1,0 +1,136 @@
+(* 63 levels of statements nested in one procedure.
+   The least an implementation must accept (report section 10, Limits). *)
+module LimitStatements;
+import Out;
+proc p;
+var x: INT;
+begin
+    if true then
+        if true then
+            if true then
+                if true then
+                    if true then
+                        if true then
+                            if true then
+                                if true then
+                                    if true then
+                                        if true then
+                                            if true then
+                                                if true then
+                                                    if true then
+                                                        if true then
+                                                            if true then
+                                                                if true then
+                                                                    if true then
+                                                                        if true then
+                                                                            if true then
+                                                                                if true then
+                                                                                    if true then
+                                                                                        if true then
+                                                                                            if true then
+                                                                                                if true then
+                                                                                                    if true then
+                                                                                                        if true then
+                                                                                                            if true then
+                                                                                                                if true then
+                                                                                                                    if true then
+                                                                                                                        if true then
+                                                                                                                            if true then
+                                                                                                                                if true then
+                                                                                                                                    if true then
+                                                                                                                                        if true then
+                                                                                                                                            if true then
+                                                                                                                                                if true then
+                                                                                                                                                    if true then
+                                                                                                                                                        if true then
+                                                                                                                                                            if true then
+                                                                                                                                                                if true then
+                                                                                                                                                                    if true then
+                                                                                                                                                                        if true then
+                                                                                                                                                                            if true then
+                                                                                                                                                                                if true then
+                                                                                                                                                                                    if true then
+                                                                                                                                                                                        if true then
+                                                                                                                                                                                            if true then
+                                                                                                                                                                                                if true then
+                                                                                                                                                                                                    if true then
+                                                                                                                                                                                                        if true then
+                                                                                                                                                                                                            if true then
+                                                                                                                                                                                                                if true then
+                                                                                                                                                                                                                    if true then
+                                                                                                                                                                                                                        if true then
+                                                                                                                                                                                                                            if true then
+                                                                                                                                                                                                                                if true then
+                                                                                                                                                                                                                                    if true then
+                                                                                                                                                                                                                                        if true then
+                                                                                                                                                                                                                                            if true then
+                                                                                                                                                                                                                                                if true then
+                                                                                                                                                                                                                                                    if true then
+                                                                                                                                                                                                                                                        if true then
+                                                                                                                                                                                                                                                            if true then
+                                                                                                                                                                                                                                                                x := 7; Out.int(x); Out.char('\n');
+                                                                                                                                                                                                                                                            end;
+                                                                                                                                                                                                                                                        end;
+                                                                                                                                                                                                                                                    end;
+                                                                                                                                                                                                                                                end;
+                                                                                                                                                                                                                                            end;
+                                                                                                                                                                                                                                        end;
+                                                                                                                                                                                                                                    end;
+                                                                                                                                                                                                                                end;
+                                                                                                                                                                                                                            end;
+                                                                                                                                                                                                                        end;
+                                                                                                                                                                                                                    end;
+                                                                                                                                                                                                                end;
+                                                                                                                                                                                                            end;
+                                                                                                                                                                                                        end;
+                                                                                                                                                                                                    end;
+                                                                                                                                                                                                end;
+                                                                                                                                                                                            end;
+                                                                                                                                                                                        end;
+                                                                                                                                                                                    end;
+                                                                                                                                                                                end;
+                                                                                                                                                                            end;
+                                                                                                                                                                        end;
+                                                                                                                                                                    end;
+                                                                                                                                                                end;
+                                                                                                                                                            end;
+                                                                                                                                                        end;
+                                                                                                                                                    end;
+                                                                                                                                                end;
+                                                                                                                                            end;
+                                                                                                                                        end;
+                                                                                                                                    end;
+                                                                                                                                end;
+                                                                                                                            end;
+                                                                                                                        end;
+                                                                                                                    end;
+                                                                                                                end;
+                                                                                                            end;
+                                                                                                        end;
+                                                                                                    end;
+                                                                                                end;
+                                                                                            end;
+                                                                                        end;
+                                                                                    end;
+                                                                                end;
+                                                                            end;
+                                                                        end;
+                                                                    end;
+                                                                end;
+                                                            end;
+                                                        end;
+                                                    end;
+                                                end;
+                                            end;
+                                        end;
+                                    end;
+                                end;
+                            end;
+                        end;
+                    end;
+                end;
+            end;
+        end;
+    end;
+end;
+begin p; end LimitStatements.
