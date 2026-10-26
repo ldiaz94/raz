@@ -1,0 +1,16 @@
+17
+16
+42
+55
+2
+12 12 112
+lea of a procedure is its address: yes
+and of another module's: yes
+call is E8: yes
+call reaches triple: yes
+jmp is E9: yes
+jmp reaches AsmNamed.twice: yes
+lea is 48 8D 05: yes
+lea reaches total: yes
+lea rcx is 48 8D 0D: yes
+lea reaches AsmNamed.count: yes

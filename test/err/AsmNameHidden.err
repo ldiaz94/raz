@@ -1,0 +1,7 @@
+test/err/AsmNameHidden.raz:9:18: error: hidden isn't exported by AsmNamed
+    9 |     jmp AsmNamed.hidden;
+      |                  ^^^^^^
+test/run/mods/AsmNamed.raz:22:6: note: hidden is declared here, without a *
+   22 | proc hidden(x: I64): I64;
+      |      ^^^^^^
+raz: 1 error

@@ -1,0 +1,28 @@
+test/err/AsmNameWhere.raz:18:14: error: a procedure or a variable stands for its address only in call p, jmp p and lea r, [v]
+   18 |     mov rax, p;
+      |              ^
+test/err/AsmNameWhere.raz:24:15: error: a procedure or a variable stands for its address only in call p, jmp p and lea r, [v]
+   24 |     mov rax, [g];
+      |               ^
+test/err/AsmNameWhere.raz:30:8: error: a procedure or a variable stands for its address only in call p, jmp p and lea r, [v]
+   30 |     jz p;
+      |        ^
+test/err/AsmNameWhere.raz:36:15: error: a procedure or a variable stands for its address only in call p, jmp p and lea r, [v]
+   36 |     lea rax, [g + 8];
+      |               ^
+test/err/AsmNameWhere.raz:42:10: error: expected a constant
+   42 |     call T;
+      |          ^
+test/err/AsmNameWhere.raz:48:5: error: can't assemble call with these operands
+   48 |     call K;
+      |     ^^^^
+test/err/AsmNameWhere.raz:54:10: error: nowhere isn't declared
+   54 |     call nowhere;
+      |          ^^^^^^^
+test/err/AsmNameWhere.raz:60:10: error: puts is C's: a code procedure names only raz's procedures and variables
+   60 |     call puts;
+      |          ^^^^
+test/err/AsmNameWhere.raz:67:15: error: label here is only for a jump
+   67 |     lea rax, [here];
+      |               ^^^^
+raz: 9 errors

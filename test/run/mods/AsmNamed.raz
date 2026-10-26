@@ -1,0 +1,29 @@
+(* What AsmName's code procedures name in another module: an exported
+   procedure and variable, and a procedure that isn't exported, which
+   test/err/AsmNameHidden may not name. *)
+module AsmNamed;
+import SYSTEM;
+
+var count*: I64;   (* added to through its address, by lea *)
+
+(* x * 2, the target of a tail call *)
+proc twice*(x: I64): I64;
+begin
+    return x * 2;
+end;
+
+(* count's address, as raz takes it *)
+proc countAt*: ^I64;
+begin
+    return SYSTEM.ADR(count);
+end;
+
+(* not exported: another module's code may not name it *)
+proc hidden(x: I64): I64;
+begin
+    return x;
+end;
+
+begin
+    count := hidden(100);
+end AsmNamed.

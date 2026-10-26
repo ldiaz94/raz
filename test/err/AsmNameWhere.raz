@@ -1,0 +1,83 @@
+module AsmNameWhere;
+(* A procedure or a variable stands for its address only in call p,
+   jmp p and lea r, [v]; a type, a constant or an unknown name is no
+   procedure, nor is C's, and a label is only for a jump *)
+import SYSTEM;
+
+type T = I64;
+const K = 64;
+var g: I64;
+extern proc puts(s: ^U8): I32;
+
+proc p;
+begin
+end;
+
+proc movName;
+code
+    mov rax, p;
+    ret;
+end movName;
+
+proc load;
+code
+    mov rax, [g];
+    ret;
+end load;
+
+proc condJump;
+code
+    jz p;
+    ret;
+end condJump;
+
+proc offset;
+code
+    lea rax, [g + 8];
+    ret;
+end offset;
+
+proc callType;
+code
+    call T;
+    ret;
+end callType;
+
+proc callConst;
+code
+    call K;
+    ret;
+end callConst;
+
+proc callUnknown;
+code
+    call nowhere;
+    ret;
+end callUnknown;
+
+proc callC;
+code
+    call puts;
+    ret;
+end callC;
+
+proc leaLabel;
+code
+    here:
+    lea rax, [here];
+    ret;
+end leaLabel;
+
+(* a constant still stands where a number does *)
+proc constant: I64;
+code
+    mov rax, K;
+    ret;
+end constant;
+
+proc main*;
+begin
+    g := constant();
+end;
+
+end AsmNameWhere.

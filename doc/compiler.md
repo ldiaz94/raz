@@ -1194,6 +1194,42 @@ can't be returned, since an operand has nowhere to give it: it is
 shown, and the compile goes on to its end. `RegNames` and `CondNames`
 are the names of the registers and conditions.
 
+*Names in the assembler.* A procedure or a module variable, of the
+module or exported by an import, stands for its address in `call p`,
+`jmp p` and `lea r, [v]` (report, 8). The parser hands in a second
+function beside the `ConstFn`, a `NameFn`, `asmName`: it looks the
+name up, bare or qualified by `qualIdent` (which refuses another
+module's name that isn't exported, as anywhere), and for a procedure or
+a module variable gives its chunk. For anything else it reads nothing
+and gives -1, and the assembler reads a constant there as it always
+did, so a constant still stands where a number does, and a type or an
+unknown name has the error it had. C's names are refused: an `extern`'s
+chunk holds C's address, not the thing. With the chunk, nothing new is
+made: `call p` is `callChunk`, as Gen calls, `jmp p` its twin
+`jmpChunk`, and `[v]` the operand `memRip(chunk, 0)`, rip-relative, as
+Gen reaches a global; each a 32-bit field with a fixup that `Link.raz`
+patches with the distance from the field's end, which is the
+instruction's end for all three:
+
+    call triple             E8 rel32          fixup to triple
+    jmp AsmNamed.twice      E9 rel32          fixup to AsmNamed.twice
+    lea r9, [total]         4C 8D 0D rel32    fixup to total
+
+So `markLive` follows them as it follows a call: what only a code
+procedure names is kept. Every module variable is a bss chunk of its
+own (nothing in raz gives one a value before the program runs, so there
+is no data section to tell apart), reached the same way. A procedure
+made in place (`Parse.inlined`) keeps its own code too, made before it
+was known to only return, which the call reaches; `test/run/AsmName.raz`
+calls one and checks each field's distance against the address lea and
+a procedure value give. A label is found first, even one placed after
+the jump, so `assemble` first reads the procedure's instructions
+quietly (`findLabels`) and enters every label; `jmp p` is then a jump
+to the label `p` if there is one. A label anywhere but after a jump, or
+a name anywhere but in those three places, is an error (`NameOnly`):
+an operand that is a name is marked `named`, with its place, and
+`statement` checks where it stands once the operands are read.
+
 *When an instruction joins the assembler.* The report leaves the
 instructions to the implementation, and `db` gives any other, which
 stays the answer for an instruction no program uses twice. An

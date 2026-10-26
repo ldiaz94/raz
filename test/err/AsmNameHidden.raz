@@ -1,0 +1,12 @@
+module AsmNameHidden;
+(* Another module's procedure that isn't exported can't be named, in a
+   code procedure as anywhere *)
+import AsmNamed;
+import SYSTEM;
+
+proc f(x: I64): I64;
+code
+    jmp AsmNamed.hidden;
+end f;
+
+end AsmNameHidden.

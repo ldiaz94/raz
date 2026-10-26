@@ -1,0 +1,139 @@
+module AsmName;
+(* Procedures and module variables named in code procedures, where
+   they stand for their addresses (report section 8): call p, jmp p and
+   lea r, [v], of this module and of another. Each is run, and its
+   bytes are read back: the distance in call's, jmp's and lea's 32-bit
+   field must reach what lea and a procedure value say is there. *)
+import Out, AsmNamed;
+import SYSTEM;
+
+var total: I64;   (* added to through its address, by lea *)
+
+(* x * 3 + 1: only returns, so a call of it in raz is made in place,
+   but its own code is still there for a code procedure to call *)
+proc triple(x: I64): I64;
+begin
+    return x * 3 + 1;
+end;
+
+(* 1 + 2 + ... + n, reached only from sumTo's code: kept all the same *)
+proc onlyFromCode(n: I64): I64;
+var i, s: I64;
+begin
+    s := 0;
+    for i := 1 to n do s := s + i; end;
+    return s;
+end;
+
+(* triple(x) + 1: x is in rdi already, as System V passes it, and rsp
+   is kept a multiple of 16 at the call *)
+proc callTriple(x: I64): I64;
+code
+    sub rsp, 8;
+    call triple;
+    add rsp, 8;
+    add rax, 1;
+    ret;
+end callTriple;
+
+(* AsmNamed.twice(x), as a tail call: its ret returns to our caller *)
+proc tailTwice(x: I64): I64;
+code
+    jmp AsmNamed.twice;
+end tailTwice;
+
+proc sumTo(n: I64): I64;
+code
+    sub rsp, 8;
+    call onlyFromCode;
+    add rsp, 8;
+    ret;
+end sumTo;
+
+(* adds x to total and to AsmNamed.count, through their addresses *)
+proc addBoth(x: I64);
+code
+    lea rax, [total];
+    add [rax], rdi;
+    lea rcx, [AsmNamed.count];
+    add [rcx], rdi;
+    ret;
+end addBoth;
+
+(* total, read through its address *)
+proc readTotal: I64;
+code
+    lea r9, [total];
+    mov rax, [r9];
+    ret;
+end readTotal;
+
+(* a label is found before a procedure of the same name *)
+proc labelFirst: I64;
+code
+    jmp triple;
+    mov eax, 1;
+    ret;
+    triple:
+    mov eax, 2;
+    ret;
+end labelFirst;
+
+(* the address of triple, and of AsmNamed.twice *)
+proc addresses: (^U8, ^U8);
+code
+    lea rax, [triple];
+    lea rdx, [AsmNamed.twice];
+    ret;
+end addresses;
+
+(* Whether the 32-bit field at b[at], counted from b[at + 4], reaches target *)
+proc reaches(b: ^U8; at: INT; target: ^U8): BOOL;
+var d: I32; t: ^U8;
+begin
+    d := I32(INT(b[at]) | (INT(b[at + 1]) shl 8) | (INT(b[at + 2]) shl 16) | (INT(b[at + 3]) shl 24));
+    t := ^U8(INT(b) + at + 4 + INT(d));
+    return t = target;
+end;
+
+(* yes or no *)
+proc say(what: []const U8; ok: BOOL);
+begin
+    Out.str(what);
+    if ok then Out.str(": yes"); else Out.str(": no"); end;
+    Out.ln;
+end;
+
+proc main*;
+var p: proc(x: I64): I64; q: proc(x: I64); b, t, w: ^U8;
+begin
+    Out.int(callTriple(5)); Out.ln;
+    Out.int(triple(5)); Out.ln;
+    Out.int(tailTwice(21)); Out.ln;
+    Out.int(sumTo(10)); Out.ln;
+    Out.int(labelFirst()); Out.ln;
+    addBoth(7);
+    addBoth(5);
+    Out.int(readTotal()); Out.str(" "); Out.int(total); Out.str(" "); Out.int(AsmNamed.count); Out.ln;
+    t, w := addresses();
+    p := triple;
+    say("lea of a procedure is its address", t = ^U8(p));
+    p := AsmNamed.twice;
+    say("and of another module's", w = ^U8(p));
+    p := callTriple;
+    b := ^U8(p);
+    say("call is E8", b[4] = 0E8H);
+    say("call reaches triple", reaches(b, 5, t));
+    p := tailTwice;
+    b := ^U8(p);
+    say("jmp is E9", b[0] = 0E9H);
+    say("jmp reaches AsmNamed.twice", reaches(b, 1, w));
+    q := addBoth;
+    b := ^U8(q);
+    say("lea is 48 8D 05", (b[0] = 48H) and (b[1] = 8DH) and (b[2] = 05H));
+    say("lea reaches total", reaches(b, 3, ^U8(SYSTEM.ADR(total))));
+    say("lea rcx is 48 8D 0D", (b[10] = 48H) and (b[11] = 8DH) and (b[12] = 0DH));
+    say("lea reaches AsmNamed.count", reaches(b, 13, ^U8(AsmNamed.countAt())));
+end;
+
+end AsmName.

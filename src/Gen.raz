@@ -2793,10 +2793,10 @@ end;
 
 (* A code procedure: its instructions, read by the assembler (X64),
    are the whole of chunk c *)
-proc codeProc*(c: INT; constExpr: X.ConstFn): ERROR;
+proc codeProc*(c: INT; constExpr: X.ConstFn; nameFn: X.NameFn): ERROR;
 begin
     Chunk.beginChunk(c);
-    try X.assemble(constExpr);
+    try X.assemble(constExpr, nameFn);
     Chunk.endChunk(c);
     return nil;
 end;

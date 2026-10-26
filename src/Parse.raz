@@ -3489,6 +3489,32 @@ begin
     return constValue(x);
 end;
 
+(* A procedure or a module variable named in a code procedure, for the
+   assembler: it stands for its address (report section 8). Its chunk,
+   the name read, bare or qualified as any other; -1, with nothing read,
+   if the name at the scan is anything else, for the assembler to read as
+   a constant. Being named, it is used, and the linker keeps it, as it
+   keeps what a call reaches: by the fixup to its chunk. *)
+proc asmName: (INT, ERROR);
+var o: PObj; st: Scan.State; at: Diag.Pos;
+begin
+    o := Sym.lookup(Scan.id);
+    if (o = nil) or ((o^.cls # Sym.oModule) and (o^.cls # Sym.oProc) and (o^.cls # Sym.oVar)) then
+        return -1, nil;
+    end;
+    Scan.saveScan(st);
+    at := Scan.tokPos();
+    o := try qualIdent();
+    if (o^.cls = Sym.oProc) or ((o^.cls = Sym.oVar) and (o^.lev = 0)) then
+        if o^.ext then
+            return -1, Scan.markAt(Scan.spanFrom(at), say1("{} is C's: a code procedure names only raz's procedures and variables", nameOf(o^.name)));
+        end;
+        return o^.chunk, nil;
+    end;
+    Scan.restoreScan(st);
+    return -1, nil;
+end;
+
 proc codeBody(p: PObj; sig: PType; at: Diag.Pos): ERROR;
 var q: PObj; ni, nf: INT;
 begin
@@ -3520,7 +3546,7 @@ begin
             return Scan.markAt(at, "a code procedure returns a single value");
         end;
     end;
-    try Gen.codeProc(p^.chunk, asmConst);
+    try Gen.codeProc(p^.chunk, asmConst, asmName);
     (* a square root of one real, of its own kind, is made in place *)
     q := sig^.fields;
     if (q # nil) and (q^.next = nil) and not q^.isVar and (q^.typ^.form = Sym.fReal)
