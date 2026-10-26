@@ -1188,7 +1188,12 @@ proc op1*(op: Scan.Sym; var x: Item; var L: INT): ERROR;
 begin
     L := Gen.NoLabel;
     if ((op = Scan.sAnd) or (op = Scan.sOr)) and (x.typ^.form = Sym.fBool) then
-        if x.mode = mConst then return nil; end;    (* folded by op2 *)
+        if x.mode = mConst then
+            (* false and y, true or y: y isn't evaluated, so its code,
+               about to be made, is jumped over to L, which op2 places *)
+            if (x.val = 1) # (op = Scan.sAnd) then Gen.jump(L); end;
+            return nil;    (* folded by op2 *)
+        end;
         try makeCond(x);
         if op = Scan.sAnd then
             Gen.jumpOut(negated(x.rel), x.relSigned, x.fj);
@@ -1392,7 +1397,7 @@ begin
     return Scan.markAt(Diag.join(x.pos, y.pos), say2("{} doesn't apply to {}", Scan.symText(op), Sym.typeName(t)));
 end;
 
-proc op2*(op: Scan.Sym; var x, y: Item; _L: INT): ERROR;
+proc op2*(op: Scan.Sym; var x, y: Item; L: INT): ERROR;
 var xt, yt, t, e: ^Sym.Type; r: Item; scale: INT; isPtr: BOOL; a, b, v: I64;
 begin
     xt := x.typ; yt := y.typ;
@@ -1404,10 +1409,12 @@ begin
         if yt^.form # Sym.fBool then return wrongLogic(op, y); end;
         if (x.mode = mConst) and (y.mode = mConst) then
             if op = Scan.sAnd then x.val := x.val & y.val; else x.val := x.val | y.val; end;
+            Gen.fix(L);    (* op1's jump, if it made one, over no code *)
         elsif x.mode = mConst then
-            (* true and y, false or y: y; else x, y computed and dropped *)
+            (* true and y, false or y: y; else x, and y's code, which op1's
+               jump to L passes over, is never run *)
             if (x.val = 1) = (op = Scan.sAnd) then x := y;
-            else try discard(y); end;
+            else try discard(y); Gen.fix(L); end;
         else
             try makeCond(y);
             if op = Scan.sAnd then x.fj := Gen.joinJumps(x.fj, y.fj); x.tj := y.tj;

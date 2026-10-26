@@ -1570,7 +1570,11 @@ its left operand, `op2` when it has the right one. `op1` pushes the left
 operand, unless it is a constant; for `and` and `or` it makes the left
 one a condition (`makeCond`) and jumps past the right one, which `op2`
 joins to it: `(a < b) and (c < d)` in an `if` is two compares and two
-jumps, as `not` of a condition is the other comparison. `op2` checks the
+jumps, as `not` of a condition is the other comparison. A constant
+left that decides the result, `false and y` or `true or y`, is the
+constant itself: `op1` jumps over the right one's code, about to be
+made, to a label `op2` places after it, so that `y` is never run, as
+the report says. `op2` checks the
 types, folds constants (`foldInt`, `foldReal`), and otherwise pushes the
 right operand and has Gen do the operation; a constant on the left goes
 on after the right, and the two `swap`. A set's operations are

@@ -1,0 +1,29 @@
+(* and and or evaluate their right side only when needed, also when
+   the left side is a constant: false and f(), true or f() call no f,
+   as a value and as a condition, under not too. *)
+module ShortConst;
+import Out;
+
+(* Says c, so the output shows each call *)
+proc f(c: U8): BOOL;
+begin
+    Out.char(c);
+    return true;
+end;
+
+proc main*;
+var b: BOOL;
+begin
+    b := false and f('a');
+    b := true or f('b');
+    b := not (false and f('c'));
+    if b then Out.char('1'); end;
+    if not (true or f('d')) then Out.char('x'); end;
+    b := false and f('e') and f('f');
+    b := true and f('g');
+    b := false or f('h');
+    if false and true then Out.char('x'); end;
+    Out.char(10);
+end;
+
+end ShortConst.
