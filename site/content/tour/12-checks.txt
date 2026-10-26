@@ -18,6 +18,7 @@ The same shape of message tells of a `nil` pointer, a division by zero, a bad sl
 ```raz Nilp fail
 module Nilp;
 import Out;
+import SYSTEM;
 
 type Node = record val: INT; next: ^Node; end;
 
@@ -31,8 +32,8 @@ proc main*;
 var a, b: Node;
 begin
     a.val := 1; b.val := 2;
-    a.next := ADR(b);
-    Out.int(last(ADR(a))); Out.ln;
+    a.next := SYSTEM.ADR(b);
+    Out.int(last(SYSTEM.ADR(a))); Out.ln;
     Out.int(last(nil)); Out.ln;
 end;
 

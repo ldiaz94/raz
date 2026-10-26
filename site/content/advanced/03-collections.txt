@@ -59,7 +59,7 @@ A hash map. Its key's hash and equality are procedure arguments, so any type can
 
 ```raz Ages run
 module Ages;
-import Out, Fmt, Str, Heap, Book := Map([]U8, INT, Str.hash, Str.eq);
+import Out, Fmt, Str, Heap, Book := Map([]const U8, INT, Str.hash, Str.eq);
 
 proc main*;
 var m: Book.Map; age: INT; found, ok: BOOL; i: INT; v: INT;
@@ -100,11 +100,11 @@ Counting words, then listing them by count and then alphabetically: a `Map` for 
 ```raz Freq run
 module Freq;
 import Fmt, Str, Heap,
-    Count := Map([]U8, INT, Str.hash, Str.eq),
+    Count := Map([]const U8, INT, Str.hash, Str.eq),
     Entries := Vec(Entry),
     Rank := Sort(Entry, before);
 
-type Entry = record word: []U8; n: INT; end;
+type Entry = record word: []const U8; n: INT; end;
 
 const Text = "the cat and the hat and the bat sat on the mat and the cat sat";
 
@@ -118,7 +118,7 @@ end;
 proc main*;
 var
     m: Count.Map; entries: Entries.Vec; i, k, found: INT;
-    w, rest: []U8; key: []U8; v: INT; all: []Entry;
+    w, rest: []const U8; key: []const U8; v: INT; all: []Entry;
 begin
     Count.init(m, Heap.heap);
     defer Count.done(m);

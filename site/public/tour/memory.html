@@ -83,6 +83,7 @@
 <p>A procedure that allocates takes the allocator it uses, so its caller decides where the memory comes from and when it goes: the heap for something that lives long, an arena for everything one request needs. Nothing in the library allocates behind your back.</p>
 <div class="file"><span>Pool.raz</span></div><pre class="code"><code><span class="kw">module</span> Pool;
 <span class="kw">import</span> Out, Mem, Arena;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Item = <span class="kw">record</span> id: <span class="ty">INT</span>; next: ^Item; <span class="kw">end</span>;
 
@@ -113,15 +114,15 @@
 <span class="kw">var</span> ar: Arena.Arena; small: Arena.Arena; list: ^Item;
 <span class="kw">begin</span>
     <span class="kw">if</span> <span class="kw">not</span> Arena.init(ar, <span class="number">1000000</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
-    list := make(<span class="number">1000</span>, <span class="ty">ADR</span>(ar.base));
+    list := make(<span class="number">1000</span>, SYSTEM.<span class="ty">ADR</span>(ar.base));
     Out.int(count(list)); Out.str(<span class="string">&quot; items from a big arena\n&quot;</span>);
     Arena.reset(ar);              <span class="comment">(* every allocation forgotten *)</span>
-    list := make(<span class="number">10</span>, <span class="ty">ADR</span>(ar.base));
+    list := make(<span class="number">10</span>, SYSTEM.<span class="ty">ADR</span>(ar.base));
     Out.int(count(list)); Out.str(<span class="string">&quot; after a reset\n&quot;</span>);
     Arena.done(ar);
 
     <span class="kw">if</span> <span class="kw">not</span> Arena.init(small, <span class="number">4096</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
-    list := make(<span class="number">1000</span>, <span class="ty">ADR</span>(small.base));
+    list := make(<span class="number">1000</span>, SYSTEM.<span class="ty">ADR</span>(small.base));
     <span class="kw">if</span> list = <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="string">&quot;a small arena ran out, and said so\n&quot;</span>); <span class="kw">end</span>;
     Arena.done(small);
 <span class="kw">end</span>;
@@ -136,6 +137,7 @@ a small arena ran out, and said so
 <p><code>Heap.heap</code> serves any size and takes memory back with <code>Mem.free</code>. Freeing a block twice, or one that was never given out, stops the program with a message instead of corrupting the heap. It is safe to call from several threads.</p>
 <div class="file"><span>Free.raz</span></div><pre class="code"><code><span class="kw">module</span> Free;
 <span class="kw">import</span> Out, Mem, Heap;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Cell = <span class="kw">record</span> val: <span class="ty">INT</span>; <span class="kw">end</span>;
 

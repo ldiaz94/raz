@@ -18,7 +18,7 @@ module Mix;
 import Out;
 
 proc main*;
-var i: I32; s: []U8;
+var i: I32; s: []const U8;
 begin
     s := "four";
     i := 3;

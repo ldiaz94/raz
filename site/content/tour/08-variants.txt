@@ -15,7 +15,7 @@ import Out;
 
 type Day = (mon, tue, wed, thu, fri, sat, sun);
 
-proc name(d: Day): []U8;
+proc name(d: Day): []const U8;
 begin
     match d of
     | mon: return "Monday";
@@ -92,7 +92,7 @@ type
         number(n: INT);
         plus;
         times;
-        word(s: []U8);
+        word(s: []const U8);
     end;
 
 proc describe(t: Token);
@@ -142,7 +142,7 @@ On an integer, `match` takes constants and ranges, and must have an `| else:`. C
 module Classify;
 import Out;
 
-proc kind(c: I32): []U8;
+proc kind(c: I32): []const U8;
 begin
     match c of
     | ' ', '\t', '\n': return "space";
@@ -153,7 +153,7 @@ begin
 end;
 
 proc main*;
-var s: []U8; i: INT;
+var s: []const U8; i: INT;
 begin
     s := "x1 + _y";
     for i := 0 to LEN(s) - 1 do
@@ -174,7 +174,7 @@ import Out;
 
 type Op = (none, add, sub, show);
 
-proc op(word: []U8): Op;
+proc op(word: []const U8): Op;
 begin
     match word of
     | "add", "plus", "+": return add;
@@ -185,7 +185,7 @@ begin
 end;
 
 proc main*;
-var total: INT; words: [6][]U8; i: INT;
+var total: INT; words: [6][]const U8; i: INT;
 begin
     words := ["add", "plus", "sub", "show", "times", "-"];
     for i := 0 to 5 do

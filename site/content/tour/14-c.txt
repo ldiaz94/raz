@@ -18,6 +18,7 @@ A program that uses C is linked against it dynamically and starts through it, so
 ```raz Say run
 module Say;
 import Out;
+import SYSTEM;
 
 extern proc printf(format: ^U8; ...): I32;
 extern proc fflush(f: ^U8): I32;
@@ -48,6 +49,7 @@ end Say.
 ```raz Env run
 module Env;
 import Out;
+import SYSTEM;
 
 extern var environ: ^^U8;
 extern proc strlen(s: ^U8): UINT;
@@ -74,6 +76,7 @@ Every raz procedure uses the System V calling convention, so any with parameters
 ```raz Roots run
 module Roots;
 import Fmt;
+import SYSTEM;
 
 link "libm.so.6";
 

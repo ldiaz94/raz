@@ -141,7 +141,7 @@ begin
 end;
 
 proc main*;
-var ops: [3]Op; names: [3][]U8; i: INT;
+var ops: [3]Op; names: [3][]const U8; i: INT;
 begin
     ops := [add, sub, mul];
     names := ["add", "sub", "mul"];

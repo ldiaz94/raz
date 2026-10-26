@@ -79,6 +79,7 @@
 <p><code>...</code> after an <code>extern</code>'s parameters takes any number of further arguments, as <code>printf</code> wants. A string literal goes as a C string, an integer constant as an <code>INT</code>, a real constant as an <code>F64</code>. An <code>F32</code> is an error there, since C promotes it; write <code>F64(x)</code>.</p>
 <div class="file"><span>Say.raz</span></div><pre class="code"><code><span class="kw">module</span> Say;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">extern</span> <span class="kw">proc</span> printf(format: ^<span class="ty">U8</span>; ...): <span class="ty">I32</span>;
 <span class="kw">extern</span> <span class="kw">proc</span> fflush(f: ^<span class="ty">U8</span>): <span class="ty">I32</span>;
@@ -108,6 +109,7 @@ raz again
 <p><code>link "libm.so.6";</code> names a shared library to load at run time. An <code>extern var</code> is C's variable itself: reading it reads C's, assigning it writes C's.</p>
 <div class="file"><span>Env.raz</span></div><pre class="code"><code><span class="kw">module</span> Env;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">extern</span> <span class="kw">var</span> environ: ^^<span class="ty">U8</span>;
 <span class="kw">extern</span> <span class="kw">proc</span> strlen(s: ^<span class="ty">U8</span>): <span class="ty">UINT</span>;
@@ -133,6 +135,7 @@ not set
 <p>Every raz procedure uses the System V calling convention, so any with parameters and a result of C's types may be given to C to call, as <code>qsort</code> is given <code>order</code> above. The procedure may not be a closure: it has only its arguments, so state travels through the pointer C hands back or a module variable.</p>
 <div class="file"><span>Roots.raz</span></div><pre class="code"><code><span class="kw">module</span> Roots;
 <span class="kw">import</span> Fmt;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">link</span> <span class="string">&quot;libm.so.6&quot;</span>;
 

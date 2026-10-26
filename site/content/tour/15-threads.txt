@@ -14,6 +14,7 @@ Two threads that each read a variable, add one and write it back can lose one of
 ```raz Race run
 module Race;
 import Out, Thread;
+import SYSTEM;
 
 var
     safe: INT;       (* added to by XADD *)
@@ -23,7 +24,7 @@ proc work(_arg: ^U8);
 var i: INT;
 begin
     for i := 1 to 100000 do
-        _ := XADD(ADR(safe), 1);
+        _ := XADD(safe, 1);
         INC(plain);              (* unsafe: lost additions *)
     end;
 end;
@@ -88,6 +89,7 @@ A thread's procedure takes one pointer argument. Pass a record's address to give
 ```raz Jobs run
 module Jobs;
 import Out, Thread;
+import SYSTEM;
 
 type Job = record lo, hi: INT; sum: INT; end;
 
@@ -104,7 +106,7 @@ begin
     for i := 0 to 3 do
         jobs[i].lo := i * 250000;
         jobs[i].hi := (i + 1) * 250000;
-        t[i], err := Thread.spawn(work, ^U8(ADR(jobs[i])));
+        t[i], err := Thread.spawn(work, ^U8(SYSTEM.ADR(jobs[i])));
         if err # nil then Out.str(MSG(err)); Out.ln; return; end;
     end;
     for i := 0 to 3 do

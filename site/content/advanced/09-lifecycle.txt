@@ -19,7 +19,7 @@ import Out;
 
 var steps*: INT;
 
-proc note(what: []U8);
+proc note(what: []const U8);
 begin
     INC(steps);
     Out.int(steps); Out.str(". "); Out.str(what); Out.ln;

@@ -14,6 +14,7 @@ A procedure that allocates takes the allocator it uses, so its caller decides wh
 ```raz Pool run
 module Pool;
 import Out, Mem, Arena;
+import SYSTEM;
 
 type Item = record id: INT; next: ^Item; end;
 
@@ -44,15 +45,15 @@ proc main*;
 var ar: Arena.Arena; small: Arena.Arena; list: ^Item;
 begin
     if not Arena.init(ar, 1000000) then return; end;
-    list := make(1000, ADR(ar.base));
+    list := make(1000, SYSTEM.ADR(ar.base));
     Out.int(count(list)); Out.str(" items from a big arena\n");
     Arena.reset(ar);              (* every allocation forgotten *)
-    list := make(10, ADR(ar.base));
+    list := make(10, SYSTEM.ADR(ar.base));
     Out.int(count(list)); Out.str(" after a reset\n");
     Arena.done(ar);
 
     if not Arena.init(small, 4096) then return; end;
-    list := make(1000, ADR(small.base));
+    list := make(1000, SYSTEM.ADR(small.base));
     if list = nil then Out.str("a small arena ran out, and said so\n"); end;
     Arena.done(small);
 end;
@@ -69,6 +70,7 @@ The run-out case is an ordinary `nil` to test, not an exception that unwinds pas
 ```raz Free run
 module Free;
 import Out, Mem, Heap;
+import SYSTEM;
 
 type Cell = record val: INT; end;
 

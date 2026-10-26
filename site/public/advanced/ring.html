@@ -52,6 +52,7 @@
 <h2>The module</h2>
 <div class="file"><span>Ring.raz</span></div><pre class="code"><code><span class="kw">module</span> Ring;
 <span class="kw">import</span> Sys;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">const</span> Size* = <span class="number">64</span>;
 
@@ -66,9 +67,9 @@
 <span class="kw">var</span> t: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     t := r^.tail;                                    <span class="comment">(* mine: an ordinary read *)</span>
-    <span class="kw">while</span> t - <span class="ty">XADD</span>(<span class="ty">ADR</span>(r^.head), <span class="number">0</span>) = Size <span class="kw">do</span> Sys.yield; <span class="kw">end</span>;   <span class="comment">(* full *)</span>
+    <span class="kw">while</span> t - <span class="ty">XADD</span>(r^.head, <span class="number">0</span>) = Size <span class="kw">do</span> Sys.yield; <span class="kw">end</span>;   <span class="comment">(* full *)</span>
     r^.slots[t <span class="kw">mod</span> Size] := v;
-    _ := <span class="ty">XCHG</span>(<span class="ty">ADR</span>(r^.tail), t + <span class="number">1</span>);                  <span class="comment">(* publish the slot *)</span>
+    _ := <span class="ty">XCHG</span>(r^.tail, t + <span class="number">1</span>);                  <span class="comment">(* publish the slot *)</span>
 <span class="kw">end</span>;
 
 <span class="comment">(* the next value, waiting while the ring is empty *)</span>
@@ -76,9 +77,9 @@
 <span class="kw">var</span> h, v: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     h := r^.head;                                    <span class="comment">(* mine *)</span>
-    <span class="kw">while</span> <span class="ty">XADD</span>(<span class="ty">ADR</span>(r^.tail), <span class="number">0</span>) = h <span class="kw">do</span> Sys.yield; <span class="kw">end</span>;          <span class="comment">(* empty *)</span>
+    <span class="kw">while</span> <span class="ty">XADD</span>(r^.tail, <span class="number">0</span>) = h <span class="kw">do</span> Sys.yield; <span class="kw">end</span>;          <span class="comment">(* empty *)</span>
     v := r^.slots[h <span class="kw">mod</span> Size];
-    _ := <span class="ty">XCHG</span>(<span class="ty">ADR</span>(r^.head), h + <span class="number">1</span>);                  <span class="comment">(* give the slot back *)</span>
+    _ := <span class="ty">XCHG</span>(r^.head, h + <span class="number">1</span>);                  <span class="comment">(* give the slot back *)</span>
     <span class="kw">return</span> v;
 <span class="kw">end</span>;
 
@@ -87,6 +88,7 @@
 <p>One thread sends the numbers 1 to 100000 through a ring of 64 slots, so it is stopped by a full ring many times over and has to wait for the consumer. The consumer checks each number arrives in order, and adds them.</p>
 <div class="file"><span>Pipe.raz</span></div><pre class="code"><code><span class="kw">module</span> Pipe;
 <span class="kw">import</span> Out, Fmt, Ring, Thread;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">const</span> Count = <span class="number">100000</span>;
 
@@ -97,14 +99,14 @@
 <span class="kw">proc</span> producer(_arg: ^<span class="ty">U8</span>);
 <span class="kw">var</span> i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
-    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> Count <span class="kw">do</span> Ring.put(<span class="ty">ADR</span>(ring), i); <span class="kw">end</span>;
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> Count <span class="kw">do</span> Ring.put(SYSTEM.<span class="ty">ADR</span>(ring), i); <span class="kw">end</span>;
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> consumer(_arg: ^<span class="ty">U8</span>);
 <span class="kw">var</span> i, v: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> Count <span class="kw">do</span>
-        v := Ring.take(<span class="ty">ADR</span>(ring));
+        v := Ring.take(SYSTEM.<span class="ty">ADR</span>(ring));
         <span class="kw">if</span> v # i <span class="kw">then</span> <span class="ty">INC</span>(outOfOrder); <span class="kw">end</span>;
         sum := sum + v;
     <span class="kw">end</span>;

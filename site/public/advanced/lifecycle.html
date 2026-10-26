@@ -53,7 +53,7 @@
 
 <span class="kw">var</span> steps*: <span class="ty">INT</span>;
 
-<span class="kw">proc</span> note(what: []<span class="ty">U8</span>);
+<span class="kw">proc</span> note(what: []<span class="kw">const</span> <span class="ty">U8</span>);
 <span class="kw">begin</span>
     <span class="ty">INC</span>(steps);
     Out.int(steps); Out.str(<span class="string">&quot;. &quot;</span>); Out.str(what); Out.ln;

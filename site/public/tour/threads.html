@@ -82,6 +82,7 @@
 <p>Two threads that each read a variable, add one and write it back can lose one of the additions. A plain <code>INC</code> on a variable shared by threads has no particular value afterwards; the report says so. <code>XADD</code> is the atomic add: it returns the old value and adds in one indivisible step.</p>
 <div class="file"><span>Race.raz</span></div><pre class="code"><code><span class="kw">module</span> Race;
 <span class="kw">import</span> Out, Thread;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">var</span>
     safe: <span class="ty">INT</span>;       <span class="comment">(* added to by XADD *)</span>
@@ -91,7 +92,7 @@
 <span class="kw">var</span> i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">100000</span> <span class="kw">do</span>
-        _ := <span class="ty">XADD</span>(<span class="ty">ADR</span>(safe), <span class="number">1</span>);
+        _ := <span class="ty">XADD</span>(safe, <span class="number">1</span>);
         <span class="ty">INC</span>(plain);              <span class="comment">(* unsafe: lost additions *)</span>
     <span class="kw">end</span>;
 <span class="kw">end</span>;
@@ -149,6 +150,7 @@
 <p>A thread's procedure takes one pointer argument. Pass a record's address to give each thread its own job and its own place to put the answer; then no one shares anything.</p>
 <div class="file"><span>Jobs.raz</span></div><pre class="code"><code><span class="kw">module</span> Jobs;
 <span class="kw">import</span> Out, Thread;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Job = <span class="kw">record</span> lo, hi: <span class="ty">INT</span>; sum: <span class="ty">INT</span>; <span class="kw">end</span>;
 
@@ -165,7 +167,7 @@
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span>
         jobs[i].lo := i * <span class="number">250000</span>;
         jobs[i].hi := (i + <span class="number">1</span>) * <span class="number">250000</span>;
-        t[i], err := Thread.spawn(work, ^<span class="ty">U8</span>(<span class="ty">ADR</span>(jobs[i])));
+        t[i], err := Thread.spawn(work, ^<span class="ty">U8</span>(SYSTEM.<span class="ty">ADR</span>(jobs[i])));
         <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">return</span>; <span class="kw">end</span>;
     <span class="kw">end</span>;
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span>

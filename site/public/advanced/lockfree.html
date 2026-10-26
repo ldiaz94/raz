@@ -49,6 +49,7 @@
 <p>To push a node: point its <code>next</code> at the current head, then <code>CAS</code> the head from what you saw to the new node. If another thread pushed first, the <code>CAS</code> fails, because the head is no longer what you saw, so look again and retry. No thread ever waits for another, and none can stop the others by being slow.</p>
 <div class="file"><span>Treiber.raz</span></div><pre class="code"><code><span class="kw">module</span> Treiber;
 <span class="kw">import</span> Out, Thread;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Node = <span class="kw">record</span> next: ^Node; val: <span class="ty">INT</span>; <span class="kw">end</span>;
 
@@ -64,7 +65,7 @@
 <span class="kw">begin</span>
     old := top;
     n^.next := old;
-    <span class="kw">while</span> <span class="kw">not</span> <span class="ty">CAS</span>(<span class="ty">ADR</span>(top), old, n) <span class="kw">do</span>
+    <span class="kw">while</span> <span class="kw">not</span> <span class="ty">CAS</span>(top, old, n) <span class="kw">do</span>
         old := top;                      <span class="comment">(* lost the race: look again *)</span>
         n^.next := old;
     <span class="kw">end</span>;
@@ -76,7 +77,7 @@
     first := <span class="ty">INT</span>(arg) * Each;
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> Each - <span class="number">1</span> <span class="kw">do</span>
         nodes[first + i].val := first + i;
-        push(<span class="ty">ADR</span>(nodes[first + i]));
+        push(SYSTEM.<span class="ty">ADR</span>(nodes[first + i]));
     <span class="kw">end</span>;
 <span class="kw">end</span>;
 
@@ -107,9 +108,10 @@
 <h2>Pop, and the ABA problem</h2>
 <p>Pop takes the head off: read <code>top</code>, read its <code>next</code>, <code>CAS</code> the head from <code>top</code> to <code>next</code>. It looks as easy as push, and it isn't. Between the two reads and the <code>CAS</code>, other threads may pop that node, pop others, and push the same node back, now with a different <code>next</code>. The head is the same pointer again, so the <code>CAS</code> succeeds, and installs a <code>next</code> that is stale: nodes disappear, or the stack points into freed memory. This is the <strong>ABA problem</strong>: the word changed from A to B and back to A, and the <code>CAS</code> can't tell.</p>
 <p>There are three common ways out, and each has a cost:</p>
-<ul><li><strong>Never reuse a node while anyone might hold it.</strong> Nodes from an arena that is reset only when all threads are done, as the nodes above come from a fixed array, can't come back as a different node.</li><li><strong>Add a counter to the head</strong>, so that A-B-A is A1-B2-A3. That is a word and a counter swapped together, and raz's <code>CAS</code> is for one word, so a program packs a small index and a counter into one <code>UINT</code>.</li><li><strong>Don't pop concurrently.</strong> Many threads push and one thread, at the end, takes everything with a single <code>XCHG(ADR(top), nil)</code> and walks the list in peace. A stack used this way for work lists and logs needs no more.</li></ul>
+<ul><li><strong>Never reuse a node while anyone might hold it.</strong> Nodes from an arena that is reset only when all threads are done, as the nodes above come from a fixed array, can't come back as a different node.</li><li><strong>Add a counter to the head</strong>, so that A-B-A is A1-B2-A3. That is a word and a counter swapped together, and raz's <code>CAS</code> is for one word, so a program packs a small index and a counter into one <code>UINT</code>.</li><li><strong>Don't pop concurrently.</strong> Many threads push and one thread, at the end, takes everything with a single <code>XCHG(top, nil)</code> and walks the list in peace. A stack used this way for work lists and logs needs no more.</li></ul>
 <div class="file"><span>Drain.raz</span></div><pre class="code"><code><span class="kw">module</span> Drain;
 <span class="kw">import</span> Out, Thread;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Node = <span class="kw">record</span> next: ^Node; val: <span class="ty">INT</span>; <span class="kw">end</span>;
 
@@ -124,7 +126,7 @@
 <span class="kw">begin</span>
     old := top;
     n^.next := old;
-    <span class="kw">while</span> <span class="kw">not</span> <span class="ty">CAS</span>(<span class="ty">ADR</span>(top), old, n) <span class="kw">do</span>
+    <span class="kw">while</span> <span class="kw">not</span> <span class="ty">CAS</span>(top, old, n) <span class="kw">do</span>
         old := top;
         n^.next := old;
     <span class="kw">end</span>;
@@ -136,7 +138,7 @@
     first := <span class="ty">INT</span>(arg) * Each;
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> Each - <span class="number">1</span> <span class="kw">do</span>
         nodes[first + i].val := <span class="number">1</span>;
-        push(<span class="ty">ADR</span>(nodes[first + i]));
+        push(SYSTEM.<span class="ty">ADR</span>(nodes[first + i]));
     <span class="kw">end</span>;
 <span class="kw">end</span>;
 
@@ -148,7 +150,7 @@
         <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">return</span>; <span class="kw">end</span>;
     <span class="kw">end</span>;
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> Threads - <span class="number">1</span> <span class="kw">do</span> Thread.join(th[i]); <span class="kw">end</span>;
-    all := <span class="ty">XCHG</span>(<span class="ty">ADR</span>(top), <span class="ty">nil</span>);          <span class="comment">(* take the whole stack, atomically *)</span>
+    all := <span class="ty">XCHG</span>(top, <span class="ty">nil</span>);          <span class="comment">(* take the whole stack, atomically *)</span>
     n := all;
     <span class="kw">while</span> n # <span class="ty">nil</span> <span class="kw">do</span> <span class="ty">INC</span>(count); n := n^.next; <span class="kw">end</span>;
     Out.int(count); Out.str(<span class="string">&quot; taken at once, &quot;</span>); 

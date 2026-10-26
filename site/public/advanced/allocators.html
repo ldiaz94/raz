@@ -55,6 +55,7 @@ end;</code></pre>
 <p>The trick that lets one procedure find its state is the same one <code>Arena</code> uses: the record puts <code>base: Mem.Allocator</code> first, so a <code>^Mem.Allocator</code> and a <code>^Bump</code> are the same address, and the procedure converts one to the other.</p>
 <div class="file"><span>Bump.raz</span></div><pre class="code"><code><span class="kw">module</span> Bump;
 <span class="kw">import</span> Mem;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span>
     Bump* = <span class="kw">record</span>
@@ -95,6 +96,7 @@ end;</code></pre>
 <span class="kw">end</span> Bump.</code></pre>
 <div class="file"><span>Bumping.raz</span></div><pre class="code"><code><span class="kw">module</span> Bumping;
 <span class="kw">import</span> Out, Bump;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Point = <span class="kw">record</span> x, y: <span class="ty">INT</span>; <span class="kw">end</span>;
 
@@ -103,19 +105,19 @@ end;</code></pre>
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> b: Bump.Bump; p, q: ^Point; many: <span class="ty">INT</span>; r: ^Point;
 <span class="kw">begin</span>
-    Bump.init(<span class="ty">ADR</span>(b), <span class="ty">ADR</span>(arena[<span class="number">0</span>]), <span class="number">256</span>);
-    <span class="ty">NEW</span>(p, <span class="ty">ADR</span>(b.base));
-    <span class="ty">NEW</span>(q, <span class="ty">ADR</span>(b.base));
+    Bump.init(SYSTEM.<span class="ty">ADR</span>(b), SYSTEM.<span class="ty">ADR</span>(arena[<span class="number">0</span>]), <span class="number">256</span>);
+    <span class="ty">NEW</span>(p, SYSTEM.<span class="ty">ADR</span>(b.base));
+    <span class="ty">NEW</span>(q, SYSTEM.<span class="ty">ADR</span>(b.base));
     p^.x := <span class="number">1</span>; q^.y := <span class="number">2</span>;
     Out.int(b.used); Out.str(<span class="string">&quot; bytes used by two points\n&quot;</span>);
     many := <span class="number">2</span>;
     <span class="kw">repeat</span>
-        <span class="ty">NEW</span>(r, <span class="ty">ADR</span>(b.base));
+        <span class="ty">NEW</span>(r, SYSTEM.<span class="ty">ADR</span>(b.base));
         <span class="kw">if</span> r # <span class="ty">nil</span> <span class="kw">then</span> <span class="ty">INC</span>(many); <span class="kw">end</span>;
     <span class="kw">until</span> r = <span class="ty">nil</span>;
     Out.int(many); Out.str(<span class="string">&quot; points fit in 256 bytes\n&quot;</span>);
-    Bump.reset(<span class="ty">ADR</span>(b));
-    <span class="ty">NEW</span>(r, <span class="ty">ADR</span>(b.base));
+    Bump.reset(SYSTEM.<span class="ty">ADR</span>(b));
+    <span class="ty">NEW</span>(r, SYSTEM.<span class="ty">ADR</span>(b.base));
     <span class="kw">if</span> r # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="string">&quot;room again after a reset\n&quot;</span>); <span class="kw">end</span>;
 <span class="kw">end</span>;
 
@@ -129,6 +131,7 @@ room again after a reset
 <p>An allocator can wrap another. This one forwards to whatever it is given and keeps count, which is how to find out what a piece of code allocates, or to prove that a path allocates nothing.</p>
 <div class="file"><span>Counted.raz</span></div><pre class="code"><code><span class="kw">module</span> Counted;
 <span class="kw">import</span> Mem;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span>
     Counted* = <span class="kw">record</span>
@@ -166,26 +169,27 @@ room again after a reset
 
 <span class="kw">end</span> Counted.</code></pre>
 <div class="file"><span>Audit.raz</span></div><pre class="code"><code><span class="kw">module</span> Audit;
-<span class="kw">import</span> Fmt, Heap, Mem, Buf, Counted, Names := List([]<span class="ty">U8</span>);
+<span class="kw">import</span> Fmt, Heap, Mem, Buf, Counted, Names := List([]<span class="kw">const</span> <span class="ty">U8</span>);
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> c: Counted.Counted; b: Buf.Buf; l: Names.List; i: <span class="ty">INT</span>; p: ^<span class="ty">U8</span>;
 <span class="kw">begin</span>
-    Counted.init(<span class="ty">ADR</span>(c), Heap.heap);
-    Buf.init(b, <span class="ty">ADR</span>(c.base));
+    Counted.init(SYSTEM.<span class="ty">ADR</span>(c), Heap.heap);
+    Buf.init(b, SYSTEM.<span class="ty">ADR</span>(c.base));
     <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">200</span> <span class="kw">do</span> Buf.str(b, <span class="string">&quot;0123456789&quot;</span>); <span class="kw">end</span>;
     Fmt.print(<span class="string">&quot;a buffer of {} bytes took {} allocations\n&quot;</span>,
         [Fmt.int(b.len), Fmt.int(c.allocs)]);
     Buf.done(b);
 
-    Names.init(l, <span class="ty">ADR</span>(c.base));
+    Names.init(l, SYSTEM.<span class="ty">ADR</span>(c.base));
     <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">10</span> <span class="kw">do</span> _ := Names.push(l, <span class="string">&quot;x&quot;</span>); <span class="kw">end</span>;
     Fmt.print(<span class="string">&quot;{} allocations in all, {} frees so far\n&quot;</span>, [Fmt.int(c.allocs), Fmt.int(c.frees)]);
     Names.clear(l);
     Fmt.print(<span class="string">&quot;{} frees after clear\n&quot;</span>, [Fmt.int(c.frees)]);
 
-    p := Mem.alloc(<span class="ty">ADR</span>(c.base), <span class="number">64</span>, <span class="number">8</span>);
-    Mem.free(<span class="ty">ADR</span>(c.base), p);
+    p := Mem.alloc(SYSTEM.<span class="ty">ADR</span>(c.base), <span class="number">64</span>, <span class="number">8</span>);
+    Mem.free(SYSTEM.<span class="ty">ADR</span>(c.base), p);
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Audit.</code></pre>

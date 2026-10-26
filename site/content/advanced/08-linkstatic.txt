@@ -19,13 +19,14 @@ A program that imports it is therefore a static executable, and every thread it 
 ```raz Hello
 module Hello;
 import Out, Thread;
+import SYSTEM;
 
 var done: INT;
 
 proc greet(arg: ^U8);
 begin
     Out.str("hello from thread "); Out.int(INT(arg)); Out.ln;
-    _ := XADD(ADR(done), 1);
+    _ := XADD(done, 1);
 end;
 
 proc main*;

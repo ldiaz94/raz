@@ -13,7 +13,7 @@ module Order;
 import Out, Str, Fmt;
 
 proc main*;
-var names: [4][]U8; i, j: INT; t: []U8;
+var names: [4][]const U8; i, j: INT; t: []const U8;
 begin
     names := ["pear", "Apple", "fig", "apple"];
     (* a small insertion sort, with Str.cmp *)
@@ -44,13 +44,14 @@ A slice of a string constant lives forever, but a slice of a buffer lives only a
 ```raz Keep run
 module Keep;
 import Out, Str, Heap, Mem;
+import SYSTEM;
 
 type Entry = record name: []U8; n: INT; end;
 
 var entries: [3]Entry;
 
 (* remembers a name that the caller will overwrite *)
-proc remember(slot: INT; name: []U8);
+proc remember(slot: INT; name: []const U8);
 var copy: []U8; ok: BOOL;
 begin
     copy, ok := Str.copy(Heap.heap, name);
@@ -68,7 +69,7 @@ begin
     end;
     for i := 0 to 2 do
         Out.str(entries[i].name); Out.char(' ');
-        Mem.free(Heap.heap, ^U8(ADR(entries[i].name[0])));
+        Mem.free(Heap.heap, ^U8(SYSTEM.ADR(entries[i].name[0])));
     end;
     Out.ln;
 end;
@@ -85,13 +86,13 @@ module Paths;
 import Out, Fmt, Bytes;
 
 (* the last part of a path: what follows its last slash *)
-proc base(path: []U8): []U8;
+proc base(path: []const U8): []const U8;
 begin
     return path[Bytes.last(path, '/') + 1..LEN(path)];
 end;
 
 proc main*;
-var text: []U8; at, n, line: INT;
+var text: []const U8; at, n, line: INT;
 begin
     Out.str(base("/usr/local/lib/raz/Bytes.raz")); Out.char(' ');
     Out.str(base("Out.raz")); Out.ln;
@@ -127,7 +128,7 @@ import Out, Fmt, Str;
 const HeaderSize = 10;
 
 (* the sum of the bytes of data, all mod 2^32 *)
-proc checksum(data: []U8): U32;
+proc checksum(data: []const U8): U32;
 var i: INT; sum: U32;
 begin
     for i := 0 to LEN(data) - 1 do sum := sum + U32(data[i]); end;
@@ -135,7 +136,7 @@ begin
 end;
 
 (* writes a frame to out, which must have room; its length *)
-proc pack(out: []U8; tag, data: []U8): INT;
+proc pack(out: []U8; tag, data: []const U8): INT;
 begin
     COPY(out[0..4], tag);
     Str.putBE(out[4..6], U64(LEN(data)));
@@ -178,8 +179,8 @@ module Numbers;
 import Out, Str, Math, Fmt;
 
 (* the sum of the numbers in a comma separated list, or -1 if any isn't *)
-proc total(s: []U8): I64;
-var part: []U8; sum, n: I64; ok, more: BOOL;
+proc total(s: []const U8): I64;
+var part: []const U8; sum, n: I64; ok, more: BOOL;
 begin
     more := true;
     while more do

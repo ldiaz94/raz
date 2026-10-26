@@ -62,7 +62,7 @@
     <span class="kw">end</span>;
 <span class="kw">end</span>;
 
-<span class="kw">proc</span> kind(c: <span class="ty">I32</span>): []<span class="ty">U8</span>;
+<span class="kw">proc</span> kind(c: <span class="ty">I32</span>): []<span class="kw">const</span> <span class="ty">U8</span>;
 <span class="kw">begin</span>
     <span class="kw">match</span> c <span class="kw">of</span>
     | <span class="string">&#x27; &#x27;</span>, <span class="string">&#x27;\t&#x27;</span>, <span class="string">&#x27;\n&#x27;</span>: <span class="kw">return</span> <span class="string">&quot;space&quot;</span>;
@@ -72,7 +72,7 @@
     <span class="kw">end</span>;
 <span class="kw">end</span>;
 
-<span class="kw">proc</span> colour(name: []<span class="ty">U8</span>): Colour;
+<span class="kw">proc</span> colour(name: []<span class="kw">const</span> <span class="ty">U8</span>): Colour;
 <span class="kw">begin</span>
     <span class="kw">match</span> name <span class="kw">of</span>
     | <span class="string">&quot;red&quot;</span>, <span class="string">&quot;rose&quot;</span>: <span class="kw">return</span> red;
@@ -112,7 +112,7 @@ digit letter other
 
 <span class="kw">type</span> Day = (mon, tue, wed, thu, fri, sat, sun);
 
-<span class="kw">proc</span> name(d: Day): []<span class="ty">U8</span>;
+<span class="kw">proc</span> name(d: Day): []<span class="kw">const</span> <span class="ty">U8</span>;
 <span class="kw">begin</span>
     <span class="kw">match</span> d <span class="kw">of</span>
     | mon: <span class="kw">return</span> <span class="string">&quot;Monday&quot;</span>;
@@ -193,7 +193,7 @@ same as group
         number(n: <span class="ty">INT</span>);
         plus;
         times;
-        word(s: []<span class="ty">U8</span>);
+        word(s: []<span class="kw">const</span> <span class="ty">U8</span>);
     <span class="kw">end</span>;
 
 <span class="kw">proc</span> describe(t: Token);
@@ -246,7 +246,7 @@ word &#x27;hello&#x27;
 <div class="file"><span>Classify.raz</span></div><pre class="code"><code><span class="kw">module</span> Classify;
 <span class="kw">import</span> Out;
 
-<span class="kw">proc</span> kind(c: <span class="ty">I32</span>): []<span class="ty">U8</span>;
+<span class="kw">proc</span> kind(c: <span class="ty">I32</span>): []<span class="kw">const</span> <span class="ty">U8</span>;
 <span class="kw">begin</span>
     <span class="kw">match</span> c <span class="kw">of</span>
     | <span class="string">&#x27; &#x27;</span>, <span class="string">&#x27;\t&#x27;</span>, <span class="string">&#x27;\n&#x27;</span>: <span class="kw">return</span> <span class="string">&quot;space&quot;</span>;
@@ -257,7 +257,7 @@ word &#x27;hello&#x27;
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> s: []<span class="ty">U8</span>; i: <span class="ty">INT</span>;
+<span class="kw">var</span> s: []<span class="kw">const</span> <span class="ty">U8</span>; i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     s := <span class="string">&quot;x1 + _y&quot;</span>;
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(s) - <span class="number">1</span> <span class="kw">do</span>
@@ -281,7 +281,7 @@ y is letter
 
 <span class="kw">type</span> Op = (none, add, sub, show);
 
-<span class="kw">proc</span> op(word: []<span class="ty">U8</span>): Op;
+<span class="kw">proc</span> op(word: []<span class="kw">const</span> <span class="ty">U8</span>): Op;
 <span class="kw">begin</span>
     <span class="kw">match</span> word <span class="kw">of</span>
     | <span class="string">&quot;add&quot;</span>, <span class="string">&quot;plus&quot;</span>, <span class="string">&quot;+&quot;</span>: <span class="kw">return</span> add;
@@ -292,7 +292,7 @@ y is letter
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> total: <span class="ty">INT</span>; words: [<span class="number">6</span>][]<span class="ty">U8</span>; i: <span class="ty">INT</span>;
+<span class="kw">var</span> total: <span class="ty">INT</span>; words: [<span class="number">6</span>][]<span class="kw">const</span> <span class="ty">U8</span>; i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     words := [<span class="string">&quot;add&quot;</span>, <span class="string">&quot;plus&quot;</span>, <span class="string">&quot;sub&quot;</span>, <span class="string">&quot;show&quot;</span>, <span class="string">&quot;times&quot;</span>, <span class="string">&quot;-&quot;</span>];
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">5</span> <span class="kw">do</span>

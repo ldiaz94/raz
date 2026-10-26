@@ -38,7 +38,7 @@
 <p>raz is a small systems language, first made for x86-64 Linux. A raz program can lay a record over a device’s registers, read and write a device’s memory exactly as written, take part in lock-free algorithms, make system calls and call C libraries. It has no garbage collector and no hidden run time: what the program does is what its text says.</p>
 <p>This is the first volume of the report: the language, what an implementation chooses, and the grammar. The second, <code>doc/raz-lib.md</code>, is the library, which sections 3 and 10 and appendix A name.</p>
 <p>This report defines the language. It is short on purpose. Whatever it doesn’t allow, raz doesn’t have.</p>
-<p>This is version 2026-10.37 of the report; section 11 says where each version’s changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>. 2026-10.25 is a fourth, for strings: raw strings, which may run over lines and may be indented with the code around them (section 2), and <code>match</code> on a string (section 7.4); it breaks no program. 2026-10.26 is a fifth: an <code>INT</code> widens to an <code>I64</code> wherever it goes to one, in an expression too (sections 5.10 and 6.1); and a view, <code>v.(T)</code>, reads and writes the bytes of a variable as a <code>T</code> (section 6.9); it breaks no program. 2026-10.27 mends a defect: returning a slice of the procedure’s own frame is an error (section 7.3), which breaks only a program that read memory already gone. 2026-10.28 mends another: an array a call returns lives to the end of its statement, and a slice of it kept past that is undefined (sections 8 and 10). 2026-10.29 is a sixth thaw: an array constant typed <code>[]T</code> takes its length from its literal (section 4); it breaks no program. 2026-10.30 mends a defect: <code>[]</code> used as a slice is the empty slice, which may be returned (sections 6.5 and 7.3); it breaks no program. 2026-10.31 is a seventh thaw: <code>INT</code> is at least 16 bits, and <code>U8</code>, <code>I8</code> and <code>I16</code> widen to it (sections 5.1, 5.10 and 6.1); an enumeration’s name may be written with its type, and must be where another declaration shares it (section 5.7); and <code>continue</code> (section 7.2), which breaks a program that has a name <code>continue</code>. 2026-10.32 is an eighth thaw: a constant typed <code>[]T</code> may be <code>[]</code>, the empty slice (section 4); it breaks no program. 2026-10.33 is a ninth: a <code>const</code> parameter, the caller’s variable read in place (section 8), and a variant in a constant (section 4), which break no program; and the library’s procedures that took a pointer to what they work on take a <code>var</code> parameter, a <code>const</code> one or a value instead (the library volume), which breaks a program that calls them with <code>ADR</code>. 2026-10.34 is a tenth: <code>PTR(s)</code>, the address a slice starts at, even an empty one (section 6.8); it breaks no program. 2026-10.35 is an eleventh: <code>ROL(x, n)</code> and <code>ROR(x, n)</code>, a word rotated (sections 6.1 and 6.8); it breaks no program. 2026-10.36 is a twelfth: <code>MIN(T)</code> and <code>MAX(T)</code>, the limits of an integer type, and <code>CLZ</code>, <code>CTZ</code> and <code>POPCOUNT</code>, which count bits (sections 6.1 and 6.8); <code>ABS(x)</code>, a number without its sign (sections 6.1 and 6.8); <code>INT(b)</code>, a <code>BOOL</code> as an integer (section 6.7); <code>OFFSET(T, f)</code> and <code>SIZE(T.f)</code>, where a field lies and how big it is; <code>BYTES(x)</code>, the bytes of a variable or a slice (sections 4 and 6.8); <code>FILL(d, x)</code>, an array or a slice set to one value (section 6.8); a qualified case in a <code>match</code> arm (section 7.4); a slice part written as a literal, and an <code>ERROR</code> constant named by another (sections 4 and 5.8); and a <code>const</code> parameter’s slice returned (section 7.3); and a procedure type’s parameter or result may name a type declared later in its <code>type</code> section (sections 4 and 5.9); it breaks no program. 2026-10.37 is a thirteenth thaw, for safety. It mends a defect: an array a call returns, or a record or variant holding one, lives to the end of the procedure the call is in, so a slice of it may be kept (section 8). <code>CAS</code>, <code>XCHG</code> and <code>XADD</code> take the variable they work on (section 6.8). <code>[]const T</code> is a slice whose elements can’t be written through it, which a string literal, a slice of a constant, <code>MSG</code> and a slice of a <code>const</code> parameter’s array are (sections 4, 5.3, 5.10, 6.8 and 8). And <code>import SYSTEM</code> is what a module says to reach memory other than through its variables: <code>SYSTEM.ADR</code>, <code>SYSTEM.PTR</code>, <code>SYSTEM.SYSCALL</code> and <code>SYSTEM.ARGV</code>, a pointer’s arithmetic and conversions, C, code procedures and <code>check off;</code> (section 3); section 10 says what is left undefined outside such modules. It breaks a program that gives an atomic a pointer, writes through a string or a constant, or does what <code>SYSTEM</code> holds without importing it; raz 0.23 still takes all of these as before, until 0.24.</p>
+<p>This is version 2026-10.37 of the report; section 11 says where each version’s changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose, for a language anyone can build again. They break programs written for 2026-10.10 and before: for 2026-10.9, say, the report of compiler 0.5.0, the last release before them; and 2026-10.12 breaks code procedures written for 2026-10.11. 2026-10.20 is a third, for <code>try</code> (section 7.8); it breaks a program that has a name <code>try</code>. 2026-10.25 is a fourth, for strings: raw strings, which may run over lines and may be indented with the code around them (section 2), and <code>match</code> on a string (section 7.4); it breaks no program. 2026-10.26 is a fifth: an <code>INT</code> widens to an <code>I64</code> wherever it goes to one, in an expression too (sections 5.10 and 6.1); and a view, <code>v.(T)</code>, reads and writes the bytes of a variable as a <code>T</code> (section 6.9); it breaks no program. 2026-10.27 mends a defect: returning a slice of the procedure’s own frame is an error (section 7.3), which breaks only a program that read memory already gone. 2026-10.28 mends another: an array a call returns lives to the end of its statement, and a slice of it kept past that is undefined (sections 8 and 10). 2026-10.29 is a sixth thaw: an array constant typed <code>[]T</code> takes its length from its literal (section 4); it breaks no program. 2026-10.30 mends a defect: <code>[]</code> used as a slice is the empty slice, which may be returned (sections 6.5 and 7.3); it breaks no program. 2026-10.31 is a seventh thaw: <code>INT</code> is at least 16 bits, and <code>U8</code>, <code>I8</code> and <code>I16</code> widen to it (sections 5.1, 5.10 and 6.1); an enumeration’s name may be written with its type, and must be where another declaration shares it (section 5.7); and <code>continue</code> (section 7.2), which breaks a program that has a name <code>continue</code>. 2026-10.32 is an eighth thaw: a constant typed <code>[]T</code> may be <code>[]</code>, the empty slice (section 4); it breaks no program. 2026-10.33 is a ninth: a <code>const</code> parameter, the caller’s variable read in place (section 8), and a variant in a constant (section 4), which break no program; and the library’s procedures that took a pointer to what they work on take a <code>var</code> parameter, a <code>const</code> one or a value instead (the library volume), which breaks a program that calls them with <code>ADR</code>. 2026-10.34 is a tenth: <code>PTR(s)</code>, the address a slice starts at, even an empty one (section 6.8); it breaks no program. 2026-10.35 is an eleventh: <code>ROL(x, n)</code> and <code>ROR(x, n)</code>, a word rotated (sections 6.1 and 6.8); it breaks no program. 2026-10.36 is a twelfth: <code>MIN(T)</code> and <code>MAX(T)</code>, the limits of an integer type, and <code>CLZ</code>, <code>CTZ</code> and <code>POPCOUNT</code>, which count bits (sections 6.1 and 6.8); <code>ABS(x)</code>, a number without its sign (sections 6.1 and 6.8); <code>INT(b)</code>, a <code>BOOL</code> as an integer (section 6.7); <code>OFFSET(T, f)</code> and <code>SIZE(T.f)</code>, where a field lies and how big it is; <code>BYTES(x)</code>, the bytes of a variable or a slice (sections 4 and 6.8); <code>FILL(d, x)</code>, an array or a slice set to one value (section 6.8); a qualified case in a <code>match</code> arm (section 7.4); a slice part written as a literal, and an <code>ERROR</code> constant named by another (sections 4 and 5.8); and a <code>const</code> parameter’s slice returned (section 7.3); and a procedure type’s parameter or result may name a type declared later in its <code>type</code> section (sections 4 and 5.9); it breaks no program. 2026-10.37 is a thirteenth thaw, for safety. It mends a defect: an array a call returns, or a record or variant holding one, lives to the end of the procedure the call is in, so a slice of it may be kept (section 8). <code>CAS</code>, <code>XCHG</code> and <code>XADD</code> take the variable they work on (section 6.8). <code>[]const T</code> is a slice whose elements can’t be written through it, which a string literal, a slice of a constant, <code>MSG</code> and a slice of a <code>const</code> parameter’s array are (sections 4, 5.3, 5.10, 6.8 and 8). And <code>import SYSTEM</code> is what a module says to reach memory other than through its variables: <code>SYSTEM.ADR</code>, <code>SYSTEM.PTR</code>, <code>SYSTEM.SYSCALL</code> and <code>SYSTEM.ARGV</code>, a pointer’s arithmetic and conversions, C, code procedures and <code>check off;</code> (section 3); section 10 says what is left undefined outside such modules. It breaks a program that gives an atomic a pointer, writes through a string or a constant, or does what <code>SYSTEM</code> holds without importing it; raz 0.23 still took them, as before; raz 0.24 doesn’t.</p>
 <p>The language is frozen, softly, from this version on: it changes only to mend a defect, and its library grows only by what breaks no program written for it. What anyone wishes it had waits on a list, for a later thaw.</p>
 <h1 id="a-first-look">1. A first look</h1>
 <pre><code>module Hello;
@@ -111,14 +111,14 @@ type
 end List.</code></pre>
 <p>An import gives the arguments: <code>import Ints := List(I64);</code>. Each distinct list of arguments makes one <em>instance</em>: the module compiled with <code>T</code> standing for <code>I64</code>. Two imports of <code>List(I64)</code>, in any modules, share one instance, its variables and its <code>ERROR</code>s with it: two lists of arguments are the same when their types are the same (section 5.10), an alias as what it stands for, and their procedures are the same procedures. Since every instance is checked on its own, an operation the argument type doesn’t support (adding two records, say) is reported as an error in that instance.</p>
 <p>An instance is made where its module is first used, not at the import: so the arguments may name types the importing module declares after its imports, as long as they are declared before that first use. The instance is made before the code of the procedure, or the module body, that first uses it, and its arguments are read in the scope there.</p>
-<pre><code>import Table := Map([]U8, Colour, Str.hash, Str.eq);
+<pre><code>import Table := Map([]const U8, Colour, Str.hash, Str.eq);
 
 type Colour = (red, green, blue);
 
 var names: Table.Map;   (* the instance is made here *)</code></pre>
 <p>What a generic module needs to do with its types, beyond moving them about, it is given as procedures, after the types:</p>
 <pre><code>module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);</code></pre>
-<pre><code>import Names := Map([]U8, I64, Str.hash, Str.eq);</code></pre>
+<pre><code>import Names := Map([]const U8, I64, Str.hash, Str.eq);</code></pre>
 <p>A procedure argument names a procedure, not a variable or an expression, and its signature, with the type arguments put in, must be the parameter’s. Inside the module, <code>hash(k)</code> calls it directly. Two imports make the same instance only if their types and their procedures are the same.</p>
 <p><strong>Finding modules.</strong> The compiler looks for module <code>Name</code> in the main module’s directory, then in each directory given with <code>-I</code>, then in the user library directories, then in the <code>lib</code> directory beside the compiler. User libraries live in <code>$HOME/.raz/lib</code> by default. <code>RAZ_PATH</code>, when set, replaces that default with a colon-separated list of directories; an empty value disables user libraries. Empty entries are ignored. With no nonempty <code>HOME</code>, there is no default. Paths are not searched recursively; relative paths are relative to the compiler’s working directory, and <code>~</code> and variables inside them are not expanded. Install a library’s source files directly in one of these directories, with its target-specific files beside them. In each directory the compiler takes the first of <code>Name.OS-ARCH.raz</code>, <code>Name.OS.raz</code>, <code>Name.ARCH.raz</code> and <code>Name.raz</code> that exists, where <code>OS-ARCH</code> is the target, for now only <code>linux-x86_64</code>. So a module whose code depends on the machine or the system comes in one file per target, and the modules that import it don’t change. Machine code (section 8) and system calls belong in such files.</p>
 <p><strong>One module to a name.</strong> A program has one module of each name, so the compiler reports an error, naming the files, if a module it looks for has files in more than one of these directories, rather than take the first: a <code>Buf.raz</code> beside a program would otherwise stand in for the library’s <code>Buf</code> in every module that imports it, the library’s own among them. A link is the exception: a file that is a symbolic link to one of the module’s files in a later directory chooses that file, so that a directory holding a link to <code>lib/Sys.raz</code> builds a program over the C library’s <code>Sys</code> on Linux too.</p>
@@ -690,7 +690,7 @@ end;</code></pre>
 import Sys, Out;
 
 (* Prints the first line of the file at path. *)
-proc head(path: []U8): BOOL;
+proc head(path: []const U8): BOOL;
 var fd, n, i: INT; buf: [256]U8;
 begin
     fd := Sys.openRead(path);
@@ -955,6 +955,7 @@ ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
 <h1 id="the-library-volume-2">The library, volume 2</h1>
 <p>The second volume of the report on raz. The first, <code>doc/raz.md</code>, defines the language; this one defines the modules that come with it, and refers to the first’s sections by number, as “section 6.8”. Only the core binds every implementation (appendix A of the first volume); the rest is the standard library, <code>Rand</code>, <code>Check</code> and <code>Prop</code> among it.</p>
 <p>The library grows only by what breaks no program written for it. If a change must break programs, the old form stays for one minor version beside the new; the release notes list the old forms, and the next version removes them. Nothing marks an old form in the source.</p>
+<p>A procedure that only reads a slice takes a <code>[]const T</code>, so that a string, a constant and any other slice fit it; what a procedure hands back from the environment, the arguments or a directory is a <code>[]const U8</code>. A module that reaches memory, as the library’s lower modules do, says <code>import SYSTEM</code> (section 3 of the first volume).</p>
 <p>Modules written in raz, in the compiler’s <code>lib</code> directory:</p>
 <table>
 <thead>
@@ -1010,7 +1011,7 @@ ExternDeclaration = &quot;extern&quot; ( &quot;proc&quot; IdentDef Signature
 </tr>
 <tr>
 <td><code>Str</code></td>
-<td>operations on <code>[]U8</code> strings: comparing, hashing, finding, trimming and cutting, case, joining and replacing, UTF-8, numbers to and from text</td>
+<td>operations on strings, <code>[]const U8</code>: comparing, hashing, finding, trimming and cutting, case, joining and replacing, UTF-8, numbers to and from text</td>
 </tr>
 <tr>
 <td><code>Bytes</code></td>
@@ -1077,7 +1078,7 @@ const Full*: ERROR = &quot;too many procedures to run at exit&quot;;
 proc atExit*(p: proc): ERROR;   (* p run when the program ends by exit *)
 proc exit*(status: INT);        (* the atExit procedures, the last first, then the end *)
 proc exitStatus*: INT;          (* the status exit was given, in an atExit procedure; 0 before *)
-proc stop*(msg: []U8);          (* msg, and a line feed, on standard error, then exit with status 2 *)
+proc stop*(msg: []const U8);          (* msg, and a line feed, on standard error, then exit with status 2 *)
 proc trace*;                    (* the calls under way, and their variables, on standard error *)</code></pre>
 <p><code>Rt</code> also holds what the compiler’s checks call when they fail, and the handlers of the signals that stop a program (section 10). <code>exit</code> takes each procedure off the list before it runs it, so it runs once even if it fails or calls <code>exit</code> itself; in a program that uses C, it ends through C’s <code>exit</code>, so that C flushes its buffers too. <code>exitStatus</code> is the status <code>exit</code> was given, which a procedure <code>atExit</code> registered can read, to note a crash: a failed check and <code>stop</code> both end with 2. It is 0 before <code>exit</code> is called.</p>
 <pre><code>module Mem;
@@ -1136,7 +1137,7 @@ proc with*(var g: Guarded; p: proc(var x: T));   (* p run on the value, under th
 <p>A <code>Lock</code> is for short sections: a thread that finds it taken tries again, giving up the processor now and then. A <code>Mutex</code> sleeps. Each of <code>Thread</code>’s threads runs on a stack of its own, with a page below it that can’t be touched, so that running off the stack stops the program with a message, as in the main thread. In a program that uses C, <code>Thread</code> makes its threads with C’s <code>pthread_create</code>, so that C’s library knows of them; in one that doesn’t, with the system’s own calls. The program is the same either way.</p>
 <p><code>Sys.kill</code> signals a program, and the system gives the signal to any of its threads; <code>signal</code> gives it to <code>t</code> alone, until <code>t</code> is joined, and is -3 (ESRCH) once <code>t</code> has ended. With <code>Sys.handle(sig)</code>, a call <code>t</code> waits in, a <code>read</code> or a <code>ready</code>, fails with -4, so that one thread can break into another’s wait, as <code>^C</code> breaks into the main thread’s. A signal sent before <code>t</code> begins its wait is only noted, so a program sends it again until <code>t</code> says it has stopped.</p>
 <pre><code>module Out;
-proc str*(s: []U8);
+proc str*(s: []const U8);
 proc char*(c: U8);
 proc ln*;                        (* a line feed *)
 proc int*(n: I64);               (* n in decimal *)
@@ -1145,7 +1146,7 @@ proc flush*;
 proc lines*(on: BOOL);           (* written at each line feed, or only when full *)</code></pre>
 <p><strong>Out and C’s stdio.</strong> <code>Out</code> keeps a buffer of <code>Sys.outSize</code> bytes, 4 KB on Linux. It writes it out when it is full, at each line feed when standard output is a terminal, at <code>Out.flush</code>, and when the program ends by <code>Rt.exit</code>. <code>lines(true)</code> has it written at each line feed whatever standard output is, as a filter of a stream that comes slowly wants through a pipe, as grep’s <code>--line-buffered</code>; <code>lines(false)</code>, only when full, at a terminal too. A lock keeps what each call writes together when threads write at once. C’s <code>stdio</code> keeps a buffer of its own for the same standard output. A program that writes with both flushes one before writing with the other, or the text comes out of order:</p>
 <pre><code>module Both;
-import Out, C;      (* C: printf, fflush and C&#39;s FILE *stdout *)
+import Out, C, SYSTEM;  (* C: printf, fflush and C&#39;s FILE *stdout *)
 
 proc main*;
 begin
@@ -1202,11 +1203,11 @@ type
     Kind* = (unknown, isFile, isDir, isLink, isOther);   (* what a directory says a name in it is *)
     Dir* = record ... end;   (* an open directory; its fields are the target&#39;s *)
     Program* = record
-        path*: []U8;
-        args*: [][]U8;      (* the first is its name *)
-        env*: [][]U8;       (* NAME=value, each added to this program&#39;s environment *)
+        path*: []const U8;
+        args*: [][]const U8;      (* the first is its name *)
+        env*: [][]const U8;       (* NAME=value, each added to this program&#39;s environment *)
         onlyEnv*: BOOL;     (* env is its whole environment *)
-        dir*: []U8;         (* its working directory; &quot;&quot; for this program&#39;s *)
+        dir*: []const U8;         (* its working directory; &quot;&quot; for this program&#39;s *)
         fds*: [3]INT;       (* its standard input, output and error; 0 for this program&#39;s own *)
         group*: INT;        (* the process group it joins: 0 for this program&#39;s, -1 a new one it leads *)
         foreground*: BOOL;  (* its group takes the terminal on standard input *)
@@ -1230,12 +1231,12 @@ type
         ready*: BOOL;         (* set by poll *)
     end;
 
-proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
+proc write*(fd: INT; s: []const U8): INT;     (* the bytes written *)
 proc read*(fd: INT; buf: []U8): INT;    (* the bytes read; 0 at the end *)
-proc open*(path: []U8; how: Accesses): INT;   (* its fd, closed on exec *)
-proc openMode*(path: []U8; how: Accesses; mode: INT): INT;   (* open, a file it makes given mode *)
-proc openRead*(path: []U8): INT;         (* open(path, {reading}) *)
-proc create*(path: []U8): INT;           (* open(path, {writing, creating, truncating}) *)
+proc open*(path: []const U8; how: Accesses): INT;   (* its fd, closed on exec *)
+proc openMode*(path: []const U8; how: Accesses; mode: INT): INT;   (* open, a file it makes given mode *)
+proc openRead*(path: []const U8): INT;         (* open(path, {reading}) *)
+proc create*(path: []const U8): INT;           (* open(path, {writing, creating, truncating}) *)
 proc seek*(fd: INT; pos: I64; fromEnd: BOOL): I64;  (* the new position *)
 proc position*(fd: INT): I64;            (* where the next read or write is *)
 proc truncate*(fd: INT; size: I64): INT; (* the file made size bytes long *)
@@ -1257,26 +1258,26 @@ proc munmap*(p: ^U8; size: INT);
 proc yield*;                             (* the processor given to another thread *)
 proc exit*(status: INT);                 (* the program ended at once, without Rt&#39;s atExit *)
 
-proc rename*(old, new: []U8): INT;       (* replaces what new names *)
-proc remove*(path: []U8): INT;           (* a file, not a directory *)
-proc removeDir*(path: []U8): INT;        (* an empty directory *)
-proc makeDir*(path: []U8): INT;          (* readable by all, writable by its owner *)
-proc makeDirMode*(path: []U8; mode: INT): INT;   (* makeDir, given mode *)
-proc chmod*(path: []U8; mode: INT): INT;
-proc chown*(path: []U8; uid, gid: INT): INT;   (* its owner and group; -1 leaves one as it is *)
-proc makeFifo*(path: []U8; mode: INT): INT;    (* a named pipe, given mode *)
-proc setTime*(path: []U8; sec: I64; nsec: INT): INT;   (* its mtime, and the time it was read, made sec and nsec *)
-proc access*(path: []U8; how: Accesses): INT;   (* 0 if this user may read, write or execute it *)
+proc rename*(old, new: []const U8): INT;       (* replaces what new names *)
+proc remove*(path: []const U8): INT;           (* a file, not a directory *)
+proc removeDir*(path: []const U8): INT;        (* an empty directory *)
+proc makeDir*(path: []const U8): INT;          (* readable by all, writable by its owner *)
+proc makeDirMode*(path: []const U8; mode: INT): INT;   (* makeDir, given mode *)
+proc chmod*(path: []const U8; mode: INT): INT;
+proc chown*(path: []const U8; uid, gid: INT): INT;   (* its owner and group; -1 leaves one as it is *)
+proc makeFifo*(path: []const U8; mode: INT): INT;    (* a named pipe, given mode *)
+proc setTime*(path: []const U8; sec: I64; nsec: INT): INT;   (* its mtime, and the time it was read, made sec and nsec *)
+proc access*(path: []const U8; how: Accesses): INT;   (* 0 if this user may read, write or execute it *)
 proc umask*(mask: INT): INT;             (* the bits taken from every file made; the mask it was *)
-proc symlink*(target, path: []U8): INT;  (* path made a link to target *)
-proc readLink*(path: []U8): ([]U8, INT); (* what the link names, good until the next call *)
-proc info*(path: []U8): (Info, INT);     (* following a symbolic link *)
-proc linkInfo*(path: []U8): (Info, INT); (* the link itself *)
+proc symlink*(target, path: []const U8): INT;  (* path made a link to target *)
+proc readLink*(path: []const U8): ([]const U8, INT); (* what the link names, good until the next call *)
+proc info*(path: []const U8): (Info, INT);     (* following a symbolic link *)
+proc linkInfo*(path: []const U8): (Info, INT); (* the link itself *)
 proc infoOf*(fd: INT): (Info, INT);      (* the open file&#39;s *)
-proc space*(path: []U8): (I64, I64, INT);   (* the bytes free and in all on path&#39;s file system *)
+proc space*(path: []const U8): (I64, I64, INT);   (* the bytes free and in all on path&#39;s file system *)
 
-proc openDir*(var d: Dir; path: []U8): INT;
-proc nextEntry*(var d: Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
+proc openDir*(var d: Dir; path: []const U8): INT;
+proc nextEntry*(var d: Dir): ([]const U8, BOOL);  (* a name, good until the next call; false at the end *)
 proc entryKind*(const d: Dir): Kind;        (* what the name nextEntry gave last is *)
 proc closeDir*(var d: Dir);
 
@@ -1286,27 +1287,27 @@ proc getMode*(fd: INT): (Mode, INT);     (* the terminal&#39;s modes, to set aga
 proc setMode*(fd: INT; m: Mode): INT;    (* once what was written to it is sent *)
 proc termSize*(fd: INT): (INT, INT);   (* columns and rows; 80 and 24 if unknown *)
 proc ready*(fd, ms: INT): BOOL;          (* something to read within ms, or ever if ms &lt; 0 *)
-proc readyOf*(fds: []INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
-proc readyFor*(reads, writes: []INT; ms: INT): INT;   (* readyOf, and the first of writes with room to write *)
+proc readyOf*(fds: []const INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
+proc readyFor*(reads, writes: []const INT; ms: INT): INT;   (* readyOf, and the first of writes with room to write *)
 proc poll*(var fds: []Poll; ms: INT): INT;   (* sets each fd&#39;s ready, as each read and write say; the number ready, 0 on a timeout, or minus an errno *)
 proc setBlocking*(fd: INT; yes: BOOL): INT;   (* if not yes, a read or write that would wait is -11 at once *)
 proc blocking*(fd: INT): INT;            (* 1 if reads and writes wait, 0 if they are -11 at once, or minus an errno *)
 
-proc errorText*(err: INT): []U8;   (* what errno err, or minus it, means, as C&#39;s strerror says *)
+proc errorText*(err: INT): []const U8;   (* what errno err, or minus it, means, as C&#39;s strerror says *)
 
-proc env*(name: []U8): []U8;       (* the environment variable&#39;s value; &quot;&quot; if unset *)
-proc findEnv*(name: []U8): ([]U8, BOOL);   (* the value and true; &quot;&quot; and false if unset, &quot;&quot; and true if empty *)
-proc envAt*(i: INT): ([]U8, BOOL); (* the environment&#39;s ith NAME=value, from 0; false past the last *)
-proc setEnv*(name, value: []U8): INT;   (* name set to value, for env and the programs started *)
-proc workDir*: ([]U8, INT);        (* the working directory, good until the next call *)
-proc setWorkDir*(path: []U8): INT;
+proc env*(name: []const U8): []const U8;       (* the environment variable&#39;s value; &quot;&quot; if unset *)
+proc findEnv*(name: []const U8): ([]const U8, BOOL);   (* the value and true; &quot;&quot; and false if unset, &quot;&quot; and true if empty *)
+proc envAt*(i: INT): ([]const U8, BOOL); (* the environment&#39;s ith NAME=value, from 0; false past the last *)
+proc setEnv*(name, value: []const U8): INT;   (* name set to value, for env and the programs started *)
+proc workDir*: ([]const U8, INT);        (* the working directory, good until the next call *)
+proc setWorkDir*(path: []const U8): INT;
 
 proc pipe*: (INT, INT);            (* the fd to read and the fd to write; or minus an errno and -1 *)
 proc openPty*: INT;                (* a pseudo-terminal: the fd of its controlling side *)
 proc setTermSize*(fd, cols, rows: INT): INT;   (* the size its programs are told of *)
 proc spawn*(p: Program): INT;      (* a program started: its process id *)
 proc exec*(p: Program): INT;       (* p run in this program&#39;s place; returns only if it can&#39;t *)
-proc execve*(path: []U8; args, env: [][]U8): INT;   (* as the kernel&#39;s execve: no search *)
+proc execve*(path: []const U8; args, env: [][]const U8): INT;   (* as the kernel&#39;s execve: no search *)
 proc fork*: INT;                   (* this program copied: 0 in the copy, its process id in this one *)
 proc setsid*: INT;                 (* a session of its own, led by this program: its process id, or minus an errno *)
 proc wait*(pid: INT; block: BOOL): (INT, Status, INT);   (* which program, how, and its code *)
@@ -1319,13 +1320,13 @@ proc foreground*(fd, group: INT): INT;   (* the terminal on fd gives its keys to
 proc foregroundOf*(fd: INT): INT;  (* the group the terminal on fd gives its keys to *)
 proc uid*: INT;                    (* the user this program runs as *)
 proc euid*: INT;                   (* the user whose rights it has: 0 is root *)
-proc hostName*: ([]U8, INT);       (* this machine&#39;s name, good until the next call *)
+proc hostName*: ([]const U8, INT);       (* this machine&#39;s name, good until the next call *)
 proc processors*: INT;             (* the processors this program may run on, at least 1 *)
 proc cpuTime*(children: BOOL): (I64, I64);   (* ns used in the program and in the system; or by its children *)
 proc limit*(which: INT): (I64, I64, INT);    (* the soft limit and the hard; -1 for none *)
 proc setLimit*(which: INT; soft, hard: I64): INT;
 
-proc catch*(sigs: []INT): INT;     (* sigs caught: an fd to wait on *)
+proc catch*(sigs: []const INT): INT;     (* sigs caught: an fd to wait on *)
 proc caught*(fd: INT): INT;        (* the next signal caught, or 0 if none is waiting *)
 proc ignore*(sig: INT; yes: BOOL): INT;  (* sig ignored; or, if not yes, back to what it does at first *)
 proc ignored*(sig: INT): BOOL;     (* whether sig does nothing now *)
@@ -1337,23 +1338,23 @@ proc now*: I64;                    (* nanoseconds since 1970-01-01, UTC *)
 proc sleep*(ms: INT);
 proc random*(b: []U8);             (* b filled with random bytes; stops the program if it can&#39;t be *)
 
-proc connect*(path: []U8): INT;    (* a stream socket, connected to the Unix socket at path: its fd *)
-proc connectTcp*(addr: []U8; port: INT): INT;   (* addr an IPv4 or IPv6 address, as numbers *)
-proc connectUdp*(addr: []U8; port: INT): INT;
-proc listen*(path: []U8): INT;     (* a Unix socket made at path, taking connections *)
-proc listenTcp*(addr: []U8; port: INT): INT;
+proc connect*(path: []const U8): INT;    (* a stream socket, connected to the Unix socket at path: its fd *)
+proc connectTcp*(addr: []const U8; port: INT): INT;   (* addr an IPv4 or IPv6 address, as numbers *)
+proc connectUdp*(addr: []const U8; port: INT): INT;
+proc listen*(path: []const U8): INT;     (* a Unix socket made at path, taking connections *)
+proc listenTcp*(addr: []const U8; port: INT): INT;
 proc accept*(fd: INT): INT;        (* the next connection, waiting for one *)
-proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
-proc sendNow*(fd: INT; s: []U8): INT;   (* send, but -11 (EAGAIN) where it would wait *)
-proc connectTcpWithin*(addr: []U8; port, ms: INT): INT;   (* connectTcp, or -110 (ETIMEDOUT) after ms *)
-proc listenUdp*(addr: []U8; port: INT): INT;   (* a socket of datagrams on port at addr *)
+proc send*(fd: INT; s: []const U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
+proc sendNow*(fd: INT; s: []const U8): INT;   (* send, but -11 (EAGAIN) where it would wait *)
+proc connectTcpWithin*(addr: []const U8; port, ms: INT): INT;   (* connectTcp, or -110 (ETIMEDOUT) after ms *)
+proc listenUdp*(addr: []const U8; port: INT): INT;   (* a socket of datagrams on port at addr *)
 proc receive*(fd: INT; buf: []U8): (INT, Peer);   (* the next datagram, in buf, and who sent it *)
-proc reply*(fd: INT; peer: Peer; s: []U8): INT;   (* s, as one datagram, to peer *)
+proc reply*(fd: INT; peer: Peer; s: []const U8): INT;   (* s, as one datagram, to peer *)
 proc localPort*(fd: INT): INT;     (* the port the socket fd is bound to *)
 proc closeWrite*(fd: INT): INT;    (* no more writing to the socket fd; the other end reads an end *)
 proc peer*(fd: INT): (Remote, INT);   (* who is at the other end of the connected socket fd *)
 proc socketPair*: (INT, INT, INT); (* two connected stream sockets, and 0 *)
-proc sendFds*(fd: INT; s: []U8; fds: []INT): INT;   (* send, and with it fds, to a Unix socket *)
+proc sendFds*(fd: INT; s: []const U8; fds: []const INT): INT;   (* send, and with it fds, to a Unix socket *)
 proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);   (* read, and the fds that came with it *)
 
 proc memFile*(size: INT): INT;     (* a file of size zero bytes, in memory, with no name: its fd *)
@@ -1381,22 +1382,22 @@ proc mapFile*(fd, size: INT): ^U8; (* the first size bytes of fd, shared; munmap
 <p>A program that both reads from a descriptor and writes much to it, as a terminal writes what is pasted to its program while it reads what the program writes back, must not wait on either: the program may be waiting for its own writes to be read. <code>setBlocking(fd, false)</code> has a read or a write on <code>fd</code> that would wait return -11 (EAGAIN) at once, a write having written what there was room for; <code>readyFor</code> waits, as <code>readyOf</code> does, for something to read on any of <code>reads</code> or for room to write on any of <code>writes</code>. A descriptor in both is given once, when it is ready for either; the 64 it looks at are <code>reads</code>, then <code>writes</code>.</p>
 <p><strong>Strings, buffers and collections.</strong></p>
 <pre><code>module Str;
-proc cmp*(a, b: []U8): INT;           (* -1, 0 or 1 as a sorts before, with or after b, byte by byte *)
-proc eq*(a, b: []U8): BOOL;
-proc eqFold*(a, b: []U8): BOOL;       (* eq, an ASCII letter&#39;s capital and small the same *)
-proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);   (* s&#39;s bytes in memory from a; false if a has none *)
+proc cmp*(a, b: []const U8): INT;           (* -1, 0 or 1 as a sorts before, with or after b, byte by byte *)
+proc eq*(a, b: []const U8): BOOL;
+proc eqFold*(a, b: []const U8): BOOL;       (* eq, an ASCII letter&#39;s capital and small the same *)
+proc copy*(a: ^Mem.Allocator; s: []const U8): ([]U8, BOOL);   (* s&#39;s bytes in memory from a; false if a has none *)
 proc free*(a: ^Mem.Allocator; s: []U8);                 (* what copy gave from a, given back; &quot;&quot; is none *)
-proc hash*(s: []U8): U64;             (* FNV-1a, 64 bits *)
-proc find*(s, sub: []U8): INT;        (* where sub first starts in s, or -1 *)
-proc findFrom*(s, sub: []U8; from: INT): INT;   (* where sub first starts in s at or after from, or -1 *)
-proc findLast*(s, sub: []U8): INT;    (* where sub last starts in s, or -1 *)
-proc hasPrefix*(s, p: []U8): BOOL;
-proc hasSuffix*(s, x: []U8): BOOL;
-proc trim*(s: []U8): []U8;            (* s without the spaces at either end *)
-proc trimLeft*(s: []U8): []U8;        (* s without the spaces at its start *)
-proc trimRight*(s: []U8): []U8;       (* s without the spaces at its end *)
-proc cut*(s, sep: []U8): ([]U8, []U8, BOOL);   (* what comes before the first sep, and after it *)
-proc field*(s: []U8): ([]U8, []U8);   (* the first run of bytes in s that aren&#39;t spaces, and what follows it *)
+proc hash*(s: []const U8): U64;             (* FNV-1a, 64 bits *)
+proc find*(s, sub: []const U8): INT;        (* where sub first starts in s, or -1 *)
+proc findFrom*(s, sub: []const U8; from: INT): INT;   (* where sub first starts in s at or after from, or -1 *)
+proc findLast*(s, sub: []const U8): INT;    (* where sub last starts in s, or -1 *)
+proc hasPrefix*(s, p: []const U8): BOOL;
+proc hasSuffix*(s, x: []const U8): BOOL;
+proc trim*(s: []const U8): []const U8;            (* s without the spaces at either end *)
+proc trimLeft*(s: []const U8): []const U8;        (* s without the spaces at its start *)
+proc trimRight*(s: []const U8): []const U8;       (* s without the spaces at its end *)
+proc cut*(s, sep: []const U8): ([]const U8, []const U8, BOOL);   (* what comes before the first sep, and after it *)
+proc field*(s: []const U8): ([]const U8, []const U8);   (* the first run of bytes in s that aren&#39;t spaces, and what follows it *)
 proc isDigit*(c: U8): BOOL;           (* 0 to 9 *)
 proc isLetter*(c: U8): BOOL;          (* A to Z, a to z *)
 proc isSpace*(c: U8): BOOL;           (* a space, as trim takes it *)
@@ -1404,28 +1405,28 @@ proc isPunct*(c: U8): BOOL;           (* printable, and neither a letter, a digi
 proc hexVal*(c: U8): INT;             (* c&#39;s value as a hexadecimal digit, or -1 *)
 proc lower*(s: []U8);                 (* s&#39;s ASCII capitals made small, in place *)
 proc upper*(s: []U8);                 (* s&#39;s ASCII small letters made capitals, in place *)
-proc join*(var b: Buf.Buf; parts: [][]U8; sep: []U8);   (* the parts added to b, sep between each two *)
-proc replace*(var b: Buf.Buf; s, old, new: []U8);       (* s added to b, with new for each old in it *)
+proc join*(var b: Buf.Buf; parts: [][]const U8; sep: []const U8);   (* the parts added to b, sep between each two *)
+proc replace*(var b: Buf.Buf; s, old, new: []const U8);       (* s added to b, with new for each old in it *)
 proc encode*(c: I32): ([4]U8, INT);   (* c in UTF-8: its bytes, and how many *)
-proc decode*(s: []U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
-proc decodeLast*(s: []U8): (I32, INT);   (* the character s ends with, and its length in bytes *)
-proc next*(s: []U8; i: INT): (I32, INT);  (* the character at i, and where the next starts; -1 at the end *)
-proc valid*(s: []U8): BOOL;           (* s is UTF-8, every character rightly spelled *)
-proc chars*(s: []U8): INT;            (* the characters in s, as decode reads them *)
-proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn&#39;t a number an I64 holds *)
-proc toHex*(s: []U8): (U64, BOOL);    (* s, in hexadecimal; false if it isn&#39;t a number a U64 holds *)
-proc toU64*(s: []U8): (U64, BOOL);    (* s, decimal digits only; false if it isn&#39;t one, or a U64 can&#39;t hold it *)
-proc fromC*(p: ^U8): []U8;            (* the bytes at p up to its zero byte, not copied; &quot;&quot; for nil *)
-proc toC*(s, out: []U8): ^U8;         (* s copied into out with a zero byte after it, which holds LEN(s) + 1 bytes at least: PTR(out) *)
+proc decode*(s: []const U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
+proc decodeLast*(s: []const U8): (I32, INT);   (* the character s ends with, and its length in bytes *)
+proc next*(s: []const U8; i: INT): (I32, INT);  (* the character at i, and where the next starts; -1 at the end *)
+proc valid*(s: []const U8): BOOL;           (* s is UTF-8, every character rightly spelled *)
+proc chars*(s: []const U8): INT;            (* the characters in s, as decode reads them *)
+proc toInt*(s: []const U8): (I64, BOOL);    (* s, in decimal; false if it isn&#39;t a number an I64 holds *)
+proc toHex*(s: []const U8): (U64, BOOL);    (* s, in hexadecimal; false if it isn&#39;t a number a U64 holds *)
+proc toU64*(s: []const U8): (U64, BOOL);    (* s, decimal digits only; false if it isn&#39;t one, or a U64 can&#39;t hold it *)
+proc fromC*(p: ^U8): []const U8;            (* the bytes at p up to its zero byte, not copied; &quot;&quot; for nil *)
+proc toC*(s: []const U8; out: []U8): ^U8;         (* s copied into out with a zero byte after it, which holds LEN(s) + 1 bytes at least: PTR(out) *)
 const Base64*, Base64Url*;            (* the digits of RFC 4648, sections 4 and 5 *)
-proc base64With*(s, out, alphabet: []U8; pad: BOOL): INT;   (* s in base64 with alphabet&#39;s 64 digits into out, which holds base64Size(LEN(s)) bytes at least, padded with = if pad: the bytes written *)
-proc unbase64With*(s, out, alphabet: []U8; pad: BOOL): (INT, BOOL);   (* s, base64 as base64With wrote it, into out, which holds (LEN(s) + 3) div 4 * 3 bytes at least: the bytes written; false if s is not that *)
+proc base64With*(s: []const U8; out: []U8; alphabet: []const U8; pad: BOOL): INT;   (* s in base64 with alphabet&#39;s 64 digits into out, which holds base64Size(LEN(s)) bytes at least, padded with = if pad: the bytes written *)
+proc unbase64With*(s: []const U8; out: []U8; alphabet: []const U8; pad: BOOL): (INT, BOOL);   (* s, base64 as base64With wrote it, into out, which holds (LEN(s) + 3) div 4 * 3 bytes at least: the bytes written; false if s is not that *)
 proc base64Size*(n: INT): INT;        (* the bytes base64 makes of n bytes: 4 for each 3, or part of 3 *)
-proc base64*(s, out: []U8): INT;      (* s in base64 into out, which holds base64Size(LEN(s)) bytes at least: the bytes written *)
-proc unbase64*(s, out: []U8): (INT, BOOL);   (* s, base64, into out, which holds LEN(s) div 4 * 3 bytes at least: the bytes written; false if s is not base64 *)
+proc base64*(s: []const U8; out: []U8): INT;      (* s in base64 into out, which holds base64Size(LEN(s)) bytes at least: the bytes written *)
+proc unbase64*(s: []const U8; out: []U8): (INT, BOOL);   (* s, base64, into out, which holds LEN(s) div 4 * 3 bytes at least: the bytes written; false if s is not base64 *)
 proc fromInt*(n: I64): ([20]U8, INT); (* n in decimal: its bytes, and how many *)
-proc le*(s: []U8): U64;               (* s, at most 8 bytes, the first the lowest *)
-proc be*(s: []U8): U64;               (* s, at most 8 bytes, the first the highest *)
+proc le*(s: []const U8): U64;               (* s, at most 8 bytes, the first the lowest *)
+proc be*(s: []const U8): U64;               (* s, at most 8 bytes, the first the highest *)
 proc putLE*(s: []U8; v: U64);         (* v into s, the lowest byte first *)
 proc putBE*(s: []U8; v: U64);         (* v into s, the highest byte first *)
 
@@ -1434,7 +1435,7 @@ type Buf* = record len*: INT; ... end;
 proc init*(var b: Buf; a: ^Mem.Allocator);
 proc room*(var b: Buf; n: INT): BOOL;    (* room for n more bytes; false if the allocator has none *)
 proc add*(var b: Buf; c: U8);
-proc str*(var b: Buf; s: []U8);
+proc str*(var b: Buf; s: []const U8);
 proc spare*(var b: Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
 proc bytes*(const b: Buf): []U8;         (* what it holds, until it next grows *)
 proc cut*(var b: Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
@@ -1447,17 +1448,17 @@ type Arg* = variant
     uint(u: U64);
     hex(h: U64);
     lowHex(h: U64);
-    str(s: []U8);
+    str(s: []const U8);
     char(c: U8);
     bool(b: BOOL);
     real(r: F64; places: INT);
 end;
 const ShortMost* = 24;                      (* the longest Fmt.short *)
 proc short*(x: F64; var out: [ShortMost]U8): []U8; (* x in the fewest digits that read back, in out *)
-proc print*(f: []U8; args: []Arg);              (* to standard output *)
-proc eprint*(f: []U8; args: []Arg);             (* to standard error, once Out is flushed *)
-proc write*(var b: Buf.Buf; f: []U8; args: []Arg); (* added to b *)
-proc into*(out: []U8; f: []U8; args: []Arg): (INT, BOOL); (* into out: the bytes, and false if cut short *)
+proc print*(f: []const U8; args: []const Arg);              (* to standard output *)
+proc eprint*(f: []const U8; args: []const Arg);             (* to standard error, once Out is flushed *)
+proc write*(var b: Buf.Buf; f: []const U8; args: []const Arg); (* added to b *)
+proc into*(out: []U8; f: []const U8; args: []const Arg): (INT, BOOL); (* into out: the bytes, and false if cut short *)
 
 module List(T);
 type
@@ -1521,8 +1522,8 @@ proc bits*(x: F64): U64;              (* the bits of x, as IEEE 754 lays them ou
 proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
 proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
 proc divMod*(hi, lo, d: U64): (U64, U64); (* hi, lo divided by d: the quotient and the remainder; hi &lt; d *)
-proc toReal*(s: []U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn&#39;t one *)</code></pre>
-<p>A <code>Buf</code>, a <code>List</code>, a <code>Map</code> and a <code>Vec</code> take their memory from the allocator <code>init</code> gives them. <code>Buf.add</code>, <code>str</code> and <code>spare</code> stop the program, as a failed check does, if the allocator has no room; <code>room</code> asks first. A program reads into a <code>Buf</code> through <code>spare</code>, then adds what it read to <code>len</code>: <code>s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n &gt; 0 then INC(b.len, n); end;</code>. <code>cut</code> takes back what was added, to a length it had: <code>start := b.len; ...; Buf.cut(b, start);</code>; a length past <code>len</code> stops the program, as an index past the end does. A <code>Vec</code> is <code>Buf</code> for any <code>T</code>: one block, which doubles when it is full, so <code>push</code> costs the same on average however long it grows. <code>all</code> gives the elements as a slice, indexed and checked as any is, and <code>v.len</code> is their number; the slice, and what <code>add</code> gives, are good until the array next grows. <code>pop</code> takes the last element off, keeping the memory. <code>push</code>, <code>add</code> and <code>resize</code> stop the program, as <code>Buf.add</code> does, if the allocator has no room; <code>room</code> asks first: <code>import Lines := Vec([]U8);</code>. <code>Fmt</code>’s format takes the next argument at each <code>{}</code>; <code>{{</code> and <code>}}</code> stand for <code>{</code> and <code>}</code>. A <code>Map</code> hashes and compares its keys with the procedures it is given: <code>import Count := Map([]U8, INT, Str.hash, Str.eq);</code>.</p>
+proc toReal*(s: []const U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn&#39;t one *)</code></pre>
+<p>A <code>Buf</code>, a <code>List</code>, a <code>Map</code> and a <code>Vec</code> take their memory from the allocator <code>init</code> gives them. <code>Buf.add</code>, <code>str</code> and <code>spare</code> stop the program, as a failed check does, if the allocator has no room; <code>room</code> asks first. A program reads into a <code>Buf</code> through <code>spare</code>, then adds what it read to <code>len</code>: <code>s := Buf.spare(b, 4096); n := Sys.read(fd, s); if n &gt; 0 then INC(b.len, n); end;</code>. <code>cut</code> takes back what was added, to a length it had: <code>start := b.len; ...; Buf.cut(b, start);</code>; a length past <code>len</code> stops the program, as an index past the end does. A <code>Vec</code> is <code>Buf</code> for any <code>T</code>: one block, which doubles when it is full, so <code>push</code> costs the same on average however long it grows. <code>all</code> gives the elements as a slice, indexed and checked as any is, and <code>v.len</code> is their number; the slice, and what <code>add</code> gives, are good until the array next grows. <code>pop</code> takes the last element off, keeping the memory. <code>push</code>, <code>add</code> and <code>resize</code> stop the program, as <code>Buf.add</code> does, if the allocator has no room; <code>room</code> asks first: <code>import Lines := Vec([]U8);</code>. <code>Fmt</code>’s format takes the next argument at each <code>{}</code>; <code>{{</code> and <code>}}</code> stand for <code>{</code> and <code>}</code>. A <code>Map</code> hashes and compares its keys with the procedures it is given: <code>import Count := Map([]const U8, INT, Str.hash, Str.eq);</code>.</p>
 <p><code>Str</code> reads and writes UTF-8. <code>encode</code> writes a character, of at most 10FFFFH, in one to four bytes; a number that isn’t one becomes FFFDH, the character that stands for a wrong one. <code>decode</code> reads the first character of <code>s</code>, and gives FFFDH and 1 for a byte that doesn’t start one rightly, and 0 and 0 for an empty <code>s</code>: a continuation, a byte followed by too few continuations, a surrogate, a character beyond 10FFFFH or one spelled in more bytes than it needs. <code>decodeLast</code> reads the last character in the same way, to walk a string backwards. <code>valid</code> says that <code>decode</code> finds no such byte in <code>s</code>, and <code>chars</code> counts the characters, each such byte one. <code>next</code> walks a string a character at a time, as <code>decode</code> reads them: from 0, it gives the character at <code>i</code> and where the one after it starts, and 0 and -1 when <code>i</code> is at the end, or past it:</p>
 <pre><code>c, i := Str.next(s, 0);
 while i &gt;= 0 do
@@ -1555,37 +1556,37 @@ end;</code></pre>
 <p><code>Sort.sort</code> puts <code>s</code> in the order <code>less</code> gives, in place, without memory of its own, in time <code>n log n</code> at most; two elements equal by <code>less</code> may change places. <code>Math</code>’s procedures are as C’s <code>math.h</code> has them, to within the last bit or so; <code>roundEven</code> is IEEE 754’s default rounding, as Pascal’s <code>Round</code>, where <code>round</code> is C’s. <code>Fmt.real(x, places)</code> writes <code>x</code> with <code>places</code> digits after the point, at most 9, rounded to the nearest; from 1E15 on, with an exponent, as <code>1.50E17</code>; and <code>nan</code>, <code>inf</code> and <code>-inf</code> as themselves. <code>Fmt.short(x, out)</code> writes <code>x</code> into <code>out</code>, from 0, and gives those bytes: the fewest significant digits that <code>Math.toReal</code> reads back as the same <code>F64</code>, and of two such the nearer <code>x</code>: <code>0.1</code>, not <code>0.10000000000000001</code>; <code>42</code>, with no point; <code>0.0001</code>; and below 1E-4 or from 1E15 on with an exponent, as <code>1.5E17</code> or <code>5E-324</code>. Zero keeps its sign, <code>0</code> or <code>-0</code>, and <code>nan</code> and <code>inf</code> are as <code>real</code> writes them. The longest is <code>Fmt.ShortMost</code> bytes, so a call is <code>var d: [Fmt.ShortMost]U8; Fmt.print("{}", [Fmt.str(Fmt.short(x, d))]);</code>, and a width goes with <code>str</code>. The bytes are <code>out</code>’s: a second call with the same <code>out</code> overwrites them. <code>hex</code> writes capitals and <code>lowHex</code> lower case, neither with a <code>0x</code>. A width between the braces pads an argument to that many bytes: <code>{2}</code> with spaces on the left, <code>{02}</code> with zeros on the left, after a sign (<code>{04}</code> of -7 is <code>-007</code>), <code>{-10}</code> with spaces on the right. A longer argument is written whole. A <code>{</code> followed by anything but <code>}</code> or a width is dropped, as before. <code>Fmt.print("{2}:{02} U+{04}", [Fmt.int(3), Fmt.int(7), Fmt.hex(0E9H)])</code> writes <code>3:07 U+00E9</code>. <code>Fmt.into</code> formats into a slice the caller gives, with no memory of its own, for a library that has no heap: it gives the bytes written, and false if the slice was too short and the text is cut there.</p>
 <p><strong>Files and Opt</strong> are what most programs need of their command line. <code>Files.writeAll</code> writes again after a short write or a signal, as a pipe or a socket needs, and <code>write</code> is made over it. <code>realPath</code> adds to <code>b</code> the absolute path of what <code>path</code> names, with no <code>.</code>, <code>..</code> or symbolic link in it, and leaves the working directory alone: -2 (<code>ENOENT</code>) if a part isn’t there, -20 (<code>ENOTDIR</code>) if a file is used as a directory, and -40 (<code>ELOOP</code>) after 40 links. <code>b</code> is left as it was on an error. <code>removeTree</code> removes a file, or a directory with all it holds; a symbolic link is removed itself and never followed.</p>
 <pre><code>module Files;
-proc arg*(i: INT): []U8;                     (* argument i; 0 is the program&#39;s name; &quot;&quot; if there is none *)
-proc read*(path: []U8; var b: Buf.Buf): BOOL;   (* the whole file added to b *)
-proc load*(path: []U8; var b: Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
-proc write*(path, data: []U8): BOOL;         (* the file made to hold data; false if it or its close failed *)
-proc writeAll*(fd: INT; s: []U8): INT;       (* all of s written to fd; 0, or minus the errno *)
-proc realPath*(path: []U8; var b: Buf.Buf): INT;   (* the absolute path of path, plain, added to b; 0, or minus an errno *)
-proc removeTree*(path: []U8): INT;           (* the file, or the directory and all in it, removed; 0, or minus the first errno *)
+proc arg*(i: INT): []const U8;                     (* argument i; 0 is the program&#39;s name; &quot;&quot; if there is none *)
+proc read*(path: []const U8; var b: Buf.Buf): BOOL;   (* the whole file added to b *)
+proc load*(path: []const U8; var b: Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
+proc write*(path, data: []const U8): BOOL;         (* the file made to hold data; false if it or its close failed *)
+proc writeAll*(fd: INT; s: []const U8): INT;       (* all of s written to fd; 0, or minus the errno *)
+proc realPath*(path: []const U8; var b: Buf.Buf): INT;   (* the absolute path of path, plain, added to b; 0, or minus an errno *)
+proc removeTree*(path: []const U8): INT;           (* the file, or the directory and all in it, removed; 0, or minus the first errno *)
 
 module Opt;
 type
     Row* = variant
-        usage(scope, line: []U8);           (* a synopsis line, without &quot;usage: &quot; *)
-        sub(scope, name, help: []U8);       (* a subcommand *)
-        option(scope: []U8; letter: U8; long, value, help: []U8);
+        usage(scope, line: []const U8);           (* a synopsis line, without &quot;usage: &quot; *)
+        sub(scope, name, help: []const U8);       (* a subcommand *)
+        option(scope: []const U8; letter: U8; long, value, help: []const U8);
     end;
     Parser* = record
         letter*: U8;    (* the option just read *)
-        value*: []U8;   (* its value; &quot;&quot; for a flag *)
+        value*: []const U8;   (* its value; &quot;&quot; for a flag *)
         long*: BOOL;    (* it was written by its long name *)
-        spelt*: []U8;   (* as it was written, no dashes: &quot;b&quot; or &quot;bar&quot;; to read only *)
+        spelt*: []const U8;   (* as it was written, no dashes: &quot;b&quot; or &quot;bar&quot;; to read only *)
         ...
     end;
-proc init*(var p: Parser; name: []U8; table: []Row);   (* the arguments from 1 on, by table *)
+proc init*(var p: Parser; name: []const U8; table: []const Row);   (* the arguments from 1 on, by table *)
 proc next*(var p: Parser): BOOL;                      (* the next option; false when they end *)
-proc operand*(var p: Parser): ([]U8, BOOL);           (* the next operand; false when there are no more *)
+proc operand*(var p: Parser): ([]const U8, BOOL);           (* the next operand; false when there are no more *)
 proc at*(var p: Parser): INT;                         (* the argument operand would give next *)
-proc scope*(var p: Parser; name: []U8);               (* subcommand name&#39;s options, from the word after it *)
+proc scope*(var p: Parser; name: []const U8);               (* subcommand name&#39;s options, from the word after it *)
 proc number*(const p: Parser; lo, hi: I64): I64;      (* the value just read, a number from lo to hi *)
-proc refuse*(const p: Parser; wants: []U8);           (* the value just read refused, as number refuses one *)
-proc fail*(const p: Parser; text: []U8);              (* the program&#39;s own mistake *)
-proc misuse*(const p: Parser; text: []U8);            (* the program&#39;s own mistake, with the synopsis *)</code></pre>
+proc refuse*(const p: Parser; wants: []const U8);           (* the value just read refused, as number refuses one *)
+proc fail*(const p: Parser; text: []const U8);              (* the program&#39;s own mistake *)
+proc misuse*(const p: Parser; text: []const U8);            (* the program&#39;s own mistake, with the synopsis *)</code></pre>
 <p><code>Opt</code> reads a command line by the rules of the C library’s <code>getopt</code>, with GNU’s long options, so that a program’s options behave as every other Unix program’s. The program describes itself once, in a table of <code>Row</code>s: its synopsis lines, its subcommands and its options. The help and the messages for mistakes are made from the table, so they can’t drift from it; the program’s test of <code>p.letter</code> is the only other place an option appears. The parser is a record the program owns, and the table a slice it keeps as long as the parser: a literal written in the call to <code>init</code> lives as long as the procedure that makes it, and a constant, <code>const Rows: []Opt.Row = [...]</code>, as long as the program.</p>
 <p>A row’s <code>scope</code> is <code>""</code> for the program itself, or a subcommand’s name: <code>"start"</code>, or <code>"remote.add"</code> for a subcommand of <code>remote</code>. An option has a <code>letter</code>, a <code>long</code> name, or both. One with a long name only has a key of its own below <code>'!'</code> for a letter, so that the program can tell it from the others. With a <code>value</code>, the name the help and the messages give it, the option takes a value; with <code>""</code> it is a flag. A value written in brackets, <code>"[when]"</code>, may be left out, and is <code>""</code> then: it is given only in the option’s own word, <code>--color=always</code> or <code>-calways</code>, never as the next, as <code>getopt</code>’s <code>::</code> has it, and the help shows it as <code>--color[=when]</code>.</p>
 <pre><code>const wait = 1;     (* the key of --wait, which has no letter *)
@@ -1634,7 +1635,7 @@ usage: keep start [-b label] name command [argument ...]</code></pre>
 <p><strong>Width</strong> says how many columns of a terminal text takes, for a program with a screen that wraps its lines and cuts them at the window’s edge.</p>
 <pre><code>module Width;
 proc width*(c: I32): INT;      (* the columns the character c takes: 0, 1 or 2 *)
-proc columns*(s: []U8): INT;   (* the columns the UTF-8 text s takes *)</code></pre>
+proc columns*(s: []const U8): INT;   (* the columns the UTF-8 text s takes *)</code></pre>
 <p>A combining mark, a format character, a control and Hangul’s medial and final jamo take 0 columns; an ideograph, a kana, most emoji and the rest that Unicode calls East Asian Wide or Fullwidth take 2; every other character takes 1, the ambiguous ones among them, as most terminals draw them. These are the C library’s <code>wcwidth</code>’s answers, but for a control, which is -1 there. <code>Width</code> knows characters, not clusters: an emoji joined to another by a zero width joiner, or a flag, counts as its parts. Its tables, about 4 KB, come from Unicode’s data, made again by <code>tools/Widths.raz</code> for a new version of Unicode; a program that imports <code>Width</code> and calls neither procedure carries none of them.</p>
 <p><strong>Rand, Check and Prop</strong> are for testing a program, and are standard library, not core: a target may leave them out. <code>raztest(1)</code> builds and runs the tests that use them.</p>
 <p><code>Rand</code> is a seeded generator of numbers, splitmix64: one <code>U64</code> of state. The same seed gives the same numbers on every machine, so a run can be replayed. It is not for secrets.</p>
@@ -1667,9 +1668,9 @@ end;
 end Dice.</code></pre>
 <p><code>Check</code> says what a test expects. A check that fails writes <code>FAIL</code> and its words on standard error, with what it got and what it wanted where they differ; the program goes on. At its end, if any check failed, it says how many and exits with status 1, and a run with none failed says nothing and keeps its own status. No call is needed at the end: the first check asks <code>Rt.atExit</code> to make it. A program that stops after a check failed, by <code>Rt.stop</code> or a failed check of the language, ends with status 1 too. <code>mute</code> is for <code>Prop</code>, which searches with the checks silenced.</p>
 <pre><code>module Check;
-proc ok*(cond: BOOL; what: []U8);                 (* fails, saying what, when cond is false *)
-proc str*(what, got, want: []U8);                 (* fails when got is not want; shows both, escaped, and the byte where they differ *)
-proc int*(what: []U8; got, want: I64);            (* fails when got is not want; shows both *)
+proc ok*(cond: BOOL; what: []const U8);                 (* fails, saying what, when cond is false *)
+proc str*(what, got, want: []const U8);                 (* fails when got is not want; shows both, escaped, and the byte where they differ *)
+proc int*(what: []const U8; got, want: I64);            (* fails when got is not want; shows both *)
 proc mute*(on: BOOL);                             (* while on, checks say nothing and are not counted *)
 proc mutedFailures*(): INT;                       (* how many failed since mute was turned on *)</code></pre>
 <pre><code>module Digits;
@@ -1702,7 +1703,7 @@ proc int*(var s: Source; lo, hi: I64): I64;        (* lo to hi, both included; z
 proc pick*(var s: Source; n: INT): INT;            (* 0 to n - 1; n at least 1 *)
 proc bool*(var s: Source): BOOL;
 proc bytes*(var s: Source; max: INT; var b: Buf.Buf);   (* b, emptied, then given at most max bytes *)
-proc check*(name: []U8; p: Property);              (* runs p on the saved cases, then on fresh ones *)</code></pre>
+proc check*(name: []const U8; p: Property);              (* runs p on the saved cases, then on fresh ones *)</code></pre>
 <p><code>check</code> runs <code>p</code> on each case saved in the directory <code>$PROP_DIR/name</code> (<code>test/seeds/name</code> if <code>PROP_DIR</code> is unset), then on <code>$PROP_CASES</code> fresh cases (100 if unset), from the seed <code>$PROP_SEED</code> or a new one, or for as many seconds as <code>$PROP_TIME</code> says, if it is set. Each is a whole number. A property that holds says nothing and writes no file. The first case that fails is shrunk and saved in a file named by its hash; standard error says the seed and the file; the shrunk case runs once more with <code>Check</code> heard, and the program ends with status 1. A saved case is run first the next time, so a failure stays found until it is mended; keep the directory with the tests. A case that stops the program, by <code>Rt.stop</code>, a failed check of the language or a signal, can’t be shrunk; it is saved as it was, when the program ends. <code>raztest --seed</code> and <code>--fuzz</code> set <code>PROP_SEED</code> and <code>PROP_TIME</code>.</p>
 <pre><code>module Reverse;
 import Prop, Check, Buf, Heap;

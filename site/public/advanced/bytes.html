@@ -51,7 +51,7 @@
 <span class="kw">import</span> Out, Str, Fmt;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> names: [<span class="number">4</span>][]<span class="ty">U8</span>; i, j: <span class="ty">INT</span>; t: []<span class="ty">U8</span>;
+<span class="kw">var</span> names: [<span class="number">4</span>][]<span class="kw">const</span> <span class="ty">U8</span>; i, j: <span class="ty">INT</span>; t: []<span class="kw">const</span> <span class="ty">U8</span>;
 <span class="kw">begin</span>
     names := [<span class="string">&quot;pear&quot;</span>, <span class="string">&quot;Apple&quot;</span>, <span class="string">&quot;fig&quot;</span>, <span class="string">&quot;apple&quot;</span>];
     <span class="comment">(* a small insertion sort, with Str.cmp *)</span>
@@ -80,13 +80,14 @@ stable
 <p>A slice of a string constant lives forever, but a slice of a buffer lives only as long as the buffer. To keep one past that, <code>Str.copy</code> takes memory from an allocator and says whether it got any.</p>
 <div class="file"><span>Keep.raz</span></div><pre class="code"><code><span class="kw">module</span> Keep;
 <span class="kw">import</span> Out, Str, Heap, Mem;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Entry = <span class="kw">record</span> name: []<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
 
 <span class="kw">var</span> entries: [<span class="number">3</span>]Entry;
 
 <span class="comment">(* remembers a name that the caller will overwrite *)</span>
-<span class="kw">proc</span> remember(slot: <span class="ty">INT</span>; name: []<span class="ty">U8</span>);
+<span class="kw">proc</span> remember(slot: <span class="ty">INT</span>; name: []<span class="kw">const</span> <span class="ty">U8</span>);
 <span class="kw">var</span> copy: []<span class="ty">U8</span>; ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     copy, ok := Str.copy(Heap.heap, name);
@@ -104,7 +105,7 @@ stable
     <span class="kw">end</span>;
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">2</span> <span class="kw">do</span>
         Out.str(entries[i].name); Out.char(<span class="string">&#x27; &#x27;</span>);
-        Mem.free(Heap.heap, ^<span class="ty">U8</span>(<span class="ty">ADR</span>(entries[i].name[<span class="number">0</span>])));
+        Mem.free(Heap.heap, ^<span class="ty">U8</span>(SYSTEM.<span class="ty">ADR</span>(entries[i].name[<span class="number">0</span>])));
     <span class="kw">end</span>;
     Out.ln;
 <span class="kw">end</span>;
@@ -118,13 +119,13 @@ stable
 <span class="kw">import</span> Out, Fmt, Bytes;
 
 <span class="comment">(* the last part of a path: what follows its last slash *)</span>
-<span class="kw">proc</span> base(path: []<span class="ty">U8</span>): []<span class="ty">U8</span>;
+<span class="kw">proc</span> base(path: []<span class="kw">const</span> <span class="ty">U8</span>): []<span class="kw">const</span> <span class="ty">U8</span>;
 <span class="kw">begin</span>
     <span class="kw">return</span> path[Bytes.last(path, <span class="string">&#x27;/&#x27;</span>) + <span class="number">1</span>..<span class="ty">LEN</span>(path)];
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> text: []<span class="ty">U8</span>; at, n, line: <span class="ty">INT</span>;
+<span class="kw">var</span> text: []<span class="kw">const</span> <span class="ty">U8</span>; at, n, line: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     Out.str(base(<span class="string">&quot;/usr/local/lib/raz/Bytes.raz&quot;</span>)); Out.char(<span class="string">&#x27; &#x27;</span>);
     Out.str(base(<span class="string">&quot;Out.raz&quot;</span>)); Out.ln;
@@ -158,7 +159,7 @@ raz on line 3, at 36, and the line goes on 9 more
 <span class="kw">const</span> HeaderSize = <span class="number">10</span>;
 
 <span class="comment">(* the sum of the bytes of data, all mod 2^32 *)</span>
-<span class="kw">proc</span> checksum(data: []<span class="ty">U8</span>): <span class="ty">U32</span>;
+<span class="kw">proc</span> checksum(data: []<span class="kw">const</span> <span class="ty">U8</span>): <span class="ty">U32</span>;
 <span class="kw">var</span> i: <span class="ty">INT</span>; sum: <span class="ty">U32</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(data) - <span class="number">1</span> <span class="kw">do</span> sum := sum + <span class="ty">U32</span>(data[i]); <span class="kw">end</span>;
@@ -166,7 +167,7 @@ raz on line 3, at 36, and the line goes on 9 more
 <span class="kw">end</span>;
 
 <span class="comment">(* writes a frame to out, which must have room; its length *)</span>
-<span class="kw">proc</span> pack(out: []<span class="ty">U8</span>; tag, data: []<span class="ty">U8</span>): <span class="ty">INT</span>;
+<span class="kw">proc</span> pack(out: []<span class="ty">U8</span>; tag, data: []<span class="kw">const</span> <span class="ty">U8</span>): <span class="ty">INT</span>;
 <span class="kw">begin</span>
     COPY(out[<span class="number">0</span>..<span class="number">4</span>], tag);
     Str.putBE(out[<span class="number">4</span>..<span class="number">6</span>], <span class="ty">U64</span>(<span class="ty">LEN</span>(data)));
@@ -206,8 +207,8 @@ tag DATA, 5 bytes, checksum 214, valid: hello
 <span class="kw">import</span> Out, Str, Math, Fmt;
 
 <span class="comment">(* the sum of the numbers in a comma separated list, or -1 if any isn&#x27;t *)</span>
-<span class="kw">proc</span> total(s: []<span class="ty">U8</span>): <span class="ty">I64</span>;
-<span class="kw">var</span> part: []<span class="ty">U8</span>; sum, n: <span class="ty">I64</span>; ok, more: <span class="ty">BOOL</span>;
+<span class="kw">proc</span> total(s: []<span class="kw">const</span> <span class="ty">U8</span>): <span class="ty">I64</span>;
+<span class="kw">var</span> part: []<span class="kw">const</span> <span class="ty">U8</span>; sum, n: <span class="ty">I64</span>; ok, more: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     more := <span class="ty">true</span>;
     <span class="kw">while</span> more <span class="kw">do</span>

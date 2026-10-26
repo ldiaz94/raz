@@ -80,11 +80,12 @@ $ raz run Status.raz; echo "status $?"
 
 ## Arguments
 
-`ARGC()` is the number of command line arguments, with the program's own name first, and `ARGV()` the arguments, as C strings. Most programs read them through `Files.arg` and `Opt`, which the advanced tour shows; here is the raw form.
+`ARGC()` is the number of command line arguments, with the program's own name first, and `SYSTEM.ARGV()` the arguments, as C strings. Most programs read them through `Files.arg` and `Opt`, which the advanced tour shows; here is the raw form.
 
 ```raz Args
 module Args;
 import Out;
+import SYSTEM;
 
 (* The length of a C string. *)
 proc len(s: ^U8): INT;
@@ -99,7 +100,7 @@ proc main*: INT;
 var i: INT; s: ^U8;
 begin
     for i := 1 to ARGC() - 1 do
-        s := ARGV()[i];
+        s := SYSTEM.ARGV()[i];
         Out.str(s[0..len(s)]);
         Out.ln;
     end;

@@ -50,6 +50,7 @@
 <p>The classic use is a device's registers: a record that says what is at which offset, laid over the address the hardware answers at. The record's layout is C's, so it is the same as the datasheet's struct. Here a page of the program's own stands in for the device.</p>
 <div class="file"><span>Uart.raz</span></div><pre class="code"><code><span class="kw">module</span> Uart;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span>
     Regs = <span class="kw">record</span>
@@ -63,7 +64,7 @@
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> dev: ^<span class="kw">VOLATILE</span> Regs; i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
-    dev := ^<span class="kw">VOLATILE</span> Regs(<span class="ty">ADR</span>(page));      <span class="comment">(* the conversion is written *)</span>
+    dev := ^<span class="kw">VOLATILE</span> Regs(SYSTEM.<span class="ty">ADR</span>(page));      <span class="comment">(* the conversion is written *)</span>
     dev^.control := <span class="number">1</span>;
     dev^.status := <span class="number">0FFH</span>;
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">2</span> <span class="kw">do</span>
@@ -90,6 +91,7 @@
 <p>Where a program waits for another thread or a device to change a value, the loop must read the value each time. A volatile read does. This "device" is a thread that sets a bit in a status word after a delay; the main thread polls.</p>
 <div class="file"><span>Poll.raz</span></div><pre class="code"><code><span class="kw">module</span> Poll;
 <span class="kw">import</span> Out, Sys, Thread;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Dev = <span class="kw">record</span> status: <span class="ty">INT</span>; data: <span class="ty">INT</span>; <span class="kw">end</span>;
 
@@ -98,7 +100,7 @@
 <span class="kw">proc</span> device(_arg: ^<span class="ty">U8</span>);
 <span class="kw">var</span> d: ^<span class="kw">VOLATILE</span> Dev;
 <span class="kw">begin</span>
-    d := ^<span class="kw">VOLATILE</span> Dev(<span class="ty">ADR</span>(dev));
+    d := ^<span class="kw">VOLATILE</span> Dev(SYSTEM.<span class="ty">ADR</span>(dev));
     Sys.sleep(<span class="number">20</span>);
     d^.data := <span class="number">42</span>;
     FENCE;                          <span class="comment">(* data before the flag that announces it *)</span>
@@ -108,7 +110,7 @@
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> t: ^Thread.Thread; err: <span class="ty">ERROR</span>; d: ^<span class="kw">VOLATILE</span> Dev; spins: <span class="ty">INT</span>;
 <span class="kw">begin</span>
-    d := ^<span class="kw">VOLATILE</span> Dev(<span class="ty">ADR</span>(dev));
+    d := ^<span class="kw">VOLATILE</span> Dev(SYSTEM.<span class="ty">ADR</span>(dev));
     t, err := Thread.spawn(device, <span class="ty">nil</span>);
     <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">return</span>; <span class="kw">end</span>;
     <span class="kw">while</span> d^.status = <span class="number">0</span> <span class="kw">do</span> <span class="ty">INC</span>(spins); Sys.yield; <span class="kw">end</span>;
@@ -126,6 +128,7 @@ it waited for the device
 <ul><li><strong>Not atomic across a read-modify-write.</strong> <code>INC(d^.count)</code> reads and then writes: two accesses, even through a volatile pointer. <code>XADD</code> is the atomic one.</li><li><strong>Not a lock.</strong> It says each access happens as written; it says nothing about what happens between them.</li><li><strong>Not for whole records or arrays.</strong> Copying a whole record through a volatile pointer isn't allowed, since it can't be one access. A field of a packed record can't be reached volatilely at all, since a misaligned access can't be promised as one.</li><li><strong>Not silently dropped.</strong> A <code>^VOLATILE T</code> doesn't convert to a <code>^T</code> without a written conversion, so the volatile can't be lost by accident.</li></ul>
 <p>The compiler holds the line on each of them:</p>
 <div class="file"><span>Wrong.raz</span></div><pre class="code"><code><span class="kw">module</span> Wrong;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Pair = <span class="kw">record</span> a, b: <span class="ty">U32</span>; <span class="kw">end</span>;
 
@@ -134,18 +137,18 @@ it waited for the device
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> v: ^<span class="kw">VOLATILE</span> Pair; p: ^Pair; copy: Pair;
 <span class="kw">begin</span>
-    v := ^<span class="kw">VOLATILE</span> Pair(<span class="ty">ADR</span>(cell));
+    v := ^<span class="kw">VOLATILE</span> Pair(SYSTEM.<span class="ty">ADR</span>(cell));
     p := v;
     copy := v^;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Wrong.</code></pre>
 <pre class="output term"><code><span class="cmd">$ raz Wrong.raz</span>
-Wrong.raz:11:10: error: can&#x27;t use ^VOLATILE Pair as ^Pair
-   11 |     p := v;
+Wrong.raz:12:10: error: can&#x27;t use ^VOLATILE Pair as ^Pair
+   12 |     p := v;
       |          ^
-Wrong.raz:12:13: error: can&#x27;t copy through a volatile pointer
-   12 |     copy := v^;
+Wrong.raz:13:13: error: can&#x27;t copy through a volatile pointer
+   13 |     copy := v^;
       |             ^^
 raz: 2 errors</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="listing.html">&larr; What the compiler makes</a><a href="index.html">Contents</a><a class="next" href="atomics.html">Atomics &rarr;</a></div></article></div>
 </main>

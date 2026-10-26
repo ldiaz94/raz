@@ -213,7 +213,7 @@ parity works
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> ops: [<span class="number">3</span>]Op; names: [<span class="number">3</span>][]<span class="ty">U8</span>; i: <span class="ty">INT</span>;
+<span class="kw">var</span> ops: [<span class="number">3</span>]Op; names: [<span class="number">3</span>][]<span class="kw">const</span> <span class="ty">U8</span>; i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     ops := [add, sub, mul];
     names := [<span class="string">&quot;add&quot;</span>, <span class="string">&quot;sub&quot;</span>, <span class="string">&quot;mul&quot;</span>];

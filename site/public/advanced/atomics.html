@@ -45,29 +45,31 @@
 <li><a href="ring.html">A ring buffer between threads</a></li>
 </ol></aside><article><p class="kicker">Shared memory &middot; lesson 15 of 18</p><h1>Atomics</h1>
 <p>A volatile access is one access. An atomic is one *indivisible* step: nothing can happen between its read and its write, so two threads using it can't lose each other's work. There are three, built into the language as procedures, and they are sequentially consistent on every target:</p>
-<table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td data-label="Call"><code>XADD(p, x)</code></td><td data-label="Does">adds <code>x</code> to <code>p^</code> and returns the value before</td></tr><tr><td data-label="Call"><code>XCHG(p, x)</code></td><td data-label="Does">sets <code>p^ := x</code> and returns the value before</td></tr><tr><td data-label="Call"><code>CAS(p, old, new)</code></td><td data-label="Does">if <code>p^ = old</code>, sets <code>p^ := new</code> and returns <code>true</code>; otherwise <code>false</code></td></tr></tbody></table>
-<p><code>p</code> is a <code>^T</code> or <code>^VOLATILE T</code> where <code>T</code> is <code>INT</code>, <code>UINT</code> or a pointer type (<code>INT</code> or <code>UINT</code> for <code>XADD</code>). They compile to single x86-64 instructions: <code>lock xadd</code>, <code>xchg</code> (which is always locked when it touches memory) and <code>lock cmpxchg</code>:</p>
+<table><thead><tr><th>Call</th><th>Does</th></tr></thead><tbody><tr><td data-label="Call"><code>XADD(p, x)</code></td><td data-label="Does">adds <code>x</code> to <code>p</code> and returns the value before</td></tr><tr><td data-label="Call"><code>XCHG(p, x)</code></td><td data-label="Does">sets <code>p := x</code> and returns the value before</td></tr><tr><td data-label="Call"><code>CAS(p, old, new)</code></td><td data-label="Does">if <code>p = old</code>, sets <code>p := new</code> and returns <code>true</code>; otherwise <code>false</code></td></tr></tbody></table>
+<p><code>p</code> is a variable (or <code>q^</code> through a pointer <code>q</code>, even <code>^VOLATILE</code>) of type <code>INT</code>, <code>UINT</code> or a pointer type (<code>INT</code> or <code>UINT</code> for <code>XADD</code>); the atomic works on the variable itself, so no <code>ADR</code> is taken. A module that uses them says <code>import SYSTEM;</code>. They compile to single x86-64 instructions: <code>lock xadd</code>, <code>xchg</code> (which is always locked when it touches memory) and <code>lock cmpxchg</code>:</p>
 <div class="file"><span>Ops.raz</span></div><pre class="code"><code><span class="kw">module</span> Ops;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">var</span> counter: <span class="ty">INT</span>;
 
 <span class="kw">proc</span> main*;
 <span class="kw">begin</span>
-    _ := <span class="ty">XADD</span>(<span class="ty">ADR</span>(counter), <span class="number">5</span>);
-    _ := <span class="ty">XCHG</span>(<span class="ty">ADR</span>(counter), <span class="number">100</span>);
-    _ := <span class="ty">CAS</span>(<span class="ty">ADR</span>(counter), <span class="number">100</span>, <span class="number">7</span>);
+    _ := <span class="ty">XADD</span>(counter, <span class="number">5</span>);
+    _ := <span class="ty">XCHG</span>(counter, <span class="number">100</span>);
+    _ := <span class="ty">CAS</span>(counter, <span class="number">100</span>, <span class="number">7</span>);
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Ops.</code></pre>
 <pre class="output term"><code><span class="cmd">$ raz -S Ops.raz | grep -i &quot;lock\|xchg&quot;</span>
             23  lock xadd [r8], rax
-     8      _ := XCHG(ADR(counter), 100);
+     9      _ := XCHG(counter, 100);
             43  xchg [r8], rax
             67  lock cmpxchg [r8], r10</code></pre>
 <h2>What each one gives you</h2>
 <p><code>XADD</code> is a counter, or a ticket dispenser: every caller gets a different number. <code>XCHG</code> takes the old value and leaves a new one, which is a flag, a swap, or the release of a lock. <code>CAS</code> is the general one: "if nobody changed it since I looked, change it". Most lock-free code is a loop around it.</p>
 <div class="file"><span>Tickets.raz</span></div><pre class="code"><code><span class="kw">module</span> Tickets;
 <span class="kw">import</span> Out, Thread;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">var</span>
     next: <span class="ty">INT</span>;                  <span class="comment">(* the next ticket to give out *)</span>
@@ -77,7 +79,7 @@
 <span class="kw">var</span> i, t: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">1000</span> <span class="kw">do</span>
-        t := <span class="ty">XADD</span>(<span class="ty">ADR</span>(next), <span class="number">1</span>);      <span class="comment">(* a ticket no other thread gets *)</span>
+        t := <span class="ty">XADD</span>(next, <span class="number">1</span>);      <span class="comment">(* a ticket no other thread gets *)</span>
         seen[t] := <span class="number">1</span>;
     <span class="kw">end</span>;
 <span class="kw">end</span>;
@@ -102,6 +104,7 @@
 <p>Anything that can be computed from the old value can be made atomic with a loop around <code>CAS</code>: read the value, compute the new one, and try to swap it in; if someone got there first, read again. Here is an atomic maximum, which no single instruction does.</p>
 <div class="file"><span>Peak.raz</span></div><pre class="code"><code><span class="kw">module</span> Peak;
 <span class="kw">import</span> Out, Thread;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">var</span> peak: <span class="ty">INT</span>;
 
@@ -111,7 +114,7 @@
 <span class="kw">begin</span>
     seen := peak;
     <span class="kw">while</span> seen &lt; v <span class="kw">do</span>
-        <span class="kw">if</span> <span class="ty">CAS</span>(<span class="ty">ADR</span>(peak), seen, v) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+        <span class="kw">if</span> <span class="ty">CAS</span>(peak, seen, v) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
         seen := peak;                  <span class="comment">(* someone changed it: look again *)</span>
     <span class="kw">end</span>;
 <span class="kw">end</span>;
@@ -148,7 +151,7 @@ proc take*(var l: Lock);
 var tries: INT;
 begin
     tries := 0;
-    while not CAS(ADR(l.held), 0, 1) do
+    while not CAS(l.held, 0, 1) do
         INC(tries);
         if tries = 64 then Sys.yield; tries := 0; end;
     end;
@@ -157,7 +160,7 @@ end;
 (* Gives up l, which the caller holds. *)
 proc give*(var l: Lock);
 begin
-    _ := XCHG(ADR(l.held), 0);
+    _ := XCHG(l.held, 0);
 end;</code></pre>
 <p>And here is a use of it: a structure with two fields that must stay in step, which no single atomic can protect.</p>
 <div class="file"><span>Account.raz</span></div><pre class="code"><code><span class="kw">module</span> Account;

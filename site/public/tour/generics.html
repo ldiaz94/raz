@@ -57,14 +57,14 @@
 <p>and a program that uses it:</p>
 <div class="file"><span>Generics.raz</span></div><pre class="code"><code><span class="kw">module</span> Generics;
 <span class="kw">import</span> Out, Ints := Biggest(<span class="ty">INT</span>, before),
-    Words := Biggest([]<span class="ty">U8</span>, shorter), Order := Sort(<span class="ty">INT</span>, before);
+    Words := Biggest([]<span class="kw">const</span> <span class="ty">U8</span>, shorter), Order := Sort(<span class="ty">INT</span>, before);
 
 <span class="kw">proc</span> before(a, b: <span class="ty">INT</span>): <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     <span class="kw">return</span> a &lt; b;
 <span class="kw">end</span>;
 
-<span class="kw">proc</span> shorter(a, b: []<span class="ty">U8</span>): <span class="ty">BOOL</span>;
+<span class="kw">proc</span> shorter(a, b: []<span class="kw">const</span> <span class="ty">U8</span>): <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     <span class="kw">return</span> <span class="ty">LEN</span>(a) &lt; <span class="ty">LEN</span>(b);
 <span class="kw">end</span>;
@@ -90,6 +90,7 @@ tree
 <p>A generic module is an ordinary module with parameters in its header. Here is a stack of anything, which takes the allocator it grows from.</p>
 <div class="file"><span>Stk.raz</span></div><pre class="code"><code><span class="kw">module</span> Stk(T);
 <span class="kw">import</span> Mem;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span>
     Stack* = <span class="kw">record</span>
@@ -142,21 +143,22 @@ tree
 <span class="kw">end</span> Stk.</code></pre>
 <div class="file"><span>Uses.raz</span></div><pre class="code"><code><span class="kw">module</span> Uses;
 <span class="kw">import</span> Out, Heap, Nums := Stk(<span class="ty">INT</span>), Pairs := Stk(Pair);
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Pair = <span class="kw">record</span> a, b: <span class="ty">INT</span>; <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> n: Nums.Stack; p: Pairs.Stack; i, v: <span class="ty">INT</span>; ok: <span class="ty">BOOL</span>; pr: Pair;
 <span class="kw">begin</span>
-    Nums.init(<span class="ty">ADR</span>(n), Heap.heap);
-    Pairs.init(<span class="ty">ADR</span>(p), Heap.heap);
-    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">10</span> <span class="kw">do</span> _ := Nums.push(<span class="ty">ADR</span>(n), i * i); <span class="kw">end</span>;
-    _ := Pairs.push(<span class="ty">ADR</span>(p), {a: <span class="number">3</span>, b: <span class="number">4</span>});
-    v, ok := Nums.pop(<span class="ty">ADR</span>(n));
+    Nums.init(SYSTEM.<span class="ty">ADR</span>(n), Heap.heap);
+    Pairs.init(SYSTEM.<span class="ty">ADR</span>(p), Heap.heap);
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">10</span> <span class="kw">do</span> _ := Nums.push(SYSTEM.<span class="ty">ADR</span>(n), i * i); <span class="kw">end</span>;
+    _ := Pairs.push(SYSTEM.<span class="ty">ADR</span>(p), {a: <span class="number">3</span>, b: <span class="number">4</span>});
+    v, ok := Nums.pop(SYSTEM.<span class="ty">ADR</span>(n));
     Out.int(v); Out.str(<span class="string">&quot; of &quot;</span>); Out.int(n.len + <span class="number">1</span>); Out.ln;
-    pr, ok := Pairs.pop(<span class="ty">ADR</span>(p));
+    pr, ok := Pairs.pop(SYSTEM.<span class="ty">ADR</span>(p));
     Out.int(pr.a * pr.b); Out.ln;
-    _, ok := Pairs.pop(<span class="ty">ADR</span>(p));
+    _, ok := Pairs.pop(SYSTEM.<span class="ty">ADR</span>(p));
     <span class="kw">if</span> <span class="kw">not</span> ok <span class="kw">then</span> Out.str(<span class="string">&quot;empty\n&quot;</span>); <span class="kw">end</span>;
 <span class="kw">end</span>;
 
@@ -167,7 +169,7 @@ empty
 </code></pre>
 <p>Two instances (<code>Nums</code> and <code>Pairs</code>) are two separate modules, compiled with their own <code>T</code>. Its pointer arithmetic is the one place where the program does what C does and leaves the checks behind; a library would keep that inside, as this does.</p>
 <h2>The library's generics</h2>
-<p>The library's <code>List</code>, <code>Map</code> and <code>Sort</code> are generic modules. A <code>Map</code> takes its key hash and equality as procedure arguments: <code>import Count := Map([]U8, INT, Str.hash, Str.eq);</code>. The advanced tour uses each of them in a real program.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="checks.html">&larr; When it goes wrong</a><a href="index.html">Contents</a><a class="next" href="c.html">Talking to C &rarr;</a></div></article></div>
+<p>The library's <code>List</code>, <code>Map</code> and <code>Sort</code> are generic modules. A <code>Map</code> takes its key hash and equality as procedure arguments: <code>import Count := Map([]const U8, INT, Str.hash, Str.eq);</code>. The advanced tour uses each of them in a real program.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="checks.html">&larr; When it goes wrong</a><a href="index.html">Contents</a><a class="next" href="c.html">Talking to C &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
 </body>

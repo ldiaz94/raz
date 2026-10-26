@@ -21,7 +21,7 @@ const
     Range*: ERROR = "out of range";
 
 (* a percentage, 0 to 100 *)
-proc percent(s: []U8): (INT, ERROR);
+proc percent(s: []const U8): (INT, ERROR);
 var n: I64; ok: BOOL;
 begin
     if LEN(s) = 0 then return 0, Empty; end;
@@ -32,7 +32,7 @@ begin
 end;
 
 proc main*;
-var inputs: [4][]U8; i, n: INT; err: ERROR;
+var inputs: [4][]const U8; i, n: INT; err: ERROR;
 begin
     inputs := ["42", "", "forty", "140"];
     for i := 0 to 3 do
@@ -69,7 +69,7 @@ import Out, Str;
 const Missing*: ERROR = "key missing";
 
 (* the number after "n=" in a line like "n=17" *)
-proc value(line: []U8): (INT, ERROR);
+proc value(line: []const U8): (INT, ERROR);
 var n: I64; ok: BOOL;
 begin
     if not Str.hasPrefix(line, "n=") then return 0, Missing; end;
@@ -79,7 +79,7 @@ begin
 end;
 
 (* the sum of the values of two lines: the first error ends it *)
-proc sum(a, b: []U8): (INT, ERROR);
+proc sum(a, b: []const U8): (INT, ERROR);
 begin
     return try value(a) + try value(b), nil;
 end;

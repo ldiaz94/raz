@@ -15,6 +15,7 @@ The simplest correct way to hand a value to another thread: write it with ordina
 ```raz Publish run
 module Publish;
 import Out, Sys, Thread;
+import SYSTEM;
 
 type Message = record id: INT; text: [32]U8; len: INT; end;
 
@@ -28,7 +29,7 @@ begin
     msg.id := 7;
     msg.text := "built before the flag";
     msg.len := 21;
-    _ := XCHG(ADR(ready), 1);               (* publish *)
+    _ := XCHG(ready, 1);               (* publish *)
 end;
 
 proc main*;
@@ -36,7 +37,7 @@ var t: ^Thread.Thread; err: ERROR;
 begin
     t, err := Thread.spawn(producer, nil);
     if err # nil then Out.str(MSG(err)); Out.ln; return; end;
-    while XADD(ADR(ready), 0) = 0 do Sys.yield; end;     (* wait for it *)
+    while XADD(ready, 0) = 0 do Sys.yield; end;     (* wait for it *)
     Out.int(msg.id); Out.char(' '); Out.str(msg.text[0..msg.len]); Out.ln;
     Thread.join(t);
 end;
@@ -53,6 +54,7 @@ The reader's loop makes no ordinary read of `ready`: it can't be kept in a regis
 ```raz Fenced run
 module Fenced;
 import Out, Sys, Thread;
+import SYSTEM;
 
 var
     data: INT;                   (* ordinary *)
@@ -61,7 +63,7 @@ var
 proc producer(_arg: ^U8);
 var f: ^VOLATILE INT;
 begin
-    f := ^VOLATILE INT(ADR(flag));
+    f := ^VOLATILE INT(SYSTEM.ADR(flag));
     Sys.sleep(10);
     data := 1234;
     FENCE;                       (* data is written before the flag is *)
@@ -71,7 +73,7 @@ end;
 proc main*;
 var t: ^Thread.Thread; err: ERROR; f: ^VOLATILE INT;
 begin
-    f := ^VOLATILE INT(ADR(flag));
+    f := ^VOLATILE INT(SYSTEM.ADR(flag));
     t, err := Thread.spawn(producer, nil);
     if err # nil then Out.str(MSG(err)); Out.ln; return; end;
     while f^ = 0 do Sys.yield; end;

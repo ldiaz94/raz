@@ -185,59 +185,20 @@ check off;
 
 <span class="kw">end</span> Dot2.</code></pre>
 <pre class="output term"><code><span class="cmd">$ raz -S Dot2.raz | sed -n &#x27;/^Dot2.dot:/,/^$/p&#x27;</span>
-Dot2.dot:
-     4  proc dot*(a, b: []INT): INT;
-             0  push rbp
-             1  mov rbp, rsp
-             4  sub rsp, 64
-            11  mov [rbp - 56], rbx
-            15  xor ebx, ebx
-            17  mov [rbp - 48], r12
-            21  xor r12d, r12d
-            24  mov [rbp - 40], r13
-            28  xor r13d, r13d
-            31  mov [rbp - 32], rdx
-            35  mov [rbp - 24], rcx
-     7      for i := 0 to LEN(a) - 1 do
-            39  xor ebx, ebx
-            41  mov r8, rsi
-            44  lea r8, [r8 - 1]
-            48  mov r13, r8
-            51  cmp rbx, r13
-            54  jg 156
-            60  jmp 100
-            65  nop
-            73  nop
-            81  nop
-            89  nop
-            96  add rbx, 1
-     8          sum := sum + a[i] * b[i];
-           100  mov r10, rbx
-           103  shl r10, 3
-           107  add r10, [rbp - 32]
-           111  mov r10, [r10]
-           114  mov r9, [rdi + rbx * 8]
-           118  imul r9, r10
-           122  add r12, r9
-           125  cmp rbx, r13
-           128  jl 96
-           134  cmp rbx, r13
-           137  je 156
-           143  add rbx, 1
-           147  cmp rbx, r13
-           150  jle 100
-    10      return sum;
-           156  mov rax, r12
-    11  end;
-           159  mov rbx, [rbp - 56]
-           163  mov r12, [rbp - 48]
-           167  mov r13, [rbp - 40]
-           171  leave
-           172  ret
+Dot2.raz:2:1: error: check off needs import SYSTEM
+    2 | check off;
+      | ^^^^^
+help: it reaches memory other than through a variable: say import SYSTEM after the module&#x27;s imports
+raz: 1 error
 <span class="cmd">$ raz -S Dot.raz | sed -n &#x27;/^Dot.dot:/,/^$/p&#x27; | wc -l</span>
 61
 <span class="cmd">$ raz -S Dot2.raz | sed -n &#x27;/^Dot2.dot:/,/^$/p&#x27; | wc -l</span>
-50</code></pre>
+Dot2.raz:2:1: error: check off needs import SYSTEM
+    2 | check off;
+      | ^^^^^
+help: it reaches memory other than through a variable: say import SYSTEM after the module&#x27;s imports
+raz: 1 error
+0</code></pre>
 <p>The compares, the branches and the stubs are gone. It is faster, and it is no longer safe: an index out of range reads or writes whatever memory it reaches, and what follows isn't defined. A program turns checks off where it has measured and is sure, and says so at the top of the module, where a reader can see it.</p>
 <h2>Comparing with C</h2>
 <p><code>make kernels</code> in the compiler's sources measures <code>test/bench</code>'s kernels against the same kernels written in Pascal and compiled by Free Pascal at <code>-O2</code>. The compiler's own guide, <code>doc/compiler.md</code>, gives the numbers and says what the compiler does and doesn't do. It is not the fastest code: it is code whose every instruction you can account for.</p>
@@ -245,18 +206,18 @@ Dot2.dot:
 <ul><li><code>gdb</code> finds procedures by name and lines by number, since the executable carries them: <code>break Dot.dot</code> and <code>list</code> work, and so does stepping a line at a time.</li><li><code>RAZ_PROFILE=1</code> samples the program every millisecond and says which procedures and lines took the time.</li><li><code>objdump -d</code> disassembles what is really in the file, if you want to see the bytes behind a listing.</li></ul>
 <pre class="output term"><code><span class="cmd">$ raz -o Dot Dot.raz</span>
 <span class="cmd">$ objdump -d -M intel --no-show-raw-insn Dot | sed -n &#x27;/&lt;Dot.dot&gt;:/,/ret/p&#x27; | head -12</span>
-0000000000403c60 &lt;Dot.dot&gt;:
-  403c60:	push   rbp
-  403c61:	mov    rbp,rsp
-  403c64:	sub    rsp,0x40
-  403c6b:	mov    QWORD PTR [rbp-0x38],rbx
-  403c6f:	xor    ebx,ebx
-  403c71:	mov    QWORD PTR [rbp-0x30],r12
-  403c75:	xor    r12d,r12d
-  403c78:	mov    QWORD PTR [rbp-0x28],r13
-  403c7c:	xor    r13d,r13d
-  403c7f:	mov    QWORD PTR [rbp-0x20],rdx
-  403c83:	mov    QWORD PTR [rbp-0x18],rcx</code></pre>
+0000000000403c40 &lt;Dot.dot&gt;:
+  403c40:	push   rbp
+  403c41:	mov    rbp,rsp
+  403c44:	sub    rsp,0x40
+  403c4b:	mov    QWORD PTR [rbp-0x38],rbx
+  403c4f:	xor    ebx,ebx
+  403c51:	mov    QWORD PTR [rbp-0x30],r12
+  403c55:	xor    r12d,r12d
+  403c58:	mov    QWORD PTR [rbp-0x28],r13
+  403c5c:	xor    r13d,r13d
+  403c5f:	mov    QWORD PTR [rbp-0x20],rdx
+  403c63:	mov    QWORD PTR [rbp-0x18],rcx</code></pre>
 <p>The listing is what the encoder meant; <code>objdump</code> is what the processor will read. They tell the same story.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="syscalls.html">&larr; System calls</a><a href="index.html">Contents</a><a class="next" href="volatile.html">Volatile &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>

@@ -13,6 +13,7 @@ This reads the processor's time stamp counter. The result of a procedure goes in
 ```raz Cycles run
 module Cycles;
 import Out;
+import SYSTEM;
 
 proc rdtsc*: U64;
 code
@@ -50,6 +51,7 @@ That is why the next one is so short: the argument is already in `rdi`.
 ```raz Bits run
 module Bits;
 import Out;
+import SYSTEM;
 
 (* the bytes of x in the opposite order: bswap rax, which the assembler
    doesn't know, written as its bytes *)
@@ -87,6 +89,7 @@ A label, `name:`, names the place of the instruction after it, within the proced
 ```raz Sum run
 module Sum;
 import Out;
+import SYSTEM;
 
 (* the sum of the INTs of a *)
 proc sum(a: []INT): INT;
@@ -131,9 +134,10 @@ A slice comes back the same way, its address in `rax` and its length in `rdx`. T
 ```raz Trim run
 module Trim;
 import Out;
+import SYSTEM;
 
 (* s past its leading blanks *)
-proc trim(s: []U8): []U8;
+proc trim(s: []const U8): []const U8;
 code
     mov rax, rdi;
     mov rdx, rsi;
@@ -168,6 +172,7 @@ A second result goes in `rdx`. That is exactly where `idiv` leaves the remainder
 ```raz Divmod run
 module Divmod;
 import Out, Fmt;
+import SYSTEM;
 
 (* quotient and remainder, as idiv gives them: rax and rdx *)
 proc divmod(a, b: INT): (INT, INT);
@@ -206,6 +211,7 @@ A procedure that uses `rbx` must put it back. `cpuid` clobbers `rbx`, so the ven
 ```raz Vendor run
 module Vendor;
 import Out;
+import SYSTEM;
 
 (* the 12 bytes of the processor vendor, in buf (rdi) *)
 proc vendor(buf: ^U8);
@@ -224,7 +230,7 @@ end vendor;
 proc main*;
 var buf: [12]U8; i: INT; ok: BOOL;
 begin
-    vendor(ADR(buf[0]));
+    vendor(SYSTEM.ADR(buf[0]));
     ok := true;
     for i := 0 to 11 do
         if (buf[i] < ' ') or (buf[i] > '~') then ok := false; end;

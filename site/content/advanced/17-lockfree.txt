@@ -11,6 +11,7 @@ To push a node: point its `next` at the current head, then `CAS` the head from w
 ```raz Treiber run
 module Treiber;
 import Out, Thread;
+import SYSTEM;
 
 type Node = record next: ^Node; val: INT; end;
 
@@ -26,7 +27,7 @@ var old: ^Node;
 begin
     old := top;
     n^.next := old;
-    while not CAS(ADR(top), old, n) do
+    while not CAS(top, old, n) do
         old := top;                      (* lost the race: look again *)
         n^.next := old;
     end;
@@ -38,7 +39,7 @@ begin
     first := INT(arg) * Each;
     for i := 0 to Each - 1 do
         nodes[first + i].val := first + i;
-        push(ADR(nodes[first + i]));
+        push(SYSTEM.ADR(nodes[first + i]));
     end;
 end;
 
@@ -75,11 +76,12 @@ There are three common ways out, and each has a cost:
 
 - **Never reuse a node while anyone might hold it.** Nodes from an arena that is reset only when all threads are done, as the nodes above come from a fixed array, can't come back as a different node.
 - **Add a counter to the head**, so that A-B-A is A1-B2-A3. That is a word and a counter swapped together, and raz's `CAS` is for one word, so a program packs a small index and a counter into one `UINT`.
-- **Don't pop concurrently.** Many threads push and one thread, at the end, takes everything with a single `XCHG(ADR(top), nil)` and walks the list in peace. A stack used this way for work lists and logs needs no more.
+- **Don't pop concurrently.** Many threads push and one thread, at the end, takes everything with a single `XCHG(top, nil)` and walks the list in peace. A stack used this way for work lists and logs needs no more.
 
 ```raz Drain run
 module Drain;
 import Out, Thread;
+import SYSTEM;
 
 type Node = record next: ^Node; val: INT; end;
 
@@ -94,7 +96,7 @@ var old: ^Node;
 begin
     old := top;
     n^.next := old;
-    while not CAS(ADR(top), old, n) do
+    while not CAS(top, old, n) do
         old := top;
         n^.next := old;
     end;
@@ -106,7 +108,7 @@ begin
     first := INT(arg) * Each;
     for i := 0 to Each - 1 do
         nodes[first + i].val := 1;
-        push(ADR(nodes[first + i]));
+        push(SYSTEM.ADR(nodes[first + i]));
     end;
 end;
 
@@ -118,7 +120,7 @@ begin
         if err # nil then Out.str(MSG(err)); Out.ln; return; end;
     end;
     for i := 0 to Threads - 1 do Thread.join(th[i]); end;
-    all := XCHG(ADR(top), nil);          (* take the whole stack, atomically *)
+    all := XCHG(top, nil);          (* take the whole stack, atomically *)
     n := all;
     while n # nil do INC(count); n := n^.next; end;
     Out.int(count); Out.str(" taken at once, "); 

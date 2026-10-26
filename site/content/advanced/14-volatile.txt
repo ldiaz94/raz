@@ -13,6 +13,7 @@ The classic use is a device's registers: a record that says what is at which off
 ```raz Uart run
 module Uart;
 import Out;
+import SYSTEM;
 
 type
     Regs = record
@@ -26,7 +27,7 @@ var page: [64]U8;        (* where the device would be *)
 proc main*;
 var dev: ^VOLATILE Regs; i: INT;
 begin
-    dev := ^VOLATILE Regs(ADR(page));      (* the conversion is written *)
+    dev := ^VOLATILE Regs(SYSTEM.ADR(page));      (* the conversion is written *)
     dev^.control := 1;
     dev^.status := 0FFH;
     for i := 0 to 2 do
@@ -60,6 +61,7 @@ Where a program waits for another thread or a device to change a value, the loop
 ```raz Poll run
 module Poll;
 import Out, Sys, Thread;
+import SYSTEM;
 
 type Dev = record status: INT; data: INT; end;
 
@@ -68,7 +70,7 @@ var dev: Dev;
 proc device(_arg: ^U8);
 var d: ^VOLATILE Dev;
 begin
-    d := ^VOLATILE Dev(ADR(dev));
+    d := ^VOLATILE Dev(SYSTEM.ADR(dev));
     Sys.sleep(20);
     d^.data := 42;
     FENCE;                          (* data before the flag that announces it *)
@@ -78,7 +80,7 @@ end;
 proc main*;
 var t: ^Thread.Thread; err: ERROR; d: ^VOLATILE Dev; spins: INT;
 begin
-    d := ^VOLATILE Dev(ADR(dev));
+    d := ^VOLATILE Dev(SYSTEM.ADR(dev));
     t, err := Thread.spawn(device, nil);
     if err # nil then Out.str(MSG(err)); Out.ln; return; end;
     while d^.status = 0 do INC(spins); Sys.yield; end;
@@ -103,6 +105,7 @@ The compiler holds the line on each of them:
 
 ```raz Wrong
 module Wrong;
+import SYSTEM;
 
 type Pair = record a, b: U32; end;
 
@@ -111,7 +114,7 @@ var cell: Pair;
 proc main*;
 var v: ^VOLATILE Pair; p: ^Pair; copy: Pair;
 begin
-    v := ^VOLATILE Pair(ADR(cell));
+    v := ^VOLATILE Pair(SYSTEM.ADR(cell));
     p := v;
     copy := v^;
 end;

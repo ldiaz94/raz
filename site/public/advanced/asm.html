@@ -50,6 +50,7 @@
 <p>This reads the processor's time stamp counter. The result of a procedure goes in <code>rax</code>; <code>rdtsc</code> leaves the counter in <code>edx:eax</code>, so the two halves are joined first.</p>
 <div class="file"><span>Cycles.raz</span></div><pre class="code"><code><span class="kw">module</span> Cycles;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">proc</span> rdtsc*: <span class="ty">U64</span>;
 <span class="kw">code</span>
@@ -77,6 +78,7 @@
 <p>That is why the next one is so short: the argument is already in <code>rdi</code>.</p>
 <div class="file"><span>Bits.raz</span></div><pre class="code"><code><span class="kw">module</span> Bits;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="comment">(* the bytes of x in the opposite order: bswap rax, which the assembler
    doesn&#x27;t know, written as its bytes *)</span>
@@ -111,6 +113,7 @@
 <p>A label, <code>name:</code>, names the place of the instruction after it, within the procedure. Jumps go to labels, and a constant of the module may stand wherever a number does. This sums a slice of <code>INT</code>s, whose address arrives in <code>rdi</code> and its length in <code>rsi</code>:</p>
 <div class="file"><span>Sum.raz</span></div><pre class="code"><code><span class="kw">module</span> Sum;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="comment">(* the sum of the INTs of a *)</span>
 <span class="kw">proc</span> sum(a: []<span class="ty">INT</span>): <span class="ty">INT</span>;
@@ -152,9 +155,10 @@ done:
 <p>A slice comes back the same way, its address in <code>rax</code> and its length in <code>rdx</code>. This one returns what is left of a string past its leading blanks:</p>
 <div class="file"><span>Trim.raz</span></div><pre class="code"><code><span class="kw">module</span> Trim;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="comment">(* s past its leading blanks *)</span>
-<span class="kw">proc</span> trim(s: []<span class="ty">U8</span>): []<span class="ty">U8</span>;
+<span class="kw">proc</span> trim(s: []<span class="kw">const</span> <span class="ty">U8</span>): []<span class="kw">const</span> <span class="ty">U8</span>;
 <span class="kw">code</span>
     mov rax, rdi;
     mov rdx, rsi;
@@ -187,6 +191,7 @@ done:
 <p>A second result goes in <code>rdx</code>. That is exactly where <code>idiv</code> leaves the remainder, so <code>divmod</code> is four instructions. Reals travel in the <code>xmm</code> registers.</p>
 <div class="file"><span>Divmod.raz</span></div><pre class="code"><code><span class="kw">module</span> Divmod;
 <span class="kw">import</span> Out, Fmt;
+<span class="kw">import</span> SYSTEM;
 
 <span class="comment">(* quotient and remainder, as idiv gives them: rax and rdx *)</span>
 <span class="kw">proc</span> divmod(a, b: <span class="ty">INT</span>): (<span class="ty">INT</span>, <span class="ty">INT</span>);
@@ -222,6 +227,7 @@ done:
 <p>A procedure that uses <code>rbx</code> must put it back. <code>cpuid</code> clobbers <code>rbx</code>, so the vendor-string example saves it with <code>push</code> and restores it with <code>pop</code>, and keeps the buffer's address in <code>r8</code> while it works:</p>
 <div class="file"><span>Vendor.raz</span></div><pre class="code"><code><span class="kw">module</span> Vendor;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="comment">(* the 12 bytes of the processor vendor, in buf (rdi) *)</span>
 <span class="kw">proc</span> vendor(buf: ^<span class="ty">U8</span>);
@@ -240,7 +246,7 @@ done:
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> buf: [<span class="number">12</span>]<span class="ty">U8</span>; i: <span class="ty">INT</span>; ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
-    vendor(<span class="ty">ADR</span>(buf[<span class="number">0</span>]));
+    vendor(SYSTEM.<span class="ty">ADR</span>(buf[<span class="number">0</span>]));
     ok := <span class="ty">true</span>;
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">11</span> <span class="kw">do</span>
         <span class="kw">if</span> (buf[i] &lt; <span class="string">&#x27; &#x27;</span>) <span class="kw">or</span> (buf[i] &gt; <span class="string">&#x27;~&#x27;</span>) <span class="kw">then</span> ok := <span class="ty">false</span>; <span class="kw">end</span>;

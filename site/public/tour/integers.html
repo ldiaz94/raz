@@ -140,7 +140,7 @@ raz: 1 error</code></pre>
 <span class="kw">const</span> Prime = <span class="number">100000001B3H</span>;
 
 <span class="comment">(* FNV-1a: xor each byte in, then multiply, all modulo 2^64 *)</span>
-<span class="kw">proc</span> fnv(s: []<span class="ty">U8</span>): <span class="ty">U64</span>;
+<span class="kw">proc</span> fnv(s: []<span class="kw">const</span> <span class="ty">U8</span>): <span class="ty">U64</span>;
 <span class="kw">var</span> h: <span class="ty">U64</span>; i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     h := Offset;

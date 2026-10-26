@@ -10,12 +10,13 @@ This program imports nothing. It makes the `write` system call itself, with the 
 
 ```raz Bare
 module Bare;
+import SYSTEM;
 
 const Msg = "hello from raw system calls\n";
 
 proc main*;
 begin
-    _ := SYSCALL(1, 1, ADR(Msg[0]), LEN(Msg));
+    _ := SYSTEM.SYSCALL(1, 1, SYSTEM.ADR(Msg[0]), LEN(Msg));
 end;
 
 end Bare.

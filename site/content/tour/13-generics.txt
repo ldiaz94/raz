@@ -21,6 +21,7 @@ A generic module is an ordinary module with parameters in its header. Here is a 
 ```raz Stk
 module Stk(T);
 import Mem;
+import SYSTEM;
 
 type
     Stack* = record
@@ -76,21 +77,22 @@ end Stk.
 ```raz Uses run
 module Uses;
 import Out, Heap, Nums := Stk(INT), Pairs := Stk(Pair);
+import SYSTEM;
 
 type Pair = record a, b: INT; end;
 
 proc main*;
 var n: Nums.Stack; p: Pairs.Stack; i, v: INT; ok: BOOL; pr: Pair;
 begin
-    Nums.init(ADR(n), Heap.heap);
-    Pairs.init(ADR(p), Heap.heap);
-    for i := 1 to 10 do _ := Nums.push(ADR(n), i * i); end;
-    _ := Pairs.push(ADR(p), {a: 3, b: 4});
-    v, ok := Nums.pop(ADR(n));
+    Nums.init(SYSTEM.ADR(n), Heap.heap);
+    Pairs.init(SYSTEM.ADR(p), Heap.heap);
+    for i := 1 to 10 do _ := Nums.push(SYSTEM.ADR(n), i * i); end;
+    _ := Pairs.push(SYSTEM.ADR(p), {a: 3, b: 4});
+    v, ok := Nums.pop(SYSTEM.ADR(n));
     Out.int(v); Out.str(" of "); Out.int(n.len + 1); Out.ln;
-    pr, ok := Pairs.pop(ADR(p));
+    pr, ok := Pairs.pop(SYSTEM.ADR(p));
     Out.int(pr.a * pr.b); Out.ln;
-    _, ok := Pairs.pop(ADR(p));
+    _, ok := Pairs.pop(SYSTEM.ADR(p));
     if not ok then Out.str("empty\n"); end;
 end;
 
@@ -101,4 +103,4 @@ Two instances (`Nums` and `Pairs`) are two separate modules, compiled with their
 
 ## The library's generics
 
-The library's `List`, `Map` and `Sort` are generic modules. A `Map` takes its key hash and equality as procedure arguments: `import Count := Map([]U8, INT, Str.hash, Str.eq);`. The advanced tour uses each of them in a real program.
+The library's `List`, `Map` and `Sort` are generic modules. A `Map` takes its key hash and equality as procedure arguments: `import Count := Map([]const U8, INT, Str.hash, Str.eq);`. The advanced tour uses each of them in a real program.

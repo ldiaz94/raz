@@ -92,14 +92,14 @@ end Moves.
 
 ## Strings
 
-A string is a slice of bytes, `[]U8`, in UTF-8, and a string constant's bytes are constant. A `[8]U8` made from one is a copy you can change. Arrays and slices of integers compare with `=` and `#`, so strings do too. `Str` has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case and kinds of character, UTF-8, and numbers to and from text.
+A string is a slice of bytes, `[]U8`, in UTF-8, and a string constant is a `[]const U8`: a procedure that only reads a string takes that, and one that writes takes `[]U8`. A `[8]U8` made from one is a copy you can change. Arrays and slices of integers compare with `=` and `#`, so strings do too. `Str` has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case and kinds of character, UTF-8, and numbers to and from text.
 
 ```raz Words run
 module Words;
 import Out, Str;
 
 proc main*;
-var s: []U8; n: I64; ok: BOOL; name: [8]U8;
+var s: []const U8; n: I64; ok: BOOL; name: [8]U8;
 begin
     s := "hello, world";
     Out.str(s[7..LEN(s)]); Out.ln;
@@ -141,7 +141,7 @@ import Out, Str;
 const Text = "name = raz\nkind = language\nyear = 2026\n";
 
 proc main*;
-var line, rest, key, val, w: []U8; more, ok: BOOL;
+var line, rest, key, val, w: []const U8; more, ok: BOOL;
 begin
     (* line by line, then each line at its = *)
     line, rest, more := Str.cut(Text, "\n");
@@ -207,7 +207,7 @@ module Runes;
 import Out, Str, Width;
 
 proc main*;
-var s: []U8; c: I32; i, size: INT; bytes: [4]U8; k: INT;
+var s: []const U8; c: I32; i, size: INT; bytes: [4]U8; k: INT;
 begin
     s := "caf\u{E9} \u{3BB}";
     Out.int(LEN(s)); Out.str(" bytes, ");

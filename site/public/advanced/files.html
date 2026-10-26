@@ -79,7 +79,7 @@ missing.txt: ENOENT
 <span class="kw">import</span> Out, Sys;
 
 <span class="comment">(* the lines of the file at path, or minus an errno *)</span>
-<span class="kw">proc</span> lines(path: []<span class="ty">U8</span>): <span class="ty">INT</span>;
+<span class="kw">proc</span> lines(path: []<span class="kw">const</span> <span class="ty">U8</span>): <span class="ty">INT</span>;
 <span class="kw">var</span> fd, n, i, count: <span class="ty">INT</span>; buf: [<span class="number">4096</span>]<span class="ty">U8</span>;
 <span class="kw">begin</span>
     fd := Sys.openRead(path);
@@ -122,6 +122,7 @@ missing.txt: ENOENT
 <p><code>Sys.info</code> says a file's size, modification time, permissions, and whether it is a directory, a regular file or a link. <code>Sys.openDir</code> and <code>nextEntry</code> list a directory, in no particular order, so a program that prints one sorts it first. A name from <code>nextEntry</code> is good only until the next call, so the program keeps a copy.</p>
 <div class="file"><span>Tree.raz</span></div><pre class="code"><code><span class="kw">module</span> Tree;
 <span class="kw">import</span> Out, Sys, Str, Heap, Mem, Buf, Order := Sort([]<span class="ty">U8</span>, before);
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">proc</span> before(a, b: []<span class="ty">U8</span>): <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
@@ -129,7 +130,7 @@ missing.txt: ENOENT
 <span class="kw">end</span>;
 
 <span class="comment">(* a file made to hold text *)</span>
-<span class="kw">proc</span> put(path, text: []<span class="ty">U8</span>);
+<span class="kw">proc</span> put(path, text: []<span class="kw">const</span> <span class="ty">U8</span>);
 <span class="kw">var</span> fd: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     fd := Sys.create(path);
@@ -139,7 +140,7 @@ missing.txt: ENOENT
 
 <span class="kw">proc</span> main*;
 <span class="kw">var</span>
-    d: Sys.Dir; name, copy: []<span class="ty">U8</span>; more, ok: <span class="ty">BOOL</span>; i, n: <span class="ty">INT</span>;
+    d: Sys.Dir; name: []<span class="kw">const</span> <span class="ty">U8</span>; copy: []<span class="ty">U8</span>; more, ok: <span class="ty">BOOL</span>; i, n: <span class="ty">INT</span>;
     info: Sys.Info; err: <span class="ty">INT</span>; names: [<span class="number">16</span>][]<span class="ty">U8</span>; path: Buf.Buf;
 <span class="kw">begin</span>
     _ := Sys.makeDir(<span class="string">&quot;proj&quot;</span>);
@@ -168,7 +169,7 @@ missing.txt: ENOENT
         <span class="kw">else</span> Out.str(<span class="string">&quot;, &quot;</span>); Out.int(info.size); Out.str(<span class="string">&quot; bytes&quot;</span>);
         <span class="kw">end</span>;
         Out.ln;
-        Mem.free(Heap.heap, ^<span class="ty">U8</span>(<span class="ty">ADR</span>(names[i][<span class="number">0</span>])));
+        Mem.free(Heap.heap, ^<span class="ty">U8</span>(SYSTEM.<span class="ty">ADR</span>(names[i][<span class="number">0</span>])));
     <span class="kw">end</span>;
     Buf.done(path);
 <span class="kw">end</span>;
@@ -224,7 +225,7 @@ the same file: true
 <span class="kw">const</span> count = <span class="number">1</span>;                   <span class="comment">(* the key of --count, which has no letter *)</span>
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> p: Opt.Parser; verbose: <span class="ty">BOOL</span>; n, i: <span class="ty">INT</span>; w: []<span class="ty">U8</span>; ok: <span class="ty">BOOL</span>;
+<span class="kw">var</span> p: Opt.Parser; verbose: <span class="ty">BOOL</span>; n, i: <span class="ty">INT</span>; w: []<span class="kw">const</span> <span class="ty">U8</span>; ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     n := <span class="number">1</span>;
     Opt.init(p, <span class="string">&quot;tool&quot;</span>, [

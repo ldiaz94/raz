@@ -118,7 +118,7 @@ const Offset = 0CBF29CE484222325H;
 const Prime = 100000001B3H;
 
 (* FNV-1a: xor each byte in, then multiply, all modulo 2^64 *)
-proc fnv(s: []U8): U64;
+proc fnv(s: []const U8): U64;
 var h: U64; i: INT;
 begin
     h := Offset;

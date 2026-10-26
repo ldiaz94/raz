@@ -17,6 +17,7 @@ The handoff is the publish pattern of the ordering lesson. The producer writes t
 ```raz Ring
 module Ring;
 import Sys;
+import SYSTEM;
 
 const Size* = 64;
 
@@ -31,9 +32,9 @@ proc put*(r: ^Ring; v: INT);
 var t: INT;
 begin
     t := r^.tail;                                    (* mine: an ordinary read *)
-    while t - XADD(ADR(r^.head), 0) = Size do Sys.yield; end;   (* full *)
+    while t - XADD(r^.head, 0) = Size do Sys.yield; end;   (* full *)
     r^.slots[t mod Size] := v;
-    _ := XCHG(ADR(r^.tail), t + 1);                  (* publish the slot *)
+    _ := XCHG(r^.tail, t + 1);                  (* publish the slot *)
 end;
 
 (* the next value, waiting while the ring is empty *)
@@ -41,9 +42,9 @@ proc take*(r: ^Ring): INT;
 var h, v: INT;
 begin
     h := r^.head;                                    (* mine *)
-    while XADD(ADR(r^.tail), 0) = h do Sys.yield; end;          (* empty *)
+    while XADD(r^.tail, 0) = h do Sys.yield; end;          (* empty *)
     v := r^.slots[h mod Size];
-    _ := XCHG(ADR(r^.head), h + 1);                  (* give the slot back *)
+    _ := XCHG(r^.head, h + 1);                  (* give the slot back *)
     return v;
 end;
 
@@ -57,6 +58,7 @@ One thread sends the numbers 1 to 100000 through a ring of 64 slots, so it is st
 ```raz Pipe run
 module Pipe;
 import Out, Fmt, Ring, Thread;
+import SYSTEM;
 
 const Count = 100000;
 
@@ -67,14 +69,14 @@ var
 proc producer(_arg: ^U8);
 var i: INT;
 begin
-    for i := 1 to Count do Ring.put(ADR(ring), i); end;
+    for i := 1 to Count do Ring.put(SYSTEM.ADR(ring), i); end;
 end;
 
 proc consumer(_arg: ^U8);
 var i, v: INT;
 begin
     for i := 1 to Count do
-        v := Ring.take(ADR(ring));
+        v := Ring.take(SYSTEM.ADR(ring));
         if v # i then INC(outOfOrder); end;
         sum := sum + v;
     end;

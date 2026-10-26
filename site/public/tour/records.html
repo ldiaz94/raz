@@ -74,7 +74,7 @@
 <pre class="output"><code>6
 40 10
 </code></pre>
-<p>A record is laid out as C lays out a struct. <code>{lo: ..., hi: ...}</code> builds one, naming its fields; the ones it leaves out are zero. <code>^Box</code> is a pointer to a <code>Box</code>, <code>ADR(b)</code> the address of <code>b</code>, and <code>b^</code> what a pointer points at. A pointer is never the record: it is <code>b^.lo</code>, never <code>b.lo</code>, so you always see where the memory is reached through an address.</p>
+<p>A record is laid out as C lays out a struct. <code>{lo: ..., hi: ...}</code> builds one, naming its fields; the ones it leaves out are zero. <code>^Box</code> is a pointer to a <code>Box</code>, <code>SYSTEM.ADR(b)</code> the address of <code>b</code>, and <code>b^</code> what a pointer points at. A pointer is never the record: it is <code>b^.lo</code>, never <code>b.lo</code>, so you always see where the memory is reached through an address.</p>
 <h2>Copies and literals</h2>
 <p>Assigning a record copies it whole, as with an array. A record is compared field by field by writing the comparison, not by <code>=</code>.</p>
 <div class="file"><span>Points.raz</span></div><pre class="code"><code><span class="kw">module</span> Points;
@@ -112,7 +112,7 @@
 <div class="file"><span>Planets.raz</span></div><pre class="code"><code><span class="kw">module</span> Planets;
 <span class="kw">import</span> Fmt;
 
-<span class="kw">type</span> Planet = <span class="kw">record</span> name: []<span class="ty">U8</span>; moons: <span class="ty">INT</span>; water: <span class="ty">BOOL</span>; <span class="kw">end</span>;
+<span class="kw">type</span> Planet = <span class="kw">record</span> name: []<span class="kw">const</span> <span class="ty">U8</span>; moons: <span class="ty">INT</span>; water: <span class="ty">BOOL</span>; <span class="kw">end</span>;
 
 <span class="kw">const</span> Inner: []Planet = [
     {name: <span class="string">&quot;Mercury&quot;</span>},
@@ -159,7 +159,7 @@ tight: 6
 INT:   8
 [5]I16: 10
 </code></pre>
-<p>A field of a packed record may sit at any address, and is read and written like any other; but it has no address of its own to take with <code>ADR</code>.</p>
+<p>A field of a packed record may sit at any address, and is read and written like any other; but it has no address of its own to take with <code>SYSTEM.ADR</code>.</p>
 <h2>Bytes as numbers and records: views</h2>
 <p>A file, a socket or a device hands a program bytes. A view reads and writes them as another type: <code>msg[3].(U32)</code> is the <code>U32</code> whose four bytes start at <code>msg[3]</code>, and <code>msg[0].(Head)</code> the <code>Head</code> whose bytes start at <code>msg[0]</code>.</p>
 <div class="file"><span>Wire.raz</span></div><pre class="code"><code><span class="kw">module</span> Wire;
@@ -219,11 +219,12 @@ INT:   8
 </span></code></pre>
 <p>The type of a view is an integer, a real or a pointer, or a record or array made of them: types any bytes are a value of, which a <code>BOOL</code> or an enumeration isn't. A view may start at any byte, so, as a packed record's field, it has no address of its own.</p>
 <h2>Pointers</h2>
-<p><code>ADR(x)</code> takes the address of a variable, <code>^T</code> is a pointer to a <code>T</code>, and <code>p^</code> is what it points at. A pointer that points nowhere is <code>nil</code>, and following it stops the program with a message that names the place, so a forgotten check is found at once instead of corrupting memory.</p>
+<p><code>SYSTEM.ADR(x)</code> (a module that uses it says <code>import SYSTEM;</code>) takes the address of a variable, <code>^T</code> is a pointer to a <code>T</code>, and <code>p^</code> is what it points at. A pointer that points nowhere is <code>nil</code>, and following it stops the program with a message that names the place, so a forgotten check is found at once instead of corrupting memory.</p>
 <div class="file"><span>Pointers.raz</span></div><pre class="code"><code><span class="kw">module</span> Pointers;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
-<span class="kw">type</span> Counter = <span class="kw">record</span> hits: <span class="ty">INT</span>; name: []<span class="ty">U8</span>; <span class="kw">end</span>;
+<span class="kw">type</span> Counter = <span class="kw">record</span> hits: <span class="ty">INT</span>; name: []<span class="kw">const</span> <span class="ty">U8</span>; <span class="kw">end</span>;
 
 <span class="kw">proc</span> hit(c: ^Counter);
 <span class="kw">begin</span>
@@ -243,12 +244,12 @@ INT:   8
 <span class="kw">var</span> c: Counter; x, y: <span class="ty">INT</span>; p: ^<span class="ty">INT</span>;
 <span class="kw">begin</span>
     c.name := <span class="string">&quot;front door&quot;</span>;
-    hit(<span class="ty">ADR</span>(c)); hit(<span class="ty">ADR</span>(c)); hit(<span class="ty">nil</span>);
+    hit(SYSTEM.<span class="ty">ADR</span>(c)); hit(SYSTEM.<span class="ty">ADR</span>(c)); hit(<span class="ty">nil</span>);
     Out.str(c.name); Out.str(<span class="string">&quot;: &quot;</span>); Out.int(c.hits); Out.ln;
     x := <span class="number">1</span>; y := <span class="number">2</span>;
-    swap(<span class="ty">ADR</span>(x), <span class="ty">ADR</span>(y));
+    swap(SYSTEM.<span class="ty">ADR</span>(x), SYSTEM.<span class="ty">ADR</span>(y));
     Out.int(x); Out.char(<span class="string">&#x27; &#x27;</span>); Out.int(y); Out.ln;
-    p := <span class="ty">ADR</span>(x);
+    p := SYSTEM.<span class="ty">ADR</span>(x);
     p^ := p^ + <span class="number">40</span>;
     Out.int(x); Out.ln;
 <span class="kw">end</span>;
@@ -262,6 +263,7 @@ INT:   8
 <p>A record may hold a pointer to its own type, which is how lists and trees are made. Memory for them comes from an allocator, which is the next lesson; here the nodes simply live in an array.</p>
 <div class="file"><span>Chain.raz</span></div><pre class="code"><code><span class="kw">module</span> Chain;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Node = <span class="kw">record</span> next: ^Node; val: <span class="ty">INT</span>; <span class="kw">end</span>;
 
@@ -272,7 +274,7 @@ INT:   8
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span>
         nodes[i].val := (i + <span class="number">1</span>) * <span class="number">10</span>;
         nodes[i].next := head;       <span class="comment">(* each new one in front *)</span>
-        head := <span class="ty">ADR</span>(nodes[i]);
+        head := SYSTEM.<span class="ty">ADR</span>(nodes[i]);
     <span class="kw">end</span>;
     n := head;
     <span class="kw">while</span> n # <span class="ty">nil</span> <span class="kw">do</span>
@@ -286,15 +288,16 @@ INT:   8
 <pre class="output"><code>40 30 20 10 
 </code></pre>
 <h2>A slice's pointer</h2>
-<p>A slice is a pointer and a length, and a record can keep the two apart: an interpreter keeps a string so, and C takes one so. <code>LEN(s)</code> is the length. The pointer looks like <code>ADR(s[0])</code>, the address of the first element, and that works until the slice is empty: then there is no first element, <code>s[0]</code> is out of range, and the program stops.</p>
+<p>A slice is a pointer and a length, and a record can keep the two apart: an interpreter keeps a string so, and C takes one so. <code>LEN(s)</code> is the length. The pointer looks like <code>SYSTEM.ADR(s[0])</code>, the address of the first element, and that works until the slice is empty: then there is no first element, <code>s[0]</code> is out of range, and the program stops.</p>
 <div class="file"><span>Empty.raz</span></div><pre class="code"><code><span class="kw">module</span> Empty;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Span = <span class="kw">record</span> p: ^<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
 
-<span class="kw">proc</span> spanOf(s: []<span class="ty">U8</span>): Span;
+<span class="kw">proc</span> spanOf(s: []<span class="kw">const</span> <span class="ty">U8</span>): Span;
 <span class="kw">begin</span>
-    <span class="kw">return</span> {p: <span class="ty">ADR</span>(s[<span class="number">0</span>]), n: <span class="ty">LEN</span>(s)};
+    <span class="kw">return</span> {p: SYSTEM.<span class="ty">ADR</span>(s[<span class="number">0</span>]), n: <span class="ty">LEN</span>(s)};
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
@@ -307,18 +310,19 @@ INT:   8
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Empty.</code></pre>
-<pre class="output"><code>3
-<span class="err">Empty.raz:8:22: index 0 is out of range for a length of 0
-  in Empty.spanOf at Empty.raz:8:22
-  in Empty.main at Empty.raz:16:5
+<pre class="output"><code><span class="err">Empty.raz:9:27: error: s[0] is read through a []const slice, and can&#x27;t be changed
+    9 |     return {p: SYSTEM.ADR(s[0]), n: LEN(s)};
+      |                           ^^^^
+help: a []const slice&#x27;s elements are only read: write them through a []T
+raz: 1 error
 </span></code></pre>
-<p><code>PTR(s)</code> is the pointer itself, a <code>^U8</code> for a <code>[]U8</code>, with no check. For a slice that isn't empty it is <code>ADR(s[0])</code>; for an empty one it is what the slice holds, <code>nil</code> for one never set. So nothing needs testing first, and <code>sp.p[0..sp.n]</code> makes the slice again, empty when <code>sp.n</code> is 0, whatever <code>sp.p</code> is:</p>
+<p><code>SYSTEM.PTR(s)</code> is the pointer itself, a <code>^U8</code> for a <code>[]U8</code>, with no check. For a slice that isn't empty it is <code>SYSTEM.ADR(s[0])</code>; for an empty one it is what the slice holds, <code>nil</code> for one never set. So nothing needs testing first, and <code>sp.p[0..sp.n]</code> makes the slice again, empty when <code>sp.n</code> is 0, whatever <code>sp.p</code> is:</p>
 <div class="file"><span>Spans.raz</span></div><pre class="code"><code><span class="kw">module</span> Spans;
 <span class="kw">import</span> Out, SYSTEM;
 
 <span class="kw">type</span> Span = <span class="kw">record</span> p: ^<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
 
-<span class="kw">proc</span> spanOf(s: []<span class="ty">U8</span>): Span;
+<span class="kw">proc</span> spanOf(s: []<span class="kw">const</span> <span class="ty">U8</span>): Span;
 <span class="kw">begin</span>
     <span class="kw">return</span> {p: SYSTEM.PTR(s), n: <span class="ty">LEN</span>(s)};
 <span class="kw">end</span>;
@@ -343,7 +347,7 @@ INT:   8
 0 
 5 three
 </code></pre>
-<p>Of an array, <code>PTR(a)</code> is the address of its first element, a <code>^T</code> where <code>ADR(a)</code> is a <code>^[n]T</code>. Reading through the pointer is as unchecked as through any pointer: the length is yours to keep with it. The compiler says so when the two are mixed up: a slice given where a pointer is wanted is an error whose help says to write <code>PTR(s)</code> and <code>LEN(s)</code>, and a pointer given where a slice is, <code>p[0..n]</code>.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="slices.html">&larr; Arrays, slices and strings</a><a href="index.html">Contents</a><a class="next" href="variants.html">Enumerations, sets, variants and match &rarr;</a></div></article></div>
+<p>Of an array, <code>SYSTEM.PTR(a)</code> is the address of its first element, a <code>^T</code> where <code>SYSTEM.ADR(a)</code> is a <code>^[n]T</code>. Reading through the pointer is as unchecked as through any pointer: the length is yours to keep with it. The compiler says so when the two are mixed up: a slice given where a pointer is wanted is an error whose help says to write <code>PTR(s)</code> and <code>LEN(s)</code>, and a pointer given where a slice is, <code>p[0..n]</code>.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="slices.html">&larr; Arrays, slices and strings</a><a href="index.html">Contents</a><a class="next" href="variants.html">Enumerations, sets, variants and match &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
 </body>

@@ -67,7 +67,7 @@ module Message;
 import Out, Buf, Fmt, Heap;
 
 (* "name (age n)", built in a Buf the caller owns *)
-proc describe(var b: Buf.Buf; name: []U8; age: INT);
+proc describe(var b: Buf.Buf; name: []const U8; age: INT);
 begin
     Fmt.write(b, "{} (age {})", [Fmt.str(name), Fmt.int(age)]);
 end;
@@ -96,7 +96,7 @@ module Table;
 import Out;
 
 (* s, then spaces up to width *)
-proc left(s: []U8; width: INT);
+proc left(s: []const U8; width: INT);
 var i: INT;
 begin
     Out.str(s);
@@ -115,7 +115,7 @@ begin
     Out.int(n);
 end;
 
-proc row(name: []U8; qty, price: INT);
+proc row(name: []const U8; qty, price: INT);
 begin
     left(name, 10);
     right(qty, 5);
@@ -144,7 +144,7 @@ end Table.
 module Dump;
 import Out;
 
-proc dump(data: []U8);
+proc dump(data: []const U8);
 var i: INT;
 begin
     for i := 0 to LEN(data) - 1 do

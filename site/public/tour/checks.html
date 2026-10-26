@@ -71,6 +71,7 @@
 <p>The same shape of message tells of a <code>nil</code> pointer, a division by zero, a bad slice and a stack overflow. Each of them stops the program with status 2, and never runs on with a wrong value.</p>
 <div class="file"><span>Nilp.raz</span></div><pre class="code"><code><span class="kw">module</span> Nilp;
 <span class="kw">import</span> Out;
+<span class="kw">import</span> SYSTEM;
 
 <span class="kw">type</span> Node = <span class="kw">record</span> val: <span class="ty">INT</span>; next: ^Node; <span class="kw">end</span>;
 
@@ -84,16 +85,16 @@
 <span class="kw">var</span> a, b: Node;
 <span class="kw">begin</span>
     a.val := <span class="number">1</span>; b.val := <span class="number">2</span>;
-    a.next := <span class="ty">ADR</span>(b);
-    Out.int(last(<span class="ty">ADR</span>(a))); Out.ln;
+    a.next := SYSTEM.<span class="ty">ADR</span>(b);
+    Out.int(last(SYSTEM.<span class="ty">ADR</span>(a))); Out.ln;
     Out.int(last(<span class="ty">nil</span>)); Out.ln;
 <span class="kw">end</span>;
 
 <span class="kw">end</span> Nilp.</code></pre>
 <pre class="output"><code>2
-<span class="err">Nilp.raz:8:11: stopped by a nil pointer
-  in Nilp.last at Nilp.raz:8:11: n = nil
-  in Nilp.main at Nilp.raz:18:5
+<span class="err">Nilp.raz:9:11: stopped by a nil pointer
+  in Nilp.last at Nilp.raz:9:11: n = nil
+  in Nilp.main at Nilp.raz:19:5
 </span></code></pre>
 <div class="file"><span>Zero.raz</span></div><pre class="code"><code><span class="kw">module</span> Zero;
 <span class="kw">import</span> Out;

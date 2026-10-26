@@ -6,22 +6,23 @@ A volatile access is one access. An atomic is one *indivisible* step: nothing ca
 
 | Call | Does |
 |---|---|
-| `XADD(p, x)` | adds `x` to `p^` and returns the value before |
-| `XCHG(p, x)` | sets `p^ := x` and returns the value before |
-| `CAS(p, old, new)` | if `p^ = old`, sets `p^ := new` and returns `true`; otherwise `false` |
+| `XADD(p, x)` | adds `x` to `p` and returns the value before |
+| `XCHG(p, x)` | sets `p := x` and returns the value before |
+| `CAS(p, old, new)` | if `p = old`, sets `p := new` and returns `true`; otherwise `false` |
 
-`p` is a `^T` or `^VOLATILE T` where `T` is `INT`, `UINT` or a pointer type (`INT` or `UINT` for `XADD`). They compile to single x86-64 instructions: `lock xadd`, `xchg` (which is always locked when it touches memory) and `lock cmpxchg`:
+`p` is a variable (or `q^` through a pointer `q`, even `^VOLATILE`) of type `INT`, `UINT` or a pointer type (`INT` or `UINT` for `XADD`); the atomic works on the variable itself, so no `ADR` is taken. A module that uses them says `import SYSTEM;`. They compile to single x86-64 instructions: `lock xadd`, `xchg` (which is always locked when it touches memory) and `lock cmpxchg`:
 
 ```raz Ops
 module Ops;
+import SYSTEM;
 
 var counter: INT;
 
 proc main*;
 begin
-    _ := XADD(ADR(counter), 5);
-    _ := XCHG(ADR(counter), 100);
-    _ := CAS(ADR(counter), 100, 7);
+    _ := XADD(counter, 5);
+    _ := XCHG(counter, 100);
+    _ := CAS(counter, 100, 7);
 end;
 
 end Ops.
@@ -38,6 +39,7 @@ $ raz -S Ops.raz | grep -i "lock\|xchg"
 ```raz Tickets run
 module Tickets;
 import Out, Thread;
+import SYSTEM;
 
 var
     next: INT;                  (* the next ticket to give out *)
@@ -47,7 +49,7 @@ proc work(_arg: ^U8);
 var i, t: INT;
 begin
     for i := 1 to 1000 do
-        t := XADD(ADR(next), 1);      (* a ticket no other thread gets *)
+        t := XADD(next, 1);      (* a ticket no other thread gets *)
         seen[t] := 1;
     end;
 end;
@@ -76,6 +78,7 @@ Anything that can be computed from the old value can be made atomic with a loop 
 ```raz Peak run
 module Peak;
 import Out, Thread;
+import SYSTEM;
 
 var peak: INT;
 
@@ -85,7 +88,7 @@ var seen: INT;
 begin
     seen := peak;
     while seen < v do
-        if CAS(ADR(peak), seen, v) then return; end;
+        if CAS(peak, seen, v) then return; end;
         seen := peak;                  (* someone changed it: look again *)
     end;
 end;

@@ -42,7 +42,7 @@ module Count;
 import Out, Sys;
 
 (* the lines of the file at path, or minus an errno *)
-proc lines(path: []U8): INT;
+proc lines(path: []const U8): INT;
 var fd, n, i, count: INT; buf: [4096]U8;
 begin
     fd := Sys.openRead(path);
@@ -85,6 +85,7 @@ end Count.
 ```raz Tree run
 module Tree;
 import Out, Sys, Str, Heap, Mem, Buf, Order := Sort([]U8, before);
+import SYSTEM;
 
 proc before(a, b: []U8): BOOL;
 begin
@@ -92,7 +93,7 @@ begin
 end;
 
 (* a file made to hold text *)
-proc put(path, text: []U8);
+proc put(path, text: []const U8);
 var fd: INT;
 begin
     fd := Sys.create(path);
@@ -102,7 +103,7 @@ end;
 
 proc main*;
 var
-    d: Sys.Dir; name, copy: []U8; more, ok: BOOL; i, n: INT;
+    d: Sys.Dir; name: []const U8; copy: []U8; more, ok: BOOL; i, n: INT;
     info: Sys.Info; err: INT; names: [16][]U8; path: Buf.Buf;
 begin
     _ := Sys.makeDir("proj");
@@ -131,7 +132,7 @@ begin
         else Out.str(", "); Out.int(info.size); Out.str(" bytes");
         end;
         Out.ln;
-        Mem.free(Heap.heap, ^U8(ADR(names[i][0])));
+        Mem.free(Heap.heap, ^U8(SYSTEM.ADR(names[i][0])));
     end;
     Buf.done(path);
 end;
@@ -188,7 +189,7 @@ import Out, Fmt, Opt;
 const count = 1;                   (* the key of --count, which has no letter *)
 
 proc main*;
-var p: Opt.Parser; verbose: BOOL; n, i: INT; w: []U8; ok: BOOL;
+var p: Opt.Parser; verbose: BOOL; n, i: INT; w: []const U8; ok: BOOL;
 begin
     n := 1;
     Opt.init(p, "tool", [

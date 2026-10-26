@@ -52,7 +52,7 @@
 <span class="kw">end</span>;
 
 <span class="comment">(* the lines of the file at path, or -1 if it can&#x27;t be read *)</span>
-<span class="kw">proc</span> lines(path: []<span class="ty">U8</span>): <span class="ty">INT</span>;
+<span class="kw">proc</span> lines(path: []<span class="kw">const</span> <span class="ty">U8</span>): <span class="ty">INT</span>;
 <span class="kw">var</span> fd, n, i, count: <span class="ty">INT</span>; buf: [<span class="number">4096</span>]<span class="ty">U8</span>;
 <span class="kw">begin</span>
     fd := Sys.openRead(path);

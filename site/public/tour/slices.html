@@ -51,7 +51,7 @@
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> a: [<span class="number">5</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>; s, val: []<span class="ty">U8</span>; name: [<span class="number">8</span>]<span class="ty">U8</span>; ok: <span class="ty">BOOL</span>;
+<span class="kw">var</span> a: [<span class="number">5</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>; s, val: []<span class="kw">const</span> <span class="ty">U8</span>; name: [<span class="number">8</span>]<span class="ty">U8</span>; ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4</span> <span class="kw">do</span> a[i] := i * i; <span class="kw">end</span>;
     Out.int(sum(a)); Out.ln;        <span class="comment">(* the array, as a slice *)</span>
@@ -162,12 +162,12 @@ they differ now
 <pre class="output"><code>1 1 2 3 4 5 
 </code></pre>
 <h2>Strings</h2>
-<p>A string is a slice of bytes, <code>[]U8</code>, in UTF-8, and a string constant's bytes are constant. A <code>[8]U8</code> made from one is a copy you can change. Arrays and slices of integers compare with <code>=</code> and <code>#</code>, so strings do too. <code>Str</code> has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case and kinds of character, UTF-8, and numbers to and from text.</p>
+<p>A string is a slice of bytes, <code>[]U8</code>, in UTF-8, and a string constant is a <code>[]const U8</code>: a procedure that only reads a string takes that, and one that writes takes <code>[]U8</code>. A <code>[8]U8</code> made from one is a copy you can change. Arrays and slices of integers compare with <code>=</code> and <code>#</code>, so strings do too. <code>Str</code> has the rest: ordering, finding, hashing, prefixes and suffixes, trimming, taking apart, ASCII case and kinds of character, UTF-8, and numbers to and from text.</p>
 <div class="file"><span>Words.raz</span></div><pre class="code"><code><span class="kw">module</span> Words;
 <span class="kw">import</span> Out, Str;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> s: []<span class="ty">U8</span>; n: <span class="ty">I64</span>; ok: <span class="ty">BOOL</span>; name: [<span class="number">8</span>]<span class="ty">U8</span>;
+<span class="kw">var</span> s: []<span class="kw">const</span> <span class="ty">U8</span>; n: <span class="ty">I64</span>; ok: <span class="ty">BOOL</span>; name: [<span class="number">8</span>]<span class="ty">U8</span>;
 <span class="kw">begin</span>
     s := <span class="string">&quot;hello, world&quot;</span>;
     Out.str(s[<span class="number">7</span>..<span class="ty">LEN</span>(s)]); Out.ln;
@@ -221,7 +221,7 @@ RAZ
 <span class="kw">const</span> Text = <span class="string">&quot;name = raz\nkind = language\nyear = 2026\n&quot;</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> line, rest, key, val, w: []<span class="ty">U8</span>; more, ok: <span class="ty">BOOL</span>;
+<span class="kw">var</span> line, rest, key, val, w: []<span class="kw">const</span> <span class="ty">U8</span>; more, ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     <span class="comment">(* line by line, then each line at its = *)</span>
     line, rest, more := Str.cut(Text, <span class="string">&quot;\n&quot;</span>);
@@ -286,7 +286,7 @@ a raw string on one line, \n and all
 <span class="kw">import</span> Out, Str, Width;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> s: []<span class="ty">U8</span>; c: <span class="ty">I32</span>; i, size: <span class="ty">INT</span>; bytes: [<span class="number">4</span>]<span class="ty">U8</span>; k: <span class="ty">INT</span>;
+<span class="kw">var</span> s: []<span class="kw">const</span> <span class="ty">U8</span>; c: <span class="ty">I32</span>; i, size: <span class="ty">INT</span>; bytes: [<span class="number">4</span>]<span class="ty">U8</span>; k: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     s := <span class="string">&quot;caf\u{E9} \u{3BB}&quot;</span>;
     Out.int(<span class="ty">LEN</span>(s)); Out.str(<span class="string">&quot; bytes, &quot;</span>);

@@ -47,7 +47,7 @@
     TooBig*: <span class="ty">ERROR</span> = <span class="string">&quot;not a number up to 1000&quot;</span>;
 
 <span class="comment">(* the number s holds, up to 1000 *)</span>
-<span class="kw">proc</span> number(s: []<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
+<span class="kw">proc</span> number(s: []<span class="kw">const</span> <span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
 <span class="kw">var</span> n: <span class="ty">I64</span>; ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     <span class="kw">if</span> <span class="ty">LEN</span>(s) = <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, Empty; <span class="kw">end</span>;
@@ -57,7 +57,7 @@
 <span class="kw">end</span>;
 
 <span class="comment">(* the sum of the numbers in words: the first error ends it *)</span>
-<span class="kw">proc</span> total(words: [][]<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
+<span class="kw">proc</span> total(words: [][]<span class="kw">const</span> <span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
 <span class="kw">var</span> i, sum: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(words) - <span class="number">1</span> <span class="kw">do</span>
@@ -67,7 +67,7 @@
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> words: [<span class="number">3</span>][]<span class="ty">U8</span>; i, n: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
+<span class="kw">var</span> words: [<span class="number">3</span>][]<span class="kw">const</span> <span class="ty">U8</span>; i, n: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
 <span class="kw">begin</span>
     words := [<span class="string">&quot;42&quot;</span>, <span class="string">&quot;&quot;</span>, <span class="string">&quot;12345&quot;</span>];
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">2</span> <span class="kw">do</span>
@@ -103,7 +103,7 @@ nothing to read
     Range*: <span class="ty">ERROR</span> = <span class="string">&quot;out of range&quot;</span>;
 
 <span class="comment">(* a percentage, 0 to 100 *)</span>
-<span class="kw">proc</span> percent(s: []<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
+<span class="kw">proc</span> percent(s: []<span class="kw">const</span> <span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
 <span class="kw">var</span> n: <span class="ty">I64</span>; ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     <span class="kw">if</span> <span class="ty">LEN</span>(s) = <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, Empty; <span class="kw">end</span>;
@@ -114,7 +114,7 @@ nothing to read
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> main*;
-<span class="kw">var</span> inputs: [<span class="number">4</span>][]<span class="ty">U8</span>; i, n: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
+<span class="kw">var</span> inputs: [<span class="number">4</span>][]<span class="kw">const</span> <span class="ty">U8</span>; i, n: <span class="ty">INT</span>; err: <span class="ty">ERROR</span>;
 <span class="kw">begin</span>
     inputs := [<span class="string">&quot;42&quot;</span>, <span class="string">&quot;&quot;</span>, <span class="string">&quot;forty&quot;</span>, <span class="string">&quot;140&quot;</span>];
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span>
@@ -146,7 +146,7 @@ error: out of range
 <span class="kw">const</span> Missing*: <span class="ty">ERROR</span> = <span class="string">&quot;key missing&quot;</span>;
 
 <span class="comment">(* the number after &quot;n=&quot; in a line like &quot;n=17&quot; *)</span>
-<span class="kw">proc</span> value(line: []<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
+<span class="kw">proc</span> value(line: []<span class="kw">const</span> <span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
 <span class="kw">var</span> n: <span class="ty">I64</span>; ok: <span class="ty">BOOL</span>;
 <span class="kw">begin</span>
     <span class="kw">if</span> <span class="kw">not</span> Str.hasPrefix(line, <span class="string">&quot;n=&quot;</span>) <span class="kw">then</span> <span class="kw">return</span> <span class="number">0</span>, Missing; <span class="kw">end</span>;
@@ -156,7 +156,7 @@ error: out of range
 <span class="kw">end</span>;
 
 <span class="comment">(* the sum of the values of two lines: the first error ends it *)</span>
-<span class="kw">proc</span> sum(a, b: []<span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
+<span class="kw">proc</span> sum(a, b: []<span class="kw">const</span> <span class="ty">U8</span>): (<span class="ty">INT</span>, <span class="ty">ERROR</span>);
 <span class="kw">begin</span>
     <span class="kw">return</span> <span class="kw">try</span> value(a) + <span class="kw">try</span> value(b), <span class="ty">nil</span>;
 <span class="kw">end</span>;

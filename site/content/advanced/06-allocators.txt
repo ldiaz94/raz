@@ -22,6 +22,7 @@ The trick that lets one procedure find its state is the same one `Arena` uses: t
 ```raz Bump
 module Bump;
 import Mem;
+import SYSTEM;
 
 type
     Bump* = record
@@ -65,6 +66,7 @@ end Bump.
 ```raz Bumping run
 module Bumping;
 import Out, Bump;
+import SYSTEM;
 
 type Point = record x, y: INT; end;
 
@@ -73,19 +75,19 @@ var arena: [256]U8;           (* the allocator's whole world *)
 proc main*;
 var b: Bump.Bump; p, q: ^Point; many: INT; r: ^Point;
 begin
-    Bump.init(ADR(b), ADR(arena[0]), 256);
-    NEW(p, ADR(b.base));
-    NEW(q, ADR(b.base));
+    Bump.init(SYSTEM.ADR(b), SYSTEM.ADR(arena[0]), 256);
+    NEW(p, SYSTEM.ADR(b.base));
+    NEW(q, SYSTEM.ADR(b.base));
     p^.x := 1; q^.y := 2;
     Out.int(b.used); Out.str(" bytes used by two points\n");
     many := 2;
     repeat
-        NEW(r, ADR(b.base));
+        NEW(r, SYSTEM.ADR(b.base));
         if r # nil then INC(many); end;
     until r = nil;
     Out.int(many); Out.str(" points fit in 256 bytes\n");
-    Bump.reset(ADR(b));
-    NEW(r, ADR(b.base));
+    Bump.reset(SYSTEM.ADR(b));
+    NEW(r, SYSTEM.ADR(b.base));
     if r # nil then Out.str("room again after a reset\n"); end;
 end;
 
@@ -101,6 +103,7 @@ An allocator can wrap another. This one forwards to whatever it is given and kee
 ```raz Counted
 module Counted;
 import Mem;
+import SYSTEM;
 
 type
     Counted* = record
@@ -141,26 +144,27 @@ end Counted.
 
 ```raz Audit run
 module Audit;
-import Fmt, Heap, Mem, Buf, Counted, Names := List([]U8);
+import Fmt, Heap, Mem, Buf, Counted, Names := List([]const U8);
+import SYSTEM;
 
 proc main*;
 var c: Counted.Counted; b: Buf.Buf; l: Names.List; i: INT; p: ^U8;
 begin
-    Counted.init(ADR(c), Heap.heap);
-    Buf.init(b, ADR(c.base));
+    Counted.init(SYSTEM.ADR(c), Heap.heap);
+    Buf.init(b, SYSTEM.ADR(c.base));
     for i := 1 to 200 do Buf.str(b, "0123456789"); end;
     Fmt.print("a buffer of {} bytes took {} allocations\n",
         [Fmt.int(b.len), Fmt.int(c.allocs)]);
     Buf.done(b);
 
-    Names.init(l, ADR(c.base));
+    Names.init(l, SYSTEM.ADR(c.base));
     for i := 1 to 10 do _ := Names.push(l, "x"); end;
     Fmt.print("{} allocations in all, {} frees so far\n", [Fmt.int(c.allocs), Fmt.int(c.frees)]);
     Names.clear(l);
     Fmt.print("{} frees after clear\n", [Fmt.int(c.frees)]);
 
-    p := Mem.alloc(ADR(c.base), 64, 8);
-    Mem.free(ADR(c.base), p);
+    p := Mem.alloc(SYSTEM.ADR(c.base), 64, 8);
+    Mem.free(SYSTEM.ADR(c.base), p);
 end;
 
 end Audit.

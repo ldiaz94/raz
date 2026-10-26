@@ -93,7 +93,7 @@
 <h2><code>Map(K, V; hash, eq)</code></h2>
 <p>A hash map. Its key's hash and equality are procedure arguments, so any type can be a key. <code>put</code> replaces what a key maps to; <code>get</code> says what it maps to and whether it maps to anything; <code>remove</code> says whether the key was there. <code>next</code> walks the map: from 0, it gives the next entry and the number to pass for the one after, and -1 when there are no more.</p>
 <div class="file"><span>Ages.raz</span></div><pre class="code"><code><span class="kw">module</span> Ages;
-<span class="kw">import</span> Out, Fmt, Str, Heap, Book := Map([]<span class="ty">U8</span>, <span class="ty">INT</span>, Str.hash, Str.eq);
+<span class="kw">import</span> Out, Fmt, Str, Heap, Book := Map([]<span class="kw">const</span> <span class="ty">U8</span>, <span class="ty">INT</span>, Str.hash, Str.eq);
 
 <span class="kw">proc</span> main*;
 <span class="kw">var</span> m: Book.Map; age: <span class="ty">INT</span>; found, ok: <span class="ty">BOOL</span>; i: <span class="ty">INT</span>; v: <span class="ty">INT</span>;
@@ -131,11 +131,11 @@ linus: 0 (false)
 <p>Counting words, then listing them by count and then alphabetically: a <code>Map</code> for the counts, a <code>Vec</code> of records to sort, however many words there are, and <code>Sort</code> with a two-level <code>less</code>.</p>
 <div class="file"><span>Freq.raz</span></div><pre class="code"><code><span class="kw">module</span> Freq;
 <span class="kw">import</span> Fmt, Str, Heap,
-    Count := Map([]<span class="ty">U8</span>, <span class="ty">INT</span>, Str.hash, Str.eq),
+    Count := Map([]<span class="kw">const</span> <span class="ty">U8</span>, <span class="ty">INT</span>, Str.hash, Str.eq),
     Entries := Vec(Entry),
     Rank := Sort(Entry, before);
 
-<span class="kw">type</span> Entry = <span class="kw">record</span> word: []<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
+<span class="kw">type</span> Entry = <span class="kw">record</span> word: []<span class="kw">const</span> <span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
 
 <span class="kw">const</span> Text = <span class="string">&quot;the cat and the hat and the bat sat on the mat and the cat sat&quot;</span>;
 
@@ -149,7 +149,7 @@ linus: 0 (false)
 <span class="kw">proc</span> main*;
 <span class="kw">var</span>
     m: Count.Map; entries: Entries.Vec; i, k, found: <span class="ty">INT</span>;
-    w, rest: []<span class="ty">U8</span>; key: []<span class="ty">U8</span>; v: <span class="ty">INT</span>; all: []Entry;
+    w, rest: []<span class="kw">const</span> <span class="ty">U8</span>; key: []<span class="kw">const</span> <span class="ty">U8</span>; v: <span class="ty">INT</span>; all: []Entry;
 <span class="kw">begin</span>
     Count.init(m, Heap.heap);
     <span class="kw">defer</span> Count.done(m);

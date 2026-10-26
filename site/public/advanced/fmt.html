@@ -96,7 +96,7 @@ an I8: -5; braces: { and }
 <span class="kw">import</span> Out, Buf, Fmt, Heap;
 
 <span class="comment">(* &quot;name (age n)&quot;, built in a Buf the caller owns *)</span>
-<span class="kw">proc</span> describe(<span class="kw">var</span> b: Buf.Buf; name: []<span class="ty">U8</span>; age: <span class="ty">INT</span>);
+<span class="kw">proc</span> describe(<span class="kw">var</span> b: Buf.Buf; name: []<span class="kw">const</span> <span class="ty">U8</span>; age: <span class="ty">INT</span>);
 <span class="kw">begin</span>
     Fmt.write(b, <span class="string">&quot;{} (age {})&quot;</span>, [Fmt.str(name), Fmt.int(age)]);
 <span class="kw">end</span>;
@@ -123,7 +123,7 @@ an I8: -5; braces: { and }
 <span class="kw">import</span> Out;
 
 <span class="comment">(* s, then spaces up to width *)</span>
-<span class="kw">proc</span> left(s: []<span class="ty">U8</span>; width: <span class="ty">INT</span>);
+<span class="kw">proc</span> left(s: []<span class="kw">const</span> <span class="ty">U8</span>; width: <span class="ty">INT</span>);
 <span class="kw">var</span> i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     Out.str(s);
@@ -142,7 +142,7 @@ an I8: -5; braces: { and }
     Out.int(n);
 <span class="kw">end</span>;
 
-<span class="kw">proc</span> row(name: []<span class="ty">U8</span>; qty, price: <span class="ty">INT</span>);
+<span class="kw">proc</span> row(name: []<span class="kw">const</span> <span class="ty">U8</span>; qty, price: <span class="ty">INT</span>);
 <span class="kw">begin</span>
     left(name, <span class="number">10</span>);
     right(qty, <span class="number">5</span>);
@@ -172,7 +172,7 @@ shims        12      -4      -48
 <div class="file"><span>Dump.raz</span></div><pre class="code"><code><span class="kw">module</span> Dump;
 <span class="kw">import</span> Out;
 
-<span class="kw">proc</span> dump(data: []<span class="ty">U8</span>);
+<span class="kw">proc</span> dump(data: []<span class="kw">const</span> <span class="ty">U8</span>);
 <span class="kw">var</span> i: <span class="ty">INT</span>;
 <span class="kw">begin</span>
     <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(data) - <span class="number">1</span> <span class="kw">do</span>

@@ -5,7 +5,7 @@ summary: Laid out as C lays out a struct, packed records, pointers and nil.
 ```raz Boxes run
 ```
 
-A record is laid out as C lays out a struct. `{lo: ..., hi: ...}` builds one, naming its fields; the ones it leaves out are zero. `^Box` is a pointer to a `Box`, `ADR(b)` the address of `b`, and `b^` what a pointer points at. A pointer is never the record: it is `b^.lo`, never `b.lo`, so you always see where the memory is reached through an address.
+A record is laid out as C lays out a struct. `{lo: ..., hi: ...}` builds one, naming its fields; the ones it leaves out are zero. `^Box` is a pointer to a `Box`, `SYSTEM.ADR(b)` the address of `b`, and `b^` what a pointer points at. A pointer is never the record: it is `b^.lo`, never `b.lo`, so you always see where the memory is reached through an address.
 
 ## Copies and literals
 
@@ -49,7 +49,7 @@ A constant may be a record, or an array of them: a table the program reads but c
 module Planets;
 import Fmt;
 
-type Planet = record name: []U8; moons: INT; water: BOOL; end;
+type Planet = record name: []const U8; moons: INT; water: BOOL; end;
 
 const Inner: []Planet = [
     {name: "Mercury"},
@@ -95,7 +95,7 @@ end;
 end Layout.
 ```
 
-A field of a packed record may sit at any address, and is read and written like any other; but it has no address of its own to take with `ADR`.
+A field of a packed record may sit at any address, and is read and written like any other; but it has no address of its own to take with `SYSTEM.ADR`.
 
 ## Bytes as numbers and records: views
 
@@ -162,13 +162,14 @@ The type of a view is an integer, a real or a pointer, or a record or array made
 
 ## Pointers
 
-`ADR(x)` takes the address of a variable, `^T` is a pointer to a `T`, and `p^` is what it points at. A pointer that points nowhere is `nil`, and following it stops the program with a message that names the place, so a forgotten check is found at once instead of corrupting memory.
+`SYSTEM.ADR(x)` (a module that uses it says `import SYSTEM;`) takes the address of a variable, `^T` is a pointer to a `T`, and `p^` is what it points at. A pointer that points nowhere is `nil`, and following it stops the program with a message that names the place, so a forgotten check is found at once instead of corrupting memory.
 
 ```raz Pointers run
 module Pointers;
 import Out;
+import SYSTEM;
 
-type Counter = record hits: INT; name: []U8; end;
+type Counter = record hits: INT; name: []const U8; end;
 
 proc hit(c: ^Counter);
 begin
@@ -188,12 +189,12 @@ proc main*;
 var c: Counter; x, y: INT; p: ^INT;
 begin
     c.name := "front door";
-    hit(ADR(c)); hit(ADR(c)); hit(nil);
+    hit(SYSTEM.ADR(c)); hit(SYSTEM.ADR(c)); hit(nil);
     Out.str(c.name); Out.str(": "); Out.int(c.hits); Out.ln;
     x := 1; y := 2;
-    swap(ADR(x), ADR(y));
+    swap(SYSTEM.ADR(x), SYSTEM.ADR(y));
     Out.int(x); Out.char(' '); Out.int(y); Out.ln;
-    p := ADR(x);
+    p := SYSTEM.ADR(x);
     p^ := p^ + 40;
     Out.int(x); Out.ln;
 end;
@@ -208,6 +209,7 @@ A record may hold a pointer to its own type, which is how lists and trees are ma
 ```raz Chain run
 module Chain;
 import Out;
+import SYSTEM;
 
 type Node = record next: ^Node; val: INT; end;
 
@@ -218,7 +220,7 @@ begin
     for i := 0 to 3 do
         nodes[i].val := (i + 1) * 10;
         nodes[i].next := head;       (* each new one in front *)
-        head := ADR(nodes[i]);
+        head := SYSTEM.ADR(nodes[i]);
     end;
     n := head;
     while n # nil do
@@ -233,17 +235,18 @@ end Chain.
 
 ## A slice's pointer
 
-A slice is a pointer and a length, and a record can keep the two apart: an interpreter keeps a string so, and C takes one so. `LEN(s)` is the length. The pointer looks like `ADR(s[0])`, the address of the first element, and that works until the slice is empty: then there is no first element, `s[0]` is out of range, and the program stops.
+A slice is a pointer and a length, and a record can keep the two apart: an interpreter keeps a string so, and C takes one so. `LEN(s)` is the length. The pointer looks like `SYSTEM.ADR(s[0])`, the address of the first element, and that works until the slice is empty: then there is no first element, `s[0]` is out of range, and the program stops.
 
 ```raz Empty fail
 module Empty;
 import Out;
+import SYSTEM;
 
 type Span = record p: ^U8; n: INT; end;
 
-proc spanOf(s: []U8): Span;
+proc spanOf(s: []const U8): Span;
 begin
-    return {p: ADR(s[0]), n: LEN(s)};
+    return {p: SYSTEM.ADR(s[0]), n: LEN(s)};
 end;
 
 proc main*;
@@ -258,9 +261,9 @@ end;
 end Empty.
 ```
 
-`PTR(s)` is the pointer itself, a `^U8` for a `[]U8`, with no check. For a slice that isn't empty it is `ADR(s[0])`; for an empty one it is what the slice holds, `nil` for one never set. So nothing needs testing first, and `sp.p[0..sp.n]` makes the slice again, empty when `sp.n` is 0, whatever `sp.p` is:
+`SYSTEM.PTR(s)` is the pointer itself, a `^U8` for a `[]U8`, with no check. For a slice that isn't empty it is `SYSTEM.ADR(s[0])`; for an empty one it is what the slice holds, `nil` for one never set. So nothing needs testing first, and `sp.p[0..sp.n]` makes the slice again, empty when `sp.n` is 0, whatever `sp.p` is:
 
 ```raz Spans run
 ```
 
-Of an array, `PTR(a)` is the address of its first element, a `^T` where `ADR(a)` is a `^[n]T`. Reading through the pointer is as unchecked as through any pointer: the length is yours to keep with it. The compiler says so when the two are mixed up: a slice given where a pointer is wanted is an error whose help says to write `PTR(s)` and `LEN(s)`, and a pointer given where a slice is, `p[0..n]`.
+Of an array, `SYSTEM.PTR(a)` is the address of its first element, a `^T` where `SYSTEM.ADR(a)` is a `^[n]T`. Reading through the pointer is as unchecked as through any pointer: the length is yours to keep with it. The compiler says so when the two are mixed up: a slice given where a pointer is wanted is an error whose help says to write `PTR(s)` and `LEN(s)`, and a pointer given where a slice is, `p[0..n]`.
