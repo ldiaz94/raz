@@ -1361,7 +1361,7 @@ begin
         k := wordIndex(aw, ShuffleOps);
         if (an < 2) or (ao[0].kind # oXmm) or not isXM(1) then return bad(); end;
         if aw = "palignr" then
-            if (an # 3) or (ao[2].kind # oImm) then return bad(); end;
+            if (an # 3) or (ao[2].kind # oImm) or (ao[2].v < 0) or (ao[2].v > 255) then return bad(); end;
         elsif aw = "sha256rnds2" then
             if (an = 3) and ((ao[2].kind # oXmm) or (ao[2].r # 0)) then return bad(); end;
             if an > 3 then return bad(); end;
