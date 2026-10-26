@@ -160,6 +160,21 @@ for f in test/list/*.raz; do
     if $raz -S $f 2>&1 | cmp -s $want -; then pass=$((pass + 1))
     else echo "FAIL raz -S $f"; $raz -S $f 2>&1 | diff $want - | head; fail=$((fail + 1)); fi
 done
+# raz -S's form, as raz(1) states it: every line is blank, a procedure's
+# name (after a blank line), a source line (number to column 6, two spaces,
+# text) or an instruction (offset to column 14, two spaces, text); a jump
+# gives its target as a number
+if $raz -S test/list/Listing.raz 2>&1 | awk '
+    NR == 1 && $0 != "" { bad = "first line not blank" }
+    $0 == "" { blank = 1; next }
+    /^[A-Za-z0-9]+\.[A-Za-z0-9.]+:$/ { if (!blank) bad = "name after no blank: " $0; blank = 0; next }
+    { blank = 0 }
+    match($0, /^ *[0-9]+/) && (RLENGTH == 6 || RLENGTH == 14) && substr($0, RLENGTH + 1, 2) == "  " {
+        if (RLENGTH == 14 && $0 ~ /^ *[0-9]+  j[a-z]* / && $0 !~ /  j[a-z]* [0-9]+$/) bad = "jump with no offset: " $0
+        next }
+    { bad = "no form: " $0 }
+    END { if (bad != "") { print bad; exit 1 } }'; then pass=$((pass + 1))
+else echo "FAIL raz -S: a line not of raz(1)'s form"; fail=$((fail + 1)); fi
 # the report's version is the one the compiler says it follows
 # the version the compiler follows: the report's, or one it names while
 # the compiler catches up

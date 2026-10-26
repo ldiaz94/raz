@@ -200,6 +200,30 @@ place.
 .Nm
 .Cm run
 exits as the program does.
+.Sh LISTING
+The listing of
+.Fl S
+is in lines of three kinds, which a tool may read:
+.Bl -bullet -offset indent
+.It
+a blank line, then a procedure's name as
+.Ql Module.name: ;
+.It
+a source line: its number, right-aligned in 6 columns, two spaces, and
+the line's text as it is in the file;
+.It
+an instruction: its offset in the procedure, right-aligned in 14
+columns, two spaces, and the instruction as an assembler would read it;
+a jump within the procedure gives its target as an offset in the same
+way, and a call of a procedure names it.
+.El
+.Pp
+The listing is of the main module's live procedures, those the program
+uses, in the order their code was made.
+Nothing is disassembled: each instruction is the one the compiler meant
+to write.
+A source line comes before the first instruction made for it, and is
+not repeated until the line changes.
 .Sh EXAMPLES
 Compile and run hello, world:
 .Bd -literal -offset indent
