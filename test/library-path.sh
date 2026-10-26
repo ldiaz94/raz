@@ -190,6 +190,24 @@ t_user_paths_do_not_consume_include_slots() {
     succeeds $flags
 }
 
+# A directory given with a trailing slash, as -I or in RAZ_PATH, joins to
+# a module's name with no second slash, in the messages too.
+t_trailing_slash_keeps_sibling_paths() {
+    dir=$root/target
+    library "$dir" 42 .linux-x86_64
+    echo "module PathLib; const other* = 42; end PathLib." >"$dir/PathLib.raz"
+    for source in include user; do
+        if [ $source = include ]; then RAZ_PATH=; else RAZ_PATH=$dir/; fi
+        export RAZ_PATH
+        if [ $source = include ]; then compile -I "$dir/"; else compile; fi
+        [ $? = 1 ] || { echo "$source: expected status 1"; return 1; }
+        grep -F -q "isn't exported as in" "$root/err" || { echo "$source:"; cat "$root/err"; return 1; }
+        grep -F -q "$dir/PathLib.linux-x86_64.raz" "$root/err" || { echo "$source:"; cat "$root/err"; return 1; }
+        grep -F -q "$dir/PathLib.raz" "$root/err" || { echo "$source:"; cat "$root/err"; return 1; }
+        if grep -F -q "//" "$root/err"; then echo "$source: //"; cat "$root/err"; return 1; fi
+    done
+}
+
 # Module identity is the file's device and inode: a hard link to the
 # chosen file is the same file.
 t_hard_link_chooses_same_module() {
@@ -213,6 +231,35 @@ t_symbolic_link_to_distinct_module_does_not_choose() {
     fails "module PathLib is in"
 }
 
+# The main file at the root of a file system has "/" for its directory,
+# not "": its module's files for other targets are still compared. Needs
+# a chroot, made by an unprivileged user namespace; skipped without one.
+t_root_directory_interface() {
+    if ! unshare -r true 2>/dev/null; then
+        echo "skipped t_root_directory_interface: unshare -r not permitted"
+        return 0
+    fi
+    r=$root/chroot
+    mkdir -p "$r/out"
+    cp "$raz" "$r/raz"
+    cp -R "$(dirname "$raz")/lib" "$r/lib"
+    cat >"$r/iface.raz" <<'END'
+module iface;
+import Out, Variant;
+proc main*;
+begin Out.int(Variant.f); Out.ln; end;
+end iface.
+END
+    echo "module Variant; const f* = 1; end Variant." >"$r/Variant.raz"
+    # the target's file exports f too, so only the interface check can
+    # refuse it: unchecked, the program builds and prints 2
+    echo "module Variant; const f* = 2; const g* = 1; end Variant." >"$r/Variant.linux-x86_64.raz"
+    unshare -r chroot "$r" /raz -o /out/app /iface.raz >"$root/out" 2>"$root/err"
+    [ $? = 1 ] || { echo "expected status 1"; cat "$root/err"; return 1; }
+    grep -F -q "isn't exported as in" "$root/err" || { cat "$root/err"; return 1; }
+    if grep -F -q "//" "$root/err"; then cat "$root/err"; return 1; fi
+}
+
 for t in t_default t_colon_in_home t_empty_disables_default \
     t_list_replaces_default t_relative_and_empty_entries t_missing_home \
     t_no_recursion t_missing_module_lists_all_search_directories \
@@ -220,9 +267,10 @@ for t in t_default t_colon_in_home t_empty_disables_default \
     t_duplicate_main_and_include t_duplicate_user_directories \
     t_duplicate_standard_library \
     t_user_paths_do_not_consume_include_slots \
-    t_hard_link_chooses_same_module \
+    t_trailing_slash_keeps_sibling_paths t_hard_link_chooses_same_module \
     t_equal_contents_do_not_choose_distinct_module \
-    t_symbolic_link_to_distinct_module_does_not_choose; do
+    t_symbolic_link_to_distinct_module_does_not_choose \
+    t_root_directory_interface; do
     runcase $t
 done
 
