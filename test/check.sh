@@ -21,7 +21,7 @@
 
 raz=./raz
 # Fixtures use only their explicit module paths and the standard library.
-# library-path.py sets up its own HOME and RAZ_PATH for user-path checks.
+# library-path.sh sets up its own HOME and RAZ_PATH for user-path checks.
 RAZ_PATH=
 export RAZ_PATH
 out=build/check
@@ -403,7 +403,7 @@ else echo "FAIL an unused import, Width, changes the program"; fail=$((fail + 1)
 if test/editors.sh; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
 
 # Installed source libraries: default, explicit and isolated lookup.
-if python3 test/library-path.py "$raz"; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
+if test/library-path.sh "$raz"; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
 
 echo "$pass passed, $fail failed"
 [ $fail = 0 ]

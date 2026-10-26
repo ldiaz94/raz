@@ -1914,7 +1914,8 @@ and compiles it if it isn't yet. A module found in an `-I` or
 for and this one's, "0.21" for `0.21.0-5-g38d29a8`; the compiler only
 reads the file. `checkOneModule` first makes sure no
 later directory has the module too, unless the file is a link to one
-of its files there; `checkSiblings` then reads the files for other
+of its files there (a file's identity is its device and inode from `Sys.info`,
+which follows a symbolic link, as on every target); `checkSiblings` then reads the files for other
 targets beside it, declarations only, and `compareIface` holds them
 to the same exports by their fingerprints. A generic module is
 compiled once per distinct list of arguments, where it is first used.
