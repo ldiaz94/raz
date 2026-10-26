@@ -116,10 +116,16 @@ end;
 
 (* Encoding. An instruction is: a legacy prefix, REX, the opcode, ModRM,
    SIB and displacement. Opcodes of more than one byte are given with
-   their first byte in the low eight bits. *)
+   their first byte in the low eight bits; one ends at its last non-zero
+   byte, but for the three-byte ones (opcode below). *)
 
 proc opcode(op: INT);
 begin
+    (* 0F 38 and 0F 3A begin a three-byte opcode, whose last byte may be 00 *)
+    if (op & 0FDFFH) = 380FH then
+        Chunk.put1(op & 0FFH); Chunk.put1((op shr 8) & 0FFH); Chunk.put1((op shr 16) & 0FFH);
+        return;
+    end;
     repeat
         Chunk.put1(op & 0FFH);
         op := op shr 8;
@@ -1135,8 +1141,14 @@ const
     SseCodes: [7]INT = [51H, 58H, 59H, 5CH, 5DH, 5EH, 5FH];
     (* SSE2 integer instructions that work on 16 bytes at a time: 66 0F code,
        xmm and xmm or memory (pshufd also takes a byte) *)
-    PackedOps = " punpcklbw punpcklwd pcmpeqb pshufd pand pandn por pxor paddb psubb ";
-    PackedCodes: [10]INT = [60H, 61H, 74H, 70H, 0DBH, 0DFH, 0EBH, 0EFH, 0FCH, 0F8H];
+    PackedOps = " punpcklbw punpcklwd pcmpeqb pshufd pand pandn por pxor paddb psubb paddd punpcklqdq punpckhqdq ";
+    PackedCodes: [13]INT = [60H, 61H, 74H, 70H, 0DBH, 0DFH, 0EBH, 0EFH, 0FCH, 0F8H, 0FEH, 6CH, 6DH];
+    (* the same, xmm and xmm or memory, with a three-byte opcode: pshufb, palignr
+       (which also takes a byte), and the SHA extensions. sha256rnds2 takes xmm0
+       as an implied third operand, written or not *)
+    ShuffleOps = " pshufb palignr sha256rnds2 sha256msg1 sha256msg2 ";
+    ShufflePfx: [5]INT = [66H, 66H, 0, 0, 0];
+    ShuffleCodes: [5]INT = [380FH, 0F3A0FH, 0CB380FH, 0CC380FH, 0CD380FH];
     (* bit scans and counts: reg, reg or memory, with the prefix and code that tell them *)
     BitOps = " bsf bsr tzcnt lzcnt popcnt ";
     BitPfx: [5]INT = [0, 0, 0F3H, 0F3H, 0F3H];
@@ -1345,6 +1357,19 @@ begin
         if (an # 2) or (ao[0].kind # oXmm) or not isXM(1) then return bad(); end;
         k := 0FH | (SseCodes[wordIndex(aw[0..LEN(aw) - 2], SseOps)] shl 8);
         rm(realPfx(aw[LEN(aw) - 1] = 's'), false, k, ao[0].r, ao[1], false);
+    elsif wordIndex(aw, ShuffleOps) >= 0 then
+        k := wordIndex(aw, ShuffleOps);
+        if (an < 2) or (ao[0].kind # oXmm) or not isXM(1) then return bad(); end;
+        if aw = "palignr" then
+            if (an # 3) or (ao[2].kind # oImm) then return bad(); end;
+        elsif aw = "sha256rnds2" then
+            if (an = 3) and ((ao[2].kind # oXmm) or (ao[2].r # 0)) then return bad(); end;
+            if an > 3 then return bad(); end;
+        elsif an # 2 then
+            return bad();
+        end;
+        rm(ShufflePfx[k], false, ShuffleCodes[k], ao[0].r, ao[1], false);
+        if aw = "palignr" then Chunk.put1(INT(ao[2].v & 0FFH)); end;
     elsif wordIndex(aw, PackedOps) >= 0 then
         if (an < 2) or (ao[0].kind # oXmm) or not isXM(1) then return bad(); end;
         k := wordIndex(aw, PackedOps);

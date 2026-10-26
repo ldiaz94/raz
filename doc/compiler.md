@@ -1173,19 +1173,39 @@ operations of a kind their opcodes (`Alus`, `Unaries`, `Shifts`,
 `SseOps`, `Plain`; `PackedOps` the SSE2 integer operations on 16 bytes
 at a time, with `movdqu`, `movdqa` and `pmovmskb` beside them, and
 `BitOps` the bit scans and counts: `bsf`, `bsr`, `tzcnt`, `lzcnt`,
-`popcnt`). A kernel's instructions are there too, though the code
-generator never makes them: `cli`, `sti`, `iretq`, `swapgs`, `rdmsr`,
-`wrmsr`, `wbinvd`, `cld` and `std` in `Plain`; `push` of a constant (6A and a byte when it fits a signed byte, else 68 and four, sign-extended to 64 bits); `lgdt`, `lidt`, `invlpg`, `xsave` and
+`popcnt`; `ShuffleOps` the same SSE operands with a three-byte opcode:
+`pshufb`, `palignr`, `sha256rnds2`, `sha256msg1`, `sha256msg2`). A
+kernel's instructions are there too, though the code generator never makes them: `cli`, `sti`, `iretq`, `swapgs`, `rdmsr`,
+`wrmsr`, `wbinvd`, `cld` and `std` in `Plain`; `push` of a
+constant (6A and a byte when it fits a signed byte, else 68 and four,
+sign-extended to 64 bits); `lgdt`, `lidt`, `invlpg`, `xsave` and
 `xrstor`, of one memory operand, in `MemOps`; `ltr` of a 16-bit
 register; `mov` to and from `cr0`, `cr2`, `cr3`, `cr4` and `cr8` (an
 operand of its own kind, `oCr`); and `in` and `out`, of `al`, `ax` or
 `eax` and a port, a byte or `dx`. Each was checked against GNU `as`, and
-`test/run/AsmKernel.raz` reads their bytes back. Labels are chains of jumps, as below. `db` gives bytes it
-doesn't know. An error in an instruction is returned as an `ERROR`,
-which `assemble` passes up. An offset that doesn't fit in 32 bits
-(`mem`) can't be returned, since an operand has nowhere to give it: it
-is shown, and the compile goes on to its end. `RegNames` and `CondNames`
+`test/run/AsmKernel.raz` reads their bytes back. `opcode` writes the
+three-byte opcodes, `0F 38` and `0F 3A`, whole, since `pshufb`'s last
+byte is 00, where any other opcode ends at its last non-zero byte.
+Labels are chains of jumps, as below. `db` gives bytes it doesn't
+know. An error in an instruction is returned as an `ERROR`, which
+`assemble` passes up. An offset that doesn't fit in 32 bits (`mem`)
+can't be returned, since an operand has nowhere to give it: it is
+shown, and the compile goes on to its end. `RegNames` and `CondNames`
 are the names of the registers and conditions.
+
+*When an instruction joins the assembler.* The report leaves the
+instructions to the implementation, and `db` gives any other, which
+stays the answer for an instruction no program uses twice. An
+instruction joins when a program writes it in `db`, it is a member of
+a family the tables already hold (a code in `PackedOps`, an entry in
+`Plain`, `ShuffleOps`, ...), and its bytes are checked against GNU
+`as` (`.intel_syntax noprefix`, read back with `objdump`) in a test in
+`test/run/`, as `AsmKernel.raz` and `AsmSimd.raz` do, each form in
+registers and in memory, with the extended registers. AES-NI,
+`pclmulqdq` and AVX wait for a program. `sha256rnds2` takes `xmm0` as
+its implied third operand, which may be written or left out, as GNU
+`as` and NASM allow: `sha256rnds2 xmm1, xmm2, xmm0` and `sha256rnds2
+xmm1, xmm2` are the same bytes; any other third operand is an error.
 
 The listing, `raz -S`: with `listing` set (`setListing`), each routine
 of the encoder says, with `say`, the instruction it is about to write,

@@ -1,0 +1,31 @@
+paddd xmm1, xmm2: 66 0F FE CA
+paddd xmm9, xmm14: 66 45 0F FE CE
+paddd xmm0, [rdi]: 66 0F FE 07
+paddd xmm10, [r12 + rcx * 8 + 400]: 66 45 0F FE 94 CC 90 01 00 00
+punpcklqdq xmm1, xmm2: 66 0F 6C CA
+punpcklqdq xmm8, xmm3: 66 44 0F 6C C3
+punpcklqdq xmm2, [rax + 16]: 66 0F 6C 50 10
+punpckhqdq xmm1, xmm2: 66 0F 6D CA
+punpckhqdq xmm3, xmm15: 66 41 0F 6D DF
+punpckhqdq xmm7, [r9]: 66 41 0F 6D 39
+pshufb xmm1, xmm2: 66 0F 38 00 CA
+pshufb xmm8, xmm9: 66 45 0F 38 00 C1
+pshufb xmm0, [rdi]: 66 0F 38 00 07
+pshufb xmm12, [rsp + 32]: 66 44 0F 38 00 64 24 20
+pshufb xmm3, [r13 + 8]: 66 41 0F 38 00 5D 08
+palignr xmm1, xmm2, 8: 66 0F 3A 0F CA 08
+palignr xmm9, xmm0, 0: 66 44 0F 3A 0F C8 00
+palignr xmm2, [rdi + 16], 4: 66 0F 3A 0F 57 10 04
+palignr xmm11, [r12], 15: 66 45 0F 3A 0F 1C 24 0F
+sha256rnds2 xmm1, xmm2, xmm0: 0F 38 CB CA
+sha256rnds2 xmm9, xmm3, xmm0: 44 0F 38 CB CB
+sha256rnds2 xmm1, [rdi], xmm0: 0F 38 CB 0F
+sha256rnds2 xmm2, [r9 + rbx * 4 + 64], xmm0: 41 0F 38 CB 54 99 40
+sha256rnds2 xmm1, xmm2: 0F 38 CB CA
+sha256rnds2 xmm1, [rdi]: 0F 38 CB 0F
+sha256msg1 xmm1, xmm2: 0F 38 CC CA
+sha256msg1 xmm8, xmm15: 45 0F 38 CC C7
+sha256msg1 xmm3, [rsi + 32]: 0F 38 CC 5E 20
+sha256msg2 xmm1, xmm2: 0F 38 CD CA
+sha256msg2 xmm0, xmm9: 41 0F 38 CD C1
+sha256msg2 xmm4, [r10 + 8]: 41 0F 38 CD 62 08
