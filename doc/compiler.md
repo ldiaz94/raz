@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is twelve files of raz, about 12,700 lines of code (the
+The compiler is twelve files of raz, about 12,800 lines of code (the
 budget is 14,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -23,7 +23,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,621 | 1,330 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,846 | 1,989 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,835 | 4,116 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,845 | 4,121 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 408 | 316 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Host.raz` | 103 | 52 | The system running the compiler |
