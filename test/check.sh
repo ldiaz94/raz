@@ -165,7 +165,7 @@ $raz -lib test/own/lib -Werror -bare -o $out/own/OwnFail test/own/OwnFail.raz
 statusFail=$( { ( exec $out/own/OwnFail ) > $out/own/OwnFail.out 2>&1; echo $?; } 2>/dev/null )
 if [ $status = 3 ] && [ $statusFail = 2 ] && [ "$(cat $out/own/Own.out)" = hello ] \
     && [ "$(cat $out/own/OwnFail.out)" = 'check failed: 0' ] \
-    && readelf -s $out/own/Own | grep -q ' Own.main$'; then pass=$((pass + 1))
+    && readelf -s $out/own/Own | grep -q ' Own.main$' && readelf --debug-dump=decodedline $out/own/Own | grep -q 'Own.raz'; then pass=$((pass + 1))
 else echo "FAIL own Rt: status $status, $statusFail"; cat $out/own/Own.out $out/own/OwnFail.out; fail=$((fail + 1)); fi
 
 # what src/ asks of lib/ is what doc/compiler.md lists (test/asks.sh)

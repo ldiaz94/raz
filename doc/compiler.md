@@ -2340,8 +2340,9 @@ with `placer`; `startProfile` with `profiler`. A pair is both or neither:
 one of them alone stops the compiler with "Rt has calls but no teller",
 naming the other. `-s` leaves all of them out, and the ELF's symbols and
 line numbers with them. Without `-s`, an `Rt` that declares none still
-has its symbols in the ELF (what a debugger reads), but no line table, which
-lives in the places table. A failed check in such a program is told by
+has its symbols and line numbers in the ELF, what a debugger reads: the
+places table, which holds the line table, is made whatever `Rt` declares,
+and only its address is left out. A failed check in such a program is told by
 its address: `fail` is given `at`, an address inside the code, and it is
 for `Rt` to print it, or look it up in the symbols. A hosted program's
 `Rt` is raz's, which declares them all, so its output is as before.

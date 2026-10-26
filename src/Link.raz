@@ -77,6 +77,9 @@ begin
             end;
         end;
     end;
+    (* the places hold the line table a debugger reads, so they are made
+       even when Rt takes no address of them, a kernel's Rt with no places *)
+    if (placesChunk >= 0) and not Chunk.chunks[placesChunk].live then Chunk.setLive(placesChunk); end;
 end;
 
 (* Gives the live chunks of one section their places, from start;

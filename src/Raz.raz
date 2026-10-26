@@ -193,19 +193,19 @@ begin
 end;
 
 (* What Rt is given for telling where a failed check was, as far as it
-   declares it. The places table (and the line table in it) is made only
-   if Rt has `places`, a variable for its address; Rt's calls, place and
+   declares it. The places table, which holds the line table a debugger
+   reads, is always made (Link.markLive keeps it); Rt is given its
+   address only if it has `places`, a variable for it. Rt's calls, place and
    startProfile are linked to the variables teller, placer and profiler
    (profiled: unless -noprofile or -bare). An Rt that declares none of
    these, a kernel's, gets a failed check with only the raw address of
-   the failing call, as with -s, and still has the ELF's symbols. *)
+   the failing call, as with -s, and still has the ELF's symbols and
+   lines. *)
 proc giveRtPlaces(rt: ^Sym.Module; profiled: BOOL);
 begin
-    if declares(rt, "places") then
-        Link.setPlaces(Chunk.newChunk(Chunk.secRodata, -1, -1));
-        Chunk.setData(Link.placesChunk, nil, 0, 8);
-        addLink(Link.placesChunk, objIn(rt, "places"));
-    end;
+    Link.setPlaces(Chunk.newChunk(Chunk.secRodata, -1, -1));
+    Chunk.setData(Link.placesChunk, nil, 0, 8);
+    if declares(rt, "places") then addLink(Link.placesChunk, objIn(rt, "places")); end;
     addPair(rt, "calls", "teller");
     addPair(rt, "place", "placer");
     if profiled then addPair(rt, "startProfile", "profiler"); end;
