@@ -1885,6 +1885,18 @@ the matched type, or the message names both types. `compareIface` passes over an
 which its type's fingerprint has.
 
 Last, modules, at the end of the file. `compileFile` reads one module.
+`raz -strict`, until v0.24.0 makes it the rule, holds report 2026-10.37
+whole (`Item.strict`): `needSystem` refuses, in a module whose
+`Sym.Module.system` isn't set, a pointer's arithmetic, indexing and
+slicing, pointer and procedure conversions, views and `BYTES` that make
+or change an address (`Sym.isPlain`, the item's `viewOver`, checked in
+`notReadOnly`), a string as a `^U8`, `extern`, `link`, `check off` and
+code procedures; `builtin` refuses `ADR`, `PTR`, `SYSCALL` and `ARGV`
+not reached through `SYSTEM` (their objects' `home` tells them apart);
+a string, a slice of a constant, `MSG` and a slice of a `const`
+parameter's array are `[]const`; and an atomic given a pointer is
+refused.
+
 `import SYSTEM` (report 2026-10.37) finds no file: the import binds the
 name to `Sym.system`, a module made once in `Sym`'s body whose scope
 holds four of the built-ins, `ADR`, `PTR`, `SYSCALL` and `ARGV` (made by

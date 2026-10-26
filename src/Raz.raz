@@ -29,7 +29,7 @@
    Leaves out: the work itself; the other units compile, link and
    write, and this only reads the command line and runs them in order. *)
 module Raz;
-import Sys, Out, Version, Files, Fmt, Diag, Scan, Sym, Chunk, X64, Gen, Parse, Link, Elf;
+import Sys, Out, Version, Files, Fmt, Diag, Scan, Sym, Chunk, X64, Gen, Item, Parse, Link, Elf;
 
 const
     Report = "2026-10.37";   (* the version of doc/raz.md it follows *)
@@ -271,6 +271,9 @@ begin
             outPath := Files.arg(i);
         elsif s = "-Werror" then
             Diag.setWerror(true);
+        elsif s = "-strict" then
+            (* until v0.24.0: report 2026-10.37 held whole, its old forms refused *)
+            Item.setStrict(true);
         elsif s = "-S" then
             listing := true;
             X64.setListing(true);

@@ -389,6 +389,9 @@ otherwise.
   (`chooseRegs`). A pointer that isn't a variable, `ADR(x)`, is still
   taken as the old form until v0.24.0; a pointer variable is the new
   form, so `XADD(p, 1)` is an error whose help says `p^`.
+- `raz -strict` (temporary, until v0.24.0 makes it the default) refuses
+  every old form of report 2026-10.37: see `doc/compiler.md`. The
+  library and every program are mended against it first.
 - `import SYSTEM` (report 2026-10.37) binds to `Sym.system`, no file,
   whose scope holds `ADR`, `PTR`, `SYSCALL` and `ARGV`; it is never
   warned of as unused, and an alias is refused. In v0.23.0 nothing is

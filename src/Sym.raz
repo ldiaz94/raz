@@ -136,6 +136,7 @@ type
         used*: BOOL;         (* imported, through others, by the main module *)
         usesC*: BOOL;        (* has an extern, or links a library *)
         linkStatic*: BOOL;   (* says link static *)
+        system*: BOOL;       (* says import SYSTEM (report 3) *)
         libs*: ^Lib;         (* the libraries it links *)
         next*: ^Module;      (* modules in the order they were finished *)
     end;
@@ -153,7 +154,7 @@ const
 var
     tI8*, tI16*, tI32*, tI64*, tU8*, tU16*, tU32*, tU64*: ^Type;
     tInt*, tUInt*: ^Type;   (* INT and UINT, as big as an address: 8 bytes here *)
-    tBool*, tF32*, tReal*, tRConst*, tError*, tConst*, tNil*, tStr*, tNone*, tPtrU8*, tBytes*: ^Type;
+    tBool*, tF32*, tReal*, tRConst*, tError*, tConst*, tNil*, tStr*, tNone*, tPtrU8*, tBytes*, tConstBytes*: ^Type;
     tPoison*: ^Type;   (* of a name reported as not declared *)
     curModule*: ^Module;
     (* SYSTEM, the module the language gives, of what reaches memory
@@ -463,6 +464,23 @@ begin
     return false;
 end;
 
+(* Whether any bytes at all are a value of t that holds no address: an
+   integer or a real, or a record or array of these alone (report 3 and
+   6.9: what a view may write over outside a module that imports SYSTEM) *)
+proc isPlain*(t: ^Type): BOOL;
+var f: ^Obj;
+begin
+    if t^.form in {fInt, fReal} then return true; end;
+    if t^.form = fArray then return isPlain(t^.base); end;
+    if t^.form # fRecord then return false; end;
+    f := t^.fields;
+    while f # nil do
+        if not isPlain(f^.typ) then return false; end;
+        f := f^.next;
+    end;
+    return true;
+end;
+
 (* Whether a result field f is a single value of at most a word, not a real *)
 proc oneWord(f: ^Obj): BOOL;
 begin
@@ -707,6 +725,7 @@ begin
     o := newObj(cls, internOf(name), t);
     o^.val := v;
     o^.exported := true;
+    if s # 0 then o^.home := system; end;   (* one of SYSTEM's, told from the universe's *)
     _ := insert(o, s);
 end;
 
@@ -747,6 +766,9 @@ begin
     tPtrU8^.base := tU8;
     tBytes := newType(fSlice, 16, 8);
     tBytes^.base := tU8;
+    tConstBytes := newType(fSlice, 16, 8);   (* []const U8 *)
+    tConstBytes^.base := tU8;
+    tConstBytes^.rdonly := true;
     tPoison := newType(fInt, 8, 8);
     tPoison^.signed := true;
     enter("true", oConst, tBool, 1);

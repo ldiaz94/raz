@@ -1128,6 +1128,10 @@ begin
         if p.typ^.form # Sym.fPtr then
             return Scan.markAt(p.pos, say1("expected a variable, found {}", Item.what(p)));
         end;
+        if Item.strict then
+            return Scan.markHelp(p.pos, say1("{} takes a variable, not a pointer to it", atomicName(which)),
+                "give it the variable itself: XADD(n, 1), or XADD(p^, 1) through a pointer");
+        end;
         t := p.typ^.base;
         if not atomicType(t, which) then
             if which = Sym.bXadd then
@@ -1260,6 +1264,11 @@ proc builtin(var x: TItem): ERROR;
 var which, n, start: INT; y: TItem; t: PType; f: PObj; at: Diag.Pos;
 begin
     which := INT(x.obj^.val);
+    if Item.strict and (x.obj^.home # Sym.system)
+        and ((which = Sym.bAdr) or (which = Sym.bPtr) or (which = Sym.bSyscall) or (which = Sym.bArgv)) then
+        return Scan.markHelp(x.pos, say2("{} is SYSTEM's, and written SYSTEM.{}", nameOf(x.obj^.name), nameOf(x.obj^.name)),
+            "say import SYSTEM after the module's imports, and write the name after SYSTEM.");
+    end;
     if (which = Sym.bFence) or (which = Sym.bArgc) or (which = Sym.bArgv) then
         if Scan.tok = Scan.sLparen then Scan.next; try expect(Scan.sRparen); end;
         Item.makeConst(x, Sym.tNone, 0);
@@ -1481,6 +1490,7 @@ begin
     end;
     try Item.makeItem(x, o);
     if x.mode = Item.mBuiltin then
+        x.pos := Scan.spanFromAt(start);   (* its name, for a message *)
         try builtin(x);
         called := true;
     elsif x.mode = Item.mCase then
@@ -3540,6 +3550,7 @@ begin
     end;
     p^.fwd := false;
     if Scan.tok = Scan.sCode then
+        try Item.needSystem(Scan.tokPos(), "a code procedure");
         Scan.next;
         p^.isCode := true;
         try codeBody(p, sig, at);
@@ -3564,6 +3575,7 @@ end;
 proc externDecl: ERROR;
 var n: INT; exp: BOOL; o, q: PObj; t: PType; at: Diag.Pos;
 begin
+    try Item.needSystem(Scan.tokPos(), "extern");
     Scan.next;
     Sym.curModule^.usesC := true;
     if Scan.tok = Scan.sProc then
@@ -3776,6 +3788,10 @@ begin
         return Scan.mark(say1("expected {}, found an array literal", Sym.typeName(t)));
     end;
     try expression(e, t);
+    if Item.strict and (t^.form = Sym.fSlice) and not t^.rdonly then
+        return Scan.markHelp(e.pos, say1("a constant's slice is a []const, not {}", Sym.typeName(t)),
+            "a constant can't be changed: declare the slice []const");
+    end;
     if (e.mode = Item.mStr) and ((t^.form = Sym.fSlice) or (t^.form = Sym.fArray)) and (t^.base = Sym.tU8) then
         if t^.form = Sym.fSlice then
             try constFix(off, e.chunk);
@@ -4400,6 +4416,7 @@ begin
                         "every module that reaches memory through SYSTEM says so by that name: write import SYSTEM");
                 end;
                 o^.home := Sym.system;
+                m^.system := true;
                 named(o);   (* not warned of when only its features are used *)
             elsif not generic then
                 o^.home := try importModule(mname, iargs);
@@ -4426,6 +4443,7 @@ begin
         if (Scan.tok = Scan.sIdent) and (Scan.id = nameStatic) then
             m^.linkStatic := true;
         elsif Scan.tok = Scan.sString then
+            try Item.needSystem(Scan.tokPos(), "a link of a library");
             NEW(lib, Heap.heap);
             lib^.name := internName(Scan.strBytes());
             lib^.next := m^.libs;
@@ -4440,6 +4458,7 @@ begin
     (* check off;: the module's index and slice checks left out; neither
        word is reserved *)
     if (Scan.tok = Scan.sIdent) and (Scan.id = nameCheck) then
+        try Item.needSystem(Scan.tokPos(), "check off");
         Scan.next;
         if (Scan.tok # Scan.sIdent) or (Scan.id # nameOff) then return nil, expected("\"off\""); end;
         Scan.next;

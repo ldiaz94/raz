@@ -54,6 +54,9 @@ type
                                 of one, which only that module changes *)
         elemRo*: BOOL;       (* mVar: an element of a []const slice, or part of
                                 one, read through it and not written *)
+        viewOver*: BOOL;     (* a view over a variable that holds more than
+                                integers and reals, written only in a
+                                module that imports SYSTEM *)
         deref*: BOOL;        (* mVar: at an address from a pointer, which may be
                                 nil and isn't tested yet (nilTest) *)
         obj*: ^Sym.Obj;      (* mProc, mBuiltin, mCase; mVar: the variable named *)
@@ -80,6 +83,8 @@ var
                           procedure is compiled again, the variable in memory *)
     checks*: BOOL;     (* the module's index and slice checks are made: it
                           doesn't say check off *)
+    strict*: BOOL;     (* raz -strict: report 2026-10.37 held whole, as v0.24.0
+                          will hold it; until then, its old forms are taken *)
     result: ^Sym.Type; (* the result of the procedure being compiled, or nil *)
     passing: ^Sym.Obj; (* the parameter the argument at passingAt goes to *)
     passingAt: Diag.Pos;
@@ -92,6 +97,11 @@ end;
 proc setChecks*(yes: BOOL);
 begin
     checks := yes;
+end;
+
+proc setStrict*(yes: BOOL);
+begin
+    strict := yes;
 end;
 
 (* The comparison that holds when op doesn't *)
@@ -125,6 +135,18 @@ end;
 proc say1(f, a: []U8): []U8;
 begin
     return Diag.say(f, [Fmt.str(a)]);
+end;
+
+(* Under -strict, what reaches memory other than through a variable,
+   what, is refused at pos in a module that doesn't import SYSTEM
+   (report 3) *)
+proc needSystem*(pos: Diag.Pos; what: []U8): ERROR;
+begin
+    if strict and not Sym.curModule^.system then
+        return Scan.markHelp(pos, say1("{} needs import SYSTEM", what),
+            "it reaches memory other than through a variable: say import SYSTEM after the module's imports");
+    end;
+    return nil;
 end;
 
 proc say2(f, a, b: []U8): []U8;
@@ -550,6 +572,12 @@ begin
     return (x.mode = mVar) and x.ro and (x.obj # nil) and x.obj^.isConst;
 end;
 
+(* Whether x is a constant, or part of one, held in read-only data *)
+proc ofConst(const x: Item): BOOL;
+begin
+    return (x.mode = mVar) and (x.obj # nil) and (x.obj^.cls = Sym.oConst);
+end;
+
 (* Another module's exported variable can be read, not changed, nor
    handed to anything that could change it (report section 3); nor can
    what is only read, above. *)
@@ -559,6 +587,7 @@ begin
         return Scan.markHelp(x.pos, say1("{} is read through a []const slice, and can't be changed", Diag.source(x.pos)),
             "a []const slice's elements are only read: write them through a []T");
     end;
+    if x.view and x.viewOver then try needSystem(x.pos, "writing a view over what holds more than integers and reals"); end;
     if onlyRead(x) then
         return Scan.markHelp(x.pos, say1("{} is only read here, and can't be changed", Diag.source(x.pos)),
             "a const parameter, a constant, and the names a match gives their fields, are only read: take a var parameter to change it");
@@ -611,9 +640,14 @@ begin
     if x.mode = mCond then try value(x); end;
     s := x.typ;
     if x.mode = mStr then
+        if strict and (t^.form = Sym.fSlice) and (t^.base = Sym.tU8) and not t^.rdonly then
+            return mismatchHelp(x, say1("a string is a []const U8, not {}", Sym.typeName(t)),
+                "its bytes are constant: take a []const U8 where they are only read, or copy them");
+        end;
         if (t^.form = Sym.fSlice) and (t^.base = Sym.tU8) then
             try address(x); sliceOf(x, t, x.val);
         elsif (t^.form = Sym.fPtr) and (t^.base = Sym.tU8) then
+            try needSystem(x.pos, "a string as a ^U8");
             try address(x); x.mode := mStack; x.typ := t;
         elsif (t^.form = Sym.fArray) and (t^.base = Sym.tU8) and (t^.len >= x.val) then
             tmp := Gen.allocTemp(t^.size, 1);
@@ -651,6 +685,10 @@ begin
         (* a slice of what is only read may be made, to read, as of a
            constant; another module's array, or one read through a
            []const, only as a []const *)
+        if strict and (onlyRead(x) or ofConst(x)) and not t^.rdonly then
+            return mismatchHelp(x, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
+                say1("{} is only read: a slice of it is a []const", Diag.source(x.pos)));
+        end;
         if x.ro and not onlyRead(x) and not t^.rdonly then
             return Scan.markHelp(x.pos, Diag.say("{} is {}'s, and can't be changed outside it",
                 [Fmt.str(Diag.source(x.pos)), Fmt.str(Scan.nameOf(x.obj^.home^.name))]),
@@ -765,7 +803,9 @@ end;
 proc indexPrep*(var x: Item): ERROR;
 begin
     nilTest(x);
-    if x.mode = mStr then try coerce(x, Sym.tBytes); end;
+    if x.mode = mStr then
+        if strict then try coerce(x, Sym.tConstBytes); else try coerce(x, Sym.tBytes); end;
+    end;
     if (x.typ^.form = Sym.fPtr) and (x.typ^.base^.form = Sym.fArray) then
         return Scan.markAt(x.pos, "a pointer to an array is indexed as p^[i]");
     end;
@@ -794,6 +834,7 @@ begin
         return Scan.markAt(y.pos, say1("an index is an integer, found {}", what(y)));
     end;
     if t^.form = Sym.fPtr then
+        try needSystem(Diag.join(x.pos, y.pos), "indexing through a pointer");
         isConst := y.mode = mConst;
         try value(y);
         if isConst or not ((s = 1) or (s = 2) or (s = 4) or (s = 8)) then
@@ -848,7 +889,10 @@ begin
     (* a slice of another module's array, or of one read through a
        []const, is a []const; of a const parameter's, a slice to read *)
     roSlice := (t^.form = Sym.fSlice) and t^.rdonly;
-    if t^.form = Sym.fArray then roSlice := (x.ro and not onlyRead(x)) or x.elemRo; end;
+    if t^.form = Sym.fArray then
+        roSlice := (x.ro and not onlyRead(x)) or x.elemRo or (strict and (onlyRead(x) or ofConst(x)));
+    end;
+    if t^.form = Sym.fPtr then try needSystem(x.pos, "a slice of a pointer"); end;
     try value(hi);
     inFrame := x.frame and (t^.form # Sym.fPtr);
     tmp := Gen.allocTemp(16, 8);
@@ -952,7 +996,10 @@ begin
             "a view may be misaligned, which can't be one access: reach a device through a ^VOLATILE pointer to a record");
     end;
     u := notPlain(t);
-    if u = nil then return nil; end;
+    if u = nil then
+        if not Sym.isPlain(t) then try needSystem(x.pos, say1("a view as {}, which holds an address,", Sym.typeName(t))); end;
+        return nil;
+    end;
     if u # t then
         text := say2("can't view bytes as {}, which holds {}", Sym.typeName(t), Sym.typeName(u));
     else
@@ -1015,6 +1062,7 @@ begin
     inFrame := x.frame;
     if t^.form = Sym.fSlice then
         try bytesType(x, t^.base);
+        if not t^.rdonly and not Sym.isPlain(t^.base) then try needSystem(x.pos, "BYTES of what holds an address"); end;
         if (x.mode # mVar) or (x.base = Gen.bStack) then try copyToTemp(x); end;
         y := x;
         y.typ := Sym.tInt;
@@ -1050,6 +1098,7 @@ begin
     if x.odd then return Scan.markAt(x.pos, "BYTES can't take a field of a packed record, which has no address"); end;
     if x.view then return noAddress(x, "BYTES can't take a view"); end;
     try bytesType(x, t);
+    if not Sym.isPlain(t) then try needSystem(x.pos, "BYTES of what holds an address"); end;
     try address(x);
     sliceOf(x, Sym.tBytes, t^.size);
     x.frame := inFrame;
@@ -1068,13 +1117,16 @@ end;
 
 (* v.(T), where v is not an element: T must fit in v itself. *)
 proc view*(var x: Item; t: ^Sym.Type): ERROR;
+var over: BOOL;
 begin
     try viewable(x, t);
+    over := not Sym.isPlain(x.typ);
     if t^.size > x.typ^.size then
         return Scan.markAt(x.pos, Diag.say("a view of {} bytes doesn't fit in {}, of {}",
             [Fmt.int(t^.size), Fmt.str(Sym.typeName(x.typ)), Fmt.int(x.typ^.size)]));
     end;
     becomeView(x, t);
+    x.viewOver := over;
     return nil;
 end;
 
@@ -1093,7 +1145,7 @@ end;
    below it, is at least k. Through a pointer, no check: p[i] has none
    (report section 6.9). *)
 proc indexView*(var x, y: Item; t: ^Sym.Type): ERROR;
-var at: ^Sym.Type; s, k: I64;
+var at: ^Sym.Type; s, k: I64; over: BOOL;
 begin
     at := x.typ;
     s := at^.base^.size;
@@ -1129,7 +1181,9 @@ begin
         try index(x, y);
     end;
     try viewable(x, t);
+    over := not Sym.isPlain(x.typ);   (* the element's *)
     becomeView(x, t);
+    x.viewOver := over;
     return nil;
 end;
 
@@ -1542,6 +1596,7 @@ begin
         if (op # Scan.sEql) and (op # Scan.sNeq) then return doesntApply(op, x, y, xt); end;
         t := Sym.tBool;
     elsif (xt^.form = Sym.fPtr) and Sym.isInt(yt) and ((op = Scan.sPlus) or (op = Scan.sMinus)) then
+        try needSystem(Diag.join(x.pos, y.pos), "a pointer's arithmetic");
         t := xt; scale := INT(xt^.base^.size); isPtr := true;
         if y.mode = mConst then y.typ := Sym.tInt; end;
     elsif (xt^.form = Sym.fPtr) and (yt^.form = Sym.fPtr) and (op = Scan.sMinus) then
@@ -1845,8 +1900,10 @@ begin
             try value(x); Gen.realToInt(Gen.kindOf(s)); Gen.narrow(INT(t^.size), t^.signed);
         end;
     elsif (isWord(s) or (s^.form in {Sym.fConst, Sym.fPtr, Sym.fProc, Sym.fNil})) and (t^.form in {Sym.fPtr, Sym.fProc}) then
+        if s^.form # Sym.fNil then try needSystem(x.pos, say1("a conversion to {}", Sym.typeName(t))); end;
         if x.mode # mConst then try value(x); end;
     elsif (s^.form in {Sym.fPtr, Sym.fProc}) and isWord(t) then
+        try needSystem(x.pos, say1("a conversion of a pointer to {}", Sym.typeName(t)));
         try value(x);
     elsif Sym.isInt(s) and (t^.form = Sym.fBool) then
         return Scan.markHelp(x.pos, say1("can't convert {} to BOOL", Sym.typeName(s)),
@@ -2494,7 +2551,7 @@ begin
     try value(x);
     s := Gen.allocTemp(16, 8);
     Gen.errorText(s);
-    tempItem(x, Sym.tBytes, s);
+    if strict then tempItem(x, Sym.tConstBytes, s); else tempItem(x, Sym.tBytes, s); end;   (* the message is constant *)
     return nil;
 end;
 
