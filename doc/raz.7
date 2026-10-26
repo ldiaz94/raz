@@ -483,17 +483,17 @@ a value of its type.
 plus or minus
 .Ar k ,
 or 1; it wraps.
-.It Fn CAS p old new
-If
-.Ar p Ns ^
+.It Fn CAS v old new
+If the variable
+.Ar v
 is
 .Ar old ,
 set it to
 .Ar new
 and return true; atomically.
-.It Fn XCHG p x , Fn XADD p x
-Set, or add to,
-.Ar p Ns ^ ,
+.It Fn XCHG v x , Fn XADD v x
+Set, or add to, the variable
+.Ar v ,
 returning the value before; atomically.
 .It Fn ABS x
 .Ar x

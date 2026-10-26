@@ -1,0 +1,30 @@
+(* CAS, XCHG and XADD take a variable (report 6.8): a local, a field,
+   a module variable, or one reached through a pointer, of an INT, a
+   UINT or a pointer type; each returns the value before. *)
+module AtomicVar;
+import Fmt, Heap;
+
+type R = record n: INT; p: ^INT; end;
+
+var gp: ^INT;
+
+proc main*;
+var n, k, i: INT; u: UINT; r: R; q, old: ^INT; ok, swapped: BOOL;
+begin
+    n := 5;
+    k := XADD(n, 3);
+    for i := 1 to 10 do _ := XADD(n, 1); end;
+    ok := CAS(n, 18, 40);
+    swapped := CAS(n, 18, 50);
+    u := 1;
+    _ := XADD(u, 2);
+    _ := XCHG(r.n, 7);
+    NEW(q, Heap.heap);
+    _ := XADD(q^, 2);
+    _ := CAS(gp, nil, q);
+    old := XCHG(r.p, q);
+    Fmt.print("{} {} {} {} {} {}\n", [Fmt.int(n), Fmt.int(k), Fmt.bool(ok), Fmt.bool(swapped), Fmt.uint(u), Fmt.int(r.n)]);
+    Fmt.print("{} {} {}\n", [Fmt.int(q^), Fmt.bool(gp = q), Fmt.bool(old = nil)]);
+end;
+
+end AtomicVar.

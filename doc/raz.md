@@ -64,8 +64,11 @@ parameter or result may name a type declared later in its `type`
 section (sections 4 and 5.9); it breaks no program.
 2026-10.37 mends a defect: an array a call returns, or a record or
 variant holding one, lives to the end of the procedure the call is in,
-not of its statement, so a slice of it may be kept (section 8); it
-breaks no program.
+not of its statement, so a slice of it may be kept (section 8); and
+`CAS`, `XCHG` and `XADD` take the variable they work on, not a pointer
+to it (section 6.8). It breaks a program that gives them a pointer;
+this compiler, raz 0.23, still takes one that isn't a variable,
+`ADR(x)` say, as before.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -1019,9 +1022,9 @@ the same rules: `U8(300)` is 44. `U64(a = b)` is 0 or 1, and
 | `INC(v)`, `INC(v, k)` | adds 1, or `k`, to the integer variable `v`; it wraps, like `+` |
 | `DEC(v)`, `DEC(v, k)` | subtracts 1, or `k`, from `v` |
 | `FENCE` | a full memory barrier |
-| `CAS(p, old, new)` | if `p^ = old`, sets `p^ := new` and returns `true`; atomically |
-| `XCHG(p, x)` | sets `p^ := x` and returns the value before, atomically |
-| `XADD(p, x)` | adds `x` to `p^` and returns the value before, atomically |
+| `CAS(v, old, new)` | if `v = old`, sets `v := new` and returns `true`; atomically |
+| `XCHG(v, x)` | sets `v := x` and returns the value before, atomically |
+| `XADD(v, x)` | adds `x` to `v` and returns the value before, atomically |
 | `ABS(x)` | `x` without its sign, of `x`'s type; for an integer, `-x` if `x < 0`, so the smallest `I64` gives itself, as `-x` does; for a real, the sign cleared; `x` of a numeric type (section 6.1) |
 | `ROL(x, n)`, `ROR(x, n)` | `x` rotated left, or right, by `n` bits modulo its width; `x` of an unsigned integer type (section 6.1) |
 | `CLZ(x)`, `CTZ(x)` | the number of zero bits above the highest one in `x`, or below the lowest one, an `INT`; the width of `x`'s type if `x` is 0; `x` of an unsigned integer type |
@@ -1111,9 +1114,12 @@ any write may (section 7.6).
 read `v` and then write it: two accesses, even through a `^VOLATILE`
 pointer, and not atomic; `XADD` is the atomic one.
 
-For `CAS`, `XCHG` and `XADD`, `p` is a `^T` or `^VOLATILE T` where `T`
-is `INT`, `UINT` or a pointer type (`INT` or `UINT` for `XADD`), on
-every target. They are sequentially consistent, on every target; how a
+For `CAS`, `XCHG` and `XADD`, `v` is a variable, as for `INC`, of type
+`INT`, `UINT` or a pointer type (`INT` or `UINT` for `XADD`), on every
+target, and may be volatile: a counter shared between threads is
+`XADD(count, 1)`, one reached through a pointer `XADD(p^, 1)`. It is
+evaluated once, and must have an address, so a field of a packed
+record and a view are errors, as they are for `ADR`. They are sequentially consistent, on every target; how a
 machine without atomic instructions makes them so is the
 implementation's choice (appendix A).
 ### 6.9 Views

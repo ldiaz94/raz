@@ -108,7 +108,7 @@ var
     curResult: PType;    (* the result type of the procedure being compiled *)
     inExtern: BOOL;      (* reading an extern's signature: ... allowed *)
     tArgv, tBodySig: PType;
-    nameRt, nameFail, nameBody, nameStatic, nameCheck, nameOff, nameAdr: INT;
+    nameRt, nameFail, nameBody, nameStatic, nameCheck, nameOff, nameAdr, nameCas, nameXchg, nameXadd: INT;
     declaring: [MaxNames]INT;    (* the names the declaration being read declares *)
     numDeclaring: INT;
     skipped: BOOL;       (* the last statement had an error and was skipped *)
@@ -1085,21 +1085,57 @@ begin
     return Item.endCall(c, x);
 end;
 
+(* Whether an atomic built-in, which, works on a variable of type t:
+   an INT or a UINT, or for CAS and XCHG a pointer *)
+proc atomicType(t: PType; which: INT): BOOL;
+begin
+    return Item.isWord(t) or ((t^.form = Sym.fPtr) and (which # Sym.bXadd));
+end;
+
+(* The name of the atomic built-in which, for a message *)
+proc atomicName(which: INT): []U8;
+begin
+    if which = Sym.bCas then return "CAS"; end;
+    if which = Sym.bXchg then return "XCHG"; end;
+    return "XADD";
+end;
+
+(* CAS(v, old, new), XCHG(v, x) or XADD(v, x) (report 6.8): v is a
+   variable, whose address goes on the stack, as ADR's would. A pointer
+   that isn't a variable, ADR(v) say, is the form before report
+   2026-10.37, still taken: what it points at is the variable. *)
 proc atomic(var x: TItem; which: INT): ERROR;
 var p, a: TItem; t: PType; i, n: INT;
 begin
     try expression(p, nil);
-    if p.typ^.form # Sym.fPtr then
-        return Scan.markAt(p.pos, say1("expected a pointer, found {}", Item.what(p)));
-    end;
-    t := p.typ^.base;
-    if not (Item.isWord(t) or ((t^.form = Sym.fPtr) and (which # Sym.bXadd))) then
-        if which = Sym.bXadd then
-            return Scan.markAt(p.pos, say1("expected a pointer to an INT or a UINT, found {}", Sym.typeName(p.typ)));
+    if (p.mode = Item.mVar) and p.isVar then
+        t := p.typ;
+        if not atomicType(t, which) then
+            if (t^.form = Sym.fPtr) and atomicType(t^.base, which) then
+                return Scan.markHelp(p.pos, say1("{} works on an INT or a UINT variable, not a pointer", atomicName(which)),
+                    say1("for what the pointer points at, write {}^", Diag.source(p.pos)));
+            elsif which = Sym.bXadd then
+                return Scan.markAt(p.pos, say1("expected an INT or a UINT variable, found {}", Item.what(p)));
+            end;
+            return Scan.markAt(p.pos, say1("expected an INT, a UINT or a pointer variable, found {}", Item.what(p)));
         end;
-        return Scan.markAt(p.pos, say1("expected a pointer to an INT, a UINT or a pointer, found {}", Sym.typeName(p.typ)));
+        try Item.notReadOnly(p);
+        if p.odd then return Scan.markAt(p.pos, "a field of a packed record has no address"); end;
+        if p.view then return Item.noAddress(p, "an atomic can't take a view"); end;
+        try Item.address(p);
+    else
+        if p.typ^.form # Sym.fPtr then
+            return Scan.markAt(p.pos, say1("expected a variable, found {}", Item.what(p)));
+        end;
+        t := p.typ^.base;
+        if not atomicType(t, which) then
+            if which = Sym.bXadd then
+                return Scan.markAt(p.pos, say1("expected a pointer to an INT or a UINT, found {}", Sym.typeName(p.typ)));
+            end;
+            return Scan.markAt(p.pos, say1("expected a pointer to an INT, a UINT or a pointer, found {}", Sym.typeName(p.typ)));
+        end;
+        try Item.value(p);
     end;
-    try Item.value(p);
     if which = Sym.bCas then n := 2; else n := 1; end;
     for i := 1 to n do
         try expect(Scan.sComma);
@@ -3086,7 +3122,8 @@ end;
 (* Puts the busiest variables of the procedure, whose parameters are
    params and whose locals follow before, in registers: read ahead from
    its "begin" to its end, a use counts 1, in a loop 4, in two 16, in
-   three or more 64, and a variable ADR is taken of can't have one. A register costs a save
+   three or more 64, and a variable ADR, CAS, XCHG or XADD is given
+   can't have one, since they need its address. A register costs a save
    and a restore, so a variable used less than three times keeps its
    place in memory. A slice takes two, its pointer's and its length's;
    a real one of the xmm registers, stored and loaded again around each
@@ -3152,7 +3189,7 @@ begin
                 DEC(d);
             end;
         | sIdent:
-            if Scan.id = nameAdr then
+            if (Scan.id = nameAdr) or (Scan.id = nameCas) or (Scan.id = nameXchg) or (Scan.id = nameXadd) then
                 Scan.next;
                 if Scan.tok = Scan.sLparen then Scan.next; end;
                 (* a hugely negative weight bars it from a register, whatever
@@ -4739,6 +4776,9 @@ begin
     nameRt := internName("Rt");
     nameFail := internName("fail");
     nameAdr := internName("ADR");
+    nameCas := internName("CAS");
+    nameXchg := internName("XCHG");
+    nameXadd := internName("XADD");
     nameBody := internName("body");
     nameStatic := internName("static");
     nameCheck := internName("check");

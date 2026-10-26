@@ -1,0 +1,7 @@
+module AtomicPtr;
+var q: ^INT;
+proc main*;
+begin
+    _ := XADD(q, 1);
+end;
+end AtomicPtr.

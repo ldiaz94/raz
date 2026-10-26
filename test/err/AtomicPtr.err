@@ -1,0 +1,5 @@
+test/err/AtomicPtr.raz:5:15: error: XADD works on an INT or a UINT variable, not a pointer
+    5 |     _ := XADD(q, 1);
+      |               ^
+help: for what the pointer points at, write q^
+raz: 1 error

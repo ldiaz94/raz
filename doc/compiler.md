@@ -1963,6 +1963,14 @@ The built-in procedures are in `builtin` (and `new_`, `atomic`): each
 parses its own arguments, since `SIZE` takes a type and `INC` a
 variable.
 
+`CAS`, `XCHG` and `XADD` (report 2026-10.37) take a variable, as `INC`
+does: `atomic` pushes its address, as `ADR` would, and `Gen.atomic`
+works through it as before, so the code is the same as for
+`XADD(ADR(n), 1)`. A first argument that is a pointer but no variable,
+`ADR(n)`, is the form before 10.37, kept until v0.24.0. Since the
+address is taken, `chooseRegs` keeps a local named in one in memory,
+as it does one named in `ADR`.
+
 `SIZE(T.f)` and `OFFSET(T, f)` (report 2026-10.36) read the type with
 `parseType` and then the field with `typeField`. The name before a `.`
 in a type can only be a module's, so `parseType` reads `M.T` whole,

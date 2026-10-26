@@ -265,3 +265,7 @@ at the time.
   temporary holding one; a slice of it may be kept in a variable for
   the rest of the procedure (sections 7.3, 8 and 10). It breaks no
   program.
+  And `CAS`, `XCHG` and `XADD` take the variable they work on, as `INC`
+  does, not a pointer to it (section 6.8): `XADD(count, 1)`,
+  `XADD(p^, 1)`. It breaks a program that gives them a pointer; raz
+  0.23 still takes one that isn't a variable, `ADR(x)`, until 0.24.

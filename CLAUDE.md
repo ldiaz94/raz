@@ -374,6 +374,12 @@ otherwise.
   type there, and its help says it would be `nil`. A slice where its
   element's pointer is wanted, and a pointer where a slice is, are
   errors whose help names `PTR(s)` and `LEN(s)`, or `p[0..n]`.
+- `CAS(v, old, new)`, `XCHG(v, x)` and `XADD(v, x)` (report 2026-10.37)
+  take a variable, whose address is pushed as `ADR`'s is (`atomic`); a
+  local named in one is kept out of a register, as for `ADR`
+  (`chooseRegs`). A pointer that isn't a variable, `ADR(x)`, is still
+  taken as the old form until v0.24.0; a pointer variable is the new
+  form, so `XADD(p, 1)` is an error whose help says `p^`.
 - `ROL(x, n)` and `ROR(x, n)` (report 2026-10.35) are done at `x`'s
   own width, `rol al, cl` for a `U8`, with no mask of the count: x86
   takes it modulo 32 or 64, and a byte's or a word's rotation goes
