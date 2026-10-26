@@ -2213,9 +2213,10 @@ lists files, the environment and the working directory through the
 library (`Sys`, `Files`), and `Files.argCount` and `Files.arg` give it
 its command line.
 
-- `libraryDir`: the directory of the standard library. Linux's is the
-  `lib` beside raz, found by `/proc/self/exe` so that a link to raz
-  works, or, with no `/proc`, beside argument 0.
+- `libraryDir`: the directory of the standard library when `-lib`
+  doesn't name one. Linux's is the `lib` beside raz, found by
+  `/proc/self/exe` so that a link to raz works, or, with no `/proc`,
+  beside argument 0.
 - `cLibrary`: `CLib = (none, glibc, musl)`, the C library a program that
   uses C is linked against when `-libc` doesn't say. `none` says the
   host can't make such a program, and `Raz` refuses one when it finds
@@ -2294,6 +2295,13 @@ keeps its slices in `userDirs`, separate from the 16 `-I` directories. `searchDi
 puts them between those and the standard library, for both finding
 modules and checking duplicate names. No subdirectories are searched.
 
+`-lib dir` makes `dir` the library: `Raz.raz` reads it with the other
+options, stops with "-lib dir: no such directory" if `Sys.access` can't
+reach it, and gives it to `Parse.setLibDir` in place of
+`Host.libraryDir()`. It changes nothing else: `searchDir` still puts
+the library last, after `-I` and `RAZ_PATH`, and the duplicate check
+(a symbolic link to one of the two files chooses it) is as before.
+
 ## A program with its own Rt
 
 A hosted program uses `lib/Rt.raz`. A freestanding one, a kernel's
@@ -2302,16 +2310,14 @@ asks of it and what a program's start may count on. Where this and the
 code disagree, the code (`Gen.entryPoint`, `Raz.raz`) is right.
 
 **Giving a program its own `Rt`.** A program has one module of each
-name, and the library is the `lib/` beside the compiler (`Raz.raz` finds
-it through `/proc/self/exe`), so an `Rt.raz` beside the main file meets
-`lib/Rt.raz` and is refused. What works today is staging: copy `raz`
-beside a `lib/` holding the program's own modules, and build with that
-copy. The library is then all of what is in that `lib/`, and nothing of
-raz's unless the program copies or links it there (a symbolic link
-chooses a module). `test/own` does it: `check.sh` copies `raz` to
-`build/check/own/`, with `test/own/lib/Rt.raz` as its whole library,
-and builds `test/own/Own.raz` and `OwnFail.raz` with it, under `-bare
--s`.
+name, and the library is `lib/` beside the compiler, so an `Rt.raz`
+beside the main file meets `lib/Rt.raz` and is refused. `raz -lib DIR`
+makes `DIR` the library instead: the program's own `Rt` and `Sys`, and
+symbolic links to whichever of raz's modules it takes (a link chooses a
+module, as always). The library is all of what is in `DIR`, and nothing
+of raz's unless it is linked there. `test/own` does it: `check.sh`
+builds `test/own/Own.raz` and `OwnFail.raz` with `-lib test/own/lib`,
+whose `Rt.raz` is the whole library, under `-bare -s`.
 
 **What `Rt` must declare.** `Raz.raz` finds each name in `Rt`'s scope
 (`objIn`) and stops with "Rt has no X" where one is missing:

@@ -177,6 +177,35 @@ t_duplicate_standard_library() {
     fails "module Out is in"
 }
 
+# -lib DIR: a copy of the library, which the program uses instead of the
+# one beside raz; PathLib comes from -I, so the library is searched last
+t_lib_replaces_standard_library() {
+    cp -R "$(dirname "$raz")/lib" "$root/mylib"
+    library "$root/inc"
+    succeeds -I "$root/inc" -lib "$root/mylib"
+}
+
+# -lib changes where the library is, not the order: a module in both the
+# library and an -I directory is found twice
+t_lib_is_searched_last() {
+    cp -R "$(dirname "$raz")/lib" "$root/mylib"
+    library "$root/inc"
+    echo "module Out; end Out." >"$root/inc/Out.raz"
+    fails "module Out is in" -I "$root/inc" -lib "$root/mylib"
+}
+
+# RAZ_PATH still finds PathLib, the library coming after it
+t_lib_leaves_user_path_alone() {
+    cp -R "$(dirname "$raz")/lib" "$root/mylib"
+    library "$root/user"
+    RAZ_PATH="$root/user"; export RAZ_PATH
+    succeeds -lib "$root/mylib"
+}
+
+t_lib_missing_directory() {
+    fails "-lib $root/nowhere: no such directory" -lib "$root/nowhere"
+}
+
 t_user_paths_do_not_consume_include_slots() {
     library "$default"
     flags=
@@ -266,6 +295,8 @@ for t in t_default t_colon_in_home t_empty_disables_default \
     t_no_path_expansion t_target_file_and_interface \
     t_duplicate_main_and_include t_duplicate_user_directories \
     t_duplicate_standard_library \
+    t_lib_replaces_standard_library t_lib_is_searched_last \
+    t_lib_leaves_user_path_alone t_lib_missing_directory \
     t_user_paths_do_not_consume_include_slots \
     t_trailing_slash_keeps_sibling_paths t_hard_link_chooses_same_module \
     t_equal_contents_do_not_choose_distinct_module \

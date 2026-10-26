@@ -42,7 +42,9 @@ then in the library,
 .Pa lib/
 beside the
 .Nm
-executable, whose modules
+executable (or the one
+.Fl lib
+names), whose modules
 .Xr raz-lib 3
 says.
 A program has one module of each name: a module found in two of these
@@ -98,6 +100,27 @@ of one line such as
 a second line says the raz the library was written for and this one:
 .Ql (a library written for raz 0.18; this is raz 0.21) .
 The compiler only reads the file; it never refuses to build for it.
+.It Fl lib Ar dir
+The standard library is
+.Ar dir ,
+not the
+.Pa lib/
+beside the
+.Nm
+executable.
+It is searched last, after the main module's directory, the
+.Fl I
+directories and the user library directories, as the default library is;
+the duplicate-module rule and its symbolic-link exception apply to it
+unchanged.
+It is an error if
+.Ar dir
+cannot be reached.
+A kernel's library holds its own
+.Pa Rt.raz
+and
+.Pa Sys.raz ,
+with symbolic links to the modules of raz's own library that it takes.
 .It Fl Werror
 A warning counts as an error.
 .It Fl S

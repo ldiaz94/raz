@@ -126,6 +126,8 @@ begin
     Out.str("options:\n");
     Out.str("  -o file      the program's file, Main without .raz if left out\n");
     Out.str("  -I dir       looks for imported modules in dir too, after Main.raz's own\n");
+    Out.str("  -lib dir     the standard library is dir, not the lib beside raz; it is\n");
+    Out.str("               searched last, after -I and RAZ_PATH\n");
     Out.str("  -Werror      a warning counts as an error\n");
     Out.str("  -S           lists the main module's code, under each line of source\n");
     Out.str("  -s           strips symbols, line numbers, the places a failure is told\n");
@@ -230,9 +232,11 @@ var
     i, first, entry, last, base: INT;
     m, rt, thread: ^Sym.Module; mainObj: ^Sym.Obj;
     run, noProfile, listing, dynamic, libcSaid, ok, bare: BOOL; err: ERROR;
+    libDir: []const U8;
 begin
     path := "";
     outPath := "";
+    libDir := "";
     noProfile := false;
     bare := false;
     listing := false;
@@ -245,6 +249,12 @@ begin
             INC(i);
             if Parse.numInc > 15 then Diag.fatal("more than 16 -I directories"); end;
             Parse.addIncDir(Files.arg(i));
+        elsif s = "-lib" then
+            INC(i);
+            libDir := Files.arg(i);
+            if (LEN(libDir) = 0) or (Sys.access(libDir, {}) # 0) then
+                Diag.fatal(say1("-lib {}: no such directory", libDir));
+            end;
         elsif s = "-o" then
             INC(i);
             outPath := Files.arg(i);
@@ -300,7 +310,8 @@ begin
     end;
     if not libcSaid then Elf.setMusl(Host.cLibrary() = Host.musl); end;
     Parse.setVersion(Version.Text);
-    Parse.setLibDir(Host.libraryDir());
+    if LEN(libDir) = 0 then libDir := Host.libraryDir(); end;
+    Parse.setLibDir(libDir);
     userLibraries();
     if LEN(outPath) = 0 then
         outPath := path;
