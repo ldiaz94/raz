@@ -52,6 +52,8 @@ type
                                 misaligned, and with no address *)
         ro*: BOOL;           (* mVar: another module's exported variable, or part
                                 of one, which only that module changes *)
+        elemRo*: BOOL;       (* mVar: an element of a []const slice, or part of
+                                one, read through it and not written *)
         deref*: BOOL;        (* mVar: at an address from a pointer, which may be
                                 nil and isn't tested yet (nilTest) *)
         obj*: ^Sym.Obj;      (* mProc, mBuiltin, mCase; mVar: the variable named *)
@@ -553,6 +555,10 @@ end;
    what is only read, above. *)
 proc notReadOnly*(const x: Item): ERROR;
 begin
+    if x.elemRo then
+        return Scan.markHelp(x.pos, say1("{} is read through a []const slice, and can't be changed", Diag.source(x.pos)),
+            "a []const slice's elements are only read: write them through a []T");
+    end;
     if onlyRead(x) then
         return Scan.markHelp(x.pos, say1("{} is only read here, and can't be changed", Diag.source(x.pos)),
             "a const parameter, a constant, and the names a match gives their fields, are only read: take a var parameter to change it");
@@ -587,6 +593,16 @@ end;
 proc noAddress*(x: Item; text: []U8): ERROR;
 begin
     return Scan.markHelp(x.pos, text, "a view has no address, since it may be misaligned: copy it to a variable");
+end;
+
+(* The []const T of the slice type t, for a message *)
+proc constOf(t: ^Sym.Type): ^Sym.Type;
+var c: ^Sym.Type;
+begin
+    c := Sym.newType(Sym.fSlice, 16, 8);
+    c^.base := t^.base;
+    c^.rdonly := true;
+    return c;
 end;
 
 proc coerce*(var x: Item; t: ^Sym.Type): ERROR;
@@ -626,10 +642,21 @@ begin
     elsif (s^.form = Sym.fPtr) and (t^.form = Sym.fPtr) and t^.vol and not s^.vol
         and Sym.same(s^.base, t^.base) then
         x.typ := t;
+    elsif (s^.form = Sym.fSlice) and (t^.form = Sym.fSlice) and t^.rdonly and Sym.same(s^.base, t^.base) then
+        x.typ := t;   (* a []T is a []const T as it is: its elements only read *)
+    elsif (s^.form = Sym.fSlice) and (t^.form = Sym.fSlice) and s^.rdonly and Sym.same(s^.base, t^.base) then
+        return mismatchHelp(x, say2("can't use {} as {}", Sym.typeName(s), Sym.typeName(t)),
+            "its elements are only read, and a []T could write them");
     elsif (s^.form = Sym.fArray) and (t^.form = Sym.fSlice) and Sym.same(s^.base, t^.base) then
         (* a slice of what is only read may be made, to read, as of a
-           constant; another module's array can't be lent to be written *)
-        if not onlyRead(x) then try notReadOnly(x); end;
+           constant; another module's array, or one read through a
+           []const, only as a []const *)
+        if x.ro and not onlyRead(x) and not t^.rdonly then
+            return Scan.markHelp(x.pos, Diag.say("{} is {}'s, and can't be changed outside it",
+                [Fmt.str(Diag.source(x.pos)), Fmt.str(Scan.nameOf(x.obj^.home^.name))]),
+                say1("it may be read as a {}", Sym.typeName(constOf(t))));
+        end;
+        if not onlyRead(x) and not t^.rdonly then try notReadOnly(x); end;
         if x.vol then return Scan.markAt(x.pos, "can't make a slice through a volatile pointer"); end;
         if x.odd then return Scan.markAt(x.pos, "can't make a slice of a field of a packed record"); end;
         if x.view then return noAddress(x, "can't make a slice of a view"); end;
@@ -714,7 +741,7 @@ begin
     end;
     try value(x);
     x.mode := mVar; x.base := Gen.bStack; x.off := 0; x.deref := true;
-    x.typ := t^.base; x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false;
+    x.typ := t^.base; x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false; x.elemRo := false;
     x.view := false; x.frame := false;
     return nil;
 end;
@@ -775,6 +802,7 @@ begin
         else Gen.indexPtr(s); end;
         x.mode := mVar; x.base := Gen.bStack; x.off := 0;
         x.vol := t^.vol; x.isVar := true; x.odd := false; x.ro := false; x.view := false;
+        x.elemRo := false;
     elsif (t^.form = Sym.fArray) and (y.mode = mConst) then
         if (y.val < 0) or (y.val >= t^.len) then
             return Scan.markAt(y.pos, Diag.say("index {} is out of range for a length of {}", [Fmt.int(y.val), Fmt.int(t^.len)]));
@@ -790,6 +818,7 @@ begin
         try value(y);
         Gen.indexSlice(adrOf(x), s, 0, checks, y.pos);
         x.base := Gen.bStack; x.off := 0; x.isVar := true; x.vol := false; x.ro := false;
+        x.elemRo := t^.rdonly;
     end;
     x.typ := t^.base;
     (* an element of an array lies where the array does; one of a slice or
@@ -807,7 +836,7 @@ begin
 end;
 
 proc slice*(var x, lo, hi: Item): ERROR;
-var t, st: ^Sym.Type; tmp: I64; inFrame: BOOL;
+var t, st: ^Sym.Type; tmp: I64; inFrame, roSlice: BOOL;
 begin
     t := x.typ;
     if not Sym.isInt(hi.typ) then
@@ -816,7 +845,10 @@ begin
     if x.vol then return Scan.markAt(x.pos, "can't make a slice through a volatile pointer"); end;
     if x.odd then return Scan.markAt(x.pos, "can't make a slice of a field of a packed record"); end;
     if x.view then return noAddress(x, "can't make a slice of a view"); end;
-    if (t^.form = Sym.fArray) and not onlyRead(x) then try notReadOnly(x); end;   (* as in coerce *)
+    (* a slice of another module's array, or of one read through a
+       []const, is a []const; of a const parameter's, a slice to read *)
+    roSlice := (t^.form = Sym.fSlice) and t^.rdonly;
+    if t^.form = Sym.fArray then roSlice := (x.ro and not onlyRead(x)) or x.elemRo; end;
     try value(hi);
     inFrame := x.frame and (t^.form # Sym.fPtr);
     tmp := Gen.allocTemp(16, 8);
@@ -824,6 +856,7 @@ begin
     else Gen.slice(adrOf(x), t^.form = Sym.fArray, t^.len, t^.base^.size, tmp, checks, lo.pos); end;
     st := Sym.newType(Sym.fSlice, 16, 8);
     st^.base := t^.base;
+    st^.rdonly := roSlice;
     tempItem(x, st, tmp);
     x.frame := inFrame;
     return nil;
@@ -972,7 +1005,7 @@ end;
    both can be read: a call's two words, or a slice reached through an
    address on the stack, go to a temporary first. *)
 proc bytesOf*(var x: Item): ERROR;
-var t: ^Sym.Type; inFrame: BOOL; y: Item; s: I64;
+var t, bt: ^Sym.Type; inFrame: BOOL; y: Item; s: I64;
 begin
     if x.mode = mStr then
         return Scan.markHelp(x.pos, "BYTES can't take a string constant",
@@ -993,7 +1026,15 @@ begin
         s := Gen.allocTemp(16, 8);
         Gen.popVar(frameAdr(s + 8), 8);
         Gen.popVar(frameAdr(s), 8);
-        tempItem(x, Sym.tBytes, s);
+        if t^.rdonly then
+            (* the bytes of a []const T are only read too: a []const U8 *)
+            bt := Sym.newType(Sym.fSlice, 16, 8);
+            bt^.base := Sym.tU8;
+            bt^.rdonly := true;
+            tempItem(x, bt, s);
+        else
+            tempItem(x, Sym.tBytes, s);
+        end;
         x.frame := inFrame;
         return nil;
     end;
@@ -1082,6 +1123,7 @@ begin
         try value(y);
         Gen.indexSlice(adrOf(x), s, k - 1, checks, y.pos);
         x.base := Gen.bStack; x.off := 0; x.isVar := true; x.vol := false; x.ro := false;
+        x.elemRo := at^.rdonly;
         x.typ := at^.base;
     else
         try index(x, y);
@@ -2375,6 +2417,10 @@ end;
 proc destSlice(var d: Item; text: []U8): ERROR;
 begin
     if (d.typ^.form = Sym.fArray) and (d.mode = mVar) then try notReadOnly(d); end;
+    if (d.typ^.form = Sym.fSlice) and d.typ^.rdonly then
+        return Scan.markHelp(d.pos, say1("{} is a []const slice, whose elements can't be changed", Diag.source(d.pos)),
+            "write them through a []T");
+    end;
     if not isSeq(d.typ) or (d.mode = mStr) or ((d.typ^.form = Sym.fArray) and ((d.mode # mVar) or not d.isVar)) then
         return Scan.markAt(d.pos, say1(text, what(d)));
     end;

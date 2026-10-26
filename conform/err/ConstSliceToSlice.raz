@@ -1,0 +1,16 @@
+(* A []const T doesn't go where a []T is wanted, which could write
+   its elements (report sections 5.3 and 5.10). *)
+module ConstSliceToSlice;
+
+proc fill(s: []U8);
+begin
+    FILL(s, 0);
+end;
+
+proc main*;
+var r: []const U8;
+begin
+    fill(r);
+end;
+
+end ConstSliceToSlice.

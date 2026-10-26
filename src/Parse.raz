@@ -928,6 +928,7 @@ begin
         if Scan.tok = Scan.sRbrak then
             Scan.next;
             t := Sym.newType(Sym.fSlice, 16, 8);
+            if Scan.tok = Scan.sConst then Scan.next; t^.rdonly := true; end;   (* []const T *)
             t^.base := try parseType();
         else
             start := Scan.tokPos();
@@ -2521,7 +2522,7 @@ begin
     try expression(x, nil);
     if x.typ^.form = Sym.fConst then try Item.coerce(x, Sym.tI64); end;
     (* a const parameter or a constant: then so are the names its arms give *)
-    onlyRead := Item.onlyRead(x) or ((x.mode = Item.mVar) and (x.obj # nil) and (x.obj^.cls = Sym.oConst));
+    onlyRead := Item.onlyRead(x) or x.elemRo or ((x.mode = Item.mVar) and (x.obj # nil) and (x.obj^.cls = Sym.oConst));
     p := try Item.matchBegin(x);
     t := x.typ;
     isStr := t^.form = Sym.fSlice;    (* matchBegin made a string a slice *)

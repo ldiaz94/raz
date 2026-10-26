@@ -1,0 +1,8 @@
+(* An exported array, for ConstSlice to read as a []const U8 *)
+module Digits;
+
+var digits*: [10]U8;
+
+begin
+    digits := "0123456789";
+end Digits.

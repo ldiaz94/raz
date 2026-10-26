@@ -269,3 +269,11 @@ at the time.
   does, not a pointer to it (section 6.8): `XADD(count, 1)`,
   `XADD(p^, 1)`. It breaks a program that gives them a pointer; raz
   0.23 still takes one that isn't a variable, `ADR(x)`, until 0.24.
+  And `[]const T`, a slice whose elements can't be written through it
+  (section 5.3): a `[]T` or an array goes where one is wanted, never
+  the other way. A string literal and a slice of a constant are
+  `[]const`, as `MSG` and a slice of a `const` parameter's array are,
+  so writing them is an error, not undefined; another module's exported
+  array may be read as one (sections 3, 4, 5.10, 6.8 and 8). It breaks
+  a program that writes through these; raz 0.23 still gives them their
+  old types until 0.24.

@@ -32,6 +32,7 @@ type
         size*, align*: I64;
         signed*: BOOL;     (* fInt *)
         vol*: BOOL;        (* fPtr: ^VOLATILE *)
+        rdonly*: BOOL;     (* fSlice: []const, its elements not written through it *)
         packd*: BOOL;      (* fRecord *)
         variadic*: BOOL;   (* fProc: ends in ... *)
         tuple*: BOOL;      (* fRecord: the results of a procedure that has several *)
@@ -532,7 +533,7 @@ begin
     match a^.form of
     | fPtr: return (a^.vol = b^.vol) and same(a^.base, b^.base);
     | fArray: return (a^.len = b^.len) and same(a^.base, b^.base);
-    | fSlice: return same(a^.base, b^.base);
+    | fSlice: return (a^.rdonly = b^.rdonly) and same(a^.base, b^.base);
     | fSet: return same(a^.base, b^.base);
     | fProc: return alikeShape(a, b);
     | fRecord: return alikeShape(a, b);
@@ -574,7 +575,7 @@ begin
         Fmt.write(b, "[{}]", [Fmt.int(t^.len)]);
         typeText(b, t^.base);
     | fSlice:
-        Buf.str(b, "[]");
+        if t^.rdonly then Buf.str(b, "[]const "); else Buf.str(b, "[]"); end;
         typeText(b, t^.base);
     | fRecord:
         if not t^.tuple then
@@ -644,7 +645,7 @@ begin
         return;
     end;
     mix(h, INT(t^.form));
-    mix(h, bit(t^.vol) + 2 * bit(t^.variadic));
+    mix(h, bit(t^.vol) + 2 * bit(t^.variadic) + 4 * bit(t^.rdonly));
     mix(h, t^.len);
     if t^.form in {fPtr, fArray, fSlice, fProc, fSet} then shape(h, t^.base, false); end;
     f := t^.fields;

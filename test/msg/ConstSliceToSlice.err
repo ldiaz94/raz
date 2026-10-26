@@ -1,0 +1,8 @@
+conform/err/ConstSliceToSlice.raz:13:10: error: can't use []const U8 as []U8
+   13 |     fill(r);
+      |          ^
+help: its elements are only read, and a []T could write them
+conform/err/ConstSliceToSlice.raz:5:11: note: it goes to s, declared here
+    5 | proc fill(s: []U8);
+      |           ^
+raz: 1 error

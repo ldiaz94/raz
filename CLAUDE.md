@@ -380,6 +380,17 @@ otherwise.
   (`chooseRegs`). A pointer that isn't a variable, `ADR(x)`, is still
   taken as the old form until v0.24.0; a pointer variable is the new
   form, so `XADD(p, 1)` is an error whose help says `p^`.
+- `[]const T` (report 2026-10.37) is a slice type with `rdonly` set: not
+  the same as `[]T`, which goes into it with no code (`coerce`), never
+  back (help says why). An element read through one has the item's
+  `elemRo`, which `notReadOnly` refuses, so every write route (`:=`,
+  `INC`, a `var` argument, `ADR`, a view) is caught in one place; `COPY`
+  and `FILL` refuse one as their destination (`destSlice`); a slice of
+  one, or of an array read through one or of another module's array,
+  is one (`slice`); `BYTES` of one is a `[]const U8`; `match` on an
+  element gives names only read. Until v0.24.0 a string literal, a
+  constant's slice, `MSG` and a `const` parameter's array keep their
+  old types, `[]U8` and `[]T`.
 - `ROL(x, n)` and `ROR(x, n)` (report 2026-10.35) are done at `x`'s
   own width, `rol al, cl` for a `U8`, with no mask of the count: x86
   takes it modulo 32 or 64, and a byte's or a word's rotation goes

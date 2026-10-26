@@ -1,0 +1,5 @@
+conform/err/ConstSliceWrite.raz:6:5: error: s[0] is read through a []const slice, and can't be changed
+    6 |     s[0] := 0;
+      |     ^^^^
+help: a []const slice's elements are only read: write them through a []T
+raz: 1 error

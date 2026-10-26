@@ -184,6 +184,7 @@ leaves the module's index and slice checks out.
 .It "ERROR" Ta "8" Ta "nil, or a constant's error"
 .It "^T, proc ..." Ta "8" Ta "an address, or nil"
 .It "[]T" Ta "16" Ta "a pointer and a length"
+.It "[]const T" Ta "16" Ta "a slice, its elements only read"
 .It "[n]T" Ta "n * SIZE(T)" Ta "n elements, copied whole"
 .It "(a, b, c)" Ta "1" Ta "an enumeration, 256 names at most"
 .It "set of E" Ta "1, 2, 4, 8" Ta "bit i for E's name i, 64 at most"
@@ -248,9 +249,15 @@ into
 .Cm "^VOLATILE T" ,
 .Cm [n]T
 into
-.Cm []T ,
+.Cm []T
+or
+.Cm []const T ,
+a
+.Cm []T
+into
+.Cm []const T ,
 a string into
-.Cm []U8 , ^U8
+.Cm "[]const U8" , []U8 , ^U8
 (with a zero byte after it) or
 .Cm [n]U8 ,
 a procedure into its type,

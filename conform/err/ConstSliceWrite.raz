@@ -1,0 +1,14 @@
+(* An element of a []const slice is only read (report section 5.3). *)
+module ConstSliceWrite;
+
+proc clear(s: []const U8);
+begin
+    s[0] := 0;
+end;
+
+proc main*;
+begin
+    clear("x");
+end;
+
+end ConstSliceWrite.

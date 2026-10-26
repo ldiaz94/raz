@@ -1,0 +1,56 @@
+(* []const T (report section 5.3): its elements are read and it is
+   sliced; a []T, an array, a string or [] goes where one is wanted;
+   another module's exported array is read as one (section 3); BYTES
+   of one is a []const U8; and it compares and is matched as a []T. *)
+module ConstSlice;
+import Digits, Out;
+
+type Shape = variant dot; box(w: INT); end;
+
+(* How many times c is in s, which it only reads *)
+proc count(s: []const U8; c: U8): INT;
+var i, n: INT;
+begin
+    for i := 0 to LEN(s) - 1 do
+        if s[i] = c then INC(n); end;
+    end;
+    return n;
+end;
+
+(* The first two elements of s, as s is: a []const *)
+proc head(s: []const U8): []const U8;
+begin
+    return s[0..2];
+end;
+
+proc main*;
+var a: [5]U8; w: []U8; r, b: []const U8; shapes: [2]Shape; cs: []const Shape;
+begin
+    a := "hello";
+    w := a;
+    Out.int(count(a, 'l'));
+    Out.int(count(w, 'h'));
+    Out.int(count("all", 'l'));
+    Out.int(count([], 'l'));
+    r := head(w);
+    if (r = "he") and (r = w[0..2]) then Out.char('='); end;
+    match r of
+    | "he": Out.char('m');
+    | else:
+    end;
+    r := Digits.digits;
+    Out.int(INT(r[9]) - '0');
+    r := Digits.digits[3..5];
+    Out.int(LEN(r));
+    b := BYTES(r);
+    Out.int(LEN(b));
+    shapes[1] := box(7);
+    cs := shapes;
+    match cs[1] of
+    | box(width): Out.int(width);
+    | dot:
+    end;
+    Out.char(10);
+end;
+
+end ConstSlice.

@@ -68,7 +68,12 @@ not of its statement, so a slice of it may be kept (section 8); and
 `CAS`, `XCHG` and `XADD` take the variable they work on, not a pointer
 to it (section 6.8). It breaks a program that gives them a pointer;
 this compiler, raz 0.23, still takes one that isn't a variable,
-`ADR(x)` say, as before.
+`ADR(x)` say, as before. And `[]const T` is a slice whose elements
+can't be written through it (section 5.3), which a string literal, a
+slice of a constant, `MSG` and a slice of a `const` parameter's array
+are (sections 4, 5.10, 6.8 and 8). It breaks a program that writes
+through one of these; raz 0.23 still gives them their old types, as
+`[]U8` and `[]T`, until 0.24.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -233,16 +238,18 @@ only its own module changes it. Outside it, the variable is a value,
 not a variable: nothing that could write it, or let something else
 write it, may name it or a field or element of it. So it can't be
 assigned, passed as a `var` argument, changed by `INC`, `DEC` or
-`NEW`, or given to `ADR`; an array in it can't be sliced, or used
-where a slice is expected (the silent conversion of an array, section
-5.10), though a slice in it may be sliced, since that makes a new
-slice and can't change the variable; in `match`, its arms'
+`NEW`, or given to `ADR`; an array in it is sliced, or used where a
+slice is expected (the silent conversion of an array, section 5.10),
+only as a `[]const T`, whose elements can't be written (section 5.3);
+a slice in it may be sliced, since that makes a new slice and can't
+change the variable; in `match`, its arms'
 names stand for the fields of a copy. It can be read, copied and
 compared, and a copy is the importer's own. What a pointer or a slice
 in it points at is another variable, and isn't held to this: with
 `s: []U8` exported, `M.s[0] := 0` writes what `M.s` points at, not
-`M`. A module that means to share an array exports a pointer to it,
-or a procedure that returns a slice of it.
+`M`. A module that means to share an array for reading exports it;
+for writing, it exports a pointer to it, or a procedure that returns a
+slice of it.
 
 **Imports.** `import Out;` makes `Out`'s exports available as `Out.x`.
 `import O := Out;` uses the name `O` instead. A module can't import
@@ -420,19 +427,19 @@ record or a variant, and the value of an array or record constant is a
 literal (section 6.5) of constants, that of a variant one a case built
 from constants, as a program builds one (section 5.6). Its elements
 and fields are integers, reals, `BOOL`s, enumerations, sets, `ERROR`s,
-procedures, `nil`, a string for a `[]U8`, an array constant, an array
-literal or the empty slice for a slice of its element type, and
-arrays, records and variants of these; no other pointer. A named
+procedures, `nil`, a string for a `[]const U8`, an array constant, an
+array literal or the empty slice for a `[]const T` of its element type,
+and arrays, records and variants of these; no other pointer. A named
 constant stands for its literal wherever an array, record or variant is
 wanted. A variant constant must have a
 type: `const D = dot;` is an error, `const D: Shape = dot;` isn't.
 
 ```
 const Primes: [5]I64 = [2, 3, 5, 7, 11];
-type Rule = record class: []U8; tag: INT; float: BOOL; end;
+type Rule = record class: []const U8; tag: INT; float: BOOL; end;
 const Rules: [2]Rule = [{class: "firefox", tag: 2}, {class: "mpv", float: true}];
 const Shapes: []Shape = [circle(1.0), rect(2.0, 3.0), dot];   (* Shape of section 5.6 *)
-const Rows: [][]INT = [[1, 2], [3]];       (* each row an array constant of its own *)
+const Rows: [][]const INT = [[1, 2], [3]]; (* each row an array constant of its own *)
 ...
 p := Primes[i];
 ```
@@ -440,9 +447,9 @@ p := Primes[i];
 It is used as a variable of that type is, but can't be changed: an
 array constant can be indexed and sliced and its `LEN` is `n`, a
 record constant's fields can be read, and either can be assigned,
-compared as its type allows, and passed. Its parts are constant as a
-string's bytes are (section 5.10). A part of it isn't a constant, even
-at a constant index.
+compared as its type allows, and passed. A slice of it, or of an array
+in it, is a `[]const T` (section 5.3), as a string's is. A part of it
+isn't a constant, even at a constant index.
 
 An array constant may be typed `[]T`, with no length: its length is
 then its literal's, as a string constant's is the string's, and it is
@@ -470,7 +477,7 @@ enumeration as its first name. No variable is ever read before it has a value.
 ```
 Type      = QualIdent
           | "[" Expr "]" Type                 (* array *)
-          | "[" "]" Type                      (* slice *)
+          | "[" "]" [ "const" ] Type          (* slice *)
           | "^" [ "VOLATILE" ] Type           (* pointer *)
           | [ "packed" ] "record" { IdentList ":" Type ";" } "end"
           | "variant" { Case ";" } "end"
@@ -532,6 +539,25 @@ A slice is made from an array (`a[2..5]`, or an array used where a
 slice is wanted), from another slice, or from a pointer (`p[0..n]`). It
 doesn't own what it points at. `LEN(s)` is its count, and `PTR(s)` its
 pointer (section 6.8).
+
+`[]const T` is a slice whose elements can't be written through it. It
+is laid out as `[]T` is. Its elements are read, and it is sliced, and a
+slice of it is a `[]const T` too; but an element of it isn't assigned,
+given to `COPY` or `FILL` as the destination, changed by `INC` or `DEC`,
+passed as a `var` argument, or written through a view, and `ADR` of one
+is an error. A `[]T` and an array of `T` go silently where a
+`[]const T` is wanted, never the other way (section 5.10). So a
+procedure that only reads a slice takes a `[]const T`, and every
+caller's slice or array fits it:
+
+```
+proc count(s: []const U8; c: U8): INT;   (* reads s, and says so *)
+```
+
+A string literal and a slice of a constant are `[]const T` (sections 4
+and 5.10). Another slice may still point at the same elements and
+write them: `const` says what this slice may do, not what the elements
+are.
 
 ### 5.4 Pointers
 
@@ -661,7 +687,7 @@ passes on an error of another module, and `Short = PictBase.Short`
 holds.
 
 Errors compare with `=` and `#` only, by which declaration made them,
-never by their message. `MSG(e)` is the message, a `[]U8`; `MSG(nil)`
+never by their message. `MSG(e)` is the message, a `[]const U8`; `MSG(nil)`
 is `""`.
 
 ```
@@ -719,8 +745,9 @@ the same type, or if:
 - `A` is an integer constant whose value fits in the integer type `B`;
 - `A` is `nil` and `B` is a pointer, procedure or `ERROR` type;
 - `A` is `^T` and `B` is `^VOLATILE T`;
-- `A` is `[n]T` and `B` is `[]T`;
-- `A` is a string literal and `B` is `[]U8`, `^U8` (a pointer to the
+- `A` is `[n]T` and `B` is `[]T` or `[]const T`, or `A` is `[]T` and
+  `B` is `[]const T`;
+- `A` is a string literal and `B` is `[]const U8`, `^U8` (a pointer to the
   bytes followed by a zero byte, as C wants), or `[n]U8` with `n` at
   least the string's length (the rest is zero);
 - `A` is a procedure and `B` a procedure type with the same signature;
@@ -731,11 +758,11 @@ the same type, or if:
   so on every target; unless the value is what an operator gives
   (below).
 
-A string's bytes are constant. A `[]U8` or `^U8` made from a string
-literal, or a slice of a string constant, points at them, and writing
-through it isn't defined: on a target with read-only memory, it may
-stop the program as a bad address (section 10). A `[n]U8` made from a
-string is a copy, the program's to change.
+A string's bytes are constant. A string literal, or a slice of a string
+constant, is a `[]const U8`, so writing them is an error. A `[n]U8`
+made from a string is a copy, the program's to change. A `^U8` made
+from one, for C, points at the constant bytes, and writing through it
+isn't defined (section 10).
 
 Nothing else converts silently. In particular, there is no other
 conversion between integer types, between integers and reals, or
@@ -950,7 +977,7 @@ Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.int(m)]);
 a `[n]T`, of the same element type `T`, are `=` when they have the
 same length and the same elements, and `#` otherwise, where `T` is an
 integer type, `BOOL`, an enumeration, a set or a pointer type. A string
-literal compares as a `[]U8`. The comparison is code of its own where
+literal compares as a `[]const U8`. The comparison is code of its own where
 it stands, a check of the lengths and then of the bytes, not a call.
 
 Arrays of reals don't compare this way, since `-0.0 = 0.0` and a NaN
@@ -1013,9 +1040,9 @@ the same rules: `U8(300)` is 44. `U64(a = b)` is 0 or 1, and
 | `ADR(x)` | the address of variable `x`, a `^T` |
 | `LEN(a)` | the number of elements of an array or a string constant (an untyped constant) or of a slice (an `INT`) |
 | `PTR(s)` | the address the slice `s` starts at, a `^T` for `s: []T`, unchecked; for an array `a`, that of `a[0..LEN(a)]` |
-| `BYTES(x)` | the bytes of `x` as a `[]U8`: for a slice `s: []T`, its `LEN(s) * SIZE(T)` bytes; for a variable of any other type `T`, its `SIZE(T)` bytes |
+| `BYTES(x)` | the bytes of `x` as a `[]U8`: for a slice `s: []T`, its `LEN(s) * SIZE(T)` bytes, a `[]const U8` for a `[]const T`; for a variable of any other type `T`, its `SIZE(T)` bytes |
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
-| `MSG(e)` | the message of the error `e`, a `[]U8` |
+| `MSG(e)` | the message of the error `e`, a `[]const U8` |
 | `COPY(d, s)` | copies the elements of `s` to the start of `d`, both arrays or slices of one type `T`; `LEN(s)` must be at most `LEN(d)` |
 | `FILL(d, x)` | sets every element of `d`, an array or a slice of elements of type `T`, to `x`, a value of `T` |
 | `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six arguments, each a pointer or an integer no wider than `INT`; the raw result, an `INT` (a negative number is `-errno`) |
@@ -1063,7 +1090,8 @@ enumeration, a slice, a variant, a procedure type, `ERROR`, or a record
 or array holding one, is an error. The slice is made, and checked, as
 any slice of the variable is, so its bytes follow the rules for it: the
 bytes of a local can't be returned (section 7.3). Of a slice they are
-its elements, as `PTR(s)` gives them, whatever holds the slice. Of any
+its elements, as `PTR(s)` gives them, whatever holds the slice, and
+can be written only if the slice can. Of any
 other variable they are its own, as `ADR` gives them: a `const`
 parameter, another module's variable, a view and a field of a packed
 record are errors, as they are for `ADR`, and so is a volatile variable.
@@ -1082,7 +1110,7 @@ empty one first:
 ```
 type Value = record n: INT; p: ^U8; end;
 
-proc valueOf(s: []U8): Value;
+proc valueOf(s: []const U8): Value;
 begin
     return {n: LEN(s), p: PTR(s)};      (* "" too *)
 end;
@@ -1341,7 +1369,7 @@ end;
 ```
 
 `match` takes a variant, an enumeration, an integer type (a `U8`
-included) or a string, a `[]U8`; other types are an error. It runs the arm of the case `s` holds. An arm may name the case's
+included) or a string, a `[]U8` or a `[]const U8`; other types are an error. It runs the arm of the case `s` holds. An arm may name the case's
 fields, in order, all of them; the names stand for those fields of `s`
 itself, so assigning to one changes `s`; if `s` is a constant or a
 `const` parameter, they can't be assigned; if `s` isn't a variable,
@@ -1386,7 +1414,7 @@ above `hi`). Each must fit the integer's type, and no value may be in
 two labels. An integer
 `match` must have an `| else:` arm, which may be empty.
 
-`match` on a string, a `[]U8` or what converts to one (section 5.10),
+`match` on a string, a `[]U8`, a `[]const U8` or what converts to one (section 5.10),
 runs the arm one of whose labels it equals, as `=` compares strings
 (section 6.5):
 
@@ -1607,10 +1635,10 @@ in it), give it or a part of it to a `var` parameter, take the `ADR` of
 either, write it through a view (section 6.9), or assign the names a
 `match` arm gives its fields. What a slice or a pointer in it points at
 isn't part of it: the procedure may write through them, as it may
-through a value parameter's; and a slice it makes of an array in it,
-to read, is a slice like any other, which writes the caller's array if
-written through. `const` keeps the procedure from changing the
-variable by its name, not every path to its bytes. Its argument is any expression of the
+through a value parameter's; but a slice it makes of an array in it is
+a `[]const T` (section 5.3), so it can't write the caller's array
+through it. `const` keeps the procedure from changing the variable,
+not what its slices and pointers point at. Its argument is any expression of the
 parameter's type: a variable or a constant is passed in place, anything
 else as a temporary, of the procedure if it holds an array, as an
 array a call returns is (below). If the variable changes while the procedure runs, through a
@@ -1971,7 +1999,7 @@ IdentList   = IdentDef { "," IdentDef } .
 
 Type      = QualIdent
           | "[" Expr "]" Type
-          | "[" "]" Type
+          | "[" "]" [ "const" ] Type
           | "^" [ "VOLATILE" ] Type
           | [ "packed" ] "record" { IdentList ":" Type ";" } "end"
           | "variant" { Case ";" } "end"

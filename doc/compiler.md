@@ -1665,7 +1665,8 @@ has lost it, which the report leaves undefined (section 10).
 
 Assignment and conversion: `coerce` makes a value fit the type it's
 going to, or reports that it can't; it's where a string literal becomes
-a slice, an array a slice, an untyped constant a typed one, and an `INT`
+a slice, an array a slice, a `[]T` a `[]const T` (the same two words,
+its type changed), an untyped constant a typed one, and an `INT`
 an `I64` (`widens`), wherever it goes: a `for` loop's bounds, `INC`'s
 step and several results pass through `coerce` too. An `INT` meeting
 an `I64` in an operator is `op2`'s, which gives the result the `I64`;
