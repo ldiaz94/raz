@@ -86,9 +86,11 @@ library it imports (`Buf`, `Files`, `Fmt`, `Heap`, `Mem`, `Out`, `Rt`,
    `SYSTEM`. The old forms are still taken, silently: a string literal
    into a `[]U8`, `ADR` and the rest without `SYSTEM`, an atomic given
    a pointer. The library: `Task`, `Guarded`, `Heap`'s debugging mode.
-   Release, and the report's pages checked. Done but the release
-   (2026-10-26): no rewriting tool, by the owner's word; v0.24.0's
-   errors point at each place to mend.
+   Release, and the report's pages checked. **Done** 2026-10-26:
+   tagged, released here by `make dist` (CI refused by GitHub's billing,
+   as for v0.22.0), its SHA-256 `103eb421...`; the website has v0.22.0
+   and v0.23.0; 35 pages. No rewriting tool, by the owner's word:
+   v0.24.0's errors point at each place to mend.
 3. `BOOT` moved to v0.23.0, a step of its own.
 4. **v0.24.0, which enforces it.** `lib/`, `src/`, `tools/`,
    `examples/` and the tests mended where the old forms, made errors,
