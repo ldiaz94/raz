@@ -24,10 +24,10 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Gen.raz` | 2,846 | 1,989 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,845 | 4,121 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/Link.raz` | 408 | 316 | Tree shaking, layout, patching, the places |
+| `src/Link.raz` | 411 | 317 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Host.raz` | 103 | 52 | The system running the compiler |
-| `src/Raz.raz` | 439 | 345 | The command line |
+| `src/Raz.raz` | 439 | 343 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
