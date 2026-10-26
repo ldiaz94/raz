@@ -1,5 +1,5 @@
-conform/err/ConstAdr.raz:5:16: error: r is only read here, and can't be changed
-    5 |     return ADR(r);
-      |                ^
+conform/err/ConstAdr.raz:6:23: error: r is only read here, and can't be changed
+    6 |     return SYSTEM.ADR(r);
+      |                       ^
 help: a const parameter, a constant, and the names a match gives their fields, are only read: take a var parameter to change it
 raz: 1 error

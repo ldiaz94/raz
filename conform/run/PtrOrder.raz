@@ -1,6 +1,7 @@
 (* Pointers compare with = # < <= > >=, as unsigned addresses. *)
 module PtrOrder;
 import Out;
+import SYSTEM;
 
 proc yes(b: BOOL);
 begin
@@ -10,10 +11,10 @@ end;
 proc main*;
 var a: [3]I64; p, q: ^I64;
 begin
-    p := ADR(a[0]);
-    q := ADR(a[2]);
+    p := SYSTEM.ADR(a[0]);
+    q := SYSTEM.ADR(a[2]);
     yes(p < q); yes(p <= q); yes(p > q); yes(p >= q); yes(p = q); yes(p # q);
-    q := ADR(a[0]);
+    q := SYSTEM.ADR(a[0]);
     yes(p <= q); yes(p >= q); yes(p < q);
     Out.ln;
 end;

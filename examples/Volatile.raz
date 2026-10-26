@@ -4,6 +4,7 @@
    size, in the order written. *)
 module Volatile;
 import Out;
+import SYSTEM;
 
 type
     Uart = record
@@ -17,7 +18,7 @@ var page: [64]U8;
 proc main*;
 var dev: ^VOLATILE Uart; i: INT;
 begin
-    dev := ^VOLATILE Uart(ADR(page));
+    dev := ^VOLATILE Uart(SYSTEM.ADR(page));
     dev^.control := 1;
     dev^.status := 0FFH;
     for i := 0 to 2 do

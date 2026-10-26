@@ -1,4 +1,4 @@
-test/err/AtPByte.raz:4:11: error: expected a byte from 0 to 255, found 300
-    4 |     db 1, 300;
+test/err/AtPByte.raz:5:11: error: expected a byte from 0 to 255, found 300
+    5 |     db 1, 300;
       |           ^^^
 raz: 1 error

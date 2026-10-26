@@ -1,7 +1,8 @@
 module DeclSyscallArg;
+import SYSTEM;
 proc main*;
 var n: I64;
 begin
-    n := SYSCALL(1, 1.5);
+    n := SYSTEM.SYSCALL(1, 1.5);
 end;
 end DeclSyscallArg.

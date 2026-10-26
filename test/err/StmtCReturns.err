@@ -1,4 +1,4 @@
-test/err/StmtCReturns.raz:3:13: error: C returns a single value
-    3 | extern proc f(): R;
+test/err/StmtCReturns.raz:4:13: error: C returns a single value
+    4 | extern proc f(): R;
       |             ^
 raz: 1 error

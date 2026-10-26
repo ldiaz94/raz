@@ -1,7 +1,8 @@
 module AtPAdr;
+import SYSTEM;
 proc main*;
 var p: ^I64;
 begin
-    p := ADR(1);
+    p := SYSTEM.ADR(1);
 end;
 end AtPAdr.

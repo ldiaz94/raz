@@ -3,6 +3,7 @@
    anonymous one. *)
 module Sameness;
 import Out;
+import SYSTEM;
 
 type
     Node = record v: I64; end;
@@ -14,11 +15,11 @@ proc main*;
 var r: Node; p1: P1; p2: P2; n: ^Node; q: NodePtr;
 begin
     r.v := 7;
-    n := ADR(r);
+    n := SYSTEM.ADR(r);
     p1 := n;
     n := p1;
     p2 := n;
-    q := ADR(r);
+    q := SYSTEM.ADR(r);
     Out.int(p2^.v + q^.v); Out.ln;
 end;
 

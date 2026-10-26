@@ -4,6 +4,7 @@
    check, not run: it needs a display. *)
 module Window;
 import Out;
+import SYSTEM;
 link "libX11.so.6";
 
 const
@@ -56,12 +57,12 @@ begin
     _ := XSelectInput(d, w, ExposureMask + KeyPressMask);
     _ := XMapWindow(d, w);
     repeat
-        _ := XNextEvent(d, ^U8(ADR(ev)));
+        _ := XNextEvent(d, ^U8(SYSTEM.ADR(ev)));
         if I32(ev[0]) = Expose then
             _ := XDrawString(d, w, XDefaultGC(d, s), 20, 45, text, I32(LEN(text)));
         end;
     until I32(ev[0]) = KeyPress;
-    key := ^KeyEvent(ADR(ev));
+    key := ^KeyEvent(SYSTEM.ADR(ev));
     Out.str("key "); Out.int(INT(key^.keycode)); Out.ln;
     _ := XCloseDisplay(d);
     return 0;

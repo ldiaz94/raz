@@ -2,11 +2,12 @@
    bits, for numbers a reader of decimals easily gets one off. *)
 module RealRead;
 import Out;
+import SYSTEM;
 
 proc bits(x: F64): U64;
 var p: ^U64;
 begin
-    p := ^U64(ADR(x));
+    p := ^U64(SYSTEM.ADR(x));
     return p^;
 end;
 

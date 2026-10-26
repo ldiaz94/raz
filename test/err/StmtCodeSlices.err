@@ -1,4 +1,4 @@
-test/err/StmtCodeSlices.raz:2:6: error: too many parameters for a code procedure
-    2 | proc f(a, b, c, d, e: I64; s: []U8);
+test/err/StmtCodeSlices.raz:3:6: error: too many parameters for a code procedure
+    3 | proc f(a, b, c, d, e: I64; s: []U8);
       |      ^
 raz: 1 error

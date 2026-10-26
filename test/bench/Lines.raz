@@ -3,6 +3,7 @@
    IndexByte, which is assembly, and a counting loop. *)
 module Lines;
 import Out, Bytes;
+import SYSTEM;
 check off;
 
 const

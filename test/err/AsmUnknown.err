@@ -1,4 +1,4 @@
-test/err/AsmUnknown.raz:4:5: error: unknown instruction frob
-    4 |     frob rax;
+test/err/AsmUnknown.raz:5:5: error: unknown instruction frob
+    5 |     frob rax;
       |     ^^^^
 raz: 1 error

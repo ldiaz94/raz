@@ -1,8 +1,9 @@
 module ConstAdr;
+import SYSTEM;
 type R = record n: INT; end;
 proc f(const r: R): ^R;
 begin
-    return ADR(r);
+    return SYSTEM.ADR(r);
 end;
 proc main*;
 var r: R;

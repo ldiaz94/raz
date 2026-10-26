@@ -1,4 +1,4 @@
-test/err/AsmJccRegister.raz:4:5: error: unknown instruction jz
-    4 |     jz rax;
+test/err/AsmJccRegister.raz:5:5: error: unknown instruction jz
+    5 |     jz rax;
       |     ^^
 raz: 1 error

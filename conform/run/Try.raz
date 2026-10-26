@@ -141,7 +141,7 @@ begin
     return 0;
 end;
 
-proc show(what: []U8; v: INT; e: ERROR);
+proc show(what: []const U8; v: INT; e: ERROR);
 begin
     Out.str(what); Out.str(": "); Out.int(v);
     if e = nil then Out.str(" ok"); else Out.str(" "); Out.str(MSG(e)); end;

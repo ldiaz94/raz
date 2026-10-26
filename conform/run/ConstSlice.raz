@@ -24,7 +24,7 @@ begin
 end;
 
 proc main*;
-var a: [5]U8; w: []U8; r, b: []const U8; shapes: [2]Shape; cs: []const Shape;
+var a: [5]U8; w: []const U8; r, b: []const U8; shapes: [2]Shape; cs: []const Shape;
 begin
     a := "hello";
     w := a;

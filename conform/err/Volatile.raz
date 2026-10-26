@@ -1,8 +1,9 @@
 module Volatile;
+import SYSTEM;
 proc main*;
 var x: I64; p: ^VOLATILE I64; q: ^I64;
 begin
-    p := ADR(x);
+    p := SYSTEM.ADR(x);
     q := p;
 end;
 end Volatile.

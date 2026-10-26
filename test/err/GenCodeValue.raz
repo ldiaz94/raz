@@ -1,4 +1,5 @@
 module GenCodeValue;
+import SYSTEM;
 type F = proc(): (I64, I64); proc Two(): (I64, I64); code ret; end;
 proc main*;
 var f: F;

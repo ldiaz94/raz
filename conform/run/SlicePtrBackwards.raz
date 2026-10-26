@@ -2,11 +2,12 @@ module SlicePtrBackwards;
 (* A slice of a pointer isn't checked against a length, but it can't
    run backwards *)
 import Out;
+import SYSTEM;
 
 proc main*;
 var a: [8]U8; p: ^U8; hi: I64;
 begin
-    p := ADR(a[0]);
+    p := SYSTEM.ADR(a[0]);
     for hi := 4 to 0 by -2 do
         Out.int(LEN(p[2..hi]));
         Out.str(" ");

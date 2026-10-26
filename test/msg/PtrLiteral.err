@@ -1,5 +1,5 @@
-conform/err/PtrLiteral.raz:5:14: error: PTR can't take an array literal, which has no type here
-    5 |     p := PTR([]);
-      |              ^
+conform/err/PtrLiteral.raz:6:21: error: PTR can't take an array literal, which has no type here
+    6 |     p := SYSTEM.PTR([]);
+      |                     ^
 help: PTR([]) would be nil, the empty slice's pointer; give any other literal a variable first
 raz: 1 error

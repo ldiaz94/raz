@@ -2,6 +2,7 @@
    parameter of 1, 2, 4 or 8 bytes is read and written as the operand
    [pointer + index * size], where the index comes with no check. *)
 module IndexParamOff;
+import SYSTEM;
 check off;
 
 const N = 8;

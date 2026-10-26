@@ -1,4 +1,4 @@
-test/err/AsmMemory.raz:4:16: error: expected a memory operand, [base + index * scale + disp]
-    4 |     mov rax, [8];
+test/err/AsmMemory.raz:5:16: error: expected a memory operand, [base + index * scale + disp]
+    5 |     mov rax, [8];
       |                ^
 raz: 1 error

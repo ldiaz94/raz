@@ -3,7 +3,7 @@
 module VecTest;
 import Fmt, Heap, Ints := Vec(INT), Pts := Vec(Point);
 
-type Point = record x, y: INT; name: []U8; end;
+type Point = record x, y: INT; name: []const U8; end;
 
 proc main*;
 var v: Ints.Vec; w: Pts.Vec; i, sum, top: INT; ok: BOOL; p: ^Point; s: []INT;

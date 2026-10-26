@@ -74,7 +74,7 @@ import Out;
 
 var count*: INT;    (* the greetings so far *)
 
-proc hello*(name: []U8);
+proc hello*(name: []const U8);
 begin
     Out.str("hello, ");
     Out.str(name);
@@ -540,7 +540,7 @@ import Out, SYSTEM;
 
 type Span = record p: ^U8; n: INT; end;
 
-proc spanOf(s: []U8): Span;
+proc spanOf(s: []const U8): Span;
 begin
     return {p: SYSTEM.PTR(s), n: LEN(s)};
 end;
@@ -847,7 +847,7 @@ const
     TooBig*: ERROR = "not a number up to 1000";
 
 (* the number s holds, up to 1000 *)
-proc number(s: []U8): (INT, ERROR);
+proc number(s: []const U8): (INT, ERROR);
 var n: I64; ok: BOOL;
 begin
     if LEN(s) = 0 then return 0, Empty; end;
@@ -857,7 +857,7 @@ begin
 end;
 
 (* the sum of the numbers in words: the first error ends it *)
-proc total(words: [][]U8): (INT, ERROR);
+proc total(words: [][]const U8): (INT, ERROR);
 var i, sum: INT;
 begin
     for i := 0 to LEN(words) - 1 do
@@ -867,7 +867,7 @@ begin
 end;
 
 proc main*;
-var words: [3][]U8; i, n: INT; err: ERROR;
+var words: [3][]const U8; i, n: INT; err: ERROR;
 begin
     words := ["42", "", "12345"];
     for i := 0 to 2 do
@@ -949,7 +949,7 @@ begin
 end;
 
 (* the lines of the file at path, or -1 if it can't be read *)
-proc lines(path: []U8): INT;
+proc lines(path: []const U8): INT;
 var fd, n, i, count: INT; buf: [4096]U8;
 begin
     fd := Sys.openRead(path);
@@ -1077,7 +1077,7 @@ begin
     end;
 end;
 
-proc kind(c: I32): []U8;
+proc kind(c: I32): []const U8;
 begin
     match c of
     | ' ', '\et', '\en': return "space";
@@ -1087,7 +1087,7 @@ begin
     end;
 end;
 
-proc colour(name: []U8): Colour;
+proc colour(name: []const U8): Colour;
 begin
     match name of
     | "red", "rose": return red;
@@ -1178,14 +1178,14 @@ end Biggest.
 .Bd -literal -offset indent
 module Generics;
 import Out, Ints := Biggest(INT, before),
-    Words := Biggest([]U8, shorter), Order := Sort(INT, before);
+    Words := Biggest([]const U8, shorter), Order := Sort(INT, before);
 
 proc before(a, b: INT): BOOL;
 begin
     return a < b;
 end;
 
-proc shorter(a, b: []U8): BOOL;
+proc shorter(a, b: []const U8): BOOL;
 begin
     return LEN(a) < LEN(b);
 end;

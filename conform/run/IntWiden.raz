@@ -27,14 +27,14 @@ begin
     return three();
 end;
 
-proc show(label: []U8; v: I64);
+proc show(label: []const U8; v: I64);
 begin
     Out.str(label); Out.str(" "); Out.int(v); Out.str("\n");
 end;
 
 proc main*;
 var
-    a, b, c, i: I64; n: INT; s: []U8; u: U64; w: UINT;
+    a, b, c, i: I64; n: INT; s: []const U8; u: U64; w: UINT;
 begin
     s := "hello";
     n := -2;

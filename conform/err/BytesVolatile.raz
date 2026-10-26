@@ -1,4 +1,5 @@
 module BytesVolatile;
+import SYSTEM;
 type Regs = record ctrl: U32; status: U32; end;
 proc main*;
 var r: ^VOLATILE Regs; b: []U8;

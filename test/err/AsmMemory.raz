@@ -1,4 +1,5 @@
 module AsmMemory;
+import SYSTEM;
 proc f;
 code
     mov rax, [8];

@@ -3,6 +3,7 @@
    inner loop. *)
 module NBody;
 import Out, Math;
+import SYSTEM;
 check off;
 
 const

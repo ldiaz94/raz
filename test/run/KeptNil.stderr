@@ -1,3 +1,3 @@
-test/run/KeptNil.raz:10:5: stopped by a nil pointer
-  in KeptNil.get at test/run/KeptNil.raz:10:5: p = nil, k = 5
-  in KeptNil.main at test/run/KeptNil.raz:20:5: f = 0x?
+test/run/KeptNil.raz:11:5: stopped by a nil pointer
+  in KeptNil.get at test/run/KeptNil.raz:11:5: p = nil, k = 5
+  in KeptNil.main at test/run/KeptNil.raz:21:5: f = 0x?

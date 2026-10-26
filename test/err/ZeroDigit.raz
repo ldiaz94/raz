@@ -1,7 +1,7 @@
 module ZeroDigit;
 (* \0 before a digit is a warning; \x00, \0 at the end, \0 before a
    letter, an escaped backslash before 0 and a raw string are quiet. *)
-var s*: []U8; c*: U8;
+var s*: []const U8; c*: U8;
 proc main*;
 begin
     s := "a\x0012";

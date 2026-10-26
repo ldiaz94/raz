@@ -1,4 +1,4 @@
-conform/err/PtrArray.raz:6:5: error: a pointer to an array is indexed as p^[i]
-    6 |     p[1] := 0;
+conform/err/PtrArray.raz:7:5: error: a pointer to an array is indexed as p^[i]
+    7 |     p[1] := 0;
       |     ^
 raz: 1 error

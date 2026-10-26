@@ -2,6 +2,7 @@
    when a block is freed twice. *)
 module HeapCheck;
 import Out, Heap, Mem;
+import SYSTEM;
 
 proc show(p: ^U8);
 begin

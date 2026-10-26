@@ -1,4 +1,5 @@
 module AtPByte;
+import SYSTEM;
 proc f(a: I64);
 code
     db 1, 300;

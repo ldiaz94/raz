@@ -1,17 +1,17 @@
 module ArrayConstLen;
 import Out, Widths;
 
-type Rule = record class: []U8; tag: INT; end;
+type Rule = record class: []const U8; tag: INT; end;
 
 const
-    Primes: []I64 = [2, 3, 5, 7, 11];
-    Rules: []Rule = [{class: "firefox", tag: 2}, {class: "mpv", tag: 3}];
-    Names: [][]U8 = ["one", "two", "three"];
+    Primes: []const I64 = [2, 3, 5, 7, 11];
+    Rules: []const Rule = [{class: "firefox", tag: 2}, {class: "mpv", tag: 3}];
+    Names: []const []const U8 = ["one", "two", "three"];
     Count = LEN(Primes);   (* a constant *)
 
 var buf: [Count]I64;
 
-proc sum(a: []I64): I64;
+proc sum(a: []const I64): I64;
 var s: I64; i: INT;
 begin
     for i := 0 to LEN(a) - 1 do s := s + a[i]; end;
@@ -28,7 +28,7 @@ begin
 end;
 
 proc main*;
-const Local: []U8 = [1, 2, 3, 4];
+const Local: []const U8 = [1, 2, 3, 4];
 var i: INT;
 begin
     Out.int(LEN(Primes)); Out.str(" "); Out.int(sum(Primes)); Out.str(" ");

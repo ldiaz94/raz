@@ -2,6 +2,7 @@
    neighbours, the edges held. *)
 module Jacobi;
 import Out;
+import SYSTEM;
 check off;
 
 const

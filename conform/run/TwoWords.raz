@@ -4,6 +4,7 @@ module TwoWords;
    on, through a procedure value, run off the end, and with a call in
    the second. *)
 import Out;
+import SYSTEM;
 
 var log: INT;
 
@@ -34,7 +35,7 @@ begin
     return nested(n);
 end;
 
-proc tail(s: []U8; i: INT): []U8;
+proc tail(s: []const U8; i: INT): []const U8;
 begin
     defer note;
     return s[i..LEN(s)];
@@ -60,7 +61,7 @@ begin
     _, v := nested(3); Out.int(v); Out.str(" "); Out.int(log); Out.ln;
     (* in order: the second result is the one left *)
     v, v := nested(4); Out.int(v); Out.ln;
-    pv := ADR(q); pv^, p := nested(5); Out.int(q); Out.str(" "); Out.int(p); Out.ln;
+    pv := SYSTEM.ADR(q); pv^, p := nested(5); Out.int(q); Out.str(" "); Out.int(p); Out.ln;
     (* three results, which come back in memory, some dropped *)
     _, p, q := three(1); Out.int(p); Out.str(" "); Out.int(q); Out.ln;
     p, _, _ := three(7); Out.int(p); Out.ln;

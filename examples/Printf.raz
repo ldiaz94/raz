@@ -2,6 +2,7 @@
    a buffer of its own, so each is flushed before the other writes. *)
 module Printf;
 import Out, C;
+import SYSTEM;
 
 proc main*;
 var i: INT;

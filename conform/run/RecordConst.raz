@@ -2,12 +2,12 @@ module RecordConst;
 import Out;
 type
     Act = (quit, focus, spawn);
-    Rule = record cls: []U8; tag: INT; float: BOOL; end;
+    Rule = record cls: []const U8; tag: INT; float: BOOL; end;
     Key = record mods: U8; sym: U32; act: Act; arg: [8]U8; run: proc(n: INT); end;
 const
     Rules: [3]Rule = [{cls: "firefox", tag: 2}, {cls: "mpv", float: true}, {}];
     Nums: [3]I64 = [10, 20, 30];
-    Lists: [2][]I64 = [Nums, Nums];
+    Lists: [2][]const I64 = [Nums, Nums];
     Home: Rule = {cls: "home", tag: 7};
     Grid: [2][2]U8 = [[1, 2], [3, 4]];
 proc hello(n: INT);

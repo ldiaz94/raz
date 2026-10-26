@@ -2,12 +2,13 @@
    array as it was, and the program going on. *)
 module VecTry;
 import Arena, Fmt, Rt, Ints := Vec(INT);
+import SYSTEM;
 
 proc main*;
 var ar: Arena.Arena; v: Ints.Vec; n: INT; p: ^INT; ok: BOOL;
 begin
     if not Arena.init(ar, 4096) then Rt.stop("no arena"); end;
-    Ints.init(v, ADR(ar.base));
+    Ints.init(v, SYSTEM.ADR(ar.base));
     n := 0;
     while Ints.tryPush(v, n) do INC(n); end;
     p, ok := Ints.tryAdd(v);

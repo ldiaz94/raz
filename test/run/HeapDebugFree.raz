@@ -2,6 +2,7 @@ module HeapDebugFree;
 (* in debug mode, a write to a freed block is found when the block
    leaves the quarantine, 1,024 frees later, and stops the program *)
 import Heap, Mem;
+import SYSTEM;
 
 proc main*;
 var p, q: ^U8; i: INT;

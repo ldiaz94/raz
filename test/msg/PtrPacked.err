@@ -1,4 +1,4 @@
-conform/err/PtrPacked.raz:6:14: error: PTR can't take a field of a packed record, which has no address
-    6 |     p := PTR(r.words);
-      |              ^^^^^^^
+conform/err/PtrPacked.raz:7:21: error: PTR can't take a field of a packed record, which has no address
+    7 |     p := SYSTEM.PTR(r.words);
+      |                     ^^^^^^^
 raz: 1 error

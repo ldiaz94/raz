@@ -1,5 +1,6 @@
 module Static;
 import Bare, C;
+import SYSTEM;
 
 proc main*;
 begin

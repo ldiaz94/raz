@@ -1,4 +1,4 @@
-test/err/StmtCodeResult.raz:3:6: error: a code procedure returns a single value
-    3 | proc f: R;
+test/err/StmtCodeResult.raz:4:6: error: a code procedure returns a single value
+    4 | proc f: R;
       |      ^
 raz: 1 error

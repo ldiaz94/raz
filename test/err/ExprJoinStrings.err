@@ -1,4 +1,4 @@
-test/err/ExprJoinStrings.raz:7:13: error: + doesn't join []U8
+test/err/ExprJoinStrings.raz:7:13: error: + doesn't join []const U8
     7 |     Out.str(s + "def");
       |             ^
 help: strings are joined in a Buf: Buf.str(b, s)

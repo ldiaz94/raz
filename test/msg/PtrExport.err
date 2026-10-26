@@ -1,5 +1,5 @@
-conform/err/PtrExport.raz:6:14: error: Owner.a is Owner's, and can't be changed outside it
-    6 |     p := PTR(Owner.a);
-      |              ^^^^^^^
+conform/err/PtrExport.raz:7:21: error: Owner.a is Owner's, and can't be changed outside it
+    7 |     p := SYSTEM.PTR(Owner.a);
+      |                     ^^^^^^^
 help: a pointer to it could change it, as a slice of it could: copy it to a variable here first
 raz: 1 error

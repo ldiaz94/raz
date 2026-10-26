@@ -4,4 +4,4 @@ Heap: a write after free: block at 0x?, 20 bytes
   in Heap.freeDebug at lib/Heap.raz:235:36: h = 0x?, out = 0x?, p = 0x?, i = 0, size = 20, b = nil
   in Heap.free at lib/Heap.raz:253:42: _a = 0x?, p = 0x?, h = 0x?, b = nil, c = 0
   in Mem.free at lib/Mem.raz:40:5: a = 0x?, p = 0x?
-  in HeapDebugFree.main at test/run/HeapDebugFree.raz:15:9: p = 0x?, q = 0x?, i = 1023
+  in HeapDebugFree.main at test/run/HeapDebugFree.raz:16:9: p = 0x?, q = 0x?, i = 1023

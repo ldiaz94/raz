@@ -1,5 +1,6 @@
 (* A module that needs a program without C. *)
 module Bare;
+import SYSTEM;
 link static;
 
 proc f*: I64;

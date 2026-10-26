@@ -1,4 +1,4 @@
-conform/err/GenDotsRecord.raz:7:20: error: only a single value goes to ...
-    7 |     C.printf("%d", r);
+conform/err/GenDotsRecord.raz:8:20: error: only a single value goes to ...
+    8 |     C.printf("%d", r);
       |                    ^
 raz: 1 error

@@ -1,5 +1,6 @@
 module Generic;
-import Out, Stack, Ints := Pile(I64), More := Pile(I64), Strs := Pile([]U8);
+import Out, Stack, Ints := Pile(I64), More := Pile(I64), Strs := Pile([]const U8);
+import SYSTEM;
 
 proc yes(b: BOOL);
 begin
@@ -7,19 +8,19 @@ begin
 end;
 
 proc main*;
-var l: Strs.Pile; v: I64; s: []U8; ok: BOOL;
+var l: Strs.Pile; v: I64; s: []const U8; ok: BOOL;
 begin
     ok := Ints.push(Stack.p, 7);
     ok := More.push(Stack.p, 8);   (* two imports, one instance: one pile *)
     Out.int(Stack.top()); Out.char(' '); Out.int(Stack.p^.len); Out.char(' '); yes(ok); Out.ln;
     v, ok := Ints.pop(Stack.p);
     Out.int(v); Out.char(' '); Out.int(Stack.p^.len); Out.ln;
-    ok := Strs.push(ADR(l), "b");
-    ok := Strs.push(ADR(l), "a");
-    s, ok := Strs.pop(ADR(l));
-    Out.str(s); Out.str(Strs.top(ADR(l))); yes(ok); Out.ln;
-    s, ok := Strs.pop(ADR(l));
-    s, ok := Strs.pop(ADR(l));
+    ok := Strs.push(SYSTEM.ADR(l), "b");
+    ok := Strs.push(SYSTEM.ADR(l), "a");
+    s, ok := Strs.pop(SYSTEM.ADR(l));
+    Out.str(s); Out.str(Strs.top(SYSTEM.ADR(l))); yes(ok); Out.ln;
+    s, ok := Strs.pop(SYSTEM.ADR(l));
+    s, ok := Strs.pop(SYSTEM.ADR(l));
     Out.char('['); Out.str(s); Out.str("] "); yes(ok); Out.ln;
 end;
 

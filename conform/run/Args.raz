@@ -1,10 +1,11 @@
 module Args;
 import Out;
+import SYSTEM;
 
 proc main*: INT;
 var i, n: INT; a: ^^U8; s: ^U8;
 begin
-    a := ARGV();
+    a := SYSTEM.ARGV();
     for i := 1 to ARGC() - 1 do
         s := a[i];
         n := 0;

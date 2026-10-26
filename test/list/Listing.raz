@@ -1,5 +1,6 @@
 module Listing;
 (* raz -S: each line of source, and the instructions made for it *)
+import SYSTEM;
 
 var total: I64;
 

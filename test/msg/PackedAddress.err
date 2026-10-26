@@ -1,13 +1,13 @@
-conform/err/PackedAddress.raz:15:14: error: a field of a packed record has no address
-   15 |     p := ADR(h.len);
-      |              ^^^^^
-conform/err/PackedAddress.raz:16:9: error: a field of a packed record can't be a var parameter
-   16 |     put(h.len);
+conform/err/PackedAddress.raz:16:21: error: a field of a packed record has no address
+   16 |     p := SYSTEM.ADR(h.len);
+      |                     ^^^^^
+conform/err/PackedAddress.raz:17:9: error: a field of a packed record can't be a var parameter
+   17 |     put(h.len);
       |         ^^^^^
-conform/err/PackedAddress.raz:17:10: error: can't make a slice of a field of a packed record
-   17 |     s := h.vals[0..1];
+conform/err/PackedAddress.raz:18:10: error: can't make a slice of a field of a packed record
+   18 |     s := h.vals[0..1];
       |          ^^^^^^
-conform/err/PackedAddress.raz:19:5: error: a field of a packed record can't be volatile
-   19 |     q^.len := 2;
+conform/err/PackedAddress.raz:20:5: error: a field of a packed record can't be volatile
+   20 |     q^.len := 2;
       |     ^^
 raz: 4 errors

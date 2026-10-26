@@ -5,7 +5,7 @@ type
     Big = record a: [100]INT; name: []U8; n: INT; end;
     Shape = variant circle(r: INT); rect(w, h: INT); end;
 
-const Ten: Big = {n: 10, name: "ten"};
+const Ten: Big = {n: 10};
 
 var g: Big;
 
@@ -17,7 +17,7 @@ begin
     return s;
 end;
 
-proc first(const s: []U8): U8;
+proc first(const s: []const U8): U8;
 begin
     return s[0];
 end;

@@ -1,5 +1,5 @@
-conform/err/PtrVolatile.raz:7:14: error: PTR can't take an array through a volatile pointer
-    7 |     p := PTR(v^);
-      |              ^^
+conform/err/PtrVolatile.raz:8:21: error: PTR can't take an array through a volatile pointer
+    8 |     p := SYSTEM.PTR(v^);
+      |                     ^^
 help: ADR(v^[0]) is the address of its first element, a ^VOLATILE U32
 raz: 1 error

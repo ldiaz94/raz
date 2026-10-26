@@ -2,6 +2,7 @@ module HeapDebugEnd;
 (* in debug mode, a write one byte past a block's end is found when the
    block is freed, and stops the program *)
 import Heap, Mem;
+import SYSTEM;
 
 proc main*;
 var p: ^U8;

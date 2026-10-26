@@ -8,6 +8,7 @@
    whole only where both are. *)
 module Grep;
 import Out;
+import SYSTEM;
 check off;
 
 const
@@ -42,7 +43,7 @@ var i: INT; p: ^U64; m: U64;
 begin
     i := 0;
     while i + 8 <= LEN(s) do
-        p := ^U64(ADR(s[i]));
+        p := ^U64(SYSTEM.ADR(s[i]));
         m := zeros(p^ xor 0A0A0A0A0A0A0A0AH);
         if m # 0 then return i + lowest(m); end;
         i := i + 8;
@@ -60,8 +61,8 @@ begin
     wb := U64(Word[B]) * Ones;
     i := 0;
     while i + 7 <= last do
-        p := ^U64(ADR(s[i + A]));
-        q := ^U64(ADR(s[i + B]));
+        p := ^U64(SYSTEM.ADR(s[i + A]));
+        q := ^U64(SYSTEM.ADR(s[i + B]));
         m := zeros(p^ xor wa) & zeros(q^ xor wb);
         while m # 0 do
             j := i + lowest(m);

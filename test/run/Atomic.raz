@@ -1,5 +1,6 @@
 module Atomic;
 import Out;
+import SYSTEM;
 
 var counter: INT; flag: UINT; p: ^INT;
 
@@ -13,24 +14,24 @@ end add3;
 proc main*;
 var old: INT; ok: BOOL; v: ^VOLATILE INT; x: INT;
 begin
-    old := XADD(ADR(counter), 5);
-    old := XADD(ADR(counter), 2);
+    old := XADD(counter, 5);
+    old := XADD(counter, 2);
     Out.int(old); Out.str(" "); Out.int(counter); Out.ln;
-    ok := CAS(ADR(counter), 7, 100);
+    ok := CAS(counter, 7, 100);
     if ok then Out.str("cas1 "); end;
-    ok := CAS(ADR(counter), 7, 200);
+    ok := CAS(counter, 7, 200);
     if not ok then Out.str("cas2 "); end;
     Out.int(counter); Out.ln;
-    Out.int(I64(XCHG(ADR(flag), 9))); Out.str(" ");
-    Out.int(I64(XCHG(ADR(flag), 3))); Out.ln;
+    Out.int(I64(XCHG(flag, 9))); Out.str(" ");
+    Out.int(I64(XCHG(flag, 3))); Out.ln;
     FENCE;
     FENCE();
     Out.int(add3(1, 20, 300)); Out.ln;
-    v := ADR(x);
+    v := SYSTEM.ADR(x);
     v^ := 5;
     v^ := v^ + 1;
     Out.int(x); Out.ln;
-    v := ^VOLATILE INT(ADR(counter));
+    v := ^VOLATILE INT(SYSTEM.ADR(counter));
     Out.int(v^); Out.ln;
 end;
 

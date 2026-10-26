@@ -28,7 +28,7 @@ begin
 end;
 
 proc main*;
-var s: []U8; a, b: U8; c: I8; w: U16; n, i: INT; u: UINT;
+var s: []const U8; a, b: U8; c: I8; w: U16; n, i: INT; u: UINT;
 begin
     s := "7319";
     for i := 0 to LEN(s) - 1 do n := n * 10 + s[i] - '0'; end;

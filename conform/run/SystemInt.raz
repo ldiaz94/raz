@@ -2,6 +2,7 @@ module SystemInt;
 (* INT and UINT: what gives them, where they widen, shifts modulo the
    width, and another module's variables read but not changed *)
 import Out, Shared;
+import SYSTEM;
 
 var cells: [10]I32;
 
@@ -11,7 +12,7 @@ begin
 end;
 
 (* an INT returned as an I64 *)
-proc len(s: []U8): I64;
+proc len(s: []const U8): I64;
 begin
     return LEN(s);
 end;
@@ -30,8 +31,8 @@ begin
     Out.int(i); Out.str(" "); Out.int(I64(b)); Out.str(" "); Out.int(len("abc"));
     Out.str(" "); Out.int(I64(w)); Out.ln;
 
-    p := ADR(cells[2]);
-    q := ADR(cells[9]);
+    p := SYSTEM.ADR(cells[2]);
+    q := SYSTEM.ADR(cells[9]);
     n := q - p;                         (* an INT *)
     u := UINT(q) - UINT(p);
     Out.int(n); Out.str(" "); Out.int(I64(u)); Out.str(" ");

@@ -6,7 +6,7 @@ const Plus = "plus";
 
 type Op = (none, add, sub, mul);
 
-proc op(word: []U8): Op;
+proc op(word: []const U8): Op;
 begin
     match word of
     | "add", Plus, `+`: return add;
@@ -18,7 +18,7 @@ begin
 end;
 
 proc main*;
-var a: [3]U8; s: []U8;
+var a: [3]U8; s: []const U8;
 begin
     Out.int(I64(op("add"))); Out.int(I64(op("plus"))); Out.int(I64(op("+")));
     Out.int(I64(op("sub"))); Out.int(I64(op("-"))); Out.int(I64(op("mul")));

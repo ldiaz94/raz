@@ -8,12 +8,12 @@ type Line = record text: [8]U8; len: INT; end;
 
 var line: Line;
 
-proc used(const l: Line): []U8;
+proc used(const l: Line): []const U8;
 begin
     return l.text[0..l.len];
 end;
 
-proc make(s: []U8): Line;
+proc make(s: []const U8): Line;
 var l: Line;
 begin
     COPY(l.text, s);
@@ -22,7 +22,7 @@ begin
 end;
 
 proc main*;
-var s: []U8;
+var s: []const U8;
 begin
     line := make("hello");
     s := used(line);

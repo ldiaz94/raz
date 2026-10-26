@@ -3,7 +3,7 @@ module Escapes;
 import Out;
 
 proc main*;
-var s: []U8; i: INT;
+var s: []const U8; i: INT;
 begin
     s := "\xaF\xAF\u{1f600}\u{1F600}\x41\u{e9}";
     for i := 0 to LEN(s) - 1 do

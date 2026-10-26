@@ -1,4 +1,4 @@
-test/err/AsmControl.raz:4:5: error: can't assemble mov with these operands
-    4 |     mov eax, cr0;
+test/err/AsmControl.raz:5:5: error: can't assemble mov with these operands
+    5 |     mov eax, cr0;
       |     ^^^
 raz: 1 error

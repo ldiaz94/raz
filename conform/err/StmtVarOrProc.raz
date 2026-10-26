@@ -1,3 +1,4 @@
 module StmtVarOrProc;
+import SYSTEM;
 extern 5;
 end StmtVarOrProc.

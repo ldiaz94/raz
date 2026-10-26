@@ -3,10 +3,11 @@ module AsmKernel;
    back from the procedure they are made in, since they can't run in
    user mode. Each was checked against GNU as. *)
 import Out;
+import SYSTEM;
 
 const
     Count = 36;
-    Names: [Count][]U8 = ["cli", "sti", "iretq", "swapgs",
+    Names: [Count][]const U8 = ["cli", "sti", "iretq", "swapgs",
         "rdmsr", "wrmsr", "wbinvd", "lgdt [rdi]",
         "lidt [rsi + 8]", "invlpg [rax]", "invlpg [r12 + rcx * 8 + 400]", "xsave [rdi]",
         "xrstor [r9]", "ltr ax", "ltr r10w", "mov cr0, rax",

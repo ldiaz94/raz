@@ -1,4 +1,5 @@
 module BareC;
+import SYSTEM;
 extern proc getpid(): I32;
 proc main*;
 begin

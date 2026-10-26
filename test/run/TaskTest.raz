@@ -2,6 +2,7 @@
    its job at once after spawn, and the threads' copies are not changed. *)
 module TaskTest;
 import Check, Jobs := Task(Job), Rt, Thread;
+import SYSTEM;
 
 const Threads = 8;
 
@@ -21,11 +22,11 @@ proc main*;
 var t: [Threads]^Thread.Thread; j: Job; i: INT; err: ERROR;
 begin
     for i := 0 to Threads - 1 do
-        j := {n: i + 1, out: ADR(results[i])};
+        j := {n: i + 1, out: SYSTEM.ADR(results[i])};
         t[i], err := Jobs.spawn(work, j);
         if err # nil then Rt.stop("Task.spawn failed"); end;
         j.n := 1000;                 (* the thread must not see this *)
-        j.out := ADR(results[0]);
+        j.out := SYSTEM.ADR(results[0]);
     end;
     for i := 0 to Threads - 1 do Thread.join(t[i]); end;
     for i := 0 to Threads - 1 do

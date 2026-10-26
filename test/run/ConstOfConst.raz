@@ -3,7 +3,7 @@
 module ConstOfConst;
 import Sys;
 
-type R = record a: INT; s: []U8; end;
+type R = record a: INT; s: []const U8; end;
 
 const X: R = {a: 1, s: "one"};
 const Row: [2]INT = [3, 4];

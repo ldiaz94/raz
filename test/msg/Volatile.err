@@ -1,4 +1,4 @@
-conform/err/Volatile.raz:6:10: error: can't use ^VOLATILE I64 as ^I64
-    6 |     q := p;
+conform/err/Volatile.raz:7:10: error: can't use ^VOLATILE I64 as ^I64
+    7 |     q := p;
       |          ^
 raz: 1 error

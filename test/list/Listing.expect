@@ -4,13 +4,13 @@ Listing.twice:
              4  ret
 
 Listing.main:
-    17  proc main*;
+    18  proc main*;
              0  push rbp
              1  mov rbp, rsp
              4  sub rsp, 32
             11  mov [rbp - 8], rbx
             15  xor ebx, ebx
-    20      for i := 1 to 3 do
+    21      for i := 1 to 3 do
             17  mov rbx, 1
             22  cmp rbx, 3
             26  jg 168
@@ -20,7 +20,7 @@ Listing.main:
             53  nop
             61  nop
             64  add rbx, 1
-    21          if i # 2 then total := add(total, twice(i)); end;
+    22          if i # 2 then total := add(total, twice(i)); end;
             68  cmp rbx, 2
             72  je 134
             78  mov r8, [Listing.total]
@@ -43,7 +43,7 @@ Listing.main:
            154  add rbx, 1
            158  cmp rbx, 3
            162  jle 68
-    23  end main;
+    24  end main;
            168  mov rbx, [rbp - 8]
            172  leave
            173  ret

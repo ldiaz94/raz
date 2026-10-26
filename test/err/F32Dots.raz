@@ -1,5 +1,6 @@
 module F32Dots;
 import C;
+import SYSTEM;
 
 proc main*;
 var x: F32;

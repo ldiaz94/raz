@@ -1,6 +1,7 @@
 module PackedFields;
 (* A packed record's fields are read and written wherever they sit *)
 import Out;
+import SYSTEM;
 
 type
     Header = packed record kind: U8; len: U32; big: I64; tag: U8; end;
@@ -16,7 +17,7 @@ begin
     Out.hex(U64(g.len), 8); Out.str(" ");
     Out.int(g.big); Out.str(" ");
     Out.int(I64(g.tag)); Out.ln;
-    b := ADR(g.kind);
+    b := SYSTEM.ADR(g.kind);
     Out.int(I64(b[1])); Out.ln;
 end;
 

@@ -2,6 +2,7 @@ module Simd;
 (* Code procedures with SSE2 and the bit scans: a search sixteen bytes
    at a time, and the counts of bits *)
 import Out;
+import SYSTEM;
 
 (* the first place of b in s, or -1: its address in rdi, its length in rsi, b in dl *)
 proc index(s: []U8; b: U8): INT;

@@ -1,4 +1,4 @@
-conform/err/PtrElement.raz:5:10: error: can't use ^U8 as ^INT
-    5 |     p := PTR(a);
-      |          ^^^^^^
+conform/err/PtrElement.raz:6:10: error: can't use ^U8 as ^INT
+    6 |     p := SYSTEM.PTR(a);
+      |          ^^^^^^^^^^^^^
 raz: 1 error

@@ -5,7 +5,7 @@ const greeting = "hello";
 
 var buf: [8]U8;
 
-proc count(xs: []I64): I64;
+proc count(xs: []const I64): I64;
 var i: INT; s: I64;
 begin
     s := 0;
@@ -14,7 +14,7 @@ begin
 end;
 
 proc main*;
-var a: []U8; b: [5]U8; c: [3]I64; d: [][]U8;
+var a: []const U8; b: [5]U8; c: [3]I64; d: [][]const U8;
 begin
     a := "hello";
     if a = greeting then Out.str("eq "); end;

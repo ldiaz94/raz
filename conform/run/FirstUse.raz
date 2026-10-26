@@ -1,15 +1,16 @@
 module FirstUse;
 import Out, Str, Table := Table([]const U8, Colour, Str.hash, Str.eq),
     Ints := Pile(I64), More := Pile(I64), Never := Loud(I64), Ones := Loud(U8);
+import SYSTEM;
 
 type Colour = (red, green, blue);
 
 var names: Table.Table;   (* Table is made here, after Colour *)
 
-proc show(k: []U8);
+proc show(k: []const U8);
 var c: Colour; found: BOOL;
 begin
-    c, found := Table.get(ADR(names), k);
+    c, found := Table.get(SYSTEM.ADR(names), k);
     Out.str(k);
     if not found then Out.str(" -"); elsif c = red then Out.str(" red"); else Out.str(" not red"); end;
     Out.ln;
@@ -28,6 +29,6 @@ begin
 end;
 
 begin
-    _ := Table.put(ADR(names), "rose", red);
-    _ := Table.put(ADR(names), "sky", blue);
+    _ := Table.put(SYSTEM.ADR(names), "rose", red);
+    _ := Table.put(SYSTEM.ADR(names), "sky", blue);
 end FirstUse.

@@ -5,12 +5,12 @@ type Pair = record a, b: I64; end;
 
 var depth: I64;
 
-proc enter(s: []U8);
+proc enter(s: []const U8);
 begin
     Out.str(s); INC(depth);
 end;
 
-proc leave(s: []U8);
+proc leave(s: []const U8);
 begin
     Out.str(s); DEC(depth);
 end;

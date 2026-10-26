@@ -1,6 +1,7 @@
 (* A heap sort of pseudo-random numbers. *)
 module Heapsort;
 import Out;
+import SYSTEM;
 check off;
 
 const

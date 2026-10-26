@@ -1,7 +1,8 @@
 module PtrAsSlice;
+import SYSTEM;
 proc main*;
 var a: [4]U8; s: []U8;
 begin
-    s := PTR(a);
+    s := SYSTEM.PTR(a);
 end;
 end PtrAsSlice.

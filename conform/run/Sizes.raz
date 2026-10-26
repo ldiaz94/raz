@@ -5,7 +5,7 @@ import Out;
 
 type Empty = record end;
 
-proc line(name: []U8; b: BOOL);
+proc line(name: []const U8; b: BOOL);
 begin
     Out.str(name);
     if b then Out.str(" yes"); else Out.str(" NO"); end;
@@ -21,7 +21,7 @@ begin
     line("UINT is an address", SIZE(UINT) = SIZE(^U8));
     line("procedure is an address", SIZE(proc) = SIZE(^U8));
     line("ERROR is an address", SIZE(ERROR) = SIZE(^U8));
-    line("slice is two", SIZE([]U8) = 2 * SIZE(^U8));
+    line("slice is two", SIZE([]const U8) = 2 * SIZE(^U8));
     line("empty record", SIZE(Empty) = 0);
 end;
 

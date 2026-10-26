@@ -1,6 +1,7 @@
 (* A sum over a slice: the loop of a procedure that takes one. *)
 module Sum;
 import Out;
+import SYSTEM;
 check off;
 
 const

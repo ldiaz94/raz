@@ -1,4 +1,4 @@
-test/err/StmtCodeTwo.raz:2:6: error: a code procedure returns two results only in rax and rdx
-    2 | proc f: (F64, I64);
+test/err/StmtCodeTwo.raz:3:6: error: a code procedure returns two results only in rax and rdx
+    3 | proc f: (F64, I64);
       |      ^
 raz: 1 error

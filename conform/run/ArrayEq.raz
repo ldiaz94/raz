@@ -1,5 +1,6 @@
 module ArrayEq;
 import Out;
+import SYSTEM;
 
 type Colour = (red, green, blue);
 
@@ -30,8 +31,8 @@ begin
     say(f[0..1] = f[2..3]); say(f[0..1] = [true, false]);
     m := [{red}, {green, blue}]; n := m;
     say(m = n); n[1] := {blue}; say(m = n);
-    p := [ADR(x), nil]; q := p;
-    say(p = q); q[1] := ADR(x); say(p = q);
+    p := [SYSTEM.ADR(x), nil]; q := p;
+    say(p = q); q[1] := SYSTEM.ADR(x); say(p = q);
     t := [104, 101, 108, 108, 111];
     say(t = "hello"); say("hello" = t[0..5]); say("hell" = t[0..4]);
     say("help" # t[0..4]); say("" = t[0..0]);

@@ -1,5 +1,6 @@
 module Stack;
 import Ints := Pile(I64);
+import SYSTEM;
 
 var
     s: Ints.Pile;
@@ -11,5 +12,5 @@ begin
 end;
 
 begin
-    p := ADR(s);
+    p := SYSTEM.ADR(s);
 end Stack.

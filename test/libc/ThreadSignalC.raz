@@ -4,6 +4,7 @@ module ThreadSignalC;
    joined, is -3. ThreadSignal is the same, without C; this copy runs over
    the C library's Sys. *)
 import Thread, Sys, Fmt, C;
+import SYSTEM;
 
 var
     r, got, done: INT;
@@ -12,7 +13,7 @@ proc reader(_arg: ^U8);
 var buf: [16]U8;
 begin
     got := Sys.read(r, buf);
-    _ := XCHG(ADR(done), 1);
+    _ := XCHG(done, 1);
 end;
 
 proc quick(_arg: ^U8);
@@ -28,7 +29,7 @@ begin
     t, e := Thread.spawn(reader, nil);
     if e # nil then Fmt.print("no thread\n", []); return; end;
     (* again until it lands: the first may come before the read begins *)
-    while (XADD(ADR(done), 0) = 0) and (tries < 1000) do
+    while (XADD(done, 0) = 0) and (tries < 1000) do
         k := Thread.signal(t, Sys.sigUsr1);
         if k # 0 then Fmt.print("signal: {}\n", [Fmt.int(k)]); end;
         Sys.sleep(5);

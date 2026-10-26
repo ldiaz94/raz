@@ -1,4 +1,4 @@
-conform/err/StmtVarOrProc.raz:2:8: error: expected "proc" or "var", found a number
-    2 | extern 5;
+conform/err/StmtVarOrProc.raz:3:8: error: expected "proc" or "var", found a number
+    3 | extern 5;
       |        ^
 raz: 1 error

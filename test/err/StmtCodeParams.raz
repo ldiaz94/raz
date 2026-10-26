@@ -1,4 +1,5 @@
 module StmtCodeParams;
+import SYSTEM;
 proc f(a, b, c, d, e, f, g: I64);
 code ret; end;
 end StmtCodeParams.

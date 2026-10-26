@@ -2,6 +2,7 @@
    other procedure. cpuid's vendor string, from leaf 0. *)
 module Cpu;
 import Out;
+import SYSTEM;
 
 (* cpuid leaf 0: puts the 12 bytes of the vendor in buf, rdi. *)
 proc vendor(buf: ^U8);
@@ -20,7 +21,7 @@ end vendor;
 proc main*;
 var buf: [12]U8; i: INT; ok: BOOL;
 begin
-    vendor(ADR(buf[0]));
+    vendor(SYSTEM.ADR(buf[0]));
     ok := true;
     for i := 0 to 11 do
         if (buf[i] < ' ') or (buf[i] > '~') then ok := false; end;

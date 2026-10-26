@@ -1,8 +1,9 @@
 module ExportAdr;
 import Owner;
+import SYSTEM;
 proc main*;
 var _p: ^INT;
 begin
-    _p := ADR(Owner.n);
+    _p := SYSTEM.ADR(Owner.n);
 end;
 end ExportAdr.

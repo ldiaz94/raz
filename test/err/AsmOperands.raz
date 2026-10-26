@@ -1,4 +1,5 @@
 module AsmOperands;
+import SYSTEM;
 proc f;
 code
     lea rax, rbx;

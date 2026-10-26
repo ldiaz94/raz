@@ -2,12 +2,13 @@ module BufFull;
 (* a Buf whose allocator runs out stops the program, with the calls
    under way, rather than dropping what it was given *)
 import Buf, Arena, Rt;
+import SYSTEM;
 
 proc main*;
 var ar: Arena.Arena; b: Buf.Buf; big: [10000]U8;
 begin
     if not Arena.init(ar, 4096) then Rt.stop("no arena"); end;
-    Buf.init(b, ADR(ar.base));
+    Buf.init(b, SYSTEM.ADR(ar.base));
     Buf.str(b, big);
 end;
 

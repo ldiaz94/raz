@@ -1,8 +1,9 @@
 module Edge;
 import Out;
+import SYSTEM;
 
 type
-    Inner = record vals: [4]I64; name: []U8; end;
+    Inner = record vals: [4]I64; name: []const U8; end;
     Outer = record items: [3]Inner; n: I64; end;
 
 var g: Outer; calls: I64;
@@ -55,7 +56,7 @@ begin
     o.items[0].vals[0] := -1;
     Out.int(g.items[0].vals[0]); Out.str(" "); Out.int(o.items[0].vals[0]); Out.ln;
     Out.int(sumInner(g.items)); Out.str(" "); Out.int(sumInner(g.items[1..3])); Out.ln;
-    pa := ADR(a);
+    pa := SYSTEM.ADR(a);
     pa^[4] := 44;
     Out.int(a[4]); Out.str(" "); Out.int(LEN(pa^)); Out.ln;
     i := 2;

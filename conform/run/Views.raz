@@ -4,6 +4,7 @@
    bytes are written here a byte at a time where order matters. *)
 module Views;
 import Out, ViewData;
+import SYSTEM;
 
 type
     Header = record magic: U32; count: U32; end;
@@ -13,7 +14,7 @@ var
     mem: [64]U8;      (* a module's array *)
     regs: [4]U64;
 
-proc show(label: []U8; v: I64);
+proc show(label: []const U8; v: I64);
 begin
     Out.str(label); Out.str(" "); Out.int(v); Out.ln;
 end;
@@ -25,7 +26,7 @@ begin
 end;
 
 (* a slice parameter's element, viewed *)
-proc sum(s: []U8): I64;
+proc sum(s: []const U8): I64;
 var i, t: INT;
 begin
     t := 0;
@@ -74,7 +75,7 @@ begin
     (* a packed record, and a pointer read from bytes, then followed *)
     mem[40].(Pair) := {tag: 1, value: 300};
     show("Pair's value", I64(mem[41].(I32)));
-    p := ADR(n);
+    p := SYSTEM.ADR(n);
     mem[48].(^I64) := p;
     mem[48].(^I64)^ := 77;
     show("n through a pointer from bytes", n);

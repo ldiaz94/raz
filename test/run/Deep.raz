@@ -1,5 +1,6 @@
 module Deep;
 import Out;
+import SYSTEM;
 
 (* Expressions deeper than the registers of the stack, with calls,
    and, or, constants on the left and system calls among them. *)
@@ -48,10 +49,10 @@ begin
     u := 250; u := u + U8(c * 5) + U8(d); Out.int(I64(u)); Out.ln;
     (* array elements and pointers among deep values *)
     for d := 0 to 7 do s[d] := d * d; end;
-    p := ADR(s[3]);
+    p := SYSTEM.ADR(s[3]);
     Out.int(s[a] + (s[c] * (s[e] - (p^ + s[s[2]] * (s[7] - s[6]))))); Out.ln;
     (* a system call under values *)
-    Out.int(a + (c * n(SYSCALL(39) > 0) + d)); Out.ln;
+    Out.int(a + (c * n(SYSTEM.SYSCALL(39) > 0) + d)); Out.ln;
 end;
 
 end Deep.

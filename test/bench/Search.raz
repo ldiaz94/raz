@@ -2,6 +2,7 @@
    turn, over a text of four letters. *)
 module Search;
 import Out;
+import SYSTEM;
 check off;
 
 const

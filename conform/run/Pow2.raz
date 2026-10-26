@@ -5,7 +5,7 @@ import Out;
 
 var bad: I64;
 
-proc check(s: []U8; x, got, want: I64);
+proc check(s: []const U8; x, got, want: I64);
 begin
     if got # want then
         Out.str(s); Out.str(" "); Out.int(x); Out.str(": ");

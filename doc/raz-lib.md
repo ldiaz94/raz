@@ -211,7 +211,7 @@ text comes out of order:
 
 ```
 module Both;
-import Out, C;      (* C: printf, fflush and C's FILE *stdout *)
+import Out, C, SYSTEM;  (* C: printf, fflush and C's FILE *stdout *)
 
 proc main*;
 begin

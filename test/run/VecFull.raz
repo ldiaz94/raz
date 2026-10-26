@@ -2,12 +2,13 @@ module VecFull;
 (* a Vec whose allocator runs out stops the program, with the calls
    under way, rather than dropping what it was given *)
 import Arena, Rt, Ints := Vec(INT);
+import SYSTEM;
 
 proc main*;
 var ar: Arena.Arena; v: Ints.Vec; i: INT;
 begin
     if not Arena.init(ar, 4096) then Rt.stop("no arena"); end;
-    Ints.init(v, ADR(ar.base));
+    Ints.init(v, SYSTEM.ADR(ar.base));
     for i := 1 to 10000 do Ints.push(v, i); end;
 end;
 

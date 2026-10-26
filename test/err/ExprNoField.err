@@ -1,9 +1,9 @@
-test/err/ExprNoField.raz:7:10: error: expected a record, found ^R
-    7 |     n := p.x;
+test/err/ExprNoField.raz:8:10: error: expected a record, found ^R
+    8 |     n := p.x;
       |          ^
 help: through a pointer, write p^.x
-test/err/ExprNoField.raz:8:10: error: expected a record, found []U8
-    8 |     n := s.len;
+test/err/ExprNoField.raz:9:10: error: expected a record, found []U8
+    9 |     n := s.len;
       |          ^
 help: its length is LEN(s)
 raz: 2 errors

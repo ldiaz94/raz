@@ -1,2 +1,2 @@
-conform/run/SlicePtrBackwards.raz:11:23: slice 2..0 runs backwards
-  in SlicePtrBackwards.main at conform/run/SlicePtrBackwards.raz:11:23: p = 0x?, hi = 0
+conform/run/SlicePtrBackwards.raz:12:23: slice 2..0 runs backwards
+  in SlicePtrBackwards.main at conform/run/SlicePtrBackwards.raz:12:23: p = 0x?, hi = 0

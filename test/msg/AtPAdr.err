@@ -1,4 +1,4 @@
-conform/err/AtPAdr.raz:5:14: error: ADR needs a variable
-    5 |     p := ADR(1);
-      |              ^
+conform/err/AtPAdr.raz:6:21: error: ADR needs a variable
+    6 |     p := SYSTEM.ADR(1);
+      |                     ^
 raz: 1 error

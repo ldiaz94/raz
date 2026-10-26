@@ -1,8 +1,9 @@
 module PtrInteger;
+import SYSTEM;
 proc main*;
 var n: INT; p: ^INT;
 begin
     n := 1;
-    p := PTR(n);
+    p := SYSTEM.PTR(n);
 end;
 end PtrInteger.

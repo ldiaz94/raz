@@ -2,6 +2,7 @@
    and using the heap and Out, which lock themselves. *)
 module Pthreads;
 import Out, C, Heap, Mem;
+import SYSTEM;
 
 const
     Workers = 4;
@@ -35,7 +36,7 @@ begin
     for i := 0 to N - 1 do numbers^[i] := i + 1; end;
     for i := 0 to Workers - 1 do
         parts[i] := {lo: i * N div Workers, hi: (i + 1) * N div Workers};
-        if C.pthread_create(ADR(t[i]), nil, work, ^U8(ADR(parts[i]))) # 0 then
+        if C.pthread_create(SYSTEM.ADR(t[i]), nil, work, ^U8(SYSTEM.ADR(parts[i]))) # 0 then
             Out.str("can't start a thread\n");
             return 1;
         end;

@@ -1,10 +1,11 @@
 module DeclAtomicSize;
+import SYSTEM;
 proc main*;
 var b: U8;
 var p: ^U8;
 var n: I64;
 begin
-    p := ADR(b);
+    p := SYSTEM.ADR(b);
     n := XADD(p, 1);
 end;
 end DeclAtomicSize.

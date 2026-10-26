@@ -3,6 +3,7 @@ import Out, FillKinds, U8s := Filled(U8), U16s := Filled(U16), U32s := Filled(U3
     U64s := Filled(U64), I8s := Filled(I8), Bools := Filled(BOOL), Ptrs := Filled(^I64),
     Sets := Filled(FillKinds.Colours), Colours := Filled(FillKinds.Colour),
     Rgbs := Filled(FillKinds.Rgb), Spans := Filled(FillKinds.Span);
+import SYSTEM;
 
 var
     calls: INT;           (* how many times next has been called *)
@@ -47,7 +48,7 @@ begin
     U64s.check("U64", 0123456789ABCDEFH, 1);
     I8s.check("I8", -2, 3);
     Bools.check("BOOL", true, false);
-    Ptrs.check("pointer", ADR(x), ADR(y));
+    Ptrs.check("pointer", SYSTEM.ADR(x), SYSTEM.ADR(y));
     Sets.check("set", {FillKinds.red, FillKinds.blue}, {FillKinds.green});
     Colours.check("enumeration", FillKinds.blue, FillKinds.green);
     Rgbs.check("3-byte record", {r: 1, g: 2, b: 3}, {r: 9, g: 9, b: 9});
@@ -74,13 +75,13 @@ begin
     FILL(s[1..8], 0);
     Out.int(sum(a)); Out.char(' ');
     for i := 0 to 99 do big[i] := U64(i); end;
-    p := ADR(big);
+    p := SYSTEM.ADR(big);
     FILL(p^[10..100], 0);
     t := 0;
     for i := 0 to 99 do INC(t, I64(big[i])); end;
     Out.int(t); Out.char(' ');
     FILL(p^, 0);
-    FILL(ps, ADR(x));
+    FILL(ps, SYSTEM.ADR(x));
     FILL(ps, nil);
     if (big[1] = 0) and (ps[2] = nil) then Out.str("zero"); end;
     Out.ln;

@@ -6,6 +6,7 @@
    with a view of the same place, which is the target's order too. *)
 module BytesOf;
 import Out;
+import SYSTEM;
 
 type
     Header = record magic: U32; count: U16; flags: U8; end;
@@ -62,7 +63,7 @@ begin
     Out.int(LEN(BYTES(none))); Out.str(" "); Out.int(LEN(BYTES(g[2..2]))); Out.ln;
     Out.int(LEN(gBytes())); Out.str(" "); Out.int(I64(gBytes()[4].(I32))); Out.ln;
 
-    p := ADR(h);
+    p := SYSTEM.ADR(h);
     n := 0;
     for i := 0 to OFFSET(Header, flags) do   (* not the padding after *)
         INC(n, I32(BYTES(p^)[i]));

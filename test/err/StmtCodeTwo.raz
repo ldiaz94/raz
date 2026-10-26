@@ -1,4 +1,5 @@
 module StmtCodeTwo;
+import SYSTEM;
 proc f: (F64, I64);
 code ret; end;
 end StmtCodeTwo.

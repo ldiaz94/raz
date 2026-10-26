@@ -1,5 +1,6 @@
 module GenDotsRecord;
 import C;
+import SYSTEM;
 type R = record a, b: I64; end;
 proc main*;
 var r: R;

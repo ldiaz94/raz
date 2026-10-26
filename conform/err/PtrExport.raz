@@ -1,8 +1,9 @@
 module PtrExport;
 import Owner;
+import SYSTEM;
 proc main*;
 var p: ^INT;
 begin
-    p := PTR(Owner.a);
+    p := SYSTEM.PTR(Owner.a);
 end;
 end PtrExport.

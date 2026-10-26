@@ -2,6 +2,7 @@
    that take either type, calls to C and to code. *)
 module Single;
 import Out, C;
+import SYSTEM;
 link "libm.so.6";
 
 const

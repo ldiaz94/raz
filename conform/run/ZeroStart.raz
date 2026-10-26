@@ -10,17 +10,17 @@ type
     Shape = variant first(x: I64); second(y: I64); end;
 
 var
-    n: I64; u: U8; ok: BOOL; p: ^Rec; f: proc; e: ERROR; s: []U8;
+    n: I64; u: U8; ok: BOOL; p: ^Rec; f: proc; e: ERROR; s: []const U8;
     c: Colour; fl: Flags; r: Rec; a: [3]I64; v: Shape;
 
-proc line(name: []U8; zero: BOOL);
+proc line(name: []const U8; zero: BOOL);
 begin
     Out.str(name);
     if zero then Out.str(" zero"); else Out.str(" NOT ZERO"); end;
     Out.ln;
 end;
 
-proc which(name: []U8; v: Shape);
+proc which(name: []const U8; v: Shape);
 begin
     Out.str(name);
     match v of
@@ -39,7 +39,7 @@ end;
 
 proc locals;
 var
-    n: I64; u: U8; ok: BOOL; p: ^Rec; f: proc; e: ERROR; s: []U8;
+    n: I64; u: U8; ok: BOOL; p: ^Rec; f: proc; e: ERROR; s: []const U8;
     c: Colour; fl: Flags; r: Rec; a: [3]I64; v: Shape;
 begin
     line("local number", (n = 0) and (u = 0));

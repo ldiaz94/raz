@@ -3,6 +3,7 @@
    every thread at once, and join. *)
 module SpawnC;
 import Out, Thread, Heap, Mem, C;
+import SYSTEM;
 
 const
     Workers = 8;
@@ -22,7 +23,7 @@ begin
         Thread.lock(m);
         INC(count);
         Thread.unlock(m);
-        _ := XADD(ADR(atomic), 1);
+        _ := XADD(atomic, 1);
         NEW(p, Heap.heap);
         p^.next := list;
         list := p;

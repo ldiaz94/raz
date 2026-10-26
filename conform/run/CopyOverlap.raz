@@ -11,7 +11,7 @@ var bytes, bytesWant: [N]U8; words, wordsWant: [N]U32; rgbs, rgbsWant: [N]Rgb;
     cases, wrong: INT;
 
 (* Says where a copy came out wrong. *)
-proc fail(kind: []U8; d, s, n: INT);
+proc fail(kind: []const U8; d, s, n: INT);
 begin
     Out.str(kind); Out.str(" wrong: d "); Out.int(I64(d)); Out.str(" s "); Out.int(I64(s));
     Out.str(" n "); Out.int(I64(n)); Out.ln;

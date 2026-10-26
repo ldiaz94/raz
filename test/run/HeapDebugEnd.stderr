@@ -4,4 +4,4 @@ Heap: a write past the block's end: block at 0x?, 20 bytes
   in Heap.freeDebug at lib/Heap.raz:221:31: h = 0x?, out = nil, p = nil, i = 0, size = 0, b = nil
   in Heap.free at lib/Heap.raz:253:42: _a = 0x?, p = 0x?, h = 0x?, b = nil, c = 0
   in Mem.free at lib/Mem.raz:40:5: a = 0x?, p = 0x?
-  in HeapDebugEnd.main at test/run/HeapDebugEnd.raz:12:5: p = 0x?
+  in HeapDebugEnd.main at test/run/HeapDebugEnd.raz:13:5: p = 0x?

@@ -1,4 +1,5 @@
 module StmtCodeResult;
+import SYSTEM;
 type R = record a: I64; end;
 proc f: R;
 code ret; end;

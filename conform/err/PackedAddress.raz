@@ -1,4 +1,5 @@
 module PackedAddress;
+import SYSTEM;
 (* A field of a packed record may be misaligned: it has no address,
    and no volatile access *)
 type
@@ -12,12 +13,12 @@ end;
 proc main*;
 var h: Header; p: ^U32; q: ^VOLATILE Header; k: ^U8; s: []U16;
 begin
-    p := ADR(h.len);
+    p := SYSTEM.ADR(h.len);
     put(h.len);
     s := h.vals[0..1];
-    q := ADR(h);
+    q := SYSTEM.ADR(h);
     q^.len := 2;
-    k := ADR(h.tag);
+    k := SYSTEM.ADR(h.tag);
     h.len := 3;
 end;
 

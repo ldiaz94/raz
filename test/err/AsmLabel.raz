@@ -1,4 +1,5 @@
 module AsmLabel;
+import SYSTEM;
 proc f;
 code
     jmp nowhere;

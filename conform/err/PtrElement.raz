@@ -1,7 +1,8 @@
 module PtrElement;
+import SYSTEM;
 proc main*;
 var a: [4]U8; p: ^INT;
 begin
-    p := PTR(a);
+    p := SYSTEM.PTR(a);
 end;
 end PtrElement.

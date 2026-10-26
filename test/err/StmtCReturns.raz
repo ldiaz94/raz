@@ -1,4 +1,5 @@
 module StmtCReturns;
+import SYSTEM;
 type R = record a: I64; end;
 extern proc f(): R;
 end StmtCReturns.

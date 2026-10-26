@@ -8,12 +8,12 @@ const
 
 var g: I64;
 
-proc show(s: []U8; n: I64);
+proc show(s: []const U8; n: I64);
 begin
     Out.str(s); Out.str(" "); Out.int(n); Out.ln;
 end;
 
-proc showb(s: []U8; t: BOOL);
+proc showb(s: []const U8; t: BOOL);
 begin
     if t then show(s, 1); else show(s, 0); end;
 end;

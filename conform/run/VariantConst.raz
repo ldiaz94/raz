@@ -2,7 +2,7 @@ module VariantConst;
 import Out;
 
 type
-    Shape = variant circle(r: F64); rect(w, h: INT); dot; named(name: []U8; n: U8); end;
+    Shape = variant circle(r: F64); rect(w, h: INT); dot; named(name: []const U8; n: U8); end;
     Rule = record tag: INT; s: Shape; end;
 
 const

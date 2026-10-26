@@ -1,4 +1,5 @@
 module StmtCodeSlices;
+import SYSTEM;
 proc f(a, b, c, d, e: I64; s: []U8);
 code ret; end;
 end StmtCodeSlices.

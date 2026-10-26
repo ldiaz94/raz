@@ -1,5 +1,6 @@
 module Data;
 import Out;
+import SYSTEM;
 
 type
     Cell = record ch: U8; attr: U8; end;
@@ -40,15 +41,15 @@ begin
     Out.int(I64(cells[2].ch)); Out.str(" "); Out.int(I64(cells[2].attr)); Out.ln;
     for i := 0 to 4 do
         nodes[i].val := i * i;
-        if i < 4 then nodes[i].next := ADR(nodes[i + 1]); end;
+        if i < 4 then nodes[i].next := SYSTEM.ADR(nodes[i + 1]); end;
     end;
-    Out.int(sum(ADR(nodes[0]))); Out.ln;
+    Out.int(sum(SYSTEM.ADR(nodes[0]))); Out.ln;
     for i := 0 to 2 do
         for j := 0 to 3 do grid[i][j] := I32(i * 10 + j); end;
     end;
     Out.int(I64(grid[2][3])); Out.str(" "); Out.int(I64(grid[1][0])); Out.ln;
     for i := 0 to 7 do arr[i] := i * 100; end;
-    p := ADR(arr[0]);
+    p := SYSTEM.ADR(arr[0]);
     q := p + 5;
     Out.int(q^); Out.str(" "); Out.int(q - p); Out.str(" "); Out.int(p[3]); Out.ln;
     s := arr[2..6];
@@ -65,8 +66,8 @@ begin
     Out.int(gp.x); Out.str(" "); Out.int(gp.y); Out.ln;
     m.a := 1; m.b := -2; m.c := 65535;
     Out.int(m.b); Out.str(" "); Out.int(I64(m.c)); Out.ln;
-    bp := ^U8(ADR(m));
-    Out.int(INT(ADR(m.c)) - INT(bp)); Out.ln;
+    bp := ^U8(SYSTEM.ADR(m));
+    Out.int(INT(SYSTEM.ADR(m.c)) - INT(bp)); Out.ln;
 end;
 
 end Data.

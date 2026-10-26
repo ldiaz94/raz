@@ -2,6 +2,7 @@
    procedure that keeps it. *)
 module KeptNil;
 import Out;
+import SYSTEM;
 
 type Rec = record x: INT; end;
 
@@ -16,7 +17,7 @@ var r: Rec; f: proc(p: ^Rec; k: INT): INT;
 begin
     r.x := 1;
     f := get;
-    Out.int(f(ADR(r), 2)); Out.ln;
+    Out.int(f(SYSTEM.ADR(r), 2)); Out.ln;
     Out.int(f(nil, 5)); Out.ln;
 end;
 

@@ -6,7 +6,7 @@ module Continue;
 import Out;
 
 proc main*;
-var i, j, n: INT; t: []U8;
+var i, j, n: INT; t: []const U8;
 begin
     for i := 1 to 10 do
         if i mod 3 = 0 then continue; end;              (* a lone continue *)

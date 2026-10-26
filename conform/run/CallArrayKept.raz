@@ -23,13 +23,13 @@ begin
 end;
 
 (* The array in r, as a slice *)
-proc bytes(const r: R): []U8;
+proc bytes(const r: R): []const U8;
 begin
     return r.a[0..8];
 end;
 
 proc main*;
-var s, t, u, v: []U8; i: INT;
+var s, t, u, v: []const U8; i: INT;
 begin
     s := name('a')[0..8];
     t := name('b')[0..8];

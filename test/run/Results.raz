@@ -1,5 +1,6 @@
 module Results;
 import Out;
+import SYSTEM;
 
 const
     NotFound*: ERROR = "not found";
@@ -24,7 +25,7 @@ begin
     return -1, NotFound;
 end;
 
-proc mixed(x: F64): (F64, []U8, Pair, BOOL);
+proc mixed(x: F64): (F64, []const U8, Pair, BOOL);
 var p: Pair;
 begin
     p.a := 1; p.b := 2;
@@ -48,7 +49,7 @@ begin
 end;
 
 proc main*;
-var q, r, i: I64; e: ERROR; x: F64; s: []U8; p: Pair; ok: BOOL; a: [3]I64; u: U8;
+var q, r, i: I64; e: ERROR; x: F64; s: []const U8; p: Pair; ok: BOOL; a: [3]I64; u: U8;
 begin
     q, r := divmod(17, 5);
     Out.int(q); Out.str(" "); Out.int(r); Out.ln;

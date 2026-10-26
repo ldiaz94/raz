@@ -20,7 +20,7 @@ const
     Typed = U8(OFFSET(Mixed, e) + 250);   (* 24 + 250 wraps to 18 *)
 
 (* name, then the offset and the size of a field *)
-proc row(name: []U8; off, size: INT);
+proc row(name: []const U8; off, size: INT);
 begin
     Out.str(name); Out.str(" "); Out.int(off); Out.str(" "); Out.int(size); Out.ln;
 end;

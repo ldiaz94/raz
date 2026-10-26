@@ -1,8 +1,9 @@
 module ArrayConstAdr;
+import SYSTEM;
 const P: [2]I64 = [1, 2];
 proc main*;
 var p: ^[2]I64;
 begin
-    p := ADR(P);
+    p := SYSTEM.ADR(P);
 end;
 end ArrayConstAdr.

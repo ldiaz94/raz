@@ -5,7 +5,7 @@ type
     Shape* = variant
         circle(r: F64);
         rect(w, h: F64);
-        label(text: []U8; size: I64);
+        label(text: []const U8; size: I64);
         dot;
     end;
 

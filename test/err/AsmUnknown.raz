@@ -1,4 +1,5 @@
 module AsmUnknown;
+import SYSTEM;
 proc f;
 code
     frob rax;

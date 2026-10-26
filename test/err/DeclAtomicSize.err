@@ -1,4 +1,4 @@
-test/err/DeclAtomicSize.raz:8:15: error: expected an INT or a UINT variable, found ^U8
-    8 |     n := XADD(p, 1);
+test/err/DeclAtomicSize.raz:9:15: error: expected an INT or a UINT variable, found ^U8
+    9 |     n := XADD(p, 1);
       |               ^
 raz: 1 error

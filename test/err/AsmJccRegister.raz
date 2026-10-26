@@ -1,4 +1,5 @@
 module AsmJccRegister;
+import SYSTEM;
 proc f;
 code
     jz rax;

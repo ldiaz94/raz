@@ -9,9 +9,9 @@ usage: tool [-v] file
   -v  say what is done
 `;
     Joined = `back` + "`" + `quote`;
-    Names: [2][]U8 = [`one`, `two`];
+    Names: [2][]const U8 = [`one`, `two`];
 
-proc show(s: []U8);
+proc show(s: []const U8);
 begin
     Out.int(LEN(s)); Out.str(" |"); Out.str(s); Out.str("|\n");
 end;

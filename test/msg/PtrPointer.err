@@ -1,9 +1,9 @@
-conform/err/PtrPointer.raz:6:14: error: PTR needs a slice or an array, found ^U8
-    6 |     q := PTR(p);
-      |              ^
+conform/err/PtrPointer.raz:7:21: error: PTR needs a slice or an array, found ^U8
+    7 |     q := SYSTEM.PTR(p);
+      |                     ^
 help: p is a pointer already, which is what PTR gives of a slice or an array
-conform/err/PtrPointer.raz:7:14: error: PTR needs a slice or an array, found ^[4]U8
-    7 |     q := PTR(pa);
-      |              ^^
+conform/err/PtrPointer.raz:8:21: error: PTR needs a slice or an array, found ^[4]U8
+    8 |     q := SYSTEM.PTR(pa);
+      |                     ^^
 help: write PTR(pa^) for the address of the array's first element, a ^U8
 raz: 2 errors

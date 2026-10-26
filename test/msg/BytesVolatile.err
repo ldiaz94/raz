@@ -1,5 +1,5 @@
-conform/err/BytesVolatile.raz:7:16: error: BYTES can't take a volatile variable
-    7 |     b := BYTES(r^);
+conform/err/BytesVolatile.raz:8:16: error: BYTES can't take a volatile variable
+    8 |     b := BYTES(r^);
       |                ^^
 help: reading and writing its bytes through a slice wouldn't be volatile accesses
 raz: 1 error

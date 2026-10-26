@@ -2,6 +2,6 @@ module AtomicI64;
 proc main*;
 var n: I64; _ok: BOOL;
 begin
-    _ok := CAS(ADR(n), 0, 1);
+    _ok := CAS(n, 0, 1);
 end;
 end AtomicI64.

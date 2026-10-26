@@ -1,2 +1,2 @@
-test/libc/Through.raz:30:7: index 3 is out of range for a length of 3
-  in Through.main at test/libc/Through.raz:30:7: p = nil, list = nil, i = 3, sum = 500500
+test/libc/Through.raz:31:7: index 3 is out of range for a length of 3
+  in Through.main at test/libc/Through.raz:31:7: p = nil, list = nil, i = 3, sum = 500500

@@ -73,7 +73,7 @@ begin
     return incr(n);
 end;
 
-proc second(s: []U8): U8;
+proc second(s: []const U8): U8;
 begin
     return s[1];
 end;
@@ -91,13 +91,13 @@ begin
     return (n # 0) and even(n - 1);
 end;
 
-proc show(s: []U8; n: INT);
+proc show(s: []const U8; n: INT);
 begin
     Out.str(s); Out.str(" "); Out.int(n); Out.ln;
 end;
 
 proc main*;
-var i, n: INT; s: []U8; p: Pair; f: proc(a, b: INT): INT; c: U8;
+var i, n: INT; s: []const U8; p: Pair; f: proc(a, b: INT): INT; c: U8;
 begin
     show("sub", sub(note(10), note(3)));
     show("order", trace[0] * 10 + trace[1]);

@@ -8,7 +8,7 @@ const
     One: ERROR = "same";
     Two: ERROR = "same";
 
-proc yes(name: []U8; b: BOOL);
+proc yes(name: []const U8; b: BOOL);
 begin
     Out.str(name);
     if b then Out.str(" true"); else Out.str(" false"); end;

@@ -1,4 +1,5 @@
 module AsmControl;
+import SYSTEM;
 proc f;
 code
     mov eax, cr0;

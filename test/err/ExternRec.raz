@@ -1,4 +1,5 @@
 module ExternRec;
+import SYSTEM;
 
 type R = record a, b: I64; end;
 

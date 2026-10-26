@@ -2,6 +2,7 @@
    C variables, raz procedures as C's callbacks. *)
 module Extern;
 import Out, C;
+import SYSTEM;
 link "libm.so.6";
 
 extern proc strlen(s: ^U8): U64;
@@ -36,13 +37,13 @@ begin
     Out.int(I64(sqrt(2.0) * 1000.0)); Out.ln;
 
     a := [5, -3, 9, 0, 12, 1];
-    qsort(^U8(ADR(a)), 6, 8, cmp);
+    qsort(^U8(SYSTEM.ADR(a)), 6, 8, cmp);
     for i := 0 to 5 do Out.int(a[i]); Out.char(' '); end;
     Out.ln;
     if calls > 0 then Out.str("cmp called\n"); end;
 
     (* nine arguments after the format: some go on the stack *)
-    n := snprintf(ADR(buf[0]), 64, "%d %d %d %d %d %d %d %s|%.3f %g",
+    n := snprintf(SYSTEM.ADR(buf[0]), 64, "%d %d %d %d %d %d %d %s|%.3f %g",
         1, 2, 3, 4, 5, 6, 7, "eight", 3.14159, 0.5);
     Out.str(buf[0..I64(n)]); Out.ln;
 

@@ -4,6 +4,7 @@
    may be a record, which = doesn't compare. *)
 module Filled(T);
 import Out;
+import SYSTEM;
 
 (* The lengths of the slices filled *)
 const Lens: [7]INT = [0, 1, 2, 7, 8, 9, 100];
@@ -24,7 +25,7 @@ var
     wrong: INT;    (* elements that hold what they shouldn't *)
 
 (* The bytes of the T at p: BYTES takes no BOOL, set or enumeration *)
-proc bytesAt(p: ^T): []U8;
+proc bytesAt(p: ^T): []const U8;
 var q: ^U8;
 begin
     q := ^U8(p);
@@ -36,7 +37,7 @@ proc count(a: []T; v: T);
 var i: INT;
 begin
     for i := 0 to LEN(a) - 1 do
-        if bytesAt(ADR(a[i])) # bytesAt(ADR(v)) then INC(wrong); end;
+        if bytesAt(SYSTEM.ADR(a[i])) # bytesAt(SYSTEM.ADR(v)) then INC(wrong); end;
     end;
 end;
 
@@ -81,7 +82,7 @@ end;
 
 (* Fills slices and arrays with v, around s, and says how many elements
    were filled and how many are wrong, after name *)
-proc check*(name: []U8; v, s: T);
+proc check*(name: []const U8; v, s: T);
 begin
     filled := 0;
     wrong := 0;

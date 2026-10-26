@@ -1,7 +1,8 @@
 module ViewAdr;
+import SYSTEM;
 var mem: [16]U8; p: ^I64;
 proc main*;
 begin
-    p := ADR(mem[0].(I64));
+    p := SYSTEM.ADR(mem[0].(I64));
 end;
 end ViewAdr.

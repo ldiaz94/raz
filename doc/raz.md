@@ -1535,7 +1535,7 @@ module Head;
 import Sys, Out;
 
 (* Prints the first line of the file at path. *)
-proc head(path: []U8): BOOL;
+proc head(path: []const U8): BOOL;
 var fd, n, i: INT; buf: [256]U8;
 begin
     fd := Sys.openRead(path);

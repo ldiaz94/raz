@@ -5,7 +5,7 @@ type
     Color* = (red, green, blue, black);
     Colors* = set of Color;
     Cell = record ch: U8; attr: U8; fg: Color; end;
-    Point = record x, y: I64; name: []U8; end;
+    Point = record x, y: I64; name: []const U8; end;
     Line = record a, b: Point; end;
 
 var log: [8]U8; nlog: I64;
@@ -25,7 +25,7 @@ begin
     Out.str(" ");
 end;
 
-proc name(c: Color): []U8;
+proc name(c: Color): []const U8;
 begin
     match c of
     | red: return "red";

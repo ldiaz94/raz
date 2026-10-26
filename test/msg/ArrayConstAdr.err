@@ -1,4 +1,4 @@
-conform/err/ArrayConstAdr.raz:6:14: error: ADR needs a variable
-    6 |     p := ADR(P);
-      |              ^
+conform/err/ArrayConstAdr.raz:7:21: error: ADR needs a variable
+    7 |     p := SYSTEM.ADR(P);
+      |                     ^
 raz: 1 error

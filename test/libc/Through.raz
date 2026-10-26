@@ -3,6 +3,7 @@
    writes out what Out holds. *)
 module Through;
 import Out, Heap, Mem;
+import SYSTEM;
 
 type Node = record next: ^Node; n: I64; end;
 

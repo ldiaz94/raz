@@ -13,6 +13,7 @@
    bg), assignments, globs, $(...), if and while. *)
 module Sh;
 import Opt, Files, Sys, Str, Buf, Fmt, Out, Arena, Heap, Rt;
+import SYSTEM;
 
 const
     maxWords = 64;   (* of a command *)
@@ -85,7 +86,7 @@ end;
 proc readWord;
 var b: Buf.Buf; q: U8;
 begin
-    Buf.init(b, ADR(arena.base));
+    Buf.init(b, SYSTEM.ADR(arena.base));
     while (at < LEN(s)) and not special(s[at]) do
         q := s[at];
         match q of
@@ -148,7 +149,7 @@ proc parse(p: ^Pipeline): (Token, BOOL);
 var t: Token; c: ^Command;
 begin
     p^ := {n: 1};
-    c := ADR(p^.cmds[0]);
+    c := SYSTEM.ADR(p^.cmds[0]);
     t := next();
     while (t # sep) and (t # amp) and (t # eof) do
         if t = word then
@@ -157,7 +158,7 @@ begin
             INC(c^.n);
         elsif t = pipe then
             if (c^.n = 0) or (p^.n = maxCmds) then say("a | without a command", []); return t, false; end;
-            c := ADR(p^.cmds[p^.n]);
+            c := SYSTEM.ADR(p^.cmds[p^.n]);
             INC(p^.n);
         else
             if next() # word then say("a redirection without a file", []); return t, false; end;
@@ -185,7 +186,7 @@ begin
         if (i = LEN(path)) or (path[i] = ':') then
             dir := path[start..i];
             start := i + 1;
-            Buf.init(b, ADR(arena.base));
+            Buf.init(b, SYSTEM.ADR(arena.base));
             Fmt.write(b, "{}/{}", [Fmt.str(dir), Fmt.str(name)]);
             info, err := Sys.info(Buf.bytes(b));
             if (err = 0) and info.file and (info.mode & 49H # 0) then return Buf.bytes(b), true; end;
@@ -246,11 +247,11 @@ var
     pids: [maxCmds]INT; fds: [3]INT; i, j, inNext, r, w, leader, joins, how, _pid: INT;
     c: ^Command; path: []const U8; found, _ok: BOOL; st: Sys.Status;
 begin
-    if (p^.n = 1) and not p^.background and builtin(ADR(p^.cmds[0])) then return; end;
+    if (p^.n = 1) and not p^.background and builtin(SYSTEM.ADR(p^.cmds[0])) then return; end;
     leader := 0;
     inNext := 0;
     for i := 0 to p^.n - 1 do
-        c := ADR(p^.cmds[i]);
+        c := SYSTEM.ADR(p^.cmds[i]);
         fds := [inNext, 0, 0];
         inNext := 0;
         if i < p^.n - 1 then r, w := Sys.pipe(); fds[1] := w; inNext := r; end;
@@ -306,9 +307,9 @@ begin
     s := script;
     at := 0;
     repeat
-        t, ok := parse(ADR(p));
+        t, ok := parse(SYSTEM.ADR(p));
         if not ok then status := 2; return; end;
-        if p.cmds[0].n > 0 then start(ADR(p)); end;
+        if p.cmds[0].n > 0 then start(SYSTEM.ADR(p)); end;
     until t = eof;
 end;
 

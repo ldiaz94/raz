@@ -8,7 +8,7 @@ const
     Word = ("sat" + " ") + "on";
 
 proc main*;
-var w: []U8;
+var w: []const U8;
 begin
     Out.str(Line);
     Out.str(Both); Out.ln;

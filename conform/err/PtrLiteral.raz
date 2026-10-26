@@ -1,7 +1,8 @@
 module PtrLiteral;
+import SYSTEM;
 proc main*;
 var p: ^U8;
 begin
-    p := PTR([]);
+    p := SYSTEM.PTR([]);
 end;
 end PtrLiteral.

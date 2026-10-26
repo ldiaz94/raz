@@ -2,10 +2,11 @@ module LaterCallback;
 (* A procedure type's parameter or result may name a type declared later
    in its type section, however passed (report, 4 and 5.9). *)
 import Out;
+import SYSTEM;
 
 type
     Lines = record
-        each: proc(var r: Lines; s: []U8);
+        each: proc(var r: Lines; s: []const U8);
         look: proc(const r: Lines): INT;
         copy: proc(r: Lines): Lines;
         at: proc(p: ^Lines): (INT, Lines);
@@ -29,7 +30,7 @@ type
         name: [8]U8;
     end;
 
-proc count(var r: Lines; s: []U8);
+proc count(var r: Lines; s: []const U8);
 begin
     INC(r.n, LEN(s));
 end;
@@ -76,7 +77,7 @@ begin
     Out.int(r.look(r)); Out.ln;
     c := r.copy(r);
     Out.int(c.n); Out.char(' '); Out.int(r.n); Out.ln;
-    k, c := r.at(ADR(r));
+    k, c := r.at(SYSTEM.ADR(r));
     Out.int(k); Out.char(' '); Out.int(c.n); Out.ln;
     pi.hit := hit; po.back := back;
     Out.int(pi.hit(po)); Out.char(' '); Out.int(pi.hit(po)); Out.ln;

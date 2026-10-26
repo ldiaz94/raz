@@ -1,4 +1,5 @@
 module ConvDeref;
+import SYSTEM;
 var a, b: INT;
 begin
   b := ^INT(a)^

@@ -38,7 +38,7 @@ begin
 end;
 
 proc main*;
-var i: INT; s: []U8;
+var i: INT; s: []const U8;
 begin
     s := "a1 _Z\t9?";
     for i := 0 to LEN(s) - 1 do Out.int(kind(s[i])); end;

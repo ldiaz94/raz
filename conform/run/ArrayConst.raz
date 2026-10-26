@@ -13,7 +13,7 @@ const
     Mixes: [2]set of Color = [{red, blue}, {}];
     Neg: [3]I16 = [-1, -32768, 32767];
 
-proc sum(a: []I64): I64;
+proc sum(a: []const I64): I64;
 var s: I64; i: INT;
 begin
     for i := 0 to LEN(a) - 1 do s := s + a[i]; end;

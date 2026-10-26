@@ -3,7 +3,7 @@
 module Sorted;
 import Out, Rt, Ints := Order(I64, below), ByAge := Order(Person, younger);
 
-type Person = record name: []U8; age: I64; end;
+type Person = record name: []const U8; age: I64; end;
 
 proc below(a, b: I64): BOOL;
 begin

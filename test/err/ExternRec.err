@@ -1,4 +1,4 @@
-test/err/ExternRec.raz:5:13: error: C takes integers, BOOL, reals, pointers and procedures
-    5 | extern proc f(r: R);
+test/err/ExternRec.raz:6:13: error: C takes integers, BOOL, reals, pointers and procedures
+    6 | extern proc f(r: R);
       |             ^
 raz: 1 error

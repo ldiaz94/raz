@@ -1,7 +1,7 @@
 module ExprJoinStrings;
 import Out;
 proc main*;
-var s: []U8;
+var s: []const U8;
 begin
     s := "abc";
     Out.str(s + "def");

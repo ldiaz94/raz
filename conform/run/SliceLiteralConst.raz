@@ -5,17 +5,17 @@ module SliceLiteralConst;
 import Out;
 
 type
-    Rule = record name: []U8; keys: []INT; end;
-    Shape = variant dot; poly(xs: []INT); end;
+    Rule = record name: []const U8; keys: []const INT; end;
+    Shape = variant dot; poly(xs: []const INT); end;
 
 const
-    Rows: [][]INT = [[1, 2], [3], []];
-    Deep: [][][]U8 = [[['a', 'b'], "cd"], [], [['e']]];
-    Rules: []Rule = [{name: "up", keys: [107, 65]}, {name: "none", keys: []}];
+    Rows: []const []const INT = [[1, 2], [3], []];
+    Deep: []const []const []const U8 = [[['a', 'b'], "cd"], [], [['e']]];
+    Rules: []const Rule = [{name: "up", keys: [107, 65]}, {name: "none", keys: []}];
     Shapes: [2]Shape = [poly([1, 2, 3]), dot];
-    Words: [][]U8 = [['h', 'i'], "there"];
+    Words: []const []const U8 = [['h', 'i'], "there"];
 
-proc sum(xs: []INT): INT;
+proc sum(xs: []const INT): INT;
 var i, s: INT;
 begin
     s := 0;

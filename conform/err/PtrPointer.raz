@@ -1,9 +1,10 @@
 module PtrPointer;
+import SYSTEM;
 proc main*;
 var a: [4]U8; p, q: ^U8; pa: ^[4]U8;
 begin
-    p := ADR(a[0]); pa := ADR(a);
-    q := PTR(p);
-    q := PTR(pa);
+    p := SYSTEM.ADR(a[0]); pa := SYSTEM.ADR(a);
+    q := SYSTEM.PTR(p);
+    q := SYSTEM.PTR(pa);
 end;
 end PtrPointer.
