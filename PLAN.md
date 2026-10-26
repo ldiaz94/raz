@@ -86,14 +86,15 @@ library it imports (`Buf`, `Files`, `Fmt`, `Heap`, `Mem`, `Out`, `Rt`,
    `SYSTEM`. The old forms are still taken, silently: a string literal
    into a `[]U8`, `ADR` and the rest without `SYSTEM`, an atomic given
    a pointer. The library: `Task`, `Guarded`, `Heap`'s debugging mode.
-   `tools/Mutate.raz` taught the rewrites: `ADR` at a parameter only
-   dereferenced to `var` or `const`, `SYSTEM.` where an address is
-   kept, an atomic's `ADR` dropped, `[]const` where a slice is only
-   read. Release, and the report's pages checked.
+   Release, and the report's pages checked. Done but the release
+   (2026-10-26): no rewriting tool, by the owner's word; v0.24.0's
+   errors point at each place to mend.
 3. `BOOT` moved to v0.23.0, a step of its own.
 4. **v0.24.0, which enforces it.** `lib/`, `src/`, `tools/`,
-   `examples/` and the tests rewritten by `Mutate`, then the old forms
-   made errors; the programs in `~/r` mended, each its own commit.
+   `examples/` and the tests mended where the old forms, made errors,
+   are found (`ADR` at a parameter only dereferenced becomes `var` or
+   `const`; `SYSTEM.` where an address is kept); the programs in `~/r`
+   mended the same way, by agents, each its own commit.
    Release.
 
 ## 3. The Moss work: v0.25.0
