@@ -2349,9 +2349,10 @@ names, by its tag and its tarball's SHA-256: `src/boot.sh` fetches the
 tarball into `build/boot/`, checks the sum, and puts its `raz` there
 with this `lib/` beside it, so that `src/` is built against today's
 library. So `src/`, and the modules of `lib/` it imports, use only what
-that release knows: v0.22.0 has `const` parameters, views, the
-widening, `PTR`, and report 2026-10.36's built-ins (`MIN`, `MAX`, `ABS`,
-`CLZ`, `CTZ`, `POPCOUNT`, `INT(b)`, `OFFSET`, `BYTES`, `FILL`, ...). `make fixpoint` has BOOT's compiler build
+that release knows: v0.23.0 has `const` parameters, views, the
+widening, `PTR`, report 2026-10.36's built-ins (`MIN`, `MAX`, `ABS`,
+`CLZ`, `CTZ`, `POPCOUNT`, `INT(b)`, `OFFSET`, `BYTES`, `FILL`, ...), and
+10.37's `[]const T`, `import SYSTEM` and atomics on a variable. `make fixpoint` has BOOT's compiler build
 `src/`, that build it again, and that again, and checks that the last
 two are the same file. `make prev-bench` compares this compiler's speed
 with BOOT's on the same program, and fails if it is more than a tenth

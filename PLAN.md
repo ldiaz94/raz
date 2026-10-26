@@ -91,7 +91,7 @@ library it imports (`Buf`, `Files`, `Fmt`, `Heap`, `Mem`, `Out`, `Rt`,
    as for v0.22.0), its SHA-256 `103eb421...`; the website has v0.22.0
    and v0.23.0; 35 pages. No rewriting tool, by the owner's word:
    v0.24.0's errors point at each place to mend.
-3. `BOOT` moved to v0.23.0, a step of its own.
+3. `BOOT` moved to v0.23.0, a step of its own. **Done** 2026-10-26.
 4. **v0.24.0, which enforces it.** `lib/`, `src/`, `tools/`,
    `examples/` and the tests mended where the old forms, made errors,
    are found (`ADR` at a parameter only dereferenced becomes `var` or

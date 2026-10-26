@@ -48,7 +48,7 @@ tools and the library's tests: they must have no warnings.
 
 - The compiler, `src/`, is raz, in the language of the report and with
   the library of `lib/`; it must build with the release `BOOT` names
-  (v0.22.0), so it, and the modules of `lib/` it imports, use nothing
+  (v0.23.0), so it, and the modules of `lib/` it imports, use nothing
   that release doesn't know until `BOOT` names a newer one.
 - Work goes by milestones, each a release, set by the owner. A milestone
   starts only on the owner's explicit go-ahead; within it, one commit
@@ -94,8 +94,9 @@ end of its procedure; `CAS`, `XCHG` and `XADD` take a variable;
 `.ARGV`; and in the library `Task`, `Guarded` and `Heap`'s debugging
 mode. Every old form is still taken: a literal into a `[]U8`, the bare
 built-ins, what `SYSTEM` fences without it, an atomic given `ADR(x)`.
-`BOOT` still names v0.22.0; moving it to v0.23.0 is the next step, then
-v0.24.0 makes the old forms errors and mends `~/r`.
+`BOOT` names v0.23.0 (2026-10-26), so `src/` and the library it imports
+may use all of 10.37; v0.24.0 makes the old forms errors and mends
+`~/r`. CI couldn't run for it either; `make dist` made its tarball here.
 v0.22.0, report 2026-10.36, before it, is the twelfth thaw, what `PROPOSALS.md`
 collated: `MIN`, `MAX`, `ABS`, `CLZ`, `CTZ`, `POPCOUNT`, `INT(b)`,
 `OFFSET`, `SIZE(T.f)`, `BYTES` and `FILL`; a qualified case in an arm,
@@ -104,8 +105,7 @@ record, and `ROL` and `ROR` (10.35); library growth (`Fmt`'s widths and
 `short`, `Str`, `Files`, `Sys`'s `poll`, processes, servers and signals,
 `Math`, `Opt`, `Heap.sure`, `Vec`, `Arena`); and code made faster
 (inlining a procedure that only returns, `COPY`, `FILL`, array
-parameters). `BOOT` names v0.22.0 (2026-10-23), so `src/` and the library
-it imports may use all of 10.36. CI couldn't run for it (GitHub's
+parameters). `BOOT` named v0.22.0 from 2026-10-23. CI couldn't run for it (GitHub's
 billing), so its release and tarball were made here by `make dist`, the
 same bytes CI would make.
 v0.21.0, report 2026-10.34, before it, the language unchanged, is for a kernel:
