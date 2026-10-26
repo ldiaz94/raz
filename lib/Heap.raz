@@ -5,7 +5,26 @@
    of its pages for a big one, which start less than a page before it;
    then a marker, which says the block is out, so that freeing it
    twice, or freeing what the heap never gave out, stops the program.
-   One lock keeps it whole across threads. *)
+   One lock keeps it whole across threads.
+
+   Debug mode, a light AddressSanitizer: RAZ_HEAP=debug in the
+   environment, or debug(true), makes the blocks given out from then on
+   carry 8 guard bytes after their last, and a freed block is filled
+   with 0DEH and held in a quarantine, the last 1,024 frees, before it
+   may be given again. A write past a block's end breaks its guard,
+   found when it is freed; a write to a freed block breaks its fill,
+   found when it leaves the quarantine. Either stops the program, with
+   the block's address and size and the calls under way. It costs
+   normal mode nothing: debug swaps the allocator's alloc, and free
+   looks at what kind of block it has only past its own check.
+
+        header   the block's bytes   guard   (slack)   size
+       |16 bytes|<-- size -------->|8 bytes|          |8 bytes|
+                                                  the block's last 8
+
+   It depends on Mem, Lock, Rt and Sys. It leaves out the checks of a
+   read past the end or before a block, and of a write after free once
+   the block has left the quarantine. *)
 module Heap;
 import Mem, Lock, Rt, Sys;
 
@@ -15,6 +34,12 @@ const
     Refill = 65536;
     Largest = 1 shl 46;           (* bigger sizes are refused *)
     Out = 5A6564426C6F636BH;      (* the marker, xor the header's address *)
+    Dbg = 5A6564446267626BH;      (* a debug block's marker, the same way *)
+    Guard = 0A5H;                 (* the byte of the guard after a debug block *)
+    GuardLen = 8;
+    Dead = 0DEH;                  (* the byte a freed debug block is filled with *)
+    Digits = "0123456789abcdef";   (* for the numbers a stop says *)
+    Held = 1024;                  (* how many freed debug blocks are quarantined *)
 
 type
     Block = record next: ^Block; end;
@@ -25,6 +50,9 @@ var
     cur: ^U8;            (* where the next new small block comes from *)
     left: INT;
     lock: Lock.Lock;
+    held: [Held]^Head;   (* the quarantine: a ring of freed debug blocks' headers *)
+    oldest: INT;         (* where in held the next freed block goes, and the oldest is *)
+    debugOn: BOOL;
     std, surer: Mem.Allocator;
     (* The heap, for NEW(p, Heap.heap) and Mem's procedures. *)
     heap*: ^Mem.Allocator;
@@ -89,6 +117,131 @@ begin
     return a - a & (Mem.Page - 1);
 end;
 
+(* Where the block with header h ends: its class's size, or its pages'. *)
+proc endOf(h: ^Head): INT;
+begin
+    if h^.size < 0 then return pageOf(INT(h)) - h^.size; end;
+    return INT(h) + (16 shl h^.size);
+end;
+
+(* The size a debug block was asked for, kept in its last 8 bytes. *)
+proc askedSize(h: ^Head): INT;
+var w: ^INT;
+begin
+    w := ^INT(endOf(h) - 8);
+    return w^;
+end;
+
+(* Stops the program, saying what was found of the debug block with
+   header h, its address and its size, and the calls under way. *)
+proc found(what: []U8; h: ^Head);
+var d: [20]U8; i, n: INT;
+begin
+    _ := Sys.write(Sys.stderr, "Heap: ");
+    _ := Sys.write(Sys.stderr, what);
+    _ := Sys.write(Sys.stderr, ": block at 0x");
+    n := INT(h) + Header;
+    i := LEN(d);
+    repeat
+        DEC(i);
+        d[i] := Digits[n & 15];
+        n := n shr 4;
+    until n = 0;
+    _ := Sys.write(Sys.stderr, d[i..LEN(d)]);
+    _ := Sys.write(Sys.stderr, ", ");
+    n := askedSize(h);
+    i := LEN(d);
+    repeat
+        DEC(i);
+        d[i] := Digits[n mod 10];
+        n := n div 10;
+    until n = 0;
+    _ := Sys.write(Sys.stderr, d[i..LEN(d)]);
+    _ := Sys.write(Sys.stderr, " bytes\n");
+    Rt.trace;
+    Rt.exit(2);
+end;
+
+(* found, with the heap's lock held, which is let go first, so that
+   what runs as the program ends may use the heap *)
+proc badBlock(what: []U8; h: ^Head);
+begin
+    Lock.give(lock);
+    found(what, h);
+end;
+
+(* Whether the guard after debug block h is whole. *)
+proc guardWhole(h: ^Head): BOOL;
+var p: ^U8; i, size: INT;
+begin
+    p := ^U8(h) + Header;
+    size := askedSize(h);
+    for i := 0 to GuardLen - 1 do
+        if p[size + i] # Guard then return false; end;
+    end;
+    return true;
+end;
+
+(* Whether the freed debug block h is still all 0DEH. *)
+proc stillDead(h: ^Head): BOOL;
+var p: ^U8; i: INT;
+begin
+    p := ^U8(h) + Header;
+    for i := 0 to askedSize(h) - 1 do
+        if p[i] # Dead then return false; end;
+    end;
+    return true;
+end;
+
+(* Gives size bytes, as alloc does, but in debug mode: the block has a
+   guard after it, and its last 8 bytes hold size. *)
+proc allocDebug(_a: ^Mem.Allocator; size, align: INT): ^U8;
+var p: ^U8; h: ^Head; w: ^INT; i: INT;
+begin
+    if (size < 0) or (size > Largest) then return nil; end;
+    p := alloc(_a, size + GuardLen + 8, align);
+    if p = nil then return nil; end;
+    h := ^Head(p - Header);
+    h^.mark := Dbg xor INT(h);
+    for i := 0 to GuardLen - 1 do p[size + i] := Guard; end;
+    w := ^INT(endOf(h) - 8);
+    w^ := size;
+    return p;
+end;
+
+(* Frees the debug block h, with the lock held, which it lets go. The
+   guard is checked, and the block filled with 0DEH and quarantined;
+   the block that leaves the quarantine is checked to be still all 0DEH
+   and guarded, and goes to its free list. A big block is not held: its
+   guard is checked and its pages unmapped, so any use of it faults. *)
+proc freeDebug(h: ^Head);
+var out: ^Head; p: ^U8; i, size: INT; b: ^Block;
+begin
+    if not guardWhole(h) then badBlock("a write past the block's end", h); end;
+    h^.mark := 0;
+    if h^.size < 0 then
+        Lock.give(lock);
+        Mem.unmap(^U8(pageOf(INT(h))), -h^.size);
+        return;
+    end;
+    size := askedSize(h);
+    p := ^U8(h) + Header;
+    FILL(p[0..size], Dead);
+    out := held[oldest];
+    held[oldest] := h;
+    oldest := (oldest + 1) mod Held;
+    if out # nil then
+        if not stillDead(out) then badBlock("a write after free", out); end;
+        if not guardWhole(out) then badBlock("a write past the block's end", out); end;
+        i := out^.size;
+        b := ^Block(out);
+        b^.next := lists[i];
+        lists[i] := b;
+    end;
+    Lock.give(lock);
+end;
+
+(* Gives back the block p, which alloc or allocDebug gave. *)
 proc free(_a: ^Mem.Allocator; p: ^U8);
 var h: ^Head; b: ^Block; c: INT;
 begin
@@ -96,6 +249,7 @@ begin
     h := ^Head(p - Header);
     Lock.take(lock);
     if h^.mark # Out xor INT(h) then
+        if h^.mark = Dbg xor INT(h) then freeDebug(h); return; end;
         Rt.stop("Heap: a block freed twice, or never given out");
     end;
     h^.mark := 0;
@@ -111,18 +265,59 @@ begin
     end;
 end;
 
+(* Debug mode on or off, for the blocks given from now on; a block
+   given before is freed as it was given, in either mode. Call it
+   before the first allocation to cover them all. *)
+proc debug*(on: BOOL);
+begin
+    debugOn := on;
+    if on then std.alloc := allocDebug; else std.alloc := alloc; end;
+end;
+
 (* The heap's alloc, but with no room the program stops, with the
    calls under way. *)
-proc allocSure(a: ^Mem.Allocator; size, align: INT): ^U8;
+proc allocSure(_a: ^Mem.Allocator; size, align: INT): ^U8;
 var p: ^U8;
 begin
-    p := alloc(a, size, align);
+    p := std.alloc(ADR(std), size, align);
     if p = nil then
         _ := Sys.write(Sys.stderr, "Heap: out of memory\n");
         Rt.trace;
         Rt.exit(2);
     end;
     return p;
+end;
+
+(* The debug mode's test: a block written past its end, or after it is
+   freed, is found; a block's bytes, in a small and in a big one, are
+   its own. The stop itself is test/run/HeapDebug. Mode is left as found. *)
+proc debugTest;
+var was: BOOL; p: ^U8; h: ^Head; size, i: INT;
+begin
+    was := debugOn;
+    debug(true);
+    for i := 0 to 1 do
+        size := 100 + i * 9900;            (* a small block, then a big one *)
+        p := Mem.alloc(heap, size, 8);
+        h := ^Head(p - Header);
+        if (p = nil) or (h^.mark # Dbg xor INT(h)) or (askedSize(h) # size) or not guardWhole(h) then
+            Rt.stop("Heap: debug block");
+        end;
+        FILL(p[0..size], 1);
+        p[size] := 0;                       (* one past the end *)
+        if guardWhole(h) then Rt.stop("Heap: a write past the end isn't found"); end;
+        p[size] := Guard;
+        if size < 4096 then
+            Mem.free(heap, p);
+            if not stillDead(h) then Rt.stop("Heap: freed block not filled"); end;
+            p[7] := 0;                      (* after free *)
+            if stillDead(h) then Rt.stop("Heap: a write after free isn't found"); end;
+            p[7] := Dead;
+        else
+            Mem.free(heap, p);
+        end;
+    end;
+    debug(was);
 end;
 
 (* The module's test: blocks of every class and big ones, written,
@@ -145,14 +340,19 @@ begin
     end;
     Mem.free(heap, p[5]);
     again := Mem.alloc(heap, (25 * 37) mod 9000 + 1, 8);
-    if again # p[5] then Rt.stop("Heap: a freed block isn't taken again"); end;
-    for i := 0 to 39 do Mem.free(heap, p[i]); end;
+    if (again = p[5]) = debugOn then Rt.stop("Heap: a freed block's reuse"); end;
+    (* in debug mode again is another block, and p[5] is freed already *)
+    if debugOn then Mem.free(heap, again); end;
+    for i := 0 to 39 do
+        if not debugOn or (i # 5) then Mem.free(heap, p[i]); end;
+    end;
     NEW(q, sure);
     if (q = nil) or (INT(q) mod 8 # 0) then Rt.stop("Heap: sure"); end;
     q^ := 7;
     Mem.free(sure, ^U8(q));
     if Mem.alloc(heap, -1, 8) # nil then Rt.stop("Heap: negative size"); end;
     if Mem.alloc(heap, 7FFFFFFFFFFFFFFFH - 4, 8) # nil then Rt.stop("Heap: huge size"); end;
+    debugTest;
 end;
 
 begin
@@ -160,4 +360,5 @@ begin
     heap := ADR(std);
     surer := {alloc: allocSure, free: free};
     sure := ADR(surer);
+    if Sys.env("RAZ_HEAP") = "debug" then debug(true); end;
 end Heap.

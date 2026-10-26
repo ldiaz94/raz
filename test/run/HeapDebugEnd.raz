@@ -1,0 +1,15 @@
+module HeapDebugEnd;
+(* in debug mode, a write one byte past a block's end is found when the
+   block is freed, and stops the program *)
+import Heap, Mem;
+
+proc main*;
+var p: ^U8;
+begin
+    Heap.debug(true);
+    p := Mem.alloc(Heap.heap, 20, 8);
+    p[20] := 1;
+    Mem.free(Heap.heap, p);
+end;
+
+end HeapDebugEnd.

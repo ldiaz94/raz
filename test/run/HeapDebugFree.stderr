@@ -1,0 +1,7 @@
+Heap: a write after free: block at 0x?, 20 bytes
+  in Heap.found at lib/Heap.raz:161:5: h = 0x?, i = 18, n = 0
+  in Heap.badBlock at lib/Heap.raz:170:5: h = 0x?
+  in Heap.freeDebug at lib/Heap.raz:234:36: h = 0x?, out = 0x?, p = 0x?, i = 0, size = 20, b = nil
+  in Heap.free at lib/Heap.raz:252:42: _a = 0x?, p = 0x?, h = 0x?, b = nil, c = 0
+  in Mem.free at lib/Mem.raz:39:5: a = 0x?, p = 0x?
+  in HeapDebugFree.main at test/run/HeapDebugFree.raz:15:9: p = 0x?, q = 0x?, i = 1023

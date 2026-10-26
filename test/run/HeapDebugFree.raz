@@ -1,0 +1,19 @@
+module HeapDebugFree;
+(* in debug mode, a write to a freed block is found when the block
+   leaves the quarantine, 1,024 frees later, and stops the program *)
+import Heap, Mem;
+
+proc main*;
+var p, q: ^U8; i: INT;
+begin
+    Heap.debug(true);
+    p := Mem.alloc(Heap.heap, 20, 8);
+    Mem.free(Heap.heap, p);
+    p[3] := 1;
+    for i := 0 to 1024 do
+        q := Mem.alloc(Heap.heap, 20, 8);
+        Mem.free(Heap.heap, q);
+    end;
+end;
+
+end HeapDebugFree.

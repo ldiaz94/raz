@@ -290,6 +290,18 @@ if $raz -Werror -o $out/raztest tools/Test.raz 2>$out/raztest.cerr; then
     else
         echo "FAIL tools/Test.raz:"; cat $out/raztest.out; fail=$((fail + 1))
     fi
+    # and again with the debug heap, RAZ_HEAP=debug: guards after blocks,
+    # freed blocks filled and quarantined
+    RAZ_HEAP=debug RAZ=$raz $out/raztest -j $(nproc 2>/dev/null || echo 1) -o $out/libdebug \
+        $(for f in lib/*.raz; do [ $f != lib/Sys.raz ] && grep -q '^proc main\*' $f && echo $f; done) \
+        > $out/raztest-debug.out 2>&1
+    set -- $(tail -1 $out/raztest-debug.out)
+    if [ "$2" = passed, ] && [ "$6" = timed ]; then
+        pass=$((pass + $1)); fail=$((fail + $3 + $5))
+        [ $(($3 + $5)) = 0 ] || { echo "RAZ_HEAP=debug:"; grep -v '^ok ' $out/raztest-debug.out; }
+    else
+        echo "FAIL tools/Test.raz, RAZ_HEAP=debug:"; cat $out/raztest-debug.out; fail=$((fail + 1))
+    fi
 else
     echo "FAIL tools/Test.raz: $(cat $out/raztest.cerr)"; fail=$((fail + 1))
 fi

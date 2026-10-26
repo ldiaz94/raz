@@ -24,7 +24,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Task` | a thread given a value of its own, `Task(T)`: `spawn` copies it, with no cast |
 | `Guarded` | a value with its lock, `Guarded(T)`: reached only through `with` |
 | `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
-| `Heap` | a general allocator, `Heap.heap`, safe to call from several threads; freeing a block twice, or one it never gave out, stops the program |
+| `Heap` | a general allocator, `Heap.heap`, safe to call from several threads; freeing a block twice, or one it never gave out, stops the program; `RAZ_HEAP=debug` finds writes past a block's end and after free |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
 | `Str` | operations on `[]U8` strings: comparing, hashing, finding, trimming and cutting, case, joining and replacing, UTF-8, numbers to and from text |
 | `Bytes` | searches of bytes, many at a time: `index`, `last`, `count` and `find` in a `[]U8`; one file per target where the target has instructions for it |
@@ -85,6 +85,7 @@ proc alloc*(a: ^Allocator; size, align: INT): ^U8;   (* a^.alloc(a, size, align)
 proc free*(a: ^Allocator; p: ^U8);   (* a^.free(a, p) *)
 
 module Heap;
+proc debug*(on: BOOL);       (* debug mode on or off, for the blocks given from now on *)
 var heap*: ^Mem.Allocator;
 var sure*: ^Mem.Allocator;   (* heap, but running out of memory stops the program *)
 
@@ -103,7 +104,23 @@ proc done*(var ar: Arena);                    (* its memory given back *)
 `NEW(p, a)` calls `a^.alloc`. `Heap` is the general
 allocator; `Heap.heap` gives `nil` when memory runs out, and `Heap.sure`
 stops the program instead, as `Buf` does, so that `NEW(p, Heap.sure)`
-needs no check. An arena hands out memory from
+needs no check.
+
+`Heap` has a debug mode, a light AddressSanitizer, chosen by `RAZ_HEAP=debug`
+in the environment or by `Heap.debug(true)`. Normal mode pays nothing for
+it. In debug mode each block given has 8 guard bytes after its last, and
+a freed block is filled with `0DEH` bytes and held in a quarantine, the
+last 1,024 frees, before it may be given again. A broken guard, a write
+past the block's end, is found when the block is freed; a block that
+leaves the quarantine with a byte not `0DEH`, a write after free, is
+found then. Either stops the program, saying what was found and the
+block's address and size, with the calls under way, and status 2. A big
+block, which has pages of its own, is not quarantined: its guard is
+checked and its pages unmapped, so a later use of it faults. `debug`
+changes only the blocks given after it, so call it before the first
+allocation; a block is freed as it was given, in either mode. Only writes
+are found, not reads, and not those past the guard or after the
+quarantine. An arena hands out memory from
 one block: its `free` does nothing, and `reset` forgets everything.
 
 ```
