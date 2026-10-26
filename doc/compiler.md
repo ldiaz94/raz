@@ -1175,7 +1175,7 @@ at a time, with `movdqu`, `movdqa` and `pmovmskb` beside them, and
 `BitOps` the bit scans and counts: `bsf`, `bsr`, `tzcnt`, `lzcnt`,
 `popcnt`). A kernel's instructions are there too, though the code
 generator never makes them: `cli`, `sti`, `iretq`, `swapgs`, `rdmsr`,
-`wrmsr` and `wbinvd` in `Plain`; `lgdt`, `lidt`, `invlpg`, `xsave` and
+`wrmsr`, `wbinvd`, `cld` and `std` in `Plain`; `push` of a constant (6A and a byte when it fits a signed byte, else 68 and four, sign-extended to 64 bits); `lgdt`, `lidt`, `invlpg`, `xsave` and
 `xrstor`, of one memory operand, in `MemOps`; `ltr` of a 16-bit
 register; `mov` to and from `cr0`, `cr2`, `cr3`, `cr4` and `cr8` (an
 operand of its own kind, `oCr`); and `in` and `out`, of `al`, `ax` or

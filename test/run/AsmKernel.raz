@@ -6,7 +6,7 @@ import Out;
 import SYSTEM;
 
 const
-    Count = 36;
+    Count = 45;
     Names: [Count][]const U8 = ["cli", "sti", "iretq", "swapgs",
         "rdmsr", "wrmsr", "wbinvd", "lgdt [rdi]",
         "lidt [rsi + 8]", "invlpg [rax]", "invlpg [r12 + rcx * 8 + 400]", "xsave [rdi]",
@@ -15,10 +15,13 @@ const
         "mov cr8, r11", "mov rax, cr0", "mov r9, cr3", "mov rbx, cr8",
         "in al, 60H", "in ax, 61H", "in eax, 0FFH", "in al, dx",
         "in ax, dx", "in eax, dx", "out 80H, al", "out 80H, ax",
-        "out 0, eax", "out dx, al", "out dx, ax", "out dx, eax"];
+        "out 0, eax", "out dx, al", "out dx, ax", "out dx, eax",
+        "push 0", "push 127", "push -128", "push 128", "push -129",
+        "push 7FFFFFFFH", "push -80000000H", "cld", "std"];
     Sizes: [Count]INT = [1, 1, 2, 3, 2, 2, 2, 3, 4, 3, 9, 3,
         4, 3, 4, 3, 3, 4, 3, 4, 4, 3, 4, 4,
-        2, 3, 2, 1, 2, 1, 2, 3, 2, 1, 2, 1];
+        2, 3, 2, 1, 2, 1, 2, 3, 2, 1, 2, 1,
+        2, 2, 2, 5, 5, 5, 5, 1, 1];
 
 proc kernel;
 code
@@ -58,6 +61,15 @@ code
     out dx, al;
     out dx, ax;
     out dx, eax;
+    push 0;
+    push 127;
+    push -128;
+    push 128;
+    push -129;
+    push 7FFFFFFFH;
+    push -80000000H;
+    cld;
+    std;
     ret;
 end kernel;
 

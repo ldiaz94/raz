@@ -1141,13 +1141,13 @@ const
     BitOps = " bsf bsr tzcnt lzcnt popcnt ";
     BitPfx: [5]INT = [0, 0, 0F3H, 0F3H, 0F3H];
     BitCodes: [5]INT = [0BC0FH, 0BD0FH, 0BC0FH, 0BD0FH, 0B80FH];
-    (* the instructions of no operands; the last seven are a kernel's *)
-    Plain: [22][]const U8 = ["ret", "leave", "syscall", "cpuid", "rdtsc",
+    (* the instructions of no operands; the last nine are a kernel's *)
+    Plain: [24][]const U8 = ["ret", "leave", "syscall", "cpuid", "rdtsc",
         "pause", "nop", "ud2", "int3", "hlt", "cqo", "cdq", "mfence", "lfence", "sfence",
-        "cli", "sti", "iretq", "swapgs", "rdmsr", "wrmsr", "wbinvd"];
-    PlainOp: [22]INT = [0C3H, 0C9H, 050FH, 0A20FH, 310FH,
+        "cli", "sti", "iretq", "swapgs", "rdmsr", "wrmsr", "wbinvd", "cld", "std"];
+    PlainOp: [24]INT = [0C3H, 0C9H, 050FH, 0A20FH, 310FH,
         90F3H, 90H, 0B0FH, 0CCH, 0F4H, 9948H, 99H, 0F0AE0FH, 0E8AE0FH, 0F8AE0FH,
-        0FAH, 0FBH, 0CF48H, 0F8010FH, 320FH, 300FH, 090FH];
+        0FAH, 0FBH, 0CF48H, 0F8010FH, 320FH, 300FH, 090FH, 0FCH, 0FDH];
     (* the privileged instructions of one memory operand, 0F 01 /digit
        but for xsave and xrstor, 0F AE /digit *)
     MemOps = " lgdt lidt invlpg xsave xrstor ";
@@ -1317,6 +1317,17 @@ begin
             return bad();
         end;
     elsif (aw = "push") or (aw = "pop") then
+        if (aw = "push") and (an = 1) and (ao[0].kind = oImm) then
+            (* a constant, sign-extended to 64 bits: 6A and a byte if it fits
+               one, else 68 and four bytes *)
+            if (ao[0].v < -80000000H) or (ao[0].v > 7FFFFFFFH) then return bad(); end;
+            if (ao[0].v >= -128) and (ao[0].v <= 127) then
+                Chunk.put1(6AH); Chunk.put1(INT(ao[0].v & 0FFH));
+            else
+                Chunk.put1(68H); Chunk.put4(INT(ao[0].v & 0FFFFFFFFH));
+            end;
+            return nil;
+        end;
         if (an # 1) or (ao[0].kind # oReg) or not awide then return bad(); end;
         if aw = "push" then push(ao[0].r); else pop(ao[0].r); end;
     elsif (aw = "call") or (aw = "jmp") then

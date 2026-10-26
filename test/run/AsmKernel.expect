@@ -34,3 +34,12 @@ out 0, eax: E7 00
 out dx, al: EE
 out dx, ax: 66 EF
 out dx, eax: EF
+push 0: 6A 00
+push 127: 6A 7F
+push -128: 6A 80
+push 128: 68 80 00 00 00
+push -129: 68 7F FF FF FF
+push 7FFFFFFFH: 68 FF FF FF 7F
+push -80000000H: 68 00 00 00 80
+cld: FC
+std: FD
