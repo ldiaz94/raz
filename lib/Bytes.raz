@@ -6,6 +6,7 @@
    interface is the same. *)
 module Bytes;
 import Rt;
+import SYSTEM;
 
 const
     Ones = 0101010101010101H;     (* a one in each byte *)
@@ -42,13 +43,13 @@ begin
 end;
 
 (* The first place of b in s, or -1. *)
-proc index*(s: []U8; b: U8): INT;
+proc index*(s: []const U8; b: U8): INT;
 var i: INT; m, v, bs: U64; p: ^U64;
 begin
     bs := U64(b) * Ones;
     i := 0;
     while i + 8 <= LEN(s) do
-        p := ^U64(ADR(s[i]));
+        p := ^U64(SYSTEM.PTR(s[i..LEN(s)]));
         v := p^ xor bs;
         m := ~(((v & Lows) + Lows) | v | Lows) & Tops;
         if m # 0 then return i + INT((((m & (0 - m)) - 1) & Ones) * Ones shr 56) - 1; end;
@@ -62,13 +63,13 @@ begin
 end;
 
 (* The last place of b in s, or -1. *)
-proc last*(s: []U8; b: U8): INT;
+proc last*(s: []const U8; b: U8): INT;
 var i: INT; m, v, bs: U64; p: ^U64;
 begin
     bs := U64(b) * Ones;
     i := LEN(s);
     while i >= 8 do
-        p := ^U64(ADR(s[i - 8]));
+        p := ^U64(SYSTEM.PTR(s[i - 8..LEN(s)]));
         v := p^ xor bs;
         m := ~(((v & Lows) + Lows) | v | Lows) & Tops;
         if m # 0 then return i - 8 + highest(m); end;
@@ -82,14 +83,14 @@ begin
 end;
 
 (* How many bytes of s are b. *)
-proc count*(s: []U8; b: U8): INT;
+proc count*(s: []const U8; b: U8): INT;
 var i, n: INT; v, bs: U64; p: ^U64;
 begin
     bs := U64(b) * Ones;
     i := 0;
     n := 0;
     while i + 8 <= LEN(s) do
-        p := ^U64(ADR(s[i]));
+        p := ^U64(SYSTEM.PTR(s[i..LEN(s)]));
         v := p^ xor bs;
         n := n + INT(((~(((v & Lows) + Lows) | v | Lows) & Tops) shr 7) * Ones shr 56);
         i := i + 8;
@@ -107,7 +108,7 @@ end;
    both agree. They are the two bytes farthest apart, so as far from
    being the same test as two can be, and need no table of which bytes
    are rare. *)
-proc find*(s, sub: []U8): INT;
+proc find*(s, sub: []const U8): INT;
 var i, j, n, lastStart: INT; m, v, w, b0, b1: U64; p: ^U64;
 begin
     n := LEN(sub);
@@ -119,9 +120,9 @@ begin
     b1 := U64(sub[n - 1]) * Ones;
     i := 0;
     while i + 7 <= lastStart do
-        p := ^U64(ADR(s[i]));
+        p := ^U64(SYSTEM.PTR(s[i..LEN(s)]));
         v := p^ xor b0;
-        p := ^U64(ADR(s[i + n - 1]));
+        p := ^U64(SYSTEM.PTR(s[i + n - 1..LEN(s)]));
         w := p^ xor b1;
         m := ~(((v & Lows) + Lows) | v | Lows) & ~(((w & Lows) + Lows) | w | Lows) & Tops;
         while m # 0 do
@@ -153,7 +154,7 @@ begin
     return INT((seed shr 33) mod U64(n));
 end;
 
-proc refIndex(s: []U8; b: U8): INT;
+proc refIndex(s: []const U8; b: U8): INT;
 var i: INT;
 begin
     for i := 0 to LEN(s) - 1 do
@@ -162,7 +163,7 @@ begin
     return -1;
 end;
 
-proc refLast(s: []U8; b: U8): INT;
+proc refLast(s: []const U8; b: U8): INT;
 var i: INT;
 begin
     for i := LEN(s) - 1 to 0 by -1 do
@@ -171,7 +172,7 @@ begin
     return -1;
 end;
 
-proc refCount(s: []U8; b: U8): INT;
+proc refCount(s: []const U8; b: U8): INT;
 var i, n: INT;
 begin
     n := 0;
@@ -181,7 +182,7 @@ begin
     return n;
 end;
 
-proc refFind(s, sub: []U8): INT;
+proc refFind(s, sub: []const U8): INT;
 var i: INT;
 begin
     for i := 0 to LEN(s) - LEN(sub) do
@@ -191,14 +192,14 @@ begin
 end;
 
 (* index, last and count of b in s agree with the plain loops *)
-proc checkByte(s: []U8; b: U8);
+proc checkByte(s: []const U8; b: U8);
 begin
     if index(s, b) # refIndex(s, b) then Rt.stop("Bytes.index"); end;
     if last(s, b) # refLast(s, b) then Rt.stop("Bytes.last"); end;
     if count(s, b) # refCount(s, b) then Rt.stop("Bytes.count"); end;
 end;
 
-proc checkFind(s, sub: []U8);
+proc checkFind(s, sub: []const U8);
 begin
     if find(s, sub) # refFind(s, sub) then Rt.stop("Bytes.find"); end;
 end;
@@ -244,7 +245,7 @@ end;
    that are almost its bytes; the slice cut short just before and just
    after it; also subs longer than the slice, and empty ones *)
 proc testPlanted;
-var n, p, i, f: INT; s: []U8;
+var n, p, i, f: INT; s: []const U8;
 begin
     for f := 0 to 2 do
         for n := 1 to 24 do

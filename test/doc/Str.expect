@@ -1,5 +1,5 @@
 module Str;
-    Operations on strings, which are []U8. = and # compare them; this
+    Operations on strings, which are []const U8. = and # compare them; this
     module orders, searches and hashes them, trims them and takes them
     apart, tells an ASCII character's kind and changes a letter's case,
     joins them and replaces in them, reads and writes their UTF-8, reads
@@ -7,7 +7,7 @@ module Str;
     gives is a slice of the string it was given, with no memory of its
     own.
 
-proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);
+proc copy*(a: ^Mem.Allocator; s: []const U8): ([]U8, BOOL);
     s's bytes, copied into memory from a, to keep after s's own are
     gone; "" and false if a has no room.
 
@@ -15,32 +15,32 @@ proc free*(a: ^Mem.Allocator; s: []U8);
     Gives back to a a copy that copy made from it; "", which copy gives
     for an empty string, was never a's, and is left alone.
 
-proc cmp*(a, b: []U8): INT;
+proc cmp*(a, b: []const U8): INT;
     -1, 0 or 1 as a sorts before, with or after b, byte by byte.
 
-proc eq*(a, b: []U8): BOOL;
+proc eq*(a, b: []const U8): BOOL;
     Whether a and b hold the same bytes: a = b, as a procedure value.
 
-proc eqFold*(a, b: []U8): BOOL;
+proc eqFold*(a, b: []const U8): BOOL;
     Whether a and b are the same but for the case of ASCII letters.
 
-proc hash*(s: []U8): U64;
+proc hash*(s: []const U8): U64;
     FNV-1a, 64 bits.
 
-proc find*(s, sub: []U8): INT;
+proc find*(s, sub: []const U8): INT;
     Where sub first starts in s, or -1.
 
-proc findFrom*(s, sub: []U8; from: INT): INT;
+proc findFrom*(s, sub: []const U8; from: INT): INT;
     Where sub first starts in s at or after from, or -1; from is at
     most LEN(s).
 
-proc findLast*(s, sub: []U8): INT;
+proc findLast*(s, sub: []const U8): INT;
     Where sub last starts in s, or -1.
 
-proc hasPrefix*(s, p: []U8): BOOL;
+proc hasPrefix*(s, p: []const U8): BOOL;
     Whether s starts with p.
 
-proc hasSuffix*(s, x: []U8): BOOL;
+proc hasSuffix*(s, x: []const U8): BOOL;
     Whether s ends with x.
 
 proc isSpace*(c: U8): BOOL;
@@ -60,20 +60,20 @@ proc isPunct*(c: U8): BOOL;
 proc hexVal*(c: U8): INT;
     c's value as a hexadecimal digit, capital or small; -1 if it isn't one.
 
-proc trimLeft*(s: []U8): []U8;
+proc trimLeft*(s: []const U8): []const U8;
     s without the spaces at its start.
 
-proc trimRight*(s: []U8): []U8;
+proc trimRight*(s: []const U8): []const U8;
     s without the spaces at its end.
 
-proc trim*(s: []U8): []U8;
+proc trim*(s: []const U8): []const U8;
     s without the spaces at either end.
 
-proc cut*(s, sep: []U8): ([]U8, []U8, BOOL);
+proc cut*(s, sep: []const U8): ([]const U8, []const U8, BOOL);
     What comes before the first sep in s, what comes after it, and true;
     or s, an empty string and false if s has no sep.
 
-proc field*(s: []U8): ([]U8, []U8);
+proc field*(s: []const U8): ([]const U8, []const U8);
     The first word of s, the bytes after the spaces at its start up to
     the next space or the end, and the rest of s from there; two empty
     strings if s holds only spaces.
@@ -84,10 +84,10 @@ proc lower*(s: []U8);
 proc upper*(s: []U8);
     s's small ASCII letters made capitals, in place.
 
-proc join*(var b: Buf.Buf; parts: [][]U8; sep: []U8);
+proc join*(var b: Buf.Buf; parts: [][]const U8; sep: []const U8);
     The parts added to b, with sep between each two.
 
-proc replace*(var b: Buf.Buf; s, old, new: []U8);
+proc replace*(var b: Buf.Buf; s, old, new: []const U8);
     s added to b, with new for each old in it, from the left, none
     overlapping another; s as it is if old is empty.
 
@@ -96,34 +96,34 @@ proc encode*(c: I32): ([4]U8, INT);
     character, a surrogate or one past 10FFFFH, becomes FFFDH, the
     character that stands for a wrong one.
 
-proc decode*(s: []U8): (I32, INT);
+proc decode*(s: []const U8): (I32, INT);
     The character s starts with, and its length in bytes: FFFDH and 1
     if its first byte doesn't start one rightly, being a continuation,
     or followed by too few continuations, or spelling a surrogate or a
     character in more bytes than it needs; 0 and 0 if s is empty.
 
-proc decodeLast*(s: []U8): (I32, INT);
+proc decodeLast*(s: []const U8): (I32, INT);
     The character s ends with, and its length in bytes, read as decode
     reads one: FFFDH and 1 if the last byte doesn't end one rightly; 0
     and 0 if s is empty.
 
-proc next*(s: []U8; i: INT): (I32, INT);
+proc next*(s: []const U8; i: INT): (I32, INT);
     The character at i in s, as decode reads it, and where the one after
     it starts; 0 and -1 if i is at the end or past it.
 
-proc chars*(s: []U8): INT;
+proc chars*(s: []const U8): INT;
     The characters in s, as decode reads them, each byte that doesn't
     start one rightly counted as one.
 
-proc valid*(s: []U8): BOOL;
+proc valid*(s: []const U8): BOOL;
     Whether s is UTF-8: decode finds no byte that doesn't start a
     character rightly.
 
-proc toInt*(s: []U8): (I64, BOOL);
+proc toInt*(s: []const U8): (I64, BOOL);
     s as a decimal number, with a - or + before it if any, and nothing
     else; false if it isn't one, or an I64 can't hold it.
 
-proc toHex*(s: []U8): (U64, BOOL);
+proc toHex*(s: []const U8): (U64, BOOL);
     s in hexadecimal, digits only, capitals or not; false if it isn't
     that, or a U64 can't hold it.
 
@@ -136,18 +136,18 @@ const Base64Url* = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567
 proc base64Size*(n: INT): INT;
     The bytes base64 makes of n bytes: 4 for each 3, or part of 3.
 
-proc base64With*(s, out, alphabet: []U8; pad: BOOL): INT;
+proc base64With*(s: []const U8; out: []U8; alphabet: []const U8; pad: BOOL): INT;
     s in base64 into out, which holds base64Size(LEN(s)) bytes at least;
     a shorter out stops the program at the byte it lacks, as any slice
     does. alphabet holds the 64 digits (Base64 or Base64Url, or one's
     own). A last group of 1 or 2 bytes is padded with = to four if pad,
     and else has 2 or 3 digits. The bytes written.
 
-proc base64*(s, out: []U8): INT;
+proc base64*(s: []const U8; out: []U8): INT;
     s in base64 (RFC 4648, section 4), padded, into out as base64With
     writes it.
 
-proc unbase64With*(s, out, alphabet: []U8; pad: BOOL): (INT, BOOL);
+proc unbase64With*(s: []const U8; out: []U8; alphabet: []const U8; pad: BOOL): (INT, BOOL);
     s, base64 with the digits of alphabet, decoded into out, which holds
     (LEN(s) + 3) div 4 * 3 bytes at least; a shorter out stops the
     program at the byte it lacks, as any slice does. The bytes written,
@@ -161,32 +161,32 @@ proc unbase64With*(s, out, alphabet: []U8; pad: BOOL): (INT, BOOL);
     it (RFC 4648, section 3.5 allows a decoder to take that). Line
     breaks, and padding or its lack, are the caller's to mend first.
 
-proc unbase64*(s, out: []U8): (INT, BOOL);
+proc unbase64*(s: []const U8; out: []U8): (INT, BOOL);
     s, base64 (RFC 4648, section 4), padded, decoded into out as
     unbase64With reads it; out holds LEN(s) div 4 * 3 bytes at least.
 
-proc toU64*(s: []U8): (U64, BOOL);
+proc toU64*(s: []const U8): (U64, BOOL);
     s as a decimal number, digits only; false if it isn't one, or a U64
     can't hold it.
 
-proc fromC*(p: ^U8): []U8;
+proc fromC*(p: ^U8): []const U8;
     The bytes at p up to its zero byte, not copied; "" for nil.
 
-proc toC*(s, out: []U8): ^U8;
+proc toC*(s: []const U8; out: []U8): ^U8;
     s copied into out with a zero byte after it, for C: out holds
     LEN(s) + 1 bytes at least, or the program stops at the byte it
-    lacks, as any slice does. The pointer C is given, PTR(out).
+    lacks, as any slice does. The pointer C is given, SYSTEM.PTR(out).
 
 proc fromInt*(n: I64): ([20]U8, INT);
     n in decimal, as Out.int writes it: its bytes, the first of the 20,
     and how many.
 
-proc le*(s: []U8): U64;
+proc le*(s: []const U8): U64;
     The bytes of s, at most 8, as an unsigned number, the first byte
     the lowest: how a file or a message in little-endian order is read,
     whatever the machine's own order.
 
-proc be*(s: []U8): U64;
+proc be*(s: []const U8): U64;
     As le, the first byte the highest: big-endian, network order.
 
 proc putLE*(s: []U8; v: U64);

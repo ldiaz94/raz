@@ -57,7 +57,7 @@
    can't tell: it is 1. *)
 module Test;
 import Opt, Fmt, Out, Buf, Str, Heap, Sys, Rt, Files;
-import Names := Vec([]U8), Jobs := Vec(Job), ByName := Sort([]U8, less);
+import Names := Vec([]const U8), Jobs := Vec(Job), ByName := Sort([]const U8, less);
 
 const
     TapKey = 1;                  (* the keys of --tap and --junit, which have no letter *)
@@ -95,10 +95,10 @@ type
 
     (* A test and how it is going. *)
     Job = record
-        path: []U8;      (* its file, as given *)
-        name: []U8;      (* the file's name without .raz *)
-        bin: []U8;       (* its program, in the out directory *)
-        log: []U8;       (* its .out, beside the program *)
+        path: []const U8;      (* its file, as given *)
+        name: []const U8;      (* the file's name without .raz *)
+        bin: []const U8;       (* its program, in the out directory *)
+        log: []const U8;       (* its .out, beside the program *)
         phase: Phase;
         pid: INT;        (* the compiler's or the test's, while building or running *)
         began: I64;      (* Sys.clock when its build started *)
@@ -109,31 +109,31 @@ type
     end;
 
 var
-    raz: []U8;           (* the compiler: $RAZ, or raz on PATH *)
+    raz: []const U8;           (* the compiler: $RAZ, or raz on PATH *)
     includes: Names.Vec; (* the -I directories *)
     operands: Names.Vec; (* the files and directories given *)
     jobs: INT;           (* -j: tests at once *)
     timeout: I64;        (* -t, in nanoseconds *)
-    outDir: []U8;        (* -o *)
-    only: []U8;          (* -r: the text a name must hold, or "" *)
+    outDir: []const U8;        (* -o *)
+    only: []const U8;          (* -r: the text a name must hold, or "" *)
     tests: Jobs.Vec;     (* in the order they are reported *)
     busy: INT;           (* tests being built or run *)
     devNull: INT;        (* /dev/null, each test's standard input *)
     signals: INT;        (* the fd the interrupting signals come on *)
     colour: BOOL;        (* the words of the results are coloured *)
     tap: BOOL;           (* --tap: report in TAP *)
-    junit: []U8;         (* --junit: the file for the XML, or "" *)
+    junit: []const U8;         (* --junit: the file for the XML, or "" *)
     watch: BOOL;         (* -w: run again when a file changes *)
     clearing: BOOL;      (* the screen is cleared before each run of -w *)
 
 (* Whether a sorts before b, for sorting a directory's files. *)
-proc less(a, b: []U8): BOOL;
+proc less(a, b: []const U8): BOOL;
 begin
     return Str.cmp(a, b) < 0;
 end;
 
 (* A mistake in the setup: the message, and status 2. *)
-proc die(f: []U8; args: []Fmt.Arg);
+proc die(f: []const U8; args: []Fmt.Arg);
 var b: Buf.Buf;
 begin
     Buf.init(b, Heap.heap);
@@ -144,7 +144,7 @@ begin
 end;
 
 (* a, b and c joined, in memory of its own that is never freed. *)
-proc join(a, b, c: []U8): []U8;
+proc join(a, b, c: []const U8): []const U8;
 var s: Buf.Buf;
 begin
     Buf.init(s, Heap.heap);
@@ -153,8 +153,8 @@ begin
 end;
 
 (* Whether the source at path has a line that starts proc main*. *)
-proc hasMain(path: []U8): BOOL;
-var b: Buf.Buf; src: []U8;
+proc hasMain(path: []const U8): BOOL;
+var b: Buf.Buf; src: []const U8;
 begin
     Buf.init(b, Heap.heap);
     defer Buf.done(b);
@@ -164,8 +164,8 @@ begin
 end;
 
 (* Adds the test at path, unless -r leaves it out. *)
-proc add(path: []U8);
-var j: ^Job; name: []U8;
+proc add(path: []const U8);
+var j: ^Job; name: []const U8;
 begin
     name := path[Str.findLast(path, "/") + 1..LEN(path)];
     if Str.hasSuffix(name, ".raz") then name := name[0..LEN(name) - 4]; end;
@@ -177,8 +177,8 @@ begin
 end;
 
 (* Adds the tests of the directory dir: its *.raz with a main, by name. *)
-proc addDir(dir: []U8);
-var d: Sys.Dir; files: Names.Vec; name, path: []U8; ok: BOOL; err, i: INT;
+proc addDir(dir: []const U8);
+var d: Sys.Dir; files: Names.Vec; name, path: []const U8; ok: BOOL; err, i: INT;
 begin
     err := Sys.openDir(d, dir);
     if err < 0 then die("can't read {}: {}", [Fmt.str(dir), Fmt.str(Sys.errorText(err))]); end;
@@ -195,7 +195,7 @@ begin
 end;
 
 (* Adds what an operand names: a directory's tests, or a file. *)
-proc addOperand(path: []U8);
+proc addOperand(path: []const U8);
 var f: Sys.Info; err: INT;
 begin
     f, err := Sys.info(path);
@@ -218,7 +218,7 @@ begin
 end;
 
 (* Sets the environment variable name to value, for the tests. *)
-proc setProp(name, value: []U8);
+proc setProp(name, value: []const U8);
 begin
     if Sys.setEnv(name, value) # 0 then die("can't set {}", [Fmt.str(name)]); end;
 end;
@@ -236,7 +236,7 @@ end;
 
 (* Reads the command line into the settings and the list of tests. *)
 proc readArgs;
-var p: Opt.Parser; arg: []U8; ok, timed: BOOL; fuzz: I64;
+var p: Opt.Parser; arg: []const U8; ok, timed: BOOL; fuzz: I64;
 begin
     jobs := 1; timeout := 60 * Second; outDir := "build/raztest";
     Names.init(includes, Heap.heap);
@@ -278,7 +278,7 @@ begin
 end;
 
 (* Makes the directory dir and those it is in, as mkdir -p does. *)
-proc makeDirs(dir: []U8);
+proc makeDirs(dir: []const U8);
 var i, err: INT; f: Sys.Info;
 begin
     for i := 1 to LEN(dir) - 1 do
@@ -326,7 +326,7 @@ end;
 
 (* Starts args[0] with its output and errors into j's log, as j's next
    phase, in a group of its own; false, with j failed, if it can't. *)
-proc start(var j: Job; args: [][]U8; phase: Phase): BOOL;
+proc start(var j: Job; args: [][]const U8; phase: Phase): BOOL;
 var fd: INT;
 begin
     fd := Sys.create(j.log);
@@ -368,7 +368,7 @@ end;
 (* The test j's phase has ended, how and with value as Sys.wait says:
    on to running it, or the end. *)
 proc ended(var j: Job; how: Sys.Status; value: INT);
-var args: [1][]U8;
+var args: [1][]const U8;
 begin
     if (j.phase = building) and (how = Sys.exited) and (value = 0) then
         args[0] := j.bin;
@@ -409,7 +409,7 @@ begin
 end;
 
 (* Writes word, in colour c on a terminal, padded to a column of 8. *)
-proc putWord(word, c: []U8);
+proc putWord(word, c: []const U8);
 var i: INT;
 begin
     if colour then Out.str(c); Out.str(word); Out.str(Plain); else Out.str(word); end;
@@ -417,8 +417,8 @@ begin
 end;
 
 (* Writes the file at path, each line after the text lead. *)
-proc putLog(path, lead: []U8);
-var b: Buf.Buf; s, line, rest: []U8; more: BOOL;
+proc putLog(path, lead: []const U8);
+var b: Buf.Buf; s, line, rest: []const U8; more: BOOL;
 begin
     Buf.init(b, Heap.heap);
     defer Buf.done(b);
@@ -433,7 +433,7 @@ begin
 end;
 
 (* Why the test j failed: what its why says, or that it timed out. *)
-proc reason(const j: Job): []U8;
+proc reason(const j: Job): []const U8;
 begin
     if j.result = timedOut then return "timed out"; end;
     return Buf.bytes(j.why);
@@ -522,7 +522,7 @@ end;
    each control byte but tab, newline and carriage return, which XML 1.0
    forbids, written as ?. Bytes from 128 up, valid UTF-8 or not, are
    passed through as they are. *)
-proc xml(var b: Buf.Buf; s: []U8);
+proc xml(var b: Buf.Buf; s: []const U8);
 var i: INT; c: U8;
 begin
     for i := 0 to LEN(s) - 1 do
@@ -605,7 +605,7 @@ begin
 end;
 
 (* The directory of the file path. *)
-proc dirOf(path: []U8): []U8;
+proc dirOf(path: []const U8): []const U8;
 var i: INT;
 begin
     i := Str.findLast(path, "/");
@@ -615,7 +615,7 @@ begin
 end;
 
 (* Adds dir to the directories to watch, unless it is there. *)
-proc watchDir(var dirs: Names.Vec; dir: []U8);
+proc watchDir(var dirs: Names.Vec; dir: []const U8);
 var i: INT;
 begin
     for i := 0 to dirs.len - 1 do
@@ -627,7 +627,7 @@ end;
 (* The directories to watch: those given, those of the test files given,
    and the -I ones. *)
 proc watchDirs(var dirs: Names.Vec);
-var i, err: INT; f: Sys.Info; path: []U8;
+var i, err: INT; f: Sys.Info; path: []const U8;
 begin
     Names.init(dirs, Heap.heap);
     for i := 0 to operands.len - 1 do
@@ -641,8 +641,8 @@ end;
 (* Adds to the fingerprint and the count the *.raz files of dir. It
    runs every few hundred milliseconds for as long as -w does, so the
    paths are made in one buffer, used again. *)
-proc lookIn(dir: []U8; var print: I64; var count: INT);
-var d: Sys.Dir; name: []U8; ok: BOOL; f: Sys.Info; err: INT; path: Buf.Buf;
+proc lookIn(dir: []const U8; var print: I64; var count: INT);
+var d: Sys.Dir; name: []const U8; ok: BOOL; f: Sys.Info; err: INT; path: Buf.Buf;
 begin
     if Sys.openDir(d, dir) < 0 then return; end;
     Buf.init(path, Heap.heap);

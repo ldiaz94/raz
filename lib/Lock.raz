@@ -13,7 +13,7 @@ proc take*(var l: Lock);
 var tries: INT;
 begin
     tries := 0;
-    while not CAS(ADR(l.held), 0, 1) do
+    while not CAS(l.held, 0, 1) do
         INC(tries);
         if tries = 64 then Sys.yield; tries := 0; end;
     end;
@@ -22,7 +22,7 @@ end;
 (* Gives up l, which the caller holds. *)
 proc give*(var l: Lock);
 begin
-    _ := XCHG(ADR(l.held), 0);
+    _ := XCHG(l.held, 0);
 end;
 
 (* The module's test, in one thread: taken, given, taken again. *)

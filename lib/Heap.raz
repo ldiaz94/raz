@@ -27,6 +27,7 @@
    the block has left the quarantine. *)
 module Heap;
 import Mem, Lock, Rt, Sys;
+import SYSTEM;
 
 const
     Classes = 9;
@@ -134,7 +135,7 @@ end;
 
 (* Stops the program, saying what was found of the debug block with
    header h, its address and its size, and the calls under way. *)
-proc found(what: []U8; h: ^Head);
+proc found(what: []const U8; h: ^Head);
 var d: [20]U8; i, n: INT;
 begin
     _ := Sys.write(Sys.stderr, "Heap: ");
@@ -164,7 +165,7 @@ end;
 
 (* found, with the heap's lock held, which is let go first, so that
    what runs as the program ends may use the heap *)
-proc badBlock(what: []U8; h: ^Head);
+proc badBlock(what: []const U8; h: ^Head);
 begin
     Lock.give(lock);
     found(what, h);
@@ -279,7 +280,7 @@ end;
 proc allocSure(_a: ^Mem.Allocator; size, align: INT): ^U8;
 var p: ^U8;
 begin
-    p := std.alloc(ADR(std), size, align);
+    p := std.alloc(SYSTEM.ADR(std), size, align);
     if p = nil then
         _ := Sys.write(Sys.stderr, "Heap: out of memory\n");
         Rt.trace;
@@ -357,8 +358,8 @@ end;
 
 begin
     std := {alloc: alloc, free: free};
-    heap := ADR(std);
+    heap := SYSTEM.ADR(std);
     surer := {alloc: allocSure, free: free};
-    sure := ADR(surer);
+    sure := SYSTEM.ADR(surer);
     if Sys.env("RAZ_HEAP") = "debug" then debug(true); end;
 end Heap.

@@ -27,7 +27,7 @@ var
     checks: INT;                                        (* checks made *)
     failures: INT;                                      (* of them, failed *)
     registered: BOOL;                                   (* the exit procedure is on Rt's list *)
-    sink: proc(s: []U8);                                (* where text goes, or nil for standard error; a test sets it *)
+    sink: proc(s: []const U8);                                (* where text goes, or nil for standard error; a test sets it *)
     muted: BOOL;                                        (* checks say nothing and aren't counted, as Prop searches *)
     mutedFails: INT;                                    (* checks failed since mute was turned on *)
 
@@ -48,7 +48,7 @@ end;
 
 (* Writes s to standard error, trying again after a short or interrupted
    write; nothing while muted. *)
-proc put(s: []U8);
+proc put(s: []const U8);
 var n: INT;
 begin
     if muted then return; end;
@@ -90,7 +90,7 @@ end;
 (* Writes s between quotes, with the quote, backslash and bytes below
    32 or 127 as escapes; the bytes from 128 are written as they are,
    so UTF-8 reads. *)
-proc putQuoted(s: []U8);
+proc putQuoted(s: []const U8);
 var i, from: INT; c: U8;
 begin
     put("\"");
@@ -114,7 +114,7 @@ end;
 
 (* The index of the first byte where a and b differ, or the shorter
    length if one is a prefix of the other. *)
-proc firstDiff(a, b: []U8): INT;
+proc firstDiff(a, b: []const U8): INT;
 var i, n: INT;
 begin
     n := LEN(a);
@@ -149,7 +149,7 @@ end;
 (* Counts a failure and begins its report with the FAIL line. Standard
    output is flushed first, so the two come in order. While muted, it
    only counts it among the muted failures. *)
-proc fail(what: []U8);
+proc fail(what: []const U8);
 begin
     if muted then INC(mutedFails); return; end;
     INC(failures);
@@ -158,7 +158,7 @@ begin
 end;
 
 (* Fails, saying what, when cond is false. *)
-proc ok*(cond: BOOL; what: []U8);
+proc ok*(cond: BOOL; what: []const U8);
 begin
     count;
     if not cond then fail(what); end;
@@ -166,7 +166,7 @@ end;
 
 (* Fails, saying what, when got is not want; shows both, escaped, and
    where they first differ. *)
-proc str*(what, got, want: []U8);
+proc str*(what, got, want: []const U8);
 var at: INT;
 begin
     count;
@@ -179,7 +179,7 @@ begin
 end;
 
 (* Fails, saying what, when got is not want; shows both. *)
-proc int*(what: []U8; got, want: I64);
+proc int*(what: []const U8; got, want: I64);
 begin
     count;
     if got = want then return; end;
@@ -193,14 +193,14 @@ var
     capN: INT;                                          (* bytes in cap *)
 
 (* The test's sink: appends s to cap. *)
-proc capture(s: []U8);
+proc capture(s: []const U8);
 var i: INT;
 begin
     for i := 0 to LEN(s) - 1 do cap[capN] := s[i]; INC(capN); end;
 end;
 
 (* Runs f with its output captured, and checks that it is want. *)
-proc expect(what: []U8; f: proc; want: []U8);
+proc expect(what: []const U8; f: proc; want: []const U8);
 begin
     capN := 0;
     f;

@@ -126,7 +126,7 @@ type
         sname*: INT;         (* the name of its symbols: List(I64) for an instance *)
         args*: Args;
         scope*: INT;
-        path*: []U8;
+        path*: []const U8;
         first*, last*: ^Obj;           (* its top-level declarations, in order *)
         locals*, lastLocal*: ^Obj;     (* its procedures' declarations, in order *)
         imports*: ^Import;
@@ -368,7 +368,7 @@ end;
 (* How far apart two names are: the edits, a character put in, taken out,
    changed or swapped with the next, that make one the other, ignoring
    case. *)
-proc distance(a, b: []U8): INT;
+proc distance(a, b: []const U8): INT;
 var d: [Scan.MaxIdent + 2][Scan.MaxIdent + 2]INT; i, j, c: INT;
 begin
     for i := 0 to LEN(a) do d[i][0] := i; end;
@@ -392,7 +392,7 @@ end;
    if none is within an edit for every three characters. Only after an
    error, so it looks at every object. *)
 proc closest*(name, s: INT): ^Obj;
-var i, j, d, best: INT; o, found: ^Obj; n: []U8; reach: BOOL;
+var i, j, d, best: INT; o, found: ^Obj; n: []const U8; reach: BOOL;
 begin
     n := Scan.nameOf(name);
     best := LEN(n) div 3 + 1;
@@ -633,7 +633,7 @@ begin
 end;
 
 (* A name for t, kept for good, as every message is *)
-proc typeName*(t: ^Type): []U8;
+proc typeName*(t: ^Type): []const U8;
 var b: ^Buf.Buf;
 begin
     b := ^Buf.Buf(Scan.grab(SIZE(Buf.Buf)));
@@ -700,12 +700,12 @@ end;
 
 (* The universe *)
 
-proc basic(name: []U8; form: Form; size: I64; signed: BOOL): ^Type;
+proc basic(name: []const U8; form: Form; size: I64; signed: BOOL): ^Type;
 var t: ^Type; o: ^Obj;
 begin
     t := newType(form, size, size);
     t^.signed := signed;
-    o := newObj(oType, Scan.intern(ADR(name[0]), LEN(name)), t);
+    o := newObj(oType, Scan.intern(PTR(name), LEN(name)), t);
     o^.exported := true;
     t^.obj := o;
     _ := insert(o, 0);
@@ -713,13 +713,13 @@ begin
 end;
 
 (* The name s, interned *)
-proc internOf(s: []U8): INT;
+proc internOf(s: []const U8): INT;
 begin
-    return Scan.intern(ADR(s[0]), LEN(s));
+    return Scan.intern(PTR(s), LEN(s));
 end;
 
 (* Declares name in the scope s, exported, as a built-in is *)
-proc enterIn(s: INT; name: []U8; cls: Class; t: ^Type; v: I64);
+proc enterIn(s: INT; name: []const U8; cls: Class; t: ^Type; v: I64);
 var o: ^Obj;
 begin
     o := newObj(cls, internOf(name), t);
@@ -730,7 +730,7 @@ begin
 end;
 
 (* Declares name in the universe *)
-proc enter(name: []U8; cls: Class; t: ^Type; v: I64);
+proc enter(name: []const U8; cls: Class; t: ^Type; v: I64);
 begin
     enterIn(0, name, cls, t, v);
 end;

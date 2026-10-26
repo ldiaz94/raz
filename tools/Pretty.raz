@@ -33,7 +33,7 @@ const
 
 var
     sc: Scan.Scanner;   (* the source, at the symbol being written *)
-    src: []U8;
+    src: []const U8;
     out: Buf.Buf;
     lineAt: INT;        (* where the line being written starts in out *)
     lineDelta: INT;     (* how far this line's indent moved *)
@@ -60,7 +60,7 @@ end;
 
 (* Drops the spaces at the end of the line in out. *)
 proc trim;
-var s: []U8;
+var s: []const U8;
 begin
     s := Buf.bytes(out);
     while (out.len > lineAt) and ((s[out.len - 1] = ' ') or (s[out.len - 1] = '\t')) do
@@ -134,7 +134,7 @@ end;
 (* Whether the current symbol, first on its line, goes on with the
    expression of the line before. *)
 proc continues: BOOL;
-var t: []U8;
+var t: []const U8;
 begin
     if (brackets > 0) or prevBinary or Scan.is(prev, ",") then return true; end;
     t := Scan.text(sc);
@@ -252,7 +252,7 @@ end;
 (* After a symbol that isn't a comment: the blocks and brackets it opens
    or closes. *)
 proc track(binaryNow: BOOL);
-var t: []U8;
+var t: []const U8;
 begin
     t := Scan.text(sc);
     if sc.kind = Scan.word then
@@ -285,7 +285,7 @@ begin
 end;
 
 (* src, formatted, into out. *)
-proc format(text: []U8);
+proc format(text: []const U8);
 var b: BOOL;
 begin
     src := text;
@@ -323,7 +323,7 @@ begin
 end;
 
 proc main*;
-var b: Buf.Buf; i: INT; path: []U8;
+var b: Buf.Buf; i: INT; path: []const U8;
 begin
     Buf.init(b, Heap.heap);
     Buf.init(out, Heap.heap);

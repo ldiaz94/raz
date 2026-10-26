@@ -16,6 +16,7 @@
    the Thread. Its test uses Check. *)
 module Thread;
 import Sys, Rt, Check;
+import SYSTEM;
 
 const
     Failed*: ERROR = "can't start a thread";
@@ -80,7 +81,7 @@ end start;
 
 proc futex(word: ^INT; op, val: INT): INT;
 begin
-    return SYSCALL(202, word, op, val, 0);
+    return SYSTEM.SYSCALL(202, word, op, val, 0);
 end;
 
 (* Where a new thread starts: the signal handlers' stack is a thread's
@@ -90,7 +91,7 @@ var t: ^Thread; alt: AltStack;
 begin
     t := ^Thread(arg);
     alt := {sp: ^U8(t) - Alt, size: Alt};
-    _ := SYSCALL(131, ADR(alt), 0);   (* sigaltstack *)
+    _ := SYSTEM.SYSCALL(131, SYSTEM.ADR(alt), 0);   (* sigaltstack *)
     t^.fn(t^.arg);
 end;
 
@@ -101,9 +102,9 @@ proc cRun(arg: ^U8): ^U8;
 var t: ^Thread;
 begin
     t := ^Thread(arg);
-    _ := XCHG(ADR(t^.ktid), SYSCALL(186));   (* gettid *)
+    _ := XCHG(t^.ktid, SYSTEM.SYSCALL(186));   (* gettid *)
     run(arg);
-    _ := XCHG(ADR(t^.ktid), -1);
+    _ := XCHG(t^.ktid, -1);
     return nil;
 end;
 
@@ -123,7 +124,7 @@ begin
     t^.fn := p;
     t^.arg := arg;
     if cCreate # nil then
-        if cCreate(ADR(tid), nil, cRun, ^U8(t)) # 0 then
+        if cCreate(SYSTEM.ADR(tid), nil, cRun, ^U8(t)) # 0 then
             Sys.munmap(base, size);
             return nil, Failed;
         end;
@@ -132,8 +133,8 @@ begin
     end;
     (* mprotect: the guard page, no access; it fails when the process
        has as many mappings as it may *)
-    if (SYSCALL(10, base, Page, 0) < 0)
-            or (start(Flags, base + Page + Stack, ADR(t^.tid), ADR(t^.tid), run, ^U8(t)) < 0) then
+    if (SYSTEM.SYSCALL(10, base, Page, 0) < 0)
+            or (start(Flags, base + Page + Stack, SYSTEM.ADR(t^.tid), SYSTEM.ADR(t^.tid), run, ^U8(t)) < 0) then
         Sys.munmap(base, size);
         return nil, Failed;
     end;
@@ -147,10 +148,10 @@ begin
     if cJoin # nil then
         _ := cJoin(UINT(t^.tid), nil);
     else
-        tid := ADR(t^.tid);
+        tid := SYSTEM.ADR(t^.tid);
         v := tid^;
         while v # 0 do
-            _ := futex(ADR(t^.tid), FutexWait, v);
+            _ := futex(SYSTEM.ADR(t^.tid), FutexWait, v);
             v := tid^;
         end;
     end;
@@ -169,26 +170,26 @@ proc signal*(t: ^Thread; sig: INT): INT;
 var tid: ^VOLATILE INT; k: INT;
 begin
     if cCreate # nil then
-        tid := ADR(t^.ktid);
+        tid := SYSTEM.ADR(t^.ktid);
         k := tid^;
         while k = 0 do Sys.yield; k := tid^; end;
     else
-        tid := ADR(t^.tid);
+        tid := SYSTEM.ADR(t^.tid);
         k := tid^;
     end;
     if k <= 0 then return -3; end;
-    return SYSCALL(234, Sys.pid(), k, sig);   (* tgkill *)
+    return SYSTEM.SYSCALL(234, Sys.pid(), k, sig);   (* tgkill *)
 end;
 
 (* Takes m, sleeping while another thread holds it. *)
 proc lock*(var m: Mutex);
 var c: INT;
 begin
-    if CAS(ADR(m.state), 0, 1) then return; end;
-    c := XCHG(ADR(m.state), 2);
+    if CAS(m.state, 0, 1) then return; end;
+    c := XCHG(m.state, 2);
     while c # 0 do
-        _ := futex(ADR(m.state), FutexWait + Private, 2);
-        c := XCHG(ADR(m.state), 2);
+        _ := futex(SYSTEM.ADR(m.state), FutexWait + Private, 2);
+        c := XCHG(m.state, 2);
     end;
 end;
 
@@ -196,9 +197,9 @@ end;
    for it. *)
 proc unlock*(var m: Mutex);
 begin
-    if XADD(ADR(m.state), -1) # 1 then
-        _ := XCHG(ADR(m.state), 0);
-        _ := futex(ADR(m.state), FutexWake + Private, 1);
+    if XADD(m.state, -1) # 1 then
+        _ := XCHG(m.state, 0);
+        _ := futex(SYSTEM.ADR(m.state), FutexWake + Private, 1);
     end;
 end;
 
@@ -225,7 +226,7 @@ end;
 proc testArg(i: INT): INT;
 var s: ^U8; n, v: INT;
 begin
-    s := ARGV()[i];
+    s := SYSTEM.ARGV()[i];
     v := 0;
     n := 0;
     while s[n] # 0 do v := v * 10 + INT(s[n]) - '0'; INC(n); end;
@@ -237,7 +238,7 @@ proc main*;
 var n, alive, started, k, i: INT; t: ^Thread; err: ERROR; fail: BOOL;
 begin
     n := 2000; alive := 50;
-    fail := (ARGC() = 2) and (ARGV()[1][0] = 'f');
+    fail := (ARGC() = 2) and (SYSTEM.ARGV()[1][0] = 'f');
     if ARGC() = 3 then n := testArg(1); alive := testArg(2); end;
     if fail then n := LEN(wave); alive := LEN(wave); end;
     if (alive < 1) or (alive > LEN(wave)) then Rt.stop("Thread: alive is 1 to 1000"); end;

@@ -5,14 +5,15 @@
    (a program makes its own with Sys.openDir). *)
 module Files;
 import Sys, Buf, Heap, Rt;
+import SYSTEM;
 
 (* Argument i, a C string, as a slice; empty if there is no argument i,
    as for i below 0 or from ARGC() on. *)
-proc arg*(i: INT): []U8;
+proc arg*(i: INT): []const U8;
 var s: ^U8; n: INT;
 begin
     if (i < 0) or (i >= ARGC()) then return ""; end;
-    s := ARGV()[i];
+    s := SYSTEM.ARGV()[i];
     n := 0;
     while s[n] # 0 do INC(n); end;
     return s[0..n];
@@ -22,7 +23,7 @@ end;
    the read that failed, as Sys gives them: -2 (ENOENT) for no such
    file, -13 (EACCES) for one not allowed, -21 (EISDIR) for a
    directory. What was read before a read failed stays in b. *)
-proc load*(path: []U8; var b: Buf.Buf): INT;
+proc load*(path: []const U8; var b: Buf.Buf): INT;
 var fd, n: INT;
 begin
     fd := Sys.openRead(path);
@@ -36,14 +37,14 @@ begin
 end;
 
 (* Adds the file at path to b; false if it can't be read. *)
-proc read*(path: []U8; var b: Buf.Buf): BOOL;
+proc read*(path: []const U8; var b: Buf.Buf): BOOL;
 begin
     return load(path, b) = 0;
 end;
 
 (* Writes all of s to fd, again after a short write (a pipe, a socket)
    or a signal: 0, or minus the errno of the write that failed. *)
-proc writeAll*(fd: INT; s: []U8): INT;
+proc writeAll*(fd: INT; s: []const U8): INT;
 var n, at: INT;
 begin
     at := 0;
@@ -58,7 +59,7 @@ end;
 
 (* Makes the file at path hold data; false if it can't be written, or
    the close, where a late write error shows, fails. *)
-proc write*(path, data: []U8): BOOL;
+proc write*(path, data: []const U8): BOOL;
 var fd, r: INT;
 begin
     fd := Sys.create(path);
@@ -100,7 +101,7 @@ end;
    rest, from at. A relative target is read from the link's directory,
    which res keeps; an absolute one starts again from the root. *)
 proc followLink(var res, rest: Buf.Buf; mark: INT; var at, links: INT): INT;
-var target: []U8; joined: Buf.Buf; r: INT;
+var target: []const U8; joined: Buf.Buf; r: INT;
 begin
     INC(links);
     if links > MaxLinks then return -40; end;           (* ELOOP *)
@@ -121,7 +122,7 @@ end;
 (* Adds one name of a path to res: nothing for ".", the parent for
    "..", the name itself for a file or directory, and for a link what
    it names, to be read next. *)
-proc enter(var res, rest: Buf.Buf; var at, links: INT; name: []U8): INT;
+proc enter(var res, rest: Buf.Buf; var at, links: INT; name: []const U8): INT;
 var info: Sys.Info; mark, r: INT;
 begin
     if (name = ".") or (name = "..") then
@@ -147,8 +148,8 @@ end;
    or symbolic link in it: 0, or minus an errno, -2 (ENOENT) if a part
    of it isn't there, -40 (ELOOP) after 40 links. The working
    directory stays as it is; b is left as it was on failure. *)
-proc realPath*(path: []U8; var b: Buf.Buf): INT;
-var res, rest: Buf.Buf; dir, name: []U8; at, links, r: INT;
+proc realPath*(path: []const U8; var b: Buf.Buf): INT;
+var res, rest: Buf.Buf; dir, name: []const U8; at, links, r: INT;
 begin
     if LEN(path) = 0 then return Sys.errNoEntry; end;
     Buf.init(res, Heap.heap);
@@ -174,12 +175,12 @@ begin
     return r;
 end;
 
-proc removeTree*(path: []U8): INT; forward;
+proc removeTree*(path: []const U8): INT; forward;
 
 (* Removes what is in the directory at path: 0, or minus the first
    errno, going on with the rest after it. *)
-proc removeContents(path: []U8): INT;
-var d: Sys.Dir; child: Buf.Buf; name: []U8; more: BOOL; mark, r, first: INT;
+proc removeContents(path: []const U8): INT;
+var d: Sys.Dir; child: Buf.Buf; name: []const U8; more: BOOL; mark, r, first: INT;
 begin
     r := Sys.openDir(d, path);
     if r < 0 then return r; end;
@@ -204,7 +205,7 @@ end;
 (* Removes the file at path and, if it is a directory, all within it,
    without following a symbolic link (the link goes, not what it
    names): 0, or minus the first errno. *)
-proc removeTree*(path: []U8): INT;
+proc removeTree*(path: []const U8): INT;
 var info: Sys.Info; r: INT;
 begin
     info, r := Sys.linkInfo(path);
@@ -216,7 +217,7 @@ begin
 end;
 
 (* Sets b to base and then rest, and gives it. *)
-proc join(var b: Buf.Buf; base, rest: []U8): []U8;
+proc join(var b: Buf.Buf; base, rest: []const U8): []U8;
 begin
     Buf.cut(b, 0);
     Buf.str(b, base);
@@ -226,7 +227,7 @@ end;
 
 (* Stops the test, saying what, unless realPath of path gives err and
    adds want to a buffer. *)
-proc wantReal(path, want: []U8; err: INT; what: []U8);
+proc wantReal(path, want: []const U8; err: INT; what: []const U8);
 var b: Buf.Buf; r: INT;
 begin
     Buf.init(b, Heap.heap);
@@ -265,7 +266,7 @@ end;
    out of it. *)
 proc testTree;
 const T = "/tmp/raz-files-test.d"; Out = "/tmp/raz-files-test.out";
-var p, q: Buf.Buf; here, now: []U8; r: INT;
+var p, q: Buf.Buf; here, now: []const U8; r: INT;
 begin
     Buf.init(p, Heap.heap);
     Buf.init(q, Heap.heap);

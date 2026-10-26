@@ -1,7 +1,7 @@
 (* Map.done: the slots given back to the allocator, through one that
    counts its blocks; the map empty after, and used again. *)
 module MapDone;
-import Fmt, Heap, Mem, Str, Names := Map([]U8, INT, Str.hash, Str.eq);
+import Fmt, Heap, Mem, Str, Names := Map([]const U8, INT, Str.hash, Str.eq);
 
 var counting: Mem.Allocator; live: INT;
 

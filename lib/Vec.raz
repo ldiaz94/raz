@@ -9,6 +9,7 @@
    tryAdd ask and add in one call. *)
 module Vec(T);
 import Mem, Rt, Sys;
+import SYSTEM;
 
 type
     Vec* = record

@@ -23,10 +23,10 @@ type
     Pos* = record f*, a*, b*: INT; end;
 
     File = record
-        path: []U8;
+        path: []const U8;
         buf: ^U8;
         len: INT;
-        origin: []U8;     (* a line told once, under the first message about the file; "" for none *)
+        origin: []const U8;     (* a line told once, under the first message about the file; "" for none *)
     end;
 
 const
@@ -66,8 +66,8 @@ end;
 
 (* Paths are shown from the working directory where they are under it,
    so messages read the same wherever the compiler or its library is. *)
-proc shownPath*(path: []U8): []U8;
-var d: []U8; err: INT; c: []U8;
+proc shownPath*(path: []const U8): []const U8;
+var d: []const U8; err: INT; c: []const U8;
 begin
     if not cwdKnown then
         d, err := Sys.workDir();
@@ -82,7 +82,7 @@ begin
     return path;
 end;
 
-proc fatal*(msg: []U8); forward;
+proc fatal*(msg: []const U8); forward;
 
 (* Memory, or the end of the compile when there is none *)
 proc grab(size: INT): ^U8;
@@ -95,8 +95,8 @@ end;
 
 (* Keeps buf, len bytes of a file, under a number, which it gives back;
    buf stays as it is, and its path is copied. *)
-proc addFile*(path: []U8; buf: ^U8; len: INT): INT;
-var more: ^File; i: INT; p: []U8; ok: BOOL;
+proc addFile*(path: []const U8; buf: ^U8; len: INT): INT;
+var more: ^File; i: INT; p: []const U8; ok: BOOL;
 begin
     if numFiles = cap then
         more := ^File(grab((2 * cap + 8) * SIZE(File)));
@@ -114,12 +114,12 @@ end;
 
 (* Gives file f a line to tell once, under the first message about it:
    where a library came from and the raz it was written for *)
-proc setOrigin*(f: INT; text: []U8);
+proc setOrigin*(f: INT; text: []const U8);
 begin
     files[f].origin := text;
 end;
 
-proc pathOf*(f: INT): []U8;
+proc pathOf*(f: INT): []const U8;
 begin
     return files[f].path;
 end;
@@ -133,7 +133,7 @@ begin
     return LEN(Sys.env("NO_COLOR")) > 0;
 end;
 
-proc put(s: []U8);
+proc put(s: []const U8);
 begin
     Buf.str(out, s);
 end;
@@ -149,7 +149,7 @@ begin
 end;
 
 (* The text of a number *)
-proc say*(f: []U8; args: []Fmt.Arg): []U8;
+proc say*(f: []const U8; args: []const Fmt.Arg): []const U8;
 var b: ^Buf.Buf;
 begin
     b := ^Buf.Buf(grab(SIZE(Buf.Buf)));
@@ -159,7 +159,7 @@ begin
 end;
 
 (* c, when colour is on *)
-proc paintOn(c: []U8);
+proc paintOn(c: []const U8);
 begin
     if not colourKnown then
         colour := Sys.isTerminal(2) and not noColour();
@@ -169,7 +169,7 @@ begin
 end;
 
 (* s in colour c, when colour is on *)
-proc paint(c, s: []U8);
+proc paint(c, s: []const U8);
 begin
     paintOn(c);
     put(s);
@@ -178,7 +178,7 @@ end;
 
 (* What has been made, written to standard error *)
 proc flush;
-var s: []U8; n: INT;
+var s: []const U8; n: INT;
 begin
     s := Buf.bytes(out);
     while LEN(s) > 0 do
@@ -233,8 +233,8 @@ end;
 (* "file:line:col: kind: msg", then the line with p underlined. A tab
    before p is copied into the underline, so that the two line up
    whatever the terminal makes of tabs. *)
-proc show(p: Pos; kind, kindColour, msg: []U8);
-var line, start, stop, lo, hi, i, n: INT; buf: ^U8; f: ^File; digits: []U8;
+proc show(p: Pos; kind, kindColour, msg: []const U8);
+var line, start, stop, lo, hi, i, n: INT; buf: ^U8; f: ^File; digits: []const U8;
 begin
     if p.f >= numFiles then
         (* about no place in a file, as for Rt, which the compiler
@@ -306,7 +306,7 @@ begin
 end;
 
 (* The text at p, at most the 255 bytes a message can hold *)
-proc source*(p: Pos): []U8;
+proc source*(p: Pos): []const U8;
 var n: INT;
 begin
     n := p.b - p.a;
@@ -317,8 +317,8 @@ end;
 (* Messages *)
 
 (* Line line of the file at path, as written, to at most 255 bytes *)
-proc lineText*(path: []U8; line: INT): []U8;
-var i, k, n, j: INT; f: ^File; want: []U8;
+proc lineText*(path: []const U8; line: INT): []const U8;
+var i, k, n, j: INT; f: ^File; want: []const U8;
 begin
     want := shownPath(path);
     for i := 0 to numFiles - 1 do
@@ -338,7 +338,7 @@ begin
     return "";
 end;
 
-proc error*(p: Pos; msg: []U8);
+proc error*(p: Pos; msg: []const U8);
 begin
     (* a second error at one place follows from the first: when a symbol
        ends a construct with an error, the one around it may stop there too *)
@@ -356,7 +356,7 @@ begin
     end;
 end;
 
-proc warning*(p: Pos; msg: []U8);
+proc warning*(p: Pos; msg: []const U8);
 begin
     if werror then
         error(p, msg);
@@ -368,12 +368,12 @@ begin
 end;
 
 (* Notes and help follow an error or a warning, and are shown with it *)
-proc note*(p: Pos; msg: []U8);
+proc note*(p: Pos; msg: []const U8);
 begin
     if shown then show(p, "note", Cyan, msg); end;
 end;
 
-proc help*(msg: []U8);
+proc help*(msg: []const U8);
 begin
     if shown then
         paint(Green, "help:");
@@ -386,7 +386,7 @@ end;
 
 (* An error with no place in the source, such as a file that can't be
    read: it stops the compiler at once. *)
-proc fatal*(msg: []U8);
+proc fatal*(msg: []const U8);
 begin
     put("raz: ");
     put(msg);
@@ -395,7 +395,7 @@ begin
     Rt.exit(1);
 end;
 
-proc count(n: INT; what: []U8): []U8;
+proc count(n: INT; what: []const U8): []const U8;
 begin
     if n = 1 then return say("1 {}", [Fmt.str(what)]); end;
     return say("{} {}s", [Fmt.int(n), Fmt.str(what)]);

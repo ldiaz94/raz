@@ -13,21 +13,21 @@ import Files, Str, Buf, Fmt, Heap, Sys, Rt, Check;
 
 type
     Row* = variant
-        usage(scope, line: []U8);           (* a synopsis, without "usage: " *)
-        sub(scope, name, help: []U8);       (* a subcommand *)
-        option(scope: []U8; letter: U8; long, value, help: []U8);
+        usage(scope, line: []const U8);           (* a synopsis, without "usage: " *)
+        sub(scope, name, help: []const U8);       (* a subcommand *)
+        option(scope: []const U8; letter: U8; long, value, help: []const U8);
     end;
     Parser* = record
         letter*: U8;    (* the option just read *)
-        value*: []U8;   (* its value; "" for a flag *)
+        value*: []const U8;   (* its value; "" for a flag *)
         long*: BOOL;    (* it was written by its long name *)
-        spelt*: []U8;   (* as it was written, no dashes: "b" or "bar"; the program's to read only *)
+        spelt*: []const U8;   (* as it was written, no dashes: "b" or "bar"; the program's to read only *)
         (* the rest are Opt's own *)
-        name: []U8;     (* the program's, as the messages begin *)
-        table: []Row;
-        scope: []U8;
+        name: []const U8;     (* the program's, as the messages begin *)
+        table: []const Row;
+        scope: []const U8;
         at: INT;        (* the next word *)
-        group: []U8;    (* the letters left of a word of them, as -lw *)
+        group: []const U8;    (* the letters left of a word of them, as -lw *)
         ended: BOOL;    (* the scope's options have ended *)
         help: BOOL;     (* the option just read is -h or --help *)
     end;
@@ -39,7 +39,7 @@ const largest = 9223372036854775807;   (* the largest I64, a number with no top 
 
 (* b written whole to fd, then freed. *)
 proc say(fd: INT; var b: Buf.Buf);
-var s: []U8; n: INT;
+var s: []const U8; n: INT;
 begin
     s := Buf.bytes(b);
     while LEN(s) > 0 do
@@ -90,7 +90,7 @@ end;
 
 (* A mistake on the command line: the sentence f, the scope's synopsis
    lines under it, and status 2. *)
-proc mistake(const p: Parser; f: []U8; args: []Fmt.Arg);
+proc mistake(const p: Parser; f: []const U8; args: []const Fmt.Arg);
 var b: Buf.Buf;
 begin
     Buf.init(b, Heap.heap);
@@ -102,7 +102,7 @@ begin
     Rt.exit(2);
 end;
 
-proc dashes(const p: Parser): []U8;
+proc dashes(const p: Parser): []const U8;
 begin
     if p.long then return "--"; end;
     return "-";
@@ -111,7 +111,7 @@ end;
 (* Whether an option's value may be left out, written [name] in its
    row: given only in the option's own word, --color=when or -cwhen,
    never as the next word, as getopt's :: has it. *)
-proc optional(value: []U8): BOOL;
+proc optional(value: []const U8): BOOL;
 begin
     return (LEN(value) > 2) and (value[0] = '[') and (value[LEN(value) - 1] = ']');
 end;
@@ -119,9 +119,9 @@ end;
 (* The left column of a row in the help, as "-b, --bar label", or, for
    a value that may be left out, "-c, --color[=when]", as grep's help
    has it. *)
-proc left(var b: Buf.Buf; r: ^Row);
+proc left(var b: Buf.Buf; const r: Row);
 begin
-    match r^ of
+    match r of
     | sub(_s, name, _help): Buf.str(b, name);
     | option(_s, letter, long, value, _help):
         if letter >= '!' then Fmt.write(b, "-{}", [Fmt.char(letter)]); else Buf.str(b, "  "); end;
@@ -137,7 +137,7 @@ begin
     end;
 end;
 
-proc leftWidth(r: ^Row): INT;
+proc leftWidth(const r: Row): INT;
 var b: Buf.Buf; n: INT;
 begin
     Buf.init(b, Heap.heap);
@@ -149,13 +149,13 @@ end;
 
 (* A line of the list: the left column, padded to width and three
    spaces more, and the line of help. *)
-proc item(var b: Buf.Buf; r: ^Row; width: INT);
+proc item(var b: Buf.Buf; const r: Row; width: INT);
 var i: INT;
 begin
     Buf.str(b, "  ");
     left(b, r);
     for i := leftWidth(r) to width + 2 do Buf.add(b, ' '); end;
-    match r^ of
+    match r of
     | sub(_s, _name, help): Fmt.write(b, "{}\n", [Fmt.str(help)]);
     | option(_s, _l, _long, _v, help): Fmt.write(b, "{}\n", [Fmt.str(help)]);
     | else:
@@ -164,7 +164,7 @@ end;
 
 (* The scope's option with the letter c, or with the long name long:
    its row, or -1, and its letter and the name of its value. *)
-proc find(const p: Parser; c: U8; long: []U8): (INT, U8, []U8);
+proc find(const p: Parser; c: U8; long: []const U8): (INT, U8, []const U8);
 var i: INT;
 begin
     for i := 0 to LEN(p.table) - 1 do
@@ -182,7 +182,7 @@ end;
 (* Whether the scope has an option -h of its own, so that help is
    --help alone there, as it is for grep, whose -h is "no file names". *)
 proc ownsH(const p: Parser): BOOL;
-var r: INT; _l: U8; _v: []U8;
+var r: INT; _l: U8; _v: []const U8;
 begin
     r, _l, _v := find(p, 'h', "");
     return r >= 0;
@@ -193,7 +193,7 @@ end;
    help's own row is made as the table's are, with no letter if the
    scope has -h. *)
 proc printHelp(const p: Parser);
-var b: Buf.Buf; i, width: INT; r: ^Row; own: Row; h: U8;
+var b: Buf.Buf; i, width: INT; own: Row; h: U8;
 begin
     h := 'h';
     if ownsH(p) then h := 0; end;
@@ -201,26 +201,23 @@ begin
     Buf.init(b, Heap.heap);
     usageOf(p, b);
     Buf.add(b, 10);
-    width := leftWidth(ADR(own));
+    width := leftWidth(own);
     for i := 0 to LEN(p.table) - 1 do
-        r := ADR(p.table[i]);
-        if inScope(p, r^) and (leftWidth(r) > width) then width := leftWidth(r); end;
+        if inScope(p, p.table[i]) and (leftWidth(p.table[i]) > width) then width := leftWidth(p.table[i]); end;
     end;
     for i := 0 to LEN(p.table) - 1 do
-        r := ADR(p.table[i]);
-        match r^ of
-        | sub(s, _name, _help): if s = p.scope then item(b, r, width); end;
+        match p.table[i] of
+        | sub(s, _name, _help): if s = p.scope then item(b, p.table[i], width); end;
         | else:
         end;
     end;
     for i := 0 to LEN(p.table) - 1 do
-        r := ADR(p.table[i]);
-        match r^ of
-        | option(s, _l, _long, _v, _help): if s = p.scope then item(b, r, width); end;
+        match p.table[i] of
+        | option(s, _l, _long, _v, _help): if s = p.scope then item(b, p.table[i], width); end;
         | else:
         end;
     end;
-    item(b, ADR(own), width);
+    item(b, own, width);
     say(Sys.stdout, b);
     Rt.exit(0);
 end;
@@ -244,7 +241,7 @@ end;
    readEnd at the end of the options. A mistake is refused, or, if
    quiet, passed over, as readSkip. *)
 proc read(var p: Parser; quiet: BOOL): INT;
-var w, val: []U8; r, eq: INT; c: U8;
+var w, val: []const U8; r, eq: INT; c: U8;
 begin
     p.help := false;
     p.value := "";
@@ -331,7 +328,7 @@ begin
 end;
 
 (* A mistake in the table: the program's, with status 1. *)
-proc badTable(const p: Parser; row: INT; why: []U8);
+proc badTable(const p: Parser; row: INT; why: []const U8);
 var b: Buf.Buf;
 begin
     Buf.init(b, Heap.heap);
@@ -373,7 +370,7 @@ end;
 
 (* p reads the arguments from 1 on, by table, in the program's own
    scope; name begins the messages. *)
-proc init*(var p: Parser; name: []U8; table: []Row);
+proc init*(var p: Parser; name: []const U8; table: []const Row);
 begin
     p := {name: name, table: table, at: 1};
     check(p);
@@ -391,7 +388,7 @@ end;
 
 (* The next operand, after what options are left; false when there are
    no more. *)
-proc operand*(var p: Parser): ([]U8, BOOL);
+proc operand*(var p: Parser): ([]const U8, BOOL);
 begin
     while next(p) do end;
     if p.at >= ARGC() then return "", false; end;
@@ -410,7 +407,7 @@ end;
 
 (* The options of the subcommand name, from the word after its own,
    which operand has given. *)
-proc scope*(var p: Parser; name: []U8);
+proc scope*(var p: Parser; name: []const U8);
 begin
     p.scope := name;
     p.ended := false;
@@ -439,7 +436,7 @@ end;
 (* The value of the option just read refused, as number refuses one:
    "-b wants wants, not 'value'", the option as it was written, with
    the scope's synopsis lines, and status 2. *)
-proc refuse*(const p: Parser; wants: []U8);
+proc refuse*(const p: Parser; wants: []const U8);
 begin
     mistake(p, "{}{} wants {}, not '{}'",
         [Fmt.str(dashes(p)), Fmt.str(p.spelt), Fmt.str(wants), Fmt.str(p.value)]);
@@ -447,7 +444,7 @@ end;
 
 (* The program's own mistake, written as Opt's are but alone, and
    status 2. *)
-proc fail*(const p: Parser; text: []U8);
+proc fail*(const p: Parser; text: []const U8);
 var b: Buf.Buf;
 begin
     Buf.init(b, Heap.heap);
@@ -458,7 +455,7 @@ end;
 
 (* The program's own mistake, written as Opt's are, with the scope's
    synopsis lines after it, and status 2. *)
-proc misuse*(const p: Parser; text: []U8);
+proc misuse*(const p: Parser; text: []const U8);
 begin
     mistake(p, "{}", [Fmt.str(text)]);
 end;
@@ -478,7 +475,7 @@ const
         option("", jobs, "jobs", "n", "keep n jobs at most"),
         usage("start", "keep start [-b label] name command [argument ...]"),
         option("start", 'b', "bar", "label", "show the job in the bar as label")];
-var p: Parser; verbose, ok: BOOL; secs: I64; bar, job, w: []U8; b: Buf.Buf; i: INT;
+var p: Parser; verbose, ok: BOOL; secs: I64; bar, job, w: []const U8; b: Buf.Buf; i: INT;
 begin
     secs := 10;
     init(p, "keep", Rows);
@@ -516,7 +513,7 @@ end;
 
 (* A scope with no digit option, and one with -5. *)
 proc digits;
-var p: Parser; w: []U8; ok: BOOL; n: INT;
+var p: Parser; w: []const U8; ok: BOOL; n: INT;
 begin
     init(p, "digits", [
         usage("", "digits [-v] x y"),
@@ -550,7 +547,7 @@ end;
 (* Subcommands of subcommands, no synopsis lines, and a -h of the
    program's own. *)
 proc plain;
-var p: Parser; _w: []U8; _ok: BOOL;
+var p: Parser; _w: []const U8; _ok: BOOL;
 begin
     init(p, "plain", [
         sub("", "remote", "the remotes"),
@@ -566,9 +563,9 @@ begin
 end;
 
 type Case = record
-    mode: []U8;     (* OPTTEST=... *)
-    args: [][]U8;
-    out, err: []U8;
+    mode: []const U8;     (* OPTTEST=... *)
+    args: [][]const U8;
+    out, err: []const U8;
     status: INT;
 end;
 
@@ -611,7 +608,7 @@ const
     keepHelp = "usage: keep [-v] [--wait secs] start ...\n\n  start             start a job\n  -v, --verbose     say more\n      --wait secs   give the job secs to start\n      --jobs n      keep n jobs at most\n  -h, --help        print this and exit\n";
     startHelp = "usage: keep start [-b label] name command [argument ...]\n\n  -b, --bar label   show the job in the bar as label\n  -h, --help        print this and exit\n";
     k = "OPTTEST=keep";
-var cases: []Case; i: INT; mode: []U8;
+var cases: []Case; i: INT; mode: []const U8;
 begin
     mode := Sys.env("OPTTEST");
     if mode = "keep" then keep; return;

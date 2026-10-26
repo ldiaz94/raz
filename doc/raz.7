@@ -159,7 +159,7 @@ renames;
 .Cm "import Ints := List(INT);"
 makes an instance of a generic module, one for each distinct list of
 arguments, its procedure arguments named after its types:
-.Cm "Map([]U8, INT, Str.hash, Str.eq)" .
+.Cm "Map([]const U8, INT, Str.hash, Str.eq)" .
 .It
 A module's body runs once, after those of the modules it imports, and
 before the main module's

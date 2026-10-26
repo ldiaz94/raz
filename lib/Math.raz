@@ -8,6 +8,7 @@
    Left out: sinh, cosh, fmod and hypot, until a program needs them. *)
 module Math;
 import Check, Rt;
+import SYSTEM;
 
 const
     pi* = 3.141592653589793;   (* the F64 nearest to pi *)
@@ -461,7 +462,7 @@ begin
 end divMod;
 
 (* 64 bits of t from bit s on, the first bit of t[0] being 0. *)
-proc window(t: []U64; s: INT): U64;
+proc window(t: []const U64; s: INT): U64;
 var q, r: INT;
 begin
     q := s div 64;
@@ -905,7 +906,7 @@ begin
 end;
 
 (* Whether s[i] is a decimal digit. *)
-proc digitAt(s: []U8; i: INT): BOOL;
+proc digitAt(s: []const U8; i: INT): BOOL;
 begin
     return (i < LEN(s)) and (s[i] >= '0') and (s[i] <= '9');
 end;
@@ -914,7 +915,7 @@ end;
    or e, a sign if any and digits if any; nothing else. The F64 nearest
    it, ties to the even one, and false if s isn't one, or is past the
    largest F64; one below the smallest is 0. *)
-proc toReal*(s: []U8): (F64, BOOL);
+proc toReal*(s: []const U8): (F64, BOOL);
 var
     num, den, d: Big; i, digits, e, ex: INT; neg, eneg, point, half, sticky: BOOL;
     q, b: U64; x: F64;
@@ -1011,7 +1012,7 @@ begin
 end;
 
 (* Whether toReal reads s as want, exactly, or as nothing if not ok. *)
-proc reads(s: []U8; want: F64; ok: BOOL): BOOL;
+proc reads(s: []const U8; want: F64; ok: BOOL): BOOL;
 var x: F64; o: BOOL;
 begin
     x, o := toReal(s);

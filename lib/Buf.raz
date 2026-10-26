@@ -1,6 +1,7 @@
 (* A growable byte buffer, its memory from an allocator. *)
 module Buf;
 import Mem, Arena, Rt, Sys;
+import SYSTEM;
 
 type
     Buf* = record
@@ -61,7 +62,7 @@ begin
 end;
 
 (* Adds the bytes of s at the end. *)
-proc str*(var b: Buf; s: []U8);
+proc str*(var b: Buf; s: []const U8);
 begin
     need(b, LEN(s));
     COPY(b.data[b.len..b.len + LEN(s)], s);
@@ -73,7 +74,7 @@ end;
    grows, as bytes is. *)
 proc spare*(var b: Buf; n: INT): []U8;
 begin
-    if n = 0 then return ""; end;   (* a new buffer has no data to slice *)
+    if n = 0 then return []; end;   (* a new buffer has no data to slice *)
     need(b, n);
     return b.data[b.len..b.len + n];
 end;
@@ -81,7 +82,7 @@ end;
 (* What the buffer holds, until it next grows. *)
 proc bytes*(const b: Buf): []U8;
 begin
-    if b.len = 0 then return ""; end;
+    if b.len = 0 then return []; end;
     return b.data[0..b.len];
 end;
 
@@ -118,7 +119,7 @@ proc main*;
 var ar: Arena.Arena; b: Buf; i: INT; s: []U8;
 begin
     if not Arena.init(ar, 1 shl 20) then Rt.stop("Buf: no arena"); end;
-    init(b, ADR(ar.base));
+    init(b, SYSTEM.ADR(ar.base));
     if LEN(bytes(b)) # 0 then Rt.stop("Buf: not empty"); end;
     for i := 0 to 9999 do add(b, U8(i mod 251)); end;
     str(b, "end");

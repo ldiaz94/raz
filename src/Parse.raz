@@ -80,15 +80,15 @@ const
     MaxFixes = 4096;      (* addresses in one constant *)
     MaxPending = 64;      (* modules being compiled at once *)
     MaxFors = 256;        (* for loops of a procedure whose limit may go in a register *)
-    Suffixes: [4][]U8 = [".linux-x86_64", ".linux", ".x86_64", ""];
+    Suffixes: [4][]const U8 = [".linux-x86_64", ".linux", ".x86_64", ""];
 
 var
-    libDir*, mainDir: []U8;
-    incDirs*: [16][]U8;
+    libDir*, mainDir: []const U8;
+    incDirs*: [16][]const U8;
     numInc*: INT;
-    userDirs: [][]U8;    (* RAZ_PATH, or HOME/.raz/lib; set by the driver *)
-    thisVersion: []U8;   (* the compiler's version; set by the driver *)
-    originNote: []U8;    (* for the module about to be opened, see libraryNote *)
+    userDirs: [][]const U8;    (* RAZ_PATH, or HOME/.raz/lib; set by the driver *)
+    thisVersion: []const U8;   (* the compiler's version; set by the driver *)
+    originNote: []const U8;    (* for the module about to be opened, see libraryNote *)
     firstModule*, lastModule*: PModule;   (* in the order they were finished *)
 
     checkMode: BOOL;     (* reading a file only for its interface *)
@@ -121,7 +121,7 @@ var
     doubts: [MaxDoubts]record
         at: Diag.Pos;    (* a place the module's end warns of *)
         n: INT;          (* a call standing on its own that drops this many results, or *)
-        msg, hint: []U8; (* any other doubt, in words (msg is empty for a drop) *)
+        msg, hint: []const U8; (* any other doubt, in words (msg is empty for a drop) *)
     end;
     numDoubts: INT;      (* the module being compiled has those from its
                             first one, saved by compileFile, to here *)
@@ -152,57 +152,57 @@ proc statement: ERROR; forward;
 
 (* Little helpers *)
 
-proc setLibDir*(dir: []U8);
+proc setLibDir*(dir: []const U8);
 begin
     libDir := dir;
 end;
 
-proc addIncDir*(dir: []U8);
+proc addIncDir*(dir: []const U8);
 begin
     incDirs[numInc] := dir;
     INC(numInc);
 end;
 
 (* The driver's user library directories, kept until compilation ends *)
-proc setUserDirs*(dirs: [][]U8);
+proc setUserDirs*(dirs: [][]const U8);
 begin
     userDirs := dirs;
 end;
 
 (* The driver's version of the compiler, which a library's note names *)
-proc setVersion*(v: []U8);
+proc setVersion*(v: []const U8);
 begin
     thisVersion := v;
 end;
 
-proc nameOf(n: INT): []U8;
+proc nameOf(n: INT): []const U8;
 begin
     return Scan.nameOf(n);
 end;
 
 (* The name number of s, which isn't empty *)
-proc internName(s: []U8): INT;
+proc internName(s: []const U8): INT;
 begin
-    return Scan.intern(ADR(s[0]), LEN(s));
+    return Scan.intern(PTR(s), LEN(s));
 end;
 
-proc say1(f, a: []U8): []U8;
+proc say1(f, a: []const U8): []const U8;
 begin
     return Diag.say(f, [Fmt.str(a)]);
 end;
 
-proc say2(f, a, b: []U8): []U8;
+proc say2(f, a, b: []const U8): []const U8;
 begin
     return Diag.say(f, [Fmt.str(a), Fmt.str(b)]);
 end;
 
-proc say3(f, a, b, c: []U8): []U8;
+proc say3(f, a, b, c: []const U8): []const U8;
 begin
     return Diag.say(f, [Fmt.str(a), Fmt.str(b), Fmt.str(c)]);
 end;
 
 (* More than n of what, as a message *)
-proc tooMany(n: INT; what: []U8): []U8;
+proc tooMany(n: INT; what: []const U8): []const U8;
 begin
     return Diag.say("more than {} {}", [Fmt.int(n), Fmt.str(what)]);
 end;
@@ -234,7 +234,7 @@ begin
 end;
 
 (* A missing symbol is reported just after the one before it. *)
-proc expected(what: []U8): ERROR;
+proc expected(what: []const U8): ERROR;
 var at: Diag.Pos;
 begin
     if Scan.tok = Scan.sBlank then
@@ -272,7 +272,7 @@ end;
 
 (* The error of a procedure or module whose own "end" isn't where it
    should be, with what closeEnd saw *)
-proc endMissing(p: Diag.Pos; msg: []U8): ERROR;
+proc endMissing(p: Diag.Pos; msg: []const U8): ERROR;
 begin
     Diag.error(p, msg);
     foundNotes(p);
@@ -474,10 +474,10 @@ begin
 end;
 
 (* Where module n is found, if it is: dir and the file in it *)
-proc moduleFile(n: INT): ([]U8, []U8, BOOL); forward;
+proc moduleFile(n: INT): ([]const U8, []const U8, BOOL); forward;
 
 (* name in lower case, in memory that is never freed, as messages are *)
-proc lowerCase(s: []U8): []U8;
+proc lowerCase(s: []const U8): []const U8;
 var p: ^U8; i: INT;
 begin
     if LEN(s) = 0 then return ""; end;
@@ -490,7 +490,7 @@ end;
 
 (* Whether s is a hexadecimal number but for the digit it must start
    with, as FFFDH is: capitals A to F and digits, then H *)
-proc hexLike(s: []U8): BOOL;
+proc hexLike(s: []const U8): BOOL;
 var i: INT;
 begin
     if (LEN(s) < 2) or (s[LEN(s) - 1] # 'H') then return false; end;
@@ -502,7 +502,7 @@ end;
 
 (* Reports name n at p as not declared, with what it may have meant *)
 proc notDeclared(p: Diag.Pos; n: INT);
-var found: BOOL; low: []U8;
+var found: BOOL; low: []const U8;
 begin
     Diag.error(p, say1("{} isn't declared", nameOf(n)));
     commentNote(p);
@@ -538,7 +538,7 @@ end;
 (* An error at at: o, a name of an enumeration, is a name of another of
    its scope too, so it is written with its type. *)
 proc twinError(o: PObj; at: Diag.Pos): ERROR;
-var a, b: []U8;
+var a, b: []const U8;
 begin
     a := Sym.typeName(o^.typ); b := Sym.typeName(o^.twin^.typ);
     return Scan.markHelp(at, Diag.say("{} is a name of {} and of {}",
@@ -1094,7 +1094,7 @@ begin
 end;
 
 (* The name of the atomic built-in which, for a message *)
-proc atomicName(which: INT): []U8;
+proc atomicName(which: INT): []const U8;
 begin
     if which = Sym.bCas then return "CAS"; end;
     if which = Sym.bXchg then return "XCHG"; end;
@@ -1196,7 +1196,7 @@ begin
     return nil;
 end;
 
-proc incOrDec(which: INT): []U8;
+proc incOrDec(which: INT): []const U8;
 begin
     if which = Sym.bDec then return "DEC"; end;
     return "INC";
@@ -1206,7 +1206,7 @@ end;
    its elements start at by Item's startOf. Anything else is an error
    that says what PTR is for, and for a pointer what to write. *)
 proc ptrOf(var x: TItem): ERROR;
-var e: PType; s: []U8;
+var e: PType; s: []const U8;
 begin
     if x.mode = Item.mStr then
         e := Sym.tU8;
@@ -1231,7 +1231,7 @@ end;
    place, so have none of their own. f is one name, not a path a.b,
    which would be a field of f's type, asked of that type. *)
 proc typeField(t: PType; at: Diag.Pos; isOffset: BOOL): (PObj, ERROR);
-var f: PObj; what, s, hint, g: []U8; dot: Diag.Pos;
+var f: PObj; what, s, hint, g: []const U8; dot: Diag.Pos;
 begin
     if isOffset then what := "OFFSET"; else what := "SIZE(T.f)"; end;
     if t^.form # Sym.fRecord then
@@ -1442,7 +1442,7 @@ end;
 (* x, before ".", has no fields; tok is what follows. Other languages
    write p.f through a pointer and s.len for a length. *)
 proc fieldOfWhat(x: TItem): ERROR;
-var msg, f: []U8;
+var msg, f: []const U8;
 begin
     msg := say1("expected a record, found {}", Item.what(x));
     if Scan.tok = Scan.sIdent then f := nameOf(Scan.id); else f := ""; end;
@@ -1698,7 +1698,7 @@ end;
 (* A set literal: the bits of the constant names, or'd at run time with
    those of the others. *)
 proc setLiteral(var x: TItem; t: PType): ERROR;
-var e: TItem; bits, slot: I64; start: Diag.Pos; s: []U8;
+var e: TItem; bits, slot: I64; start: Diag.Pos; s: []const U8;
 begin
     start := Scan.tokPos();
     Scan.next;
@@ -1859,7 +1859,7 @@ end;
 
 (* A doubt other than a drop, to be warned of at p with msg and hint.
    Text read twice, as a while's condition is, is noted once. *)
-proc noteDoubt(p: Diag.Pos; msg, hint: []U8);
+proc noteDoubt(p: Diag.Pos; msg, hint: []const U8);
 var i: INT;
 begin
     for i := 0 to numDoubts - 1 do
@@ -1885,7 +1885,7 @@ begin
 end;
 
 proc factor(var x: TItem; want: PType): ERROR;
-var called, vol, several: BOOL; t: PType; start: INT; s: []U8;
+var called, vol, several: BOOL; t: PType; start: INT; s: []const U8;
 begin
     several := passOn;
     passOn := false;
@@ -2044,7 +2044,7 @@ end;
 
 (* Notes x, an operand of the and or or (word) just read, if it is an
    unparenthesised = or # of two BOOLs *)
-proc noteBoolRel(const x: TItem; word: []U8);
+proc noteBoolRel(const x: TItem; word: []const U8);
 begin
     if bareBoolRel then
         noteDoubt(x.pos, say2("{} is read first: = and # bind tighter than {}", Diag.source(x.pos), word),
@@ -2404,7 +2404,7 @@ end;
    keeps each label's chunk in lo and its length in hi, for the
    comparing of labels. *)
 proc strArm(p: I64; var ls: Labels; var endL: INT): ERROR;
-var x: TItem; i, L, body: INT; last: BOOL; s: []U8;
+var x: TItem; i, L, body: INT; last: BOOL; s: []const U8;
 begin
     L := Gen.NoLabel;
     body := Gen.NoLabel;
@@ -2495,7 +2495,7 @@ end;
    Xml.Kind.done, is read by qualIdent, as it is anywhere else, and must
    be one of t's. *)
 proc armCase(t: PType): (PObj, ERROR);
-var st: Scan.State; c: PObj; at: Diag.Pos; qualified: BOOL; msg: []U8;
+var st: Scan.State; c: PObj; at: Diag.Pos; qualified: BOOL; msg: []const U8;
 begin
     at := Scan.tokPos();
     Scan.saveScan(st);
@@ -2651,7 +2651,7 @@ end;
 
 (* What a message calls x: its name n when x is just that name, else what
    it is. *)
-proc subject(x: TItem; n: INT): []U8;
+proc subject(x: TItem; n: INT): []const U8;
 begin
     if x.pos.b - x.pos.a = LEN(nameOf(n)) then return nameOf(n); end;
     if x.mode = Item.mConst then return "a constant"; end;
@@ -4091,7 +4091,7 @@ begin
 end;
 
 (* The arguments of an instance: types, or procedures named. *)
-proc parseArgs(var args: Sym.Args; mname: []U8): ERROR;
+proc parseArgs(var args: Sym.Args; mname: []const U8): ERROR;
 var o: PObj; start: Diag.Pos;
 begin
     Scan.next;
@@ -4211,7 +4211,7 @@ end;
    it is meant to go unused. Writing a var parameter, a match's name for
    a field or C's variable is what it is for. *)
 proc warn(o: PObj);
-var s, t: []U8;
+var s, t: []const U8;
 begin
     s := nameOf(o^.name);
     if (o^.cls = Sym.oProc) and o^.openEnd then
@@ -4244,7 +4244,7 @@ end;
 
 (* Warns of the call at p, which drops its n results *)
 proc dropped(p: Diag.Pos; n: INT);
-var s, blanks: []U8; i: INT;
+var s, blanks: []const U8; i: INT;
 begin
     s := Diag.source(p);
     i := 0;
@@ -4297,7 +4297,7 @@ var
     pending: [MaxPending]PModule;
     numPending: INT;
 
-proc exists(path: []U8): BOOL;
+proc exists(path: []const U8): BOOL;
 var info: Sys.Info; err: INT;
 begin
     info, err := Sys.info(path);
@@ -4306,7 +4306,7 @@ end;
 
 (* Which file path is, as its device and inode: two names of one file
    have the same. Zero for a file that can't be asked about. *)
-proc identity(path: []U8): (INT, INT);
+proc identity(path: []const U8): (INT, INT);
 var a: [4096]U8; st: [18]INT;   (* struct stat: st_dev, then st_ino *)
 begin
     if LEN(path) >= 4096 then return 0, 0; end;
@@ -4317,7 +4317,7 @@ begin
 end;
 
 (* s, in memory that is never freed, for what must outlast the buffer it is in *)
-proc keep(s: []U8): []U8;
+proc keep(s: []const U8): []const U8;
 var p: ^U8;
 begin
     if LEN(s) = 0 then return ""; end;
@@ -4333,12 +4333,12 @@ proc importModule(name: INT; args: Sym.Args): (PModule, ERROR); forward;
    the middle of reading another file, so it is re-entrant: it saves the
    scanner's state, the open scopes, the current module and file and
    whether checks are on, and puts them back at the end. *)
-proc compileFile(path: []U8; n: INT; args: Sym.Args; checkOnly: BOOL): (PModule, ERROR);
+proc compileFile(path: []const U8; n: INT; args: Sym.Args; checkOnly: BOOL): (PModule, ERROR);
 var
     st: Scan.State; saved: [Sym.MaxDepth]INT; d: INT;
     oldMod: PModule; oldCheck, oldChecks: BOOL; m: PModule;
     lib: ^Sym.Lib; start: Diag.Pos; alias, mname, line, oldPath: INT; o: PObj; bodyChunk: INT; iargs: Sym.Args;
-    generic: BOOL; argsAt: Scan.State; why: []U8; firstDoubt: INT;
+    generic: BOOL; argsAt: Scan.State; why: []const U8; firstDoubt: INT;
 begin
     firstDoubt := numDoubts;
     Scan.saveScan(st);
@@ -4544,10 +4544,10 @@ end;
 
 (* Reads every other file of module n in dir, and checks its interface
    against m, compiled from the file named chosen. *)
-proc checkSiblings(dir, chosen: []U8; n: INT; m: PModule; args: Sym.Args): ERROR;
+proc checkSiblings(dir, chosen: []const U8; n: INT; m: PModule; args: Sym.Args): ERROR;
 var
-    dp: Sys.Dir; e, prefix: []U8; i, numOthers: INT; more: BOOL; sib: PModule;
-    others: [32][]U8;
+    dp: Sys.Dir; e, prefix: []const U8; i, numOthers: INT; more: BOOL; sib: PModule;
+    others: [32][]const U8;
 begin
     prefix := say1("{}.", nameOf(n));
     numOthers := 0;
@@ -4571,7 +4571,7 @@ end;
 
 (* The compiler's version as a library's RAZ-VERSION would say it:
    "0.21" for "0.21.0-5-g38d29a8"; a name with fewer dots stays whole *)
-proc majorMinor(v: []U8): []U8;
+proc majorMinor(v: []const U8): []const U8;
 var i, dots: INT;
 begin
     dots := 0;
@@ -4588,7 +4588,7 @@ end;
    RAZ_PATH directory: if dir holds a file RAZ-VERSION, the raz its
    library was written for. The file is only read; a library with none,
    or a module of the program's own directory or of lib, has no line. *)
-proc libraryNote(dir: []U8): []U8;
+proc libraryNote(dir: []const U8): []const U8;
 var fd, n, i: INT; b: [32]U8;
 begin
     if (dir = mainDir) or (dir = libDir) then return ""; end;
@@ -4603,7 +4603,7 @@ begin
 end;
 
 (* The directories searched for modules: main, -I, user libraries, lib *)
-proc searchDir(i: INT): []U8;
+proc searchDir(i: INT): []const U8;
 begin
     if i = -1 then return mainDir; end;
     if i < numInc then return incDirs[i]; end;
@@ -4614,13 +4614,13 @@ end;
 
 (* The file of module n in dir that suffix j says: Name.linux-x86_64.raz
    for a file of this target alone, and so on to Name.raz *)
-proc fileName(n, j: INT): []U8;
+proc fileName(n, j: INT): []const U8;
 begin
     return Diag.say("{}{}.raz", [Fmt.str(nameOf(n)), Fmt.str(Suffixes[j])]);
 end;
 
-proc moduleFile(n: INT): ([]U8, []U8, BOOL);
-var i, j: INT; dir, f: []U8;
+proc moduleFile(n: INT): ([]const U8, []const U8, BOOL);
+var i, j: INT; dir, f: []const U8;
 begin
     for i := -1 to numInc + LEN(userDirs) do
         dir := searchDir(i);
@@ -4635,9 +4635,9 @@ end;
 (* A program has one module of each name: module n, found as dir/f,
    must have no files in a later directory, unless dir/f is a link to
    one of them, which chooses it (report, section 3) *)
-proc checkOneModule(n: INT; dir, f: []U8; at: Diag.Pos): ERROR;
+proc checkOneModule(n: INT; dir, f: []const U8; at: Diag.Pos): ERROR;
 var
-    i, j, dev, ino, mineDev, mineIno: INT; past, chosen: BOOL; g, files, others: []U8;
+    i, j, dev, ino, mineDev, mineIno: INT; past, chosen: BOOL; g, files, others: []const U8;
 begin
     mineDev, mineIno := identity(say2("{}/{}", dir, f));
     others := "";
@@ -4665,7 +4665,7 @@ begin
 end;
 
 proc importModule(name: INT; args: Sym.Args): (PModule, ERROR);
-var m: PModule; i: INT; dir, f, where: []U8; found: BOOL;
+var m: PModule; i: INT; dir, f, where: []const U8; found: BOOL;
 begin
     m := findModule(name, args);
     if m # nil then return m, nil; end;
@@ -4779,8 +4779,8 @@ end;
 
 (* The main module, from the file at path, and Rt, which every program
    needs, first *)
-proc compileMain*(path: []U8): (PModule, ERROR);
-var base: []U8; i, n: INT; none: Sym.Args; m: PModule;
+proc compileMain*(path: []const U8): (PModule, ERROR);
+var base: []const U8; i, n: INT; none: Sym.Args; m: PModule;
 begin
     none.n := 0;
     i := LEN(path);

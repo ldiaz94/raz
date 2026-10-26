@@ -50,7 +50,7 @@ type
     (* The text of the instruction that starts at at, for the listing *)
     Said = record
         at: INT;
-        text: []U8;
+        text: []const U8;
     end;
 
 var
@@ -226,7 +226,7 @@ begin
     numSaid := n;
 end;
 
-proc sayAt*(at: INT; s: []U8);
+proc sayAt*(at: INT; s: []const U8);
 begin
     if not listing then return; end;
     if numSaid = saidCap then
@@ -239,14 +239,14 @@ begin
 end;
 
 (* The text of the instruction about to be written *)
-proc say*(s: []U8);
+proc say*(s: []const U8);
 begin
     sayAt(Chunk.pc, s);
 end;
 
 (* The text of the instruction at at, said again, as when its operand is
    patched *)
-proc restate*(at: INT; s: []U8);
+proc restate*(at: INT; s: []const U8);
 var i: INT;
 begin
     i := numSaid - 1;
@@ -255,7 +255,7 @@ begin
 end;
 
 const
-    RegNames: [4][16][]U8 = [
+    RegNames: [4][16][]const U8 = [
         ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
          "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"],
         ["eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi",
@@ -264,13 +264,13 @@ const
          "r8w", "r9w", "r10w", "r11w", "r12w", "r13w", "r14w", "r15w"],
         ["al", "cl", "dl", "bl", "spl", "bpl", "sil", "dil",
          "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b"]];
-    CondNames*: [16][]U8 = ["o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns", "p", "np", "l", "ge", "le", "g"];
-    AluNames: [8][]U8 = ["add", "or", "adc", "sbb", "and", "sub", "xor", "cmp"];
-    ShiftNames: [8][]U8 = ["rol", "ror", "rcl", "rcr", "shl", "shr", "sal", "sar"];
-    UnaryNames: [8][]U8 = ["", "", "not", "neg", "mul", "imul", "div", "idiv"];   (* from 2 *)
+    CondNames*: [16][]const U8 = ["o", "no", "b", "ae", "e", "ne", "be", "a", "s", "ns", "p", "np", "l", "ge", "le", "g"];
+    AluNames: [8][]const U8 = ["add", "or", "adc", "sbb", "and", "sub", "xor", "cmp"];
+    ShiftNames: [8][]const U8 = ["rol", "ror", "rcl", "rcr", "shl", "shr", "sal", "sar"];
+    UnaryNames: [8][]const U8 = ["", "", "not", "neg", "mul", "imul", "div", "idiv"];   (* from 2 *)
 
 (* The name of register r, of size bytes *)
-proc rnSized(r, size: INT): []U8;
+proc rnSized(r, size: INT): []const U8;
 begin
     if size = 1 then return RegNames[3][r]; end;
     if size = 2 then return RegNames[2][r]; end;
@@ -278,19 +278,19 @@ begin
     return RegNames[0][r];
 end;
 
-proc rn(r: INT): []U8;
+proc rn(r: INT): []const U8;
 begin
     return RegNames[0][r];
 end;
 
-proc xn(x: INT): []U8;
+proc xn(x: INT): []const U8;
 begin
     return Diag.say("xmm{}", [Fmt.int(x)]);
 end;
 
 (* A memory operand, with the size of what it holds, as the assembler
    reads it *)
-proc mnSized(m: Mem; size: INT): []U8;
+proc mnSized(m: Mem; size: INT): []const U8;
 var b: ^Buf.Buf;
 begin
     b := ^Buf.Buf(Scan.grab(SIZE(Buf.Buf)));
@@ -312,24 +312,24 @@ begin
     return Buf.bytes(b^);
 end;
 
-proc mn(m: Mem): []U8;
+proc mn(m: Mem): []const U8;
 begin
     return mnSized(m, 0);
 end;
 
 (* "op a, b" and "op a" *)
-proc text2(op, a, b: []U8): []U8;
+proc text2(op, a, b: []const U8): []const U8;
 begin
     return Diag.say("{} {}, {}", [Fmt.str(op), Fmt.str(a), Fmt.str(b)]);
 end;
 
-proc text1(op, a: []U8): []U8;
+proc text1(op, a: []const U8): []const U8;
 begin
     return Diag.say("{} {}", [Fmt.str(op), Fmt.str(a)]);
 end;
 
 (* v in decimal *)
-proc num(v: INT): []U8;
+proc num(v: INT): []const U8;
 begin
     return Diag.say("{}", [Fmt.int(v)]);
 end;
@@ -537,7 +537,7 @@ end;
    lowest, one bit, 0F BD and 0F BC. ZF is set if r is 0, which has no
    one bit, and r is then left undefined. *)
 proc bitScan*(reverse: BOOL; r: INT);
-var opc: INT; name: []U8;
+var opc: INT; name: []const U8;
 begin
     if reverse then opc := 0BD0FH; name := "bsr"; else opc := 0BC0FH; name := "bsf"; end;
     if listing then say(text2(name, rn(r), rn(r))); end;
@@ -674,7 +674,7 @@ end;
    long forms of nop, of up to 8 bytes, that x86 decodes as one *)
 proc align*(n: INT);
 const
-    Nops: [8][]U8 = ["\x90", "\x66\x90", "\x0F\x1F\x00", "\x0F\x1F\x40\x00",
+    Nops: [8][]const U8 = ["\x90", "\x66\x90", "\x0F\x1F\x00", "\x0F\x1F\x40\x00",
         "\x0F\x1F\x44\x00\x00", "\x66\x0F\x1F\x44\x00\x00", "\x0F\x1F\x80\x00\x00\x00\x00",
         "\x0F\x1F\x84\x00\x00\x00\x00\x00"];
 var k, i: INT;
@@ -779,7 +779,7 @@ begin
     return 0F2H;
 end;
 
-proc realEnd(single: BOOL): []U8;
+proc realEnd(single: BOOL): []const U8;
 begin
     if single then return "ss"; end;
     return "sd";
@@ -798,7 +798,7 @@ begin
     opM(realPfx(single), false, 110FH, x, m, false);
 end;
 
-proc sseName(op: INT; single: BOOL): []U8;
+proc sseName(op: INT; single: BOOL): []const U8;
 begin
     if op = 58H then return Diag.say("add{}", [Fmt.str(realEnd(single))]); end;
     if op = 59H then return Diag.say("mul{}", [Fmt.str(realEnd(single))]); end;
@@ -962,7 +962,7 @@ type
 
 (* The current symbol as a word: an identifier, or a reserved word that
    is also an instruction *)
-proc asmWord: []U8;
+proc asmWord: []const U8;
 begin
     match Scan.tok of
     | sIdent: return Scan.nameOf(Scan.id);
@@ -980,7 +980,7 @@ end;
 
 (* Whether w names a register: rax, eax, ax, al and so on, or xmm0 to
    xmm15 (size 16); r and size are set if so *)
-proc isReg(w: []U8; r, size: ^INT): BOOL;
+proc isReg(w: []const U8; r, size: ^INT): BOOL;
 const Sizes: [4]INT = [8, 4, 2, 1];
 var i, j, n, d: INT;
 begin
@@ -1005,7 +1005,7 @@ end;
 
 (* Which word of list, a list of words each with a space either side,
    w is, from 0; -1 if none *)
-proc wordIndex(w: []U8; list: []U8): INT;
+proc wordIndex(w: []const U8; list: []const U8): INT;
 var i, n, start: INT;
 begin
     n := 0;
@@ -1021,7 +1021,7 @@ begin
 end;
 
 (* w from byte from on, at most n bytes of it, as copy does *)
-proc part(w: []U8; from, n: INT): []U8;
+proc part(w: []const U8; from, n: INT): []const U8;
 var e: INT;
 begin
     e := from + n;
@@ -1031,9 +1031,9 @@ begin
 end;
 
 (* The condition a name ends in: e of je, nz of jnz *)
-proc cond(w: []U8): INT;
+proc cond(w: []const U8): INT;
 const
-    Alias: [12][]U8 = ["c", "nae", "nc", "nb", "z", "nz", "na", "nbe", "nge", "nl", "ng", "nle"];
+    Alias: [12][]const U8 = ["c", "nae", "nc", "nb", "z", "nz", "na", "nbe", "nge", "nl", "ng", "nle"];
     AliasCc: [12]INT = [2, 2, 3, 3, 4, 5, 6, 7, 12, 13, 14, 15];
 var i: INT;
 begin
@@ -1047,7 +1047,7 @@ begin
 end;
 
 proc operand(o: ^Operand; constExpr: ConstFn): ERROR;
-var w: []U8; r, size, sz: INT; st: Scan.State; v: I64; isR, wasMinus: BOOL;
+var w: []const U8; r, size, sz: INT; st: Scan.State; v: I64; isR, wasMinus: BOOL;
 begin
     o^ := {};
     w := asmWord();
@@ -1141,7 +1141,7 @@ const
     BitPfx: [5]INT = [0, 0, 0F3H, 0F3H, 0F3H];
     BitCodes: [5]INT = [0BC0FH, 0BD0FH, 0BC0FH, 0BD0FH, 0B80FH];
     (* the instructions of no operands; the last seven are a kernel's *)
-    Plain: [22][]U8 = ["ret", "leave", "syscall", "cpuid", "rdtsc",
+    Plain: [22][]const U8 = ["ret", "leave", "syscall", "cpuid", "rdtsc",
         "pause", "nop", "ud2", "int3", "hlt", "cqo", "cdq", "mfence", "lfence", "sfence",
         "cli", "sti", "iretq", "swapgs", "rdmsr", "wrmsr", "wbinvd"];
     PlainOp: [22]INT = [0C3H, 0C9H, 050FH, 0A20FH, 310FH,
@@ -1155,7 +1155,7 @@ const
 
 var
     (* the instruction being assembled *)
-    aw: []U8;                    (* its word *)
+    aw: []const U8;                    (* its word *)
     ao: [3]Operand;              (* its operands *)
     an: INT;                     (* how many *)
     asize, apfx: INT;
@@ -1448,7 +1448,7 @@ begin
     Scan.next;
     if Scan.tok = Scan.sColon then
         sayAt(Chunk.pc, Diag.say("{}:", [Fmt.str(aw)]));
-        k := try lab(Scan.intern(ADR(aw[0]), LEN(aw)));
+        k := try lab(Scan.intern(PTR(aw), LEN(aw)));
         if lplaces[k] >= 0 then
             return Scan.markAt(aat, Diag.say("label {} is defined twice", [Fmt.str(aw)]));
         end;
@@ -1540,7 +1540,7 @@ begin
 end;
 
 (* Whether s holds a space *)
-proc hasSpace(s: []U8): BOOL;
+proc hasSpace(s: []const U8): BOOL;
 var i: INT;
 begin
     for i := 0 to LEN(s) - 1 do
@@ -1551,7 +1551,7 @@ end;
 
 (* n, in decimal, at least w wide, as write(n: w) *)
 proc padded(n, w: INT);
-var s: []U8; i: INT;
+var s: []const U8; i: INT;
 begin
     s := Diag.say("{}", [Fmt.int(n)]);
     for i := LEN(s) to w - 1 do Out.str(" "); end;
@@ -1563,7 +1563,7 @@ end;
    instructions made for it, at their offsets in the procedure; a jump
    within it says where to by its offset too. *)
 proc list*(home: INT);
-var order: ^INT; n, i, j, k, c, t, line: INT; text: []U8;
+var order: ^INT; n, i, j, k, c, t, line: INT; text: []const U8;
 begin
     order := ^INT(Scan.grab(Chunk.numChunks * SIZE(INT)));
     n := 0;

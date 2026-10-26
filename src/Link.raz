@@ -160,7 +160,7 @@ end;
 (* The line program of the files paths, nfiles of them, numbered from
    1, as they are written in the table *)
 proc makeLines(paths: ^INT; nfiles: INT);
-var i, f, c, cf, cl, cc, op, at, da, dl: INT; s: []U8;
+var i, f, c, cf, cl, cc, op, at, da, dl: INT; s: []const U8;
 begin
     lpLen := 0;
     putN(0, 4);              (* unit_length, patched below *)
@@ -219,7 +219,7 @@ var
     at, names, poolAt: INT;    (* where the next number goes, the next name, the pool's start *)
 
 (* The name s, in the pool, and its offset from the pool's start, at at *)
-proc putName(s: []U8);
+proc putName(s: []const U8);
 begin
     patch4(buf, at, names - poolAt);
     COPY(buf[names..names + LEN(s)], s);
@@ -322,8 +322,8 @@ begin
 end;
 
 (* The address a as raz writes it, in hexadecimal: 0FFFFFFFF80000000H *)
-proc literal(a: INT): []U8;
-var s: []U8;
+proc literal(a: INT): []const U8;
+var s: []const U8;
 begin
     s := Diag.say("{}H", [Fmt.hex(U64(a))]);
     if s[0] > '9' then s := Diag.say("0{}", [Fmt.str(s)]); end;

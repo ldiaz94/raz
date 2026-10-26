@@ -1,4 +1,4 @@
-(* Operations on strings, which are []U8. = and # compare them; this
+(* Operations on strings, which are []const U8. = and # compare them; this
    module orders, searches and hashes them, trims them and takes them
    apart, tells an ASCII character's kind and changes a letter's case,
    joins them and replaces in them, reads and writes their UTF-8, reads
@@ -7,17 +7,18 @@
    own. *)
 module Str;
 import Mem, Heap, Rt, Bytes, Buf;
+import SYSTEM;
 
 const least = -9223372036854775807 - 1;   (* the smallest I64 *)
 
 (* s's bytes, copied into memory from a, to keep after s's own are
    gone; "" and false if a has no room. *)
-proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);
+proc copy*(a: ^Mem.Allocator; s: []const U8): ([]U8, BOOL);
 var p: ^U8;
 begin
-    if LEN(s) = 0 then return "", true; end;
+    if LEN(s) = 0 then return [], true; end;
     p := Mem.alloc(a, LEN(s), 1);
-    if p = nil then return "", false; end;
+    if p = nil then return [], false; end;
     COPY(p[0..LEN(s)], s);
     return p[0..LEN(s)], true;
 end;
@@ -26,11 +27,11 @@ end;
    for an empty string, was never a's, and is left alone. *)
 proc free*(a: ^Mem.Allocator; s: []U8);
 begin
-    if LEN(s) > 0 then Mem.free(a, ADR(s[0])); end;
+    if LEN(s) > 0 then Mem.free(a, SYSTEM.ADR(s[0])); end;
 end;
 
 (* -1, 0 or 1 as a sorts before, with or after b, byte by byte. *)
-proc cmp*(a, b: []U8): INT;
+proc cmp*(a, b: []const U8): INT;
 var i, n: INT;
 begin
     n := LEN(a);
@@ -47,7 +48,7 @@ begin
 end;
 
 (* Whether a and b hold the same bytes: a = b, as a procedure value. *)
-proc eq*(a, b: []U8): BOOL;
+proc eq*(a, b: []const U8): BOOL;
 begin
     return a = b;
 end;
@@ -60,7 +61,7 @@ begin
 end;
 
 (* Whether a and b are the same but for the case of ASCII letters. *)
-proc eqFold*(a, b: []U8): BOOL;
+proc eqFold*(a, b: []const U8): BOOL;
 var i: INT;
 begin
     if LEN(a) # LEN(b) then return false; end;
@@ -71,7 +72,7 @@ begin
 end;
 
 (* FNV-1a, 64 bits. *)
-proc hash*(s: []U8): U64;
+proc hash*(s: []const U8): U64;
 var h: U64; i: INT;
 begin
     h := 0CBF29CE484222325H;
@@ -82,14 +83,14 @@ begin
 end;
 
 (* Where sub first starts in s, or -1. *)
-proc find*(s, sub: []U8): INT;
+proc find*(s, sub: []const U8): INT;
 begin
     return Bytes.find(s, sub);
 end;
 
 (* Where sub first starts in s at or after from, or -1; from is at
    most LEN(s). *)
-proc findFrom*(s, sub: []U8; from: INT): INT;
+proc findFrom*(s, sub: []const U8; from: INT): INT;
 var i: INT;
 begin
     i := Bytes.find(s[from..LEN(s)], sub);
@@ -98,7 +99,7 @@ begin
 end;
 
 (* Where sub last starts in s, or -1. *)
-proc findLast*(s, sub: []U8): INT;
+proc findLast*(s, sub: []const U8): INT;
 var i: INT;
 begin
     for i := LEN(s) - LEN(sub) to 0 by -1 do
@@ -108,13 +109,13 @@ begin
 end;
 
 (* Whether s starts with p. *)
-proc hasPrefix*(s, p: []U8): BOOL;
+proc hasPrefix*(s, p: []const U8): BOOL;
 begin
     return (LEN(s) >= LEN(p)) and (s[0..LEN(p)] = p);
 end;
 
 (* Whether s ends with x. *)
-proc hasSuffix*(s, x: []U8): BOOL;
+proc hasSuffix*(s, x: []const U8): BOOL;
 begin
     return (LEN(s) >= LEN(x)) and (s[LEN(s) - LEN(x)..LEN(s)] = x);
 end;
@@ -157,7 +158,7 @@ begin
 end;
 
 (* s without the spaces at its start. *)
-proc trimLeft*(s: []U8): []U8;
+proc trimLeft*(s: []const U8): []const U8;
 var i: INT;
 begin
     i := 0;
@@ -166,7 +167,7 @@ begin
 end;
 
 (* s without the spaces at its end. *)
-proc trimRight*(s: []U8): []U8;
+proc trimRight*(s: []const U8): []const U8;
 var n: INT;
 begin
     n := LEN(s);
@@ -175,14 +176,14 @@ begin
 end;
 
 (* s without the spaces at either end. *)
-proc trim*(s: []U8): []U8;
+proc trim*(s: []const U8): []const U8;
 begin
     return trimRight(trimLeft(s));
 end;
 
 (* What comes before the first sep in s, what comes after it, and true;
    or s, an empty string and false if s has no sep. *)
-proc cut*(s, sep: []U8): ([]U8, []U8, BOOL);
+proc cut*(s, sep: []const U8): ([]const U8, []const U8, BOOL);
 var i: INT;
 begin
     i := find(s, sep);
@@ -193,7 +194,7 @@ end;
 (* The first word of s, the bytes after the spaces at its start up to
    the next space or the end, and the rest of s from there; two empty
    strings if s holds only spaces. *)
-proc field*(s: []U8): ([]U8, []U8);
+proc field*(s: []const U8): ([]const U8, []const U8);
 var i: INT;
 begin
     s := trimLeft(s);
@@ -219,7 +220,7 @@ begin
 end;
 
 (* The parts added to b, with sep between each two. *)
-proc join*(var b: Buf.Buf; parts: [][]U8; sep: []U8);
+proc join*(var b: Buf.Buf; parts: [][]const U8; sep: []const U8);
 var i: INT;
 begin
     for i := 0 to LEN(parts) - 1 do
@@ -230,7 +231,7 @@ end;
 
 (* s added to b, with new for each old in it, from the left, none
    overlapping another; s as it is if old is empty. *)
-proc replace*(var b: Buf.Buf; s, old, new: []U8);
+proc replace*(var b: Buf.Buf; s, old, new: []const U8);
 var i: INT;
 begin
     i := -1;
@@ -275,7 +276,7 @@ end;
    if its first byte doesn't start one rightly, being a continuation,
    or followed by too few continuations, or spelling a surrogate or a
    character in more bytes than it needs; 0 and 0 if s is empty. *)
-proc decode*(s: []U8): (I32, INT);
+proc decode*(s: []const U8): (I32, INT);
 var c, least: I32; n, i: INT;
 begin
     if LEN(s) = 0 then return 0, 0; end;
@@ -299,7 +300,7 @@ end;
 (* The character s ends with, and its length in bytes, read as decode
    reads one: FFFDH and 1 if the last byte doesn't end one rightly; 0
    and 0 if s is empty. *)
-proc decodeLast*(s: []U8): (I32, INT);
+proc decodeLast*(s: []const U8): (I32, INT);
 var c: I32; i, n: INT;
 begin
     if LEN(s) = 0 then return 0, 0; end;
@@ -313,7 +314,7 @@ end;
 
 (* The character at i in s, as decode reads it, and where the one after
    it starts; 0 and -1 if i is at the end or past it. *)
-proc next*(s: []U8; i: INT): (I32, INT);
+proc next*(s: []const U8; i: INT): (I32, INT);
 var c: I32; n: INT;
 begin
     if i >= LEN(s) then return 0, -1; end;
@@ -323,7 +324,7 @@ end;
 
 (* The characters in s, as decode reads them, each byte that doesn't
    start one rightly counted as one. *)
-proc chars*(s: []U8): INT;
+proc chars*(s: []const U8): INT;
 var i, n: INT;
 begin
     _, i := next(s, 0);
@@ -336,7 +337,7 @@ end;
 
 (* Whether s is UTF-8: decode finds no byte that doesn't start a
    character rightly. *)
-proc valid*(s: []U8): BOOL;
+proc valid*(s: []const U8): BOOL;
 var c: I32; i, n: INT;
 begin
     while i < LEN(s) do
@@ -349,7 +350,7 @@ end;
 
 (* s as a decimal number, with a - or + before it if any, and nothing
    else; false if it isn't one, or an I64 can't hold it. *)
-proc toInt*(s: []U8): (I64, BOOL);
+proc toInt*(s: []const U8): (I64, BOOL);
 var n, d: I64; i: INT; neg: BOOL;
 begin
     neg := (LEN(s) > 0) and (s[0] = '-');
@@ -372,7 +373,7 @@ end;
 
 (* s in hexadecimal, digits only, capitals or not; false if it isn't
    that, or a U64 can't hold it. *)
-proc toHex*(s: []U8): (U64, BOOL);
+proc toHex*(s: []const U8): (U64, BOOL);
 var v: U64; d, i: INT;
 begin
     if LEN(s) = 0 then return 0, false; end;
@@ -402,7 +403,7 @@ end;
    does. alphabet holds the 64 digits (Base64 or Base64Url, or one's
    own). A last group of 1 or 2 bytes is padded with = to four if pad,
    and else has 2 or 3 digits. The bytes written. *)
-proc base64With*(s, out, alphabet: []U8; pad: BOOL): INT;
+proc base64With*(s: []const U8; out: []U8; alphabet: []const U8; pad: BOOL): INT;
 var i, k, v, left: INT;
 begin
     k := 0;
@@ -436,13 +437,13 @@ end;
 
 (* s in base64 (RFC 4648, section 4), padded, into out as base64With
    writes it. *)
-proc base64*(s, out: []U8): INT;
+proc base64*(s: []const U8; out: []U8): INT;
 begin
     return base64With(s, out, Base64, true);
 end;
 
 (* c's value as a digit of alphabet, 0 to 63, or -1 if it isn't one; = is -1. *)
-proc base64Val(c: U8; alphabet: []U8): INT;
+proc base64Val(c: U8; alphabet: []const U8): INT;
 var i: INT;
 begin
     for i := 0 to 63 do
@@ -454,7 +455,7 @@ end;
 (* The last 2 or 3 digits of an unpadded s, at s, decoded into out:
    the bytes written, 1 or 2; or -1 if a digit isn't one, or the bits
    that no byte uses aren't 0. *)
-proc unbase64Tail(s, out, alphabet: []U8): INT;
+proc unbase64Tail(s: []const U8; out: []U8; alphabet: []const U8): INT;
 var a, b, c: INT;
 begin
     a := base64Val(s[0], alphabet);
@@ -483,7 +484,7 @@ end;
    uses are 0, so a byte string has the one spelling that base64 gives
    it (RFC 4648, section 3.5 allows a decoder to take that). Line
    breaks, and padding or its lack, are the caller's to mend first. *)
-proc unbase64With*(s, out, alphabet: []U8; pad: BOOL): (INT, BOOL);
+proc unbase64With*(s: []const U8; out: []U8; alphabet: []const U8; pad: BOOL): (INT, BOOL);
 var i, k, a, b, c, d, v, whole, n: INT; last: BOOL;
 begin
     whole := LEN(s);   (* the bytes in groups of 4 *)
@@ -532,14 +533,14 @@ end;
 
 (* s, base64 (RFC 4648, section 4), padded, decoded into out as
    unbase64With reads it; out holds LEN(s) div 4 * 3 bytes at least. *)
-proc unbase64*(s, out: []U8): (INT, BOOL);
+proc unbase64*(s: []const U8; out: []U8): (INT, BOOL);
 begin
     return unbase64With(s, out, Base64, true);
 end;
 
 (* s as a decimal number, digits only; false if it isn't one, or a U64
    can't hold it. *)
-proc toU64*(s: []U8): (U64, BOOL);
+proc toU64*(s: []const U8): (U64, BOOL);
 var v, d: U64; i: INT;
 begin
     if LEN(s) = 0 then return 0, false; end;
@@ -553,7 +554,7 @@ begin
 end;
 
 (* The bytes at p up to its zero byte, not copied; "" for nil. *)
-proc fromC*(p: ^U8): []U8;
+proc fromC*(p: ^U8): []const U8;
 var n: INT;
 begin
     if p = nil then return ""; end;
@@ -563,13 +564,13 @@ end;
 
 (* s copied into out with a zero byte after it, for C: out holds
    LEN(s) + 1 bytes at least, or the program stops at the byte it
-   lacks, as any slice does. The pointer C is given, PTR(out). *)
-proc toC*(s, out: []U8): ^U8;
+   lacks, as any slice does. The pointer C is given, SYSTEM.PTR(out). *)
+proc toC*(s: []const U8; out: []U8): ^U8;
 var i: INT;
 begin
     for i := 0 to LEN(s) - 1 do out[i] := s[i]; end;
     out[LEN(s)] := 0;
-    return PTR(out);
+    return SYSTEM.PTR(out);
 end;
 
 (* n in decimal, as Out.int writes it: its bytes, the first of the 20,
@@ -593,7 +594,7 @@ end;
 (* The bytes of s, at most 8, as an unsigned number, the first byte
    the lowest: how a file or a message in little-endian order is read,
    whatever the machine's own order. *)
-proc le*(s: []U8): U64;
+proc le*(s: []const U8): U64;
 var v: U64; i: INT;
 begin
     if LEN(s) > 8 then Rt.stop("Str.le: more than 8 bytes"); end;
@@ -602,7 +603,7 @@ begin
 end;
 
 (* As le, the first byte the highest: big-endian, network order. *)
-proc be*(s: []U8): U64;
+proc be*(s: []const U8): U64;
 var v: U64; i: INT;
 begin
     if LEN(s) > 8 then Rt.stop("Str.be: more than 8 bytes"); end;
@@ -708,7 +709,7 @@ begin
 end;
 
 proc testParts;
-var b: Buf.Buf; w, rest, k, v: []U8; ok: BOOL; up: [5]U8;
+var b: Buf.Buf; w, rest, k, v: []const U8; ok: BOOL; up: [5]U8;
 begin
     if not eqFold("Hello", "hELLO") or eqFold("a", "b") or eqFold("a", "ab") or not eqFold("", "")
         or eqFold("@", "`") then Rt.stop("Str.eqFold"); end;
@@ -834,18 +835,18 @@ var room: [4]U8; c: [4]U8; p: ^U8;
 begin
     if LEN(fromC(nil)) # 0 then Rt.stop("Str.fromC: nil"); end;
     c := "abc\x00";
-    if fromC(ADR(c[0])) # "abc" then Rt.stop("Str.fromC: abc"); end;
+    if fromC(SYSTEM.ADR(c[0])) # "abc" then Rt.stop("Str.fromC: abc"); end;
     c[0] := 0;
-    if LEN(fromC(ADR(c[0]))) # 0 then Rt.stop("Str.fromC: empty"); end;
+    if LEN(fromC(SYSTEM.ADR(c[0]))) # 0 then Rt.stop("Str.fromC: empty"); end;
     room := "xxxx";
     p := toC("abc", room);
-    if (p # ADR(room[0])) or (room[0..3] # "abc") or (room[3] # 0) then Rt.stop("Str.toC: abc"); end;
+    if (p # SYSTEM.ADR(room[0])) or (room[0..3] # "abc") or (room[3] # 0) then Rt.stop("Str.toC: abc"); end;
     p := toC("", room);
     if room[0] # 0 then Rt.stop("Str.toC: empty"); end;
 end;
 
 (* One of the RFC 4648 section 10 vectors: plain codes to coded and back. *)
-proc testVector(plain, coded: []U8);
+proc testVector(plain, coded: []const U8);
 var buf: [16]U8; n: INT; ok: BOOL;
 begin
     if base64Size(LEN(plain)) # LEN(coded) then Rt.stop("Str.base64Size"); end;
@@ -856,7 +857,7 @@ begin
 end;
 
 (* s must not decode. *)
-proc testBad(s: []U8);
+proc testBad(s: []const U8);
 var buf: [16]U8; ok: BOOL;
 begin
     _, ok := unbase64(s, buf[0..LEN(s) div 4 * 3]);
@@ -878,7 +879,7 @@ end;
 
 (* plain in the other alphabet and unpadded, and back; in the padded
    form too, with the - and _ of base64url. *)
-proc testUrlVector(plain, bare, padded: []U8);
+proc testUrlVector(plain, bare, padded: []const U8);
 var buf: [16]U8; n: INT; ok: BOOL;
 begin
     n := base64With(plain, buf[0..base64Size(LEN(plain))], Base64Url, false);
@@ -892,7 +893,7 @@ begin
 end;
 
 (* s must not decode, unpadded, in base64url's alphabet. *)
-proc testUrlBad(s: []U8);
+proc testUrlBad(s: []const U8);
 var buf: [16]U8; ok: BOOL;
 begin
     _, ok := unbase64With(s, buf[0..(LEN(s) + 3) div 4 * 3], Base64Url, false);

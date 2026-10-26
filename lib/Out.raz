@@ -50,7 +50,7 @@ begin
 end;
 
 (* Writes the bytes of s. *)
-proc str*(s: []U8);
+proc str*(s: []const U8);
 var i: INT;
 begin
     Lock.take(lock);

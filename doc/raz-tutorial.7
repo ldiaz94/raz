@@ -384,7 +384,7 @@ begin
 end;
 
 proc main*;
-var a: [5]INT; i: INT; s, val: []U8; name: [8]U8; ok: BOOL;
+var a: [5]INT; i: INT; s, val: []const U8; name: [8]U8; ok: BOOL;
 begin
     for i := 0 to 4 do a[i] := i * i; end;
     Out.int(sum(a)); Out.ln;        (* the array, as a slice *)
@@ -1224,7 +1224,7 @@ a growable array, and
 .Cm Sort
 are generic modules:
 .Bd -literal -offset indent
-import Count := Map([]U8, INT, Str.hash, Str.eq);
+import Count := Map([]const U8, INT, Str.hash, Str.eq);
 .Ed
 .Sh 14. TALKING TO C
 .Bd -literal -offset indent

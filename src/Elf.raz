@@ -30,10 +30,10 @@ import Sys, Files, Fmt, Diag, Scan, Chunk, Link;
 var
     needed: [32]INT;     (* the libraries to load, names interned *)
     numNeeded*: INT;     (* none: a static program *)
-    mainPath: []U8;      (* the main module's file, for gdb *)
+    mainPath: []const U8;      (* the main module's file, for gdb *)
     stripped*: BOOL;     (* -s: no symbols and no line numbers; the sections are there, empty *)
-    interp: []U8;        (* the loader a program that uses C names *)
-    libc*: []U8;         (* and the C library it needs *)
+    interp: []const U8;        (* the loader a program that uses C names *)
+    libc*: []const U8;         (* and the C library it needs *)
 
     buf: ^U8;
     len, cap: INT;
@@ -72,7 +72,7 @@ begin
     end;
 end;
 
-proc setMainPath*(path: []U8);
+proc setMainPath*(path: []const U8);
 begin
     mainPath := path;
 end;
@@ -141,7 +141,7 @@ const
 
 (* Where in ShNames the name is: the byte after a zero that starts it and
    is followed by one; the empty name, found nowhere, is 0 *)
-proc nameAt(name: []U8): INT;
+proc nameAt(name: []const U8): INT;
 var i, k: INT; same: BOOL;
 begin
     for i := 1 to LEN(ShNames) - LEN(name) - 1 do
@@ -157,16 +157,16 @@ begin
 end;
 
 (* A section header. Its name is stored as its offset in ShNames. *)
-proc shdr(name: []U8; typ: INT; flags, adr, off, size: INT; lnk, info: INT; align, entsize: INT);
+proc shdr(name: []const U8; typ: INT; flags, adr, off, size: INT; lnk, info: INT; align, entsize: INT);
 begin
     putN(nameAt(name), 4); putN(typ, 4); putN(flags, 8); putN(adr, 8);
     putN(off, 8); putN(size, 8); putN(lnk, 4); putN(info, 4);
     putN(align, 8); putN(entsize, 8);
 end;
 
-proc putStr(s: []U8);
+proc putStr(s: []const U8);
 begin
-    putBytes(ADR(s[0]), LEN(s));
+    putBytes(PTR(s), LEN(s));
     putN(0, 1);
 end;
 
@@ -184,7 +184,7 @@ end;
    the table itself is in the places, in rodata (Link). Section
    offsets go in off, sizes in size: line, info, abbrev. *)
 proc putDebug(off, size: []INT);
-var cwd: []U8; err: INT;
+var cwd: []const U8; err: INT;
 begin
     off[0] := Chunk.chunks[Link.placesChunk].adr - Link.roAdr + Link.roOff + Link.linesOff;
     size[0] := Link.linesSize;
@@ -310,13 +310,13 @@ begin
     putN(0, 16);                                     (* DT_NULL *)
 end;
 
-proc writeElf*(path: []U8; entry: INT);
+proc writeElf*(path: []const U8; entry: INT);
 var
     nph, nsh, c, nsyms, sec, strsCap: INT;
     roExtra, dynSize, symOff, strOff, shstrOff, shOff, strsLen: INT;
     dbgOff, dbgSize: [3]INT;
     strs: ^U8;
-    s: []U8;
+    s: []const U8;
     dyn: BOOL;
 begin
     cap := 1 shl 16;

@@ -2,6 +2,7 @@
    programs reach for. A program that imports C uses C, and so is
    linked dynamically and starts through the C library. *)
 module C;
+import SYSTEM;
 
 extern proc write*(fd: I32; buf: ^U8; n: UINT): INT;
 extern proc read*(fd: I32; buf: ^U8; n: UINT): INT;

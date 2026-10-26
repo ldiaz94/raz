@@ -1,8 +1,9 @@
 (* A hash map from K to V, by open addressing; it hashes and compares
    keys with the procedures it is given:
-       import Count := Map([]U8, INT, Str.hash, Str.eq); *)
+       import Count := Map([]const U8, INT, Str.hash, Str.eq); *)
 module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
 import Mem;
+import SYSTEM;
 
 type
     Entry = record

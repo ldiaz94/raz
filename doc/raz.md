@@ -312,7 +312,7 @@ module body, that first uses it, and its arguments are read in the
 scope there.
 
 ```
-import Table := Map([]U8, Colour, Str.hash, Str.eq);
+import Table := Map([]const U8, Colour, Str.hash, Str.eq);
 
 type Colour = (red, green, blue);
 
@@ -327,7 +327,7 @@ module Map(K, V; hash: proc(k: K): U64; eq: proc(a, b: K): BOOL);
 ```
 
 ```
-import Names := Map([]U8, I64, Str.hash, Str.eq);
+import Names := Map([]const U8, I64, Str.hash, Str.eq);
 ```
 
 A procedure argument names a procedure, not a variable or an

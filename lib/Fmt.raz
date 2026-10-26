@@ -9,6 +9,7 @@
    Left out: precision, other fills, argument numbers and names. *)
 module Fmt;
 import Out, Buf, Arena, Rt, Sys;
+import SYSTEM;
 
 const
     Limb = 1000000000;   (* a Big's base, 10^9 *)
@@ -33,7 +34,7 @@ type
         uint(u: U64);      (* in decimal *)
         hex(h: U64);       (* in hexadecimal, capitals, no 0x *)
         lowHex(h: U64);    (* in hexadecimal, lower case, no 0x *)
-        str(s: []U8);
+        str(s: []const U8);
         char(c: U8);       (* the one byte *)
         bool(b: BOOL);     (* true or false *)
         real(r: F64; places: INT);
@@ -102,7 +103,7 @@ begin
 end;
 
 (* s to k. *)
-proc put(var k: Sink; s: []U8);
+proc put(var k: Sink; s: []const U8);
 var at, room: INT;
 begin
     at := k.n;
@@ -188,7 +189,7 @@ end;
 proc bits(x: F64): U64;
 var p: ^U64;
 begin
-    p := ^U64(ADR(x));
+    p := ^U64(SYSTEM.ADR(x));
     return p^;
 end;
 
@@ -254,7 +255,7 @@ end;
 
 (* -1, 0 or 1 as 0.d times 10^e, d's first digit not 0, is below, at or
    above w. *)
-proc compare(d: []U8; e: INT; const w: Exact): INT;
+proc compare(d: []const U8; e: INT; const w: Exact): INT;
 var i, n: INT; a, c: U8;
 begin
     if e # w.e then
@@ -306,7 +307,7 @@ end;
 (* Whether x, cut where rest begins, is nearer the number one more in
    the last place than to the cut one: rest is above a half, or a half
    and last, the cut one's last digit, odd. *)
-proc nearerUp(rest: []U8; last: U8): BOOL;
+proc nearerUp(rest: []const U8; last: U8): BOOL;
 var i: INT;
 begin
     if rest[0] # '5' then return rest[0] > '5'; end;
@@ -357,7 +358,7 @@ begin
 end;
 
 (* s added to out at n, which moves past it. *)
-proc emit(var out: [ShortMost]U8; var n: INT; s: []U8);
+proc emit(var out: [ShortMost]U8; var n: INT; s: []const U8);
 begin
     COPY(out[n..n + LEN(s)], s);
     INC(n, LEN(s));
@@ -465,7 +466,7 @@ end;
 
 (* If f[i], a {, starts a width, {2}, {02} or {-10}: it is read into s
    and the place of its } is the result; else the result is -1. *)
-proc spec(f: []U8; i: INT; var s: Spec): INT;
+proc spec(f: []const U8; i: INT; var s: Spec): INT;
 var count: INT;
 begin
     s.width := 0; s.zero := false; s.left := false;
@@ -481,7 +482,7 @@ begin
 end;
 
 (* f to k, each {} replaced by the next of args. *)
-proc format(var k: Sink; f: []U8; args: []Arg);
+proc format(var k: Sink; f: []const U8; args: []const Arg);
 var i, start, n, close: INT; s: Spec;
 begin
     i := 0; start := 0; n := 0;
@@ -510,7 +511,7 @@ begin
 end;
 
 (* Writes f to standard output, each {} replaced by the next of args. *)
-proc print*(f: []U8; args: []Arg);
+proc print*(f: []const U8; args: []const Arg);
 var k: Sink;
 begin
     k := sink(nil);
@@ -524,13 +525,13 @@ end;
    program that doesn't call eprint carries no heap for it; its pages
    are mapped as they are written, and a text of more than a megabyte
    stops the program, as a Buf does when it can't grow. *)
-proc eprint*(f: []U8; args: []Arg);
+proc eprint*(f: []const U8; args: []const Arg);
 var ar: Arena.Arena; b: Buf.Buf; k: Sink; s: []U8; n: INT;
 begin
     Out.flush;
     if not Arena.init(ar, 1 shl 20) then Rt.stop("Fmt.eprint: no arena"); end;
-    Buf.init(b, ADR(ar.base));
-    k := sink(ADR(b));
+    Buf.init(b, SYSTEM.ADR(ar.base));
+    k := sink(SYSTEM.ADR(b));
     format(k, f, args);
     s := Buf.bytes(b);
     while LEN(s) > 0 do
@@ -543,17 +544,17 @@ begin
 end;
 
 (* Appends f to b, each {} replaced by the next of args. *)
-proc write*(var b: Buf.Buf; f: []U8; args: []Arg);
+proc write*(var b: Buf.Buf; f: []const U8; args: []const Arg);
 var k: Sink;
 begin
-    k := sink(ADR(b));   (* a sink's nil is standard output *)
+    k := sink(SYSTEM.ADR(b));   (* a sink's nil is standard output *)
     format(k, f, args);
 end;
 
 (* Formats f into out as write formats it: the bytes written, and false
    if out was too short and the text is cut there. It needs no memory
    of its own. *)
-proc into*(out: []U8; f: []U8; args: []Arg): (INT, BOOL);
+proc into*(out: []U8; f: []const U8; args: []const Arg): (INT, BOOL);
 var k: Sink;
 begin
     k := sink(nil);
@@ -564,7 +565,7 @@ begin
 end;
 
 (* Each of xs, shorts, with a space between, added to b. *)
-proc shorts(var b: Buf.Buf; xs: []F64);
+proc shorts(var b: Buf.Buf; xs: []const F64);
 var d: [ShortMost]U8; i: INT;
 begin
     for i := 0 to LEN(xs) - 1 do
@@ -578,7 +579,7 @@ proc main*;
 var ar: Arena.Arena; b: Buf.Buf; zero: F64; small: [8]U8; d: [ShortMost]U8; n: INT; whole: BOOL;
 begin
     if not Arena.init(ar, 1 shl 16) then Rt.stop("Fmt: no arena"); end;
-    Buf.init(b, ADR(ar.base));
+    Buf.init(b, SYSTEM.ADR(ar.base));
     write(b, "{} {} {} {}|{}{}{} {{}}", [int(-42), uint(0FFFFFFFFFFFFFFFFH), hex(48879),
         str("s"), char('c'), bool(true), int(0)]);
     if Buf.bytes(b) # "-42 18446744073709551615 BEEF s|ctrue0 {}" then Rt.stop("Fmt.write"); end;

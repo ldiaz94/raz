@@ -22,6 +22,7 @@
    handlers and no profiler. *)
 module Rt;
 import Sys;
+import SYSTEM;
 
 const
     Full*: ERROR = "too many procedures to run at exit";   (* atExit's *)
@@ -144,7 +145,7 @@ end;
 
 (* Stops the program: says msg, and then a line feed, on standard
    error, then ends it by exit with status 2, as a failed check does. *)
-proc stop*(msg: []U8);
+proc stop*(msg: []const U8);
 begin
     _ := Sys.write(Sys.stderr, msg);
     _ := Sys.write(Sys.stderr, "\n");
@@ -153,7 +154,7 @@ end;
 
 (* Messages, made in line, one byte kept for the line feed, and
    written by say in one piece *)
-proc put(s: []U8);
+proc put(s: []const U8);
 var i: INT;
 begin
     for i := 0 to LEN(s) - 1 do
@@ -408,7 +409,7 @@ proc putValue(bp: UINT; l: ^Local);
 var a: ^U8; w: ^UINT; h: ^U16; s: ^U32; f: ^F32; d: ^F64; v: UINT; bits: INT;
 begin
     a := ^U8(bp) + INT(l^.off);
-    if l^.kind shr 9 # 0 then a := ^U8(ADR(regs[INT(l^.kind shr 9) - 1])); end;
+    if l^.kind shr 9 # 0 then a := ^U8(SYSTEM.ADR(regs[INT(l^.kind shr 9) - 1])); end;
     w := ^UINT(a);
     if l^.kind & 256 # 0 then a := ^U8(w^); w := ^UINT(a); end;
     h := ^U16(a); s := ^U32(a); f := ^F32(a); d := ^F64(a);
@@ -486,7 +487,7 @@ var p, last: ^Proc; l: ^Local; i, n, same: INT; q: ^UINT; lastIp, x, xip: UINT; 
 begin
     (* the registers as they are, then as each frame from this one out
        to bp's found them *)
-    liveRegs(ADR(regs[0]));
+    liveRegs(SYSTEM.ADR(regs[0]));
     x := framePtr();
     xip := here();
     while (x # bp) and (x & 7 = 0) and (x # 0) do
@@ -613,7 +614,7 @@ end sigReturn;
    error, then ends the program by exit with status 2, as a failed
    check does. info and ctx are the kernel's siginfo and ucontext. *)
 proc onSignal(sig: INT; info, ctx: ^U8);
-var adr, sp, ip, bp: UINT; q: ^UINT; why: []U8;
+var adr, sp, ip, bp: UINT; q: ^UINT; why: []const U8;
 begin
     q := ^UINT(ctx + 104);     (* uc_mcontext's rdi, then rsi, then rbp *)
     regs[5] := q[0];
@@ -655,7 +656,7 @@ end;
 proc onProf(_sig: INT; _info, ctx: ^U8);
 var n, k: INT; q, f, row: ^UINT; ip, bp: UINT;
 begin
-    n := XADD(ADR(numSamples), 1);
+    n := XADD(numSamples, 1);
     if n >= MaxSamples then return; end;
     q := ^UINT(ctx + 120);   (* uc_mcontext's rbp *)
     bp := q^;
@@ -707,7 +708,7 @@ end;
 
 (* Says the ten that took most of count's n samples, by name, with
    their totals beside them if total isn't empty *)
-proc top(count, total: []INT; n: INT; byPlace: BOOL);
+proc top(count: []INT; total: []const INT; n: INT; byPlace: BOOL);
 var i, k, best: INT; p: ^Proc; r: Row;
 begin
     p := ^Proc(places + 5);
@@ -739,9 +740,9 @@ begin
     chains := ^UINT(Sys.mmap(MaxSamples * Depth * SIZE(UINT)));
     if chains = nil then return; end;
     act := {handler: onProf, flags: ProfFlags, restorer: sigReturn};
-    _ := SYSCALL(13, SigProf, ADR(act), 0, 8);
+    _ := SYSTEM.SYSCALL(13, SigProf, SYSTEM.ADR(act), 0, 8);
     timerv := [0, 1000, 0, 1000];   (* every millisecond, from one on *)
-    _ := SYSCALL(38, 2, ADR(timerv), 0);   (* setitimer(ITIMER_PROF) *)
+    _ := SYSTEM.SYSCALL(38, 2, SYSTEM.ADR(timerv), 0);   (* setitimer(ITIMER_PROF) *)
     _ := atExit(profile);
 end;
 
@@ -751,7 +752,7 @@ proc profile;
 var t: [4]INT; i, n, k, j, m, s: INT; seen: [Depth + 1]INT; row: ^UINT;
 begin
     t := [0, 0, 0, 0];
-    _ := SYSCALL(38, 2, ADR(t), 0);   (* setitimer(ITIMER_PROF): no more *)
+    _ := SYSTEM.SYSCALL(38, 2, SYSTEM.ADR(t), 0);   (* setitimer(ITIMER_PROF): no more *)
     n := numSamples;
     if n > MaxSamples then n := MaxSamples; end;
     if (places = nil) or (n = 0) then return; end;
@@ -787,10 +788,10 @@ begin
 end;
 
 begin
-    alt := {sp: ADR(altStack[0]), size: LEN(altStack)};
-    _ := SYSCALL(131, ADR(alt), 0);   (* sigaltstack *)
+    alt := {sp: SYSTEM.ADR(altStack[0]), size: LEN(altStack)};
+    _ := SYSTEM.SYSCALL(131, SYSTEM.ADR(alt), 0);   (* sigaltstack *)
     act := {handler: onSignal, flags: Flags, restorer: sigReturn};
-    _ := SYSCALL(13, SigSegv, ADR(act), 0, 8);   (* rt_sigaction *)
-    _ := SYSCALL(13, SigFpe, ADR(act), 0, 8);
+    _ := SYSTEM.SYSCALL(13, SigSegv, SYSTEM.ADR(act), 0, 8);   (* rt_sigaction *)
+    _ := SYSTEM.SYSCALL(13, SigFpe, SYSTEM.ADR(act), 0, 8);
     if profiler # nil then profiler(); end;
 end Rt.

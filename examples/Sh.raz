@@ -20,9 +20,9 @@ const
 
 type
     Command = record
-        args: [maxWords][]U8;
+        args: [maxWords][]const U8;
         n: INT;
-        input, output, errors: []U8;   (* the files of <, > or >>, and 2>; "" for none *)
+        input, output, errors: []const U8;   (* the files of <, > or >>, and 2>; "" for none *)
         append: BOOL;                  (* output is >> *)
     end;
     Pipeline = record
@@ -39,12 +39,12 @@ var
     interactive: BOOL;   (* commands come from a terminal: job control *)
     group: INT;          (* the shell's process group *)
     arena: Arena.Arena;  (* the words of what is being run *)
-    s: []U8;             (* the script being read *)
+    s: []const U8;             (* the script being read *)
     at: INT;             (* where in it *)
-    text: []U8;          (* the last word read *)
+    text: []const U8;          (* the last word read *)
 
 (* "Sh: " and a message on standard error. *)
-proc say(f: []U8; args: []Fmt.Arg);
+proc say(f: []const U8; args: []Fmt.Arg);
 var b: Buf.Buf; _n: INT;
 begin
     Buf.init(b, Heap.heap);
@@ -175,8 +175,8 @@ end;
 
 (* The program a command names: the name itself if it has a /, else the
    first executable file of that name in a directory of $PATH. *)
-proc find(name: []U8): ([]U8, BOOL);
-var path, dir: []U8; i, start, err: INT; b: Buf.Buf; info: Sys.Info;
+proc find(name: []const U8): ([]const U8, BOOL);
+var path, dir: []const U8; i, start, err: INT; b: Buf.Buf; info: Sys.Info;
 begin
     if Str.find(name, "/") >= 0 then return name, true; end;
     path := Sys.env("PATH");
@@ -195,7 +195,7 @@ begin
 end;
 
 (* The fd of a redirection's file, or -1 after saying why not. *)
-proc redirect(path: []U8; how: Sys.Accesses): INT;
+proc redirect(path: []const U8; how: Sys.Accesses): INT;
 var fd: INT;
 begin
     fd := Sys.open(path, how);
@@ -206,7 +206,7 @@ end;
 (* cd, wait and exit, which change the shell itself, so it can't start
    them as programs; true if c is one. *)
 proc builtin(c: ^Command): BOOL;
-var dir: []U8; n: I64; pid, _code: INT; ok: BOOL; _st: Sys.Status;
+var dir: []const U8; n: I64; pid, _code: INT; ok: BOOL; _st: Sys.Status;
 begin
     match c^.args[0] of
     | "cd":
@@ -231,7 +231,7 @@ end;
 
 (* What the shell itself says on standard output, out before any
    program it starts writes. *)
-proc show(f: []U8; args: []Fmt.Arg);
+proc show(f: []const U8; args: []Fmt.Arg);
 begin
     Fmt.print(f, args);
     Out.flush;
@@ -244,7 +244,7 @@ end;
 proc start(p: ^Pipeline);
 var
     pids: [maxCmds]INT; fds: [3]INT; i, j, inNext, r, w, leader, joins, how, _pid: INT;
-    c: ^Command; path: []U8; found, _ok: BOOL; st: Sys.Status;
+    c: ^Command; path: []const U8; found, _ok: BOOL; st: Sys.Status;
 begin
     if (p^.n = 1) and not p^.background and builtin(ADR(p^.cmds[0])) then return; end;
     leader := 0;
@@ -299,7 +299,7 @@ begin
 end;
 
 (* Runs script: each pipeline as it is read. *)
-proc run(script: []U8);
+proc run(script: []const U8);
 var p: Pipeline; t: Token; ok: BOOL;
 begin
     Arena.reset(arena);
@@ -364,7 +364,7 @@ const Options: []Opt.Row = [
     Opt.option("", 'c', "command", "script", "run script, not standard input")];
 
 proc main*: INT;
-var p: Opt.Parser; script, file: []U8; given, found: BOOL; b: Buf.Buf;
+var p: Opt.Parser; script, file: []const U8; given, found: BOOL; b: Buf.Buf;
 begin
     if not Arena.init(arena, 1 shl 24) then Rt.stop("Sh: no memory"); end;
     Opt.init(p, "Sh", Options);

@@ -6,6 +6,7 @@
    Written by tools/cabi.c, from the system's own headers; not to be
    edited, but written again. *)
 module CAbi;
+import SYSTEM;
 
 const
     (* open's flags, fcntl's requests, seek, flock, mmap, access *)

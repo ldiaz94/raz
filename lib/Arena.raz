@@ -1,8 +1,9 @@
 (* An allocator that hands out memory from one block and frees it all
    at once: free does nothing, reset forgets everything. An Arena is
-   its allocator: ADR(arena.base) is the ^Mem.Allocator to give NEW. *)
+   its allocator: SYSTEM.ADR(arena.base) is the ^Mem.Allocator to give NEW. *)
 module Arena;
 import Mem, Rt;
+import SYSTEM;
 
 type
     Arena* = record
@@ -70,7 +71,7 @@ proc main*;
 var ar: Arena; a: ^Mem.Allocator; p, q: ^U8; m: INT;
 begin
     if not init(ar, 4096) then Rt.stop("Arena.init"); end;
-    a := ADR(ar.base);
+    a := SYSTEM.ADR(ar.base);
     p := Mem.alloc(a, 3, 1);
     q := Mem.alloc(a, 8, 8);
     if (p = nil) or (q # p + 8) then Rt.stop("Arena: alignment"); end;

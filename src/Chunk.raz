@@ -288,7 +288,7 @@ end;
 
 (* The name of chunk c: its module's and its own, or literal and its
    number for a literal *)
-proc chunkName*(c: INT): []U8;
+proc chunkName*(c: INT): []const U8;
 begin
     if chunks[c].name < 0 then return Diag.say("literal{}", [Fmt.int(c)]); end;
     if chunks[c].home < 0 then return Scan.nameOf(chunks[c].name); end;

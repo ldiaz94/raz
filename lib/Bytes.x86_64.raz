@@ -5,13 +5,14 @@
    64-bit target, eight at a time in a U64. *)
 module Bytes;
 import Rt;
+import SYSTEM;
 
 (* The first place of b in s, or -1. Sixteen bytes at a time are
    compared with b's sixteen copies (pcmpeqb), and pmovmskb makes of the
    result a number with a bit set for each byte that matched. The bytes
    left over, fewer than sixteen, are compared one by one. Where the
    machine finds them: s's address in rdi, its length in rsi, b in dl. *)
-proc index*(s: []U8; b: U8): INT;
+proc index*(s: []const U8; b: U8): INT;
 code
     movd xmm1, edx;
     punpcklbw xmm1, xmm1;       (* b in the low two bytes... *)
@@ -49,7 +50,7 @@ code
 end index;
 
 (* The last place of b in s, or -1: as index, from the end. *)
-proc last*(s: []U8; b: U8): INT;
+proc last*(s: []const U8; b: U8): INT;
 code
     movd xmm1, edx;
     punpcklbw xmm1, xmm1;
@@ -82,7 +83,7 @@ code
 end last;
 
 (* How many bytes of s are b: the bits of each block's number, counted. *)
-proc count*(s: []U8; b: U8): INT;
+proc count*(s: []const U8; b: U8): INT;
 code
     movd xmm1, edx;
     punpcklbw xmm1, xmm1;
@@ -119,7 +120,7 @@ end count;
    once: sixteen bytes are compared with a, sixteen from gap places on
    with b, and the two results anded. The places in rdi and rsi (s),
    rdx (gap), cl (a), r8b (b) and r9 (from). *)
-proc pair(s: []U8; gap: INT; a, b: U8; from: INT): INT;
+proc pair(s: []const U8; gap: INT; a, b: U8; from: INT): INT;
 code
     mov r11, rcx;               (* a, for the places one by one *)
     movd xmm1, ecx;
@@ -175,7 +176,7 @@ end pair;
    its place (pair), and checked whole only where both agree. They are
    the two bytes farthest apart, so as far from being the same test as
    two can be, and need no table of which bytes are rare. *)
-proc find*(s, sub: []U8): INT;
+proc find*(s, sub: []const U8): INT;
 var i, n: INT;
 begin
     n := LEN(sub);
@@ -204,7 +205,7 @@ begin
     return INT((seed shr 33) mod U64(n));
 end;
 
-proc refIndex(s: []U8; b: U8): INT;
+proc refIndex(s: []const U8; b: U8): INT;
 var i: INT;
 begin
     for i := 0 to LEN(s) - 1 do
@@ -213,7 +214,7 @@ begin
     return -1;
 end;
 
-proc refLast(s: []U8; b: U8): INT;
+proc refLast(s: []const U8; b: U8): INT;
 var i: INT;
 begin
     for i := LEN(s) - 1 to 0 by -1 do
@@ -222,7 +223,7 @@ begin
     return -1;
 end;
 
-proc refCount(s: []U8; b: U8): INT;
+proc refCount(s: []const U8; b: U8): INT;
 var i, n: INT;
 begin
     n := 0;
@@ -232,7 +233,7 @@ begin
     return n;
 end;
 
-proc refFind(s, sub: []U8): INT;
+proc refFind(s, sub: []const U8): INT;
 var i: INT;
 begin
     for i := 0 to LEN(s) - LEN(sub) do
@@ -242,14 +243,14 @@ begin
 end;
 
 (* index, last and count of b in s agree with the plain loops *)
-proc checkByte(s: []U8; b: U8);
+proc checkByte(s: []const U8; b: U8);
 begin
     if index(s, b) # refIndex(s, b) then Rt.stop("Bytes.index"); end;
     if last(s, b) # refLast(s, b) then Rt.stop("Bytes.last"); end;
     if count(s, b) # refCount(s, b) then Rt.stop("Bytes.count"); end;
 end;
 
-proc checkFind(s, sub: []U8);
+proc checkFind(s, sub: []const U8);
 begin
     if find(s, sub) # refFind(s, sub) then Rt.stop("Bytes.find"); end;
 end;
@@ -295,7 +296,7 @@ end;
    that are almost its bytes; the slice cut short just before and just
    after it; also subs longer than the slice, and empty ones *)
 proc testPlanted;
-var n, p, i, f: INT; s: []U8;
+var n, p, i, f: INT; s: []const U8;
 begin
     for f := 0 to 2 do
         for n := 1 to 24 do

@@ -20,7 +20,7 @@ var
     w: [Last + 1]U8;    (* each character's width, 1 unless a file says *)
 
 (* The whole file at path. *)
-proc load(path: []U8; var b: Buf.Buf): []U8;
+proc load(path: []const U8; var b: Buf.Buf): []const U8;
 begin
     Buf.init(b, Heap.heap);
     if not Files.read(path, b) then
@@ -31,7 +31,7 @@ begin
 end;
 
 (* s in hexadecimal, a code point; stops the program if it isn't one. *)
-proc point(s: []U8): INT;
+proc point(s: []const U8): INT;
 var v: U64; ok: BOOL;
 begin
     v, ok := Str.toHex(Str.trim(s));
@@ -52,8 +52,8 @@ end;
 (* EastAsianWidth.txt: lines of a code point, or a range lo..hi, ";"
    and the property; W and F are 2 columns. Its first line names the
    file, and so the version. *)
-proc eastAsian(text: []U8): []U8;
-var line, rest, r, p, lo, hi, version: []U8; ok: BOOL;
+proc eastAsian(text: []const U8): []const U8;
+var line, rest, r, p, lo, hi, version: []const U8; ok: BOOL;
 begin
     line, rest, ok := Str.cut(text, "\n");
     _, version, ok := Str.cut(line, "-");
@@ -77,8 +77,8 @@ end;
 (* UnicodeData.txt: lines of fields between ";", the code point, the
    name and the general category first. A range is two lines, its
    first and last, named "<..., First>" and "<..., Last>". *)
-proc categories(text: []U8);
-var line, rest, c, name, gc: []U8; ok: BOOL; first, n: INT;
+proc categories(text: []const U8);
+var line, rest, c, name, gc: []const U8; ok: BOOL; first, n: INT;
 begin
     rest := text;
     first := -1;
@@ -100,8 +100,8 @@ end;
 (* PropList.txt: lines of a code point, or a range lo..hi, ";" and a
    property; a Prepended_Concatenation_Mark, a sign set over the digits
    after it, is seen, so 1 column, though a format character. *)
-proc concatenation(text: []U8);
-var line, rest, r, p, lo, hi: []U8; ok: BOOL;
+proc concatenation(text: []const U8);
+var line, rest, r, p, lo, hi: []const U8; ok: BOOL;
 begin
     rest := text;
     while LEN(rest) > 0 do
@@ -127,7 +127,7 @@ end;
 
 (* The constant name, the ranges of characters whose width is width,
    each its first and last, four ranges to a line. *)
-proc table(var b: Buf.Buf; name: []U8; width: U8);
+proc table(var b: Buf.Buf; name: []const U8; width: U8);
 var c, lo, n: INT;
 begin
     Buf.str(b, "    "); Buf.str(b, name); Buf.str(b, ": []I32 = [");
@@ -147,7 +147,7 @@ begin
 end;
 
 proc main*;
-var src, eaw, ucd, props, out: Buf.Buf; s, before, after, version: []U8; ok: BOOL;
+var src, eaw, ucd, props, out: Buf.Buf; s, before, after, version: []const U8; ok: BOOL;
 begin
     if LEN(Files.arg(4)) = 0 then
         Out.str("usage: Widths lib/Width.raz EastAsianWidth.txt UnicodeData.txt PropList.txt\n");

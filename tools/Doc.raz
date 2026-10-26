@@ -29,7 +29,7 @@ import Out, Rt, Str, Buf, Heap, Scan, Files;
 
 var
     sc: Scan.Scanner;         (* the text being read, at the current symbol *)
-    src: []U8;
+    src: []const U8;
     docStart, docEnd: INT;    (* the comment just before it, or -1 *)
     man: BOOL;                (* writing mdoc *)
     atStart: BOOL;            (* emit is at the start of a line *)
@@ -68,7 +68,7 @@ begin
 end;
 
 (* a line of mdoc's own, such as .Ed *)
-proc control(s: []U8);
+proc control(s: []const U8);
 begin
     Out.str(s);
     Out.ln;
@@ -89,12 +89,12 @@ begin
     shown := false;
 end;
 
-proc text: []U8;
+proc text: []const U8;
 begin
     return Scan.text(sc);
 end;
 
-proc is(s: []U8): BOOL;
+proc is(s: []const U8): BOOL;
 begin
     return text() = s;
 end;
@@ -252,7 +252,7 @@ end;
 (* One declaration, from its first token, the comment before it kept.
    In mdoc a module's test, its main, is left out, and declarations
    with no comment share a display. *)
-proc declaration(prefix: []U8; exported: BOOL; start, ds, de, stop: INT);
+proc declaration(prefix: []const U8; exported: BOOL; start, ds, de, stop: INT);
 begin
     if not exported then return; end;
     if (groupStart >= 0) and (LEN(prefix) > 0) then heading; end;
@@ -315,7 +315,7 @@ begin
 end;
 
 proc section;
-var word: []U8; start, ds, de, stop: INT; exp: BOOL;
+var word: []const U8; start, ds, de, stop: INT; exp: BOOL;
 begin
     word := text();
     groupStart := docStart; groupEnd := docEnd;
@@ -342,7 +342,7 @@ begin
     next;
 end;
 
-proc document(path: []U8);
+proc document(path: []const U8);
 var b: Buf.Buf; start, ds, de: INT;
 begin
     groupStart := -1;
@@ -378,7 +378,7 @@ end;
 (* line, from the report or a manual page's literal block, added to b
    as the program has it: in a page, \e is a backslash, \(ga a
    backquote and \& nothing. *)
-proc addLine(var b: Buf.Buf; line: []U8; page: BOOL);
+proc addLine(var b: Buf.Buf; line: []const U8; page: BOOL);
 var i: INT;
 begin
     i := 0;
@@ -399,7 +399,7 @@ begin
 end;
 
 (* text written to the file dir/name and ext, its path made in out *)
-proc write(var out: Buf.Buf; dir, name, ext, text: []U8);
+proc write(var out: Buf.Buf; dir, name, ext, text: []const U8);
 begin
     Buf.reset(out);
     Buf.str(out, dir); Buf.str(out, "/"); Buf.str(out, name); Buf.str(out, ext);
@@ -411,9 +411,9 @@ end;
    -literal and .Ed. In a page, a block that starts on the line after
    a module's is what that program prints, written to dir/Name.shown,
    so that the page can be checked against the program. *)
-proc examples(path, dir: []U8);
+proc examples(path, dir: []const U8);
 var
-    b, out, prog: Buf.Buf; s, line, first, last, name, shows: []U8;
+    b, out, prog: Buf.Buf; s, line, first, last, name, shows: []const U8;
     i, k, n, after: INT; inBlock, whole, page, fence: BOOL;
 begin
     Buf.init(b, Heap.heap);

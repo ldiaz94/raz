@@ -16,6 +16,7 @@
    status holds, which every Unix encodes alike. *)
 module Sys;
 import C, CAbi;
+import SYSTEM;
 
 const
     stdin* = 0;     (* standard input's file descriptor *)
@@ -101,11 +102,11 @@ type
 
     (* A program for spawn to start. *)
     Program* = record
-        path*: []U8;
-        args*: [][]U8;      (* the first is its name *)
-        env*: [][]U8;       (* NAME=value, each added to this environment *)
+        path*: []const U8;
+        args*: [][]const U8;      (* the first is its name *)
+        env*: [][]const U8;       (* NAME=value, each added to this environment *)
         onlyEnv*: BOOL;     (* env is its whole environment *)
-        dir*: []U8;         (* its working directory; "" for this program's *)
+        dir*: []const U8;         (* its working directory; "" for this program's *)
         fds*: [3]INT;       (* stdin, stdout, stderr; 0 for this program's *)
         group*: INT;        (* its group: 0 for this program's, -1 a new one *)
         foreground*: BOOL;  (* its group gets the terminal on standard input *)
@@ -213,16 +214,16 @@ end;
    is to see. broke is set to 0 before the call. *)
 proc again: BOOL;
 begin
-    return (failed() = -4) and (XCHG(ADR(broke), 0) = 0);
+    return (failed() = -4) and (XCHG(broke, 0) = 0);
 end;
 
 (* Writes s to the file descriptor fd; the number of bytes written, or
    minus an errno. *)
-proc write*(fd: INT; s: []U8): INT;
+proc write*(fd: INT; s: []const U8): INT;
 var r: INT;
 begin
     if LEN(s) = 0 then return 0; end;
-    r := C.write(I32(fd), ADR(s[0]), UINT(LEN(s)));
+    r := C.write(I32(fd), SYSTEM.PTR(s), UINT(LEN(s)));
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -233,13 +234,13 @@ proc read*(fd: INT; buf: []U8): INT;
 var r: INT;
 begin
     if LEN(buf) = 0 then return 0; end;
-    r := C.read(I32(fd), ADR(buf[0]), UINT(LEN(buf)));
+    r := C.read(I32(fd), SYSTEM.ADR(buf[0]), UINT(LEN(buf)));
     if r < 0 then return failed(); end;
     return r;
 end;
 
 (* path, a C string in buf, or false if it doesn't fit. *)
-proc cstr(path, buf: []U8): BOOL;
+proc cstr(path: []const U8; buf: []U8): BOOL;
 begin
     if LEN(path) >= LEN(buf) then return false; end;
     COPY(buf, path);
@@ -267,33 +268,33 @@ end;
 (* The file at path, opened as how asks: its file descriptor, closed in
    a program exec starts, or minus an errno. A file it creates has the
    permission bits mode, less those the umask takes away. *)
-proc openMode*(path: []U8; how: Accesses; mode: INT): INT;
+proc openMode*(path: []const U8; how: Accesses; mode: INT): INT;
 var buf: [4096]U8; r: INT;
 begin
     if executing in how then return -22; end;      (* EINVAL: access asks it, open can't *)
     if not cstr(path, buf) then return -36; end;
-    r := INT(C.open(ADR(buf[0]), flags(how), mode));
+    r := INT(C.open(SYSTEM.ADR(buf[0]), flags(how), mode));
     if r < 0 then return failed(); end;
     return r;
 end;
 
 (* openMode with 644: a file it creates is readable by all, writable
    by its owner. *)
-proc open*(path: []U8; how: Accesses): INT;
+proc open*(path: []const U8; how: Accesses): INT;
 begin
     return openMode(path, how, 1A4H);                  (* 644 *)
 end;
 
 (* The file at path, opened for reading, closed in a program exec
    starts. *)
-proc openRead*(path: []U8): INT;
+proc openRead*(path: []const U8): INT;
 begin
     return open(path, {reading});
 end;
 
 (* The file at path, made empty or new, opened for writing, closed in a
    program exec starts. *)
-proc create*(path: []U8): INT;
+proc create*(path: []const U8): INT;
 begin
     return open(path, {writing, creating, truncating});
 end;
@@ -458,7 +459,7 @@ proc memFile*(size: INT): INT;
 var name: [4]U8; fd: I32; err: INT;
 begin
     _ := cstr("raz", name);                     (* the name /proc shows *)
-    fd := C.memfd_create(ADR(name[0]), CAbi.mfdCloexec);
+    fd := C.memfd_create(SYSTEM.ADR(name[0]), CAbi.mfdCloexec);
     if fd < 0 then return failed(); end;
     if C.ftruncate(fd, I64(size)) # 0 then
         err := failed();                        (* before close can change errno *)
@@ -504,79 +505,79 @@ begin
 end;
 
 (* Renames old to new, replacing what new names: 0, or minus an errno. *)
-proc rename*(old, new: []U8): INT;
+proc rename*(old, new: []const U8): INT;
 var a, b: [4096]U8;
 begin
     if not cstr(old, a) or not cstr(new, b) then return -36; end;
-    if C.rename(ADR(a[0]), ADR(b[0])) # 0 then return failed(); end;
+    if C.rename(SYSTEM.ADR(a[0]), SYSTEM.ADR(b[0])) # 0 then return failed(); end;
     return 0;
 end;
 
 (* Removes the file at path; not a directory. *)
-proc remove*(path: []U8): INT;
+proc remove*(path: []const U8): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
-    if C.unlink(ADR(a[0])) # 0 then return failed(); end;
+    if C.unlink(SYSTEM.ADR(a[0])) # 0 then return failed(); end;
     return 0;
 end;
 
 (* Makes a directory at path, readable by all, writable by its owner. *)
-proc makeDir*(path: []U8): INT;
+proc makeDir*(path: []const U8): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
-    if C.mkdir(ADR(a[0]), 1EDH) # 0 then return failed(); end;   (* mode 755 *)
+    if C.mkdir(SYSTEM.ADR(a[0]), 1EDH) # 0 then return failed(); end;   (* mode 755 *)
     return 0;
 end;
 
 (* Makes a directory at path with the permission bits mode, less those
    the umask takes away: 1C0H (700) for one only its owner may enter. Of
    the bits above them Linux keeps only sticky, 200H. *)
-proc makeDirMode*(path: []U8; mode: INT): INT;
+proc makeDirMode*(path: []const U8; mode: INT): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
-    if C.mkdir(ADR(a[0]), U32(mode)) # 0 then return failed(); end;
+    if C.mkdir(SYSTEM.ADR(a[0]), U32(mode)) # 0 then return failed(); end;
     return 0;
 end;
 
 (* Removes the directory at path, which must be empty. *)
-proc removeDir*(path: []U8): INT;
+proc removeDir*(path: []const U8): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
-    if C.rmdir(ADR(a[0])) # 0 then return failed(); end;
+    if C.rmdir(SYSTEM.ADR(a[0])) # 0 then return failed(); end;
     return 0;
 end;
 
 (* Sets the permission bits of what path names. *)
-proc chmod*(path: []U8; mode: INT): INT;
+proc chmod*(path: []const U8; mode: INT): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
-    if C.chmod(ADR(a[0]), U32(mode)) # 0 then return failed(); end;
+    if C.chmod(SYSTEM.ADR(a[0]), U32(mode)) # 0 then return failed(); end;
     return 0;
 end;
 
 (* Makes a fifo (a named pipe) at path with the permission bits mode,
    less those the umask takes away. 0, or minus an errno. *)
-proc makeFifo*(path: []U8; mode: INT): INT;
+proc makeFifo*(path: []const U8; mode: INT): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
-    if C.mkfifo(ADR(a[0]), U32(mode & 1FFH)) # 0 then return failed(); end;
+    if C.mkfifo(SYSTEM.ADR(a[0]), U32(mode & 1FFH)) # 0 then return failed(); end;
     return 0;
 end;
 
 (* Sets the owner and group of what path names, following a symbolic
    link: a user or group number, or -1 to leave it as it is. Only
    root may give a file away. 0, or minus an errno. *)
-proc chown*(path: []U8; uid, gid: INT): INT;
+proc chown*(path: []const U8; uid, gid: INT): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
-    if C.chown(ADR(a[0]), U32(uid & 0FFFFFFFFH), U32(gid & 0FFFFFFFFH)) # 0 then return failed(); end;
+    if C.chown(SYSTEM.ADR(a[0]), U32(uid & 0FFFFFFFFH), U32(gid & 0FFFFFFFFH)) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -584,7 +585,7 @@ end;
    was last read, to sec seconds and nsec nanoseconds since 1970, as a
    program copying a file keeps its time: Info.seconds gives sec back,
    whatever the time. *)
-proc setTime*(path: []U8; sec: I64; nsec: INT): INT;
+proc setTime*(path: []const U8; sec: I64; nsec: INT): INT;
 var a: [4096]U8; t: [2]Timespec;
 begin
     if not cstr(path, a) then return -36; end;
@@ -592,14 +593,14 @@ begin
     t[0].sec := sec;
     t[0].nsec := nsec;
     t[1] := t[0];
-    if C.utimensat(CAbi.atFdcwd, ADR(a[0]), ^U8(ADR(t)), 0) # 0 then return failed(); end;
+    if C.utimensat(CAbi.atFdcwd, SYSTEM.ADR(a[0]), ^U8(SYSTEM.ADR(t)), 0) # 0 then return failed(); end;
     return 0;
 end;
 
 (* 0 if this user, by its real ids, may do with path what how asks:
    reading, writing and executing; minus an errno, -13 (EACCES) if not.
    An empty how asks only whether path is there. *)
-proc access*(path: []U8; how: Accesses): INT;
+proc access*(path: []const U8; how: Accesses): INT;
 var a: [4096]U8; m: I32;
 begin
     if not cstr(path, a) then return -36; end;
@@ -607,7 +608,7 @@ begin
     if reading in how then m := m | CAbi.rOk; end;
     if writing in how then m := m | CAbi.wOk; end;
     if executing in how then m := m | CAbi.xOk; end;
-    if C.access(ADR(a[0]), m) # 0 then return failed(); end;
+    if C.access(SYSTEM.ADR(a[0]), m) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -619,21 +620,21 @@ begin
 end;
 
 (* Makes path a symbolic link to target. *)
-proc symlink*(target, path: []U8): INT;
+proc symlink*(target, path: []const U8): INT;
 var a, b: [4096]U8;
 begin
     if not cstr(target, a) or not cstr(path, b) then return -36; end;
-    if C.symlink(ADR(a[0]), ADR(b[0])) # 0 then return failed(); end;
+    if C.symlink(SYSTEM.ADR(a[0]), SYSTEM.ADR(b[0])) # 0 then return failed(); end;
     return 0;
 end;
 
 (* What the symbolic link at path names, good until the next call; and
    0, or minus an errno. *)
-proc readLink*(path: []U8): ([]U8, INT);
+proc readLink*(path: []const U8): ([]const U8, INT);
 var a: [4096]U8; n: INT;
 begin
     if not cstr(path, a) then return "", -36; end;
-    n := C.readlink(ADR(a[0]), ADR(linked[0]), UINT(LEN(linked)));
+    n := C.readlink(SYSTEM.ADR(a[0]), SYSTEM.ADR(linked[0]), UINT(LEN(linked)));
     if n < 0 then return "", failed(); end;
     if n = LEN(linked) then return "", -36; end;          (* it may be cut short *)
     return linked[0..n], 0;
@@ -644,14 +645,14 @@ type Stat = [(CAbi.statLen + 7) div 8]U64;   (* a struct stat, as bytes *)
 (* The type of file a struct stat says, S_IFDIR, S_IFREG or another *)
 proc fileType(st: Stat): INT;
 begin
-    return INT(field(^U8(ADR(st)), CAbi.stModeAt, CAbi.stModeLen)) & CAbi.sIfmt;
+    return INT(field(^U8(SYSTEM.ADR(st)), CAbi.stModeAt, CAbi.stModeLen)) & CAbi.sIfmt;
 end;
 
 (* An Info from a struct stat, all but symlink. *)
 proc fromStat(st: Stat): Info;
 var i: Info; p: ^U8;
 begin
-    p := ^U8(ADR(st));
+    p := ^U8(SYSTEM.ADR(st));
     i.size := field(p, CAbi.stSizeAt, CAbi.stSizeLen);
     i.dev := U64(field(p, CAbi.stDevAt, CAbi.stDevLen));
     i.ino := U64(field(p, CAbi.stInoAt, CAbi.stInoLen));
@@ -670,13 +671,13 @@ end;
 (* The size of what path names, whether it is a directory or a regular
    file, following a symbolic link, and whether path is one; and 0, or
    minus an errno. *)
-proc info*(path: []U8): (Info, INT);
+proc info*(path: []const U8): (Info, INT);
 var a: [4096]U8; st: Stat; i: Info; isLink: BOOL;
 begin
     if not cstr(path, a) then return i, -36; end;
-    if C.lstat(ADR(a[0]), ^U8(ADR(st))) # 0 then return i, failed(); end;
+    if C.lstat(SYSTEM.ADR(a[0]), ^U8(SYSTEM.ADR(st))) # 0 then return i, failed(); end;
     isLink := fileType(st) = CAbi.sIflnk;
-    if C.stat(ADR(a[0]), ^U8(ADR(st))) # 0 then return i, failed(); end;
+    if C.stat(SYSTEM.ADR(a[0]), ^U8(SYSTEM.ADR(st))) # 0 then return i, failed(); end;
     i := fromStat(st);
     i.symlink := isLink;
     return i, 0;
@@ -685,11 +686,11 @@ end;
 (* info of path itself: if it is a symbolic link, of the link, not of
    what it names, so that symlink is true, dir and file false, and the
    size the length of what it names. *)
-proc linkInfo*(path: []U8): (Info, INT);
+proc linkInfo*(path: []const U8): (Info, INT);
 var a: [4096]U8; st: Stat; i: Info;
 begin
     if not cstr(path, a) then return i, -36; end;
-    if C.lstat(ADR(a[0]), ^U8(ADR(st))) # 0 then return i, failed(); end;
+    if C.lstat(SYSTEM.ADR(a[0]), ^U8(SYSTEM.ADR(st))) # 0 then return i, failed(); end;
     i := fromStat(st);
     i.symlink := fileType(st) = CAbi.sIflnk;
     return i, 0;
@@ -699,18 +700,18 @@ end;
 proc infoOf*(fd: INT): (Info, INT);
 var st: Stat; i: Info;
 begin
-    if C.fstat(I32(fd), ^U8(ADR(st))) # 0 then return i, failed(); end;
+    if C.fstat(I32(fd), ^U8(SYSTEM.ADR(st))) # 0 then return i, failed(); end;
     return fromStat(st), 0;
 end;
 
 (* The bytes free to an ordinary user on path's file system, and the
    bytes in all. *)
-proc space*(path: []U8): (I64, I64, INT);
+proc space*(path: []const U8): (I64, I64, INT);
 var a: [4096]U8; st: [(CAbi.statvfsLen + 7) div 8]U64; p: ^U8; unit: I64;
 begin
     if not cstr(path, a) then return 0, 0, -36; end;
-    p := ^U8(ADR(st));
-    if C.statvfs(ADR(a[0]), p) # 0 then return 0, 0, failed(); end;
+    p := ^U8(SYSTEM.ADR(st));
+    if C.statvfs(SYSTEM.ADR(a[0]), p) # 0 then return 0, 0, failed(); end;
     unit := field(p, CAbi.fFrsizeAt, CAbi.fFrsizeLen);
     return field(p, CAbi.fBavailAt, CAbi.fBavailLen) * unit, field(p, CAbi.fBlocksAt, CAbi.fBlocksLen) * unit, 0;
 end;
@@ -728,19 +729,19 @@ begin
 end;
 
 (* Opens the directory at path, for nextEntry. *)
-proc openDir*(var d: Dir; path: []U8): INT;
+proc openDir*(var d: Dir; path: []const U8): INT;
 var a: [4096]U8;
 begin
     d.kind := unknown;
     if not cstr(path, a) then return -36; end;
-    d.d := C.opendir(ADR(a[0]));
+    d.d := C.opendir(SYSTEM.ADR(a[0]));
     if d.d = nil then return failed(); end;
     return 0;
 end;
 
 (* The next name in the directory, good until the next call, but . and
    .., in no order; false at the end. *)
-proc nextEntry*(var d: Dir): ([]U8, BOOL);
+proc nextEntry*(var d: Dir): ([]const U8, BOOL);
 var e: ^U8; n: INT;
 begin
     while true do
@@ -775,16 +776,16 @@ end;
 proc rawMode*(fd: INT): BOOL;
 var t: [256]U8;
 begin
-    if C.tcgetattr(I32(fd), ADR(saved[0])) # 0 then return false; end;
+    if C.tcgetattr(I32(fd), SYSTEM.ADR(saved[0])) # 0 then return false; end;
     t := saved;
-    C.cfmakeraw(ADR(t[0]));
-    return C.tcsetattr(I32(fd), CAbi.tcsanow, ADR(t[0])) = 0;
+    C.cfmakeraw(SYSTEM.ADR(t[0]));
+    return C.tcsetattr(I32(fd), CAbi.tcsanow, SYSTEM.ADR(t[0])) = 0;
 end;
 
 (* The terminal on fd as rawMode found it. *)
 proc restoreMode*(fd: INT);
 begin
-    _ := C.tcsetattr(I32(fd), CAbi.tcsanow, ADR(saved[0]));
+    _ := C.tcsetattr(I32(fd), CAbi.tcsanow, SYSTEM.ADR(saved[0]));
 end;
 
 (* The modes of the terminal on fd, as a shell keeps them for each job;
@@ -792,7 +793,7 @@ end;
 proc getMode*(fd: INT): (Mode, INT);
 var m: Mode;
 begin
-    if C.tcgetattr(I32(fd), ADR(m.t[0])) # 0 then return m, failed(); end;
+    if C.tcgetattr(I32(fd), SYSTEM.ADR(m.t[0])) # 0 then return m, failed(); end;
     return m, 0;
 end;
 
@@ -800,7 +801,7 @@ end;
    is sent: 0, or minus an errno. *)
 proc setMode*(fd: INT; m: Mode): INT;
 begin
-    if C.tcsetattr(I32(fd), CAbi.tcsadrain, ADR(m.t[0])) # 0 then return failed(); end;
+    if C.tcsetattr(I32(fd), CAbi.tcsadrain, SYSTEM.ADR(m.t[0])) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -809,7 +810,7 @@ end;
 proc termSize*(fd: INT): (INT, INT);
 var w: Winsize;
 begin
-    if (C.ioctl(I32(fd), CAbi.tiocgwinsz, ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then
+    if (C.ioctl(I32(fd), CAbi.tiocgwinsz, SYSTEM.ADR(w)) # 0) or (w.cols = 0) or (w.rows = 0) then
         return 80, 24;
     end;
     return INT(w.cols), INT(w.rows);
@@ -821,8 +822,8 @@ proc ready*(fd, ms: INT): BOOL;
 var p: Pollfd; r: I32;
 begin
     p := {fd: I32(fd), events: CAbi.pollin};
-    _ := XCHG(ADR(broke), 0);
-    repeat r := C.poll(^U8(ADR(p)), 1, I32(ms)); until (r >= 0) or not again();
+    _ := XCHG(broke, 0);
+    repeat r := C.poll(^U8(SYSTEM.ADR(p)), 1, I32(ms)); until (r >= 0) or not again();
     return r > 0;
 end;
 
@@ -830,7 +831,7 @@ end;
 proc time(clock: I32): I64;
 var t: Timespec;
 begin
-    _ := C.clock_gettime(clock, ^U8(ADR(t)));
+    _ := C.clock_gettime(clock, ^U8(SYSTEM.ADR(t)));
     return t.sec * 1000000000 + t.nsec;
 end;
 
@@ -854,7 +855,7 @@ begin
     at := clock() + I64(ms) * 1000000;
     t := {sec: at div 1000000000, nsec: at mod 1000000000};
     (* until t, again after EINTR, which it returns, the C library's *)
-    repeat until C.clock_nanosleep(CAbi.clockMonotonic, CAbi.timerAbstime, ^U8(ADR(t)), nil) # CAbi.eIntr;
+    repeat until C.clock_nanosleep(CAbi.clockMonotonic, CAbi.timerAbstime, ^U8(SYSTEM.ADR(t)), nil) # CAbi.eIntr;
 end;
 
 (* Ends the program: random bytes can't be faked. *)
@@ -873,7 +874,7 @@ var n, r: INT;
 begin
     n := 0;
     while n < LEN(b) do                                 (* a signal may cut it short *)
-        r := C.getrandom(ADR(b[n]), UINT(LEN(b) - n), 0);
+        r := C.getrandom(SYSTEM.ADR(b[n]), UINT(LEN(b) - n), 0);
         if r > 0 then INC(n, r);
         elsif (r >= 0) or (failed() # errIntr) then noRandom();   (* r = 0 can't be, and is no progress *)
         end;
@@ -891,7 +892,7 @@ begin
     if fd < 0 then return failed(); end;
     if serving then
         one := 1;                                       (* so that a server can start again at once *)
-        _ := C.setsockopt(fd, CAbi.solSocket, CAbi.soReuseaddr, ^U8(ADR(one)), 4);
+        _ := C.setsockopt(fd, CAbi.solSocket, CAbi.soReuseaddr, ^U8(SYSTEM.ADR(one)), 4);
         r := C.bind(fd, a, U32(size));
         if (r = 0) and (kind = CAbi.sockStream) then    (* a stream socket takes connections; *)
             r := C.listen(fd, 4096);                    (* one of datagrams only receives *)
@@ -925,7 +926,7 @@ end;
    -36 (ENAMETOOLONG) if it is too long. A path that starts with a zero
    byte is one of Linux's abstract names, which has no file and no
    trailing zero: its length ends with the name's. *)
-proc unixAddr(path: []U8; a: ^Sockaddr): INT;
+proc unixAddr(path: []const U8; a: ^Sockaddr): INT;
 var p: ^U8;
 begin
     if LEN(path) >= CAbi.sunPathLen then return -36; end;
@@ -937,40 +938,40 @@ begin
 end;
 
 (* A stream socket connected to the Unix socket at path. *)
-proc connect*(path: []U8): INT;
+proc connect*(path: []const U8): INT;
 var a: Sockaddr; size: INT;
 begin
-    size := unixAddr(path, ADR(a));
+    size := unixAddr(path, SYSTEM.ADR(a));
     if size < 0 then return size; end;
-    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(ADR(a)), size, false);
+    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(SYSTEM.ADR(a)), size, false);
 end;
 
 (* A stream socket made at path, which must not be there yet, taking
    connections. *)
-proc listen*(path: []U8): INT;
+proc listen*(path: []const U8): INT;
 var a: Sockaddr; size: INT;
 begin
-    size := unixAddr(path, ADR(a));
+    size := unixAddr(path, SYSTEM.ADR(a));
     if size < 0 then return size; end;
-    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(ADR(a)), size, true);
+    return socket(CAbi.afUnix, CAbi.sockStream, ^U8(SYSTEM.ADR(a)), size, true);
 end;
 
 (* addr, an IPv4 or IPv6 address as numbers, and port, in a: the size
    of its struct sockaddr_in or sockaddr_in6, or 0 if either is
    wrong. *)
-proc inetAddr(addr: []U8; port: INT; a: ^Sockaddr): INT;
+proc inetAddr(addr: []const U8; port: INT; a: ^Sockaddr): INT;
 var s: [64]U8; b: [16]U8; p: ^U8; at, size: INT;
 begin
     if (port < 0) or (port > 65535) or not cstr(addr, s) then return 0; end;
     p := ^U8(a);
     (* into b first, since musl's inet_pton leaves what it read of an
        address it refuses, and the rest of the address is to be zero *)
-    if C.inet_pton(CAbi.afInet, ADR(s[0]), ADR(b[0])) = 1 then
+    if C.inet_pton(CAbi.afInet, SYSTEM.ADR(s[0]), SYSTEM.ADR(b[0])) = 1 then
         size := CAbi.sockaddrInLen;
         setFamily(p, CAbi.afInet, size);
         COPY(p[CAbi.sinAddrAt..CAbi.sinAddrAt + 4], b[0..4]);
         at := CAbi.sinPortAt;
-    elsif C.inet_pton(CAbi.afInet6, ADR(s[0]), ADR(b[0])) = 1 then
+    elsif C.inet_pton(CAbi.afInet6, SYSTEM.ADR(s[0]), SYSTEM.ADR(b[0])) = 1 then
         size := CAbi.sockaddrIn6Len;
         setFamily(p, CAbi.afInet6, size);
         COPY(p[CAbi.sin6AddrAt..CAbi.sin6AddrAt + 16], b);
@@ -994,37 +995,37 @@ end;
 
 (* A socket of kind at addr and port, as socket makes it; -22 (EINVAL)
    if they are wrong. *)
-proc inet(addr: []U8; port, kind: INT; serving: BOOL): INT;
+proc inet(addr: []const U8; port, kind: INT; serving: BOOL): INT;
 var a: Sockaddr; size: INT;
 begin
-    size := inetAddr(addr, port, ADR(a));
+    size := inetAddr(addr, port, SYSTEM.ADR(a));
     if size = 0 then return -22; end;
-    return socket(familyOf(^U8(ADR(a))), kind, ^U8(ADR(a)), size, serving);
+    return socket(familyOf(^U8(SYSTEM.ADR(a))), kind, ^U8(SYSTEM.ADR(a)), size, serving);
 end;
 
 (* A stream socket connected to port at addr, an IPv4 or IPv6 address
    as numbers. *)
-proc connectTcp*(addr: []U8; port: INT): INT;
+proc connectTcp*(addr: []const U8; port: INT): INT;
 begin
     return inet(addr, port, CAbi.sockStream, false);
 end;
 
 (* A socket of datagrams to and from port at addr. *)
-proc connectUdp*(addr: []U8; port: INT): INT;
+proc connectUdp*(addr: []const U8; port: INT): INT;
 begin
     return inet(addr, port, CAbi.sockDgram, false);
 end;
 
 (* A stream socket taking connections on port at addr; "0.0.0.0" or
    "::" is every address the machine has. *)
-proc listenTcp*(addr: []U8; port: INT): INT;
+proc listenTcp*(addr: []const U8; port: INT): INT;
 begin
     return inet(addr, port, CAbi.sockStream, true);
 end;
 
 (* A socket of datagrams on port at addr, from anyone, for receive and
    reply. *)
-proc listenUdp*(addr: []U8; port: INT): INT;
+proc listenUdp*(addr: []const U8; port: INT): INT;
 begin
     return inet(addr, port, CAbi.sockDgram, true);
 end;
@@ -1055,16 +1056,16 @@ var r: Remote; a: Sockaddr; size, credSize: U32; cred: [CAbi.ucUidAt + CAbi.ucUi
 begin
     r := {unix: false, ipv6: false};
     size := U32(SIZE(Sockaddr));
-    p := ^U8(ADR(a));
-    if C.getpeername(I32(fd), p, ADR(size)) # 0 then return r, failed(); end;
+    p := ^U8(SYSTEM.ADR(a));
+    if C.getpeername(I32(fd), p, SYSTEM.ADR(size)) # 0 then return r, failed(); end;
     if familyOf(p) = CAbi.afUnix then                   (* ask who made the connection *)
         credSize := U32(LEN(cred));
-        if C.getsockopt(I32(fd), CAbi.solSocket, CAbi.soPeercred, ADR(cred[0]), ADR(credSize)) # 0 then
+        if C.getsockopt(I32(fd), CAbi.solSocket, CAbi.soPeercred, SYSTEM.ADR(cred[0]), SYSTEM.ADR(credSize)) # 0 then
             return r, failed();
         end;
         r.unix := true;
-        r.pid := INT(field(ADR(cred[0]), CAbi.ucPidAt, CAbi.ucPidLen));
-        r.uid := INT(field(ADR(cred[0]), CAbi.ucUidAt, CAbi.ucUidLen));
+        r.pid := INT(field(SYSTEM.ADR(cred[0]), CAbi.ucPidAt, CAbi.ucPidLen));
+        r.uid := INT(field(SYSTEM.ADR(cred[0]), CAbi.ucUidAt, CAbi.ucUidLen));
     else
         r.port := portOf(p);
         if familyOf(p) = CAbi.afInet6 then
@@ -1083,7 +1084,7 @@ end;
 proc socketPair*: (INT, INT, INT);
 var fds: [2]I32;
 begin
-    if C.socketpair(CAbi.afUnix, CAbi.sockStream | CAbi.sockCloexec, 0, ADR(fds[0])) # 0 then
+    if C.socketpair(CAbi.afUnix, CAbi.sockStream | CAbi.sockCloexec, 0, SYSTEM.ADR(fds[0])) # 0 then
         return -1, -1, failed();
     end;
     return INT(fds[0]), INT(fds[1]), 0;
@@ -1092,22 +1093,22 @@ end;
 (* Writes s to the socket fd, as write does, but returns -32 (EPIPE)
    where write would stop the program with SIGPIPE: when the other end
    has closed it. *)
-proc send*(fd: INT; s: []U8): INT;
+proc send*(fd: INT; s: []const U8): INT;
 var r: INT;
 begin
     if LEN(s) = 0 then return 0; end;
-    r := C.send(I32(fd), ADR(s[0]), UINT(LEN(s)), CAbi.msgNosignal);
+    r := C.send(I32(fd), SYSTEM.PTR(s), UINT(LEN(s)), CAbi.msgNosignal);
     if r < 0 then return failed(); end;
     return r;
 end;
 
 (* send, but never waits: returns -11 (EAGAIN) where send would wait for
    room, and doesn't make reads on fd non-blocking too. *)
-proc sendNow*(fd: INT; s: []U8): INT;
+proc sendNow*(fd: INT; s: []const U8): INT;
 var r: INT;
 begin
     if LEN(s) = 0 then return 0; end;
-    r := C.send(I32(fd), ADR(s[0]), UINT(LEN(s)), CAbi.msgNosignal | CAbi.msgDontwait);
+    r := C.send(I32(fd), SYSTEM.PTR(s), UINT(LEN(s)), CAbi.msgNosignal | CAbi.msgDontwait);
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -1137,8 +1138,8 @@ begin
         if fds[i].write then events := events | CAbi.pollout; end;
         list[i] := {fd: I32(fds[i].fd), events: events};
     end;
-    _ := XCHG(ADR(broke), 0);
-    repeat r := INT(C.poll(^U8(PTR(list)), UINT(n), I32(ms))); until (r >= 0) or not again();
+    _ := XCHG(broke, 0);
+    repeat r := INT(C.poll(^U8(SYSTEM.PTR(list)), UINT(n), I32(ms))); until (r >= 0) or not again();
     e := 0;
     if r < 0 then e := failed(); end;
     for i := 0 to n - 1 do
@@ -1154,7 +1155,7 @@ end;
    reached its end or failed, so that a read or a write won't wait; -1
    if none has. ms < 0 waits as long as it takes. At most 64 fds in
    all. *)
-proc readyFor*(reads, writes: []INT; ms: INT): INT;
+proc readyFor*(reads, writes: []const INT; ms: INT): INT;
 var p: [64]Poll; ps: []Poll; n, i: INT;
 begin
     n := 0;
@@ -1181,7 +1182,7 @@ end;
 (* The first of fds that has something to read within ms milliseconds,
    or that has reached its end or failed, so that a read won't wait; -1
    if none has. ms < 0 waits as long as it takes. At most 64 fds. *)
-proc readyOf*(fds: []INT; ms: INT): INT;
+proc readyOf*(fds: []const INT; ms: INT): INT;
 begin
     return readyFor(fds, [], ms);
 end;
@@ -1214,20 +1215,20 @@ end;
    or -110 (ETIMEDOUT) if it isn't connected within ms milliseconds.
    It starts to connect without waiting, then waits for the socket to
    be writable, which it is once connected or refused, and asks which. *)
-proc connectTcpWithin*(addr: []U8; port, ms: INT): INT;
+proc connectTcpWithin*(addr: []const U8; port, ms: INT): INT;
 var a: Sockaddr; size, r: INT; fd, err: I32; errSize: U32;
 begin
-    size := inetAddr(addr, port, ADR(a));
+    size := inetAddr(addr, port, SYSTEM.ADR(a));
     if size = 0 then return -22; end;
-    fd := C.socket(I32(familyOf(^U8(ADR(a)))), CAbi.sockStream | CAbi.sockCloexec | CAbi.sockNonblock, 0);
+    fd := C.socket(I32(familyOf(^U8(SYSTEM.ADR(a)))), CAbi.sockStream | CAbi.sockCloexec | CAbi.sockNonblock, 0);
     if fd < 0 then return failed(); end;
     r := 0;
-    if C.connect(fd, ^U8(ADR(a)), U32(size)) # 0 then r := failed(); end;
+    if C.connect(fd, ^U8(SYSTEM.ADR(a)), U32(size)) # 0 then r := failed(); end;
     if r = -115 then                                    (* EINPROGRESS *)
         r := -110;
         if readyFor([], [INT(fd)], ms) = INT(fd) then
             errSize := 4;
-            if C.getsockopt(fd, CAbi.solSocket, CAbi.soError, ^U8(ADR(err)), ADR(errSize)) = 0 then
+            if C.getsockopt(fd, CAbi.solSocket, CAbi.soError, ^U8(SYSTEM.ADR(err)), SYSTEM.ADR(errSize)) = 0 then
                 r := linux(-INT(err));
             else
                 r := failed();
@@ -1245,8 +1246,8 @@ proc localPort*(fd: INT): INT;
 var a: Sockaddr; size: U32;
 begin
     size := U32(SIZE(Sockaddr));
-    if C.getsockname(I32(fd), ^U8(ADR(a)), ADR(size)) # 0 then return failed(); end;
-    return portOf(^U8(ADR(a)));
+    if C.getsockname(I32(fd), ^U8(SYSTEM.ADR(a)), SYSTEM.ADR(size)) # 0 then return failed(); end;
+    return portOf(^U8(SYSTEM.ADR(a)));
 end;
 
 (* The next datagram to the socket fd, waiting for one: its first
@@ -1256,7 +1257,7 @@ proc receive*(fd: INT; buf: []U8): (INT, Peer);
 var p: Peer; size: U32; n: INT;
 begin
     size := U32(SIZE(Sockaddr));
-    n := C.recvfrom(I32(fd), PTR(buf), UINT(LEN(buf)), 0, ^U8(ADR(p.a)), ADR(size));
+    n := C.recvfrom(I32(fd), SYSTEM.PTR(buf), UINT(LEN(buf)), 0, ^U8(SYSTEM.ADR(p.a)), SYSTEM.ADR(size));
     if n < 0 then n := failed(); end;
     p.size := INT(size);
     return n, p;
@@ -1264,10 +1265,10 @@ end;
 
 (* Sends s, as one datagram, from the socket fd to peer, as receive
    gave it: the bytes sent, or minus an errno. *)
-proc reply*(fd: INT; peer: Peer; s: []U8): INT;
+proc reply*(fd: INT; peer: Peer; s: []const U8): INT;
 var r: INT;
 begin
-    r := C.sendto(I32(fd), PTR(s), UINT(LEN(s)), CAbi.msgNosignal, ^U8(ADR(peer.a)), U32(peer.size));
+    r := C.sendto(I32(fd), SYSTEM.PTR(s), UINT(LEN(s)), CAbi.msgNosignal, ^U8(SYSTEM.ADR(peer.a)), U32(peer.size));
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -1275,17 +1276,17 @@ end;
 (* Sends s, at least one byte, to the Unix socket fd, as send does, and
    with it the files fds, at most 16, which the program that receives
    them then has open too: the bytes sent, or minus an errno. *)
-proc sendFds*(fd: INT; s: []U8; fds: []INT): INT;
+proc sendFds*(fd: INT; s: []const U8; fds: []const INT): INT;
 var m: Msghdr; v: Iovec; c: Control; mp, cp: ^U8; sent: ^I32; i, r, size: INT;
 begin
     if (LEN(s) = 0) or (LEN(fds) > 16) then return -22; end;
-    v := {base: ADR(s[0]), size: LEN(s)};
-    mp := ^U8(ADR(m));
-    setField(mp, CAbi.msgIovAt, SIZE(^U8), INT(ADR(v)));
+    v := {base: SYSTEM.PTR(s), size: LEN(s)};
+    mp := ^U8(SYSTEM.ADR(m));
+    setField(mp, CAbi.msgIovAt, SIZE(^U8), INT(SYSTEM.ADR(v)));
     setField(mp, CAbi.msgIovlenAt, CAbi.msgIovlenLen, 1);
     if LEN(fds) > 0 then
         (* a struct cmsghdr, its level and type ints, then the fds *)
-        cp := ^U8(ADR(c));
+        cp := ^U8(SYSTEM.ADR(c));
         size := CAbi.cmsgDataAt + 4 * LEN(fds);
         setField(cp, CAbi.cmsgLenAt, CAbi.cmsgLenLen, size);
         setField(cp, CAbi.cmsgLevelAt, 4, CAbi.solSocket);
@@ -1308,10 +1309,10 @@ end;
 proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);
 var m: Msghdr; v: Iovec; c: Control; mp, cp: ^U8; got: ^I32; n, k, i, size: INT;
 begin
-    v := {base: PTR(buf), size: LEN(buf)};
-    mp := ^U8(ADR(m));
-    cp := ^U8(ADR(c));
-    setField(mp, CAbi.msgIovAt, SIZE(^U8), INT(ADR(v)));
+    v := {base: SYSTEM.PTR(buf), size: LEN(buf)};
+    mp := ^U8(SYSTEM.ADR(m));
+    cp := ^U8(SYSTEM.ADR(c));
+    setField(mp, CAbi.msgIovAt, SIZE(^U8), INT(SYSTEM.ADR(v)));
     setField(mp, CAbi.msgIovlenAt, CAbi.msgIovlenLen, 1);
     setField(mp, CAbi.msgControlAt, SIZE(^U8), INT(cp));
     setField(mp, CAbi.msgControllenAt, CAbi.msgControllenLen, SIZE(Control));
@@ -1336,7 +1337,7 @@ end;
 
 (* What errno err, or minus it, means, as the C library's strerror
    says it. *)
-proc errorText*(err: INT): []U8;
+proc errorText*(err: INT): []const U8;
 var s: ^U8; n, i: INT;
 begin
     if err < 0 then err := -err; end;
@@ -1353,11 +1354,11 @@ end;
 
 (* The value of the environment variable name and true, or "" and
    false if it isn't set: "" and true if it is set to nothing. *)
-proc findEnv*(name: []U8): ([]U8, BOOL);
+proc findEnv*(name: []const U8): ([]const U8, BOOL);
 var a: [4096]U8; s: ^U8; n: INT;
 begin
     if not cstr(name, a) then return "", false; end;
-    s := C.getenv(ADR(a[0]));
+    s := C.getenv(SYSTEM.ADR(a[0]));
     if s = nil then return "", false; end;
     n := 0;
     while s[n] # 0 do INC(n); end;
@@ -1365,8 +1366,8 @@ begin
 end;
 
 (* The value of the environment variable name; "" if it isn't set. *)
-proc env*(name: []U8): []U8;
-var v: []U8;
+proc env*(name: []const U8): []const U8;
+var v: []const U8;
 begin
     v, _ := findEnv(name);
     return v;
@@ -1374,7 +1375,7 @@ end;
 
 (* The environment's ith NAME=value, from 0, and true; "" and false
    past the last. *)
-proc envAt*(i: INT): ([]U8, BOOL);
+proc envAt*(i: INT): ([]const U8, BOOL);
 var e: ^^U8; s: ^U8; j, n: INT;
 begin
     if i < 0 then return "", false; end;
@@ -1390,21 +1391,21 @@ end;
 
 (* The working directory, good until the next call; and 0, or minus an
    errno. *)
-proc workDir*: ([]U8, INT);
+proc workDir*: ([]const U8, INT);
 var n: INT;
 begin
-    if C.getcwd(ADR(cwd[0]), LEN(cwd)) = nil then return "", failed(); end;
+    if C.getcwd(SYSTEM.ADR(cwd[0]), LEN(cwd)) = nil then return "", failed(); end;
     n := 0;
     while cwd[n] # 0 do INC(n); end;
     return cwd[0..n], 0;
 end;
 
 (* Makes path the working directory. *)
-proc setWorkDir*(path: []U8): INT;
+proc setWorkDir*(path: []const U8): INT;
 var a: [4096]U8;
 begin
     if not cstr(path, a) then return -36; end;
-    if C.chdir(ADR(a[0])) # 0 then return failed(); end;
+    if C.chdir(SYSTEM.ADR(a[0])) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -1430,12 +1431,12 @@ proc setTermSize*(fd, cols, rows: INT): INT;
 var w: Winsize;
 begin
     w := {rows: U16(rows), cols: U16(cols)};
-    if C.ioctl(I32(fd), CAbi.tiocswinsz, ADR(w)) # 0 then return failed(); end;
+    if C.ioctl(I32(fd), CAbi.tiocswinsz, SYSTEM.ADR(w)) # 0 then return failed(); end;
     return 0;
 end;
 
 (* Copies s and a zero to at: the byte after them. *)
-proc put(s: []U8; at: ^U8): ^U8;
+proc put(s: []const U8; at: ^U8): ^U8;
 begin
     COPY(at[0..LEN(s)], s);
     at[LEN(s)] := 0;
@@ -1444,7 +1445,7 @@ end;
 
 (* Whether the NAME=value s, a C string, names a variable that one of
    env gives. *)
-proc replaced(s: ^U8; env: [][]U8): BOOL;
+proc replaced(s: ^U8; env: [][]const U8): BOOL;
 var i, n: INT;
 begin
     for i := 0 to LEN(env) - 1 do
@@ -1459,7 +1460,7 @@ end;
    strings and a nil, then the environment old with each NAME=value of
    env in place of its variable or added, and a nil; or nil. The
    environment follows the arguments. *)
-proc argsAndEnv(args, env: [][]U8; old: ^^U8): (^^U8, INT);
+proc argsAndEnv(args, env: [][]const U8; old: ^^U8): (^^U8, INT);
 var p: ^^U8; s: ^U8; size, n, i, k: INT;
 begin
     n := 0;
@@ -1487,7 +1488,7 @@ end;
    or holds an = or a 0, or value a 0, and -12 if there is no memory.
    The C library's setenv keeps the environment. It isn't safe while
    another thread reads the environment or starts a program. *)
-proc setEnv*(name, value: []U8): INT;
+proc setEnv*(name, value: []const U8): INT;
 var p: ^U8; size, i, r: INT;
 begin
     if LEN(name) = 0 then return -22; end;                     (* EINVAL *)
@@ -1514,7 +1515,7 @@ end;
 proc pipe*: (INT, INT);
 var fds: [2]I32;
 begin
-    if C.pipe2(ADR(fds[0]), CAbi.oCloexec) # 0 then return failed(), -1; end;
+    if C.pipe2(SYSTEM.ADR(fds[0]), CAbi.oCloexec) # 0 then return failed(), -1; end;
     return INT(fds[0]), INT(fds[1]);
 end;
 
@@ -1539,10 +1540,10 @@ end;
 
 (* The name of this machine, good until the next call; and 0, or minus
    an errno. *)
-proc hostName*: ([]U8, INT);
+proc hostName*: ([]const U8, INT);
 var n: INT;
 begin
-    if C.gethostname(ADR(host[0]), LEN(host) - 1) # 0 then return "", failed(); end;
+    if C.gethostname(SYSTEM.ADR(host[0]), LEN(host) - 1) # 0 then return "", failed(); end;
     host[LEN(host) - 1] := 0;                         (* POSIX doesn't promise one if it is cut *)
     n := 0;
     while host[n] # 0 do INC(n); end;
@@ -1554,7 +1555,7 @@ proc processors*: INT;
 var mask: [1024]U8; i, b, count: INT;
 begin
     for i := 0 to LEN(mask) - 1 do mask[i] := 0; end;   (* the C library fills in as many bytes as the system has processors' bits *)
-    if C.sched_getaffinity(0, UINT(LEN(mask)), ADR(mask[0])) # 0 then return 1; end;
+    if C.sched_getaffinity(0, UINT(LEN(mask)), SYSTEM.ADR(mask[0])) # 0 then return 1; end;
     count := 0;
     for i := 0 to LEN(mask) - 1 do
         for b := 0 to 7 do
@@ -1577,7 +1578,7 @@ end;
 proc cpuTime*(children: BOOL): (I64, I64);
 var ru: [64]U64; p: ^U8;   (* struct rusage, which cabi checks fits *)
 begin
-    p := ^U8(ADR(ru));
+    p := ^U8(SYSTEM.ADR(ru));
     if children then _ := C.getrusage(CAbi.rusageChildren, p);
     else _ := C.getrusage(CAbi.rusageSelf, p);
     end;
@@ -1590,7 +1591,7 @@ end;
 proc limit*(which: INT): (I64, I64, INT);
 var r: [2]I64; i: INT;   (* struct rlimit *)
 begin
-    if C.getrlimit(I32(which), ^U8(ADR(r))) # 0 then return 0, 0, failed(); end;
+    if C.getrlimit(I32(which), ^U8(SYSTEM.ADR(r))) # 0 then return 0, 0, failed(); end;
     for i := 0 to 1 do
         if r[i] = CAbi.rlimInfinity then r[i] := -1; end;
     end;
@@ -1606,7 +1607,7 @@ begin
     for i := 0 to 1 do
         if r[i] = -1 then r[i] := CAbi.rlimInfinity; end;
     end;
-    if C.setrlimit(I32(which), ^U8(ADR(r))) # 0 then return failed(); end;
+    if C.setrlimit(I32(which), ^U8(SYSTEM.ADR(r))) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -1649,7 +1650,7 @@ const defaultPath = "/bin:/usr/bin";
 (* The ith directory of search, a list of them with : between, as PATH
    is: dir, "." if it is empty, and where the next starts; -1 past the
    last. *)
-proc pathDir(search: []U8; i: INT): ([]U8, INT);
+proc pathDir(search: []const U8; i: INT): ([]const U8, INT);
 var j: INT;
 begin
     if i > LEN(search) then return "", -1; end;
@@ -1660,7 +1661,7 @@ begin
 end;
 
 (* dir, a /, and name, a C string in buf; false if it doesn't fit. *)
-proc joinPath(dir, name, buf: []U8): BOOL;
+proc joinPath(dir, name: []const U8; buf: []U8): BOOL;
 var n: INT;
 begin
     n := LEN(dir) + 1 + LEN(name);
@@ -1673,7 +1674,7 @@ begin
 end;
 
 (* Whether name holds a /, and so is a path, not a name to look for. *)
-proc isPath(name: []U8): BOOL;
+proc isPath(name: []const U8): BOOL;
 var i: INT;
 begin
     for i := 0 to LEN(name) - 1 do
@@ -1687,16 +1688,16 @@ end;
    execvp does: each in turn, an empty one being the working directory.
    It returns only if none could be run. It runs in spawn's child, after
    the fork, so it takes no memory: each path is made in buf. *)
-proc run(name, search, buf: []U8; argv, envp: ^^U8);
-var dir: []U8; i: INT;
+proc run(name, search: []const U8; buf: []U8; argv, envp: ^^U8);
+var dir: []const U8; i: INT;
 begin
     if isPath(name) or (LEN(name) = 0) then
-        if cstr(name, buf) then _ := C.execve(ADR(buf[0]), argv, envp); end;
+        if cstr(name, buf) then _ := C.execve(SYSTEM.ADR(buf[0]), argv, envp); end;
         return;
     end;
     dir, i := pathDir(search, 0);
     while i >= 0 do
-        if joinPath(dir, name, buf) then _ := C.execve(ADR(buf[0]), argv, envp); end;
+        if joinPath(dir, name, buf) then _ := C.execve(SYSTEM.ADR(buf[0]), argv, envp); end;
         dir, i := pathDir(search, i);
     end;
 end;
@@ -1706,8 +1707,8 @@ end;
    directories of search that is no directory and that this user may
    run. 0; or -2 (ENOENT) if there is none, or -13 (EACCES) if one is
    there and can't be run. *)
-proc find(name, search, buf: []U8): INT;
-var dir: []U8; i, err, r: INT; f: Info;
+proc find(name, search: []const U8; buf: []U8): INT;
+var dir: []const U8; i, err, r: INT; f: Info;
 begin
     if isPath(name) then
         if not cstr(name, buf) then return -36; end;
@@ -1719,7 +1720,7 @@ begin
         if joinPath(dir, name, buf) then
             f, err := info(buf[0..LEN(dir) + 1 + LEN(name)]);
             if (err = 0) and not f.dir then
-                if C.access(ADR(buf[0]), 1) = 0 then return 0; end;   (* X_OK *)
+                if C.access(SYSTEM.ADR(buf[0]), 1) = 0 then return 0; end;   (* X_OK *)
                 r := -13;                             (* EACCES *)
             end;
         end;
@@ -1746,7 +1747,7 @@ end;
    program exec starts. It runs in spawn's child, after the fork, so it
    takes no memory: it closes the runs between the fds kept, the lowest
    first, each with one closeFrom. *)
-proc closeAllBut(keep: []INT);
+proc closeAllBut(keep: []const INT);
 var lo, next, i: INT;
 begin
     lo := 3;
@@ -1770,12 +1771,12 @@ end;
    terminal's foreground; then its standard input, output and error,
    each p.fds names over the terminal's; then its working directory,
    the C string dir. 0, or minus an errno. *)
-proc takeOn(p: Program; name, dir: []U8): INT;
+proc takeOn(p: Program; name, dir: []const U8): INT;
 var fd: I32; i: INT;
 begin
     if p.tty # 0 then
         _ := C.setsid();
-        fd := C.open(ADR(name[0]), CAbi.oRdwr);
+        fd := C.open(SYSTEM.PTR(name), CAbi.oRdwr);
         if fd < 0 then return failed(); end;
         if C.ioctl(fd, CAbi.tiocsctty, 0) # 0 then return failed(); end;
         for i := 0 to 2 do _ := C.dup2(fd, I32(i)); end;
@@ -1792,7 +1793,7 @@ begin
             _ := C.dup2(I32(p.fds[i]), I32(i));
         end;
     end;
-    if (LEN(p.dir) > 0) and (C.chdir(ADR(dir[0])) # 0) then return failed(); end;
+    if (LEN(p.dir) > 0) and (C.chdir(SYSTEM.PTR(dir)) # 0) then return failed(); end;
     return 0;
 end;
 
@@ -1800,7 +1801,7 @@ end;
 proc ignoredIn(var a: Sigaction): BOOL;
 var h: ^UINT;
 begin
-    h := ^UINT(^U8(ADR(a)) + CAbi.saHandlerAt);
+    h := ^UINT(^U8(SYSTEM.ADR(a)) + CAbi.saHandlerAt);
     return h^ = 1;
 end;
 
@@ -1809,7 +1810,7 @@ end;
 proc ignored*(sig: INT): BOOL;
 var a: Sigaction;
 begin
-    _ := C.sigaction(I32(sig), nil, ^U8(ADR(a)));
+    _ := C.sigaction(I32(sig), nil, ^U8(SYSTEM.ADR(a)));
     return ignoredIn(a);
 end;
 
@@ -1821,7 +1822,7 @@ end;
    terminal's foreground, and signals as they are at first. *)
 proc spawn*(p: Program): INT;
 var
-    a, dir, name: [4096]U8; argv: ^^U8; none: ^U8; size, err, i, g: INT; search: []U8;
+    a, dir, name: [4096]U8; argv: ^^U8; none: ^U8; size, err, i, g: INT; search: []const U8;
     all, old, empty: Sigset; dfl: Sigaction; pid: I32;
 begin
     if not cstr(p.path, a) or not cstr(p.dir, dir) then return -36; end;   (* ENAMETOOLONG *)
@@ -1831,7 +1832,7 @@ begin
     end;
     none := nil;
     if p.onlyEnv then
-        argv, size := argsAndEnv(p.args, p.env, ADR(none));
+        argv, size := argsAndEnv(p.args, p.env, SYSTEM.ADR(none));
     else
         argv, size := argsAndEnv(p.args, p.env, C.environ);
     end;
@@ -1841,15 +1842,15 @@ begin
     err := find(p.path, search, a);
     if err < 0 then munmap(^U8(argv), size); return err; end;
     for i := 0 to LEN(all) - 1 do all[i] := 0FFFFFFFFFFFFFFFFH; end;
-    _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(all)), ^U8(ADR(old)));
+    _ := C.sigprocmask(CAbi.sigSetmask, ^U8(SYSTEM.ADR(all)), ^U8(SYSTEM.ADR(old)));
     pid := C.fork();
     if pid = 0 then
         if takeOn(p, name, dir) # 0 then C._exit(127); end;
         closeAllBut(p.more);
         for i := 1 to CAbi.sigMax do
-            if not (p.keepIgnored and ignored(i)) then _ := C.sigaction(I32(i), ^U8(ADR(dfl)), nil); end;
+            if not (p.keepIgnored and ignored(i)) then _ := C.sigaction(I32(i), ^U8(SYSTEM.ADR(dfl)), nil); end;
         end;
-        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(empty)), nil);
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(SYSTEM.ADR(empty)), nil);
         run(p.path, search, a, argv, argv + (LEN(p.args) + 1));
         C._exit(127);
     end;
@@ -1861,7 +1862,7 @@ begin
         if p.group # 0 then _ := C.setpgid(pid, I32(g)); end;
         if p.foreground then _ := C.tcsetpgrp(0, I32(g)); end;
     end;
-    _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(old)), nil);
+    _ := C.sigprocmask(CAbi.sigSetmask, ^U8(SYSTEM.ADR(old)), nil);
     munmap(^U8(argv), size);
     if pid < 0 then return err; end;
     return INT(pid);
@@ -1878,7 +1879,7 @@ end;
    signals given back as they were. *)
 proc exec*(p: Program): INT;
 var
-    a, dir, name: [4096]U8; argv: ^^U8; none: ^U8; size, r, i: INT; search: []U8;
+    a, dir, name: [4096]U8; argv: ^^U8; none: ^U8; size, r, i: INT; search: []const U8;
     all, old, empty: Sigset; dfl: Sigaction; acts: [CAbi.sigMax + 1]Sigaction;
 begin
     if not cstr(p.dir, dir) then return -36; end;    (* ENAMETOOLONG *)
@@ -1892,7 +1893,7 @@ begin
     if r < 0 then return r; end;
     none := nil;
     if p.onlyEnv then
-        argv, size := argsAndEnv(p.args, p.env, ADR(none));
+        argv, size := argsAndEnv(p.args, p.env, SYSTEM.ADR(none));
     else
         argv, size := argsAndEnv(p.args, p.env, C.environ);
     end;
@@ -1905,19 +1906,19 @@ begin
         (* every signal as it is at first and none blocked, as spawn
            gives them, each kept to give back if execve fails *)
         for i := 0 to LEN(all) - 1 do all[i] := 0FFFFFFFFFFFFFFFFH; end;
-        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(all)), ^U8(ADR(old)));
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(SYSTEM.ADR(all)), ^U8(SYSTEM.ADR(old)));
         for i := 1 to CAbi.sigMax do
-            _ := C.sigaction(I32(i), nil, ^U8(ADR(acts[i])));   (* as it is *)
+            _ := C.sigaction(I32(i), nil, ^U8(SYSTEM.ADR(acts[i])));   (* as it is *)
             if not (p.keepIgnored and ignoredIn(acts[i])) then
-                _ := C.sigaction(I32(i), ^U8(ADR(dfl)), nil);
+                _ := C.sigaction(I32(i), ^U8(SYSTEM.ADR(dfl)), nil);
             end;
         end;
-        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(empty)), nil);
-        _ := C.execve(ADR(a[0]), argv, argv + (LEN(p.args) + 1));
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(SYSTEM.ADR(empty)), nil);
+        _ := C.execve(SYSTEM.ADR(a[0]), argv, argv + (LEN(p.args) + 1));
         r := failed();
-        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(all)), nil);
-        for i := 1 to CAbi.sigMax do _ := C.sigaction(I32(i), ^U8(ADR(acts[i])), nil); end;
-        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(ADR(old)), nil);
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(SYSTEM.ADR(all)), nil);
+        for i := 1 to CAbi.sigMax do _ := C.sigaction(I32(i), ^U8(SYSTEM.ADR(acts[i])), nil); end;
+        _ := C.sigprocmask(CAbi.sigSetmask, ^U8(SYSTEM.ADR(old)), nil);
     end;
     munmap(^U8(argv), size);
     return r;
@@ -1928,14 +1929,14 @@ end;
    kernel's execve does and a shell wants: no search, and every fd and
    signal as it is, but that a handled signal does what it does at
    first. It returns only if it can't: minus an errno. *)
-proc execve*(path: []U8; args, env: [][]U8): INT;
+proc execve*(path: []const U8; args, env: [][]const U8): INT;
 var a: [4096]U8; argv: ^^U8; none: ^U8; size, r: INT;
 begin
     if not cstr(path, a) then return -36; end;        (* ENAMETOOLONG *)
     none := nil;
-    argv, size := argsAndEnv(args, env, ADR(none));
+    argv, size := argsAndEnv(args, env, SYSTEM.ADR(none));
     if argv = nil then return -12; end;               (* ENOMEM *)
-    _ := C.execve(ADR(a[0]), argv, argv + (LEN(args) + 1));
+    _ := C.execve(SYSTEM.ADR(a[0]), argv, argv + (LEN(args) + 1));
     r := failed();
     munmap(^U8(argv), size);
     return r;
@@ -1945,7 +1946,7 @@ end;
 proc waitFor(pid: INT; options: I32): (INT, Status, INT);
 var status, r: I32;
 begin
-    r := C.waitpid(I32(pid), ADR(status), options);
+    r := C.waitpid(I32(pid), SYSTEM.ADR(status), options);
     if r < 0 then return failed(), running, 0; end;
     if r = 0 then return 0, running, 0; end;
     if status & 7FH = 0 then return INT(r), exited, INT(status) shr 8 & 0FFH; end;
@@ -1991,7 +1992,7 @@ begin
     e := CAbi.errno();
     saved := e^;                                      (* as the code it stopped left it *)
     b[0] := U8(sig);
-    _ := C.write(sigWrite, ADR(b[0]), 1);
+    _ := C.write(sigWrite, SYSTEM.ADR(b[0]), 1);
     e^ := saved;
 end;
 
@@ -2000,9 +2001,9 @@ end;
 proc action(h: Handler; flags: INT): Sigaction;
 var a: Sigaction; p: ^Handler;
 begin
-    p := ^Handler(^U8(ADR(a)) + CAbi.saHandlerAt);
+    p := ^Handler(^U8(SYSTEM.ADR(a)) + CAbi.saHandlerAt);
     p^ := h;
-    setField(^U8(ADR(a)), CAbi.saFlagsAt, CAbi.saFlagsLen, flags);
+    setField(^U8(SYSTEM.ADR(a)), CAbi.saFlagsAt, CAbi.saFlagsLen, flags);
     return a;
 end;
 
@@ -2017,20 +2018,20 @@ end;
 (* Catches the signals sigs: they don't do what they would, but give
    their numbers on an fd, which a later catch adds to and gives again;
    or minus an errno. *)
-proc catch*(sigs: []INT): INT;
+proc catch*(sigs: []const INT): INT;
 var fds: [2]I32; act: Sigaction; i: INT;
 begin
     for i := 0 to LEN(sigs) - 1 do
         if not takable(sigs[i]) then return -22; end;    (* EINVAL *)
     end;
     if sigWrite = 0 then
-        if C.pipe2(ADR(fds[0]), CAbi.oNonblock | CAbi.oCloexec) # 0 then return failed(); end;
+        if C.pipe2(SYSTEM.ADR(fds[0]), CAbi.oNonblock | CAbi.oCloexec) # 0 then return failed(); end;
         sigRead := fds[0];
         sigWrite := fds[1];
     end;
     act := action(onSignal, CAbi.saRestart);
     for i := 0 to LEN(sigs) - 1 do
-        if C.sigaction(I32(sigs[i]), ^U8(ADR(act)), nil) # 0 then return failed(); end;
+        if C.sigaction(I32(sigs[i]), ^U8(SYSTEM.ADR(act)), nil) # 0 then return failed(); end;
     end;
     return INT(sigRead);
 end;
@@ -2050,7 +2051,7 @@ proc ignore*(sig: INT; yes: BOOL): INT;
 var act: Sigaction;
 begin
     if yes then act := action(Handler(1), 0); end;   (* SIG_IGN *)
-    if C.sigaction(I32(sig), ^U8(ADR(act)), nil) # 0 then return failed(); end;
+    if C.sigaction(I32(sig), ^U8(SYSTEM.ADR(act)), nil) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -2065,8 +2066,8 @@ end;
    program, perhaps while Out or Heap holds its lock. *)
 proc onNoted(sig: I32);
 begin
-    _ := XCHG(ADR(noted[sig]), 1);
-    _ := XCHG(ADR(broke), 1);
+    _ := XCHG(noted[sig], 1);
+    _ := XCHG(broke, 1);
 end;
 
 (* Takes the signal sig away from what it would do: it is noted, for
@@ -2079,7 +2080,7 @@ var act: Sigaction;
 begin
     if not takable(sig) then return -22; end;         (* EINVAL *)
     act := action(onNoted, 0);                        (* no SA_RESTART *)
-    if C.sigaction(I32(sig), ^U8(ADR(act)), nil) # 0 then return failed(); end;
+    if C.sigaction(I32(sig), ^U8(SYSTEM.ADR(act)), nil) # 0 then return failed(); end;
     return 0;
 end;
 
@@ -2088,7 +2089,7 @@ end;
 proc came*(sig: INT): BOOL;
 begin
     if (sig < 1) or (sig > CAbi.sigMax) then return false; end;
-    return XCHG(ADR(noted[sig]), 0) = 1;
+    return XCHG(noted[sig], 0) = 1;
 end;
 
 (* A copy of this program, which goes on from here: 0 in the copy, its
@@ -2279,7 +2280,7 @@ end;
 proc testShell;
 var
     r, w, fd, n, k, child, c, err, pty, sigs, mask, parent: INT; t: I64; st: Status; buf: [64]U8;
-    m, raw: Mode; soft, hard, s2, h2, user, system: I64; e: []U8; ok, path: BOOL;
+    m, raw: Mode; soft, hard, s2, h2, user, system: I64; e: []const U8; ok, path: BOOL;
 begin
     r, w := pipe();
     if w < 0 then exit(2); end;
@@ -2399,21 +2400,21 @@ begin
     random(x);
     random(y);
     if x[0..16] = y[0..16] then exit(2); end;
-    p := ^U8(ADR(s));
-    q := ^U8(ADR(s6)) + CAbi.sin6AddrAt;
-    if (inetAddr("10.0.0.255", 80, ADR(s)) # CAbi.sockaddrInLen) or (portOf(p) # 80)
+    p := ^U8(SYSTEM.ADR(s));
+    q := ^U8(SYSTEM.ADR(s6)) + CAbi.sin6AddrAt;
+    if (inetAddr("10.0.0.255", 80, SYSTEM.ADR(s)) # CAbi.sockaddrInLen) or (portOf(p) # 80)
             or (p[CAbi.sinAddrAt] # 10) or (p[CAbi.sinAddrAt + 2] # 0) or (p[CAbi.sinAddrAt + 3] # 255) then
         exit(2);
     end;
-    if (inetAddr("1:aBcd::ff", 258, ADR(s6)) # CAbi.sockaddrIn6Len) or (portOf(^U8(ADR(s6))) # 258)
+    if (inetAddr("1:aBcd::ff", 258, SYSTEM.ADR(s6)) # CAbi.sockaddrIn6Len) or (portOf(^U8(SYSTEM.ADR(s6))) # 258)
             or (q[1] # 1) or (q[2] # 0ABH) or (q[3] # 0CDH) or (q[14] # 0) or (q[15] # 0FFH) then
         exit(2);
     end;
-    q := ^U8(ADR(s6));
+    q := ^U8(SYSTEM.ADR(s6));
     for i := CAbi.sin6PortAt + 2 to CAbi.sin6AddrAt - 1 do    (* the flow, zero *)
         if q[i] # 0 then exit(2); end;
     end;
-    if (inetAddr("::", 0, ADR(s6)) # CAbi.sockaddrIn6Len) or (inetAddr("1:2:3:4:5:6:7:8", 0, ADR(s6)) # CAbi.sockaddrIn6Len) then exit(2); end;
+    if (inetAddr("::", 0, SYSTEM.ADR(s6)) # CAbi.sockaddrIn6Len) or (inetAddr("1:2:3:4:5:6:7:8", 0, SYSTEM.ADR(s6)) # CAbi.sockaddrIn6Len) then exit(2); end;
     if (connectTcp("1.2.3", 80) # -22) or (connectTcp("1.2.3.256", 80) # -22) or (connectTcp("1::2::3", 80) # -22)
             or (connectTcp("1:2:3:4:5:6:7:8:9", 80) # -22) or (connectTcp("1:", 80) # -22)
             or (connectTcp("12345::", 80) # -22) or (connectTcp("::1", 65536) # -22) then
@@ -2495,7 +2496,7 @@ end;
 (* The test of what a program asks of itself: a signal ignored or not,
    an environment variable unset or empty, and the processors. *)
 proc testProcess;
-var v: []U8; found: BOOL;
+var v: []const U8; found: BOOL;
 begin
     if (ignore(sigUsr1, true) # 0) or not ignored(sigUsr1) then exit(2); end;
     if (ignore(sigUsr1, false) # 0) or ignored(sigUsr1) then exit(2); end;
@@ -2636,7 +2637,7 @@ end;
    and closed; a directory made, listed and emptied; no terminal; a
    socket, sent to after its end; programs; time and the network. *)
 proc main*;
-var free, total: I64; fd, n, err, w, h, l, c, a, m, k, o: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i, j: Info; d: Dir; name: []U8; ok: BOOL;
+var free, total: I64; fd, n, err, w, h, l, c, a, m, k, o: INT; got: [1]INT; buf: [16]U8; p, q: ^U8; i, j: Info; d: Dir; name: []const U8; ok: BOOL;
 begin
     testPoll();
     fd := create("/tmp/raz-sys-test");

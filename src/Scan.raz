@@ -51,7 +51,7 @@ const
     MaxStr* = 65536;
     NumWords = 44;
     NumOps = 28;
-    words: [NumWords][]U8 = [
+    words: [NumWords][]const U8 = [
         "and", "begin", "break", "by", "code", "const", "continue", "defer", "div", "do",
         "else", "elsif", "end", "extern", "for", "forward", "if", "import",
         "in", "link", "match", "mod", "module", "not", "of", "or", "packed",
@@ -59,7 +59,7 @@ const
         "to", "try", "type", "until", "var", "variant", "VOLATILE", "while",
         "xor"];
     (* sPlus to sBlank *)
-    ops: [NumOps][]U8 = [
+    ops: [NumOps][]const U8 = [
         "+", "-", "*", "/", "=", "#", "<", "<=", ">", ">=",
         ":=", ":", ";", ",", ".", "..", "...",
         "(", ")", "[", "]", "{", "}", "^", "&", "~", "|", "_"];
@@ -107,7 +107,7 @@ begin
 end;
 
 (* The bytes of the string just read, without the zero after them *)
-proc strBytes*: []U8;
+proc strBytes*: []const U8;
 begin
     return sbuf[0..slen];
 end;
@@ -228,7 +228,7 @@ begin
 end;
 
 (* The name n, which stays as it is *)
-proc nameOf*(n: INT): []U8;
+proc nameOf*(n: INT): []const U8;
 begin
     return namePtr[n][0..nameLen[n]];
 end;
@@ -396,19 +396,19 @@ end;
 
 (* An error at p, shown: the parser returns Failed, which try passes up
    to where it goes on. *)
-proc markAt*(p: Diag.Pos; msg: []U8): ERROR;
+proc markAt*(p: Diag.Pos; msg: []const U8): ERROR;
 begin
     Diag.error(p, msg);
     return Failed;
 end;
 
-proc mark*(msg: []U8): ERROR;
+proc mark*(msg: []const U8): ERROR;
 begin
     return markAt(tokPos(), msg);
 end;
 
 (* markAt, with a line of help after the message. *)
-proc markHelp*(p: Diag.Pos; msg, hint: []U8): ERROR;
+proc markHelp*(p: Diag.Pos; msg, hint: []const U8): ERROR;
 begin
     Diag.error(p, msg);
     Diag.help(hint);
@@ -417,21 +417,21 @@ end;
 
 (* An error in the text at bytes a to b of the file being read, which
    stops the compiler: past it, the symbols can't be trusted. *)
-proc markBytes(a, b: INT; msg: []U8);
+proc markBytes(a, b: INT; msg: []const U8);
 begin
     Diag.setQuiet(false);
     Diag.error({f: cur.f, a: a, b: b}, msg);
     Diag.finish;
 end;
 
-proc lexError(msg: []U8);
+proc lexError(msg: []const U8);
 begin
     markBytes(cur.tokPos, cur.pos, msg);
 end;
 
 (* The n characters at the scanner are how another language writes t:
    an error, but reading goes on as if t were written. *)
-proc slip(n: INT; t: Sym; msg: []U8);
+proc slip(n: INT; t: Sym; msg: []const U8);
 begin
     if not skipping then Diag.error({f: cur.f, a: cur.pos, b: cur.pos + n}, msg); end;
     INC(cur.pos, n);
@@ -439,7 +439,7 @@ begin
 end;
 
 (* How an operator or reserved word is written, quoted, for messages. *)
-proc symText*(s: Sym): []U8;
+proc symText*(s: Sym): []const U8;
 begin
     if (s >= sPlus) and (s <= sBlank) then
         return Diag.say("\"{}\"", [Fmt.str(ops[INT(s) - INT(sPlus)])]);
@@ -449,7 +449,7 @@ end;
 
 (* The current symbol, for "expected ..., found ...": a name as it is,
    a literal by its kind, an operator or reserved word quoted. *)
-proc found*: []U8;
+proc found*: []const U8;
 begin
     match tok of
     | sIdent: return nameOf(id);
@@ -487,7 +487,7 @@ begin
 end;
 
 (* Reads the file at path to scan it; "" if it can, else why not *)
-proc open*(path: []U8): []U8;
+proc open*(path: []const U8): []const U8;
 var fd, n, got, r, err: INT; info: Sys.Info;
 begin
     info, err := Sys.info(path);
@@ -619,7 +619,7 @@ begin
 end;
 
 (* The text of the file from byte a up to but not including b *)
-proc text(a, b: INT): []U8;
+proc text(a, b: INT): []const U8;
 begin
     return Diag.source({f: cur.f, a: a, b: b});
 end;
@@ -817,7 +817,7 @@ end;
 
 (* s is digits, a point, digits, and maybe E, a sign and digits. False if
    the value is past the largest F64; one below the smallest is 0. *)
-proc readReal(s: []U8): (F64, BOOL);
+proc readReal(s: []const U8): (F64, BOOL);
 var
     num, den, d: Big; i, digits, e, ex: INT; neg, half, sticky: BOOL;
     q, b: U64; x: F64; bits: ^F64;
@@ -1165,5 +1165,5 @@ begin
     nameHash := ^INT(grab(nameCap * SIZE(INT)));
     tableMask := 2 * nameCap - 1;
     table := words64(tableMask + 1);
-    for i := 0 to NumWords - 1 do _ := intern(ADR(words[i][0]), LEN(words[i])); end;
+    for i := 0 to NumWords - 1 do _ := intern(PTR(words[i]), LEN(words[i])); end;
 end Scan.

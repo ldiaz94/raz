@@ -11,6 +11,12 @@ change must break programs, the old form stays for one minor version
 beside the new; the release notes list the old forms, and the next
 version removes them. Nothing marks an old form in the source.
 
+A procedure that only reads a slice takes a `[]const T`, so that a string,
+a constant and any other slice fit it; what a procedure hands back from
+the environment, the arguments or a directory is a `[]const U8`. A
+module that reaches memory, as the library's lower modules do, says
+`import SYSTEM` (section 3 of the first volume).
+
 Modules written in raz, in the compiler's `lib` directory:
 
 | Module | What |
@@ -26,7 +32,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
 | `Heap` | a general allocator, `Heap.heap`, safe to call from several threads; freeing a block twice, or one it never gave out, stops the program; `RAZ_HEAP=debug` finds writes past a block's end and after free |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
-| `Str` | operations on `[]U8` strings: comparing, hashing, finding, trimming and cutting, case, joining and replacing, UTF-8, numbers to and from text |
+| `Str` | operations on strings, `[]const U8`: comparing, hashing, finding, trimming and cutting, case, joining and replacing, UTF-8, numbers to and from text |
 | `Bytes` | searches of bytes, many at a time: `index`, `last`, `count` and `find` in a `[]U8`; one file per target where the target has instructions for it |
 | `Buf` | a growable byte buffer |
 | `Fmt` | formatted output: `Fmt.print("{} of {}\n", [Fmt.int(n), Fmt.real(x, 2)])`, into a `Buf` with `Fmt.write`, or to standard error with `Fmt.eprint` |
@@ -58,7 +64,7 @@ const Full*: ERROR = "too many procedures to run at exit";
 proc atExit*(p: proc): ERROR;   (* p run when the program ends by exit *)
 proc exit*(status: INT);        (* the atExit procedures, the last first, then the end *)
 proc exitStatus*: INT;          (* the status exit was given, in an atExit procedure; 0 before *)
-proc stop*(msg: []U8);          (* msg, and a line feed, on standard error, then exit with status 2 *)
+proc stop*(msg: []const U8);          (* msg, and a line feed, on standard error, then exit with status 2 *)
 proc trace*;                    (* the calls under way, and their variables, on standard error *)
 ```
 
@@ -182,7 +188,7 @@ sends it again until `t` says it has stopped.
 
 ```
 module Out;
-proc str*(s: []U8);
+proc str*(s: []const U8);
 proc char*(c: U8);
 proc ln*;                        (* a line feed *)
 proc int*(n: I64);               (* n in decimal *)
@@ -276,11 +282,11 @@ type
     Kind* = (unknown, isFile, isDir, isLink, isOther);   (* what a directory says a name in it is *)
     Dir* = record ... end;   (* an open directory; its fields are the target's *)
     Program* = record
-        path*: []U8;
-        args*: [][]U8;      (* the first is its name *)
-        env*: [][]U8;       (* NAME=value, each added to this program's environment *)
+        path*: []const U8;
+        args*: [][]const U8;      (* the first is its name *)
+        env*: [][]const U8;       (* NAME=value, each added to this program's environment *)
         onlyEnv*: BOOL;     (* env is its whole environment *)
-        dir*: []U8;         (* its working directory; "" for this program's *)
+        dir*: []const U8;         (* its working directory; "" for this program's *)
         fds*: [3]INT;       (* its standard input, output and error; 0 for this program's own *)
         group*: INT;        (* the process group it joins: 0 for this program's, -1 a new one it leads *)
         foreground*: BOOL;  (* its group takes the terminal on standard input *)
@@ -304,12 +310,12 @@ type
         ready*: BOOL;         (* set by poll *)
     end;
 
-proc write*(fd: INT; s: []U8): INT;     (* the bytes written *)
+proc write*(fd: INT; s: []const U8): INT;     (* the bytes written *)
 proc read*(fd: INT; buf: []U8): INT;    (* the bytes read; 0 at the end *)
-proc open*(path: []U8; how: Accesses): INT;   (* its fd, closed on exec *)
-proc openMode*(path: []U8; how: Accesses; mode: INT): INT;   (* open, a file it makes given mode *)
-proc openRead*(path: []U8): INT;         (* open(path, {reading}) *)
-proc create*(path: []U8): INT;           (* open(path, {writing, creating, truncating}) *)
+proc open*(path: []const U8; how: Accesses): INT;   (* its fd, closed on exec *)
+proc openMode*(path: []const U8; how: Accesses; mode: INT): INT;   (* open, a file it makes given mode *)
+proc openRead*(path: []const U8): INT;         (* open(path, {reading}) *)
+proc create*(path: []const U8): INT;           (* open(path, {writing, creating, truncating}) *)
 proc seek*(fd: INT; pos: I64; fromEnd: BOOL): I64;  (* the new position *)
 proc position*(fd: INT): I64;            (* where the next read or write is *)
 proc truncate*(fd: INT; size: I64): INT; (* the file made size bytes long *)
@@ -331,26 +337,26 @@ proc munmap*(p: ^U8; size: INT);
 proc yield*;                             (* the processor given to another thread *)
 proc exit*(status: INT);                 (* the program ended at once, without Rt's atExit *)
 
-proc rename*(old, new: []U8): INT;       (* replaces what new names *)
-proc remove*(path: []U8): INT;           (* a file, not a directory *)
-proc removeDir*(path: []U8): INT;        (* an empty directory *)
-proc makeDir*(path: []U8): INT;          (* readable by all, writable by its owner *)
-proc makeDirMode*(path: []U8; mode: INT): INT;   (* makeDir, given mode *)
-proc chmod*(path: []U8; mode: INT): INT;
-proc chown*(path: []U8; uid, gid: INT): INT;   (* its owner and group; -1 leaves one as it is *)
-proc makeFifo*(path: []U8; mode: INT): INT;    (* a named pipe, given mode *)
-proc setTime*(path: []U8; sec: I64; nsec: INT): INT;   (* its mtime, and the time it was read, made sec and nsec *)
-proc access*(path: []U8; how: Accesses): INT;   (* 0 if this user may read, write or execute it *)
+proc rename*(old, new: []const U8): INT;       (* replaces what new names *)
+proc remove*(path: []const U8): INT;           (* a file, not a directory *)
+proc removeDir*(path: []const U8): INT;        (* an empty directory *)
+proc makeDir*(path: []const U8): INT;          (* readable by all, writable by its owner *)
+proc makeDirMode*(path: []const U8; mode: INT): INT;   (* makeDir, given mode *)
+proc chmod*(path: []const U8; mode: INT): INT;
+proc chown*(path: []const U8; uid, gid: INT): INT;   (* its owner and group; -1 leaves one as it is *)
+proc makeFifo*(path: []const U8; mode: INT): INT;    (* a named pipe, given mode *)
+proc setTime*(path: []const U8; sec: I64; nsec: INT): INT;   (* its mtime, and the time it was read, made sec and nsec *)
+proc access*(path: []const U8; how: Accesses): INT;   (* 0 if this user may read, write or execute it *)
 proc umask*(mask: INT): INT;             (* the bits taken from every file made; the mask it was *)
-proc symlink*(target, path: []U8): INT;  (* path made a link to target *)
-proc readLink*(path: []U8): ([]U8, INT); (* what the link names, good until the next call *)
-proc info*(path: []U8): (Info, INT);     (* following a symbolic link *)
-proc linkInfo*(path: []U8): (Info, INT); (* the link itself *)
+proc symlink*(target, path: []const U8): INT;  (* path made a link to target *)
+proc readLink*(path: []const U8): ([]const U8, INT); (* what the link names, good until the next call *)
+proc info*(path: []const U8): (Info, INT);     (* following a symbolic link *)
+proc linkInfo*(path: []const U8): (Info, INT); (* the link itself *)
 proc infoOf*(fd: INT): (Info, INT);      (* the open file's *)
-proc space*(path: []U8): (I64, I64, INT);   (* the bytes free and in all on path's file system *)
+proc space*(path: []const U8): (I64, I64, INT);   (* the bytes free and in all on path's file system *)
 
-proc openDir*(var d: Dir; path: []U8): INT;
-proc nextEntry*(var d: Dir): ([]U8, BOOL);  (* a name, good until the next call; false at the end *)
+proc openDir*(var d: Dir; path: []const U8): INT;
+proc nextEntry*(var d: Dir): ([]const U8, BOOL);  (* a name, good until the next call; false at the end *)
 proc entryKind*(const d: Dir): Kind;        (* what the name nextEntry gave last is *)
 proc closeDir*(var d: Dir);
 
@@ -360,27 +366,27 @@ proc getMode*(fd: INT): (Mode, INT);     (* the terminal's modes, to set again *
 proc setMode*(fd: INT; m: Mode): INT;    (* once what was written to it is sent *)
 proc termSize*(fd: INT): (INT, INT);   (* columns and rows; 80 and 24 if unknown *)
 proc ready*(fd, ms: INT): BOOL;          (* something to read within ms, or ever if ms < 0 *)
-proc readyOf*(fds: []INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
-proc readyFor*(reads, writes: []INT; ms: INT): INT;   (* readyOf, and the first of writes with room to write *)
+proc readyOf*(fds: []const INT; ms: INT): INT;   (* the first of fds with something to read within ms, or -1 *)
+proc readyFor*(reads, writes: []const INT; ms: INT): INT;   (* readyOf, and the first of writes with room to write *)
 proc poll*(var fds: []Poll; ms: INT): INT;   (* sets each fd's ready, as each read and write say; the number ready, 0 on a timeout, or minus an errno *)
 proc setBlocking*(fd: INT; yes: BOOL): INT;   (* if not yes, a read or write that would wait is -11 at once *)
 proc blocking*(fd: INT): INT;            (* 1 if reads and writes wait, 0 if they are -11 at once, or minus an errno *)
 
-proc errorText*(err: INT): []U8;   (* what errno err, or minus it, means, as C's strerror says *)
+proc errorText*(err: INT): []const U8;   (* what errno err, or minus it, means, as C's strerror says *)
 
-proc env*(name: []U8): []U8;       (* the environment variable's value; "" if unset *)
-proc findEnv*(name: []U8): ([]U8, BOOL);   (* the value and true; "" and false if unset, "" and true if empty *)
-proc envAt*(i: INT): ([]U8, BOOL); (* the environment's ith NAME=value, from 0; false past the last *)
-proc setEnv*(name, value: []U8): INT;   (* name set to value, for env and the programs started *)
-proc workDir*: ([]U8, INT);        (* the working directory, good until the next call *)
-proc setWorkDir*(path: []U8): INT;
+proc env*(name: []const U8): []const U8;       (* the environment variable's value; "" if unset *)
+proc findEnv*(name: []const U8): ([]const U8, BOOL);   (* the value and true; "" and false if unset, "" and true if empty *)
+proc envAt*(i: INT): ([]const U8, BOOL); (* the environment's ith NAME=value, from 0; false past the last *)
+proc setEnv*(name, value: []const U8): INT;   (* name set to value, for env and the programs started *)
+proc workDir*: ([]const U8, INT);        (* the working directory, good until the next call *)
+proc setWorkDir*(path: []const U8): INT;
 
 proc pipe*: (INT, INT);            (* the fd to read and the fd to write; or minus an errno and -1 *)
 proc openPty*: INT;                (* a pseudo-terminal: the fd of its controlling side *)
 proc setTermSize*(fd, cols, rows: INT): INT;   (* the size its programs are told of *)
 proc spawn*(p: Program): INT;      (* a program started: its process id *)
 proc exec*(p: Program): INT;       (* p run in this program's place; returns only if it can't *)
-proc execve*(path: []U8; args, env: [][]U8): INT;   (* as the kernel's execve: no search *)
+proc execve*(path: []const U8; args, env: [][]const U8): INT;   (* as the kernel's execve: no search *)
 proc fork*: INT;                   (* this program copied: 0 in the copy, its process id in this one *)
 proc setsid*: INT;                 (* a session of its own, led by this program: its process id, or minus an errno *)
 proc wait*(pid: INT; block: BOOL): (INT, Status, INT);   (* which program, how, and its code *)
@@ -393,13 +399,13 @@ proc foreground*(fd, group: INT): INT;   (* the terminal on fd gives its keys to
 proc foregroundOf*(fd: INT): INT;  (* the group the terminal on fd gives its keys to *)
 proc uid*: INT;                    (* the user this program runs as *)
 proc euid*: INT;                   (* the user whose rights it has: 0 is root *)
-proc hostName*: ([]U8, INT);       (* this machine's name, good until the next call *)
+proc hostName*: ([]const U8, INT);       (* this machine's name, good until the next call *)
 proc processors*: INT;             (* the processors this program may run on, at least 1 *)
 proc cpuTime*(children: BOOL): (I64, I64);   (* ns used in the program and in the system; or by its children *)
 proc limit*(which: INT): (I64, I64, INT);    (* the soft limit and the hard; -1 for none *)
 proc setLimit*(which: INT; soft, hard: I64): INT;
 
-proc catch*(sigs: []INT): INT;     (* sigs caught: an fd to wait on *)
+proc catch*(sigs: []const INT): INT;     (* sigs caught: an fd to wait on *)
 proc caught*(fd: INT): INT;        (* the next signal caught, or 0 if none is waiting *)
 proc ignore*(sig: INT; yes: BOOL): INT;  (* sig ignored; or, if not yes, back to what it does at first *)
 proc ignored*(sig: INT): BOOL;     (* whether sig does nothing now *)
@@ -411,23 +417,23 @@ proc now*: I64;                    (* nanoseconds since 1970-01-01, UTC *)
 proc sleep*(ms: INT);
 proc random*(b: []U8);             (* b filled with random bytes; stops the program if it can't be *)
 
-proc connect*(path: []U8): INT;    (* a stream socket, connected to the Unix socket at path: its fd *)
-proc connectTcp*(addr: []U8; port: INT): INT;   (* addr an IPv4 or IPv6 address, as numbers *)
-proc connectUdp*(addr: []U8; port: INT): INT;
-proc listen*(path: []U8): INT;     (* a Unix socket made at path, taking connections *)
-proc listenTcp*(addr: []U8; port: INT): INT;
+proc connect*(path: []const U8): INT;    (* a stream socket, connected to the Unix socket at path: its fd *)
+proc connectTcp*(addr: []const U8; port: INT): INT;   (* addr an IPv4 or IPv6 address, as numbers *)
+proc connectUdp*(addr: []const U8; port: INT): INT;
+proc listen*(path: []const U8): INT;     (* a Unix socket made at path, taking connections *)
+proc listenTcp*(addr: []const U8; port: INT): INT;
 proc accept*(fd: INT): INT;        (* the next connection, waiting for one *)
-proc send*(fd: INT; s: []U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
-proc sendNow*(fd: INT; s: []U8): INT;   (* send, but -11 (EAGAIN) where it would wait *)
-proc connectTcpWithin*(addr: []U8; port, ms: INT): INT;   (* connectTcp, or -110 (ETIMEDOUT) after ms *)
-proc listenUdp*(addr: []U8; port: INT): INT;   (* a socket of datagrams on port at addr *)
+proc send*(fd: INT; s: []const U8): INT; (* write, to a socket: -32 (EPIPE), not a signal, if it is closed *)
+proc sendNow*(fd: INT; s: []const U8): INT;   (* send, but -11 (EAGAIN) where it would wait *)
+proc connectTcpWithin*(addr: []const U8; port, ms: INT): INT;   (* connectTcp, or -110 (ETIMEDOUT) after ms *)
+proc listenUdp*(addr: []const U8; port: INT): INT;   (* a socket of datagrams on port at addr *)
 proc receive*(fd: INT; buf: []U8): (INT, Peer);   (* the next datagram, in buf, and who sent it *)
-proc reply*(fd: INT; peer: Peer; s: []U8): INT;   (* s, as one datagram, to peer *)
+proc reply*(fd: INT; peer: Peer; s: []const U8): INT;   (* s, as one datagram, to peer *)
 proc localPort*(fd: INT): INT;     (* the port the socket fd is bound to *)
 proc closeWrite*(fd: INT): INT;    (* no more writing to the socket fd; the other end reads an end *)
 proc peer*(fd: INT): (Remote, INT);   (* who is at the other end of the connected socket fd *)
 proc socketPair*: (INT, INT, INT); (* two connected stream sockets, and 0 *)
-proc sendFds*(fd: INT; s: []U8; fds: []INT): INT;   (* send, and with it fds, to a Unix socket *)
+proc sendFds*(fd: INT; s: []const U8; fds: []const INT): INT;   (* send, and with it fds, to a Unix socket *)
 proc receiveFds*(fd: INT; buf: []U8; fds: []INT): (INT, INT);   (* read, and the fds that came with it *)
 
 proc memFile*(size: INT): INT;     (* a file of size zero bytes, in memory, with no name: its fd *)
@@ -787,22 +793,22 @@ is ready for either; the 64 it looks at are `reads`, then `writes`.
 
 ```
 module Str;
-proc cmp*(a, b: []U8): INT;           (* -1, 0 or 1 as a sorts before, with or after b, byte by byte *)
-proc eq*(a, b: []U8): BOOL;
-proc eqFold*(a, b: []U8): BOOL;       (* eq, an ASCII letter's capital and small the same *)
-proc copy*(a: ^Mem.Allocator; s: []U8): ([]U8, BOOL);   (* s's bytes in memory from a; false if a has none *)
+proc cmp*(a, b: []const U8): INT;           (* -1, 0 or 1 as a sorts before, with or after b, byte by byte *)
+proc eq*(a, b: []const U8): BOOL;
+proc eqFold*(a, b: []const U8): BOOL;       (* eq, an ASCII letter's capital and small the same *)
+proc copy*(a: ^Mem.Allocator; s: []const U8): ([]U8, BOOL);   (* s's bytes in memory from a; false if a has none *)
 proc free*(a: ^Mem.Allocator; s: []U8);                 (* what copy gave from a, given back; "" is none *)
-proc hash*(s: []U8): U64;             (* FNV-1a, 64 bits *)
-proc find*(s, sub: []U8): INT;        (* where sub first starts in s, or -1 *)
-proc findFrom*(s, sub: []U8; from: INT): INT;   (* where sub first starts in s at or after from, or -1 *)
-proc findLast*(s, sub: []U8): INT;    (* where sub last starts in s, or -1 *)
-proc hasPrefix*(s, p: []U8): BOOL;
-proc hasSuffix*(s, x: []U8): BOOL;
-proc trim*(s: []U8): []U8;            (* s without the spaces at either end *)
-proc trimLeft*(s: []U8): []U8;        (* s without the spaces at its start *)
-proc trimRight*(s: []U8): []U8;       (* s without the spaces at its end *)
-proc cut*(s, sep: []U8): ([]U8, []U8, BOOL);   (* what comes before the first sep, and after it *)
-proc field*(s: []U8): ([]U8, []U8);   (* the first run of bytes in s that aren't spaces, and what follows it *)
+proc hash*(s: []const U8): U64;             (* FNV-1a, 64 bits *)
+proc find*(s, sub: []const U8): INT;        (* where sub first starts in s, or -1 *)
+proc findFrom*(s, sub: []const U8; from: INT): INT;   (* where sub first starts in s at or after from, or -1 *)
+proc findLast*(s, sub: []const U8): INT;    (* where sub last starts in s, or -1 *)
+proc hasPrefix*(s, p: []const U8): BOOL;
+proc hasSuffix*(s, x: []const U8): BOOL;
+proc trim*(s: []const U8): []const U8;            (* s without the spaces at either end *)
+proc trimLeft*(s: []const U8): []const U8;        (* s without the spaces at its start *)
+proc trimRight*(s: []const U8): []const U8;       (* s without the spaces at its end *)
+proc cut*(s, sep: []const U8): ([]const U8, []const U8, BOOL);   (* what comes before the first sep, and after it *)
+proc field*(s: []const U8): ([]const U8, []const U8);   (* the first run of bytes in s that aren't spaces, and what follows it *)
 proc isDigit*(c: U8): BOOL;           (* 0 to 9 *)
 proc isLetter*(c: U8): BOOL;          (* A to Z, a to z *)
 proc isSpace*(c: U8): BOOL;           (* a space, as trim takes it *)
@@ -810,28 +816,28 @@ proc isPunct*(c: U8): BOOL;           (* printable, and neither a letter, a digi
 proc hexVal*(c: U8): INT;             (* c's value as a hexadecimal digit, or -1 *)
 proc lower*(s: []U8);                 (* s's ASCII capitals made small, in place *)
 proc upper*(s: []U8);                 (* s's ASCII small letters made capitals, in place *)
-proc join*(var b: Buf.Buf; parts: [][]U8; sep: []U8);   (* the parts added to b, sep between each two *)
-proc replace*(var b: Buf.Buf; s, old, new: []U8);       (* s added to b, with new for each old in it *)
+proc join*(var b: Buf.Buf; parts: [][]const U8; sep: []const U8);   (* the parts added to b, sep between each two *)
+proc replace*(var b: Buf.Buf; s, old, new: []const U8);       (* s added to b, with new for each old in it *)
 proc encode*(c: I32): ([4]U8, INT);   (* c in UTF-8: its bytes, and how many *)
-proc decode*(s: []U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
-proc decodeLast*(s: []U8): (I32, INT);   (* the character s ends with, and its length in bytes *)
-proc next*(s: []U8; i: INT): (I32, INT);  (* the character at i, and where the next starts; -1 at the end *)
-proc valid*(s: []U8): BOOL;           (* s is UTF-8, every character rightly spelled *)
-proc chars*(s: []U8): INT;            (* the characters in s, as decode reads them *)
-proc toInt*(s: []U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
-proc toHex*(s: []U8): (U64, BOOL);    (* s, in hexadecimal; false if it isn't a number a U64 holds *)
-proc toU64*(s: []U8): (U64, BOOL);    (* s, decimal digits only; false if it isn't one, or a U64 can't hold it *)
-proc fromC*(p: ^U8): []U8;            (* the bytes at p up to its zero byte, not copied; "" for nil *)
-proc toC*(s, out: []U8): ^U8;         (* s copied into out with a zero byte after it, which holds LEN(s) + 1 bytes at least: PTR(out) *)
+proc decode*(s: []const U8): (I32, INT);    (* the character s starts with, and its length in bytes *)
+proc decodeLast*(s: []const U8): (I32, INT);   (* the character s ends with, and its length in bytes *)
+proc next*(s: []const U8; i: INT): (I32, INT);  (* the character at i, and where the next starts; -1 at the end *)
+proc valid*(s: []const U8): BOOL;           (* s is UTF-8, every character rightly spelled *)
+proc chars*(s: []const U8): INT;            (* the characters in s, as decode reads them *)
+proc toInt*(s: []const U8): (I64, BOOL);    (* s, in decimal; false if it isn't a number an I64 holds *)
+proc toHex*(s: []const U8): (U64, BOOL);    (* s, in hexadecimal; false if it isn't a number a U64 holds *)
+proc toU64*(s: []const U8): (U64, BOOL);    (* s, decimal digits only; false if it isn't one, or a U64 can't hold it *)
+proc fromC*(p: ^U8): []const U8;            (* the bytes at p up to its zero byte, not copied; "" for nil *)
+proc toC*(s: []const U8; out: []U8): ^U8;         (* s copied into out with a zero byte after it, which holds LEN(s) + 1 bytes at least: PTR(out) *)
 const Base64*, Base64Url*;            (* the digits of RFC 4648, sections 4 and 5 *)
-proc base64With*(s, out, alphabet: []U8; pad: BOOL): INT;   (* s in base64 with alphabet's 64 digits into out, which holds base64Size(LEN(s)) bytes at least, padded with = if pad: the bytes written *)
-proc unbase64With*(s, out, alphabet: []U8; pad: BOOL): (INT, BOOL);   (* s, base64 as base64With wrote it, into out, which holds (LEN(s) + 3) div 4 * 3 bytes at least: the bytes written; false if s is not that *)
+proc base64With*(s: []const U8; out: []U8; alphabet: []const U8; pad: BOOL): INT;   (* s in base64 with alphabet's 64 digits into out, which holds base64Size(LEN(s)) bytes at least, padded with = if pad: the bytes written *)
+proc unbase64With*(s: []const U8; out: []U8; alphabet: []const U8; pad: BOOL): (INT, BOOL);   (* s, base64 as base64With wrote it, into out, which holds (LEN(s) + 3) div 4 * 3 bytes at least: the bytes written; false if s is not that *)
 proc base64Size*(n: INT): INT;        (* the bytes base64 makes of n bytes: 4 for each 3, or part of 3 *)
-proc base64*(s, out: []U8): INT;      (* s in base64 into out, which holds base64Size(LEN(s)) bytes at least: the bytes written *)
-proc unbase64*(s, out: []U8): (INT, BOOL);   (* s, base64, into out, which holds LEN(s) div 4 * 3 bytes at least: the bytes written; false if s is not base64 *)
+proc base64*(s: []const U8; out: []U8): INT;      (* s in base64 into out, which holds base64Size(LEN(s)) bytes at least: the bytes written *)
+proc unbase64*(s: []const U8; out: []U8): (INT, BOOL);   (* s, base64, into out, which holds LEN(s) div 4 * 3 bytes at least: the bytes written; false if s is not base64 *)
 proc fromInt*(n: I64): ([20]U8, INT); (* n in decimal: its bytes, and how many *)
-proc le*(s: []U8): U64;               (* s, at most 8 bytes, the first the lowest *)
-proc be*(s: []U8): U64;               (* s, at most 8 bytes, the first the highest *)
+proc le*(s: []const U8): U64;               (* s, at most 8 bytes, the first the lowest *)
+proc be*(s: []const U8): U64;               (* s, at most 8 bytes, the first the highest *)
 proc putLE*(s: []U8; v: U64);         (* v into s, the lowest byte first *)
 proc putBE*(s: []U8; v: U64);         (* v into s, the highest byte first *)
 
@@ -840,7 +846,7 @@ type Buf* = record len*: INT; ... end;
 proc init*(var b: Buf; a: ^Mem.Allocator);
 proc room*(var b: Buf; n: INT): BOOL;    (* room for n more bytes; false if the allocator has none *)
 proc add*(var b: Buf; c: U8);
-proc str*(var b: Buf; s: []U8);
+proc str*(var b: Buf; s: []const U8);
 proc spare*(var b: Buf; n: INT): []U8;   (* room for n more bytes, and those bytes, to fill *)
 proc bytes*(const b: Buf): []U8;         (* what it holds, until it next grows *)
 proc cut*(var b: Buf; n: INT);           (* only the first n bytes kept, its memory kept *)
@@ -853,17 +859,17 @@ type Arg* = variant
     uint(u: U64);
     hex(h: U64);
     lowHex(h: U64);
-    str(s: []U8);
+    str(s: []const U8);
     char(c: U8);
     bool(b: BOOL);
     real(r: F64; places: INT);
 end;
 const ShortMost* = 24;                      (* the longest Fmt.short *)
 proc short*(x: F64; var out: [ShortMost]U8): []U8; (* x in the fewest digits that read back, in out *)
-proc print*(f: []U8; args: []Arg);              (* to standard output *)
-proc eprint*(f: []U8; args: []Arg);             (* to standard error, once Out is flushed *)
-proc write*(var b: Buf.Buf; f: []U8; args: []Arg); (* added to b *)
-proc into*(out: []U8; f: []U8; args: []Arg): (INT, BOOL); (* into out: the bytes, and false if cut short *)
+proc print*(f: []const U8; args: []const Arg);              (* to standard output *)
+proc eprint*(f: []const U8; args: []const Arg);             (* to standard error, once Out is flushed *)
+proc write*(var b: Buf.Buf; f: []const U8; args: []const Arg); (* added to b *)
+proc into*(out: []U8; f: []const U8; args: []const Arg): (INT, BOOL); (* into out: the bytes, and false if cut short *)
 
 module List(T);
 type
@@ -927,7 +933,7 @@ proc bits*(x: F64): U64;              (* the bits of x, as IEEE 754 lays them ou
 proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
 proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
 proc divMod*(hi, lo, d: U64): (U64, U64); (* hi, lo divided by d: the quotient and the remainder; hi < d *)
-proc toReal*(s: []U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn't one *)
+proc toReal*(s: []const U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn't one *)
 ```
 
 A `Buf`, a `List`, a `Map` and a `Vec` take their memory from the
@@ -946,7 +952,7 @@ element off, keeping the memory. `push`, `add` and `resize` stop the program, as
 room; `room` asks first: `import Lines := Vec([]U8);`. `Fmt`'s format takes the next argument at each
 `{}`; `{{` and `}}` stand for `{` and `}`. A `Map` hashes and
 compares its keys with the procedures it is given:
-`import Count := Map([]U8, INT, Str.hash, Str.eq);`.
+`import Count := Map([]const U8, INT, Str.hash, Str.eq);`.
 
 `Str` reads and writes UTF-8. `encode` writes a character, of at most
 10FFFFH, in one to four bytes; a number that isn't one becomes FFFDH,
@@ -1101,37 +1107,37 @@ holds; a symbolic link is removed itself and never followed.
 
 ```
 module Files;
-proc arg*(i: INT): []U8;                     (* argument i; 0 is the program's name; "" if there is none *)
-proc read*(path: []U8; var b: Buf.Buf): BOOL;   (* the whole file added to b *)
-proc load*(path: []U8; var b: Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
-proc write*(path, data: []U8): BOOL;         (* the file made to hold data; false if it or its close failed *)
-proc writeAll*(fd: INT; s: []U8): INT;       (* all of s written to fd; 0, or minus the errno *)
-proc realPath*(path: []U8; var b: Buf.Buf): INT;   (* the absolute path of path, plain, added to b; 0, or minus an errno *)
-proc removeTree*(path: []U8): INT;           (* the file, or the directory and all in it, removed; 0, or minus the first errno *)
+proc arg*(i: INT): []const U8;                     (* argument i; 0 is the program's name; "" if there is none *)
+proc read*(path: []const U8; var b: Buf.Buf): BOOL;   (* the whole file added to b *)
+proc load*(path: []const U8; var b: Buf.Buf): INT;    (* as read: 0, or minus the errno that stopped it *)
+proc write*(path, data: []const U8): BOOL;         (* the file made to hold data; false if it or its close failed *)
+proc writeAll*(fd: INT; s: []const U8): INT;       (* all of s written to fd; 0, or minus the errno *)
+proc realPath*(path: []const U8; var b: Buf.Buf): INT;   (* the absolute path of path, plain, added to b; 0, or minus an errno *)
+proc removeTree*(path: []const U8): INT;           (* the file, or the directory and all in it, removed; 0, or minus the first errno *)
 
 module Opt;
 type
     Row* = variant
-        usage(scope, line: []U8);           (* a synopsis line, without "usage: " *)
-        sub(scope, name, help: []U8);       (* a subcommand *)
-        option(scope: []U8; letter: U8; long, value, help: []U8);
+        usage(scope, line: []const U8);           (* a synopsis line, without "usage: " *)
+        sub(scope, name, help: []const U8);       (* a subcommand *)
+        option(scope: []const U8; letter: U8; long, value, help: []const U8);
     end;
     Parser* = record
         letter*: U8;    (* the option just read *)
-        value*: []U8;   (* its value; "" for a flag *)
+        value*: []const U8;   (* its value; "" for a flag *)
         long*: BOOL;    (* it was written by its long name *)
-        spelt*: []U8;   (* as it was written, no dashes: "b" or "bar"; to read only *)
+        spelt*: []const U8;   (* as it was written, no dashes: "b" or "bar"; to read only *)
         ...
     end;
-proc init*(var p: Parser; name: []U8; table: []Row);   (* the arguments from 1 on, by table *)
+proc init*(var p: Parser; name: []const U8; table: []const Row);   (* the arguments from 1 on, by table *)
 proc next*(var p: Parser): BOOL;                      (* the next option; false when they end *)
-proc operand*(var p: Parser): ([]U8, BOOL);           (* the next operand; false when there are no more *)
+proc operand*(var p: Parser): ([]const U8, BOOL);           (* the next operand; false when there are no more *)
 proc at*(var p: Parser): INT;                         (* the argument operand would give next *)
-proc scope*(var p: Parser; name: []U8);               (* subcommand name's options, from the word after it *)
+proc scope*(var p: Parser; name: []const U8);               (* subcommand name's options, from the word after it *)
 proc number*(const p: Parser; lo, hi: I64): I64;      (* the value just read, a number from lo to hi *)
-proc refuse*(const p: Parser; wants: []U8);           (* the value just read refused, as number refuses one *)
-proc fail*(const p: Parser; text: []U8);              (* the program's own mistake *)
-proc misuse*(const p: Parser; text: []U8);            (* the program's own mistake, with the synopsis *)
+proc refuse*(const p: Parser; wants: []const U8);           (* the value just read refused, as number refuses one *)
+proc fail*(const p: Parser; text: []const U8);              (* the program's own mistake *)
+proc misuse*(const p: Parser; text: []const U8);            (* the program's own mistake, with the synopsis *)
 ```
 
 `Opt` reads a command line by the rules of the C library's `getopt`,
@@ -1268,7 +1274,7 @@ window's edge.
 ```
 module Width;
 proc width*(c: I32): INT;      (* the columns the character c takes: 0, 1 or 2 *)
-proc columns*(s: []U8): INT;   (* the columns the UTF-8 text s takes *)
+proc columns*(s: []const U8): INT;   (* the columns the UTF-8 text s takes *)
 ```
 
 A combining mark, a format character, a control and Hangul's medial
@@ -1336,9 +1342,9 @@ checks silenced.
 
 ```
 module Check;
-proc ok*(cond: BOOL; what: []U8);                 (* fails, saying what, when cond is false *)
-proc str*(what, got, want: []U8);                 (* fails when got is not want; shows both, escaped, and the byte where they differ *)
-proc int*(what: []U8; got, want: I64);            (* fails when got is not want; shows both *)
+proc ok*(cond: BOOL; what: []const U8);                 (* fails, saying what, when cond is false *)
+proc str*(what, got, want: []const U8);                 (* fails when got is not want; shows both, escaped, and the byte where they differ *)
+proc int*(what: []const U8; got, want: I64);            (* fails when got is not want; shows both *)
 proc mute*(on: BOOL);                             (* while on, checks say nothing and are not counted *)
 proc mutedFailures*(): INT;                       (* how many failed since mute was turned on *)
 ```
@@ -1384,7 +1390,7 @@ proc int*(var s: Source; lo, hi: I64): I64;        (* lo to hi, both included; z
 proc pick*(var s: Source; n: INT): INT;            (* 0 to n - 1; n at least 1 *)
 proc bool*(var s: Source): BOOL;
 proc bytes*(var s: Source; max: INT; var b: Buf.Buf);   (* b, emptied, then given at most max bytes *)
-proc check*(name: []U8; p: Property);              (* runs p on the saved cases, then on fresh ones *)
+proc check*(name: []const U8; p: Property);              (* runs p on the saved cases, then on fresh ones *)
 ```
 
 `check` runs `p` on each case saved in the directory `$PROP_DIR/name`

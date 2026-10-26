@@ -43,15 +43,15 @@ var
     cLinks: [3]Gen.Link;    (* C's symbols the entry point gives the library, in a program that uses C *)
     numCLinks: INT;
 
-proc say1(f, a: []U8): []U8;
+proc say1(f, a: []const U8): []const U8;
 begin
     return Diag.say(f, [Fmt.str(a)]);
 end;
 
 (* The number of the name s *)
-proc internStr(s: []U8): INT;
+proc internStr(s: []const U8): INT;
 begin
-    return Scan.intern(ADR(s[0]), LEN(s));
+    return Scan.intern(PTR(s), LEN(s));
 end;
 
 (* The modules the program uses: the main module, Rt, and every module
@@ -98,7 +98,7 @@ end;
    hexadecimal ones that start with a digit and end in H; and whether it
    is one, and fits in 64 bits. Past high(INT) it is taken as a UINT,
    whose bits it keeps: 0FFFFFFFF80000000H is -80000000H. *)
-proc address(s: []U8): (INT, BOOL);
+proc address(s: []const U8): (INT, BOOL);
 var i, n, d, radix: INT; v: UINT;
 begin
     n := LEN(s);
@@ -155,7 +155,7 @@ begin
 end;
 
 (* The module named n, or nil if the program has none *)
-proc moduleNamed(n: []U8): ^Sym.Module;
+proc moduleNamed(n: []const U8): ^Sym.Module;
 var m: ^Sym.Module;
 begin
     m := Parse.firstModule;
@@ -164,7 +164,7 @@ begin
 end;
 
 (* What the library module m, found by name, declares as n *)
-proc objIn(m: ^Sym.Module; n: []U8): ^Sym.Obj;
+proc objIn(m: ^Sym.Module; n: []const U8): ^Sym.Obj;
 var o: ^Sym.Obj;
 begin
     o := Sym.find(m^.scope, internStr(n));
@@ -181,7 +181,7 @@ begin
 end;
 
 (* The library is given C's symbol sym, in its variable v *)
-proc addCLink(sym: []U8; v: ^Sym.Obj);
+proc addCLink(sym: []const U8; v: ^Sym.Obj);
 begin
     cLinks[numCLinks].chunk := Chunk.externChunk(internStr(sym));
     cLinks[numCLinks].into := v^.chunk;
@@ -189,7 +189,7 @@ begin
 end;
 
 (* s as a C string, in memory that is never freed *)
-proc cstr(s: []U8): ^U8;
+proc cstr(s: []const U8): ^U8;
 var p: ^U8;
 begin
     p := Scan.grab(LEN(s) + 1);
@@ -203,7 +203,7 @@ end;
    from an unset one; Sys.env alone gives "" for both. The slices and
    their array live until the compiler exits, as command-line paths do. *)
 proc userLibraries;
-var path, s: []U8; dirs: ^[]U8; i, first, n: INT; more, found: BOOL;
+var path, s: []const U8; dirs: ^[]const U8; i, first, n: INT; more, found: BOOL;
 begin
     i := 0;
     repeat
@@ -219,7 +219,7 @@ begin
     if not found then
         s := Sys.env("HOME");
         if LEN(s) > 0 then
-            dirs := ^[]U8(Scan.grab(SIZE([]U8)));
+            dirs := ^[]const U8(Scan.grab(SIZE([]const U8)));
             dirs[0] := say1("{}/.raz/lib", s);
             Parse.setUserDirs(dirs[0..1]);
         end;
@@ -230,7 +230,7 @@ begin
     for i := 0 to LEN(path) - 1 do
         if path[i] = ':' then INC(n); end;
     end;
-    dirs := ^[]U8(Scan.grab(n * SIZE([]U8)));
+    dirs := ^[]const U8(Scan.grab(n * SIZE([]const U8)));
     n := 0;
     first := 0;
     for i := 0 to LEN(path) do
@@ -247,7 +247,7 @@ end;
 
 proc main*: INT;
 var
-    path, outPath, s: []U8; dir: []U8;
+    path, outPath, s: []const U8; dir: []const U8;
     i, first, entry, fd, last, errno, base: INT;
     m, rt, thread: ^Sym.Module; mainObj: ^Sym.Obj;
     run, noProfile, listing, dynamic, libcSaid, ok, bare: BOOL; err: ERROR;

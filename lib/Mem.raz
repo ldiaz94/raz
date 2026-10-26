@@ -2,6 +2,7 @@
    from the system. NEW(p, a) calls a^.alloc. *)
 module Mem;
 import Sys, Rt;
+import SYSTEM;
 
 type
     Allocator* = record

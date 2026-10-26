@@ -1,5 +1,5 @@
 module FirstUse;
-import Out, Str, Table := Table([]U8, Colour, Str.hash, Str.eq),
+import Out, Str, Table := Table([]const U8, Colour, Str.hash, Str.eq),
     Ints := Pile(I64), More := Pile(I64), Never := Loud(I64), Ones := Loud(U8);
 
 type Colour = (red, green, blue);

@@ -161,7 +161,7 @@ const
 (* end of the tables *)
 
 (* Whether c is in one of the ranges of t, by halving. *)
-proc within(t: []I32; c: I32): BOOL;
+proc within(t: []const I32; c: I32): BOOL;
 var lo, hi, m: INT;
 begin
     lo := 0;
@@ -186,7 +186,7 @@ begin
 end;
 
 (* The columns the UTF-8 text s takes, as Str.decode reads it. *)
-proc columns*(s: []U8): INT;
+proc columns*(s: []const U8): INT;
 var c: I32; i, n, w: INT;
 begin
     i := 0;
@@ -200,7 +200,7 @@ begin
 end;
 
 (* Checks that every character in cs has the width w. *)
-proc allWidth(what: []U8; cs: []I32; w: INT);
+proc allWidth(what: []const U8; cs: []const I32; w: INT);
 var i: INT;
 begin
     for i := 0 to LEN(cs) - 1 do Check.int(what, width(cs[i]), w); end;

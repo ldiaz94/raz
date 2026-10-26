@@ -3,7 +3,7 @@
 module SetEnv;
 import Out, Rt, Sys;
 
-proc run(env: [][]U8);
+proc run(env: [][]const U8);
 var p: Sys.Program; pid: INT;
 begin
     p.path := "/bin/sh";

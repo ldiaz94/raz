@@ -11,27 +11,27 @@ module Opt;
     completion for concha.
 
 type Row* = variant
-    usage(scope, line: []U8);           (* a synopsis, without "usage: " *)
-    sub(scope, name, help: []U8);       (* a subcommand *)
-    option(scope: []U8; letter: U8; long, value, help: []U8);
+    usage(scope, line: []const U8);           (* a synopsis, without "usage: " *)
+    sub(scope, name, help: []const U8);       (* a subcommand *)
+    option(scope: []const U8; letter: U8; long, value, help: []const U8);
 end;
 
 type Parser* = record
     letter*: U8;    (* the option just read *)
-    value*: []U8;   (* its value; "" for a flag *)
+    value*: []const U8;   (* its value; "" for a flag *)
     long*: BOOL;    (* it was written by its long name *)
-    spelt*: []U8;   (* as it was written, no dashes: "b" or "bar"; the program's to read only *)
+    spelt*: []const U8;   (* as it was written, no dashes: "b" or "bar"; the program's to read only *)
     (* the rest are Opt's own *)
-    name: []U8;     (* the program's, as the messages begin *)
-    table: []Row;
-    scope: []U8;
+    name: []const U8;     (* the program's, as the messages begin *)
+    table: []const Row;
+    scope: []const U8;
     at: INT;        (* the next word *)
-    group: []U8;    (* the letters left of a word of them, as -lw *)
+    group: []const U8;    (* the letters left of a word of them, as -lw *)
     ended: BOOL;    (* the scope's options have ended *)
     help: BOOL;     (* the option just read is -h or --help *)
 end;
 
-proc init*(var p: Parser; name: []U8; table: []Row);
+proc init*(var p: Parser; name: []const U8; table: []const Row);
     p reads the arguments from 1 on, by table, in the program's own
     scope; name begins the messages.
 
@@ -39,7 +39,7 @@ proc next*(var p: Parser): BOOL;
     The next option, in p.letter, p.value and p.long; false when the
     scope's options end.
 
-proc operand*(var p: Parser): ([]U8, BOOL);
+proc operand*(var p: Parser): ([]const U8, BOOL);
     The next operand, after what options are left; false when there are
     no more.
 
@@ -48,7 +48,7 @@ proc at*(var p: Parser): INT;
     options are left: the operands from there on are Files.arg(i), for
     i up to ARGC() - 1, as an interpreter hands them to its script.
 
-proc scope*(var p: Parser; name: []U8);
+proc scope*(var p: Parser; name: []const U8);
     The options of the subcommand name, from the word after its own,
     which operand has given.
 
@@ -57,16 +57,16 @@ proc number*(const p: Parser; lo, hi: I64): I64;
     anything else is a mistake. A number with no top is given the
     largest I64 for hi, and the mistake says "from lo up".
 
-proc refuse*(const p: Parser; wants: []U8);
+proc refuse*(const p: Parser; wants: []const U8);
     The value of the option just read refused, as number refuses one:
     "-b wants wants, not 'value'", the option as it was written, with
     the scope's synopsis lines, and status 2.
 
-proc fail*(const p: Parser; text: []U8);
+proc fail*(const p: Parser; text: []const U8);
     The program's own mistake, written as Opt's are but alone, and
     status 2.
 
-proc misuse*(const p: Parser; text: []U8);
+proc misuse*(const p: Parser; text: []const U8);
     The program's own mistake, written as Opt's are, with the scope's
     synopsis lines after it, and status 2.
 

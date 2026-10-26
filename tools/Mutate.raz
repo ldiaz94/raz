@@ -10,7 +10,7 @@ module Mutate;
 import Out, Rt, Buf, Heap, Scan, Files;
 
 var
-    src: []U8;
+    src: []const U8;
     state: U64;   (* the generator: xorshift64 *)
 
 (* A number from the generator, below n. *)
@@ -23,7 +23,7 @@ begin
 end;
 
 (* The seed, as a nonzero state. *)
-proc seed(s: []U8);
+proc seed(s: []const U8);
 var i: INT;
 begin
     state := 88172645463325252;

@@ -103,7 +103,7 @@ int main(int argc, char **argv) {
            "   its errnos beside Linux's, and errno and closeFrom.\n\n"
            "   Written by tools/cabi.c, from the system's own headers; not to be\n"
            "   edited, but written again. *)\n", target);
-    printf("module CAbi;\n\nconst\n");
+    printf("module CAbi;\nimport SYSTEM;\n\nconst\n");
 
     SAY("open's flags, fcntl's requests, seek, flock, mmap, access");
     K("oRdonly", O_RDONLY); K("oWronly", O_WRONLY); K("oRdwr", O_RDWR);

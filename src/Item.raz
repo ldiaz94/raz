@@ -132,7 +132,7 @@ begin
 end;
 
 (* A message, from a format and the strings that fill it *)
-proc say1(f, a: []U8): []U8;
+proc say1(f, a: []const U8): []const U8;
 begin
     return Diag.say(f, [Fmt.str(a)]);
 end;
@@ -140,7 +140,7 @@ end;
 (* Under -strict, what reaches memory other than through a variable,
    what, is refused at pos in a module that doesn't import SYSTEM
    (report 3) *)
-proc needSystem*(pos: Diag.Pos; what: []U8): ERROR;
+proc needSystem*(pos: Diag.Pos; what: []const U8): ERROR;
 begin
     if strict and not Sym.curModule^.system then
         return Scan.markHelp(pos, say1("{} needs import SYSTEM", what),
@@ -149,7 +149,7 @@ begin
     return nil;
 end;
 
-proc say2(f, a, b: []U8): []U8;
+proc say2(f, a, b: []const U8): []const U8;
 begin
     return Diag.say(f, [Fmt.str(a), Fmt.str(b)]);
 end;
@@ -232,7 +232,7 @@ end;
 
 (* An item for "found ...": a constant without a type of its own as it
    is written, so that "found 1.5" says what is wrong; else its type. *)
-proc what*(x: Item): []U8;
+proc what*(x: Item): []const U8;
 begin
     if (x.mode = mConst) and ((x.typ = Sym.tConst) or (x.typ = Sym.tRConst)) then
         return Diag.source(x.pos);
@@ -242,7 +242,7 @@ end;
 
 (* Two operands of different types. Numbers convert, so say how. *)
 proc mismatchOps(x, y: Item; xt, yt: ^Sym.Type): ERROR;
-var text: []U8;
+var text: []const U8;
 begin
     text := say2("{} and {} are different types", Sym.typeName(xt), Sym.typeName(yt));
     (* the help converts the narrower integer to the wider, which loses
@@ -602,7 +602,7 @@ end;
 (* An error in x's type, with help that says what to write instead
    unless hint is empty; if x is an argument, a note at the parameter it
    goes to. *)
-proc mismatchHelp(x: Item; text, hint: []U8): ERROR;
+proc mismatchHelp(x: Item; text, hint: []const U8): ERROR;
 begin
     Diag.error(x.pos, text);
     if LEN(hint) > 0 then Diag.help(hint); end;
@@ -612,14 +612,14 @@ begin
     return Scan.Failed;
 end;
 
-proc mismatch(x: Item; text: []U8): ERROR;
+proc mismatch(x: Item; text: []const U8): ERROR;
 begin
     return mismatchHelp(x, text, "");
 end;
 
 (* An error at x, which is a view, or part of one, and so has no
    address: text, and help that says what to do instead. *)
-proc noAddress*(x: Item; text: []U8): ERROR;
+proc noAddress*(x: Item; text: []const U8): ERROR;
 begin
     return Scan.markHelp(x.pos, text, "a view has no address, since it may be misaligned: copy it to a variable");
 end;
@@ -635,7 +635,7 @@ begin
 end;
 
 proc coerce*(var x: Item; t: ^Sym.Type): ERROR;
-var s: ^Sym.Type; tmp: I64; inFrame: BOOL; hint: []U8;
+var s: ^Sym.Type; tmp: I64; inFrame: BOOL; hint: []const U8;
 begin
     if x.mode = mCond then try value(x); end;
     s := x.typ;
@@ -753,7 +753,7 @@ end;
 
 (* t's name, ending in a zero byte, for Rt.fail *)
 proc nameChunk(t: ^Sym.Type): INT;
-var s: []U8; p: ^U8; n, c: INT;
+var s: []const U8; p: ^U8; n, c: INT;
 begin
     s := Sym.typeName(t);
     n := LEN(s);
@@ -984,7 +984,7 @@ end;
 (* What x must be to have a view made of it, as a T: a variable, not
    volatile, and T a type of plain data. *)
 proc viewable(x: Item; t: ^Sym.Type): ERROR;
-var u: ^Sym.Type; text: []U8;
+var u: ^Sym.Type; text: []const U8;
 begin
     (* another module's variable, ro, is one too, read and not written *)
     if (x.mode # mVar) or not (x.isVar or x.ro) then
@@ -1019,7 +1019,7 @@ end;
    through the slice must still be a value of it. In a record, the help
    names the field that holds it. *)
 proc bytesType(x: Item; t: ^Sym.Type): ERROR;
-var u: ^Sym.Type; f: ^Sym.Obj; text, hint: []U8;
+var u: ^Sym.Type; f: ^Sym.Obj; text, hint: []const U8;
 begin
     u := notPlain(t);
     if u = nil then return nil; end;
@@ -1041,7 +1041,7 @@ begin
     return Scan.markHelp(x.pos, text, hint);
 end;
 
-(* BYTES(x), the bytes of x as a []U8 (report section 6.8), made as a
+(* BYTES(x), the bytes of x as a []const U8 (report section 6.8), made as a
    slice of x is, refused where one is, and keeping x's frame mark, so
    that returnValue refuses the bytes of a local as a slice of one:
 
@@ -1418,7 +1418,7 @@ end;
    integers: x is the wrong kind for op, and the message names the
    operator it may have meant *)
 proc wrongLogic(op: Scan.Sym; var x: Item): ERROR;
-var bitsOf: []U8;
+var bitsOf: []const U8;
 begin
     bitsOf := "the bits of integers take ";
     if (op = Scan.sAnd) and Sym.isInt(x.typ) then
@@ -1704,7 +1704,7 @@ end;
    untyped constant hasn't (report section 6.1). It is loaded, unless a
    constant, before n is read, as the left of an operator is by op1. *)
 proc rotand*(var x: Item; left: BOOL): ERROR;
-var name, s: []U8;
+var name, s: []const U8;
 begin
     if x.mode in {mType, mBuiltin, mNone, mCase, mStr} then return notValue(x); end;
     if left then name := "ROL"; else name := "ROR"; end;
@@ -1796,7 +1796,7 @@ end;
    0 counts, or for POPCOUNT a set; an untyped constant has no width.
    Of a constant the count is folded. *)
 proc countBits*(var x: Item; which: INT): ERROR;
-var name, s: []U8; ok: BOOL;
+var name, s: []const U8; ok: BOOL;
 begin
     if x.mode in {mType, mBuiltin, mNone, mCase, mStr} then return notValue(x); end;
     if which = Sym.bClz then name := "CLZ"; elsif which = Sym.bCtz then name := "CTZ"; else name := "POPCOUNT"; end;
@@ -1830,7 +1830,7 @@ end;
    untyped constants end, so they keep their type, as a hexadecimal
    number above it is a U64 (report section 3). *)
 proc limit*(var x: Item; t: ^Sym.Type; max: BOOL; p: Diag.Pos): ERROR;
-var name: []U8; ones: U64; v: I64;
+var name: []const U8; ones: U64; v: I64;
 begin
     if t^.form # Sym.fInt then
         if max then name := "MAX"; else name := "MIN"; end;
@@ -1936,7 +1936,7 @@ begin
 end;
 
 (* Too many arguments or too few, at p *)
-proc wrongCount(var c: Gen.CallInfo; p: Diag.Pos; text: []U8): ERROR;
+proc wrongCount(var c: Gen.CallInfo; p: Diag.Pos; text: []const U8): ERROR;
 begin
     if c.obj = nil then return Scan.markAt(p, text); end;
     Diag.error(p, Diag.say("{}: {} takes {}", [Fmt.str(text), Fmt.str(Scan.nameOf(c.obj^.name)), Fmt.int(c.sig^.len)]));
@@ -1976,7 +1976,7 @@ end;
    write instead, b for ADR(b) and p^ for a pointer p. Mostly met in
    programs written before the library took var (report 2026-10.33). *)
 proc givenAddress(const a: Item; p: ^Sym.Obj): ERROR;
-var s, kind: []U8;
+var s, kind: []const U8;
 begin
     if (a.typ^.form # Sym.fPtr) or (a.typ^.base = nil) or not Sym.same(a.typ^.base, p^.typ) then
         return nil;
@@ -2471,7 +2471,7 @@ end;
 (* COPY(d, s) or FILL(d, x): d, an array variable or a slice, as a slice
    in the frame, before s or x is read; text says what the built-in
    writes into, for an error *)
-proc destSlice(var d: Item; text: []U8): ERROR;
+proc destSlice(var d: Item; text: []const U8): ERROR;
 begin
     if (d.typ^.form = Sym.fArray) and (d.mode = mVar) then try notReadOnly(d); end;
     if (d.typ^.form = Sym.fSlice) and d.typ^.rdonly then

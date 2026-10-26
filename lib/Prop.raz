@@ -54,7 +54,7 @@ var
     cand: Buf.Buf;                                      (* a case to try: a shrink of best, or a saved one *)
     runs: INT;                                          (* runs the shrink under way has made *)
     found: INT;                                         (* bytes of the failing fresh case, before shrinking *)
-    name: []U8;                                         (* the property being checked *)
+    name: []const U8;                                         (* the property being checked *)
     dir: Buf.Buf;                                       (* where its cases are saved *)
     path: Buf.Buf;                                      (* the file of a saved case *)
     seed: U64;                                          (* the seed of the fresh cases *)
@@ -132,7 +132,7 @@ begin
 end;
 
 (* Makes s replay the case data; past its end, bytes are 0. *)
-proc replay(var s: Source; data: []U8);
+proc replay(var s: Source; data: []const U8);
 begin
     Buf.reset(s.data);
     Buf.str(s.data, data);
@@ -152,7 +152,7 @@ end;
 
 (* Runs p on data once more, with Check heard, so that it shows the
    failure and counts it. *)
-proc aloud(p: Property; data: []U8);
+proc aloud(p: Property; data: []const U8);
 begin
     Check.mute(false);
     replay(src, data);
@@ -161,7 +161,7 @@ end;
 
 (* Whether case a is simpler than b: shorter, or as long and smaller
    byte by byte. *)
-proc simpler(a, b: []U8): BOOL;
+proc simpler(a, b: []const U8): BOOL;
 begin
     return (LEN(a) < LEN(b)) or ((LEN(a) = LEN(b)) and (Str.cmp(a, b) < 0));
 end;
@@ -169,7 +169,7 @@ end;
 (* Runs p on cand, within the budget; if it fails and the bytes it drew
    are simpler than best, they become best, and the result is true. *)
 proc improves(p: Property): BOOL;
-var drawn: []U8;
+var drawn: []const U8;
 begin
     if runs >= Budget then return false; end;
     INC(runs);
@@ -190,7 +190,7 @@ end;
 
 (* Makes cand best without its w bytes from i. *)
 proc without(i, w: INT);
-var b: []U8;
+var b: []const U8;
 begin
     b := Buf.bytes(best);
     Buf.reset(cand);
@@ -290,7 +290,7 @@ end;
 
 (* Stops the program: the environment variable called key is not a
    number, as it must be. *)
-proc badEnv(key: []U8);
+proc badEnv(key: []const U8);
 begin
     Fmt.eprint("Prop: ${} is not a whole number\n", [Fmt.str(key)]);
     Rt.exit(2);
@@ -298,7 +298,7 @@ end;
 
 (* The environment variable called key, a number from 0; otherwise
    unset, and 0. *)
-proc envNumber(key: []U8): I64;
+proc envNumber(key: []const U8): I64;
 var n: I64; ok: BOOL;
 begin
     if LEN(Sys.env(key)) = 0 then return 0; end;
@@ -355,7 +355,7 @@ begin
 end;
 
 (* Makes path the file called file in dir. *)
-proc caseFile(file: []U8);
+proc caseFile(file: []const U8);
 begin
     Buf.reset(path);
     Buf.str(path, Buf.bytes(dir));
@@ -366,8 +366,8 @@ end;
 (* Saves data in dir, made with the directories it needs, in a file
    named by the hash of data, so that a case is saved once; whether it
    was written. path names the file. *)
-proc save(data: []U8): BOOL;
-var d: []U8; i: INT; h: [16]U8;
+proc save(data: []const U8): BOOL;
+var d: []const U8; i: INT; h: [16]U8;
 begin
     d := Buf.bytes(dir);
     for i := 1 to LEN(d) - 1 do
@@ -380,7 +380,7 @@ begin
 end;
 
 (* What became of a case save tried to save, for a message. *)
-proc saved(ok: BOOL): []U8;
+proc saved(ok: BOOL): []const U8;
 begin
     if ok then return "saved"; end;
     return "could not save";
@@ -389,7 +389,7 @@ end;
 (* Runs each case saved in dir; if one fails, it is in cand, its file
    in path, and the result is true. *)
 proc savedFailing(p: Property): BOOL;
-var d: Sys.Dir; file: []U8; more: BOOL;
+var d: Sys.Dir; file: []const U8; more: BOOL;
 begin
     if Sys.openDir(d, Buf.bytes(dir)) < 0 then return false; end;   (* none saved yet *)
     file, more := Sys.nextEntry(d);
@@ -420,8 +420,8 @@ end;
 
 (* Makes the buffers and registers crashed, the first time; then sets
    the property's name and directory. *)
-proc prepare(n: []U8);
-var root: []U8;
+proc prepare(n: []const U8);
+var root: []const U8;
 begin
     if not ready then
         Buf.init(src.data, Heap.heap);
@@ -443,7 +443,7 @@ end;
 
 (* Checks the property p, called name: the saved cases, then fresh
    ones; the first that fails is said, saved if fresh, and run aloud. *)
-proc check*(name: []U8; p: Property);
+proc check*(name: []const U8; p: Property);
 var ok: BOOL;
 begin
     prepare(name);

@@ -18,12 +18,12 @@ const
         `;
 
 var
-    title: []U8;
+    title: []const U8;
     width, height: I64;
     scale: F64;
 
 (* One setting: false if the name isn't known, or its value is wrong. *)
-proc setting(name, value: []U8): BOOL;
+proc setting(name, value: []const U8): BOOL;
 var ok: BOOL; lower: [16]U8;
 begin
     if LEN(name) > LEN(lower) then return false; end;
@@ -41,7 +41,7 @@ begin
 end;
 
 proc main*;
-var line, rest, name, value: []U8; more, found: BOOL; n: INT;
+var line, rest, name, value: []const U8; more, found: BOOL; n: INT;
 begin
     rest := Text;
     more := true;

@@ -1,4 +1,4 @@
 Buf: out of memory
-  in Buf.need at lib/Buf.raz:50:9: n = 10000
-  in Buf.str at lib/Buf.raz:66:5
+  in Buf.need at lib/Buf.raz:51:9: n = 10000
+  in Buf.str at lib/Buf.raz:67:5
   in BufFull.main at test/run/BufFull.raz:11:5

@@ -14,6 +14,7 @@
    in x, and the caller reads it after Thread.join. *)
 module Task(T);
 import Heap, Mem, Thread;
+import SYSTEM;
 
 type
     (* What the thread is given: what to run and its copy of x. *)

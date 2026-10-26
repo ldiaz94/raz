@@ -194,7 +194,7 @@ type
     end;
 
 const
-    StubNames: [8][]U8 = ["check0", "check1", "check2", "check3", "check4", "check5", "check6", "check7"];
+    StubNames: [8][]const U8 = ["check0", "check1", "check2", "check3", "check4", "check5", "check6", "check7"];
     (* the registers of the stack: the value at depth d is in Regs[d mod
        NumRegs]. rax, rdx and rcx, which division and shifts need, and rsi
        and rdi, which copying needs, aren't among them. *)
@@ -1573,9 +1573,9 @@ const
     ARegister = -3;   (* a Mem that is no memory but a register, its index *)
 
 (* The name s, interned *)
-proc internStr(s: []U8): INT;
+proc internStr(s: []const U8): INT;
 begin
-    return Scan.intern(ADR(s[0]), LEN(s));
+    return Scan.intern(PTR(s), LEN(s));
 end;
 
 (* The program goes on if the condition cc holds, and otherwise stops
