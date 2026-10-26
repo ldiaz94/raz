@@ -1,0 +1,36 @@
+(* Task: each of several threads is given its own job; the caller changes
+   its job at once after spawn, and the threads' copies are not changed. *)
+module TaskTest;
+import Check, Jobs := Task(Job), Rt, Thread;
+
+const Threads = 8;
+
+(* A thread's job: a number, and where to put its square. *)
+type Job = record n: INT; out: ^INT; end;
+
+var results: [Threads]INT;
+
+(* Puts n squared where the job says, then changes its own copy. *)
+proc work(var j: Job);
+begin
+    j.out^ := j.n * j.n;
+    j.n := 0;
+end;
+
+proc main*;
+var t: [Threads]^Thread.Thread; j: Job; i: INT; err: ERROR;
+begin
+    for i := 0 to Threads - 1 do
+        j := {n: i + 1, out: ADR(results[i])};
+        t[i], err := Jobs.spawn(work, j);
+        if err # nil then Rt.stop("Task.spawn failed"); end;
+        j.n := 1000;                 (* the thread must not see this *)
+        j.out := ADR(results[0]);
+    end;
+    for i := 0 to Threads - 1 do Thread.join(t[i]); end;
+    for i := 0 to Threads - 1 do
+        Check.int("Task: result", results[i], (i + 1) * (i + 1));
+    end;
+end;
+
+end TaskTest.

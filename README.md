@@ -211,7 +211,7 @@ The report, `doc/raz.md` and `doc/raz-lib.md`, says all of it in about 2,800 lin
 (buffered output), `C`, `Lock`, `Thread` (threads, with C or without), `Mem`,
 `Heap`, `Arena`, `Str`, `Bytes`, `Buf`, `Fmt`, `Math`, `Files`, `Opt` (a command
 line read through one table), `Width` (the columns of a terminal text takes), `List(T)`, `Map(K, V; hash, eq)`,
-`Vec(T)` (a growable array) and `Sort(T; less)`. Volume 2 of the report, `doc/raz-lib.md`, gives each one's interface,
+`Vec(T)` (a growable array), `Task(T)` and `Guarded(T)` (threads that take a value, and a value with its lock) and `Sort(T; less)`. Volume 2 of the report, `doc/raz-lib.md`, gives each one's interface,
 and `tools/Doc.raz` prints it from the module's file:
 
     $ ./raz -o Doc tools/Doc.raz && ./Doc lib/Str.raz

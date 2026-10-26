@@ -1,0 +1,53 @@
+(* A thread that is given a value of type T, with no cast: the safe form
+   of Thread.spawn, which takes a pointer to bytes.
+
+   spawn copies x into a block from the heap before it returns, so the
+   caller may change x, or let it go out of scope, at once. The thread
+   runs p on that copy and frees it when p returns, so the thread owns
+   its copy from first to last and nobody else has to know when it is
+   done with it. p can change its copy; the caller never sees it. What
+   p and x share with others, a pointer in x for one, is the program's
+   to guard: Guarded is for that.
+
+   It depends on Thread and Heap. It leaves out a way to give p a
+   result: a thread that returns something writes it through a pointer
+   in x, and the caller reads it after Thread.join. *)
+module Task(T);
+import Heap, Mem, Thread;
+
+type
+    (* What the thread is given: what to run and its copy of x. *)
+    Job = record
+        p: proc(var x: T);
+        x: T;
+    end;
+
+(* Where the new thread starts: runs the job's procedure on its copy,
+   then frees the copy. *)
+proc run(arg: ^U8);
+var j: ^Job;
+begin
+    j := ^Job(arg);
+    j^.p(j^.x);
+    Mem.free(Heap.heap, arg);
+end;
+
+(* Starts p(x) in a new thread, on a copy of x; join the thread as
+   Thread.spawn's. Thread.Failed if there is no memory for the copy
+   or for the thread. *)
+proc spawn*(p: proc(var x: T); x: T): (^Thread.Thread, ERROR);
+var j: ^Job; t: ^Thread.Thread; err: ERROR;
+begin
+    NEW(j, Heap.heap);
+    if j = nil then return nil, Thread.Failed; end;
+    j^.p := p;
+    j^.x := x;
+    t, err := Thread.spawn(run, ^U8(j));
+    if err # nil then
+        Mem.free(Heap.heap, ^U8(j));
+        return nil, err;
+    end;
+    return t, nil;
+end;
+
+end Task.

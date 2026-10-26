@@ -21,6 +21,8 @@ Modules written in raz, in the compiler's `lib` directory:
 | `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
 | `Thread` | threads, `spawn`, `join` and `signal`, and `Mutex`, in any program; in one that uses C, made by C's `pthread_create` |
+| `Task` | a thread given a value of its own, `Task(T)`: `spawn` copies it, with no cast |
+| `Guarded` | a value with its lock, `Guarded(T)`: reached only through `with` |
 | `Mem` | `Allocator`, the interface of every allocator, and pages from the system |
 | `Heap` | a general allocator, `Heap.heap`, safe to call from several threads; freeing a block twice, or one it never gave out, stops the program |
 | `Arena` | an allocator that frees everything at once; `ADR(arena.base)` is its allocator |
@@ -120,7 +122,29 @@ proc join*(t: ^Thread);         (* waits for t to end, then frees its stack *)
 proc signal*(t: ^Thread; sig: INT): INT;   (* sig sent to t alone: 0, or minus an errno *)
 proc lock*(var m: Mutex);
 proc unlock*(var m: Mutex);
+
+module Task(T);
+proc spawn*(p: proc(var x: T); x: T): (^Thread.Thread, ERROR);   (* p run on a copy of x in a new thread *)
+
+module Guarded(T);
+type Guarded* = record ... end;       (* a value and its Thread.Mutex; zero is ready *)
+proc with*(var g: Guarded; p: proc(var x: T));   (* p run on the value, under the lock *)
 ```
+
+`Task(T)` starts a thread without a cast: `import Jobs := Task(Job);
+t, e := Jobs.spawn(work, job);` is the safe form of
+`Thread.spawn(work, ^U8(ADR(job)))`. `spawn` copies `x` into a block
+from `Heap` before it returns, so the caller may change or drop its `x`
+at once. The thread owns the copy: `work` changes it freely, and the
+thread frees it when `work` returns. The thread is joined with
+`Thread.join`; `Thread.Failed` comes back if there is no memory for the
+copy or the thread. A result goes back through a pointer in `x`, read
+after `join`.
+
+`Guarded(T)` is a `T` with its `Thread.Mutex`, for sharing a container
+between threads: the value is reached only through `with`, which holds
+the lock while `p` runs. A zeroed `Guarded` is ready. `p` must not call
+`with` on the same `Guarded`, nor keep a pointer into its `x`.
 
 A `Lock` is for short sections: a thread that finds it taken tries
 again, giving up the processor now and then. A `Mutex` sleeps. Each of

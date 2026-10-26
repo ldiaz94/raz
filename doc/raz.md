@@ -329,9 +329,9 @@ the C library's `Sys` on Linux too.
 **Names are flat.** The names of a program's modules are one space,
 with no packages or paths. So the names of the library's modules
 (the library, `doc/raz-lib.md`) are kept for it: a program or another library doesn't
-name a module of its own `Arena`, `Buf`, `C`, `Files`, `Fmt`, `Heap`,
-`List`, `Lock`, `Map`, `Math`, `Mem`, `Opt`, `Out`, `Rt`, `Sort`,
-`Str`, `Sys` or `Thread`, nor any name the library takes later. The
+name a module of its own `Arena`, `Buf`, `C`, `Files`, `Fmt`, `Guarded`,
+`Heap`, `List`, `Lock`, `Map`, `Math`, `Mem`, `Opt`, `Out`, `Rt`,
+`Sort`, `Str`, `Sys`, `Task` or `Thread`, nor any name the library takes later. The
 modules of any other library share a prefix of their own, as an X11
 library's `Xauth` and `Xkeys` do, and a program that wants a shorter
 name imports one: `import Auth := Xauth;`.

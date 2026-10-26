@@ -1,0 +1,40 @@
+(* Guarded: several threads each add to one counter many times; the total
+   is exact. *)
+module GuardedTest;
+import Check, Counter := Guarded(INT), Rt, Thread;
+
+const
+    Threads = 8;
+    Times = 20000;
+
+var count: Counter.Guarded;
+
+proc add(var x: INT);
+begin
+    INC(x);
+end;
+
+proc check(var x: INT);
+begin
+    Check.int("Guarded: total", x, Threads * Times);
+end;
+
+(* One thread's share of the work. *)
+proc work(_arg: ^U8);
+var i: INT;
+begin
+    for i := 1 to Times do Counter.with(count, add); end;
+end;
+
+proc main*;
+var t: [Threads]^Thread.Thread; i: INT; err: ERROR;
+begin
+    for i := 0 to Threads - 1 do
+        t[i], err := Thread.spawn(work, nil);
+        if err # nil then Rt.stop("Thread.spawn failed"); end;
+    end;
+    for i := 0 to Threads - 1 do Thread.join(t[i]); end;
+    Counter.with(count, check);
+end;
+
+end GuardedTest.

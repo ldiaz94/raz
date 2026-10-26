@@ -1,0 +1,33 @@
+(* A value of type T together with the lock that guards it, so that
+   sharing a container between threads is hard to do wrong: the value
+   can be reached only through with, which holds the lock while it
+   runs.
+
+   A Guarded is ready as it is, with a zero value and the lock free;
+   with can set any other. The lock is a Thread.Mutex, which sleeps
+   while it waits, so p may take its time. p must not call with on the
+   same Guarded, which would wait for itself, and must not keep a
+   pointer into x past its return.
+
+   It depends on Thread. It leaves out reading the value without the
+   lock, a try-lock and a lock shared by several values: a program
+   that wants those uses Thread.Mutex itself. *)
+module Guarded(T);
+import Thread;
+
+type
+    Guarded* = record
+        lock: Thread.Mutex;    (* held while the value is used *)
+        value: T;              (* what the lock guards *)
+    end;
+
+(* Runs p on the value, holding the lock, so that no other thread uses
+   it at the same time. *)
+proc with*(var g: Guarded; p: proc(var x: T));
+begin
+    Thread.lock(g.lock);
+    p(g.value);
+    Thread.unlock(g.lock);
+end;
+
+end Guarded.
