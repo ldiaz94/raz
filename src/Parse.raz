@@ -3516,7 +3516,7 @@ begin
 end;
 
 proc codeBody(p: PObj; sig: PType; at: Diag.Pos): ERROR;
-var q: PObj; ni, nf: INT;
+var q: PObj; ni, nf: INT; err: ERROR;
 begin
     ni := 0; nf := 0;
     q := sig^.fields;
@@ -3546,7 +3546,13 @@ begin
             return Scan.markAt(at, "a code procedure returns a single value");
         end;
     end;
-    try Gen.codeProc(p^.chunk, asmConst, asmName);
+    (* in a scope of its own, so that a name it uses and isn't declared,
+       declared then as poison, is gone at its end, as a procedure's
+       locals are, and doesn't clash with a declaration after it *)
+    try Sym.openScope(Sym.newScope());
+    err := Gen.codeProc(p^.chunk, asmConst, asmName);
+    Sym.closeScope;
+    if err # nil then return err; end;
     (* a square root of one real, of its own kind, is made in place *)
     q := sig^.fields;
     if (q # nil) and (q^.next = nil) and not q^.isVar and (q^.typ^.form = Sym.fReal)

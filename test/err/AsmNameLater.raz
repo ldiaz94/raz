@@ -1,0 +1,14 @@
+module AsmNameLater;
+(* A name a code procedure uses before it is declared is an error once:
+   its poison stays in the code procedure's scope, not the module's. *)
+import SYSTEM;
+proc f;
+code
+    lea rcx, [later];
+    ret;
+end f;
+proc later;
+begin end;
+proc main*;
+begin f(); end;
+end AsmNameLater.

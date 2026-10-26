@@ -1,0 +1,4 @@
+test/err/AsmNameLater.raz:7:15: error: later isn't declared
+    7 |     lea rcx, [later];
+      |               ^^^^^
+raz: 1 error
