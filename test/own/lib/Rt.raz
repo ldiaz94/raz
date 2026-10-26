@@ -1,0 +1,42 @@
+(* The smallest Rt a program can have: exit and fail, and nothing else,
+   each making its system call itself. For test/own, which builds a
+   program against it, with raz -bare -s, under Linux. A kernel's Rt
+   has the same two procedures, with its own way of ending and of
+   saying a check failed. *)
+module Rt;
+import SYSTEM;
+
+const
+    Write = 1;       (* Linux's write(fd, buffer, count) *)
+    ExitGroup = 231; (* and exit_group(status) *)
+    Stdout = 1;
+    Stopped = 2;     (* the status of a failed check, as raz's own Rt gives *)
+
+(* Says s on standard output. *)
+proc say*(s: []const U8);
+begin
+    _ := SYSTEM.SYSCALL(Write, Stdout, SYSTEM.PTR(s), LEN(s));
+end;
+
+(* Ends the program with status, and never returns: the compiler puts
+   ud2 after its call. *)
+proc exit*(status: INT);
+begin
+    _ := SYSTEM.SYSCALL(ExitGroup, status);
+end;
+
+(* A check failed: what is its kind, 0 to 7, as lib/Rt.raz tells them;
+   this says "check failed: " and the number of the kind, and ends with
+   status Stopped. The other arguments say where and with what values;
+   this Rt has no use for them. *)
+proc fail*(what, _a, _b, _len: INT; _at: UINT; _name: ^U8; _rdi, _rsi: UINT);
+var ch: [1]U8;
+begin
+    say("check failed: ");
+    ch[0] := U8(INT('0') + what);
+    say(ch);
+    say("\n");
+    exit(Stopped);
+end;
+
+end Rt.
