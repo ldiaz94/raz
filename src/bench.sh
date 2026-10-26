@@ -7,7 +7,7 @@
 set -e
 mkdir -p build/cmp/bench
 ln -sfn ../../lib build/cmp/lib
-python3 test/genbench.py 12000 >build/cmp/bench/Bench.raz
+sh test/genbench.sh 12000 >build/cmp/bench/Bench.raz
 echo "$(wc -l <build/cmp/bench/Bench.raz) lines"
 for t in prev this; do
     if [ $t = prev ]; then cp build/boot/raz build/cmp/raz; else cp raz build/cmp/raz; fi

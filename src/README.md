@@ -148,7 +148,7 @@ What the port found in the seed, which the seed kept; a record now.
   an error's text are built in memory from `Scan.grab`, which is never
   freed, in place of `GetMem` and `FreeMem`; the compiler runs once.
 - **No bit cast.** A real's bits and back go through a pointer.
-- **Speed.** On the 348,025 lines of `test/genbench.py`, 7.6 MB, the
+- **Speed.** On the 348,025 lines of `test/genbench.sh`, 7.6 MB, the
   seed's scanner takes 75 ms and this one 74. It took 121 at first.
   What closed the gap, in the source: a byte loop in place of the slice
   comparison `a[0..n] = b[0..n]` (97 ms), a 256-entry table for the
