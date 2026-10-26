@@ -31,8 +31,8 @@ The scope, by the owner's word of 2026-10-26, after reviewing
 `MEM_PROPOSAL.md` (in git to 2026-10-26) whole with its appendices.
 raz doesn't promise memory safety: `free` stays, so a program can
 always keep a pointer to what it freed. The thaw shrinks what is
-undefined, and fences what can reach
-memory it shouldn't, so a reader can find it.
+undefined, and fences what can reach memory it shouldn't, so a reader
+can find it.
 
 What goes in:
 
