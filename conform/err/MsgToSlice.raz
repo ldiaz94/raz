@@ -1,0 +1,13 @@
+(* An error's message is a []const U8 (report 6.8). *)
+module MsgToSlice;
+
+const Oops: ERROR = "oops";
+
+proc main*;
+var s: []U8;
+begin
+    s := MSG(Oops);
+    s[0] := 0;
+end;
+
+end MsgToSlice.

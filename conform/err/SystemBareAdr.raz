@@ -1,0 +1,13 @@
+(* ADR is SYSTEM.ADR, in a module that imports SYSTEM (report 3, 6.8). *)
+module SystemBareAdr;
+
+var n: INT;
+
+proc main*;
+var p: ^INT;
+begin
+    p := ADR(n);
+    p^ := 1;
+end;
+
+end SystemBareAdr.

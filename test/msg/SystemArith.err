@@ -1,0 +1,5 @@
+conform/err/SystemArith.raz:6:12: error: a pointer's arithmetic needs import SYSTEM
+    6 |     return p + 1;
+      |            ^^^^^
+help: it reaches memory other than through a variable: say import SYSTEM after the module's imports
+raz: 1 error

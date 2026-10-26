@@ -1,0 +1,11 @@
+(* A procedure of C needs import SYSTEM (report 3, 9). *)
+module SystemExtern;
+
+extern proc getpid(): I32;
+
+proc main*;
+begin
+    _ := getpid();
+end;
+
+end SystemExtern.

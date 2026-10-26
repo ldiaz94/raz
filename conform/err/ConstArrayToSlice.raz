@@ -1,0 +1,13 @@
+(* A slice of an array constant is a []const T (report 4). *)
+module ConstArrayToSlice;
+
+const Primes: [3]INT = [2, 3, 5];
+
+proc main*;
+var s: []INT;
+begin
+    s := Primes;
+    s[0] := 0;
+end;
+
+end ConstArrayToSlice.

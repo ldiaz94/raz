@@ -1,0 +1,5 @@
+conform/err/AtomicPointer.raz:9:15: error: XADD takes a variable, not a pointer to it
+    9 |     _ := XADD(SYSTEM.ADR(n), 1);
+      |               ^^^^^^^^^^^^^
+help: give it the variable itself: XADD(n, 1), or XADD(p^, 1) through a pointer
+raz: 1 error

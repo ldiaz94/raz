@@ -95,8 +95,9 @@ end of its procedure; `CAS`, `XCHG` and `XADD` take a variable;
 mode. Every old form is still taken: a literal into a `[]U8`, the bare
 built-ins, what `SYSTEM` fences without it, an atomic given `ADR(x)`.
 `BOOT` names v0.23.0 (2026-10-26), so `src/` and the library it imports
-may use all of 10.37; v0.24.0 makes the old forms errors and mends
-`~/r`. CI couldn't run for it either; `make dist` made its tarball here.
+may use all of 10.37. On main since 2026-10-26, for v0.24.0, the old
+forms are errors, and `lib/`, `src/`, the tools and the tests are
+mended; the programs in `~/r` come next. CI couldn't run for it either; `make dist` made its tarball here.
 v0.22.0, report 2026-10.36, before it, is the twelfth thaw, what `PROPOSALS.md`
 collated: `MIN`, `MAX`, `ABS`, `CLZ`, `CTZ`, `POPCOUNT`, `INT(b)`,
 `OFFSET`, `SIZE(T.f)`, `BYTES` and `FILL`; a qualified case in an arm,
@@ -386,18 +387,15 @@ otherwise.
 - `CAS(v, old, new)`, `XCHG(v, x)` and `XADD(v, x)` (report 2026-10.37)
   take a variable, whose address is pushed as `ADR`'s is (`atomic`); a
   local named in one is kept out of a register, as for `ADR`
-  (`chooseRegs`). A pointer that isn't a variable, `ADR(x)`, is still
-  taken as the old form until v0.24.0; a pointer variable is the new
-  form, so `XADD(p, 1)` is an error whose help says `p^`.
-- `raz -strict` (temporary, until v0.24.0 makes it the default) refuses
-  every old form of report 2026-10.37: see `doc/compiler.md`. The
-  library and every program are mended against it first.
+  (`chooseRegs`). A pointer that isn't a variable, `ADR(x)`, is refused
+  with help, and so is a pointer variable, `XADD(p, 1)`, whose help says
+  `p^`.
 - `import SYSTEM` (report 2026-10.37) binds to `Sym.system`, no file,
   whose scope holds `ADR`, `PTR`, `SYSCALL` and `ARGV`; it is never
-  warned of as unused, and an alias is refused. In v0.23.0 nothing is
-  fenced yet: the bare built-ins, pointer arithmetic and conversions,
-  views, `extern`, `link`, code procedures and `check off;` are taken
-  in any module, until v0.24.0.
+  warned of as unused, and an alias is refused. What it fences
+  (`Item.needSystem`, `doc/compiler.md`) is refused elsewhere: `extern`,
+  `link`, code procedures and `check off;` are said and read on, so one
+  missing import is one error.
 - `[]const T` (report 2026-10.37) is a slice type with `rdonly` set: not
   the same as `[]T`, which goes into it with no code (`coerce`), never
   back (help says why). An element read through one has the item's
@@ -406,9 +404,10 @@ otherwise.
   and `FILL` refuse one as their destination (`destSlice`); a slice of
   one, or of an array read through one or of another module's array,
   is one (`slice`); `BYTES` of one is a `[]const U8`; `match` on an
-  element gives names only read. Until v0.24.0 a string literal, a
-  constant's slice, `MSG` and a `const` parameter's array keep their
-  old types, `[]U8` and `[]T`.
+  element gives names only read. A string literal (`tConstBytes` where
+  indexed), a constant's slice (`ofConst`), `MSG` and a slice of a
+  `const` parameter's array are `[]const`; a constant's slice part must
+  be declared `[]const`.
 - `ROL(x, n)` and `ROR(x, n)` (report 2026-10.35) are done at `x`'s
   own width, `rol al, cl` for a `U8`, with no mask of the count: x86
   takes it modulo 32 or 64, and a byte's or a word's rotation goes

@@ -268,15 +268,15 @@ at the time.
   And `CAS`, `XCHG` and `XADD` take the variable they work on, as `INC`
   does, not a pointer to it (section 6.8): `XADD(count, 1)`,
   `XADD(p^, 1)`. It breaks a program that gives them a pointer; raz
-  0.23 still takes one that isn't a variable, `ADR(x)`, until 0.24.
+  0.23 still took one that isn't a variable, `ADR(x)`; 0.24 doesn't.
   And `[]const T`, a slice whose elements can't be written through it
   (section 5.3): a `[]T` or an array goes where one is wanted, never
   the other way. A string literal and a slice of a constant are
   `[]const`, as `MSG` and a slice of a `const` parameter's array are,
   so writing them is an error, not undefined; another module's exported
   array may be read as one (sections 3, 4, 5.10, 6.8 and 8). It breaks
-  a program that writes through these; raz 0.23 still gives them their
-  old types until 0.24.
+  a program that writes through these; raz 0.23 still gave them their
+  old types; 0.24 doesn't.
   And `import SYSTEM` (section 3): a module the language gives, with no
   file, that a module imports, by that name only, to reach memory other
   than through its variables: `SYSTEM.ADR`, `SYSTEM.PTR`,
@@ -287,4 +287,4 @@ at the time.
   and 9). Section 10 says what is left undefined outside such modules,
   and 7.6 that a race on a pointer, a slice or a variant is undefined.
   It breaks every module that does these without it; raz 0.23 still
-  takes them, and the built-ins unprefixed, until 0.24.
+  took them, and the built-ins unprefixed; 0.24 doesn't.

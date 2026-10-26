@@ -1,0 +1,5 @@
+conform/err/SystemConvert.raz:7:15: error: a conversion to ^INT needs import SYSTEM
+    7 |     p := ^INT(4096);
+      |               ^^^^
+help: it reaches memory other than through a variable: say import SYSTEM after the module's imports
+raz: 1 error

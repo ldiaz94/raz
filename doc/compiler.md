@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 12,600 lines of code (the
+The compiler is eleven files of raz, about 12,700 lines of code (the
 budget is 14,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -16,17 +16,17 @@ library, made from `lib/` by `tools/Doc.raz`.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 792 | 633 | Types, objects, scopes, layout |
-| `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,620 | 1,329 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,840 | 1,986 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,501 | 2,006 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,797 | 4,084 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
-| `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Raz.raz` | 418 | 333 | The command line |
+| `src/Diag.raz` | 423 | 325 | Messages: positions, source excerpts, colour, counts |
+| `src/Scan.raz` | 1,170 | 966 | Symbols, literals, comments, positions |
+| `src/Sym.raz` | 815 | 652 | Types, objects, scopes, layout |
+| `src/Chunk.raz` | 364 | 280 | The compiled program: chunks, fixups, line notes |
+| `src/X64.raz` | 1,621 | 1,330 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/Gen.raz` | 2,841 | 1,987 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,806 | 4,093 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Link.raz` | 408 | 316 | Tree shaking, layout, patching, the places |
+| `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
+| `src/Raz.raz` | 419 | 334 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -1885,17 +1885,18 @@ the matched type, or the message names both types. `compareIface` passes over an
 which its type's fingerprint has.
 
 Last, modules, at the end of the file. `compileFile` reads one module.
-`raz -strict`, until v0.24.0 makes it the rule, holds report 2026-10.37
-whole (`Item.strict`): `needSystem` refuses, in a module whose
-`Sym.Module.system` isn't set, a pointer's arithmetic, indexing and
+What report 2026-10.37 fences behind `import SYSTEM` is refused by
+`needSystem` in a module whose `Sym.Module.system` isn't set: a pointer's arithmetic, indexing and
 slicing, pointer and procedure conversions, views and `BYTES` that make
 or change an address (`Sym.isPlain`, the item's `viewOver`, checked in
 `notReadOnly`), a string as a `^U8`, `extern`, `link`, `check off` and
-code procedures; `builtin` refuses `ADR`, `PTR`, `SYSCALL` and `ARGV`
-not reached through `SYSTEM` (their objects' `home` tells them apart);
-a string, a slice of a constant, `MSG` and a slice of a `const`
-parameter's array are `[]const`; and an atomic given a pointer is
-refused.
+code procedures (the last four reported and the declaration read on,
+so that one missing import is one error). `builtin` refuses `ADR`,
+`PTR`, `SYSCALL` and `ARGV` not reached through `SYSTEM` (their
+objects' `home` tells them apart). A string, a slice of a constant,
+`MSG` and a slice of a `const` parameter's array are `[]const`. raz
+0.23 took all of it, under an option `-strict` to refuse it while the
+library and the programs were mended; 0.24 has no other way.
 
 `import SYSTEM` (report 2026-10.37) finds no file: the import binds the
 name to `Sym.system`, a module made once in `Sym`'s body whose scope
@@ -1904,8 +1905,7 @@ holds four of the built-ins, `ADR`, `PTR`, `SYSCALL` and `ARGV` (made by
 export and `builtin` compiles it as `ADR`. It is marked used at the
 import, since a module may import it only for `extern` or `link`. An
 alias, `import S := SYSTEM`, is refused, so a grep finds every such
-module. Until v0.24.0 nothing needs it: the bare built-ins and the rest
-it fences are still taken anywhere.
+module.
 
 `importModule` finds a module's file, trying the target's names first,
 and compiles it if it isn't yet. A module found in an `-I` or
@@ -1990,7 +1990,7 @@ variable.
 does: `atomic` pushes its address, as `ADR` would, and `Gen.atomic`
 works through it as before, so the code is the same as for
 `XADD(ADR(n), 1)`. A first argument that is a pointer but no variable,
-`ADR(n)`, is the form before 10.37, kept until v0.24.0. Since the
+`ADR(n)`, the form before 10.37, is refused with help. Since the
 address is taken, `chooseRegs` keeps a local named in one in memory,
 as it does one named in `ADR`.
 

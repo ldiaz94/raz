@@ -1,0 +1,5 @@
+conform/err/SystemCheckOff.raz:3:1: error: check off needs import SYSTEM
+    3 | check off;
+      | ^^^^^
+help: it reaches memory other than through a variable: say import SYSTEM after the module's imports
+raz: 1 error

@@ -1,0 +1,12 @@
+(* A string is a []const U8, and doesn't go into a []U8, which could
+   write its constant bytes (report 5.10). *)
+module StringToSlice;
+
+proc main*;
+var s: []U8;
+begin
+    s := "abc";
+    s[0] := 0;
+end;
+
+end StringToSlice.

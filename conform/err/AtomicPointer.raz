@@ -1,0 +1,12 @@
+(* An atomic takes the variable, not a pointer to it (report 6.8). *)
+module AtomicPointer;
+import SYSTEM;
+
+var n: INT;
+
+proc main*;
+begin
+    _ := XADD(SYSTEM.ADR(n), 1);
+end;
+
+end AtomicPointer.

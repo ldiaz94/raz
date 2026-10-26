@@ -92,7 +92,9 @@ library it imports (`Buf`, `Files`, `Fmt`, `Heap`, `Mem`, `Out`, `Rt`,
    and v0.23.0; 35 pages. No rewriting tool, by the owner's word:
    v0.24.0's errors point at each place to mend.
 3. `BOOT` moved to v0.23.0, a step of its own. **Done** 2026-10-26.
-4. **v0.24.0, which enforces it.** `lib/`, `src/`, `tools/`,
+4. **v0.24.0, which enforces it.** Steps 1 to 3 done 2026-10-26: `raz -strict`
+   first, `lib/`, `src/`, the tools and tests mended against it by
+   agents, then the old forms made errors and the option gone. `lib/`, `src/`, `tools/`,
    `examples/` and the tests mended where the old forms, made errors,
    are found (`ADR` at a parameter only dereferenced becomes `var` or
    `const`; `SYSTEM.` where an address is kept); the programs in `~/r`

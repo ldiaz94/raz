@@ -1,0 +1,5 @@
+conform/err/MsgToSlice.raz:9:10: error: can't use []const U8 as []U8
+    9 |     s := MSG(Oops);
+      |          ^^^^^^^^^
+help: its elements are only read, and a []T could write them
+raz: 1 error

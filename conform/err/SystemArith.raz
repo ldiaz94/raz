@@ -1,0 +1,14 @@
+(* A pointer moved by arithmetic needs import SYSTEM (report 3, 6.4). *)
+module SystemArith;
+
+proc next(p: ^INT): ^INT;
+begin
+    return p + 1;
+end;
+
+proc main*;
+begin
+    _ := next(nil);
+end;
+
+end SystemArith.

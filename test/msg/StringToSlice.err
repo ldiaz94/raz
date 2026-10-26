@@ -1,0 +1,5 @@
+conform/err/StringToSlice.raz:8:10: error: a string is a []const U8, not []U8
+    8 |     s := "abc";
+      |          ^^^^^
+help: its bytes are constant: take a []const U8 where they are only read, or copy them
+raz: 1 error

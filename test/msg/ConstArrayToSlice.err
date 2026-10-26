@@ -1,0 +1,5 @@
+conform/err/ConstArrayToSlice.raz:9:10: error: can't use [3]INT as []INT
+    9 |     s := Primes;
+      |          ^^^^^^
+help: Primes is only read: a slice of it is a []const
+raz: 1 error

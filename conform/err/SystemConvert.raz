@@ -1,0 +1,11 @@
+(* An integer made a pointer needs import SYSTEM (report 3, 6.7). *)
+module SystemConvert;
+
+proc main*;
+var p: ^INT;
+begin
+    p := ^INT(4096);
+    p^ := 0;
+end;
+
+end SystemConvert.

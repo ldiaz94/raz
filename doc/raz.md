@@ -76,7 +76,7 @@ conversions, C, code procedures and `check off;` (section 3); section
 10 says what is left undefined outside such modules. It breaks a
 program that gives an atomic a pointer, writes through a string or a
 constant, or does what `SYSTEM` holds without importing it; raz 0.23
-still takes all of these as before, until 0.24.
+still took them, as before; raz 0.24 doesn't.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program

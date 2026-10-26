@@ -1,0 +1,9 @@
+(* check off; needs import SYSTEM (report 3). *)
+module SystemCheckOff;
+check off;
+
+proc main*;
+begin
+end;
+
+end SystemCheckOff.

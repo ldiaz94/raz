@@ -1,0 +1,5 @@
+conform/err/SystemExtern.raz:4:1: error: extern needs import SYSTEM
+    4 | extern proc getpid(): I32;
+      | ^^^^^^
+help: it reaches memory other than through a variable: say import SYSTEM after the module's imports
+raz: 1 error

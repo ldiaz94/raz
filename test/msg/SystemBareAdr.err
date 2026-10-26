@@ -1,0 +1,5 @@
+conform/err/SystemBareAdr.raz:9:10: error: ADR is SYSTEM's, and written SYSTEM.ADR
+    9 |     p := ADR(n);
+      |          ^^^
+help: say import SYSTEM after the module's imports, and write the name after SYSTEM.
+raz: 1 error

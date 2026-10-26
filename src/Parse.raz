@@ -1103,45 +1103,34 @@ begin
 end;
 
 (* CAS(v, old, new), XCHG(v, x) or XADD(v, x) (report 6.8): v is a
-   variable, whose address goes on the stack, as ADR's would. A pointer
-   that isn't a variable, ADR(v) say, is the form before report
-   2026-10.37, still taken: what it points at is the variable. *)
+   variable, whose address goes on the stack, as ADR's would. Before
+   report 2026-10.37 they took a pointer to it, ADR(v): the error says
+   so. *)
 proc atomic(var x: TItem; which: INT): ERROR;
 var p, a: TItem; t: PType; i, n: INT;
 begin
     try expression(p, nil);
-    if (p.mode = Item.mVar) and p.isVar then
-        t := p.typ;
-        if not atomicType(t, which) then
-            if (t^.form = Sym.fPtr) and atomicType(t^.base, which) then
-                return Scan.markHelp(p.pos, say1("{} works on an INT or a UINT variable, not a pointer", atomicName(which)),
-                    say1("for what the pointer points at, write {}^", Diag.source(p.pos)));
-            elsif which = Sym.bXadd then
-                return Scan.markAt(p.pos, say1("expected an INT or a UINT variable, found {}", Item.what(p)));
-            end;
-            return Scan.markAt(p.pos, say1("expected an INT, a UINT or a pointer variable, found {}", Item.what(p)));
-        end;
-        try Item.notReadOnly(p);
-        if p.odd then return Scan.markAt(p.pos, "a field of a packed record has no address"); end;
-        if p.view then return Item.noAddress(p, "an atomic can't take a view"); end;
-        try Item.address(p);
-    else
-        if p.typ^.form # Sym.fPtr then
-            return Scan.markAt(p.pos, say1("expected a variable, found {}", Item.what(p)));
-        end;
-        if Item.strict then
+    if (p.mode # Item.mVar) or not p.isVar then
+        if p.typ^.form = Sym.fPtr then
             return Scan.markHelp(p.pos, say1("{} takes a variable, not a pointer to it", atomicName(which)),
                 "give it the variable itself: XADD(n, 1), or XADD(p^, 1) through a pointer");
         end;
-        t := p.typ^.base;
-        if not atomicType(t, which) then
-            if which = Sym.bXadd then
-                return Scan.markAt(p.pos, say1("expected a pointer to an INT or a UINT, found {}", Sym.typeName(p.typ)));
-            end;
-            return Scan.markAt(p.pos, say1("expected a pointer to an INT, a UINT or a pointer, found {}", Sym.typeName(p.typ)));
-        end;
-        try Item.value(p);
+        return Scan.markAt(p.pos, say1("expected a variable, found {}", Item.what(p)));
     end;
+    t := p.typ;
+    if not atomicType(t, which) then
+        if (t^.form = Sym.fPtr) and atomicType(t^.base, which) then
+            return Scan.markHelp(p.pos, say1("{} works on an INT or a UINT variable, not a pointer", atomicName(which)),
+                say1("for what the pointer points at, write {}^", Diag.source(p.pos)));
+        elsif which = Sym.bXadd then
+            return Scan.markAt(p.pos, say1("expected an INT or a UINT variable, found {}", Item.what(p)));
+        end;
+        return Scan.markAt(p.pos, say1("expected an INT, a UINT or a pointer variable, found {}", Item.what(p)));
+    end;
+    try Item.notReadOnly(p);
+    if p.odd then return Scan.markAt(p.pos, "a field of a packed record has no address"); end;
+    if p.view then return Item.noAddress(p, "an atomic can't take a view"); end;
+    try Item.address(p);
     if which = Sym.bCas then n := 2; else n := 1; end;
     for i := 1 to n do
         try expect(Scan.sComma);
@@ -1265,7 +1254,7 @@ proc builtin(var x: TItem): ERROR;
 var which, n, start: INT; y: TItem; t: PType; f: PObj; at: Diag.Pos;
 begin
     which := INT(x.obj^.val);
-    if Item.strict and (x.obj^.home # Sym.system)
+    if (x.obj^.home # Sym.system)
         and ((which = Sym.bAdr) or (which = Sym.bPtr) or (which = Sym.bSyscall) or (which = Sym.bArgv)) then
         return Scan.markHelp(x.pos, say2("{} is SYSTEM's, and written SYSTEM.{}", nameOf(x.obj^.name), nameOf(x.obj^.name)),
             "say import SYSTEM after the module's imports, and write the name after SYSTEM.");
@@ -3551,7 +3540,7 @@ begin
     end;
     p^.fwd := false;
     if Scan.tok = Scan.sCode then
-        try Item.needSystem(Scan.tokPos(), "a code procedure");
+        _ := Item.needSystem(Scan.tokPos(), "a code procedure");   (* said, and the declaration read on *)
         Scan.next;
         p^.isCode := true;
         try codeBody(p, sig, at);
@@ -3576,7 +3565,7 @@ end;
 proc externDecl: ERROR;
 var n: INT; exp: BOOL; o, q: PObj; t: PType; at: Diag.Pos;
 begin
-    try Item.needSystem(Scan.tokPos(), "extern");
+    _ := Item.needSystem(Scan.tokPos(), "extern");   (* said, and the declaration read on *)
     Scan.next;
     Sym.curModule^.usesC := true;
     if Scan.tok = Scan.sProc then
@@ -3789,7 +3778,7 @@ begin
         return Scan.mark(say1("expected {}, found an array literal", Sym.typeName(t)));
     end;
     try expression(e, t);
-    if Item.strict and (t^.form = Sym.fSlice) and not t^.rdonly then
+    if (t^.form = Sym.fSlice) and not t^.rdonly then
         return Scan.markHelp(e.pos, say1("a constant's slice is a []const, not {}", Sym.typeName(t)),
             "a constant can't be changed: declare the slice []const");
     end;
@@ -4444,7 +4433,7 @@ begin
         if (Scan.tok = Scan.sIdent) and (Scan.id = nameStatic) then
             m^.linkStatic := true;
         elsif Scan.tok = Scan.sString then
-            try Item.needSystem(Scan.tokPos(), "a link of a library");
+            _ := Item.needSystem(Scan.tokPos(), "a link of a library");   (* said, and the declaration read on *)
             NEW(lib, Heap.heap);
             lib^.name := internName(Scan.strBytes());
             lib^.next := m^.libs;
@@ -4459,7 +4448,7 @@ begin
     (* check off;: the module's index and slice checks left out; neither
        word is reserved *)
     if (Scan.tok = Scan.sIdent) and (Scan.id = nameCheck) then
-        try Item.needSystem(Scan.tokPos(), "check off");
+        _ := Item.needSystem(Scan.tokPos(), "check off");   (* said, and the declaration read on *)
         Scan.next;
         if (Scan.tok # Scan.sIdent) or (Scan.id # nameOff) then return nil, expected("\"off\""); end;
         Scan.next;
