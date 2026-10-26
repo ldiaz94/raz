@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Values and conversions - Raz, Set, Go</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="Values and conversions - Raz, Set, Go">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html">Modules</a></li>
+<li><a href="integers.html">Integers</a></li>
+<li><a href="values.html" aria-current="page">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='6'>
+<li><a href="slices.html">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='10'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html">Defer</a></li>
+<li><a href="checks.html">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html">Threads</a></li>
+</ol></aside><article><p class="kicker">Raz &middot; lesson 4 of 15</p><h1>Values and conversions</h1>
+<p>This program uses several of the basic types at once, with each conversion written where it happens.</p>
+<div class="file"><span>Values.raz</span></div><pre class="code"><code><span class="kw">module</span> Values;
+<span class="kw">import</span> Fmt;
+
+<span class="kw">const</span> Max = <span class="number">100</span>;    <span class="comment">(* untyped: it takes the type it meets *)</span>
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> n: <span class="ty">INT</span>; b: <span class="ty">U8</span>; big: <span class="ty">I64</span>; x: <span class="ty">F64</span>; c: <span class="ty">I32</span>; ok: <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    n := Max * <span class="number">3</span>;
+    b := <span class="number">250</span>;
+    b := b + <span class="number">10</span>;          <span class="comment">(* wraps, in a U8: 4 *)</span>
+    big := n;             <span class="comment">(* an INT goes into an I64 *)</span>
+    x := <span class="ty">F64</span>(n) / <span class="number">7.0</span>;    <span class="comment">(* nothing else converts unasked *)</span>
+    c := <span class="string">&#x27;\u{E9}&#x27;</span>;        <span class="comment">(* a character is its code point *)</span>
+    ok := (n &gt; Max) <span class="kw">and</span> (b # <span class="number">0</span>);
+    Fmt.print(<span class="string">&quot;{} {} {} {} {} {}\n&quot;</span>, [Fmt.int(n), Fmt.int(<span class="ty">I64</span>(b)),
+        Fmt.int(big), Fmt.real(x, <span class="number">3</span>), Fmt.int(<span class="ty">I64</span>(c)),
+        Fmt.bool(ok)]);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Values.</code></pre>
+<pre class="output"><code>300 4 300 42.857 233 true
+</code></pre>
+<h2>Conversions are written</h2>
+<p>Two types never mix but where nothing can be lost: an <code>INT</code> goes into an <code>I64</code> wherever it meets one, so with <code>pos: I64</code>, <code>pos + LEN(s)</code> is an <code>I64</code>; and a <code>U8</code>, <code>I8</code> or <code>I16</code> into an <code>INT</code>, unless an operator made it, so <code>n := s[i]</code> needs no conversion. With <code>i: I32</code> and a slice <code>s</code>, <code>i &lt; LEN(s)</code> is an error. A type's name converts: <code>F64(n)</code>, <code>I64(b)</code>, <code>U8(x)</code>; an <code>I64</code> becomes an <code>INT</code> only so, <code>INT(pos)</code>, since an <code>INT</code> may be smaller on another machine. The <a href="integers.html">lesson on integers</a> says what each width conversion does.</p>
+<p>A number written in the program is untyped until it meets a type, and <code>1.5</code> is a real, which an integer never becomes without a conversion.</p>
+<div class="file"><span>Mix.raz</span></div><pre class="code"><code><span class="kw">module</span> Mix;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> i: <span class="ty">I32</span>; s: []<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    s := <span class="string">&quot;four&quot;</span>;
+    i := <span class="number">3</span>;
+    <span class="kw">if</span> i &lt; <span class="ty">LEN</span>(s) <span class="kw">then</span> Out.str(<span class="string">&quot;smaller\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Mix.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Mix.raz</span>
+Mix.raz:9:8: error: I32 and INT are different types
+    9 |     if i &lt; LEN(s) then Out.str(&quot;smaller\n&quot;); end;
+      |        ^^^^^^^^^^
+help: convert one to the other&#x27;s type, as in INT(i)
+raz: 1 error</code></pre>
+<p>The fix is the conversion, written where it happens: <code>if INT(i) &lt; LEN(s)</code>. It costs nothing at run time and says what is meant.</p>
+<h2>What converts to what</h2>
+<p>Everything else that converts does so with the type's name, and the rules are short:</p>
+<table><thead><tr><th>From</th><th>To</th><th>Result</th></tr></thead><tbody><tr><td data-label="From">integer</td><td data-label="To">integer</td><td data-label="Result">cut to the new width, or extended by the sign (signed) or zeros (unsigned)</td></tr><tr><td data-label="From">integer</td><td data-label="To"><code>F32</code>, <code>F64</code></td><td data-label="Result">the nearest real</td></tr><tr><td data-label="From"><code>F32</code>, <code>F64</code></td><td data-label="To">integer</td><td data-label="Result">rounded toward zero</td></tr><tr><td data-label="From"><code>F32</code></td><td data-label="To"><code>F64</code></td><td data-label="Result">the same value; the other way, the nearest <code>F32</code></td></tr><tr><td data-label="From">enumeration</td><td data-label="To">integer</td><td data-label="Result">its position; and back, if there is a name at that position</td></tr><tr><td data-label="From">set</td><td data-label="To">integer</td><td data-label="Result">its bits; and back</td></tr><tr><td data-label="From"><code>INT</code>, <code>UINT</code></td><td data-label="To">pointer</td><td data-label="Result">the address; and back</td></tr></tbody></table>
+<p>There is no conversion between <code>BOOL</code> and an integer: say what you mean with <code>if</code>. A <code>BOOL</code> is <code>true</code> or <code>false</code>, and <code>and</code>, <code>or</code> and <code>not</code> are for <code>BOOL</code>s: they bind below the relations, so <code>i &lt; n and a[i] # 0</code> needs no parentheses, and <code>and</code> and <code>or</code> evaluate their right operand only when it decides the result. <code>#</code>, not <code>&lt;&gt;</code>, is "different".</p>
+<div class="file"><span>Truth.raz</span></div><pre class="code"><code><span class="kw">module</span> Truth;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> positive(n: <span class="ty">INT</span>): <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> n &gt; <span class="number">0</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a: [<span class="number">3</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>; found: <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    a := [<span class="number">4</span>, <span class="number">0</span>, <span class="number">9</span>];
+    i := <span class="number">0</span>;
+    <span class="kw">while</span> (i &lt; <span class="ty">LEN</span>(a)) <span class="kw">and</span> (a[i] # <span class="number">0</span>) <span class="kw">do</span> <span class="ty">INC</span>(i); <span class="kw">end</span>;   <span class="comment">(* never reads a[3] *)</span>
+    Out.int(i); Out.ln;
+    found := positive(i) <span class="kw">or</span> positive(-<span class="number">1</span>);
+    <span class="kw">if</span> found <span class="kw">and</span> <span class="kw">not</span> positive(<span class="number">0</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;true and true\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Truth.</code></pre>
+<pre class="output"><code>1
+true and true
+</code></pre>
+<h2>Reals</h2>
+<p><code>F32</code> and <code>F64</code> are the reals. A real constant is written with a point, <code>1.5</code> or <code>2.0E-3</code>. <code>Fmt.real(x, places)</code> writes one with that many digits after the point, and <code>Math</code> has the functions.</p>
+<div class="file"><span>Reals.raz</span></div><pre class="code"><code><span class="kw">module</span> Reals;
+<span class="kw">import</span> Fmt, Math;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> n: <span class="ty">INT</span>; x: <span class="ty">F64</span>; y: <span class="ty">F32</span>;
+<span class="kw">begin</span>
+    n := <span class="number">22</span>;
+    x := <span class="ty">F64</span>(n) / <span class="number">7.0</span>;
+    y := <span class="ty">F32</span>(x);
+    Fmt.print(<span class="string">&quot;22/7 = {}\n&quot;</span>, [Fmt.real(x, <span class="number">6</span>)]);
+    Fmt.print(<span class="string">&quot;as F32 = {}\n&quot;</span>, [Fmt.real(<span class="ty">F64</span>(y), <span class="number">6</span>)]);
+    Fmt.print(<span class="string">&quot;sqrt 2 = {}, pi = {}\n&quot;</span>, [Fmt.real(Math.sqrt(<span class="number">2.0</span>), <span class="number">5</span>), Fmt.real(Math.pi, <span class="number">5</span>)]);
+    Fmt.print(<span class="string">&quot;2^10 = {}, log2 of that = {}\n&quot;</span>, [Fmt.real(Math.pow(<span class="number">2.0</span>, <span class="number">10.0</span>), <span class="number">1</span>), Fmt.real(Math.log2(<span class="number">1024.0</span>), <span class="number">1</span>)]);
+    Fmt.print(<span class="string">&quot;rounded: {} {}\n&quot;</span>, [Fmt.real(Math.round(<span class="number">2.5</span>), <span class="number">1</span>), Fmt.real(Math.round(-<span class="number">2.5</span>), <span class="number">1</span>)]);
+    Fmt.print(<span class="string">&quot;truncated: {} {}\n&quot;</span>, [Fmt.int(<span class="ty">I64</span>(<span class="number">2.9</span>)), Fmt.int(<span class="ty">I64</span>(-<span class="number">2.9</span>))]);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Reals.</code></pre>
+<pre class="output"><code>22/7 = 3.142857
+as F32 = 3.142857
+sqrt 2 = 1.41421, pi = 3.14159
+2^10 = 1024.0, log2 of that = 10.0
+rounded: 3.0 -3.0
+truncated: 2 -2
+</code></pre>
+<p>A real converts to an integer by rounding toward zero. Every variable starts at zero, a real's <code>0.0</code> and a <code>BOOL</code>'s <code>false</code> included, so there is no uninitialised value to be surprised by.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="integers.html">&larr; Integers</a><a href="index.html">Contents</a><a class="next" href="procedures.html">Procedures and several results &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
+</body>
+</html>

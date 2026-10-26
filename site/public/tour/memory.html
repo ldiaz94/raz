@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memory and allocators - Raz, Set, Go</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="Memory and allocators - Raz, Set, Go">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html">Modules</a></li>
+<li><a href="integers.html">Integers</a></li>
+<li><a href="values.html">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='6'>
+<li><a href="slices.html">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html" aria-current="page">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='10'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html">Defer</a></li>
+<li><a href="checks.html">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html">Threads</a></li>
+</ol></aside><article><p class="kicker">Set &middot; lesson 9 of 15</p><h1>Memory and allocators</h1>
+<div class="file"><span>Stack.raz</span></div><pre class="code"><code><span class="kw">module</span> Stack;
+<span class="kw">import</span> Out, Mem, Heap, Arena, SYSTEM;
+
+<span class="kw">type</span> Node = <span class="kw">record</span> next: ^Node; val: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="comment">(* a node holding v on top of top, from the allocator a;
+   nil if a has no room *)</span>
+<span class="kw">proc</span> push(top: ^Node; v: <span class="ty">INT</span>; a: ^Mem.Allocator): ^Node;
+<span class="kw">var</span> n: ^Node;
+<span class="kw">begin</span>
+    <span class="ty">NEW</span>(n, a);
+    <span class="kw">if</span> n # <span class="ty">nil</span> <span class="kw">then</span>
+        n^.next := top;
+        n^.val := v;
+    <span class="kw">end</span>;
+    <span class="kw">return</span> n;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> top, n: ^Node; i: <span class="ty">INT</span>; ar: Arena.Arena;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span> top := push(top, i, Heap.heap); <span class="kw">end</span>;
+    <span class="kw">while</span> top # <span class="ty">nil</span> <span class="kw">do</span>
+        Out.int(top^.val); Out.char(<span class="string">&#x27; &#x27;</span>);
+        n := top;
+        top := top^.next;
+        Mem.free(Heap.heap, ^<span class="ty">U8</span>(n));
+    <span class="kw">end</span>;
+    Out.ln;
+    <span class="kw">if</span> <span class="kw">not</span> Arena.init(ar, <span class="number">100000</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">1000</span> <span class="kw">do</span> top := push(top, i, SYSTEM.<span class="ty">ADR</span>(ar.base)); <span class="kw">end</span>;
+    Out.int(top^.val); Out.ln;
+    Arena.done(ar);            <span class="comment">(* every node at once *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Stack.</code></pre>
+<pre class="output"><code>3 2 1 
+1000
+</code></pre>
+<p>raz has no garbage collector, and no allocator of its own: memory comes from an allocator, a <code>Mem.Allocator</code>, which the program chooses and passes. <code>NEW(n, a)</code> sets <code>n</code> to a fresh, zeroed <code>Node</code> from <code>a</code>, or to <code>nil</code> if <code>a</code> has no room. <code>Heap.heap</code> is the general one, which <code>Mem.free</code> gives memory back to. An <code>Arena</code> hands out memory from one block and frees it all at once, as the last lines above do.</p>
+<h2>Why an allocator is a parameter</h2>
+<p>A procedure that allocates takes the allocator it uses, so its caller decides where the memory comes from and when it goes: the heap for something that lives long, an arena for everything one request needs. Nothing in the library allocates behind your back.</p>
+<div class="file"><span>Pool.raz</span></div><pre class="code"><code><span class="kw">module</span> Pool;
+<span class="kw">import</span> Out, Mem, Arena;
+
+<span class="kw">type</span> Item = <span class="kw">record</span> id: <span class="ty">INT</span>; next: ^Item; <span class="kw">end</span>;
+
+<span class="comment">(* n items, linked; or nil if the allocator ran dry (what came is lost with it) *)</span>
+<span class="kw">proc</span> make(n: <span class="ty">INT</span>; a: ^Mem.Allocator): ^Item;
+<span class="kw">var</span> head, it: ^Item; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    head := <span class="ty">nil</span>;
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> n <span class="kw">do</span>
+        <span class="ty">NEW</span>(it, a);
+        <span class="kw">if</span> it = <span class="ty">nil</span> <span class="kw">then</span> <span class="kw">return</span> <span class="ty">nil</span>; <span class="kw">end</span>;
+        it^.id := i;
+        it^.next := head;
+        head := it;
+    <span class="kw">end</span>;
+    <span class="kw">return</span> head;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> count(it: ^Item): <span class="ty">INT</span>;
+<span class="kw">var</span> n: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    n := <span class="number">0</span>;
+    <span class="kw">while</span> it # <span class="ty">nil</span> <span class="kw">do</span> <span class="ty">INC</span>(n); it := it^.next; <span class="kw">end</span>;
+    <span class="kw">return</span> n;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> ar: Arena.Arena; small: Arena.Arena; list: ^Item;
+<span class="kw">begin</span>
+    <span class="kw">if</span> <span class="kw">not</span> Arena.init(ar, <span class="number">1000000</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    list := make(<span class="number">1000</span>, <span class="ty">ADR</span>(ar.base));
+    Out.int(count(list)); Out.str(<span class="string">&quot; items from a big arena\n&quot;</span>);
+    Arena.reset(ar);              <span class="comment">(* every allocation forgotten *)</span>
+    list := make(<span class="number">10</span>, <span class="ty">ADR</span>(ar.base));
+    Out.int(count(list)); Out.str(<span class="string">&quot; after a reset\n&quot;</span>);
+    Arena.done(ar);
+
+    <span class="kw">if</span> <span class="kw">not</span> Arena.init(small, <span class="number">4096</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
+    list := make(<span class="number">1000</span>, <span class="ty">ADR</span>(small.base));
+    <span class="kw">if</span> list = <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="string">&quot;a small arena ran out, and said so\n&quot;</span>); <span class="kw">end</span>;
+    Arena.done(small);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Pool.</code></pre>
+<pre class="output"><code>1000 items from a big arena
+10 after a reset
+a small arena ran out, and said so
+</code></pre>
+<p>The run-out case is an ordinary <code>nil</code> to test, not an exception that unwinds past your code.</p>
+<h2>The heap</h2>
+<p><code>Heap.heap</code> serves any size and takes memory back with <code>Mem.free</code>. Freeing a block twice, or one that was never given out, stops the program with a message instead of corrupting the heap. It is safe to call from several threads.</p>
+<div class="file"><span>Free.raz</span></div><pre class="code"><code><span class="kw">module</span> Free;
+<span class="kw">import</span> Out, Mem, Heap;
+
+<span class="kw">type</span> Cell = <span class="kw">record</span> val: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a, b: ^Cell; i, total: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">5</span> <span class="kw">do</span>
+        <span class="ty">NEW</span>(a, Heap.heap);
+        a^.val := i * i;
+        total := total + a^.val;
+        Mem.free(Heap.heap, ^<span class="ty">U8</span>(a));     <span class="comment">(* freed at once: its block is reused *)</span>
+    <span class="kw">end</span>;
+    <span class="ty">NEW</span>(b, Heap.heap);
+    Out.int(total); Out.char(<span class="string">&#x27; &#x27;</span>); Out.int(b^.val); Out.ln;   <span class="comment">(* a new block is zeroed *)</span>
+    Mem.free(Heap.heap, ^<span class="ty">U8</span>(b));
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Free.</code></pre>
+<pre class="output"><code>55 0
+</code></pre>
+<h2>Buffers that grow</h2>
+<p><code>Buf</code> is a growable byte buffer; like everything else it takes the allocator it grows from. It is what the program uses to build a string of unknown length.</p>
+<div class="file"><span>Build.raz</span></div><pre class="code"><code><span class="kw">module</span> Build;
+<span class="kw">import</span> Out, Buf, Heap, Str;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> b: Buf.Buf; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Buf.init(b, Heap.heap);
+    <span class="kw">defer</span> Buf.done(b);
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">5</span> <span class="kw">do</span>
+        Buf.str(b, <span class="string">&quot;item &quot;</span>);
+        Buf.add(b, <span class="ty">U8</span>(<span class="string">&#x27;0&#x27;</span> + i));
+        Buf.add(b, <span class="string">&#x27;,&#x27;</span>);
+    <span class="kw">end</span>;
+    Out.str(Buf.bytes(b)); Out.ln;
+    Out.int(b.len); Out.str(<span class="string">&quot; bytes\n&quot;</span>);
+    Buf.reset(b);
+    Str.join(b, [<span class="string">&quot;red&quot;</span>, <span class="string">&quot;green&quot;</span>, <span class="string">&quot;blue&quot;</span>], <span class="string">&quot;, &quot;</span>);
+    Out.str(Buf.bytes(b)); Out.ln;
+    Buf.reset(b);
+    Str.replace(b, <span class="string">&quot;a-b-c&quot;</span>, <span class="string">&quot;-&quot;</span>, <span class="string">&quot; and &quot;</span>);
+    Out.str(Buf.bytes(b)); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Build.</code></pre>
+<pre class="output"><code>item 1,item 2,item 3,item 4,item 5,
+35 bytes
+red, green, blue
+a and b and c
+</code></pre>
+<p><code>Str.join</code> and <code>Str.replace</code> build into a <code>Buf</code> too: the parts with a separator between them, or a string with one text replaced by another wherever it is.</p>
+<h2>Pages</h2>
+<p>Under the allocators are pages from the system: <code>Mem.pages(size)</code> gives zeroed memory in whole pages, or <code>nil</code>, and <code>Mem.unmap</code> gives it back. Most programs never need to call it directly.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="variants.html">&larr; Enumerations, sets, variants and match</a><a href="index.html">Contents</a><a class="next" href="errors.html">Errors &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
+</body>
+</html>

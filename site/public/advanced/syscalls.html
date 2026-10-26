@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System calls - More Raz</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="System calls - More Raz">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
+<main>
+<div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html">Output and formatting</a></li>
+<li><a href="bytes.html">Strings and bytes</a></li>
+<li><a href="collections.html">Lists, arrays, maps and sorting</a></li>
+<li><a href="files.html">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html" aria-current="page">System calls</a></li>
+<li><a href="listing.html">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">The machine &middot; lesson 12 of 18</p><h1>System calls</h1>
+<p>Under <code>Sys</code> there is one built-in: <code>SYSCALL(n, x1, ..., x6)</code>. It makes Linux system call number <code>n</code> with up to six arguments, each a pointer or an integer no wider than <code>INT</code>, and gives the raw result, an <code>INT</code>. A negative result is <code>-errno</code>. That is all the interface there is; <code>Sys.write</code>, <code>Sys.open</code> and the rest of <code>lib/Sys.linux-x86_64.raz</code> are written with it, in raz, in a few lines each.</p>
+<p><code>SYSCALL</code> exists only on Linux targets. Other systems have no stable system call interface, which is why their <code>Sys</code> calls the C library instead.</p>
+<h2>The shape of a call</h2>
+<p><code>write(fd, buf, count)</code> is call number 1. The arguments are the descriptor, a pointer to the bytes, and how many.</p>
+<div class="file"><span>Raw.raz</span></div><pre class="code"><code><span class="kw">module</span> Raw;
+
+<span class="kw">const</span> Msg = <span class="string">&quot;straight to the kernel\n&quot;</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> n: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    n := SYSCALL(<span class="number">1</span>, <span class="number">1</span>, <span class="ty">ADR</span>(Msg[<span class="number">0</span>]), <span class="ty">LEN</span>(Msg));
+    <span class="kw">if</span> n # <span class="ty">LEN</span>(Msg) <span class="kw">then</span> _ := SYSCALL(<span class="number">60</span>, <span class="number">1</span>); <span class="kw">end</span>;      <span class="comment">(* exit(1), if it came up short *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Raw.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz -Werror Raw.raz</span>
+<span class="cmd">$ ./Raw</span>
+straight to the kernel</code></pre>
+<p>That program has no <code>Out</code>, no <code>Sys</code>, and no output buffer. What it needs of the library is <code>Rt</code>'s start-up, which the compiler links in anyway.</p>
+<h2>Reading the result</h2>
+<p>A result that is negative is a failure, and its negation is the <code>errno</code>. <code>open</code> is call 2 and wants a C string: the path's bytes followed by a zero. A <code>[N]U8</code> made from a string literal is zero-filled past its length, so there is always a terminator.</p>
+<div class="file"><span>Open.raz</span></div><pre class="code"><code><span class="kw">module</span> Open;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> path: [<span class="number">32</span>]<span class="ty">U8</span>; fd: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    path := <span class="string">&quot;/no/such/file&quot;</span>;
+    fd := SYSCALL(<span class="number">2</span>, <span class="ty">ADR</span>(path[<span class="number">0</span>]), <span class="number">0</span>, <span class="number">0</span>);        <span class="comment">(* open(path, O_RDONLY) *)</span>
+    Out.str(<span class="string">&quot;open gave &quot;</span>); Out.int(fd); Out.ln;   <span class="comment">(* -2: ENOENT *)</span>
+    path := <span class="string">&quot;/dev/null&quot;</span>;
+    fd := SYSCALL(<span class="number">2</span>, <span class="ty">ADR</span>(path[<span class="number">0</span>]), <span class="number">0</span>, <span class="number">0</span>);
+    <span class="kw">if</span> fd &gt;= <span class="number">0</span> <span class="kw">then</span>
+        Out.str(<span class="string">&quot;opened /dev/null\n&quot;</span>);
+        _ := SYSCALL(<span class="number">3</span>, fd);                      <span class="comment">(* close *)</span>
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Open.</code></pre>
+<pre class="output"><code>open gave -2
+opened /dev/null
+</code></pre>
+<p>The library's <code>Sys.openRead</code> does exactly this, and <code>Sys.close</code> too. Reading <code>lib/Sys.linux-x86_64.raz</code> is the best reference there is for what each call wants.</p>
+<h2>A call that fills a structure</h2>
+<p><code>uname</code> (call 63) fills a structure of six 65-byte fields: the system name, node name, release, version, machine and domain. It is not a type raz knows; it is an array of bytes, with a <code>ADR</code> of it given to the kernel.</p>
+<div class="file"><span>Who.raz</span></div><pre class="code"><code><span class="kw">module</span> Who;
+<span class="kw">import</span> Out;
+
+<span class="comment">(* the length of the zero-ended string at the start of s *)</span>
+<span class="kw">proc</span> cstr(s: []<span class="ty">U8</span>): <span class="ty">INT</span>;
+<span class="kw">var</span> n: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    n := <span class="number">0</span>;
+    <span class="kw">while</span> (n &lt; <span class="ty">LEN</span>(s)) <span class="kw">and</span> (s[n] # <span class="number">0</span>) <span class="kw">do</span> <span class="ty">INC</span>(n); <span class="kw">end</span>;
+    <span class="kw">return</span> n;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> u: [<span class="number">390</span>]<span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">if</span> SYSCALL(<span class="number">63</span>, <span class="ty">ADR</span>(u[<span class="number">0</span>])) = <span class="number">0</span> <span class="kw">then</span>
+        Out.str(<span class="string">&quot;system: &quot;</span>); Out.str(u[<span class="number">0</span>..cstr(u[<span class="number">0</span>..<span class="number">65</span>])]); Out.ln;
+        Out.str(<span class="string">&quot;machine: &quot;</span>); Out.str(u[<span class="number">260</span>..<span class="number">260</span> + cstr(u[<span class="number">260</span>..<span class="number">325</span>])]); Out.ln;
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Who.</code></pre>
+<pre class="output"><code>system: Linux
+machine: x86_64
+</code></pre>
+<h2>Memory straight from the kernel</h2>
+<p><code>mmap</code> is call 9: six arguments, the most one call can take. This asks for a page of anonymous, zeroed memory, writes in it, and gives it back with <code>munmap</code> (call 11). It is what <code>Mem.pages</code> does, and so what every allocator is ultimately made of.</p>
+<div class="file"><span>Pages.raz</span></div><pre class="code"><code><span class="kw">module</span> Pages;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> p: ^<span class="ty">U8</span>; i: <span class="ty">INT</span>; total: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="comment">(* length 4096; PROT_READ|WRITE = 3; MAP_PRIVATE|ANONYMOUS = 22H; no fd *)</span>
+    p := ^<span class="ty">U8</span>(SYSCALL(<span class="number">9</span>, <span class="number">0</span>, <span class="number">4096</span>, <span class="number">3</span>, <span class="number">22H</span>, -<span class="number">1</span>, <span class="number">0</span>));
+    <span class="kw">if</span> <span class="ty">INT</span>(p) &lt; <span class="number">0</span> <span class="kw">then</span> Out.str(<span class="string">&quot;no memory\n&quot;</span>); <span class="kw">return</span>; <span class="kw">end</span>;
+    Out.int(<span class="ty">INT</span>(p[<span class="number">0</span>]) + p[<span class="number">4095</span>]); Out.str(<span class="string">&quot; (zero, as promised)\n&quot;</span>);
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4095</span> <span class="kw">do</span> p[i] := <span class="ty">U8</span>(i); <span class="kw">end</span>;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4095</span> <span class="kw">do</span> <span class="ty">INC</span>(total, p[i]); <span class="kw">end</span>;
+    Out.int(total); Out.ln;
+    _ := SYSCALL(<span class="number">11</span>, p, <span class="number">4096</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Pages.</code></pre>
+<pre class="output"><code>0 (zero, as promised)
+522240
+</code></pre>
+<h2>A cat with no library</h2>
+<p>Reading and writing in a loop is all <code>cat</code> does. With system calls, it is one procedure. Call 0 is <code>read</code> and call 1 is <code>write</code>; 0 and 1 are standard input and output.</p>
+<div class="file"><span>Cat.raz</span></div><pre class="code"><code><span class="kw">module</span> Cat;
+
+<span class="kw">proc</span> main*: <span class="ty">INT</span>;
+<span class="kw">var</span> buf: [<span class="number">4096</span>]<span class="ty">U8</span>; n, wrote, at: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    n := SYSCALL(<span class="number">0</span>, <span class="number">0</span>, <span class="ty">ADR</span>(buf[<span class="number">0</span>]), <span class="ty">LEN</span>(buf));
+    <span class="kw">while</span> n &gt; <span class="number">0</span> <span class="kw">do</span>
+        at := <span class="number">0</span>;
+        <span class="kw">while</span> at &lt; n <span class="kw">do</span>                   <span class="comment">(* a write may be partial *)</span>
+            wrote := SYSCALL(<span class="number">1</span>, <span class="number">1</span>, <span class="ty">ADR</span>(buf[at]), n - at);
+            <span class="kw">if</span> wrote &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> <span class="number">1</span>; <span class="kw">end</span>;
+            <span class="ty">INC</span>(at, wrote);
+        <span class="kw">end</span>;
+        n := SYSCALL(<span class="number">0</span>, <span class="number">0</span>, <span class="ty">ADR</span>(buf[<span class="number">0</span>]), <span class="ty">LEN</span>(buf));
+    <span class="kw">end</span>;
+    <span class="kw">if</span> n &lt; <span class="number">0</span> <span class="kw">then</span> <span class="kw">return</span> <span class="number">1</span>; <span class="kw">end</span>;
+    <span class="kw">return</span> <span class="number">0</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Cat.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Cat.raz</span>
+<span class="cmd">$ echo &quot;through the pipe&quot; | ./Cat</span>
+through the pipe
+<span class="cmd">$ ./Cat &lt; /dev/null; echo &quot;status $?&quot;</span>
+status 0
+<span class="cmd">$ echo &quot;see the calls&quot; | strace -e trace=read,write ./Cat 2&gt;&amp;1 &gt;/dev/null | grep -v &#x27;^+++&#x27;</span>
+read(0, &quot;see the calls\n&quot;, 4096)        = 14
+write(1, &quot;see the calls\n&quot;, 14)         = 14
+read(0, &quot;&quot;, 4096)                       = 0</code></pre>
+<p>The partial-write loop is the kind of detail <code>Sys.write</code> leaves to the caller on purpose: it returns the bytes written, and the program decides what to do about the rest.</p>
+<h2>In a code procedure</h2>
+<p>A system call is also an instruction. <code>syscall</code> takes its number in <code>rax</code> and its arguments in <code>rdi</code>, <code>rsi</code>, <code>rdx</code>, <code>r10</code>, <code>r8</code> and <code>r9</code>, which is not quite the order a procedure's arguments arrive in, since <code>r10</code> takes the place of <code>rcx</code>, and <code>syscall</code> itself clobbers <code>rcx</code> and <code>r11</code>.</p>
+<div class="file"><span>Ppid.raz</span></div><pre class="code"><code><span class="kw">module</span> Ppid;
+<span class="kw">import</span> Out;
+
+<span class="comment">(* getppid, call 110: no arguments *)</span>
+<span class="kw">proc</span> getppid: <span class="ty">INT</span>;
+<span class="kw">code</span>
+    mov eax, <span class="number">110</span>;
+    syscall;
+    ret;
+<span class="kw">end</span> getppid;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    <span class="kw">if</span> (getppid() &gt; <span class="number">0</span>) <span class="kw">and</span> (SYSCALL(<span class="number">110</span>) = getppid()) <span class="kw">then</span>
+        Out.str(<span class="string">&quot;two ways to ask, one answer\n&quot;</span>);
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Ppid.</code></pre>
+<pre class="output"><code>two ways to ask, one answer
+</code></pre>
+<p><code>SYSCALL</code> is the right tool nearly always: the compiler puts the arguments where they belong, and the result is checked in the open. A code procedure is for the rare call you want to make from inside another piece of assembly.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="asm.html">&larr; Procedures in assembly</a><a href="index.html">Contents</a><a class="next" href="listing.html">What the compiler makes &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
+</body>
+</html>

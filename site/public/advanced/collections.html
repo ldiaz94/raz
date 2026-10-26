@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lists, arrays, maps and sorting - More Raz</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="Lists, arrays, maps and sorting - More Raz">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
+<main>
+<div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html">Output and formatting</a></li>
+<li><a href="bytes.html">Strings and bytes</a></li>
+<li><a href="collections.html" aria-current="page">Lists, arrays, maps and sorting</a></li>
+<li><a href="files.html">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html">System calls</a></li>
+<li><a href="listing.html">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">The library &middot; lesson 3 of 18</p><h1>Lists, arrays, maps and sorting</h1>
+<p>The four generic modules are instantiated like any other generic module, with the types and procedures they need. All four take their memory from an allocator you give them; none of them allocates anything you didn't ask for.</p>
+<h2><code>List(T)</code></h2>
+<p>A singly linked list with <code>push</code> at the front, <code>pop</code> from the front, and the nodes exported, so a program walks it itself. Both can fail if the allocator is out of room, and say so.</p>
+<div class="file"><span>Pile.raz</span></div><pre class="code"><code><span class="kw">module</span> Pile;
+<span class="kw">import</span> Out, Heap, Ints := List(<span class="ty">INT</span>);
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> l: Ints.List; n: ^Ints.Node; v: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Ints.init(l, Heap.heap);
+    <span class="kw">defer</span> Ints.clear(l);
+    <span class="kw">for</span> v := <span class="number">1</span> <span class="kw">to</span> <span class="number">5</span> <span class="kw">do</span> _ := Ints.push(l, v * v); <span class="kw">end</span>;
+    Ints.reverse(l);                    <span class="comment">(* oldest first *)</span>
+    n := l.head;
+    <span class="kw">while</span> n # <span class="ty">nil</span> <span class="kw">do</span> Out.int(n^.val); Out.char(<span class="string">&#x27; &#x27;</span>); n := n^.next; <span class="kw">end</span>;
+    Out.ln;
+    v, _ := Ints.pop(l);
+    Out.int(v); Out.str(<span class="string">&quot; popped, &quot;</span>); Out.int(l.len); Out.str(<span class="string">&quot; left\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Pile.</code></pre>
+<pre class="output"><code>1 4 9 16 25 
+1 popped, 4 left
+</code></pre>
+<h2><code>Vec(T)</code></h2>
+<p>A growable array: one block of elements that doubles when it is full, for what a program learns the length of only as it reads. <code>push</code> adds at the end, <code>add</code> adds a zero element and gives a pointer to fill it in place, <code>resize</code> cuts it short or grows it with zeros. <code>all</code> gives the elements as a slice, indexed and checked as any slice is; the slice is good until the array next grows. Running out of memory stops the program, as with <code>Buf</code>: an element dropped silently would be wrong data. <code>room</code> asks first, for a program that can do better.</p>
+<div class="file"><span>Squares.raz</span></div><pre class="code"><code><span class="kw">module</span> Squares;
+<span class="kw">import</span> Out, Heap, Ints := Vec(<span class="ty">INT</span>);
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> v: Ints.Vec; i: <span class="ty">INT</span>; s: []<span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Ints.init(v, Heap.heap);
+    <span class="kw">defer</span> Ints.done(v);
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">1000</span> <span class="kw">do</span> Ints.push(v, i * i); <span class="kw">end</span>;
+    s := Ints.all(v);
+    Out.int(v.len); Out.str(<span class="string">&quot; squares, the last &quot;</span>); Out.int(s[<span class="ty">LEN</span>(s) - <span class="number">1</span>]); Out.ln;
+    Ints.resize(v, <span class="number">3</span>);
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> v.len - <span class="number">1</span> <span class="kw">do</span> Out.int(Ints.all(v)[i]); Out.char(<span class="string">&#x27; &#x27;</span>); <span class="kw">end</span>;
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Squares.</code></pre>
+<pre class="output"><code>1000 squares, the last 1000000
+1 4 9 
+</code></pre>
+<h2><code>Map(K, V; hash, eq)</code></h2>
+<p>A hash map. Its key's hash and equality are procedure arguments, so any type can be a key. <code>put</code> replaces what a key maps to; <code>get</code> says what it maps to and whether it maps to anything; <code>remove</code> says whether the key was there. <code>next</code> walks the map: from 0, it gives the next entry and the number to pass for the one after, and -1 when there are no more.</p>
+<div class="file"><span>Ages.raz</span></div><pre class="code"><code><span class="kw">module</span> Ages;
+<span class="kw">import</span> Out, Fmt, Str, Heap, Book := Map([]<span class="ty">U8</span>, <span class="ty">INT</span>, Str.hash, Str.eq);
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> m: Book.Map; age: <span class="ty">INT</span>; found, ok: <span class="ty">BOOL</span>; i: <span class="ty">INT</span>; v: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Book.init(m, Heap.heap);
+    _ := Book.put(m, <span class="string">&quot;ada&quot;</span>, <span class="number">36</span>);
+    _ := Book.put(m, <span class="string">&quot;grace&quot;</span>, <span class="number">45</span>);
+    _ := Book.put(m, <span class="string">&quot;alan&quot;</span>, <span class="number">41</span>);
+    _ := Book.put(m, <span class="string">&quot;ada&quot;</span>, <span class="number">37</span>);                <span class="comment">(* replaces *)</span>
+    age, found := Book.get(m, <span class="string">&quot;ada&quot;</span>);
+    Fmt.print(<span class="string">&quot;ada: {} ({})\n&quot;</span>, [Fmt.int(age), Fmt.bool(found)]);
+    age, found := Book.get(m, <span class="string">&quot;linus&quot;</span>);
+    Fmt.print(<span class="string">&quot;linus: {} ({})\n&quot;</span>, [Fmt.int(age), Fmt.bool(found)]);
+    ok := Book.remove(m, <span class="string">&quot;alan&quot;</span>);
+    Fmt.print(<span class="string">&quot;{} entries, removed {}\n&quot;</span>, [Fmt.int(m.len), Fmt.bool(ok)]);
+    v := <span class="number">0</span>;
+    i, _, age := Book.next(m, <span class="number">0</span>);
+    <span class="kw">while</span> i &gt;= <span class="number">0</span> <span class="kw">do</span>
+        <span class="ty">INC</span>(v, age);
+        i, _, age := Book.next(m, i);
+    <span class="kw">end</span>;
+    Out.int(v); Out.str(<span class="string">&quot; years in all\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Ages.</code></pre>
+<pre class="output"><code>ada: 37 (true)
+linus: 0 (false)
+2 entries, removed true
+82 years in all
+</code></pre>
+<p>A map's order is its own, so a program that wants an order collects the entries and sorts them, as the next section does.</p>
+<h2><code>Sort(T; less)</code></h2>
+<p>An in-place sort of a slice, by a <code>less</code> procedure, in <code>n log n</code> at most and with no memory of its own. Elements equal by <code>less</code> may change places.</p>
+<h2>Putting them together</h2>
+<p>Counting words, then listing them by count and then alphabetically: a <code>Map</code> for the counts, a <code>Vec</code> of records to sort, however many words there are, and <code>Sort</code> with a two-level <code>less</code>.</p>
+<div class="file"><span>Freq.raz</span></div><pre class="code"><code><span class="kw">module</span> Freq;
+<span class="kw">import</span> Fmt, Str, Heap,
+    Count := Map([]<span class="ty">U8</span>, <span class="ty">INT</span>, Str.hash, Str.eq),
+    Entries := Vec(Entry),
+    Rank := Sort(Entry, before);
+
+<span class="kw">type</span> Entry = <span class="kw">record</span> word: []<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="kw">const</span> Text = <span class="string">&quot;the cat and the hat and the bat sat on the mat and the cat sat&quot;</span>;
+
+<span class="comment">(* more first; equal counts alphabetically *)</span>
+<span class="kw">proc</span> before(a, b: Entry): <span class="ty">BOOL</span>;
+<span class="kw">begin</span>
+    <span class="kw">if</span> a.n # b.n <span class="kw">then</span> <span class="kw">return</span> a.n &gt; b.n; <span class="kw">end</span>;
+    <span class="kw">return</span> Str.cmp(a.word, b.word) &lt; <span class="number">0</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span>
+    m: Count.Map; entries: Entries.Vec; i, k, found: <span class="ty">INT</span>;
+    w, rest: []<span class="ty">U8</span>; key: []<span class="ty">U8</span>; v: <span class="ty">INT</span>; all: []Entry;
+<span class="kw">begin</span>
+    Count.init(m, Heap.heap);
+    <span class="kw">defer</span> Count.done(m);
+    w, rest := Str.field(Text);
+    <span class="kw">while</span> <span class="ty">LEN</span>(w) &gt; <span class="number">0</span> <span class="kw">do</span>
+        k, _ := Count.get(m, w);
+        _ := Count.put(m, w, k + <span class="number">1</span>);
+        w, rest := Str.field(rest);
+    <span class="kw">end</span>;
+    Entries.init(entries, Heap.heap);
+    <span class="kw">defer</span> Entries.done(entries);
+    found, key, v := Count.next(m, <span class="number">0</span>);
+    <span class="kw">while</span> found &gt;= <span class="number">0</span> <span class="kw">do</span>
+        Entries.push(entries, {word: key, n: v});
+        found, key, v := Count.next(m, found);
+    <span class="kw">end</span>;
+    all := Entries.all(entries);
+    Rank.sort(all);
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(all) - <span class="number">1</span> <span class="kw">do</span>
+        Fmt.print(<span class="string">&quot;{} {}\n&quot;</span>, [Fmt.int(all[i].n), Fmt.str(all[i].word)]);
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Freq.</code></pre>
+<pre class="output"><code>5 the
+3 and
+2 cat
+2 sat
+1 bat
+1 hat
+1 mat
+1 on
+</code></pre>
+<p>The keys here are slices of the constant text, so they outlive the map; a program whose keys come from a buffer it will reuse copies them first with <code>Str.copy</code>, and gives each back with <code>Str.free</code> before <code>Count.done</code> gives back the map's own memory.</p>
+<h2>Choosing</h2>
+<p>Use a <code>List</code> when you push and pop at one end and walk it in order. Use a <code>Vec</code> when you add at the end and index, and don't know how many will come; an array when you do. Use a <code>Map</code> when you look things up by key. Use <code>Sort</code> on either's slice when you want an order. When none of them fits, they are each under a hundred lines of raz in <code>lib/</code>, and the advanced tour's allocator lesson shows what is underneath.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="bytes.html">&larr; Strings and bytes</a><a href="index.html">Contents</a><a class="next" href="files.html">Files and the command line &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
+</body>
+</html>

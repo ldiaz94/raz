@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ordering and publication - More Raz</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="Ordering and publication - More Raz">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
+<main>
+<div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html">Output and formatting</a></li>
+<li><a href="bytes.html">Strings and bytes</a></li>
+<li><a href="collections.html">Lists, arrays, maps and sorting</a></li>
+<li><a href="files.html">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html">System calls</a></li>
+<li><a href="listing.html">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html" aria-current="page">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">Shared memory &middot; lesson 16 of 18</p><h1>Ordering and publication</h1>
+<p>Atomics make one word safe. The harder question is about the *other* words: if one thread writes a value and then raises a flag, can another thread that sees the flag be sure it sees the value?</p>
+<p>The report is careful. Only volatile accesses, <code>CAS</code>, <code>XCHG</code>, <code>XADD</code> and <code>FENCE</code> are exact. Any other access is ordinary: an implementation may keep a variable in a register, leave out a write that nothing reads, and change the order of ordinary accesses, as long as each thread, on its own, does what the report says. A variable that one thread writes while another reads or writes it, unless both use volatile accesses or the atomic built-ins, or a <code>FENCE</code> orders them, holds no particular value then: a read of it gives a value it had or was given, or a mixture of their bytes. Nothing else of the program becomes undefined by it.</p>
+<p>In plain words: two threads that share an ordinary variable with no atomic, volatile or fence between them get no guarantee about what each sees.</p>
+<h2>The pattern that is guaranteed: publish through an atomic</h2>
+<p>The simplest correct way to hand a value to another thread: write it with ordinary stores, then store a flag with an atomic. The reader loops on the flag with an atomic read, and then reads the data. <code>XCHG</code> is the store; <code>XADD(p, 0)</code> is the load, which adds nothing and returns the value. Both are sequentially consistent, so everything written before the flag is visible after it is seen.</p>
+<div class="file"><span>Publish.raz</span></div><pre class="code"><code><span class="kw">module</span> Publish;
+<span class="kw">import</span> Out, Sys, Thread;
+
+<span class="kw">type</span> Message = <span class="kw">record</span> id: <span class="ty">INT</span>; text: [<span class="number">32</span>]<span class="ty">U8</span>; len: <span class="ty">INT</span>; <span class="kw">end</span>;
+
+<span class="kw">var</span>
+    msg: Message;          <span class="comment">(* ordinary memory, written once, then published *)</span>
+    ready: <span class="ty">INT</span>;            <span class="comment">(* the flag: only touched by atomics *)</span>
+
+<span class="kw">proc</span> producer(_arg: ^<span class="ty">U8</span>);
+<span class="kw">begin</span>
+    Sys.sleep(<span class="number">10</span>);
+    msg.id := <span class="number">7</span>;
+    msg.text := <span class="string">&quot;built before the flag&quot;</span>;
+    msg.len := <span class="number">21</span>;
+    _ := <span class="ty">XCHG</span>(<span class="ty">ADR</span>(ready), <span class="number">1</span>);               <span class="comment">(* publish *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> t: ^Thread.Thread; err: <span class="ty">ERROR</span>;
+<span class="kw">begin</span>
+    t, err := Thread.spawn(producer, <span class="ty">nil</span>);
+    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="kw">while</span> <span class="ty">XADD</span>(<span class="ty">ADR</span>(ready), <span class="number">0</span>) = <span class="number">0</span> <span class="kw">do</span> Sys.yield; <span class="kw">end</span>;     <span class="comment">(* wait for it *)</span>
+    Out.int(msg.id); Out.char(<span class="string">&#x27; &#x27;</span>); Out.str(msg.text[<span class="number">0</span>..msg.len]); Out.ln;
+    Thread.join(t);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Publish.</code></pre>
+<pre class="output"><code>7 built before the flag
+</code></pre>
+<p>The reader's loop makes no ordinary read of <code>ready</code>: it can't be kept in a register and read once, which is the danger of <code>while ready = 0 do end</code>. And the write of <code>msg</code> can't be delayed past the <code>XCHG</code>.</p>
+<h2>The same with a fence</h2>
+<p><code>FENCE</code> is a full memory barrier: it orders the program's ordinary accesses against those of other processors and devices. With volatile accesses for the flag and a fence between the data and the flag, the same handoff works. This is the form device code takes, as in the last lesson.</p>
+<div class="file"><span>Fenced.raz</span></div><pre class="code"><code><span class="kw">module</span> Fenced;
+<span class="kw">import</span> Out, Sys, Thread;
+
+<span class="kw">var</span>
+    data: <span class="ty">INT</span>;                   <span class="comment">(* ordinary *)</span>
+    flag: <span class="ty">INT</span>;                   <span class="comment">(* only reached through a volatile pointer *)</span>
+
+<span class="kw">proc</span> producer(_arg: ^<span class="ty">U8</span>);
+<span class="kw">var</span> f: ^<span class="kw">VOLATILE</span> <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    f := ^<span class="kw">VOLATILE</span> <span class="ty">INT</span>(<span class="ty">ADR</span>(flag));
+    Sys.sleep(<span class="number">10</span>);
+    data := <span class="number">1234</span>;
+    FENCE;                       <span class="comment">(* data is written before the flag is *)</span>
+    f^ := <span class="number">1</span>;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> t: ^Thread.Thread; err: <span class="ty">ERROR</span>; f: ^<span class="kw">VOLATILE</span> <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    f := ^<span class="kw">VOLATILE</span> <span class="ty">INT</span>(<span class="ty">ADR</span>(flag));
+    t, err := Thread.spawn(producer, <span class="ty">nil</span>);
+    <span class="kw">if</span> err # <span class="ty">nil</span> <span class="kw">then</span> Out.str(<span class="ty">MSG</span>(err)); Out.ln; <span class="kw">return</span>; <span class="kw">end</span>;
+    <span class="kw">while</span> f^ = <span class="number">0</span> <span class="kw">do</span> Sys.yield; <span class="kw">end</span>;
+    FENCE;                       <span class="comment">(* and read after the flag is seen *)</span>
+    Out.int(data); Out.ln;
+    Thread.join(t);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Fenced.</code></pre>
+<pre class="output"><code>1234
+</code></pre>
+<p>Both sides need a fence. A fence on the writer only says the data is written first; the reader must not read <code>data</code> before it has seen the flag.</p>
+<h2>The version that is not guaranteed</h2>
+<p>This is what *not* to write, and it is the most common bug in this area:</p>
+<pre class="code"><code>var data, ready: INT;
+
+(* thread A *)  data := 42;  ready := 1;
+(* thread B *)  while ready = 0 do end;  use(data);</code></pre>
+<p>Both threads use ordinary accesses to shared variables. B's loop may read <code>ready</code> once into a register and spin forever; A's two writes may reach memory in either order; B may read <code>data</code> before the flag, or an old copy. On a particular machine with a particular compiler it may well work, until it is changed. The language says it holds no particular value, and it means it.</p>
+<h2>The lesson of the three versions</h2>
+<ul><li>Shared and written by someone: reach it through an atomic, a volatile pointer or a fence, every time, on both sides.</li><li>To hand over a bundle, publish a single atomic word *after* writing the bundle, and read the bundle only *after* seeing the word.</li><li>Everything under a <code>Lock</code> or a <code>Mutex</code> is ordered by the lock itself, so the data it guards can be ordinary variables. That is the simplest discipline, and the one to prefer until it is measured to be too slow.</li></ul><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="atomics.html">&larr; Atomics</a><a href="index.html">Contents</a><a class="next" href="lockfree.html">A lock-free stack &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
+</body>
+</html>

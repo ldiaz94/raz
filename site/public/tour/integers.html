@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Integers - Raz, Set, Go</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="Integers - Raz, Set, Go">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html">Modules</a></li>
+<li><a href="integers.html" aria-current="page">Integers</a></li>
+<li><a href="values.html">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='6'>
+<li><a href="slices.html">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='10'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html">Defer</a></li>
+<li><a href="checks.html">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html">Threads</a></li>
+</ol></aside><article><p class="kicker">Raz &middot; lesson 3 of 15</p><h1>Integers</h1>
+<p>raz has ten integer types, and a program that works with bytes, addresses, hashes and file offsets uses most of them. Each is a different type, so each has rules, and the rules are the same everywhere: that is the point of having them.</p>
+<table><thead><tr><th>Type</th><th>Size</th><th>Values</th></tr></thead><tbody><tr><td data-label="Type"><code>I8</code> <code>I16</code> <code>I32</code> <code>I64</code></td><td data-label="Size">1, 2, 4, 8 bytes</td><td data-label="Values">signed, two's complement</td></tr><tr><td data-label="Type"><code>U8</code> <code>U16</code> <code>U32</code> <code>U64</code></td><td data-label="Size">1, 2, 4, 8 bytes</td><td data-label="Values">unsigned</td></tr><tr><td data-label="Type"><code>INT</code></td><td data-label="Size">an address's: 8 on x86-64</td><td data-label="Values">signed, as big as an address</td></tr><tr><td data-label="Type"><code>UINT</code></td><td data-label="Size">an address's</td><td data-label="Values">unsigned, as big as an address</td></tr></tbody></table>
+<p><code>SIZE(T)</code> says how many bytes a type takes, and an unsigned type's largest value is what you get by taking one from zero. This program asks each type.</p>
+<div class="file"><span>Family.raz</span></div><pre class="code"><code><span class="kw">module</span> Family;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a: <span class="ty">U8</span>; b: <span class="ty">U16</span>; c: <span class="ty">U32</span>; d: <span class="ty">U64</span>;
+<span class="kw">begin</span>
+    a := <span class="number">0</span>; a := a - <span class="number">1</span>;
+    b := <span class="number">0</span>; b := b - <span class="number">1</span>;
+    c := <span class="number">0</span>; c := c - <span class="number">1</span>;
+    d := <span class="number">0</span>; d := d - <span class="number">1</span>;
+    Out.str(<span class="string">&quot;U8   &quot;</span>); Out.int(<span class="ty">SIZE</span>(<span class="ty">U8</span>));  Out.str(<span class="string">&quot; byte,  largest &quot;</span>); Out.int(<span class="ty">I64</span>(a)); Out.ln;
+    Out.str(<span class="string">&quot;U16  &quot;</span>); Out.int(<span class="ty">SIZE</span>(<span class="ty">U16</span>)); Out.str(<span class="string">&quot; bytes, largest &quot;</span>); Out.int(<span class="ty">I64</span>(b)); Out.ln;
+    Out.str(<span class="string">&quot;U32  &quot;</span>); Out.int(<span class="ty">SIZE</span>(<span class="ty">U32</span>)); Out.str(<span class="string">&quot; bytes, largest &quot;</span>); Out.int(<span class="ty">I64</span>(c)); Out.ln;
+    Out.str(<span class="string">&quot;U64  &quot;</span>); Out.int(<span class="ty">SIZE</span>(<span class="ty">U64</span>)); Out.str(<span class="string">&quot; bytes, largest 0x&quot;</span>); Out.hex(d, <span class="number">16</span>); Out.ln;
+    Out.str(<span class="string">&quot;INT  &quot;</span>); Out.int(<span class="ty">SIZE</span>(<span class="ty">INT</span>)); Out.str(<span class="string">&quot; bytes, as big as an address\n&quot;</span>);
+    Out.str(<span class="string">&quot;I8   &quot;</span>); Out.int(<span class="ty">SIZE</span>(<span class="ty">I8</span>));  Out.str(<span class="string">&quot; byte,  from -128 to 127\n&quot;</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Family.</code></pre>
+<pre class="output"><code>U8   1 byte,  largest 255
+U16  2 bytes, largest 65535
+U32  4 bytes, largest 4294967295
+U64  8 bytes, largest 0xFFFFFFFFFFFFFFFF
+INT  8 bytes, as big as an address
+I8   1 byte,  from -128 to 127
+</code></pre>
+<h2>INT is the everyday one</h2>
+<p>Lengths, indexes, counts and sizes are <code>INT</code>s. <code>LEN(s)</code> of a slice is an <code>INT</code>, and so is the loop variable that walks it. It is as big as an address, so it is the integer a pointer converts to, and the word the atomics work on. Reach for <code>INT</code> unless you have a reason: a byte is a <code>U8</code>, a character an <code>I32</code>, a file's size an <code>I64</code>, a hash a <code>U64</code>.</p>
+<p><code>INT</code> and <code>I64</code> are two types even where they have the same size. An <code>INT</code> goes silently into an <code>I64</code> (and a <code>UINT</code> into a <code>U64</code>) wherever it meets one, in <code>pos + LEN(s)</code> as in a call, which is why <code>Out.int(n)</code> and <code>Fmt.int(n)</code> take an <code>I64</code> and accept any <code>INT</code>. The other way is written, <code>INT(pos)</code>, since an <code>INT</code> may be smaller on another machine. An <code>INT</code> holds every <code>U8</code>, <code>I8</code> and <code>I16</code> on any machine, so those go silently into an <code>INT</code> too (and a <code>U8</code> or <code>U16</code> into a <code>UINT</code>): <code>n := s[i]</code>, and <code>n * 10 + s[i] - '0'</code> for a digit. Not what an operator made of them, which was computed in the small type and may have wrapped there: with <code>a, b: U8</code>, <code>n := a + b</code> is an error, and <code>INT(a) + b</code> the sum. And only one step: a <code>U8</code> goes into an <code>INT</code>, not on into an <code>I64</code>, so <code>Out.int(I64(b))</code> still says it. Nothing else converts unasked.</p>
+<h2>A number written in the program</h2>
+<p>A number in the program text is untyped until it meets a type, and then it must fit. <code>0FFH</code> is hexadecimal (it starts with a digit and ends in <code>H</code>), a character in quotes is its code point, and <code>'\u{E9}'</code> is a code point written by number. A hexadecimal literal too big for an <code>I64</code> is a <code>U64</code>.</p>
+<div class="file"><span>Literals.raz</span></div><pre class="code"><code><span class="kw">module</span> Literals;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> b: <span class="ty">U8</span>; w: <span class="ty">I16</span>; big: <span class="ty">U64</span>;
+<span class="kw">begin</span>
+    b := <span class="number">0FFH</span>;                    <span class="comment">(* fits a U8 *)</span>
+    w := -<span class="number">300</span>;
+    big := <span class="number">0FFFFFFFFFFFFFFFFH</span>;    <span class="comment">(* above the largest I64: a U64 *)</span>
+    Out.int(<span class="ty">I64</span>(b)); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.int(<span class="ty">I64</span>(w)); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.int(<span class="ty">I64</span>(<span class="string">&#x27;a&#x27;</span>)); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.int(<span class="ty">I64</span>(<span class="string">&#x27;\u{E9}&#x27;</span>)); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.hex(big, <span class="number">16</span>); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Literals.</code></pre>
+<pre class="output"><code>255 -300 97 233 FFFFFFFFFFFFFFFF
+</code></pre>
+<p>A constant that doesn't fit is an error, not a quiet cut. A conversion of a constant, which says you mean it, is allowed: <code>U8(300)</code> is 44.</p>
+<div class="file"><span>Fits.raz</span></div><pre class="code"><code><span class="kw">module</span> Fits;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> b: <span class="ty">U8</span>; c: <span class="ty">U8</span>;
+<span class="kw">begin</span>
+    b := <span class="number">300</span>;
+    c := <span class="ty">U8</span>(<span class="number">300</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Fits.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Fits.raz</span>
+Fits.raz:6:10: error: 300 doesn&#x27;t fit U8
+    6 |     b := 300;
+      |          ^^^
+raz: 1 error</code></pre>
+<h2>Wrapping</h2>
+<p>Arithmetic wraps at the type's width and never stops the program. <code>250 + 10</code> in a <code>U8</code> is 4; one more than the largest <code>I8</code> is the smallest. A unary minus wraps too: for an unsigned <code>x</code>, <code>-x</code> is <code>0 - x</code>. This is not undefined behaviour, as in C; it is what the report says, in every program, on every target, so a hash function can rely on it.</p>
+<div class="file"><span>Wrap.raz</span></div><pre class="code"><code><span class="kw">module</span> Wrap;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a: <span class="ty">U8</span>; b: <span class="ty">I8</span>; c: <span class="ty">U32</span>; d: <span class="ty">U8</span>;
+<span class="kw">begin</span>
+    a := <span class="number">250</span>;  a := a + <span class="number">10</span>;
+    Out.int(<span class="ty">I64</span>(a)); Out.ln;               <span class="comment">(* 4 *)</span>
+    b := <span class="number">127</span>;  b := b + <span class="number">1</span>;
+    Out.int(<span class="ty">I64</span>(b)); Out.ln;               <span class="comment">(* -128 *)</span>
+    c := <span class="number">0</span>;    c := c - <span class="number">1</span>;
+    Out.int(<span class="ty">I64</span>(c)); Out.ln;               <span class="comment">(* 4294967295 *)</span>
+    d := <span class="number">1</span>;    d := -d;
+    Out.int(<span class="ty">I64</span>(d)); Out.ln;               <span class="comment">(* 255: 0 - 1 *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Wrap.</code></pre>
+<pre class="output"><code>4
+-128
+4294967295
+255
+</code></pre>
+<p>Because wrapping is defined, a hash that depends on it is portable. Here is the FNV-1a hash that <code>Str.hash</code> uses, written in a few lines; the multiplication overflows a <code>U64</code> on every byte, on purpose.</p>
+<div class="file"><span>Fnv.raz</span></div><pre class="code"><code><span class="kw">module</span> Fnv;
+<span class="kw">import</span> Out, Str;
+
+<span class="kw">const</span> Offset = <span class="number">0CBF29CE484222325H</span>;
+<span class="kw">const</span> Prime = <span class="number">100000001B3H</span>;
+
+<span class="comment">(* FNV-1a: xor each byte in, then multiply, all modulo 2^64 *)</span>
+<span class="kw">proc</span> fnv(s: []<span class="ty">U8</span>): <span class="ty">U64</span>;
+<span class="kw">var</span> h: <span class="ty">U64</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    h := Offset;
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(s) - <span class="number">1</span> <span class="kw">do</span>
+        h := (h <span class="kw">xor</span> <span class="ty">U64</span>(s[i])) * Prime;
+    <span class="kw">end</span>;
+    <span class="kw">return</span> h;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.hex(fnv(<span class="string">&quot;raz&quot;</span>), <span class="number">16</span>); Out.ln;
+    Out.hex(Str.hash(<span class="string">&quot;raz&quot;</span>), <span class="number">16</span>); Out.ln;
+    <span class="kw">if</span> fnv(<span class="string">&quot;raz&quot;</span>) = Str.hash(<span class="string">&quot;raz&quot;</span>) <span class="kw">then</span> Out.str(<span class="string">&quot;the same\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Fnv.</code></pre>
+<pre class="output"><code>89F6BC1960FF4912
+89F6BC1960FF4912
+the same
+</code></pre>
+<h2>Widening, narrowing, and sign</h2>
+<p>A conversion to a narrower integer cuts the value to the new width. To a wider one it extends by the sign for a signed source and with zeros for an unsigned one. That difference is the whole story of "why did my byte come out negative".</p>
+<div class="file"><span>Widths.raz</span></div><pre class="code"><code><span class="kw">module</span> Widths;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> s: <span class="ty">I8</span>; u: <span class="ty">U8</span>;
+<span class="kw">begin</span>
+    s := -<span class="number">1</span>;
+    u := <span class="number">255</span>;                         <span class="comment">(* the same eight bits *)</span>
+    Out.int(<span class="ty">I64</span>(s)); Out.char(<span class="string">&#x27; &#x27;</span>);   <span class="comment">(* sign-extended: -1 *)</span>
+    Out.int(<span class="ty">I64</span>(u)); Out.char(<span class="string">&#x27; &#x27;</span>);   <span class="comment">(* zero-extended: 255 *)</span>
+    Out.int(<span class="ty">I64</span>(<span class="ty">U8</span>(s))); Out.char(<span class="string">&#x27; &#x27;</span>);   <span class="comment">(* the bits, read as unsigned: 255 *)</span>
+    Out.int(<span class="ty">I64</span>(<span class="ty">I8</span>(u))); Out.char(<span class="string">&#x27; &#x27;</span>);   <span class="comment">(* and back: -1 *)</span>
+    Out.int(<span class="ty">I64</span>(<span class="ty">U8</span>(<span class="number">300</span> + <span class="ty">INT</span>(u)))); Out.ln;   <span class="comment">(* 555 cut to 8 bits: 43 *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Widths.</code></pre>
+<pre class="output"><code>-1 255 255 -1 43
+</code></pre>
+<p>Relations compare as signed or unsigned according to the type, so the same bits order differently:</p>
+<div class="file"><span>Order.raz</span></div><pre class="code"><code><span class="kw">module</span> Order;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> s: <span class="ty">I8</span>; u: <span class="ty">U8</span>;
+<span class="kw">begin</span>
+    s := -<span class="number">1</span>;
+    u := <span class="ty">U8</span>(s);                        <span class="comment">(* 255 *)</span>
+    <span class="kw">if</span> s &lt; <span class="number">0</span> <span class="kw">then</span> Out.str(<span class="string">&quot;s is below zero\n&quot;</span>); <span class="kw">end</span>;
+    <span class="kw">if</span> u &gt; <span class="number">100</span> <span class="kw">then</span> Out.str(<span class="string">&quot;u is above 100\n&quot;</span>); <span class="kw">end</span>;
+    <span class="kw">if</span> <span class="ty">U8</span>(s) = u <span class="kw">then</span> Out.str(<span class="string">&quot;but they are the same bits\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Order.</code></pre>
+<pre class="output"><code>s is below zero
+u is above 100
+but they are the same bits
+</code></pre>
+<h2>Division</h2>
+<p><code>div</code> rounds toward zero, and <code>mod</code> takes the sign of the dividend, as in C: <code>-7 div 2</code> is -3 and <code>-7 mod 2</code> is -1. Dividing by zero stops the program, and so does dividing the smallest value of a signed type by -1, whose result can't be represented. Neither is a silent wrong answer.</p>
+<div class="file"><span>Divide.raz</span></div><pre class="code"><code><span class="kw">module</span> Divide;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> n, d: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    n := -<span class="number">7</span>; d := <span class="number">2</span>;
+    Out.int(n <span class="kw">div</span> d); Out.char(<span class="string">&#x27; &#x27;</span>); Out.int(n <span class="kw">mod</span> d); Out.char(<span class="string">&#x27; &#x27;</span>);   <span class="comment">(* -3 -1 *)</span>
+    n := <span class="number">7</span>; d := -<span class="number">2</span>;
+    Out.int(n <span class="kw">div</span> d); Out.char(<span class="string">&#x27; &#x27;</span>); Out.int(n <span class="kw">mod</span> d); Out.ln;          <span class="comment">(* -3 1 *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Divide.</code></pre>
+<pre class="output"><code>-3 -1 -3 1
+</code></pre>
+<h2>Shifts and bits</h2>
+<p><code>&amp;</code> (and), <code>|</code> (or), <code>xor</code> and <code>~</code> (not) work on every bit. <code>x shl n</code> and <code>x shr n</code> shift by <code>n</code> modulo the width of <code>x</code>'s type: for a <code>U8</code>, <code>x shl 9</code> is <code>x shl 1</code>. <code>shr</code> brings in copies of the sign bit for signed types, so it divides by two keeping the sign, and zeros for unsigned ones. The result has <code>x</code>'s type, cut to its width: in a <code>U8</code>, <code>0C0H shl 1</code> is <code>80H</code>.</p>
+<div class="file"><span>Shifts.raz</span></div><pre class="code"><code><span class="kw">module</span> Shifts;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> u: <span class="ty">U8</span>; s: <span class="ty">I8</span>;
+<span class="kw">begin</span>
+    u := <span class="number">0C0H</span>;
+    Out.hex(<span class="ty">U64</span>(u <span class="kw">shl</span> <span class="number">1</span>), <span class="number">2</span>); Out.char(<span class="string">&#x27; &#x27;</span>);        <span class="comment">(* 80: cut to 8 bits *)</span>
+    Out.hex(<span class="ty">U64</span>(u <span class="kw">shr</span> <span class="number">4</span>), <span class="number">2</span>); Out.char(<span class="string">&#x27; &#x27;</span>);        <span class="comment">(* 0C: zeros come in *)</span>
+    Out.hex(<span class="ty">U64</span>(u <span class="kw">shl</span> <span class="number">9</span>), <span class="number">2</span>); Out.ln;               <span class="comment">(* 9 mod 8 = 1: 80 *)</span>
+    s := -<span class="number">64</span>;
+    Out.int(<span class="ty">I64</span>(s <span class="kw">shr</span> <span class="number">2</span>)); Out.char(<span class="string">&#x27; &#x27;</span>);           <span class="comment">(* -16: the sign comes in *)</span>
+    Out.int(<span class="ty">I64</span>(s <span class="kw">shr</span> <span class="number">7</span>)); Out.ln;                  <span class="comment">(* -1 *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Shifts.</code></pre>
+<pre class="output"><code>80 0C 80
+-16 -1
+</code></pre>
+<p>A packed value is the usual use of all this: several small numbers in one word. This puts a colour in the bytes of a <code>U32</code> and takes it out again.</p>
+<div class="file"><span>Colour.raz</span></div><pre class="code"><code><span class="kw">module</span> Colour;
+<span class="kw">import</span> Out;
+
+<span class="comment">(* red, green and blue, each 0 to 255, in the low 24 bits *)</span>
+<span class="kw">proc</span> pack(r, g, b: <span class="ty">U8</span>): <span class="ty">U32</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> (<span class="ty">U32</span>(r) <span class="kw">shl</span> <span class="number">16</span>) | (<span class="ty">U32</span>(g) <span class="kw">shl</span> <span class="number">8</span>) | <span class="ty">U32</span>(b);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> red(c: <span class="ty">U32</span>): <span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> <span class="ty">U8</span>(c <span class="kw">shr</span> <span class="number">16</span>);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> green(c: <span class="ty">U32</span>): <span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> <span class="ty">U8</span>((c <span class="kw">shr</span> <span class="number">8</span>) &amp; <span class="number">0FFH</span>);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> blue(c: <span class="ty">U32</span>): <span class="ty">U8</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> <span class="ty">U8</span>(c &amp; <span class="number">0FFH</span>);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> c: <span class="ty">U32</span>;
+<span class="kw">begin</span>
+    c := pack(<span class="number">0FFH</span>, <span class="number">80H</span>, <span class="number">10H</span>);
+    Out.str(<span class="string">&quot;0x&quot;</span>); Out.hex(<span class="ty">U64</span>(c), <span class="number">6</span>); Out.ln;
+    Out.int(<span class="ty">I64</span>(red(c))); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.int(<span class="ty">I64</span>(green(c))); Out.char(<span class="string">&#x27; &#x27;</span>);
+    Out.int(<span class="ty">I64</span>(blue(c))); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Colour.</code></pre>
+<pre class="output"><code>0xFF8010
+255 128 16
+</code></pre>
+<h2>Which one to use</h2>
+<ul><li><strong><code>INT</code></strong> for lengths, indexes, counts, loop variables, and anything you'd write <code>int</code> for in C.</li><li><strong><code>U8</code></strong> for bytes, and for a string's elements (<code>[]U8</code>). <strong><code>I32</code></strong> for a character, a code point.</li><li><strong><code>U32</code>, <code>U64</code></strong> for hashes, bit sets, masks and addresses you do arithmetic on.</li><li><strong><code>I64</code></strong> for what must not shrink on a smaller target: a file's size or position, a time in nanoseconds, a number read from text.</li><li><strong><code>I8</code>, <code>I16</code>, <code>U16</code></strong> when a format or a layout says so, in a record or an array, to save space or match a protocol. Convert at the edge and compute in <code>INT</code>.</li><li><strong><code>UINT</code></strong> rarely: for a count that must use the whole address range, or an address.</li></ul><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="modules.html">&larr; Modules</a><a href="index.html">Contents</a><a class="next" href="values.html">Values and conversions &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
+</body>
+</html>

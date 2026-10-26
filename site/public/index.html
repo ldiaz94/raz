@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>raz: a small systems language</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="raz: a small systems language">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><nav><a class="mark" href="index.html"><img src="logo.svg" width="26" height="26" alt="">raz</a><a href="tour/index.html">Raz, Set, Go</a><a href="advanced/index.html">More Raz</a><a href="spec.html">Report</a><a href="source/index.html">Source</a><a href="index.html#download">Download</a></nav></header>
+<main>
+<section class="hero">
+  <h1>raz</h1>
+  <p class="tag">A small systems language in Wirth&rsquo;s tradition, for x86-64 Linux.
+  <em>Raz</em> is Polish for <em>one</em>, as in counting.</p>
+  <div class="cta">
+    <a class="btn primary" href="tour/index.html">Take the tour: Raz, Set, Go</a>
+    <a class="btn" href="advanced/index.html">More Raz</a>
+    <a class="btn" href="#download">Download</a>
+    <a class="btn" href="spec.html">Read the report</a>
+    <a class="btn" href="source/index.html">Browse the source</a>
+  </div>
+</section>
+
+<p>A raz program can lay a record over a device&rsquo;s registers, read and
+write memory exactly as written, take part in lock-free algorithms, make
+system calls and call C libraries. It has no garbage collector and no hidden
+run time: what the program does is what its text says.</p>
+
+<p>The compiler is written in raz, about 10,700 lines, and builds itself. It makes
+x86-64 machine code and the ELF file itself, with no assembler or linker, in
+one pass, at about 500,000 lines a second.</p>
+
+<div class="facts">
+  <span><b>~10,700</b> lines of compiler</span>
+  <span><b>~500K</b> lines compiled a second</span>
+  <span><b>1</b> report, <b>35</b> pages</span>
+  <span><b>static</b> executables, no run time to install</span>
+</div>
+
+<div class="cols">
+  <div>
+    <h2>A taste</h2>
+    <div class="file"><span>Taste.raz</span></div>
+<pre class="code"><code><span class="comment">(* Several results, slices, and checks that say what failed. *)</span>
+<span class="kw">module</span> Taste;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> divmod(a, b: <span class="ty">INT</span>): (<span class="ty">INT</span>, <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    <span class="kw">return</span> a <span class="kw">div</span> b, a <span class="kw">mod</span> b;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> sum(s: []<span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="kw">var</span> i, t: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="ty">LEN</span>(s) - <span class="number">1</span> <span class="kw">do</span> t := t + s[i]; <span class="kw">end</span>;
+    <span class="kw">return</span> t;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> q, r: <span class="ty">INT</span>; a: [<span class="number">5</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">4</span> <span class="kw">do</span> a[i] := i * i; <span class="kw">end</span>;
+    q, r := divmod(sum(a), <span class="number">7</span>);
+    Out.int(q); Out.str(<span class="string">&quot; remainder &quot;</span>); Out.int(r); Out.ln;
+    Out.int(sum(a[<span class="number">1</span>..<span class="number">3</span>])); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Taste.</code></pre>
+<pre class="output"><code>4 remainder 2
+5</code></pre>
+  </div>
+  <div>
+    <h2>What it has</h2>
+    <ul class="features">
+      <li>Integers of 8 to 64 bits, signed and unsigned, which wrap; <code>BOOL</code>, <code>F32</code>, <code>F64</code>. Nothing converts unless it is written.</li>
+      <li>Arrays, checked slices, pointers, records laid out as C lays them out, packed records, enumerations, sets, and variants with <code>match</code>.</li>
+      <li>Every index and slice is checked; a failure says where it was, with the values, and the calls under way.</li>
+      <li>Strings of UTF-8 bytes, raw strings over lines that keep the code's indent, and <code>match</code> on a string.</li>
+      <li>Every variable starts at zero. Behaviour is defined everywhere but through pointers.</li>
+      <li>No garbage collector: memory comes from an allocator the program chooses and passes.</li>
+      <li>Several results, <code>ERROR</code> values and <code>defer</code>, in place of exceptions.</li>
+      <li>Modules with bodies, and generic modules: <code>Map(K, V; hash, eq)</code>.</li>
+      <li><code>^VOLATILE T</code> and the atomics <code>CAS</code>, <code>XCHG</code>, <code>XADD</code>, <code>FENCE</code>, for devices and lock-free code.</li>
+      <li><code>extern</code> procedures and variables from C, code procedures in assembly, and <code>SYSCALL</code>.</li>
+      <li>Threads without C, a library of <code>Out</code>, <code>Str</code>, <code>Bytes</code>, <code>Fmt</code>, <code>Map</code>, <code>Sort</code> and more, and gdb that knows your lines.</li>
+      <li>A formatter, a documentation tool, and editor support for vim and emacs.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Learn it</h2>
+<p><a href="tour/index.html"><strong>Raz, Set, Go</strong></a> is a tour of the
+language in 15 lessons, each with programs you can run. <a
+href="advanced/index.html"><strong>More Raz</strong></a> is the second tour:
+the library, programs with no run time, procedures in assembly, system calls,
+volatile accesses, atomics and lock-free code, in 18 more.</p>
+
+<h2>The language, in writing</h2>
+<p>The language is defined by <a href="spec.html">the report</a>, which is
+short on purpose: whatever it doesn&rsquo;t allow, raz doesn&rsquo;t have.
+Its second volume describes the library. Both are on one page, and each is
+a PDF: <a href="raz.pdf">the language</a> (35 pages) and
+<a href="raz-lib.pdf">the library</a>.</p>
+
+<h2 id="download">Download</h2>
+<p>raz 0.23.0 is a tarball for x86-64 Linux with the compiler, <code>raz</code>,
+its library, <code>lib/</code>, which it finds beside itself, the formatter
+and the documentation tool as sources in <code>tools/</code>, and the manual
+pages. It needs nothing else installed.</p>
+<div class="cta">
+  <a class="btn primary" href="download/raz-0.23.0-linux-x86_64.tar.gz">Download raz 0.23.0</a>
+  <a class="btn" href="download/raz-0.23.0-linux-x86_64.tar.gz.sha256">SHA-256</a>
+</div>
+<pre class="code"><code>$ tar xzf raz-0.23.0-linux-x86_64.tar.gz
+$ ln -s $PWD/raz-0.23.0-linux-x86_64/raz ~/.local/bin/raz
+$ raz run Hello.raz</code></pre>
+<p>The link works since raz finds <code>lib/</code> beside its real path. The
+manual pages are in <code>man/</code>: <code>man ./man/raz-tutorial.7</code>.
+The address <code>download/latest</code> always leads to the newest release,
+and <code>download/raz-0.23.0-linux-x86_64.tar.gz</code> to this one, for
+good. Earlier releases: <a href="download/raz-0.22.0-linux-x86_64.tar.gz">0.22.0</a>, <a href="download/raz-0.21.0-linux-x86_64.tar.gz">0.21.0</a>, <a href="download/raz-0.20.0-linux-x86_64.tar.gz">0.20.0</a>, <a href="download/raz-0.19.0-linux-x86_64.tar.gz">0.19.0</a>, <a href="download/raz-0.18.1-linux-x86_64.tar.gz">0.18.1</a>, <a href="download/raz-0.18.0-linux-x86_64.tar.gz">0.18.0</a>, <a href="download/raz-0.17.2-linux-x86_64.tar.gz">0.17.2</a>, <a href="download/raz-0.17.1-linux-x86_64.tar.gz">0.17.1</a>, <a href="download/raz-0.17.0-linux-x86_64.tar.gz">0.17.0</a>, <a href="download/raz-0.16.0-linux-x86_64.tar.gz">0.16.0</a>, <a href="download/raz-0.15.0-linux-x86_64.tar.gz">0.15.0</a>, <a href="download/raz-0.14.0-linux-x86_64.tar.gz">0.14.0</a>, <a href="download/raz-0.13.0-linux-x86_64.tar.gz">0.13.0</a>, <a href="download/raz-0.12.0-linux-x86_64.tar.gz">0.12.0</a>, <a href="download/raz-0.11.1-linux-x86_64.tar.gz">0.11.1</a>, <a href="download/raz-0.11.0-linux-x86_64.tar.gz">0.11.0</a>, <a href="download/raz-0.10.1-linux-x86_64.tar.gz">0.10.1</a>, <a href="download/raz-0.10.0-linux-x86_64.tar.gz">0.10.0</a>, <a href="download/raz-0.9.1-linux-x86_64.tar.gz">0.9.1</a>, <a href="download/raz-0.9.0-linux-x86_64.tar.gz">0.9.0</a>, <a href="download/raz-0.8.0-linux-x86_64.tar.gz">0.8.0</a>, <a href="download/raz-0.7.1-linux-x86_64.tar.gz">0.7.1</a>; each has its SHA-256 beside it, with
+<code>.sha256</code> added to its name.</p>
+<p class="sha">SHA-256 <code>103eb421a7fcca1c1495c1a9c699297d460ab72067fa04854da8f21edc07347c</code></p>
+<p><a href="source/releases/index.html">Release pages</a> give each
+version's commit, notes, compiler and source archives, with checksums.
+Browse the <a href="source/index.html">source and history</a>, or clone:
+<code>git clone https://raz.lucelad.workers.dev/source/</code>.</p>
+
+</main>
+<footer>raz is under the ISC license. <a href="source/index.html">Source</a></footer>
+</body>
+</html>

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>When it goes wrong - Raz, Set, Go</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="When it goes wrong - Raz, Set, Go">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html" aria-current="page">Raz, Set, Go</a><a href="../advanced/index.html">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
+<main>
+<div class="tour"><aside><h2>Raz, Set, Go</h2><h3>Raz</h3><ol start='1'>
+<li><a href="hello.html">Hello, world</a></li>
+<li><a href="modules.html">Modules</a></li>
+<li><a href="integers.html">Integers</a></li>
+<li><a href="values.html">Values and conversions</a></li>
+<li><a href="procedures.html">Procedures and several results</a></li>
+</ol>
+<h3>Set</h3><ol start='6'>
+<li><a href="slices.html">Arrays, slices and strings</a></li>
+<li><a href="records.html">Records and pointers</a></li>
+<li><a href="variants.html">Enumerations, sets, variants and match</a></li>
+<li><a href="memory.html">Memory and allocators</a></li>
+</ol>
+<h3>Go</h3><ol start='10'>
+<li><a href="errors.html">Errors</a></li>
+<li><a href="defer.html">Defer</a></li>
+<li><a href="checks.html" aria-current="page">When it goes wrong</a></li>
+<li><a href="generics.html">Generic modules</a></li>
+<li><a href="c.html">Talking to C</a></li>
+<li><a href="threads.html">Threads</a></li>
+</ol></aside><article><p class="kicker">Go &middot; lesson 12 of 15</p><h1>When it goes wrong</h1>
+<div class="file"><span>Fail.raz</span></div><pre class="code"><code><span class="kw">module</span> Fail;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> show(a: []<span class="ty">INT</span>; i: <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    Out.int(a[i]);
+    Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a: [<span class="number">3</span>]<span class="ty">INT</span>; i: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">for</span> i := <span class="number">0</span> <span class="kw">to</span> <span class="number">3</span> <span class="kw">do</span>
+        show(a, i);
+    <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Fail.</code></pre>
+<pre class="output"><code>0
+0
+0
+<span class="err">Fail.raz:6:15: index 3 is out of range for a length of 3
+  in Fail.show at Fail.raz:6:15: i = 3
+  in Fail.main at Fail.raz:14:9: i = 3
+</span></code></pre>
+<p>Every index and slice is checked. A failed check says where it failed and with what values, then the calls under way with their variables, and ends the program with status 2. The three <code>0</code>s are what it printed before the fourth pass went one past the end.</p>
+<h2>Reading the message</h2>
+<p>The first line is the place of the offending expression: file, line and column, then what failed and the numbers involved. Each <code>in</code> line after it is a call still under way, innermost first, with the basic-typed variables it held. That is usually enough to see the bug without a debugger.</p>
+<h2>Other failures</h2>
+<p>The same shape of message tells of a <code>nil</code> pointer, a division by zero, a bad slice and a stack overflow. Each of them stops the program with status 2, and never runs on with a wrong value.</p>
+<div class="file"><span>Nilp.raz</span></div><pre class="code"><code><span class="kw">module</span> Nilp;
+<span class="kw">import</span> Out;
+
+<span class="kw">type</span> Node = <span class="kw">record</span> val: <span class="ty">INT</span>; next: ^Node; <span class="kw">end</span>;
+
+<span class="kw">proc</span> last(n: ^Node): <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">while</span> n^.next # <span class="ty">nil</span> <span class="kw">do</span> n := n^.next; <span class="kw">end</span>;
+    <span class="kw">return</span> n^.val;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a, b: Node;
+<span class="kw">begin</span>
+    a.val := <span class="number">1</span>; b.val := <span class="number">2</span>;
+    a.next := <span class="ty">ADR</span>(b);
+    Out.int(last(<span class="ty">ADR</span>(a))); Out.ln;
+    Out.int(last(<span class="ty">nil</span>)); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Nilp.</code></pre>
+<pre class="output"><code>2
+<span class="err">Nilp.raz:8:11: stopped by a nil pointer
+  in Nilp.last at Nilp.raz:8:11: n = nil
+  in Nilp.main at Nilp.raz:18:5
+</span></code></pre>
+<div class="file"><span>Zero.raz</span></div><pre class="code"><code><span class="kw">module</span> Zero;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> ratio(a, b: <span class="ty">INT</span>): <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> a <span class="kw">div</span> b;
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> n: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    Out.int(ratio(<span class="number">10</span>, <span class="number">3</span>)); Out.ln;
+    Out.int(ratio(<span class="number">10</span>, n)); Out.ln;       <span class="comment">(* n is zero: every variable starts at zero *)</span>
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Zero.</code></pre>
+<pre class="output"><code>3
+<span class="err">Zero.raz:13:5: stopped by a division fault
+  in Zero.main at Zero.raz:13:5: n = 0
+</span></code></pre>
+<div class="file"><span>Slicing.raz</span></div><pre class="code"><code><span class="kw">module</span> Slicing;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a: [<span class="number">5</span>]<span class="ty">INT</span>; s: []<span class="ty">INT</span>; hi: <span class="ty">INT</span>;
+<span class="kw">begin</span>
+    hi := <span class="number">7</span>;
+    s := a[<span class="number">2</span>..<span class="number">5</span>];
+    Out.int(<span class="ty">LEN</span>(s)); Out.ln;
+    s := a[<span class="number">2</span>..hi];                       <span class="comment">(* past the end *)</span>
+    Out.int(<span class="ty">LEN</span>(s)); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Slicing.</code></pre>
+<pre class="output"><code>3
+<span class="err">Slicing.raz:10:12: slice 2..7 is out of range for a length of 5
+  in Slicing.main at Slicing.raz:10:12: hi = 7
+</span></code></pre>
+<p>In every case the output before the failure was written first. <code>Out</code>'s buffer is flushed by the failure, so what the program printed is never lost to the crash.</p>
+<h2>A constant can fail at compile time</h2>
+<p>A division by a zero constant, or a constant index out of range, is not a run-time failure at all; the compiler says it at the line, so you never ship it.</p>
+<div class="file"><span>Early.raz</span></div><pre class="code"><code><span class="kw">module</span> Early;
+<span class="kw">import</span> Out;
+
+<span class="kw">proc</span> main*;
+<span class="kw">var</span> a: [<span class="number">3</span>]<span class="ty">INT</span>;
+<span class="kw">begin</span>
+    a[<span class="number">3</span>] := <span class="number">1</span>;
+    Out.int(<span class="number">10</span> <span class="kw">div</span> <span class="number">0</span>); Out.ln;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Early.</code></pre>
+<pre class="output term"><code><span class="cmd">$ raz Early.raz</span>
+Early.raz:7:7: error: index 3 is out of range for a length of 3
+    7 |     a[3] := 1;
+      |       ^
+Early.raz:8:13: error: division by zero
+    8 |     Out.int(10 div 0); Out.ln;
+      |             ^^^^^^^^
+raz: 2 errors</code></pre>
+<h2>Looking at where you are</h2>
+<p><code>Rt.trace</code> prints the calls under way, as a failure does, whenever you ask. It writes to standard error and the program goes on. It is the cheapest debugging tool there is.</p>
+<div class="file"><span>Where.raz</span></div><pre class="code"><code><span class="kw">module</span> Where;
+<span class="kw">import</span> Rt;
+
+<span class="kw">proc</span> inner(depth: <span class="ty">INT</span>);
+<span class="kw">begin</span>
+    <span class="kw">if</span> depth = <span class="number">0</span> <span class="kw">then</span> Rt.trace; <span class="kw">return</span>; <span class="kw">end</span>;
+    inner(depth - <span class="number">1</span>);
+<span class="kw">end</span>;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    inner(<span class="number">2</span>);
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Where.</code></pre>
+<pre class="output"><code><span class="err">  in Where.inner at Where.raz:6:23: depth = 0
+  in Where.inner at Where.raz:7:5: depth = 1
+  and 1 more the same
+  in Where.main at Where.raz:12:5
+</span></code></pre>
+<h2>Leaving the checks out</h2>
+<p>A module that is sure of its indexes may say <code>check off;</code> after its imports and links, for speed. The module's own indexing and slicing is then unchecked, so an index out of range reads or writes whatever it reaches. Every other check stays (<code>nil</code> and division), and callers of the module keep theirs. Use it for a measured inner loop, never as a first step.</p>
+<h2>For gdb and the profiler</h2>
+<p>The program carries names and line numbers, so <code>gdb</code> can break at <code>Fail.raz:6</code> and show raz source. <code>RAZ_PROFILE=1</code> in the environment makes a program sample itself every millisecond and say at the end where its time went, by procedure and by line.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="defer.html">&larr; Defer</a><a href="index.html">Contents</a><a class="next" href="generics.html">Generic modules &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One module, one file per target - More Raz</title>
+<meta name="description" content="raz: a small systems language in Wirth's tradition, for x86-64 Linux.">
+<meta name="theme-color" content="#E07A5F">
+<meta property="og:title" content="One module, one file per target - More Raz">
+<meta property="og:description" content="A small systems language for x86-64 Linux. No run time, no GC, one report.">
+<meta property="og:image" content="https://raz.lucelad.workers.dev/social.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="icon" href="../favicon-32.png" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body>
+<header><nav><a class="mark" href="../index.html"><img src="../logo.svg" width="26" height="26" alt="">raz</a><a href="../tour/index.html">Raz, Set, Go</a><a href="../advanced/index.html" aria-current="page">More Raz</a><a href="../spec.html">Report</a><a href="../source/index.html">Source</a><a href="../index.html#download">Download</a></nav></header>
+<main>
+<div class="tour"><aside><h2>More Raz</h2><h3>The library</h3><ol start='1'>
+<li><a href="fmt.html">Output and formatting</a></li>
+<li><a href="bytes.html">Strings and bytes</a></li>
+<li><a href="collections.html">Lists, arrays, maps and sorting</a></li>
+<li><a href="files.html">Files and the command line</a></li>
+<li><a href="processes.html">Time, randomness and other programs</a></li>
+<li><a href="allocators.html">Writing an allocator</a></li>
+</ol>
+<h3>Standing alone</h3><ol start='7'>
+<li><a href="static.html">A program with no run time</a></li>
+<li><a href="linkstatic.html">Threads without C, and keeping the two apart</a></li>
+<li><a href="lifecycle.html">Starting, ending, and signals</a></li>
+<li><a href="targets.html" aria-current="page">One module, one file per target</a></li>
+</ol>
+<h3>The machine</h3><ol start='11'>
+<li><a href="asm.html">Procedures in assembly</a></li>
+<li><a href="syscalls.html">System calls</a></li>
+<li><a href="listing.html">What the compiler makes</a></li>
+</ol>
+<h3>Shared memory</h3><ol start='14'>
+<li><a href="volatile.html">Volatile</a></li>
+<li><a href="atomics.html">Atomics</a></li>
+<li><a href="ordering.html">Ordering and publication</a></li>
+<li><a href="lockfree.html">A lock-free stack</a></li>
+<li><a href="ring.html">A ring buffer between threads</a></li>
+</ol></aside><article><p class="kicker">Standing alone &middot; lesson 10 of 18</p><h1>One module, one file per target</h1>
+<p>raz is first made for x86-64 Linux, but the language is written to be implemented elsewhere, and the library is arranged for it. The part of a program that depends on the system goes in a module of its own, one file per target. This is how <code>Sys</code> is made, and it is how your own code should keep its system-dependent parts apart.</p>
+<h2>The files</h2>
+<p>A module <code>Name</code> lives in <code>Name.raz</code>. A module whose code depends on the system comes in one file per target, <code>Name.linux-x86_64.raz</code>, which the compiler looks for first. The library has <code>Sys.linux-x86_64.raz</code>, which makes system calls, and <code>Sys.raz</code>, which calls the C library instead, for every other system. A program that imports <code>Sys</code> doesn't know or care which it got.</p>
+<pre class="output term"><code><span class="cmd">$ ls $RAZLIB | grep -i &quot;^sys\|^thread&quot;</span>
+Sys.linux-x86_64.raz
+Sys.raz
+Thread.linux-x86_64.raz
+<span class="cmd">$ cd $RAZLIB &amp;&amp; grep -c SYSCALL Sys.linux-x86_64.raz Sys.raz</span>
+Sys.linux-x86_64.raz:151
+Sys.raz:0</code></pre>
+<h2>A module of your own</h2>
+<p>Here is a module with two files. <code>Clock.linux-x86_64.raz</code> is for this target; <code>Clock.raz</code> is what any other target would use. Both say what they are in <code>Name</code>, and both make <code>ticks</code>.</p>
+<div class="file"><span>Clock.linux-x86_64.raz</span></div><pre class="code"><code><span class="kw">module</span> Clock;
+<span class="kw">import</span> Sys;
+
+<span class="kw">const</span> Name* = <span class="string">&quot;the linux-x86_64 file&quot;</span>;
+
+<span class="comment">(* a number that only grows *)</span>
+<span class="kw">proc</span> ticks*: <span class="ty">I64</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> Sys.clock();
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Clock.</code></pre>
+<div class="file"><span>Clock.raz</span></div><pre class="code"><code><span class="kw">module</span> Clock;
+<span class="kw">import</span> Sys;
+
+<span class="kw">const</span> Name* = <span class="string">&quot;the portable file&quot;</span>;
+
+<span class="comment">(* a number that only grows *)</span>
+<span class="kw">proc</span> ticks*: <span class="ty">I64</span>;
+<span class="kw">begin</span>
+    <span class="kw">return</span> Sys.clock();
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Clock.</code></pre>
+<p>A program that imports <code>Clock</code> gets the first of them here:</p>
+<div class="file"><span>Show.raz</span></div><pre class="code"><code><span class="kw">module</span> Show;
+<span class="kw">import</span> Out, Clock;
+
+<span class="kw">proc</span> main*;
+<span class="kw">begin</span>
+    Out.str(<span class="string">&quot;using &quot;</span>); Out.str(Clock.Name); Out.ln;
+    <span class="kw">if</span> Clock.ticks() &gt; <span class="number">0</span> <span class="kw">then</span> Out.str(<span class="string">&quot;and it ticks\n&quot;</span>); <span class="kw">end</span>;
+<span class="kw">end</span>;
+
+<span class="kw">end</span> Show.</code></pre>
+<pre class="output"><code>using the linux-x86_64 file
+and it ticks
+</code></pre>
+<h2>Held to one interface</h2>
+<p>Two files can't be told apart by their callers, so the compiler holds them to the same interface. Here is the pair again with <code>ticks</code> changed in the portable file to return an <code>INT</code>:</p>
+<pre class="output term"><code><span class="cmd">$ mkdir drift &amp;&amp; cp Clock*.raz Show.raz drift &amp;&amp; cd drift</span>
+<span class="cmd">$ sed -i &#x27;s/proc ticks\*: I64/proc ticks*: INT/; s/return Sys.clock()/return INT(Sys.clock())/&#x27; Clock.raz</span>
+<span class="cmd">$ raz Show.raz</span>
+raz: ./Clock.raz: ticks isn&#x27;t exported as in ./Clock.linux-x86_64.raz</code></pre>
+<p>The program stops compiling on every target, including the ones that would never have used that file. A mismatch is found where it is made, not where someone first builds for a second target.</p>
+<h2>What the compiler checks</h2>
+<p>When it takes one of <code>Name.*.raz</code>, it also reads the declarations of the others beside it, and of <code>Name.raz</code> if there is one, and reports an error unless they all export the same names, each the same kind of thing: a constant of the same type (its value may differ), a type of the same kind with the same exported fields, a variable of the same type, a procedure of the same signature. The code, the unexported fields, and so the size and layout, may differ.</p>
+<p>So a program written against the interface works on every target that has the module, and the places where it doesn't are the compiler's to find, not yours.</p>
+<h2>What stays the same everywhere</h2>
+<p>The core of the library is what every target must have: <code>Rt</code>, <code>Out</code>, <code>Mem</code>, <code>Arena</code>, <code>Lock</code>, <code>Str</code> and <code>Buf</code>, and of <code>Sys</code> what they need. A program that keeps to the core runs on every target. <code>Thread</code>, <code>link</code> and <code>extern</code>, and most of <code>Sys</code>, are what a target may leave out when its system can't give them.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="lifecycle.html">&larr; Starting, ending, and signals</a><a href="index.html">Contents</a><a class="next" href="asm.html">Procedures in assembly &rarr;</a></div></article></div>
+</main>
+<footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
+</body>
+</html>
