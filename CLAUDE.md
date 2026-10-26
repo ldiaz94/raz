@@ -87,7 +87,16 @@ repository. `site/README.md` gives the build, release records and
 checks. `site/releases` lists website releases whose tags aren't
 pushed yet (none now); it never makes a tag.
 
-v0.22.0, report 2026-10.36, is the twelfth thaw, what `PROPOSALS.md`
+v0.23.0, report 2026-10.37, is the safety thaw's first release, which
+breaks no program (`PLAN.md` 2): an array a call returns lives to the
+end of its procedure; `CAS`, `XCHG` and `XADD` take a variable;
+`[]const T`; `import SYSTEM`, with `SYSTEM.ADR`, `.PTR`, `.SYSCALL` and
+`.ARGV`; and in the library `Task`, `Guarded` and `Heap`'s debugging
+mode. Every old form is still taken: a literal into a `[]U8`, the bare
+built-ins, what `SYSTEM` fences without it, an atomic given `ADR(x)`.
+`BOOT` still names v0.22.0; moving it to v0.23.0 is the next step, then
+v0.24.0 makes the old forms errors and mends `~/r`.
+v0.22.0, report 2026-10.36, before it, is the twelfth thaw, what `PROPOSALS.md`
 collated: `MIN`, `MAX`, `ABS`, `CLZ`, `CTZ`, `POPCOUNT`, `INT(b)`,
 `OFFSET`, `SIZE(T.f)`, `BYTES` and `FILL`; a qualified case in an arm,
 slice and `ERROR` constants, a record's procedure field that takes the
