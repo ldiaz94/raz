@@ -17,6 +17,7 @@
    its `home`, an object's `link` its `chain`. *)
 module Sym;
 import Mem, Heap, Buf, Fmt, Diag, Scan;
+import SYSTEM;
 
 type
     Form* = (fNone, fBool, fInt, fReal, fConst, fNil, fStr, fPtr, fArray,
@@ -705,7 +706,7 @@ var t: ^Type; o: ^Obj;
 begin
     t := newType(form, size, size);
     t^.signed := signed;
-    o := newObj(oType, Scan.intern(PTR(name), LEN(name)), t);
+    o := newObj(oType, Scan.intern(SYSTEM.PTR(name), LEN(name)), t);
     o^.exported := true;
     t^.obj := o;
     _ := insert(o, 0);
@@ -715,7 +716,7 @@ end;
 (* The name s, interned *)
 proc internOf(s: []const U8): INT;
 begin
-    return Scan.intern(PTR(s), LEN(s));
+    return Scan.intern(SYSTEM.PTR(s), LEN(s));
 end;
 
 (* Declares name in the scope s, exported, as a built-in is *)

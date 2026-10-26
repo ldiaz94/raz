@@ -18,6 +18,7 @@
    end do what the seed's other units do to these. *)
 module Chunk;
 import Fmt, Diag, Scan;
+import SYSTEM;
 
 type
     Section* = (secText, secRodata, secBss);
@@ -151,7 +152,7 @@ begin
         chunks := ^Chunk(Scan.regrab(^U8(chunks), numChunks * SIZE(Chunk), chunkCap * 2 * SIZE(Chunk)));
         chunkCap := chunkCap * 2;
     end;
-    c := ADR(chunks[numChunks]);
+    c := SYSTEM.ADR(chunks[numChunks]);
     c^ := {};
     c^.sec := sec;
     c^.home := home;

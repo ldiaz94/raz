@@ -57,6 +57,7 @@
    takes, is `CallInfo`. *)
 module Gen;
 import Fmt, Diag, Scan, Sym, Chunk, X := X64;
+import SYSTEM;
 
 const
     NoLabel* = -1;
@@ -293,7 +294,7 @@ proc realConst(v: I64): X.Mem;
 var c: INT;
 begin
     c := Chunk.newChunk(Chunk.secRodata, -1, -1);
-    Chunk.setData(c, ^U8(ADR(v)), 8, 8);
+    Chunk.setData(c, ^U8(SYSTEM.ADR(v)), 8, 8);
     return X.memRip(c, 0);
 end;
 
@@ -1575,7 +1576,7 @@ const
 (* The name s, interned *)
 proc internStr(s: []const U8): INT;
 begin
-    return Scan.intern(PTR(s), LEN(s));
+    return Scan.intern(SYSTEM.PTR(s), LEN(s));
 end;
 
 (* The program goes on if the condition cc holds, and otherwise stops

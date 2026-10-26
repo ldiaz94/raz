@@ -14,6 +14,7 @@
    an error back from; the compile ends with the error shown. *)
 module X64;
 import Out, Fmt, Heap, Buf, Str, Diag, Scan, Chunk;
+import SYSTEM;
 
 const
     RAX* = 0; RCX* = 1; RDX* = 2; RBX* = 3; RSP* = 4; RBP* = 5; RSI* = 6; RDI* = 7;
@@ -980,27 +981,27 @@ end;
 
 (* Whether w names a register: rax, eax, ax, al and so on, or xmm0 to
    xmm15 (size 16); r and size are set if so *)
-proc isReg(w: []const U8; r, size: ^INT): BOOL;
+proc isReg(w: []const U8; var r, size: INT): BOOL;
 const Sizes: [4]INT = [8, 4, 2, 1];
 var i, j, n, d: INT;
 begin
     for i := 0 to 3 do
         for j := 0 to 15 do
-            if RegNames[i][j] = w then r^ := j; size^ := Sizes[i]; return true; end;
+            if RegNames[i][j] = w then r := j; size := Sizes[i]; return true; end;
         end;
     end;
-    size^ := 16;
+    size := 16;
     if not Str.hasPrefix(w, "xmm") or (LEN(w) <= 3) then return false; end;
     (* the seed read the two bytes after xmm as a number, whatever follows *)
     n := LEN(w) - 3;
     if n > 2 then n := 2; end;
-    r^ := 0;
+    r := 0;
     for i := 0 to n - 1 do
         d := INT(w[3 + i]) - 48;
         if (d < 0) or (d > 9) then return false; end;
-        r^ := r^ * 10 + d;
+        r := r * 10 + d;
     end;
-    return r^ <= 15;
+    return r <= 15;
 end;
 
 (* Which word of list, a list of words each with a space either side,
@@ -1046,10 +1047,10 @@ begin
     return -1;
 end;
 
-proc operand(o: ^Operand; constExpr: ConstFn): ERROR;
+proc operand(var o: Operand; constExpr: ConstFn): ERROR;
 var w: []const U8; r, size, sz: INT; st: Scan.State; v: I64; isR, wasMinus: BOOL;
 begin
-    o^ := {};
+    o := {};
     w := asmWord();
     sz := 0;
     if w = "byte" then sz := 1;
@@ -1061,50 +1062,50 @@ begin
     if Scan.tok = Scan.sLbrak then
         (* [base + index * scale + disp], the displacement last *)
         Scan.next;
-        o^.kind := oMem; o^.size := sz;
-        o^.m := mem(NoBase, 0);
+        o.kind := oMem; o.size := sz;
+        o.m := mem(NoBase, 0);
         repeat
-            if isReg(asmWord(), ADR(r), ADR(size)) and (size = 8) then
+            if isReg(asmWord(), r, size) and (size = 8) then
                 Scan.next;
                 (* the scale is a single number or constant: a whole expression
                    would take in the displacement after it, as 4 + 16 in
                    [rdi + rsi * 4 + 16] *)
                 if Scan.tok = Scan.sTimes then
                     Scan.next;
-                    o^.m.index := r;
+                    o.m.index := r;
                     v := try constExpr(false);
-                    o^.m.scale := INT(v);
-                elsif o^.m.base = NoBase then
-                    o^.m.base := r;
+                    o.m.scale := INT(v);
+                elsif o.m.base = NoBase then
+                    o.m.base := r;
                 else
-                    o^.m.index := r; o^.m.scale := 1;
+                    o.m.index := r; o.m.scale := 1;
                 end;
             else
                 v := try constExpr(true);
-                o^.m.disp := o^.m.disp + INT(v);
+                o.m.disp := o.m.disp + INT(v);
             end;
             if (Scan.tok # Scan.sPlus) and (Scan.tok # Scan.sMinus) then break; end;
             wasMinus := Scan.tok = Scan.sMinus;
             Scan.saveScan(st);
             Scan.next;
-            isR := isReg(asmWord(), ADR(r), ADR(size));
+            isR := isReg(asmWord(), r, size);
             if not isR and wasMinus then Scan.restoreScan(st); end;
         until false;
-        if (Scan.tok # Scan.sRbrak) or (o^.m.base = NoBase)
-                or not ((o^.m.scale = 1) or (o^.m.scale = 2) or (o^.m.scale = 4) or (o^.m.scale = 8)) then
+        if (Scan.tok # Scan.sRbrak) or (o.m.base = NoBase)
+                or not ((o.m.scale = 1) or (o.m.scale = 2) or (o.m.scale = 4) or (o.m.scale = 8)) then
             return Scan.mark("expected a memory operand, [base + index * scale + disp]");
         end;
         Scan.next;
     elsif (w = "cr0") or (w = "cr2") or (w = "cr3") or (w = "cr4") or (w = "cr8") then
         (* a control register, for mov to and from a general one *)
-        o^.kind := oCr; o^.r := INT(w[2]) - 48; o^.size := 8;
+        o.kind := oCr; o.r := INT(w[2]) - 48; o.size := 8;
         Scan.next;
-    elsif isReg(w, ADR(o^.r), ADR(o^.size)) then
-        if o^.size = 16 then o^.kind := oXmm; else o^.kind := oReg; end;
+    elsif isReg(w, o.r, o.size) then
+        if o.size = 16 then o.kind := oXmm; else o.kind := oReg; end;
         Scan.next;
     else
-        o^.kind := oImm;
-        o^.v := try constExpr(true);
+        o.kind := oImm;
+        o.v := try constExpr(true);
     end;
     return nil;
 end;
@@ -1434,7 +1435,7 @@ end;
 proc atRegister(): BOOL;
 var r, size: INT;
 begin
-    return isReg(asmWord(), ADR(r), ADR(size));
+    return isReg(asmWord(), r, size);
 end;
 
 (* One instruction or label, as assemble reads it *)
@@ -1448,7 +1449,7 @@ begin
     Scan.next;
     if Scan.tok = Scan.sColon then
         sayAt(Chunk.pc, Diag.say("{}:", [Fmt.str(aw)]));
-        k := try lab(Scan.intern(PTR(aw), LEN(aw)));
+        k := try lab(Scan.intern(SYSTEM.PTR(aw), LEN(aw)));
         if lplaces[k] >= 0 then
             return Scan.markAt(aat, Diag.say("label {} is defined twice", [Fmt.str(aw)]));
         end;
@@ -1494,7 +1495,7 @@ begin
         if Scan.tok # Scan.sSemicolon then
             repeat
                 if an > 2 then return Scan.mark("too many operands"); end;
-                try operand(ADR(ao[an]), constExpr);
+                try operand(ao[an], constExpr);
                 INC(an);
                 if Scan.tok # Scan.sComma then break; end;
                 Scan.next;

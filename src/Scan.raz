@@ -13,6 +13,7 @@
    back Failed, which it passes up with try to where it can read on. *)
 module Scan;
 import Sys, Heap, Mem, Fmt, Str, Diag;
+import SYSTEM;
 
 type
     NamePtr = ^U8;
@@ -116,7 +117,7 @@ end;
    chunk of it: an empty string has bytes to point at, though none to index *)
 proc strWithZero*: ^U8;
 begin
-    return ADR(sbuf[0]);
+    return SYSTEM.ADR(sbuf[0]);
 end;
 
 (* Memory, or the end of the compile when there is none *)
@@ -897,7 +898,7 @@ begin
     else
         b := q;                                     (* below the least normal, e is -1074 *)
     end;
-    bits := ^F64(ADR(b));
+    bits := ^F64(SYSTEM.ADR(b));
     return bits^, true;
 end;
 
@@ -1165,5 +1166,5 @@ begin
     nameHash := ^INT(grab(nameCap * SIZE(INT)));
     tableMask := 2 * nameCap - 1;
     table := words64(tableMask + 1);
-    for i := 0 to NumWords - 1 do _ := intern(PTR(words[i]), LEN(words[i])); end;
+    for i := 0 to NumWords - 1 do _ := intern(SYSTEM.PTR(words[i]), LEN(words[i])); end;
 end Scan.

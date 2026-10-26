@@ -27,6 +27,7 @@
    holds. *)
 module Parse;
 import Fmt, Diag, Scan, Sym, Chunk, Gen, Item, Sys, Str, Buf, Heap;
+import SYSTEM;
 
 type
     PType = ^Sym.Type;
@@ -183,7 +184,7 @@ end;
 (* The name number of s, which isn't empty *)
 proc internName(s: []const U8): INT;
 begin
-    return Scan.intern(PTR(s), LEN(s));
+    return Scan.intern(SYSTEM.PTR(s), LEN(s));
 end;
 
 proc say1(f, a: []const U8): []const U8;
@@ -2101,7 +2102,7 @@ begin
     lp.cont := Gen.NoLabel;
     lp.base := numDefers;
     old := curLoop;
-    curLoop := ADR(lp);
+    curLoop := SYSTEM.ADR(lp);
 end;
 
 (* Runs the deferred statements in force above base, newest first. *)
@@ -3640,7 +3641,7 @@ end;
 proc putBytes(off, n: INT; v: I64);
 var src: ^U8;
 begin
-    src := ^U8(ADR(v));
+    src := ^U8(SYSTEM.ADR(v));
     COPY(constBytes[off..off + n], src[0..n]);
 end;
 
@@ -3839,7 +3840,7 @@ begin
             return Scan.markAt(e.pos, "a constant pointer is nil");
         elsif (t^.form = Sym.fReal) and (t^.size = 4) then
             r := F32(Item.realOf(e));
-            src := ^U8(ADR(r));
+            src := ^U8(SYSTEM.ADR(r));
             COPY(constBytes[off..off + 4], src[0..4]);
         else
             putBytes(off, INT(t^.size), e.val);
@@ -4312,7 +4313,7 @@ begin
     if LEN(path) >= 4096 then return 0, 0; end;
     COPY(a[0..LEN(path)], path);
     a[LEN(path)] := 0;
-    if SYSCALL(4, ADR(a[0]), ADR(st)) < 0 then return 0, 0; end;
+    if SYSTEM.SYSCALL(4, SYSTEM.ADR(a[0]), SYSTEM.ADR(st)) < 0 then return 0, 0; end;
     return st[0], st[1];
 end;
 

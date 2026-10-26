@@ -17,6 +17,7 @@
    Leaves out: the file format; that is Elf. *)
 module Link;
 import Fmt, Diag, Scan, Chunk;
+import SYSTEM;
 
 const
     Page* = 4096;

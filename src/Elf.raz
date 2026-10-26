@@ -26,6 +26,7 @@
    setMainPath and setStripped do it. *)
 module Elf;
 import Sys, Files, Fmt, Diag, Scan, Chunk, Link;
+import SYSTEM;
 
 var
     needed: [32]INT;     (* the libraries to load, names interned *)
@@ -166,7 +167,7 @@ end;
 
 proc putStr(s: []const U8);
 begin
-    putBytes(PTR(s), LEN(s));
+    putBytes(SYSTEM.PTR(s), LEN(s));
     putN(0, 1);
 end;
 
@@ -230,7 +231,7 @@ begin
 end;
 
 (* The sizes of the loader's tables: what linkAll must leave room for. *)
-proc sizeTables(roExtra, dynSize: ^INT);
+proc sizeTables(var roExtra, dynSize: INT);
 var c, i: INT;
 begin
     nsym := 1;
@@ -246,8 +247,8 @@ begin
     relaAt := symAt + nsym * 24;
     hashAt := relaAt + (nsym - 1) * 24;
     strAt := hashAt + 4 * (3 + nsym);
-    roExtra^ := strAt + strLen;
-    dynSize^ := (numNeeded + 10) * 16;
+    roExtra := strAt + strLen;
+    dynSize := (numNeeded + 10) * 16;
 end;
 
 (* The loader's tables in the room at the end of rodata, which the
@@ -324,7 +325,7 @@ begin
     len := 0;
     dyn := numNeeded > 0;
     roExtra := 0; dynSize := 0;
-    if dyn then sizeTables(ADR(roExtra), ADR(dynSize)); end;
+    if dyn then sizeTables(roExtra, dynSize); end;
     (* room for the most program headers either kind of program has *)
     Link.linkAll(64 + 6 * 56, roExtra, dynSize);
     if dyn then
@@ -409,7 +410,7 @@ begin
     strOff := len;
     putBytes(strs, strsLen);
     shstrOff := len;
-    putBytes(ADR(ShNames[0]), LEN(ShNames));
+    putBytes(SYSTEM.PTR(ShNames), LEN(ShNames));
     if stripped or (Link.placesChunk < 0) then
         for c := 0 to 2 do dbgOff[c] := len; dbgSize[c] := 0; end;
     else

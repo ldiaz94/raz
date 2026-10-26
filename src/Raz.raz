@@ -30,6 +30,7 @@
    write, and this only reads the command line and runs them in order. *)
 module Raz;
 import Sys, Out, Version, Files, Fmt, Diag, Scan, Sym, Chunk, X64, Gen, Item, Parse, Link, Elf;
+import SYSTEM;
 
 const
     Report = "2026-10.37";   (* the version of doc/raz.md it follows *)
@@ -51,7 +52,7 @@ end;
 (* The number of the name s *)
 proc internStr(s: []const U8): INT;
 begin
-    return Scan.intern(PTR(s), LEN(s));
+    return Scan.intern(SYSTEM.PTR(s), LEN(s));
 end;
 
 (* The modules the program uses: the main module, Rt, and every module
@@ -410,11 +411,11 @@ begin
     Elf.setMainPath(path);
     if run then
         (* argv from Main.raz on is the program's, ending in nil as it must *)
-        fd := SYSCALL(MemfdCreate, cstr("raz"), MfdCloexec);
+        fd := SYSTEM.SYSCALL(MemfdCreate, cstr("raz"), MfdCloexec);
         if fd < 0 then Diag.fatal("can't create a memfd"); end;
         outPath := Diag.say("/proc/self/fd/{}", [Fmt.int(fd)]);
         Elf.writeElf(outPath, entry);
-        _ := SYSCALL(Execve, cstr(outPath), ARGV() + first, ARGV() + (ARGC() + 1));
+        _ := SYSTEM.SYSCALL(Execve, cstr(outPath), SYSTEM.ARGV() + first, SYSTEM.ARGV() + (ARGC() + 1));
         Diag.fatal(say1("can't run {}", path));
     end;
     Elf.writeElf(outPath, entry);

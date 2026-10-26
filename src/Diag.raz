@@ -16,6 +16,7 @@
    made only where it is about to be shown. *)
 module Diag;
 import Sys, Rt, Heap, Mem, Buf, Fmt, Str;
+import SYSTEM;
 
 type
     (* A stretch of a source file: bytes a up to but not including b.
@@ -249,7 +250,7 @@ begin
         return;
     end;
     line, start := locate(p);
-    f := ADR(files[p.f]);
+    f := SYSTEM.ADR(files[p.f]);
     buf := f^.buf;
     paintOn(Bold);
     put(f^.path); put(":"); putNum(line); put(":"); putNum(chars(buf, start, p.a) + 1); put(":");
@@ -322,7 +323,7 @@ var i, k, n, j: INT; f: ^File; want: []const U8;
 begin
     want := shownPath(path);
     for i := 0 to numFiles - 1 do
-        f := ADR(files[i]);
+        f := SYSTEM.ADR(files[i]);
         if f^.path = want then
             k := 0;
             n := 1;

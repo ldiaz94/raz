@@ -25,6 +25,7 @@
    in lower case. *)
 module Item;
 import Fmt, Diag, Scan, Sym, Chunk, Gen;
+import SYSTEM;
 
 type
     Mode* = (mConst, mVar, mStack, mProc, mType, mStr, mBuiltin, mCase, mNone, mCond,
@@ -173,7 +174,7 @@ proc makeReal*(var x: Item; r: F64);
 var p: ^F64;
 begin
     makeConst(x, Sym.tRConst, 0);
-    p := ^F64(ADR(x.val));
+    p := ^F64(SYSTEM.ADR(x.val));
     p^ := r;
 end;
 
@@ -186,7 +187,7 @@ proc realOf*(const x: Item): F64;
 var v: I64; p: ^F64;
 begin
     v := x.val;
-    p := ^F64(ADR(v));
+    p := ^F64(SYSTEM.ADR(v));
     return p^;
 end;
 
@@ -385,7 +386,7 @@ begin
         if (x.typ^.form = Sym.fError) and (x.val > 0) then Gen.pushAdr(globalAdr(INT(x.val) - 1));
         elsif isF32(x.typ) then
             f := F32(realOf(x));
-            p := ^U32(ADR(f));
+            p := ^U32(SYSTEM.ADR(f));
             Gen.pushConst(Gen.kF32, I64(p^));
         else Gen.pushConst(Gen.kindOf(x.typ), x.val); end;
     | mVar:
