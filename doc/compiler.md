@@ -2439,6 +2439,68 @@ facts; each was read in the source, where it says.
 
 The recipe for an interrupt's entry, and its test, follow.
 
+## What the compiler asks of Sys, Rt and Files
+
+What `src/` takes from `lib/`, for a host that has to supply it
+(`Host`, and a program that brings its own library): every qualified
+name, in code, of a library module. Nothing else of `lib/` is used by
+`src/` itself; the library modules listed import others in turn
+(`Heap`, `Mem`, `Out`, `Files` and the rest call `Sys` and `Rt`), and a
+replacement for one has to give what the others ask of it. `Rt` is
+also found by name for `fail`, `exit` and the places, as the previous
+section says, and `NEW(p, a)` needs `a` to be a `^Mem.Allocator` and
+calls its `alloc` field, the one library type the compiler knows by
+name. Besides the library, `src/` makes two system calls itself,
+`stat` in `Parse.identity` (a file's device and inode, for the
+one-module-of-each-name check) and `memfd_create` and `execve` in
+`Raz.raz` (`raz run`), and reads `SYSTEM.ARGV`.
+
+`test/asks.sh` keeps this list true: it fails when `src/` uses a
+library name that is not a row here, or a row names one that `src/`
+no longer uses. Each row is one name; a type is listed with its
+fields as the code reads them.
+
+`Sys`, the system:
+
+| Name | What for |
+|---|---|
+| `Sys.access` | `Raz.muslHere`: whether the dynamic loaders of glibc and musl are installed |
+| `Sys.chmod` | `Elf.writeElf`: makes the program's file executable (mode 755) |
+| `Sys.close` | `Scan` and `Parse`: closes a source or `RAZ-VERSION` file after reading |
+| `Sys.closeDir`, `Sys.openDir`, `Sys.nextEntry`, `Sys.Dir` | `Parse`: the files of a directory, to find a module's other files for the one-module-of-each-name check |
+| `Sys.env`, `Sys.envAt` | `Diag` (`NO_COLOR`) and `Raz.userLibraries` (`RAZ_PATH`, `HOME`; `envAt` tells unset from empty) |
+| `Sys.errDenied`, `Sys.errNoEntry` | `Scan`: "permission denied" and "there is no such file" in a message |
+| `Sys.info`, `Sys.Info` | `Scan` and `Parse`: whether a path is a file (`file`) and its length (`size`) |
+| `Sys.isTerminal` | `Diag`: colour only when standard error is a terminal |
+| `Sys.openRead`, `Sys.read` | `Scan`: reads a source file whole; `Parse`: the library's `RAZ-VERSION` |
+| `Sys.readLink` | `Raz`: `/proc/self/exe`, to find the library beside the compiler |
+| `Sys.stderr`, `Sys.write` | `Diag`: its messages |
+| `Sys.workDir` | `Diag`: shows a path relative to the working directory; `Elf`: the compilation directory of the line table |
+
+`Rt`, the run time, besides `fail`, `exit` and the places (above):
+
+| Name | What for |
+|---|---|
+| `Rt.exit` | `Diag`: ends the compiler, with status 1, after an error that stops it |
+
+`Files`, whole files and the command line:
+
+| Name | What for |
+|---|---|
+| `Files.arg` | `Raz`: the command line's words, and `ARGC()` for how many |
+| `Files.write` | `Elf.writeElf`: writes the executable |
+
+The rest of the library, which `Diag`, `Sym`, `X64` and `Parse` use for
+text and `Scan` for tables:
+
+| Name | What for |
+|---|---|
+| `Buf.Buf`, `Buf.init`, `Buf.add`, `Buf.str`, `Buf.bytes`, `Buf.reset`, `Buf.done` | A growing buffer: `Diag`'s message and working directory, a type's name in `Sym`, an instruction's text in `X64`, a name made in `Parse` |
+| `Fmt.write`, `Fmt.Arg`, `Fmt.str`, `Fmt.int`, `Fmt.char`, `Fmt.hex` | Formatting: `Diag.say`'s `{}` messages and a type's name |
+| `Out.str`, `Out.ln`, `Out.flush` | Standard output: the `-S` listing, `-h` and `--version` |
+| `Str.copy`, `Str.find`, `Str.hasPrefix`, `Str.hexVal` | A kept copy of a path (`Diag`), the one-character operators (`Scan`), a prefix of a path, a file name or a mnemonic (`Diag`, `Parse`, `X64`), and a hex digit (`Parse`) |
+| `Heap.heap`, `Mem.alloc`, `Mem.free` | The allocator that `NEW`, `Buf.init` and `Str.copy` are given, and the blocks of `Scan`'s tables and `Diag`'s lists |
+
 ## This compiler's choices
 
 What the report's appendix A leaves to an implementation, and what

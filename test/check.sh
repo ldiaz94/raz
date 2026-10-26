@@ -168,6 +168,10 @@ if [ $status = 3 ] && [ $statusFail = 2 ] && [ "$(cat $out/own/Own.out)" = hello
     && [ "$(cat $out/own/OwnFail.out)" = 'check failed: 0' ]; then pass=$((pass + 1))
 else echo "FAIL own Rt: status $status, $statusFail"; cat $out/own/Own.out $out/own/OwnFail.out; fail=$((fail + 1)); fi
 
+# what src/ asks of lib/ is what doc/compiler.md lists (test/asks.sh)
+if sh test/asks.sh > $out/asks.out 2>&1; then pass=$((pass + 1))
+else echo "FAIL test/asks.sh:"; cat $out/asks.out; fail=$((fail + 1)); fi
+
 # raz -S: test/list/X.raz lists as X.expect
 for f in test/list/*.raz; do
     want=test/list/$(basename $f .raz).expect
