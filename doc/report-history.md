@@ -288,3 +288,14 @@ at the time.
   and 7.6 that a race on a pointer, a slice or a variant is undefined.
   It breaks every module that does these without it; raz 0.23 still
   took them, and the built-ins unprefixed; 0.24 doesn't.
+- **2026-10.38.** The last change before the hard freeze, for a program
+  on the bare machine. In a code procedure a procedure or a global
+  variable, of the module or exported by an imported one, stands for
+  its address in `call p;`, `jmp p;` and `lea r, [v];`, and in no other
+  operand; a label of the procedure is found first (section 8). Section
+  10 gives the least every implementation accepts (nesting of
+  expressions and statements, a chain of imports, names declared and
+  variables assigned together, an array literal's elements, a `match`'s
+  labels, deferred statements, type arguments), and says that past its
+  own limits it rejects the program with an error naming the limit;
+  appendix A leaves how far past to it. It breaks no program.

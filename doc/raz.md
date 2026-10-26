@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.37 of the report; section 11 says where each
+This is version 2026-10.38 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -77,6 +77,11 @@ conversions, C, code procedures and `check off;` (section 3); section
 program that gives an atomic a pointer, writes through a string or a
 constant, or does what `SYSTEM` holds without importing it; raz 0.23
 still took them, as before; raz 0.24 doesn't.
+2026-10.38, the last change before the language is frozen for good,
+is for a program on the bare machine: a code procedure names a
+procedure or a global variable in three operands (section 8), and
+section 10 gives the least an implementation accepts, and what it does
+past its own limits; it breaks no program.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -1786,8 +1791,15 @@ end rdtsc;
 
 A label, `name:`, names the place of the instruction after it, within
 the procedure. A constant of the module may stand wherever a number
-does. Any bytes may be written with `db`, as in `db 0FH, 31H;`, for an
-instruction the assembler doesn't know.
+does. A procedure or a global variable of the module, or one an
+imported module exports, by its qualified name, stands for its address
+in three places only: `call p;` and `jmp p;`, which reach it from where they
+are, and `lea r, [v];`, which puts its address in a register.
+A label of the procedure is found first. Nothing of its type is
+checked, and no other operand takes one. What is named is part of the
+program, as a procedure that is called is. Any bytes may be written
+with `db`, as in `db 0FH, 31H;`, for an instruction the assembler
+doesn't know.
 
 It is called like any procedure, with the System V convention: integer
 and pointer arguments, and the addresses of `var` and `const` ones,
@@ -1938,6 +1950,17 @@ valid, and an implementation may warn of it. The text of its messages,
 how many it reports and which warnings it gives are its own (appendix
 A).
 
+**Limits.** An implementation accepts at least: 63 levels of
+parentheses and calls nested in one expression; 63 levels of statements
+nested in one procedure; a chain of 15 modules, each importing the
+next; 31 names declared together (`a, b: INT`) and 15 variables
+assigned together (`a, b := f()`); 1023 elements in one array literal;
+255 labels in one `match`; 31 deferred statements in force in one
+procedure; and 8 type arguments to a generic module. It may accept
+more, and its own limits are its own (appendix A); past one, it
+rejects the program with an error that names the limit, as for any
+other error, and never fails in another way.
+
 ## 11. Versions
 
 A version of this report is named by the month it was made in and a
@@ -1992,6 +2015,8 @@ that it follows this report: it passes them all, its reals aside where its targe
   a stack overflow may be caught by the machine or by checks in the
   compiled code; either way the program stops with its message
   (section 10).
+- **Limits.** How far past the least of section 10 it goes, and how
+  much stack and memory a compile of a given program needs.
 - **Messages and warnings.** The text of the compiler's messages, how
   many errors it reports before it stops, and which warnings it gives,
   `-Werror` included (section 10). That a program that is an error in
