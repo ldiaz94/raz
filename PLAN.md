@@ -27,21 +27,62 @@ fast.
 
 ## 2. The safety thaw: v0.23.0
 
-From `MEM_PROPOSAL.md`, with "Less that is undefined", "A slice that
-can't be written: `[]const T`", "What a call does with its arguments"
-(its part 3, `ret` and `keep`), and "Left out"'s exported array read as
-a slice.
+The scope, by the owner's word of 2026-10-26, after reviewing
+`MEM_PROPOSAL.md` whole with its appendices. raz doesn't promise memory
+safety: `free` stays, so a program can always keep a pointer to what
+it freed. The thaw shrinks what is undefined, and fences what can reach
+memory it shouldn't, so a reader can find it.
 
-1. The owner chooses the scope. The proposal's parts stand alone:
-   A, the fence (`unsafe;`, which modules may reach memory they
-   shouldn't); B, lending (`ret` and `keep`, the returned-slice hole
-   closed); C, owners that count what they lend. Appendices 4 to 7 find
-   holes in its body, and C is much the largest. A then B, each a step
-   of its own, is the smaller way.
-2. The body of what is chosen is revised against its appendices.
-3. The report's text, for the owner to review; then the compiler, the
-   library, and the programs in `~/r` it breaks, each mended.
-4. Release, and the report's pages checked.
+What goes in:
+
+- **An array a call returns lives to the end of its procedure**
+  ("Less that is undefined", piece 1; the proposal's F.1). Its slot is
+  reserved as a deferred statement's is.
+- **A race tears no slice, said**: 7.6 says a slice or variant read and
+  written in a race is undefined (piece 3). Said, not prevented: no
+  16-byte moves.
+- **`[]const T`**, a slice whose elements can't be written; a `[]T`
+  goes where one is wanted, never back. String literals are `[]const
+  U8`, and a constant's slices `[]const T`, so writing them is an error
+  (piece 2 drops out). `Str.trim`, `cut` and `field` take and return
+  `[]const U8`. "Left out"'s exported array read as a slice comes with
+  it.
+- **The fence, Oberon's way**: the unsafe operations are reached
+  through a pseudo-module, `import SYSTEM`. `SYSTEM.ADR`, `SYSTEM.PTR`,
+  `SYSTEM.SYSCALL`, `SYSTEM.ARGV`; pointer indexing, slicing and
+  arithmetic, conversions to and from pointer and procedure types,
+  views whose type holds a pointer, procedure or slice, `extern`,
+  `link`, code procedures and `check off` are allowed only in a module
+  that imports it. A warning for one release, so that `src/` can come
+  to it once `BOOT` knows it, then an error.
+- **`CAS`, `XCHG` and `XADD` take a variable**, as `INC` does, not an
+  address (the proposal's E.4), so atomics need no `SYSTEM`.
+- **Library**: `Heap`'s debugging mode (G: freed blocks poisoned and
+  held back, guard bytes checked); `Task(T)`, a thread started with no
+  cast; `Lock.Guarded(T)`, a value with its lock.
+
+What is left out, and why: `ret` and `keep` (B) and owners that count
+what they lend (C), too large for what they close without the rest;
+the heap without `free` (D), since `free` stays; atomic slices and the
+rest of threads (E), for programs that race only. With them the
+guarantee of the proposal's section 3.
+
+The survey of 2026-10-26 (the compiler counting each use, across
+`~/r`): about 8,000 fenced uses, 451 of 960 modules. 77% of the `ADR`s
+go to a pointer parameter only dereferenced, mended by `var` or
+`const`, as `STANDARDS.md` asks; what is left for `SYSTEM` is about
+3,000 uses, most in `lib/` (`Sys`, `Rt`, `Heap`, `Map`) and `src/`
+(`Scan`, `Link`, `Chunk`). All 31 atomics take `ADR`.
+
+1. The report's text, for the owner to review.
+2. `tools/Mutate.raz` taught the two rewrites: `ADR` at a parameter
+   only dereferenced to `var` or `const`, and `SYSTEM.` where an
+   address is kept.
+3. The compiler, a commit a piece; the library; the programs in `~/r`
+   it breaks, each mended.
+4. Release, and the report's pages checked; then, a step of its own,
+   `BOOT` moved, `src/` imports `SYSTEM`, and the warning becomes an
+   error.
 
 ## 3. The Moss work: v0.24.0
 

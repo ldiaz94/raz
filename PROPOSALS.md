@@ -70,7 +70,8 @@ It was drafted as five parts. Three of them went into report
 2026-10.33 on their own, without the marks: the library's parameters
 by `var` (part 2), a `const` parameter (part 4), and a variant in a
 constant (part 5). What is left are the two parts not approved, kept
-by their numbers:
+by their numbers. Left out of the safety thaw by the owner on 2026-10-26
+(`PLAN.md` §2).
 
 1. **Marks at the call** (this section): an argument for a `var`
    parameter is written `var x`, and one for a `keep` parameter
@@ -939,7 +940,7 @@ and `verify` 0.95 s against 0.48: the hashing.
 
 ## Less that is undefined
 
-**Status.** Parked by the owner on 2026-10-23 for the safety thaw that follows once the proposals are cleared, with `MEM_PROPOSAL.md`.
+**Status.** Decided by the owner on 2026-10-26 for the safety thaw (`PLAN.md` §2): pieces 1 and 3 (said, not prevented) go in; 2 is answered by `[]const T`; 4 goes in as `import SYSTEM`.
 
 Section 10 lists what isn't defined: a stale or made-up pointer,
 indexing through a pointer, a slice kept after its frame is gone, a
@@ -1065,7 +1066,7 @@ kind `run` met; the block's kind was renamed `command`.
 
 ## A slice that can't be written: `[]const T`
 
-**Status.** Parked by the owner on 2026-10-23 for the safety thaw that follows once the proposals are cleared, with `MEM_PROPOSAL.md`.
+**Status.** Decided by the owner on 2026-10-26 for the safety thaw (`PLAN.md` §2): it goes in, string literals and a constant's slices typed by it, `Str.trim`, `cut` and `field` returning `[]const U8`.
 
 raz has no slice whose elements can't be written. A `const` parameter
 (report 2026-10.33, section 8) is shallow: the procedure can't change
@@ -2905,7 +2906,7 @@ array, parked with `[]const T`.
 - Records don't compare with `=` — padding, reals (`-0.0`, NaN) and slices make a byte compare wrong; a `same` procedure says what equal means. Confirmed by the owner, 2026-10-22.
 - No type of its own for an array — a one-field record keeps two hashes apart, as it keeps generic arrays (owner's idiom).
 - No exporting a record's fields as a whole — each `*` is the reader's mark of what is public; `Mxlib` is a C mirror, made by a program.
-- An exported array can't be read as a slice outside its module — a slice can be written through; "A slice that can't be written: `[]const T`" in PROPOSALS.md would answer it. Parked by the owner on 2026-10-23, with `[]const T`, for the safety thaw.
+- An exported array can't be read as a slice outside its module — a slice can be written through; "A slice that can't be written: `[]const T`" in PROPOSALS.md would answer it. Comes with `[]const T` in the safety thaw (`PLAN.md` §2).
 - An exported variable can't be assigned from outside — Oberon's read-only export; a setter shows who writes.
 - A generic instance isn't reachable through the module that imported it — no bug: an import's name is never exported (3); export a type of the instance, or import it again.
 - `I32` doesn't widen to `INT` — `INT` may be 16 bits (5.1), so the widening would not hold everywhere.

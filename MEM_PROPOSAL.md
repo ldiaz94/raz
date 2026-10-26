@@ -1,6 +1,6 @@
 # MEM_PROPOSAL: a memory-safe raz
 
-**Status.** A proposal, drafted 2026-10-17 for the owner's review.
+**Status.** A proposal, drafted 2026-10-17. Reviewed whole by the owner on 2026-10-26: `PLAN.md` §2 says what goes in (F.1, `[]const T`, G, E.4, `Task`, `Guarded`, the fence as `import SYSTEM`) and what is left out (B, C, D, the rest of E).
 Nothing in it is built. Four adversarial reviews, made the same day,
 are appendices 4 to 7. They find real holes in the guarantee
 (appendix 4), wrong and imprecise claims about other languages and
