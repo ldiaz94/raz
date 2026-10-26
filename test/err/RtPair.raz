@@ -1,0 +1,11 @@
+module RtPair;
+
+(* Rt declares calls and not teller: one of a pair alone is an error. *)
+import Rt;
+
+proc main*;
+begin
+    Rt.exit(0);
+end;
+
+end RtPair.

@@ -156,14 +156,16 @@ else echo "FAIL raz -bare: status $status"; cat $out/Bare.out $out/Bare.err $out
 # a program with its own Rt (doc/compiler.md): raz -lib of nothing but
 # test/own/lib/Rt.raz, whose exit and fail make their system calls
 # themselves; Own ends with main's 3 after saying hello, OwnFail with 2
-# after Rt.fail's kind 0, an index
+# after Rt.fail's kind 0, an index; built without -s, with Rt having no
+# places, so the ELF has its symbols
 rm -rf $out/own; mkdir -p $out/own
-$raz -lib test/own/lib -Werror -bare -s -o $out/own/Own test/own/Own.raz
+$raz -lib test/own/lib -Werror -bare -o $out/own/Own test/own/Own.raz
 status=$( { ( exec $out/own/Own ) > $out/own/Own.out 2>&1; echo $?; } 2>/dev/null )
-$raz -lib test/own/lib -Werror -bare -s -o $out/own/OwnFail test/own/OwnFail.raz
+$raz -lib test/own/lib -Werror -bare -o $out/own/OwnFail test/own/OwnFail.raz
 statusFail=$( { ( exec $out/own/OwnFail ) > $out/own/OwnFail.out 2>&1; echo $?; } 2>/dev/null )
 if [ $status = 3 ] && [ $statusFail = 2 ] && [ "$(cat $out/own/Own.out)" = hello ] \
-    && [ "$(cat $out/own/OwnFail.out)" = 'check failed: 0' ]; then pass=$((pass + 1))
+    && [ "$(cat $out/own/OwnFail.out)" = 'check failed: 0' ] \
+    && readelf -s $out/own/Own | grep -q ' Own.main$'; then pass=$((pass + 1))
 else echo "FAIL own Rt: status $status, $statusFail"; cat $out/own/Own.out $out/own/OwnFail.out; fail=$((fail + 1)); fi
 
 # what src/ asks of lib/ is what doc/compiler.md lists (test/asks.sh)

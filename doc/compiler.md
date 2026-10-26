@@ -27,7 +27,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Link.raz` | 408 | 316 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Host.raz` | 103 | 52 | The system running the compiler |
-| `src/Raz.raz` | 394 | 316 | The command line |
+| `src/Raz.raz` | 439 | 345 | The command line |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -2274,7 +2274,7 @@ Linux leaves on the stack, and calls no body of `Rt`, whose
 `rt_sigaction` and `sigaltstack` would fault there (`EFER.SCE` is
 clear) and, with no IDT yet, reset the machine. Nor is `Rt` given the
 profiler, which its body would start. It is still given the places, by
-stores alone, so a failed check says where it was; but `Rt.fail` and
+stores alone, if its `Rt` declares them (below), so a failed check says where it was; but `Rt.fail` and
 `Rt.exit` end in system calls, which the kernel catches or replaces. A
 program that uses C is refused.
 
@@ -2317,29 +2317,34 @@ symbolic links to whichever of raz's modules it takes (a link chooses a
 module, as always). The library is all of what is in `DIR`, and nothing
 of raz's unless it is linked there. `test/own` does it: `check.sh`
 builds `test/own/Own.raz` and `OwnFail.raz` with `-lib test/own/lib`,
-whose `Rt.raz` is the whole library, under `-bare -s`.
+whose `Rt.raz` is the whole library, under `-bare` (and `test/err/RtPair`
+gives an `Rt` with half a pair).
 
 **What `Rt` must declare.** `Raz.raz` finds each name in `Rt`'s scope
-(`objIn`) and stops with "Rt has no X" where one is missing:
+(`objIn`) and stops with "Rt has no X" where one of the first two, or `cExit`, is missing; the rest are optional:
 
 | Name | What | Needed |
 |---|---|---|
 | `proc exit*(status: INT)` | Ends the program; never returns, so the compiler puts `ud2` after its call. | always |
 | `proc fail*(what, a, b, len: INT; at: UINT; name: ^U8; rdi, rsi: UINT)` | A failed check; never returns. | always |
-| variable `places` | The compiler stores the address of the places table in it, for `Rt` to say where a check failed. | unless `-s` |
-| `proc calls` and variable `teller` | `teller` is given the address of `calls`, which says the calls under way. | unless `-s` |
-| `proc place*` and variable `placer` | `placer` is given the address of `place`, which says where an address in the code comes from. | unless `-s` |
-| `proc startProfile*` and variable `profiler` | `profiler` is given `startProfile`, which `Rt`'s body calls when `RAZ_PROFILE` is set. | unless `-s`, `-noprofile` or `-bare` |
+| variable `places` | The compiler stores the address of the places table in it, for `Rt` to say where a check failed. | if declared |
+| `proc calls` and variable `teller` | `teller` is given the address of `calls`, which says the calls under way. | if both are declared, not under `-s` |
+| `proc place*` and variable `placer` | `placer` is given the address of `place`, which says where an address in the code comes from. | if both are declared, not under `-s` |
+| `proc startProfile*` and variable `profiler` | `profiler` is given `startProfile`, which `Rt`'s body calls when `RAZ_PROFILE` is set. | if both are declared, not under `-s`, `-noprofile` or `-bare` |
 | variable `cExit: proc(status: I32)` | Given C's `exit`. | only in a program that uses C, which `-bare` refuses |
 
 Each variable is 8 bytes, for an address stored with `lea` and a store
-at the entry. `-s` leaves out the places and what needs them, so a
-failure is told by its address, and a program built with it needs
-`Rt` to declare only `exit` and `fail` (this is what `test/own` does).
-Without `-s` the compiler links all of the `unless -s` rows, even
-under `-bare`, and a missing name stops it ("Rt has no places"): a
-kernel that wants its symbols for a debugger and no places has no way
-yet.
+at the entry. The places are optional, each linked only when `Rt`
+declares it (`giveRtPlaces`): `places` alone; `calls` with `teller`; `place`
+with `placer`; `startProfile` with `profiler`. A pair is both or neither:
+one of them alone stops the compiler with "Rt has calls but no teller",
+naming the other. `-s` leaves all of them out, and the ELF's symbols and
+line numbers with them. Without `-s`, an `Rt` that declares none still
+has its symbols in the ELF (what a debugger reads), but no line table, which
+lives in the places table. A failed check in such a program is told by
+its address: `fail` is given `at`, an address inside the code, and it is
+for `Rt` to print it, or look it up in the symbols. A hosted program's
+`Rt` is raz's, which declares them all, so its output is as before.
 
 **`fail`'s kinds.** The compiler's code calls `Rt.fail` through a stub,
 one for each kind it uses, that makes the call from where the check

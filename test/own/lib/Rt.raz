@@ -1,6 +1,6 @@
 (* The smallest Rt a program can have: exit and fail, and nothing else,
    each making its system call itself. For test/own, which builds a
-   program against it, with raz -bare -s, under Linux. A kernel's Rt
+   program against it, with raz -lib and -bare, under Linux. A kernel's Rt
    has the same two procedures, with its own way of ending and of
    saying a check failed. *)
 module Rt;

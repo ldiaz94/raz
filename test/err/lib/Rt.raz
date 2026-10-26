@@ -1,0 +1,25 @@
+(* An Rt for test/err/RtPair: exit and fail, and `calls` with no
+   `teller` to be given its address, which the compiler refuses. *)
+module Rt;
+import SYSTEM;
+
+const ExitGroup = 231;   (* Linux's exit_group(status) *)
+
+(* Ends the program with status *)
+proc exit*(status: INT);
+begin
+    _ := SYSTEM.SYSCALL(ExitGroup, status);
+end;
+
+(* A check failed; this Rt ends the program *)
+proc fail*(_what, _a, _b, _len: INT; _at: UINT; _name: ^U8; _rdi, _rsi: UINT);
+begin
+    exit(2);
+end;
+
+(* Says the calls under way: the half of a pair that is alone *)
+proc calls*;
+begin
+end;
+
+end Rt.

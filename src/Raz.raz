@@ -171,6 +171,46 @@ begin
     INC(numLinks);
 end;
 
+(* Whether Rt declares a name n *)
+proc declares(rt: ^Sym.Module; n: []const U8): BOOL;
+begin
+    return Sym.find(rt^.scope, internStr(n)) # nil;
+end;
+
+(* Rt is given the address of its procedure p in its variable v, if it
+   declares both; neither is no link, and one alone is an error that
+   names the other, since the address is useless without its variable
+   and the variable would be left empty *)
+proc addPair(rt: ^Sym.Module; p, v: []const U8);
+begin
+    if declares(rt, p) and not declares(rt, v) then
+        Diag.fatal(Diag.say("Rt has {} but no {}", [Fmt.str(p), Fmt.str(v)]));
+    elsif declares(rt, v) and not declares(rt, p) then
+        Diag.fatal(Diag.say("Rt has {} but no {}", [Fmt.str(v), Fmt.str(p)]));
+    elsif declares(rt, p) then
+        addLink(objIn(rt, p)^.chunk, objIn(rt, v));
+    end;
+end;
+
+(* What Rt is given for telling where a failed check was, as far as it
+   declares it. The places table (and the line table in it) is made only
+   if Rt has `places`, a variable for its address; Rt's calls, place and
+   startProfile are linked to the variables teller, placer and profiler
+   (profiled: unless -noprofile or -bare). An Rt that declares none of
+   these, a kernel's, gets a failed check with only the raw address of
+   the failing call, as with -s, and still has the ELF's symbols. *)
+proc giveRtPlaces(rt: ^Sym.Module; profiled: BOOL);
+begin
+    if declares(rt, "places") then
+        Link.setPlaces(Chunk.newChunk(Chunk.secRodata, -1, -1));
+        Chunk.setData(Link.placesChunk, nil, 0, 8);
+        addLink(Link.placesChunk, objIn(rt, "places"));
+    end;
+    addPair(rt, "calls", "teller");
+    addPair(rt, "place", "placer");
+    if profiled then addPair(rt, "startProfile", "profiler"); end;
+end;
+
 (* The library is given C's symbol sym, in its variable v *)
 proc addCLink(sym: []const U8; v: ^Sym.Obj);
 begin
@@ -348,18 +388,12 @@ begin
     if rt = nil then Diag.fatal("can't find module Rt"); end;
     (* what Rt is given: the places, which the linker makes, for Rt to say
        where a failed check or a signal was (place), and the calls under
-       way then (calls); and the profiler, which needs them too. raz -s
-       gives none, -noprofile no profiler, and -bare no profiler, since
-       Rt's body, which starts it, doesn't run. *)
+       way then (calls); and the profiler, which needs them too: each
+       only if Rt declares it (giveRtPlaces). raz -s gives none,
+       -noprofile no profiler, and -bare no profiler, since Rt's body,
+       which starts it, doesn't run. *)
     numLinks := 0;
-    if not Elf.stripped then
-        Link.setPlaces(Chunk.newChunk(Chunk.secRodata, -1, -1));
-        Chunk.setData(Link.placesChunk, nil, 0, 8);
-        addLink(Link.placesChunk, objIn(rt, "places"));
-        addLink(objIn(rt, "calls")^.chunk, objIn(rt, "teller"));
-        addLink(objIn(rt, "place")^.chunk, objIn(rt, "placer"));
-        if not noProfile and not bare then addLink(objIn(rt, "startProfile")^.chunk, objIn(rt, "profiler")); end;
-    end;
+    if not Elf.stripped then giveRtPlaces(rt, not noProfile and not bare); end;
     (* what a program that uses C is given of C: Rt its exit, and
        Thread, if the program has it, the calls that make and join C's
        threads, so that the C library knows of them *)
