@@ -2390,6 +2390,55 @@ does this and no more:
 Under `-bare`, what `Rt`'s body does (handlers, tables, a first stack)
 a kernel does in a module body of its own, which runs before `main`.
 
+**What the compiler's code does to the machine.** A kernel that
+interrupts raz code, and runs raz code from the handler, needs these
+facts; each was read in the source, where it says.
+
+- *Registers.* The code follows System V. It uses `rax`, `rcx`, `rdx`,
+  `rsi`, `rdi` and `r8` to `r11` freely (`r8` to `r11` also hold the
+  value stack, `Gen.Regs`; `r10` and `r11` are scratch in a prologue
+  and a call through a procedure value); `rbp` is the frame pointer;
+  `rbx` and `r12` to `r15` hold a procedure's busiest variables
+  (`Gen.VarRegs`) and are saved in its frame and restored on return,
+  so they live through calls. All of `xmm0` to `xmm15` may change: the
+  value stack's reals are in `xmm8` to `xmm11`, the variables' in
+  `xmm12` to `xmm15` (and `xmm4` to `xmm7` in a procedure that calls
+  nothing), `xmm8` is a scratch of the prologue, `xmm0` to `xmm7` carry
+  arguments and results; none is kept through a call, so a variable in
+  one is loaded again from its slot after it (`Gen.call`). The flags
+  change at will. The code uses no x87 register, no AVX, and never
+  writes `MXCSR`, so it counts on the default (round to nearest, all
+  exceptions masked). A 16 byte move of memory is `movdqu`, never an
+  aligned form, so nothing in it needs an aligned address; `movaps`
+  appears only between registers. `syscall` (`SYSTEM.SYSCALL`)
+  changes `rcx` and `r11` as the machine does.
+- *The stack.* `rsp` is a multiple of 16 at every call, as System V
+  asks: a procedure's frame is a multiple of 16 (`Gen.endProc`, at
+  least 16) and a call pushes a quadword of padding where an odd
+  number are pushed (`Gen.call`). A procedure begins `push rbp; mov
+  rbp, rsp; sub rsp, frame` and ends `leave; ret`: every local and
+  temporary is at a negative offset from `rbp` inside that frame, so
+  above `rsp`. **The code never writes below `rsp`**, no red zone:
+  where it looked, `rsp`-relative operands are in only two places,
+  `[rsp]` and `[rsp + 8]` read by the entry point and by the fail
+  stubs (`Gen.entryPoint`, all `X.mem(RSP, ...)` in `Gen.raz`), and
+  `X64.raz` and the assembler address only through the operands
+  `Gen.raz` gives them. Every other use of the stack is a `push` or
+  a `sub rsp`, which move `rsp` first, and a procedure with no calls
+  still makes its frame. An interrupt, then, needs no stack of its own
+  (IST) for that reason; it still needs room above the frame for its
+  own pushes, as any code does.
+- *The direction flag.* The code never sets it: neither `std` nor `cld`
+  is emitted anywhere. `rep movsb` and `rep stos` (`X64.repMovsb`,
+  `repStos`: `COPY`, `FILL`, a record's copy, zeroing) go upwards, and
+  a copy that must go downward is a loop of moves
+  (`Gen.copyDown`), since `rep movsb` with the flag set is slow. So it
+  must be clear whenever raz code runs, at entry and at every call,
+  as System V asks; an interrupt stub that uses `std` must clear it
+  before it calls a procedure.
+
+The recipe for an interrupt's entry, and its test, follow.
+
 ## This compiler's choices
 
 What the report's appendix A leaves to an implementation, and what
