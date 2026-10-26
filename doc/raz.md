@@ -62,18 +62,21 @@ array or a slice set to one value (section 6.8); a qualified case in a
 parameter's slice returned (section 7.3); and a procedure type's
 parameter or result may name a type declared later in its `type`
 section (sections 4 and 5.9); it breaks no program.
-2026-10.37 mends a defect: an array a call returns, or a record or
-variant holding one, lives to the end of the procedure the call is in,
-not of its statement, so a slice of it may be kept (section 8); and
-`CAS`, `XCHG` and `XADD` take the variable they work on, not a pointer
-to it (section 6.8). It breaks a program that gives them a pointer;
-this compiler, raz 0.23, still takes one that isn't a variable,
-`ADR(x)` say, as before. And `[]const T` is a slice whose elements
-can't be written through it (section 5.3), which a string literal, a
-slice of a constant, `MSG` and a slice of a `const` parameter's array
-are (sections 4, 5.10, 6.8 and 8). It breaks a program that writes
-through one of these; raz 0.23 still gives them their old types, as
-`[]U8` and `[]T`, until 0.24.
+2026-10.37 is a thirteenth thaw, for safety. It mends a defect: an
+array a call returns, or a record or variant holding one, lives to the
+end of the procedure the call is in, so a slice of it may be kept
+(section 8). `CAS`, `XCHG` and `XADD` take the variable they work on
+(section 6.8). `[]const T` is a slice whose elements can't be written
+through it, which a string literal, a slice of a constant, `MSG` and a
+slice of a `const` parameter's array are (sections 4, 5.3, 5.10, 6.8
+and 8). And `import SYSTEM` is what a module says to reach memory
+other than through its variables: `SYSTEM.ADR`, `SYSTEM.PTR`,
+`SYSTEM.SYSCALL` and `SYSTEM.ARGV`, a pointer's arithmetic and
+conversions, C, code procedures and `check off;` (section 3); section
+10 says what is left undefined outside such modules. It breaks a
+program that gives an atomic a pointer, writes through a string or a
+constant, or does what `SYSTEM` holds without importing it; raz 0.23
+still takes all of these as before, until 0.24.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
