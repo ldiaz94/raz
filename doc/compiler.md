@@ -2450,10 +2450,10 @@ replacement for one has to give what the others ask of it. `Rt` is
 also found by name for `fail`, `exit` and the places, as the previous
 section says, and `NEW(p, a)` needs `a` to be a `^Mem.Allocator` and
 calls its `alloc` field, the one library type the compiler knows by
-name. Besides the library, `src/` makes two system calls itself,
-`stat` in `Parse.identity` (a file's device and inode, for the
-one-module-of-each-name check) and `memfd_create` and `execve` in
-`Raz.raz` (`raz run`), and reads `SYSTEM.ARGV`.
+name. Besides the library, only `Host` reaches the system: Linux's makes
+`memfd_create` and `execve` itself for `raz run`, and reads
+`SYSTEM.ARGV` for the program's arguments and environment; another
+host's `Host` replaces all of it.
 
 `test/asks.sh` keeps this list true: it fails when `src/` uses a
 library name that is not a row here, or a row names one that `src/`
@@ -2464,8 +2464,8 @@ fields as the code reads them.
 
 | Name | What for |
 |---|---|
-| `Sys.access` | `Raz.muslHere`: whether the dynamic loaders of glibc and musl are installed |
-| `Sys.chmod` | `Elf.writeElf`: makes the program's file executable (mode 755) |
+| `Sys.access` | `Host.cLibrary`: whether the dynamic loaders of glibc and musl are installed |
+| `Sys.chmod` | `Host.writeExecutable`: makes the program's file executable (mode 755) |
 | `Sys.close` | `Scan` and `Parse`: closes a source or `RAZ-VERSION` file after reading |
 | `Sys.closeDir`, `Sys.openDir`, `Sys.nextEntry`, `Sys.Dir` | `Parse`: the files of a directory, to find a module's other files for the one-module-of-each-name check |
 | `Sys.env`, `Sys.envAt` | `Diag` (`NO_COLOR`) and `Raz.userLibraries` (`RAZ_PATH`, `HOME`; `envAt` tells unset from empty) |
@@ -2473,7 +2473,7 @@ fields as the code reads them.
 | `Sys.info`, `Sys.Info` | `Scan` and `Parse`: whether a path is a file (`file`) and its length (`size`) |
 | `Sys.isTerminal` | `Diag`: colour only when standard error is a terminal |
 | `Sys.openRead`, `Sys.read` | `Scan`: reads a source file whole; `Parse`: the library's `RAZ-VERSION` |
-| `Sys.readLink` | `Raz`: `/proc/self/exe`, to find the library beside the compiler |
+| `Sys.readLink` | `Host.libraryDir`: `/proc/self/exe`, to find the library beside the compiler |
 | `Sys.stderr`, `Sys.write` | `Diag`: its messages |
 | `Sys.workDir` | `Diag`: shows a path relative to the working directory; `Elf`: the compilation directory of the line table |
 
@@ -2487,8 +2487,9 @@ fields as the code reads them.
 
 | Name | What for |
 |---|---|
-| `Files.arg` | `Raz`: the command line's words, and `ARGC()` for how many |
-| `Files.write` | `Elf.writeElf`: writes the executable |
+| `Files.arg` | `Raz` and `Host.libraryDir`: the command line's words |
+| `Files.argCount` | `Raz` and `Host.execute`: how many words the command line has |
+| `Files.write` | `Host.writeExecutable`: writes the executable |
 
 The rest of the library, which `Diag`, `Sym`, `X64` and `Parse` use for
 text and `Scan` for tables:
