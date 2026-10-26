@@ -64,9 +64,9 @@
    stores C&#x27;s exit in Rt.cExit; so this module uses no C itself, and
    serves both kinds of program. C&#x27;s thread has a stack and a guard
    page of C&#x27;s; the mapping here holds only the handlers&#x27; stack and
-   the Thread. *)
+   the Thread. Its test uses Check. *)
 module Thread;
-import Sys, Rt;
+import Sys, Rt, Check;
 
 const
     Failed*: ERROR = &quot;can&#x27;t start a thread&quot;;

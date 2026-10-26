@@ -40,7 +40,7 @@
 <li><a href="threads.html">Threads</a></li>
 </ol></aside><article><p class="kicker">Set &middot; lesson 9 of 15</p><h1>Memory and allocators</h1>
 <div class="file"><span>Stack.raz</span></div><pre class="code"><code><span class="kw">module</span> Stack;
-<span class="kw">import</span> Out, Mem, Heap, Arena;
+<span class="kw">import</span> Out, Mem, Heap, Arena, SYSTEM;
 
 <span class="kw">type</span> Node = <span class="kw">record</span> next: ^Node; val: <span class="ty">INT</span>; <span class="kw">end</span>;
 
@@ -69,7 +69,7 @@
     <span class="kw">end</span>;
     Out.ln;
     <span class="kw">if</span> <span class="kw">not</span> Arena.init(ar, <span class="number">100000</span>) <span class="kw">then</span> <span class="kw">return</span>; <span class="kw">end</span>;
-    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">1000</span> <span class="kw">do</span> top := push(top, i, <span class="ty">ADR</span>(ar.base)); <span class="kw">end</span>;
+    <span class="kw">for</span> i := <span class="number">1</span> <span class="kw">to</span> <span class="number">1000</span> <span class="kw">do</span> top := push(top, i, SYSTEM.<span class="ty">ADR</span>(ar.base)); <span class="kw">end</span>;
     Out.int(top^.val); Out.ln;
     Arena.done(ar);            <span class="comment">(* every node at once *)</span>
 <span class="kw">end</span>;

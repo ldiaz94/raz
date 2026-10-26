@@ -61,32 +61,19 @@
 <span class="kw">end</span> Add.</code></pre>
 <pre class="output term"><code><span class="cmd">$ raz -S Add.raz</span>
 
-Add.add:
-     3  proc add*(a, b: INT): INT;
-             0  push rbp
-             1  mov rbp, rsp
-             4  sub rsp, 16
-     5      return a + b;
-            11  mov r8, rdi
-            14  add r8, rsi
-            17  mov rax, r8
-     6  end;
-            20  leave
-            21  ret
-
 Add.main:
      8  proc main*;
              0  push rbp
              1  mov rbp, rsp
              4  sub rsp, 16
     10      _ := add(1, 2);
-            11  mov rdi, 1
-            16  mov rsi, 2
-            21  call Add.add
-            26  mov r8, rax
+            11  mov qword [rbp - 8], 2
+            19  mov qword [rbp - 16], 1
+            27  mov r8, [rbp - 16]
+            31  add r8, [rbp - 8]
     11  end;
-            29  leave
-            30  ret</code></pre>
+            35  leave
+            36  ret</code></pre>
 <p>Every procedure starts by saving the caller's frame pointer and making its own (<code>push rbp; mov rbp, rsp</code>) and reserves room for what it needs. The arguments arrive in <code>rdi</code> and <code>rsi</code>, as the convention says, and the result leaves in <code>rax</code>. A call is <code>mov rdi, 1; mov rsi, 2; call Add.add</code>. Nothing is hidden: the frame pointer chain is what lets a failure show the calls under way with their variables.</p>
 <h2>A loop with its checks</h2>
 <p>This is the dot product of two slices. A slice is a pointer and a length, and it travels in two registers:</p>
@@ -258,18 +245,18 @@ Dot2.dot:
 <ul><li><code>gdb</code> finds procedures by name and lines by number, since the executable carries them: <code>break Dot.dot</code> and <code>list</code> work, and so does stepping a line at a time.</li><li><code>RAZ_PROFILE=1</code> samples the program every millisecond and says which procedures and lines took the time.</li><li><code>objdump -d</code> disassembles what is really in the file, if you want to see the bytes behind a listing.</li></ul>
 <pre class="output term"><code><span class="cmd">$ raz -o Dot Dot.raz</span>
 <span class="cmd">$ objdump -d -M intel --no-show-raw-insn Dot | sed -n &#x27;/&lt;Dot.dot&gt;:/,/ret/p&#x27; | head -12</span>
-0000000000403b20 &lt;Dot.dot&gt;:
-  403b20:	push   rbp
-  403b21:	mov    rbp,rsp
-  403b24:	sub    rsp,0x40
-  403b2b:	mov    QWORD PTR [rbp-0x38],rbx
-  403b2f:	xor    ebx,ebx
-  403b31:	mov    QWORD PTR [rbp-0x30],r12
-  403b35:	xor    r12d,r12d
-  403b38:	mov    QWORD PTR [rbp-0x28],r13
-  403b3c:	xor    r13d,r13d
-  403b3f:	mov    QWORD PTR [rbp-0x20],rdx
-  403b43:	mov    QWORD PTR [rbp-0x18],rcx</code></pre>
+0000000000403c60 &lt;Dot.dot&gt;:
+  403c60:	push   rbp
+  403c61:	mov    rbp,rsp
+  403c64:	sub    rsp,0x40
+  403c6b:	mov    QWORD PTR [rbp-0x38],rbx
+  403c6f:	xor    ebx,ebx
+  403c71:	mov    QWORD PTR [rbp-0x30],r12
+  403c75:	xor    r12d,r12d
+  403c78:	mov    QWORD PTR [rbp-0x28],r13
+  403c7c:	xor    r13d,r13d
+  403c7f:	mov    QWORD PTR [rbp-0x20],rdx
+  403c83:	mov    QWORD PTR [rbp-0x18],rcx</code></pre>
 <p>The listing is what the encoder meant; <code>objdump</code> is what the processor will read. They tell the same story.</p><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="syscalls.html">&larr; System calls</a><a href="index.html">Contents</a><a class="next" href="volatile.html">Volatile &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>

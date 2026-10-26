@@ -40,7 +40,7 @@
 <li><a href="threads.html">Threads</a></li>
 </ol></aside><article><p class="kicker">Set &middot; lesson 7 of 15</p><h1>Records and pointers</h1>
 <div class="file"><span>Boxes.raz</span></div><pre class="code"><code><span class="kw">module</span> Boxes;
-<span class="kw">import</span> Fmt;
+<span class="kw">import</span> Fmt, SYSTEM;
 
 <span class="kw">type</span>
     Point = <span class="kw">record</span> x, y: <span class="ty">INT</span>; <span class="kw">end</span>;
@@ -64,8 +64,8 @@
 <span class="kw">begin</span>
     b := {lo: {x: <span class="number">1</span>, y: <span class="number">1</span>}, hi: {x: <span class="number">4</span>, y: <span class="number">3</span>}};
     Fmt.print(<span class="string">&quot;{}\n&quot;</span>, [Fmt.int(area(b))]);
-    grow(<span class="ty">ADR</span>(b), <span class="number">1</span>);
-    p := <span class="ty">ADR</span>(b.hi);
+    grow(SYSTEM.<span class="ty">ADR</span>(b), <span class="number">1</span>);
+    p := SYSTEM.<span class="ty">ADR</span>(b.hi);
     p^.x := <span class="number">10</span>;
     Fmt.print(<span class="string">&quot;{} {}\n&quot;</span>, [Fmt.int(area(b)), Fmt.int(b.hi.x)]);
 <span class="kw">end</span>;
@@ -314,13 +314,13 @@ INT:   8
 </span></code></pre>
 <p><code>PTR(s)</code> is the pointer itself, a <code>^U8</code> for a <code>[]U8</code>, with no check. For a slice that isn't empty it is <code>ADR(s[0])</code>; for an empty one it is what the slice holds, <code>nil</code> for one never set. So nothing needs testing first, and <code>sp.p[0..sp.n]</code> makes the slice again, empty when <code>sp.n</code> is 0, whatever <code>sp.p</code> is:</p>
 <div class="file"><span>Spans.raz</span></div><pre class="code"><code><span class="kw">module</span> Spans;
-<span class="kw">import</span> Out;
+<span class="kw">import</span> Out, SYSTEM;
 
 <span class="kw">type</span> Span = <span class="kw">record</span> p: ^<span class="ty">U8</span>; n: <span class="ty">INT</span>; <span class="kw">end</span>;
 
 <span class="kw">proc</span> spanOf(s: []<span class="ty">U8</span>): Span;
 <span class="kw">begin</span>
-    <span class="kw">return</span> {p: PTR(s), n: <span class="ty">LEN</span>(s)};
+    <span class="kw">return</span> {p: SYSTEM.PTR(s), n: <span class="ty">LEN</span>(s)};
 <span class="kw">end</span>;
 
 <span class="kw">proc</span> text(sp: Span): []<span class="ty">U8</span>;
