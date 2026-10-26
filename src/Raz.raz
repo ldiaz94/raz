@@ -258,6 +258,9 @@ begin
     bare := false;
     listing := false;
     libcSaid := false;
+    (* until v0.24.0, RAZ_STRICT=1 is -strict for every compile, so that a
+       whole test run can be made strict *)
+    if Sys.env("RAZ_STRICT") = "1" then Item.setStrict(true); end;
     run := (ARGC() >= 2) and (Files.arg(1) = "run");
     if run then i := 2; else i := 1; end;
     while i < ARGC() do
