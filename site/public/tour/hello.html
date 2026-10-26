@@ -70,7 +70,7 @@ hello, again
 <span class="cmd">$ raz run Quiet.raz</span>
 hello, again
 <span class="cmd">$ ls -l Quiet | awk &#x27;{print $5, &quot;bytes&quot;}&#x27;</span>
-28680 bytes</code></pre>
+28608 bytes</code></pre>
 <p>The program is a static executable with no run time besides the code it uses, so it is a few kilobytes, and runs without any library installed.</p>
 <h2>What <code>Out</code> can write</h2>
 <p><code>Out</code> is the library's buffered output. It writes strings, single characters, numbers in decimal or hexadecimal, and a line feed. A string is written as it is, with <code>\n</code> for a line feed, <code>\t</code> for a tab, <code>\"</code> and <code>\\</code>; or between backquotes, as a raw string with no escapes at all, which may run over lines (lesson 6).</p>
@@ -136,9 +136,20 @@ status 3</code></pre>
 
 <span class="kw">end</span> Args.</code></pre>
 <pre class="output term"><code><span class="cmd">$ raz run Args.raz one &quot;two words&quot;; echo &quot;status $?&quot;</span>
-one
-two words
-status 2</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="index.html">Contents</a><a class="next" href="modules.html">Modules &rarr;</a></div></article></div>
+Args.raz:9:11: error: indexing through a pointer needs import SYSTEM
+    9 |     while s[n] # 0 do n := n + 1; end;
+      |           ^^^
+help: it reaches memory other than through a variable: say import SYSTEM after the module&#x27;s imports
+Args.raz:17:14: error: ARGV is SYSTEM&#x27;s, and written SYSTEM.ARGV
+   17 |         s := ARGV()[i];
+      |              ^^^^
+help: say import SYSTEM after the module&#x27;s imports, and write the name after SYSTEM.
+Args.raz:18:17: error: a slice of a pointer needs import SYSTEM
+   18 |         Out.str(s[0..len(s)]);
+      |                 ^
+help: it reaches memory other than through a variable: say import SYSTEM after the module&#x27;s imports
+raz: 3 errors
+status 1</code></pre><p class="tryit">Save a program under its module&rsquo;s name and run it with <code>raz run Name.raz</code>.</p><div class="pager"><a href="index.html">Contents</a><a class="next" href="modules.html">Modules &rarr;</a></div></article></div>
 </main>
 <footer>raz is under the ISC license. <a href="../source/index.html">Source</a></footer>
 </body>
