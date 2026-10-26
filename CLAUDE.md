@@ -380,6 +380,12 @@ otherwise.
   (`chooseRegs`). A pointer that isn't a variable, `ADR(x)`, is still
   taken as the old form until v0.24.0; a pointer variable is the new
   form, so `XADD(p, 1)` is an error whose help says `p^`.
+- `import SYSTEM` (report 2026-10.37) binds to `Sym.system`, no file,
+  whose scope holds `ADR`, `PTR`, `SYSCALL` and `ARGV`; it is never
+  warned of as unused, and an alias is refused. In v0.23.0 nothing is
+  fenced yet: the bare built-ins, pointer arithmetic and conversions,
+  views, `extern`, `link`, code procedures and `check off;` are taken
+  in any module, until v0.24.0.
 - `[]const T` (report 2026-10.37) is a slice type with `rdonly` set: not
   the same as `[]T`, which goes into it with no code (`coerce`), never
   back (help says why). An element read through one has the item's

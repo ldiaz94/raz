@@ -1,0 +1,5 @@
+conform/err/SystemAlias.raz:3:8: error: SYSTEM is imported only as itself
+    3 | import S := SYSTEM;
+      |        ^^^^^^^^^^^
+help: every module that reaches memory through SYSTEM says so by that name: write import SYSTEM
+raz: 1 error

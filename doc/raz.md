@@ -238,7 +238,7 @@ only its own module changes it. Outside it, the variable is a value,
 not a variable: nothing that could write it, or let something else
 write it, may name it or a field or element of it. So it can't be
 assigned, passed as a `var` argument, changed by `INC`, `DEC` or
-`NEW`, or given to `ADR`; an array in it is sliced, or used where a
+`NEW`, or given to `SYSTEM.ADR`; an array in it is sliced, or used where a
 slice is expected (the silent conversion of an array, section 5.10),
 only as a `[]const T`, whose elements can't be written (section 5.3);
 a slice in it may be sliced, since that makes a new slice and can't
@@ -254,6 +254,32 @@ slice of it.
 **Imports.** `import Out;` makes `Out`'s exports available as `Out.x`.
 `import O := Out;` uses the name `O` instead. A module can't import
 itself, directly or through others.
+
+**`import SYSTEM`.** `SYSTEM` is no file but a module the language
+gives, of the operations that reach memory other than through the
+program's variables, or let something outside the program do so. A
+module that does any of these says `import SYSTEM;`, and it is an
+error to do them in one that doesn't:
+
+- `SYSTEM.ADR`, `SYSTEM.PTR`, `SYSTEM.SYSCALL` and `SYSTEM.ARGV`
+  (section 6.8), which are written so, by that name;
+- `p + i`, `p - i`, `p[i]` and `p[lo..hi]` on a pointer (section 6.4);
+- a conversion to a pointer or a procedure type from an integer or
+  from another pointer or procedure type, or from a pointer or a
+  procedure to an integer (section 6.7), and a string literal given
+  where a `^U8` is wanted (section 5.10);
+- a view whose type holds a pointer, a view written over a variable
+  whose type holds anything but integers and reals, and `BYTES` of
+  such a variable (sections 6.8 and 6.9);
+- `extern` and `link` of a library (section 9), code procedures
+  (section 8) and `check off;` (below).
+
+`SYSTEM` can't be imported under another name, so that every module
+that reaches memory so says it by that name. What such a module does
+is its own to get right: section 10 says what isn't defined. A module
+that imports one that says `import SYSTEM` needn't say it itself; it
+trusts that module as it trusts the library, whose `Rt`, `Mem`,
+`Heap`, `Sys`, `Thread` and others say it.
 
 **Generic modules** take types as parameters:
 
@@ -341,7 +367,7 @@ with no packages or paths. So the names of the library's modules
 (the library, `doc/raz-lib.md`) are kept for it: a program or another library doesn't
 name a module of its own `Arena`, `Buf`, `C`, `Files`, `Fmt`, `Guarded`,
 `Heap`, `List`, `Lock`, `Map`, `Math`, `Mem`, `Opt`, `Out`, `Rt`,
-`Sort`, `Str`, `Sys`, `Task` or `Thread`, nor any name the library takes later. The
+`Sort`, `Str`, `Sys`, `SYSTEM`, `Task` or `Thread`, nor any name the library takes later. The
 modules of any other library share a prefix of their own, as an X11
 library's `Xauth` and `Xkeys` do, and a program that wants a shorter
 name imports one: `import Auth := Xauth;`.
@@ -371,11 +397,13 @@ instance of a generic module has its body run once. Module variables
 are zero before any body runs. `return;` ends a body early.
 
 **`link "libX11.so.6";`** names a shared library to load at run time,
-for the `extern` declarations of section 9. **`link static;`** says the
+for the `extern` declarations of section 9, in a module that imports
+`SYSTEM`. **`link static;`** says the
 module needs a program without C (section 10): it makes its own system
 calls, or its own threads, which the C library wouldn't know about.
 
-**`check off;`**, after the links, leaves out of the module's own code
+**`check off;`**, after the links, in a module that imports `SYSTEM`,
+leaves out of the module's own code
 the checks of indexes and slice bounds of section 6.5, and that a slice
 of a pointer doesn't run backwards (section 6.4), for speed where the
 program is sure of them. An index out of range there reads or writes
@@ -537,15 +565,15 @@ Slice = record ptr: ^T; len: INT; end;    (* its layout *)
 
 A slice is made from an array (`a[2..5]`, or an array used where a
 slice is wanted), from another slice, or from a pointer (`p[0..n]`). It
-doesn't own what it points at. `LEN(s)` is its count, and `PTR(s)` its
-pointer (section 6.8).
+doesn't own what it points at. `LEN(s)` is its count, and
+`SYSTEM.PTR(s)` its pointer (section 6.8).
 
 `[]const T` is a slice whose elements can't be written through it. It
 is laid out as `[]T` is. Its elements are read, and it is sliced, and a
 slice of it is a `[]const T` too; but an element of it isn't assigned,
 given to `COPY` or `FILL` as the destination, changed by `INC` or `DEC`,
-passed as a `var` argument, or written through a view, and `ADR` of one
-is an error. A `[]T` and an array of `T` go silently where a
+passed as a `var` argument, or written through a view, and
+`SYSTEM.ADR` of one is an error. A `[]T` and an array of `T` go silently where a
 `[]const T` is wanted, never the other way (section 5.10). So a
 procedure that only reads a slice takes a `[]const T`, and every
 caller's slice or array fits it:
@@ -586,7 +614,7 @@ packed record may sit at any address. It is read and written like any
 other, on every target, even one whose machine can't reach a
 misaligned word in one access: the compiled code reaches it in parts
 there. But a field of a packed record whose type is aligned to more
-than 1 byte, and anything inside it, has no address: `ADR` of it, a
+than 1 byte, and anything inside it, has no address: `SYSTEM.ADR` of it, a
 `var` parameter of it and a slice of it are errors. Nor can it be
 reached through a `^VOLATILE` pointer, since a misaligned access can't
 be promised as one access (section 7.6). Its value can be copied out
@@ -730,7 +758,7 @@ A record, variant or enumeration, though, is a type of its own wherever
 it is written, named or not: two `record x: I64; end` are two types.
 A named and an anonymous type are the
 same if the named one is built like the anonymous one, so that
-`p := ADR(n)` works for `p: NodePtr` with `type NodePtr = ^Node`.
+`p := SYSTEM.ADR(n)` works for `p: NodePtr` with `type NodePtr = ^Node`.
 Sameness doesn't pass through the anonymous type: with `type P1 =
 ^Node; P2 = ^Node;`, each of `P1` and `P2` is the same as `^Node`, but
 they are two declarations, so not the same as each other.
@@ -747,9 +775,10 @@ the same type, or if:
 - `A` is `^T` and `B` is `^VOLATILE T`;
 - `A` is `[n]T` and `B` is `[]T` or `[]const T`, or `A` is `[]T` and
   `B` is `[]const T`;
-- `A` is a string literal and `B` is `[]const U8`, `^U8` (a pointer to the
-  bytes followed by a zero byte, as C wants), or `[n]U8` with `n` at
-  least the string's length (the rest is zero);
+- `A` is a string literal and `B` is `[]const U8`, `[n]U8` with `n` at
+  least the string's length (the rest is zero), or, in a module that
+  imports `SYSTEM`, `^U8` (a pointer to the bytes followed by a zero
+  byte, as C wants);
 - `A` is a procedure and `B` a procedure type with the same signature;
 - `A` is `INT` and `B` is `I64`, or `A` is `UINT` and `B` is `U64`,
   which loses nothing on any target;
@@ -943,6 +972,10 @@ never stops the program.
 - Pointers compare with `= # < <= > >=` as unsigned addresses.
   Procedure values compare with `=` and `#` only.
 
+`p + i`, `p - i`, `p[i]` and `p[lo..hi]` reach memory no variable of
+the program names, and are allowed only in a module that imports
+`SYSTEM` (section 3). `p^`, `p - q` and comparing are allowed in any.
+
 ### 6.5 Arrays and slices
 
 `a[i]` is an element of an array or slice, and `a[lo..hi]` is the slice
@@ -1023,7 +1056,10 @@ grammar: `^VOLATILE U32(0FEE00000H)`.
 
 There are no others: none from an integer to `BOOL` (`x # 0` says it),
 none between pointers and integers other than `INT` and `UINT`, and none to
-or from records, arrays, slices, variants or `ERROR`. An untyped integer constant converts to a pointer as an `INT` does, as
+or from records, arrays, slices, variants or `ERROR`. The last three
+rows, from an integer to a pointer or a procedure, back, and from one
+pointer or procedure type to another, are allowed only in a module
+that imports `SYSTEM` (section 3). An untyped integer constant converts to a pointer as an `INT` does, as
 in `^VOLATILE U32(0FEE00000H)`; it isn't assigned to a pointer without
 the conversion. A conversion of a constant is made by the compiler, by
 the same rules: `U8(300)` is 44. `U64(a = b)` is 0 or 1, and
@@ -1037,15 +1073,15 @@ the same rules: `U8(300)` is 44. `U64(a = b)` is 0 or 1, and
 | `SIZE(T)` | the size of type `T` in bytes, an untyped constant; `T` is a type, not a variable |
 | `SIZE(T.f)` | the size of field `f` of the record type `T`, an untyped constant |
 | `OFFSET(T, f)` | the byte offset of field `f` in the record type `T`, an untyped constant |
-| `ADR(x)` | the address of variable `x`, a `^T` |
+| `SYSTEM.ADR(x)` | the address of variable `x`, a `^T` |
 | `LEN(a)` | the number of elements of an array or a string constant (an untyped constant) or of a slice (an `INT`) |
-| `PTR(s)` | the address the slice `s` starts at, a `^T` for `s: []T`, unchecked; for an array `a`, that of `a[0..LEN(a)]` |
+| `SYSTEM.PTR(s)` | the address the slice `s` starts at, a `^T` for `s: []T` or `[]const T`, unchecked; for an array `a`, that of `a[0..LEN(a)]` |
 | `BYTES(x)` | the bytes of `x` as a `[]U8`: for a slice `s: []T`, its `LEN(s) * SIZE(T)` bytes, a `[]const U8` for a `[]const T`; for a variable of any other type `T`, its `SIZE(T)` bytes |
 | `NEW(p, a)` | sets `p: ^T` to a fresh, zeroed `T` from the allocator `a: ^Mem.Allocator`, or to `nil` if `a` has no room |
 | `MSG(e)` | the message of the error `e`, a `[]const U8` |
 | `COPY(d, s)` | copies the elements of `s` to the start of `d`, both arrays or slices of one type `T`; `LEN(s)` must be at most `LEN(d)` |
 | `FILL(d, x)` | sets every element of `d`, an array or a slice of elements of type `T`, to `x`, a value of `T` |
-| `SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six arguments, each a pointer or an integer no wider than `INT`; the raw result, an `INT` (a negative number is `-errno`) |
+| `SYSTEM.SYSCALL(n, x1, ..., x6)` | Linux system call `n` with up to six arguments, each a pointer or an integer no wider than `INT`; the raw result, an `INT` (a negative number is `-errno`) |
 | `INC(v)`, `INC(v, k)` | adds 1, or `k`, to the integer variable `v`; it wraps, like `+` |
 | `DEC(v)`, `DEC(v, k)` | subtracts 1, or `k`, from `v` |
 | `FENCE` | a full memory barrier |
@@ -1058,9 +1094,9 @@ the same rules: `U8(300)` is 44. `U64(a = b)` is 0 or 1, and
 | `POPCOUNT(x)` | the number of one bits in `x`, or of members of the set `x`, an `INT`; `x` of an unsigned integer type or a set |
 | `MIN(T)`, `MAX(T)` | the smallest, or the largest, value of the integer type `T`, an untyped constant; any other type is an error |
 | `ARGC()` | the number of command line arguments, an `INT` |
-| `ARGV()` | the arguments, a `^^U8` (C strings) |
+| `SYSTEM.ARGV()` | the arguments, a `^^U8` (C strings) |
 
-`SYSCALL` exists only on Linux targets. Other systems have no stable
+`SYSTEM.SYSCALL` exists only on Linux targets. Other systems have no stable
 system call interface, and their modules call the C library instead
 (section 9).
 
@@ -1087,19 +1123,21 @@ n := Sys.read(fd, BYTES(h));             (* fills h: Header, a record *)
 `T` must be a type a view may take (section 6.9), since writing through
 the slice must not make a value mean nothing: a `BOOL`, a set, an
 enumeration, a slice, a variant, a procedure type, `ERROR`, or a record
-or array holding one, is an error. The slice is made, and checked, as
+or array holding one, is an error; and, outside a module that imports
+`SYSTEM`, so is a pointer, or a record or array holding one. The slice
+is made, and checked, as
 any slice of the variable is, so its bytes follow the rules for it: the
 bytes of a local can't be returned (section 7.3). Of a slice they are
-its elements, as `PTR(s)` gives them, whatever holds the slice, and
-can be written only if the slice can. Of any
-other variable they are its own, as `ADR` gives them: a `const`
-parameter, another module's variable, a view and a field of a packed
-record are errors, as they are for `ADR`, and so is a volatile variable.
+its elements, as `SYSTEM.PTR(s)` gives them, whatever holds the slice,
+and can be written only if the slice can. Of any other variable they
+are its own, as `SYSTEM.ADR` gives them: a `const` parameter, another
+module's variable, a view and a field of a packed record are errors,
+as they are for `SYSTEM.ADR`, and so is a volatile variable.
 `x` must be a variable: a constant, a string constant too, is an error.
 The bytes are in the target's order (appendix A).
 
-`PTR(s)` is the first of the two words of `s` (section 5.3), and is not
-checked. For a slice that isn't empty it is `ADR(s[0])`; for an empty
+`SYSTEM.PTR(s)` is the first of the two words of `s` (section 5.3), and
+is not checked. For a slice that isn't empty it is `SYSTEM.ADR(s[0])`; for an empty
 one, where `s[0]` would stop the program, it is what the slice holds:
 `nil` for a slice variable as it starts (section 4) and for `[]`, and
 for one cut empty from another, `t[3..3]`, an address that mustn't be
@@ -1112,13 +1150,13 @@ type Value = record n: INT; p: ^U8; end;
 
 proc valueOf(s: []const U8): Value;
 begin
-    return {n: LEN(s), p: PTR(s)};      (* "" too *)
+    return {n: LEN(s), p: SYSTEM.PTR(s)};      (* "" too *)
 end;
 ```
 
 and `v.p[0..v.n]` is the slice again (section 6.4), empty when `v.n`
 is 0, whatever `v.p` is. Reading through the pointer is as unchecked as
-through any pointer. `PTR(a)` of an array may be taken wherever the
+through any pointer. `SYSTEM.PTR(a)` of an array may be taken wherever the
 slice `a[0..LEN(a)]` may be made, and is an error wherever it may not.
 
 `COPY` is a statement, as `INC` is. It copies the bytes of `LEN(s)`
@@ -1147,7 +1185,7 @@ For `CAS`, `XCHG` and `XADD`, `v` is a variable, as for `INC`, of type
 target, and may be volatile: a counter shared between threads is
 `XADD(count, 1)`, one reached through a pointer `XADD(p^, 1)`. It is
 evaluated once, and must have an address, so a field of a packed
-record and a view are errors, as they are for `ADR`. They are sequentially consistent, on every target; how a
+record and a view are errors, as they are for `SYSTEM.ADR`. They are sequentially consistent, on every target; how a
 machine without atomic instructions makes them so is the
 implementation's choice (appendix A).
 ### 6.9 Views
@@ -1199,6 +1237,13 @@ it: `Colour(mem[a])`. `v` may be of any type, and is a variable: a
 name of one, a field or element of one, or what a pointer points at;
 not a constant, nor the result of a call or of an operator.
 
+A view makes values from bytes, so where those bytes could be made
+into an address the module must import `SYSTEM` (section 3): a view
+whose `T` holds a pointer, and a view written over a variable `v`
+whose type holds anything but integers and reals, which would change
+a pointer, a `BOOL` or a slice behind its type. Reading any variable
+through a view of integers and reals is allowed in any module.
+
 **Where its bytes lie.** The `T` lies within the variable `v` is part
 of:
 
@@ -1218,7 +1263,8 @@ than `p[i]` is, since a pointer has no length.
 `I64` whose first byte is `mem[3]`. As a field of a packed record is
 (section 5.5), it is read and written on every target, in parts where
 the machine needs that; and, as such a field, a view has no address:
-`ADR` of it, a `var` argument of it and a slice of it are errors. Copy
+`SYSTEM.ADR` of it, a `var` argument of it and a slice of it are
+errors. Copy
 it out to a variable, and back in. A view of a volatile variable is an
 error too, since its access can't be promised as one (section 7.6): a
 device's registers are reached through a `^VOLATILE` pointer to a
@@ -1233,12 +1279,13 @@ read it right on every target.
 and may still: `mem[a].(I64) := n` does what
 
 ```
-p := ^I64(ADR(mem[a]));
+p := ^I64(SYSTEM.ADR(mem[a]));
 p^ := n;
 ```
 
 does, but with `a` checked against the length of `mem`, no pointer
-variable, and no address of a word that may be misaligned.
+variable, and no address of a word that may be misaligned, and no
+`import SYSTEM`.
 
 `v` is evaluated once, and its check made, before the bytes are read
 or written.
@@ -1463,8 +1510,14 @@ thread, on its own, does what this report says. A variable that one
 thread writes while another reads or writes it, unless both use
 volatile accesses or the atomic built-ins, or a `FENCE` orders them,
 holds no particular value then: a read of it gives a value it had or
-was given, or a mixture of their bytes. Nothing else of the program
-becomes undefined by it.
+was given, or a mixture of their bytes. For a variable of a basic,
+enumeration or set type, or a record or array of these, nothing else
+of the program becomes undefined by it. For one that holds a pointer,
+a procedure, a slice, an `ERROR` or a variant, a mixture may be an
+address no variable has, or a slice's address with another's length,
+or a case's tag with another's fields, and what follows isn't defined
+(section 10). A program that shares such a variable between threads
+orders their accesses, with a lock or the atomic built-ins.
 
 ### 7.7 Defer
 
@@ -1631,8 +1684,8 @@ the parameter's type.
 A `const` parameter is the caller's variable too, read in place,
 whatever its size, with nothing copied; the procedure may only read it.
 It may not assign it or a part of it (a field, an element of an array
-in it), give it or a part of it to a `var` parameter, take the `ADR` of
-either, write it through a view (section 6.9), or assign the names a
+in it), give it or a part of it to a `var` parameter, take the
+`SYSTEM.ADR` of either, write it through a view (section 6.9), or assign the names a
 `match` arm gives its fields. What a slice or a pointer in it points at
 isn't part of it: the procedure may write through them, as it may
 through a value parameter's; but a slice it makes of an array in it is
@@ -1714,7 +1767,8 @@ A name after a procedure's `end`, if written, is the procedure's own.
 Procedures don't nest.
 
 **Code procedures.** A procedure whose body is `code` is machine code,
-written by hand in the target's assembly language (appendix A): one
+written by hand in the target's assembly language (appendix A), in a
+module that imports `SYSTEM`: one
 instruction to each `;`, and labels for jumps, up to `end`:
 
 ```
@@ -1761,7 +1815,8 @@ extern var environ: ^^U8;
 ```
 
 An `extern` procedure or variable is found by its name in the C
-libraries the program links: the C library always, and each library
+libraries the program links, and is declared only in a module that
+imports `SYSTEM` (section 3), since C can reach any memory: the C library always, and each library
 named by `link`.
 
 An `extern` procedure's parameters and result are integers, `BOOL`,
@@ -1786,9 +1841,9 @@ and the member it wants through a pointer conversion:
 ```
 var ev: [24]I64;                       (* XEvent: 192 bytes *)
 ...
-XNextEvent(dpy, ADR(ev));
+XNextEvent(dpy, SYSTEM.ADR(ev));
 if I32(ev[0]) = KeyPress then
-    key := ^XKeyEvent(ADR(ev));
+    key := ^XKeyEvent(SYSTEM.ADR(ev));
     ...
 end;
 ```
@@ -1837,12 +1892,16 @@ does.
 **Defined behaviour.** Every variable starts at zero, integers wrap,
 and indexing arrays and slices is checked, so a program's behaviour is
 defined by this report, with one exception: memory reached other than
-through a checked variable. Dereferencing a stale or made-up pointer,
-indexing through a pointer, a slice kept after the call whose frame
-holds what it points at (section 7.3), an index out of range in a
-module that says `check off;`, writing a string's bytes, a code procedure that
-breaks its rules, and C code can read or write any memory, and what
-follows isn't defined. Dereferencing `nil`, dividing
+through a checked variable. In any module, three things reach it: a
+pointer used after the memory it points at was given back (by
+`Heap`'s `free` or an arena's reset, say), a slice kept after the
+call whose frame holds what it points at (section 7.3), and a race on
+a variable that holds a pointer, a slice or a variant (section 7.6).
+In a module that imports `SYSTEM`, so does what that module does there
+(section 3): a made-up pointer, indexing through a pointer, an index
+out of range under `check off;`, writing a string's bytes through a
+`^U8`, a code procedure that breaks its rules, and C code. Each can
+read or write any memory, and what follows isn't defined. Dereferencing `nil`, dividing
 by zero, calling a `nil` procedure and running out of stack stop the
 program, on every target, with status 2, as a failed check does.
 Before it stops, the program prints to
@@ -1914,7 +1973,7 @@ that it follows this report: it passes them all, its reals aside where its targe
   implementation's.
 - **What is the target's.** Code procedures (section 8) hold the
   target's machine code, written in its assembly language, and exist
-  only where the implementation says so; `SYSCALL` exists only on Linux targets (section 6.8). A record's
+  only where the implementation says so; `SYSTEM.SYSCALL` exists only on Linux targets (section 6.8). A record's
   layout is the target's C layout (section 5.5), and the order of a
   value's bytes is the target's (little-endian on x86-64).
 - **The assembly language.** How a code procedure's instructions are

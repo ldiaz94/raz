@@ -1,0 +1,25 @@
+(* import SYSTEM (report section 3): SYSTEM.ADR, SYSTEM.PTR,
+   SYSTEM.SYSCALL and SYSTEM.ARGV are the built-ins of section 6.8,
+   written by that name, and a local given to SYSTEM.ADR is that
+   variable, however busy. *)
+module SystemImport;
+import Out, SYSTEM;
+
+proc main*;
+var k, i: INT; p: ^INT; a: [4]U8; s: []U8; q: ^U8;
+begin
+    for i := 1 to 10 do INC(k); end;
+    p := SYSTEM.ADR(k);
+    p^ := p^ + 100;
+    for i := 1 to 10 do INC(k); end;
+    Out.int(k);
+    a := "abcd";
+    s := a;
+    q := SYSTEM.PTR(s);
+    Out.char(q^);
+    if SYSTEM.ARGV() # nil then Out.char('v'); end;
+    if SYSTEM.SYSCALL(39) > 0 then Out.char('p'); end;   (* getpid *)
+    Out.char(10);
+end;
+
+end SystemImport.

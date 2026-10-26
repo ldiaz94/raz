@@ -1,0 +1,9 @@
+(* SYSTEM is imported only by its own name (report section 3). *)
+module SystemAlias;
+import S := SYSTEM;
+
+proc main*;
+begin
+end;
+
+end SystemAlias.

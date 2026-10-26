@@ -156,6 +156,10 @@ var
     tBool*, tF32*, tReal*, tRConst*, tError*, tConst*, tNil*, tStr*, tNone*, tPtrU8*, tBytes*: ^Type;
     tPoison*: ^Type;   (* of a name reported as not declared *)
     curModule*: ^Module;
+    (* SYSTEM, the module the language gives, of what reaches memory
+       other than through a variable (report 3): no file, its scope the
+       built-ins that may be written SYSTEM.ADR and the like *)
+    system*: ^Module;
 
     scopes: [MaxDepth]INT;
     depth: INT;
@@ -690,13 +694,26 @@ begin
     return t;
 end;
 
-proc enter(name: []U8; cls: Class; t: ^Type; v: I64);
+(* The name s, interned *)
+proc internOf(s: []U8): INT;
+begin
+    return Scan.intern(ADR(s[0]), LEN(s));
+end;
+
+(* Declares name in the scope s, exported, as a built-in is *)
+proc enterIn(s: INT; name: []U8; cls: Class; t: ^Type; v: I64);
 var o: ^Obj;
 begin
-    o := newObj(cls, Scan.intern(ADR(name[0]), LEN(name)), t);
+    o := newObj(cls, internOf(name), t);
     o^.val := v;
     o^.exported := true;
-    _ := insert(o, 0);
+    _ := insert(o, s);
+end;
+
+(* Declares name in the universe *)
+proc enter(name: []U8; cls: Class; t: ^Type; v: I64);
+begin
+    enterIn(0, name, cls, t, v);
 end;
 
 begin
@@ -762,4 +779,14 @@ begin
     enter("CLZ", oBuiltin, nil, bClz);
     enter("CTZ", oBuiltin, nil, bCtz);
     enter("POPCOUNT", oBuiltin, nil, bPopcount);
+    NEW(system, Heap.heap);
+    system^.name := internOf("SYSTEM");
+    system^.sname := system^.name;
+    system^.scope := newScope();
+    system^.body := -1;
+    system^.done := true;
+    enterIn(system^.scope, "ADR", oBuiltin, nil, bAdr);
+    enterIn(system^.scope, "PTR", oBuiltin, nil, bPtr);
+    enterIn(system^.scope, "SYSCALL", oBuiltin, nil, bSyscall);
+    enterIn(system^.scope, "ARGV", oBuiltin, nil, bArgv);
 end Sym.

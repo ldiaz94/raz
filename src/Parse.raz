@@ -4393,7 +4393,15 @@ begin
             o := Sym.newObj(Sym.oModule, alias, nil);
             o^.pos := start;
             try declare(o);
-            if not generic then
+            if mname = Sym.system^.name then
+                (* no file: the language's own, which a grep must find *)
+                if (alias # mname) or generic then
+                    return nil, Scan.markHelp(iargs.at, "SYSTEM is imported only as itself",
+                        "every module that reaches memory through SYSTEM says so by that name: write import SYSTEM");
+                end;
+                o^.home := Sym.system;
+                named(o);   (* not warned of when only its features are used *)
+            elsif not generic then
                 o^.home := try importModule(mname, iargs);
                 addImport(m, o^.home);
             else

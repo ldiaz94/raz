@@ -277,3 +277,14 @@ at the time.
   array may be read as one (sections 3, 4, 5.10, 6.8 and 8). It breaks
   a program that writes through these; raz 0.23 still gives them their
   old types until 0.24.
+  And `import SYSTEM` (section 3): a module the language gives, with no
+  file, that a module imports, by that name only, to reach memory other
+  than through its variables: `SYSTEM.ADR`, `SYSTEM.PTR`,
+  `SYSTEM.SYSCALL` and `SYSTEM.ARGV`, a pointer's arithmetic and
+  indexing, conversions to and from pointers and procedures, views and
+  `BYTES` that would make or change a pointer, `extern`, `link`, code
+  procedures and `check off;` (sections 5.10, 6.4, 6.7, 6.8, 6.9, 8
+  and 9). Section 10 says what is left undefined outside such modules,
+  and 7.6 that a race on a pointer, a slice or a variant is undefined.
+  It breaks every module that does these without it; raz 0.23 still
+  takes them, and the built-ins unprefixed, until 0.24.

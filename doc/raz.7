@@ -166,11 +166,30 @@ before the main module's
 .Cm main .
 .It
 .Cm "link \(dqlibX.so.1\(dq;"
-loads a C library;
+loads a C library (it needs
+.Cm "import SYSTEM" );
 .Cm "link static;"
 says the program must not use C.
 .Cm "check off;"
-leaves the module's index and slice checks out.
+leaves the module's index and slice checks out (it too needs
+.Cm "import SYSTEM" ).
+.It
+.Cm "import SYSTEM;"
+is no file but the language's module of what reaches memory by other
+roads than variables.
+A module needs it for
+.Cm SYSTEM.ADR ,
+.Cm SYSTEM.PTR ,
+.Cm SYSTEM.SYSCALL
+and
+.Cm SYSTEM.ARGV ;
+pointer arithmetic, indexing and slicing;
+conversions to and from pointers;
+.Cm extern ,
+.Cm link ,
+code procedures and
+.Cm "check off;" .
+It can't be renamed; a module that imports one that says it needn't.
 .El
 .Sh TYPES
 [5] Sizes are x86-64's.
@@ -332,6 +351,8 @@ and
 .Cm p[lo..hi] ,
 a slice; a record's fields through it are
 .Cm p^.f .
+Arithmetic, indexing and slicing need
+.Cm "import SYSTEM" .
 .It
 Arrays and slices:
 .Cm a[i] ,
@@ -383,6 +404,8 @@ takes its length from its literal [4].
 .It "pointer, procedure" Ta "INT, UINT, pointer" Ta "the address"
 .El
 .Pp
+The last two rows need
+.Cm "import SYSTEM" .
 There is no other: none between
 .Cm BOOL
 and integers, and none to records, arrays, slices, variants or
@@ -416,7 +439,7 @@ A view may be misaligned, so it has no address, and a volatile
 variable can't be viewed.
 .Sh BUILT-IN PROCEDURES
 [6.8]
-.Bl -tag -width "SYSCALL(n, x1, ...)"
+.Bl -tag -width "SYSTEM.SYSCALL(n, x1, ...)"
 .It Fn SIZE T
 The size of type
 .Ar T ,
@@ -433,12 +456,12 @@ The byte offset of field
 in the record type
 .Ar T ,
 an untyped constant.
-.It Fn ADR x
+.It Fn SYSTEM.ADR x
 The address of the variable
 .Ar x .
 .It Fn LEN a
 The length of an array, a string constant or a slice.
-.It Fn PTR s
+.It Fn SYSTEM.PTR s
 The address the slice
 .Ar s
 starts at, a
@@ -525,11 +548,11 @@ The smallest, or the largest, value of the integer type
 .Ar T .
 .It Cm FENCE
 A full memory barrier.
-.It Fn SYSCALL n x1 ...
+.It Fn SYSTEM.SYSCALL n x1 ...
 Linux system call
 .Ar n ,
 with up to six arguments; minus an errno on failure.
-.It Fn ARGC , Fn ARGV
+.It Fn ARGC , Fn SYSTEM.ARGV
 The command line: its count, and its C strings.
 .El
 .Sh STATEMENTS
@@ -646,7 +669,7 @@ convention:
 .Cm "rdtsc; shl rdx, 32; or rax, rdx; ret;" .
 .It
 .Cm "extern proc printf(f: ^U8; ...): I32;"
-is C's [9]: its parameters integers, reals, pointers and procedures.
+(in a module that imports SYSTEM) is C's [9]: its parameters integers, reals, pointers and procedures.
 .Cm "extern var environ: ^^U8;"
 is C's variable.
 A raz procedure of those types is a C callback.

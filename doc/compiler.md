@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is eleven files of raz, about 12,500 lines of code (the
+The compiler is eleven files of raz, about 12,600 lines of code (the
 budget is 14,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 422 | 324 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,169 | 965 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 737 | 590 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 792 | 633 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 363 | 279 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,620 | 1,329 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,833 | 1,982 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Item.raz` | 2,442 | 1,959 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,748 | 4,046 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Gen.raz` | 2,840 | 1,986 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Item.raz` | 2,501 | 2,006 | Items: types, constants, variables, operators, conversions, calls |
+| `src/Parse.raz` | 4,797 | 4,084 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 407 | 315 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 449 | 355 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Raz.raz` | 418 | 333 | The command line |
@@ -1885,6 +1885,16 @@ the matched type, or the message names both types. `compareIface` passes over an
 which its type's fingerprint has.
 
 Last, modules, at the end of the file. `compileFile` reads one module.
+`import SYSTEM` (report 2026-10.37) finds no file: the import binds the
+name to `Sym.system`, a module made once in `Sym`'s body whose scope
+holds four of the built-ins, `ADR`, `PTR`, `SYSCALL` and `ARGV` (made by
+`enterIn`), so that `qualIdent` finds `SYSTEM.ADR` as it finds any
+export and `builtin` compiles it as `ADR`. It is marked used at the
+import, since a module may import it only for `extern` or `link`. An
+alias, `import S := SYSTEM`, is refused, so a grep finds every such
+module. Until v0.24.0 nothing needs it: the bare built-ins and the rest
+it fences are still taken anywhere.
+
 `importModule` finds a module's file, trying the target's names first,
 and compiles it if it isn't yet. A module found in an `-I` or
 `RAZ_PATH` directory that holds a file `RAZ-VERSION` gets a line
