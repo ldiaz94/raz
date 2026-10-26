@@ -1,0 +1,295 @@
+module Interrupt;
+(* The recipe for an interrupt's entry (doc/compiler.md, "A program with
+   its own Rt"), run on Linux: iretq from ring 3 to ring 3 is allowed.
+   interrupt builds the frame the CPU would push, sets every register to
+   a value of its own and the direction flag, and goes to a vector's
+   stub; the stub calls handle, an ordinary procedure that computes with
+   reals, and returns by iretq to back, which notes every register. Each
+   is checked against what was set, for a vector with no error code (3)
+   and one with (14). *)
+import Out;
+import SYSTEM;
+
+type
+    (* what the CPU pushes, from the lowest address up *)
+    Frame = record
+        rip: UINT;      (* where the interrupted code goes on *)
+        cs: UINT;       (* its code segment *)
+        rflags: UINT;   (* its flags *)
+        rsp: UINT;      (* its stack *)
+        ss: UINT;       (* its stack segment *)
+    end;
+
+const
+    UserCs = 33H;     (* Linux's code segment for a 64-bit program *)
+    UserSs = 2BH;     (* and its stack segment *)
+    Flags = 602H;     (* the flags in the frame: IF, bit 1 (always set) and DF *)
+    DirectionFlag = 400H;
+    (* the general registers, by their numbers *)
+    RegNames: [16][]const U8 = ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
+        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"];
+    Rsp = 4;
+
+var
+    before: [16]UINT;    (* the general registers as set, by number; rsp's unused *)
+    after: [16]UINT;     (* and as back found them *)
+    xbefore: [32]UINT;   (* xmm0 to xmm15 as set, two words each *)
+    xafter: [32]UINT;    (* and as back found them *)
+    sentRsp: UINT;       (* the rsp put in the frame *)
+    (* what handle saw *)
+    gotVector, gotCode: INT;
+    gotFrame: Frame;
+    gotFlags: UINT;      (* the flags inside handle *)
+    gotSum: F64;         (* what it computed *)
+
+(* The flags, by pushfq, which the assembler doesn't know *)
+proc flags: UINT;
+code
+    db 9CH;   (* pushfq *)
+    pop rax;
+    ret;
+end flags;
+
+(* The handler: an ordinary procedure, whose reals use the xmm registers *)
+proc handle(vector, errorCode: INT; frame: ^Frame);
+var i: INT; x: F64;
+begin
+    gotFlags := flags();
+    gotVector := vector;
+    gotCode := errorCode;
+    gotFrame := frame^;
+    x := 1.0;
+    for i := 1 to 20 do x := x * 1.25 + F64(i) / 3.0; end;
+    gotSum := x;
+end;
+
+(* What every stub goes on to. The stack holds, from rsp up: the vector,
+   the error code, then the CPU's frame. It keeps what the compiler's code
+   may change and handle doesn't keep: the general registers System V
+   lets a call change, the SSE state (by xsave, as the assembler knows no
+   fxsave) and the flags (by iretq); and it clears the direction flag *)
+proc common;
+code
+    push rax;   (* what a call may change and handle doesn't keep *)
+    push rcx;
+    push rdx;
+    push rsi;
+    push rdi;
+    push r8;
+    push r9;
+    push r10;
+    push r11;
+    (* a 64-byte-aligned area: 576 bytes for xsave, then the old rsp *)
+    mov rax, rsp;
+    and rsp, -64;
+    sub rsp, 640;
+    mov [rsp + 576], rax;
+    (* xsave writes only the first word of its 64-byte header, at 512,
+       and xrstor refuses the rest unless it is zero *)
+    xor edx, edx;
+    mov ecx, 8;
+    zero:
+    mov [rsp + rcx * 8 + 504], rdx;
+    dec ecx;
+    jnz zero;
+    mov eax, 3;   (* edx:eax, what to save: the x87 state and SSE's *)
+    xsave [rsp];
+    (* handle(vector, error code, frame), past the nine registers *)
+    mov rcx, [rsp + 576];
+    mov rdi, [rcx + 72];
+    mov rsi, [rcx + 80];
+    lea rdx, [rcx + 88];
+    cld;
+    call handle;
+    xor edx, edx;
+    mov eax, 3;
+    xrstor [rsp];
+    mov rsp, [rsp + 576];
+    pop r11;
+    pop r10;
+    pop r9;
+    pop r8;
+    pop rdi;
+    pop rsi;
+    pop rdx;
+    pop rcx;
+    pop rax;
+    add rsp, 16;   (* the vector and the error code *)
+    iretq;
+end common;
+
+(* The stub of vector 3, a breakpoint: the CPU pushes no error code *)
+proc vector3;
+code
+    push 0;
+    push 3;
+    jmp common;
+end vector3;
+
+(* The stub of vector 14, a page fault: the CPU pushes an error code *)
+proc vector14;
+code
+    push 14;
+    jmp common;
+end vector14;
+
+(* Where iretq returns: notes every register in after and xafter, clears
+   the direction flag the frame set again, and returns for interrupt *)
+proc back;
+code
+    push rax;
+    lea rax, [after];
+    mov [rax + 8], rcx;
+    mov [rax + 16], rdx;
+    mov [rax + 24], rbx;
+    lea rcx, [rsp + 8];
+    mov [rax + 32], rcx;
+    mov [rax + 40], rbp;
+    mov [rax + 48], rsi;
+    mov [rax + 56], rdi;
+    mov [rax + 64], r8;
+    mov [rax + 72], r9;
+    mov [rax + 80], r10;
+    mov [rax + 88], r11;
+    mov [rax + 96], r12;
+    mov [rax + 104], r13;
+    mov [rax + 112], r14;
+    mov [rax + 120], r15;
+    pop rcx;
+    mov [rax], rcx;
+    lea rax, [xafter];
+    movdqu [rax], xmm0;
+    movdqu [rax + 16], xmm1;
+    movdqu [rax + 32], xmm2;
+    movdqu [rax + 48], xmm3;
+    movdqu [rax + 64], xmm4;
+    movdqu [rax + 80], xmm5;
+    movdqu [rax + 96], xmm6;
+    movdqu [rax + 112], xmm7;
+    movdqu [rax + 128], xmm8;
+    movdqu [rax + 144], xmm9;
+    movdqu [rax + 160], xmm10;
+    movdqu [rax + 176], xmm11;
+    movdqu [rax + 192], xmm12;
+    movdqu [rax + 208], xmm13;
+    movdqu [rax + 224], xmm14;
+    movdqu [rax + 240], xmm15;
+    cld;
+    pop r15;
+    pop r14;
+    pop r13;
+    pop r12;
+    pop rbp;
+    pop rbx;
+    ret;
+end back;
+
+(* An interrupt of stub, with errorCode pushed if it isn't negative, as
+   the CPU would push it: ss, rsp, rflags, cs and rip, which is back.
+   Every register is set from before and xbefore, the direction flag
+   too, and stub is reached by ret, which takes its address off the
+   stack and leaves the frame *)
+proc interrupt(stub: proc; errorCode: INT);
+code
+    push rbx;   (* what our caller keeps, which back gives back *)
+    push rbp;
+    push r12;
+    push r13;
+    push r14;
+    push r15;
+    mov rax, rsp;
+    lea rcx, [sentRsp];
+    mov [rcx], rax;
+    push UserSs;
+    push rax;
+    push Flags;
+    push UserCs;
+    lea rcx, [back];
+    push rcx;
+    test rsi, rsi;
+    js noCode;
+    push rsi;
+    noCode:
+    push rdi;
+    lea rax, [xbefore];
+    movdqu xmm0, [rax];
+    movdqu xmm1, [rax + 16];
+    movdqu xmm2, [rax + 32];
+    movdqu xmm3, [rax + 48];
+    movdqu xmm4, [rax + 64];
+    movdqu xmm5, [rax + 80];
+    movdqu xmm6, [rax + 96];
+    movdqu xmm7, [rax + 112];
+    movdqu xmm8, [rax + 128];
+    movdqu xmm9, [rax + 144];
+    movdqu xmm10, [rax + 160];
+    movdqu xmm11, [rax + 176];
+    movdqu xmm12, [rax + 192];
+    movdqu xmm13, [rax + 208];
+    movdqu xmm14, [rax + 224];
+    movdqu xmm15, [rax + 240];
+    lea rax, [before];
+    mov rcx, [rax + 8];
+    mov rdx, [rax + 16];
+    mov rbx, [rax + 24];
+    mov rbp, [rax + 40];
+    mov rsi, [rax + 48];
+    mov rdi, [rax + 56];
+    mov r8, [rax + 64];
+    mov r9, [rax + 72];
+    mov r10, [rax + 80];
+    mov r11, [rax + 88];
+    mov r12, [rax + 96];
+    mov r13, [rax + 104];
+    mov r14, [rax + 112];
+    mov r15, [rax + 120];
+    mov rax, [rax];
+    std;
+    ret;
+end interrupt;
+
+(* yes or no *)
+proc say(what: []const U8; ok: BOOL);
+begin
+    Out.str(what);
+    if ok then Out.str(": yes"); else Out.str(": no"); end;
+    Out.ln;
+end;
+
+(* An interrupt of stub, as vector, and every check of it *)
+proc check(stub: proc; vector, errorCode: INT);
+var i: INT; p: proc;
+begin
+    for i := 0 to 15 do before[i] := UINT(i + 1) * 0101010101010101H + UINT(vector); end;
+    for i := 0 to 31 do xbefore[i] := UINT(i + 1) * 0001000100010001H + UINT(vector); end;
+    interrupt(stub, errorCode);
+    Out.str("vector "); Out.int(vector); Out.ln;
+    say("handle was given the vector", gotVector = vector);
+    say("and the error code", (gotCode = errorCode) or (errorCode < 0) and (gotCode = 0));
+    p := back;
+    say("the frame's rip is back", gotFrame.rip = UINT(^U8(p)));
+    say("its cs, rflags, rsp and ss are as pushed", (gotFrame.cs = UserCs) and (gotFrame.rflags = Flags)
+        and (gotFrame.rsp = sentRsp) and (gotFrame.ss = UserSs));
+    say("the direction flag is clear in handle", gotFlags & DirectionFlag = 0);
+    Out.str("handle computed "); Out.int(INT(gotSum * 1000.0)); Out.str(" thousandths"); Out.ln;
+    for i := 0 to 15 do
+        if i = Rsp then
+            say("rsp is the frame's", after[i] = sentRsp);
+        else
+            Out.str(RegNames[i]);
+            say(" kept", after[i] = before[i]);
+        end;
+    end;
+    for i := 0 to 15 do
+        Out.str("xmm"); Out.int(i);
+        say(" kept", (xafter[2 * i] = xbefore[2 * i]) and (xafter[2 * i + 1] = xbefore[2 * i + 1]));
+    end;
+end;
+
+proc main*;
+begin
+    check(vector3, 3, -1);
+    check(vector14, 14, 6);
+end;
+
+end Interrupt.

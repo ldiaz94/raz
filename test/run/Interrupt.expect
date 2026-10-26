@@ -1,0 +1,78 @@
+vector 3
+handle was given the vector: yes
+and the error code: yes
+the frame's rip is back: yes
+its cs, rflags, rsp and ss are as pushed: yes
+the direction flag is clear in handle: yes
+handle computed 631643 thousandths
+rax kept: yes
+rcx kept: yes
+rdx kept: yes
+rbx kept: yes
+rsp is the frame's: yes
+rbp kept: yes
+rsi kept: yes
+rdi kept: yes
+r8 kept: yes
+r9 kept: yes
+r10 kept: yes
+r11 kept: yes
+r12 kept: yes
+r13 kept: yes
+r14 kept: yes
+r15 kept: yes
+xmm0 kept: yes
+xmm1 kept: yes
+xmm2 kept: yes
+xmm3 kept: yes
+xmm4 kept: yes
+xmm5 kept: yes
+xmm6 kept: yes
+xmm7 kept: yes
+xmm8 kept: yes
+xmm9 kept: yes
+xmm10 kept: yes
+xmm11 kept: yes
+xmm12 kept: yes
+xmm13 kept: yes
+xmm14 kept: yes
+xmm15 kept: yes
+vector 14
+handle was given the vector: yes
+and the error code: yes
+the frame's rip is back: yes
+its cs, rflags, rsp and ss are as pushed: yes
+the direction flag is clear in handle: yes
+handle computed 631643 thousandths
+rax kept: yes
+rcx kept: yes
+rdx kept: yes
+rbx kept: yes
+rsp is the frame's: yes
+rbp kept: yes
+rsi kept: yes
+rdi kept: yes
+r8 kept: yes
+r9 kept: yes
+r10 kept: yes
+r11 kept: yes
+r12 kept: yes
+r13 kept: yes
+r14 kept: yes
+r15 kept: yes
+xmm0 kept: yes
+xmm1 kept: yes
+xmm2 kept: yes
+xmm3 kept: yes
+xmm4 kept: yes
+xmm5 kept: yes
+xmm6 kept: yes
+xmm7 kept: yes
+xmm8 kept: yes
+xmm9 kept: yes
+xmm10 kept: yes
+xmm11 kept: yes
+xmm12 kept: yes
+xmm13 kept: yes
+xmm14 kept: yes
+xmm15 kept: yes

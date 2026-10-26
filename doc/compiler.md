@@ -2485,7 +2485,158 @@ facts; each was read in the source, where it says.
   as System V asks; an interrupt stub that uses `std` must clear it
   before it calls a procedure.
 
-The recipe for an interrupt's entry, and its test, follow.
+**The recipe for an interrupt's entry.** From those facts, what a stub
+must keep is what the compiler's code may change and a raz procedure
+doesn't give back: `rax`, `rcx`, `rdx`, `rsi`, `rdi`, `r8` to `r11`,
+the SSE state, and the flags; `rbx`, `rbp` and `r12` to `r15` the
+handler keeps itself, as any procedure does. It must also give raz code
+what it counts on: `rsp` a multiple of 16 at the call, and the
+direction flag clear. So, a `code` procedure per vector pushes 0 where
+the CPU pushes no error code, then the vector, and jumps to one that
+does the rest and calls an ordinary procedure (`code` is a reserved
+word, so the error code is `errorCode`):
+
+```
+module Traps;
+(* An interrupt's entry: a stub per vector, the common part, and
+   handle, which is plain raz. *)
+import SYSTEM;
+
+type
+    (* what the CPU pushes, from the lowest address up *)
+    Frame = record
+        rip: UINT;      (* where the interrupted code goes on *)
+        cs: UINT;       (* its code segment *)
+        rflags: UINT;   (* its flags *)
+        rsp: UINT;      (* its stack *)
+        ss: UINT;       (* its stack segment *)
+    end;
+
+var
+    counts*: [256]INT;   (* how many times each vector came *)
+    lastCode*: INT;      (* the last error code *)
+    lastRip*: UINT;      (* and where the code was *)
+
+(* The handler: anything raz does, reals too *)
+proc handle(vector, errorCode: INT; frame: ^Frame);
+begin
+    INC(counts[vector]);
+    lastCode := errorCode;
+    lastRip := frame^.rip;
+end;
+
+(* What every stub goes on to. The stack holds, from rsp up: the
+   vector, the error code, then the CPU's frame *)
+proc common;
+code
+    push rax;   (* what a call may change and handle doesn't keep *)
+    push rcx;
+    push rdx;
+    push rsi;
+    push rdi;
+    push r8;
+    push r9;
+    push r10;
+    push r11;
+    (* a 64-byte-aligned area: 576 bytes for xsave, then the old rsp *)
+    mov rax, rsp;
+    and rsp, -64;
+    sub rsp, 640;
+    mov [rsp + 576], rax;
+    (* xsave writes only the first word of its 64-byte header, at 512,
+       and xrstor refuses the rest unless it is zero *)
+    xor edx, edx;
+    mov ecx, 8;
+    zero:
+    mov [rsp + rcx * 8 + 504], rdx;
+    dec ecx;
+    jnz zero;
+    mov eax, 3;   (* edx:eax, what to save: the x87 state and SSE's *)
+    xsave [rsp];
+    (* handle(vector, error code, frame), past the nine registers *)
+    mov rcx, [rsp + 576];
+    mov rdi, [rcx + 72];
+    mov rsi, [rcx + 80];
+    lea rdx, [rcx + 88];
+    cld;
+    call handle;
+    xor edx, edx;
+    mov eax, 3;
+    xrstor [rsp];
+    mov rsp, [rsp + 576];
+    pop r11;
+    pop r10;
+    pop r9;
+    pop r8;
+    pop rdi;
+    pop rsi;
+    pop rdx;
+    pop rcx;
+    pop rax;
+    add rsp, 16;   (* the vector and the error code *)
+    iretq;
+end common;
+
+(* Vector 3, a breakpoint: the CPU pushes no error code *)
+proc vector3*;
+code
+    push 0;
+    push 3;
+    jmp common;
+end vector3;
+
+(* Vector 14, a page fault: the CPU pushes an error code *)
+proc vector14*;
+code
+    push 14;
+    jmp common;
+end vector14;
+
+end Traps.
+```
+
+What each part is for:
+
+- *The error code.* The CPU pushes one for vectors 8, 10 to 14, 17, 21,
+  29 and 30, and for no other; a stub pushes 0 for the rest, so that
+  every vector's stack looks alike to `common`. `common` finds the two
+  words and the frame at 72, 80 and 88 bytes past its nine pushes;
+  `add rsp, 16` drops the two words before `iretq` takes the frame.
+- *Alignment.* The CPU aligns `rsp` to 16 before it pushes its frame,
+  but an odd number of words follow it, so `common` aligns again and
+  keeps the old `rsp` to go back to. `and rsp, -64` is for `xsave`,
+  whose area must be 64-byte aligned; 640 bytes keep `rsp` a multiple
+  of 16 at the call.
+- *The SSE state.* `handle` may change any of `xmm0` to `xmm15`.
+  `xsave` with `edx:eax` 3 saves the x87 and SSE state, `MXCSR` with
+  it, in 576 bytes, and `xrstor` with the same mask puts it back. The
+  assembler knows `xsave` and `xrstor`, not `fxsave` and `fxrstor`
+  (which would need no header and only 16-byte alignment), so the
+  recipe uses those. `xsave` needs `CR4.OSXSAVE` set and bits 0 and 1
+  of `XCR0`, which a kernel sets when it turns SSE on; Linux has. The
+  area is on the stack, so another interrupt may come inside `handle`.
+- *The direction flag.* `cld` before the call, since the interrupted
+  code may have set it; `iretq` gives it back with the other flags.
+- *No IST.* The compiler's code writes nothing below `rsp`, so a stub
+  pushes where it stands; the stack needs room for the CPU's frame,
+  `common`'s 784 bytes at most, and `handle`'s frames.
+- *What is a kernel's.* `common` touches no segment register and does
+  no `swapgs`: a kernel whose handlers come from ring 3 with a per-CPU
+  area in `gs` adds that, as it adds the IDT that names `vector3` and
+  `vector14`.
+
+**Its test.** `test/run/Interrupt.raz` runs the same `common` and stubs
+on Linux, since `iretq` from ring 3 to ring 3 is allowed. A code
+procedure, `interrupt`, pushes a frame as the CPU would, with Linux's
+user `cs` and `ss` (33H and 2BH), flags with the direction flag set,
+and for `rip` a code procedure `back`, and the error code for vector
+14; sets every general register and `xmm0` to `xmm15` to values of its
+own, and the direction flag; and reaches the stub by `ret`. `handle`
+reads the flags (`pushfq`, as `db 9CH`, which the assembler doesn't
+know), notes its arguments and the frame, and computes with reals.
+`back`, where `iretq` returns, notes every register. Each is checked,
+a line each: the vector, the error code, the frame, the direction flag
+clear inside `handle`, every register kept, and `rsp` the frame's.
 
 ## What the compiler asks of Sys, Rt and Files
 
