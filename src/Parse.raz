@@ -569,8 +569,8 @@ end;
    of scope s is written, or of any scope open if s < 0. words writes
    the names that start with what is typed there; def where the name
    written there is declared, its place and what it is: a module's
-   place is its file, and the language's own names have none. Then the
-   compile ends. *)
+   place is its name in its own file, and the language's own names
+   have none. Then the compile ends. *)
 proc answer(s: INT);
 var b: Buf.Buf; o: PObj;
 begin
@@ -581,7 +581,7 @@ begin
         if s < 0 then o := Sym.lookup(internName(Scan.word)); else o := Sym.find(s, internName(Scan.word)); end;
         if (o # nil) and (o^.typ # Sym.tPoison) then
             if (o^.cls = Sym.oModule) and (o^.home # nil) and (o^.home^.path # "") then
-                Fmt.write(b, "{}\t1\t1\t1\t1", [Fmt.str(Diag.shownPath(o^.home^.path))]);
+                Diag.writePlace(b, o^.home^.at);
             elsif (o^.scope = 0) or (o^.cls = Sym.oBuiltin) then
                 Diag.writePlace(b, {f: MAX(INT), a: 0, b: 0});
             else
@@ -4428,7 +4428,7 @@ var
     st: Scan.State; saved: [Sym.MaxDepth]INT; d: INT;
     oldMod: PModule; oldCheck, oldChecks: BOOL; m: PModule;
     lib: ^Sym.Lib; start: Diag.Pos; alias, mname, line, oldPath: INT; o: PObj; bodyChunk: INT; iargs: Sym.Args;
-    generic: BOOL; argsAt: Scan.State; why: []const U8; firstDoubt: INT;
+    generic, atName: BOOL; argsAt: Scan.State; why: []const U8; firstDoubt: INT;
 begin
     firstDoubt := numDoubts;
     Scan.saveScan(st);
@@ -4463,6 +4463,7 @@ begin
     if (Scan.tok # Scan.sIdent) or (Scan.id # n) then
         return nil, Scan.mark(say2("expected module {}, found {}", nameOf(n), Scan.found()));
     end;
+    m^.at := Scan.tokPos();
     Scan.next;
     (* the module first pending is the one named on the command line,
        which nothing imports, so no arguments come with it *)
@@ -4480,7 +4481,9 @@ begin
             if Scan.tok # Scan.sIdent then return nil, expected("a module name"); end;
             start := Scan.tokPos();
             alias := Scan.id;
-            mname := Scan.id;
+            atName := define and (alias = Scan.atCursor);   (* raz -q def on a module's name here *)
+            if atName then alias := internName(Scan.word); end;
+            mname := alias;
             iargs.n := 0;
             generic := false;
             Scan.next;
@@ -4511,6 +4514,7 @@ begin
             elsif not generic then
                 o^.home := try importModule(mname, iargs);
                 addImport(m, o^.home);
+                if atName then answer(m^.scope); end;
             else
                 o^.home := nil;   (* until the instance is made, at its first use *)
                 if numDeferred >= MaxDeferred then

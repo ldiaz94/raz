@@ -128,6 +128,7 @@ type
         args*: Args;
         scope*: INT;
         path*: []const U8;
+        at*: Diag.Pos;       (* its name in its "module" line, for raz -q def *)
         first*, last*: ^Obj;           (* its top-level declarations, in order *)
         locals*, lastLocal*: ^Obj;     (* its procedures' declarations, in order *)
         imports*: ^Import;

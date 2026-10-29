@@ -18,12 +18,12 @@ library, made from `lib/` by `tools/Doc.raz`.
 |---|---|---|---|
 | `src/Diag.raz` | 479 | 363 | Messages: positions, source excerpts, colour, counts |
 | `src/Scan.raz` | 1,267 | 1,040 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 865 | 688 | Types, objects, scopes, layout |
+| `src/Sym.raz` | 866 | 689 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 364 | 280 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,777 | 1,450 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,846 | 1,989 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,918 | 4,175 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,922 | 4,179 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 411 | 317 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Host.raz` | 103 | 52 | The system running the compiler |
@@ -2374,7 +2374,9 @@ editor's hover and "go to definition" the same way.
   `Scan.word` up there and writes its declaration's place
   (`Diag.writePlace`, which `-q check`'s rows use too) and what it is
   (`Sym.describe`, which `offer`'s rows use): a module's place is its
-  file, and a name of the universe or a built-in has none. A cursor inside a comment or a string
+  name in its `module` line (`Module.at`), and an import's name, read
+  in `compileFile`, answers so too; a name of the universe or a
+  built-in has none. A cursor inside a comment or a string
   is dropped, so that it gives no names. Since `cursor` is part of the
   scanner's state, a recovery or a read ahead that puts the state back
   puts the cursor back too, and it is met again.
