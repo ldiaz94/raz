@@ -89,7 +89,11 @@ stays out of this repository. `site/README.md` gives the build, release records 
 checks. `site/releases` lists website releases whose tags aren't
 pushed yet (none now); it never makes a tag.
 
-v0.25.0, report 2026-10.38, the Moss work (`PLAN.md` 3), the last before
+v0.25.1, report 2026-10.38 still, the compiler's and the library's
+only: `raz -q check` and `raz -q words`, for an editor's language
+server (`~/r/raz-lsp`; `doc/compiler.md`, "raz -q"), and
+`Sys.errReadOnly`. `BOOT` still names v0.25.0.
+v0.25.0, report 2026-10.38, before it, the Moss work (`PLAN.md` 3), the last before
 the hard freeze: a code procedure names a procedure or a global in
 `call p`, `jmp p` and `lea r, [v]`; the report's least an implementation
 accepts, and this compiler's errors past its own limits (a nesting of
