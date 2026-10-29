@@ -136,6 +136,14 @@ defect; the library's core (appendix A) only to mend a defect or plug a
 very big gap; the rest of the library grows only conservatively, by
 what breaks no program, on the owner's word.
 
+Queued for v0.25.1, on the owner's word of 2026-10-29:
+
+- `Sys.errReadOnly* = -30` (EROFS), beside `errNoSpace` in `lib/Sys.raz`
+  and `lib/Sys.linux-x86_64.raz`, and in `doc/raz-lib.md`'s list. It is
+  the standard library's part of `Sys`, not the core, and a new name
+  breaks no program. arkusz's `Asheetio` names it for itself
+  (`ReadOnlyFs`) until then.
+
 ## 5. Clean-up: v0.26.0, the last before 1.0
 
 The files that served the thaws are made a record, short and true:
