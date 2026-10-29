@@ -1,0 +1,19 @@
+module Def;
+import Out;
+
+var count: INT;
+
+(* Says hello. *)
+proc greet(name: []const U8);
+var total: INT;
+begin
+    total := count + LEN(name);
+    Out.str(name);
+end;
+
+proc main*;
+begin
+    greet("x");
+end;
+
+end Def.

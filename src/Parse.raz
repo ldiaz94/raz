@@ -94,6 +94,7 @@ var
     firstModule*, lastModule*: PModule;   (* in the order they were finished *)
 
     checkMode: BOOL;     (* reading a file only for its interface *)
+    define: BOOL;        (* raz -q def: the cursor asks where its name is declared *)
     inTypes: BOOL;       (* in a type section: ^T, and a procedure type, may name a later type *)
     laters: [MaxLater]Later;
     numLater: INT;
@@ -177,6 +178,12 @@ end;
 proc setVersion*(v: []const U8);
 begin
     thisVersion := v;
+end;
+
+(* raz -q def, not words: the cursor asks where its name is declared *)
+proc setDefine*(yes: BOOL);
+begin
+    define := yes;
 end;
 
 proc nameOf(n: INT): []const U8;
@@ -558,14 +565,33 @@ begin
             [Fmt.str(a), Fmt.str(nameOf(o^.name)), Fmt.str(b), Fmt.str(nameOf(o^.name))]));
 end;
 
-(* raz -q words: the current symbol is the cursor, where a name of
-   scope s can be typed, or of any scope open if s < 0. The names that
-   start with what is typed are written, and the compile ends. *)
-proc complete(s: INT);
-var b: Buf.Buf;
+(* raz -q words or def: the current symbol is the cursor, where a name
+   of scope s is written, or of any scope open if s < 0. words writes
+   the names that start with what is typed there; def where the name
+   written there is declared, its place and what it is: a module's
+   place is its file, and the language's own names have none. Then the
+   compile ends. *)
+proc answer(s: INT);
+var b: Buf.Buf; o: PObj;
 begin
     Buf.init(b, Heap.heap);
-    Sym.offer(s, Scan.prefix, b);
+    if not define then
+        Sym.offer(s, Scan.prefix, b);
+    else
+        if s < 0 then o := Sym.lookup(internName(Scan.word)); else o := Sym.find(s, internName(Scan.word)); end;
+        if (o # nil) and (o^.typ # Sym.tPoison) then
+            if (o^.cls = Sym.oModule) and (o^.home # nil) and (o^.home^.path # "") then
+                Fmt.write(b, "{}\t1\t1\t1\t1", [Fmt.str(Diag.shownPath(o^.home^.path))]);
+            elsif (o^.scope = 0) or (o^.cls = Sym.oBuiltin) then
+                Diag.writePlace(b, {f: MAX(INT), a: 0, b: 0});
+            else
+                Diag.writePlace(b, o^.pos);
+            end;
+            Buf.add(b, '\t');
+            Sym.describe(o, b);
+            Buf.add(b, '\n');
+        end;
+    end;
     Out.str(Buf.bytes(b));
     Out.flush();
     Rt.exit(0);
@@ -575,7 +601,7 @@ proc qualIdent: (PObj, ERROR);
 var o: PObj; m: PModule; at: Diag.Pos;
 begin
     if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
-    if Scan.id = Scan.atCursor then complete(-1); end;
+    if Scan.id = Scan.atCursor then answer(-1); end;
     at := Scan.tokPos();
     o := Sym.lookup(Scan.id);
     if o = nil then
@@ -593,7 +619,7 @@ begin
         try expect(Scan.sPeriod);
         if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
         m := o^.home;
-        if Scan.id = Scan.atCursor then complete(m^.scope); end;
+        if Scan.id = Scan.atCursor then answer(m^.scope); end;
         o := Sym.find(m^.scope, Scan.id);
         if (o = nil) or not o^.exported then
             Diag.error(Scan.tokPos(), say2("{} isn't exported by {}", nameOf(Scan.id), nameOf(m^.name)));

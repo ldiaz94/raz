@@ -16,18 +16,18 @@ library, made from `lib/` by `tools/Doc.raz`.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/Diag.raz` | 472 | 358 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,260 | 1,036 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 856 | 682 | Types, objects, scopes, layout |
+| `src/Diag.raz` | 479 | 363 | Messages: positions, source excerpts, colour, counts |
+| `src/Scan.raz` | 1,267 | 1,040 | Symbols, literals, comments, positions |
+| `src/Sym.raz` | 865 | 688 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 364 | 280 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,777 | 1,450 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,846 | 1,989 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,892 | 4,154 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,918 | 4,175 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 411 | 317 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Host.raz` | 103 | 52 | The system running the compiler |
-| `src/Raz.raz` | 488 | 381 | The command line, and `-q` for an editor |
+| `src/Raz.raz` | 492 | 384 | The command line, and `-q` for an editor |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -2343,7 +2343,8 @@ the library last, after `-I` and `RAZ_PATH`, and the duplicate check
 `raz -q` answers an editor's language server about the text it holds,
 saved or not, with the compiler itself, so that there is one grammar
 and one set of rules. It is a compile that writes no program, with
-three changes, each in the unit it concerns.
+three changes, each in the unit it concerns. `-q def` answers an
+editor's hover and "go to definition" the same way.
 
 - **The text from standard input.** `Raz.forEditor` gives `Scan` the
   main module's path (`Scan.setStdin`); `Scan.open`, asked for that
@@ -2363,12 +2364,17 @@ three changes, each in the unit it concerns.
   cursor, it makes the symbol there a name, `Scan.atCursor`, which no
   source can spell (`(cursor)`), and keeps what is typed of the name
   in `Scan.prefix`: the bytes from the start of the name the cursor is
-  in or just after, or none if it is between symbols. The parser reads
-  on as for any name; where `qualIdent` would look a name up, it
-  meets `atCursor` and calls `complete` instead, which writes the
-  names that reach there (`Sym.offer`, over the same test as
-  `closest`'s, `Sym.reaches`) and ends the compile. After `M.`, the
-  names are what `M` exports. A cursor inside a comment or a string
+  in, just after or at the start of, or none if it is between
+  symbols; `Scan.word` is that name whole. The parser reads on as for
+  any name; where `qualIdent` would look a name up, it meets
+  `atCursor` and calls `answer` instead, which ends the compile. For
+  `-q words` it writes the names that reach there (`Sym.offer`, over
+  the same test as `closest`'s, `Sym.reaches`); after `M.`, the names
+  are what `M` exports. For `-q def` (`Parse.define`) it looks
+  `Scan.word` up there and writes its declaration's place
+  (`Diag.writePlace`, which `-q check`'s rows use too) and what it is
+  (`Sym.describe`, which `offer`'s rows use): a module's place is its
+  file, and a name of the universe or a built-in has none. A cursor inside a comment or a string
   is dropped, so that it gives no names. Since `cursor` is part of the
   scanner's state, a recovery or a read ahead that puts the state back
   puts the cursor back too, and it is met again.

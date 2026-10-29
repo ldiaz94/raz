@@ -438,20 +438,29 @@ begin
     end;
 end;
 
+(* What o is, as raz -q says it: its kind, its name and its type,
+   split by tabs, written to out *)
+proc describe*(o: ^Obj; var out: Buf.Buf);
+var t: []const U8;
+begin
+    t := "";
+    if (o^.typ # nil) and (o^.cls # oModule) and (o^.cls # oBuiltin) then t := typeName(o^.typ); end;
+    Fmt.write(out, "{}\t{}\t{}", [Fmt.str(kindOf(o)), Fmt.str(Scan.nameOf(o^.name)), Fmt.str(t)]);
+end;
+
 (* raz -q words: a row in out for each name in reach that starts with
    prefix, in scope s as closest has it: its kind, the name and its
    type, split by tabs. A name another declaration hides is left out. *)
 proc offer*(s: INT; prefix: []const U8; var out: Buf.Buf);
-var i: INT; o: ^Obj; n, t: []const U8;
+var i: INT; o: ^Obj; n: []const U8;
 begin
     for i := 0 to hashMask do
         o := hashTab[i];
         if reaches(o, s) and ((s >= 0) or (lookup(o^.name) = o)) then
             n := Scan.nameOf(o^.name);
-            t := "";
-            if (o^.typ # nil) and (o^.cls # oModule) and (o^.cls # oBuiltin) then t := typeName(o^.typ); end;
             if (LEN(n) >= LEN(prefix)) and (n[0..LEN(prefix)] = prefix) then
-                Fmt.write(out, "{}\t{}\t{}\n", [Fmt.str(kindOf(o)), Fmt.str(n), Fmt.str(t)]);
+                describe(o, out);
+                Buf.add(out, '\n');
             end;
         end;
     end;

@@ -168,12 +168,15 @@ if [ $status = 3 ] && [ $statusFail = 2 ] && [ "$(cat $out/own/Own.out)" = hello
     && readelf -s $out/own/Own | grep -q ' Own.main$' && readelf --debug-dump=decodedline $out/own/Own | grep -q 'Own.raz'; then pass=$((pass + 1))
 else echo "FAIL own Rt: status $status, $statusFail"; cat $out/own/Own.out $out/own/OwnFail.out; fail=$((fail + 1)); fi
 
-# raz -q, for an editor: check's rows, and the names words offers at a
+# raz -q, for an editor: check's rows; the names words offers at a
 # cursor after a part of a name, after a module's dot, and none in a
-# comment or a string. The text is standard input: checking an empty
-# one shows that the file on disk isn't read.
+# comment or a string; and where def finds a local, another module's
+# name, a module and a built-in, which has no place. The text is
+# standard input: checking an empty one shows that the file on disk
+# isn't read.
 for t in "check Check.raz check" "words Words.raz:9:16 prefix" "words Words.raz:10:11 export" \
-    "words Words.raz:11:10 none" "words Words.raz:12:15 none"; do
+    "words Words.raz:11:10 none" "words Words.raz:12:15 none" "def Def.raz:10:15 def-local" \
+    "def Def.raz:11:9 def-export" "def Def.raz:11:6 def-module" "def Def.raz:10:24 def-builtin"; do
     set -- $t
     f=test/query/${2%%:*}
     $raz -q $1 test/query/$2 < $f > $out/query.out

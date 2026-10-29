@@ -247,23 +247,30 @@ begin
     return n;
 end;
 
-(* A message as raz -q check gives it, a row for an editor: the file,
-   the line and the byte in the line where p starts, the same where it
-   ends, the kind and the message, split by tabs; all from 1. A message
-   about no place in a file has no file, and zeros. *)
-proc row(p: Pos; kind, msg: []const U8);
+(* p as raz -q gives a place, written to b: the file, the line and the
+   byte in the line where p starts, the same where it ends, split by
+   tabs; all from 1. A place in no file has no file, and zeros. *)
+proc writePlace*(var b: Buf.Buf; p: Pos);
 var line, start, endLine, endStart: INT; e: Pos;
 begin
     if p.f >= numFiles then
-        Fmt.write(out, "\t0\t0\t0\t0\t{}\t{}\n", [Fmt.str(kind), Fmt.str(msg)]);
-    else
-        line, start := locate(p);
-        e := p;
-        e.a := p.b;
-        endLine, endStart := locate(e);
-        Fmt.write(out, "{}\t{}\t{}\t{}\t{}\t{}\t{}\n", [Fmt.str(files[p.f].path), Fmt.int(line),
-            Fmt.int(p.a - start + 1), Fmt.int(endLine), Fmt.int(p.b - endStart + 1), Fmt.str(kind), Fmt.str(msg)]);
+        Buf.str(b, "\t0\t0\t0\t0");
+        return;
     end;
+    line, start := locate(p);
+    e := p;
+    e.a := p.b;
+    endLine, endStart := locate(e);
+    Fmt.write(b, "{}\t{}\t{}\t{}\t{}", [Fmt.str(files[p.f].path), Fmt.int(line), Fmt.int(p.a - start + 1),
+        Fmt.int(endLine), Fmt.int(p.b - endStart + 1)]);
+end;
+
+(* A message as raz -q check gives it, a row for an editor: its place,
+   its kind and its text, split by tabs *)
+proc row(p: Pos; kind, msg: []const U8);
+begin
+    writePlace(out, p);
+    Fmt.write(out, "\t{}\t{}\n", [Fmt.str(kind), Fmt.str(msg)]);
     flush;
 end;
 

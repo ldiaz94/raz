@@ -2,7 +2,7 @@
 
      raz [-I dir]... [-o file] [-Werror] [-S] [-libc glibc|musl] [-base addr] [-bare] Main.raz
      raz run [-I dir]... Main.raz [arg]...
-     raz -q check|words [-I dir]... Main.raz[:LINE:COL]
+     raz -q check|words|def [-I dir]... Main.raz[:LINE:COL]
      raz --version
 
    Compiles the main module and every module it imports, writes the
@@ -13,8 +13,9 @@
    place with the arguments after Main.raz, so its status is the
    program's; its argv[0] is Main.raz. raz -q, for an editor, reads
    the main module's text from standard input and stops once it is
-   checked: check writes its messages as rows, and words the names
-   that can be typed at the cursor (forEditor).
+   checked: check writes its messages as rows, words the names that
+   can be typed at the cursor, and def where the name there is
+   declared (forEditor).
 
    The program starts by saving argc and argv, runs every module's body
    (those of the modules the program imports, imported modules first),
@@ -137,8 +138,8 @@ begin
 end;
 
 (* raz -q, for an editor: the main module's text is standard input,
-   and messages are rows (check) or not given (words, whose path names
-   the cursor). The result is the main module's path. *)
+   and messages are rows (check) or not given (words and def, whose
+   path names the cursor). The result is the main module's path. *)
 proc forEditor(query, path: []const U8): []const U8;
 var line, col: INT; ok: BOOL;
 begin
@@ -146,12 +147,13 @@ begin
     col := 0;
     if query = "check" then
         Diag.setForm(Diag.Form.rows);
-    elsif query = "words" then
+    elsif (query = "words") or (query = "def") then
         path, line, col, ok := cursorAt(path);
-        if not ok then Diag.fatal(say1("-q words {}: expected FILE:LINE:COL", path)); end;
+        if not ok then Diag.fatal(Diag.say("-q {} {}: expected FILE:LINE:COL", [Fmt.str(query), Fmt.str(path)])); end;
         Diag.setForm(Diag.Form.silent);
+        Parse.setDefine(query = "def");
     else
-        Diag.fatal(say1("-q {}: expected check or words", query));
+        Diag.fatal(say1("-q {}: expected check, words or def", query));
     end;
     Scan.setStdin(path, line, col);
     return path;
@@ -182,6 +184,8 @@ begin
     Out.str("               input, and writes each message as a row (see raz(1))\n");
     Out.str("  -q words     with Main.raz:LINE:COL, writes the names that can be\n");
     Out.str("               typed at the cursor there, one row each\n");
+    Out.str("  -q def       with Main.raz:LINE:COL, writes where the name at the\n");
+    Out.str("               cursor is declared, and what it is\n");
     Out.str("  -h, --help   says this\n");
     Out.str("  --version    says the version, and the report it follows\n");
     Out.str("see raz(1), and the report, doc/raz.md\n");

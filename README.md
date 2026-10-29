@@ -95,6 +95,7 @@ emacs is installed.
     raz run [option]... Main.raz [arg]...
     raz -q check [option]... Main.raz
     raz -q words [option]... Main.raz:LINE:COL
+    raz -q def [option]... Main.raz:LINE:COL
     raz -h
     raz --version
 

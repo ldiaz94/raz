@@ -9,8 +9,9 @@
    For an editor (raz -q), one file's text may come from standard
    input instead (setStdin), and a place in it may be marked: the
    symbol there is a name, atCursor, standing for what is typed of the
-   name at the cursor, prefix, so that the parser can say what names
-   can be typed there.
+   name at the cursor, prefix, and for the name written there whole,
+   word, so that the parser can say what names can be typed there, or
+   where the name there is declared.
 
    Depends on: Sys, to read files; Diag, to report errors.
    Leaves out: recovery from errors in the text itself, such as a string
@@ -90,6 +91,7 @@ var
 
     atCursor*: INT;         (* the name the symbol at the cursor has *)
     prefix*: []const U8;    (* what is typed of the name at the cursor *)
+    word*: []const U8;      (* the whole name at the cursor, as raz -q def asks of it *)
     stdinPath: []const U8;  (* the file whose text is standard input, or "" *)
     cursorLine, cursorCol: INT;   (* the cursor in it, from 1, or 0 for none *)
 
@@ -1081,10 +1083,11 @@ begin
 end;
 
 (* Makes the current symbol the name at the cursor, typed from start up
-   to at; the cursor is passed then *)
-proc cursorName(start, at: INT);
+   to at, and written whole up to stop; the cursor is passed then *)
+proc cursorName(start, at, stop: INT);
 begin
     prefix := cur.buf[start..at];
+    word := cur.buf[start..stop];
     cur.cursor := MAX(INT);
     tok := sIdent;
     id := atCursor;
@@ -1123,12 +1126,16 @@ begin
     cur.tokLineStart := cur.lineStart;
     if p >= cur.cursor then
         (* the cursor is before this symbol: if it was between symbols, not
-           in a string or a comment, a name of nothing typed is made there *)
-        if cur.prevEnd <= cur.cursor then
-            cursorName(cur.cursor, cur.cursor);
+           in a string or a comment, a name of nothing typed is made there;
+           at the start of a name, the name is the cursor's, read below *)
+        if (p = cur.cursor) and (isLetter(c) or (c = '_')) then
+            (* the name's own branch makes it *)
+        elsif cur.prevEnd <= cur.cursor then
+            cursorName(cur.cursor, cur.cursor, cur.cursor);
             return;
+        else
+            cur.cursor := MAX(INT);
         end;
-        cur.cursor := MAX(INT);
     end;
     if single[c] # sNull then
         INC(cur.pos);
@@ -1141,7 +1148,7 @@ begin
         repeat INC(p); until not nameChar[buf[p]];
         cur.pos := p;
         if p >= cur.cursor then   (* the name the cursor is in or just after *)
-            cursorName(start, cur.cursor);
+            cursorName(start, cur.cursor, p);
             return;
         end;
         if p - start > MaxIdent then

@@ -22,6 +22,10 @@
 .Fl q Cm words
 .Op Ar option ...
 .Ar Main.raz : Ns Ar LINE : Ns Ar COL
+.Nm
+.Fl q Cm def
+.Op Ar option ...
+.Ar Main.raz : Ns Ar LINE : Ns Ar COL
 .Sh DESCRIPTION
 .Nm
 compiles the module in
@@ -189,6 +193,12 @@ in place of
 .Ar Main.raz ,
 write the names that can be typed at that cursor, a row each, and
 nothing else.
+.It Fl q Cm def
+For an editor: with
+.Ar Main.raz : Ns Ar LINE : Ns Ar COL
+in place of
+.Ar Main.raz ,
+write where the name at that cursor is declared, and what it is.
 .It Fl h , Fl \-help
 Say the options.
 .It Fl \-version
@@ -306,6 +316,34 @@ of its name.
 The rows come in no order.
 Inside a comment or a string, after a record's dot, or where a name is
 declared, there are none.
+It exits 0.
+.Pp
+.Fl q Cm def
+reads the module up to the cursor as
+.Cm words
+does, and gives one row for the name the cursor is in, or just after:
+.Bd -literal -offset indent
+FILE  LINE  COL  ENDLINE  ENDCOL  KIND  NAME  TYPE
+.Ed
+.Pp
+where the place is that of the name in its declaration, as
+.Cm check
+gives places, and
+.Ar KIND
+and
+.Ar TYPE
+are as
+.Cm words
+gives them.
+A module's place is the start of its file; a name of the language's
+own, as
+.Cm INT
+or
+.Cm LEN ,
+has no file, and zeros.
+Where
+.Cm words
+would give no names, it gives no row.
 It exits 0.
 .Sh LISTING
 The listing of
