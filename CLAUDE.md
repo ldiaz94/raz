@@ -89,7 +89,9 @@ stays out of this repository. `site/README.md` gives the build, release records 
 checks. `site/releases` lists website releases whose tags aren't
 pushed yet (none now); it never makes a tag.
 
-v0.25.2, report 2026-10.38 still: `raz -q def`, where the name at the
+v0.25.3, report 2026-10.38 still: `raz -q def` on a module, used or
+imported, gives its `module` line.
+v0.25.2, before it: `raz -q def`, where the name at the
 cursor is declared, for raz-lsp's hover and go to definition.
 v0.25.1, report 2026-10.38 still, before it, the compiler's and the library's
 only: `raz -q check` and `raz -q words`, for an editor's language

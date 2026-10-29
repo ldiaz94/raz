@@ -148,6 +148,8 @@ v0.25.1, 2026-10-29, the report unchanged, on the owner's word:
 
 v0.25.2, 2026-10-29, the report unchanged: `raz -q def`, where the name
 at the cursor is declared, for raz-lsp's hover and go to definition.
+v0.25.3, 2026-10-29: `raz -q def` on a module, used or imported, gives
+its `module` line.
 
 ## 5. Clean-up: v0.26.0, the last before 1.0
 
