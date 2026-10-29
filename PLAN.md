@@ -146,6 +146,9 @@ v0.25.1, 2026-10-29, the report unchanged, on the owner's word:
 - `raz -q check` and `raz -q words`, for an editor's language server
   (raz-lsp, `~/r/raz-lsp`): the compiler, not the language. Done.
 
+v0.25.2, 2026-10-29, the report unchanged: `raz -q def`, where the name
+at the cursor is declared, for raz-lsp's hover and go to definition.
+
 ## 5. Clean-up: v0.26.0, the last before 1.0
 
 The files that served the thaws are made a record, short and true:
