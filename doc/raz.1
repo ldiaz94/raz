@@ -14,6 +14,14 @@
 .Op Ar option ...
 .Ar Main.raz
 .Op Ar arg ...
+.Nm
+.Fl q Cm check
+.Op Ar option ...
+.Ar Main.raz
+.Nm
+.Fl q Cm words
+.Op Ar option ...
+.Ar Main.raz : Ns Ar LINE : Ns Ar COL
 .Sh DESCRIPTION
 .Nm
 compiles the module in
@@ -167,6 +175,20 @@ Left out, it is glibc, or musl on a machine that has musl's loader,
 .Pa /lib/ld-musl-x86_64.so.1 ,
 and not glibc's, as Alpine has.
 A program without C needs no C library, and runs on either.
+.It Fl q Cm check
+For an editor: check
+.Ar Main.raz ,
+reading its text from standard input, as the editor holds it, and
+write no program.
+Each message is a row on standard output; see
+.Sx FOR AN EDITOR .
+.It Fl q Cm words
+For an editor: with
+.Ar Main.raz : Ns Ar LINE : Ns Ar COL
+in place of
+.Ar Main.raz ,
+write the names that can be typed at that cursor, a row each, and
+nothing else.
 .It Fl h , Fl \-help
 Say the options.
 .It Fl \-version
@@ -223,6 +245,68 @@ place.
 .Nm
 .Cm run
 exits as the program does.
+.Sh FOR AN EDITOR
+.Fl q
+is for an editor's language server, which asks of the text it holds,
+saved or not.
+The text of the main module comes from standard input; the modules it
+imports are read from their files, found as for a compile.
+Every row is fields split by tabs.
+.Pp
+.Fl q Cm check
+gives a row for each error, warning and note:
+.Bd -literal -offset indent
+FILE  LINE  COL  ENDLINE  ENDCOL  KIND  MESSAGE
+.Ed
+.Pp
+where the place runs from
+.Ar LINE
+and
+.Ar COL
+up to, not including,
+.Ar ENDLINE
+and
+.Ar ENDCOL ,
+lines and bytes in a line counted from 1, and
+.Ar KIND
+is
+.Cm error ,
+.Cm warning
+or
+.Cm note .
+.Ar FILE
+may be another module's, as for a note.
+An error about no place in a file, as a module not found, has an empty
+.Ar FILE
+and zeros.
+It exits 1 if there was an error, else 0.
+.Pp
+.Fl q Cm words
+reads the module up to the cursor, past any errors, and gives a row for
+each name that can be typed there and starts with what is typed of the
+name the cursor is in or just after:
+.Bd -literal -offset indent
+KIND  NAME  TYPE
+.Ed
+.Pp
+where
+.Ar KIND
+is
+.Cm const ,
+.Cm type ,
+.Cm var ,
+.Cm proc ,
+.Cm module ,
+.Cm field
+or
+.Cm builtin .
+After a module's name and a dot, the names are those the module
+exports; elsewhere, every name in scope there, a local hiding a global
+of its name.
+The rows come in no order.
+Inside a comment or a string, after a record's dot, or where a name is
+declared, there are none.
+It exits 0.
 .Sh LISTING
 The listing of
 .Fl S

@@ -1,0 +1,3 @@
+test/query/Check.raz	9	14	9	18	error	cout isn't declared
+test/query/Check.raz	10	13	10	14	error	can't use an integer constant as []const U8
+lib/Out.raz	53	11	53	12	note	it goes to s, declared here

@@ -1,0 +1,13 @@
+module Check;
+import Out;
+
+var count: INT;
+
+proc main*;
+var total: INT;
+begin
+    total := cout + 1;
+    Out.str(1);
+end;
+
+end Check.

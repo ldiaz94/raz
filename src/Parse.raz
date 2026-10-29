@@ -26,7 +26,7 @@
    Scan.Sym is a chain of tests, since it has more names than a set
    holds. *)
 module Parse;
-import Fmt, Diag, Scan, Sym, Chunk, Gen, Item, Sys, Str, Buf, Heap;
+import Fmt, Diag, Scan, Sym, Chunk, Gen, Item, Sys, Str, Buf, Heap, Out, Rt;
 import SYSTEM;
 
 type
@@ -558,10 +558,24 @@ begin
             [Fmt.str(a), Fmt.str(nameOf(o^.name)), Fmt.str(b), Fmt.str(nameOf(o^.name))]));
 end;
 
+(* raz -q words: the current symbol is the cursor, where a name of
+   scope s can be typed, or of any scope open if s < 0. The names that
+   start with what is typed are written, and the compile ends. *)
+proc complete(s: INT);
+var b: Buf.Buf;
+begin
+    Buf.init(b, Heap.heap);
+    Sym.offer(s, Scan.prefix, b);
+    Out.str(Buf.bytes(b));
+    Out.flush();
+    Rt.exit(0);
+end;
+
 proc qualIdent: (PObj, ERROR);
 var o: PObj; m: PModule; at: Diag.Pos;
 begin
     if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
+    if Scan.id = Scan.atCursor then complete(-1); end;
     at := Scan.tokPos();
     o := Sym.lookup(Scan.id);
     if o = nil then
@@ -579,6 +593,7 @@ begin
         try expect(Scan.sPeriod);
         if Scan.tok # Scan.sIdent then return nil, expected("a name"); end;
         m := o^.home;
+        if Scan.id = Scan.atCursor then complete(m^.scope); end;
         o := Sym.find(m^.scope, Scan.id);
         if (o = nil) or not o^.exported then
             Diag.error(Scan.tokPos(), say2("{} isn't exported by {}", nameOf(Scan.id), nameOf(m^.name)));

@@ -6,6 +6,12 @@
    compares names as small integers. The scanner also says where the
    current symbol is, for messages.
 
+   For an editor (raz -q), one file's text may come from standard
+   input instead (setStdin), and a place in it may be marked: the
+   symbol there is a name, atCursor, standing for what is typed of the
+   name at the cursor, prefix, so that the parser can say what names
+   can be typed there.
+
    Depends on: Sys, to read files; Diag, to report errors.
    Leaves out: recovery from errors in the text itself, such as a string
    not closed: the first such error stops the compiler. The parser goes
@@ -44,6 +50,8 @@ type
         rval: F64;
         id: INT;
         f: INT;            (* the file, as Diag knows it *)
+        cursor: INT;       (* raz -q words: the byte the cursor is at, until
+                              the symbol there is made; else MAX(INT) *)
     end;
 
 const
@@ -79,6 +87,11 @@ var
     (* The parser is skipping what it has read once already, after an
        error, so slips in it aren't reported again. *)
     skipping*: BOOL;
+
+    atCursor*: INT;         (* the name the symbol at the cursor has *)
+    prefix*: []const U8;    (* what is typed of the name at the cursor *)
+    stdinPath: []const U8;  (* the file whose text is standard input, or "" *)
+    cursorLine, cursorCol: INT;   (* the cursor in it, from 1, or 0 for none *)
 
     (* Whether a byte may be in a name: a letter, a digit or _. A table,
        since the loop that reads a name asks it of every byte. *)
@@ -487,28 +500,80 @@ begin
     return n < NumWords;
 end;
 
+(* raz -q: the text of the file at path is standard input, and the
+   cursor is at line and col there (bytes, from 1), or nowhere if 0 *)
+proc setStdin*(path: []const U8; line, col: INT);
+begin
+    stdinPath := path;
+    cursorLine := line;
+    cursorCol := col;
+end;
+
+(* Standard input, read whole; its length is the second result *)
+proc readStdin: (^U8, INT);
+var buf: ^U8; n, size, r: INT;
+begin
+    size := 65536;
+    buf := grab(size);
+    n := 0;
+    r := 1;
+    while r # 0 do
+        if n + 1 = size then
+            buf := regrab(buf, n, 2 * size);
+            size := 2 * size;
+        end;
+        r := Sys.read(Sys.stdin, buf[n..size - 1]);
+        if r > 0 then
+            n := n + r;
+        elsif (r < 0) and (r # Sys.errIntr) then
+            Diag.fatal("can't read standard input");
+        end;
+    end;
+    return buf, n;
+end;
+
+(* The byte of buf, n long, at line and col, both from 1; n if past it *)
+proc byteAt(buf: ^U8; n, line, col: INT): INT;
+var i, l: INT;
+begin
+    i := 0;
+    l := 1;
+    while (i < n) and (l < line) do
+        if buf[i] = '\n' then INC(l); end;
+        INC(i);
+    end;
+    if i + col - 1 < n then return i + col - 1; end;
+    return n;
+end;
+
 (* Reads the file at path to scan it; "" if it can, else why not *)
 proc open*(path: []const U8): []const U8;
 var fd, n, got, r, err: INT; info: Sys.Info;
 begin
-    info, err := Sys.info(path);
-    if err = Sys.errNoEntry then return "there is no such file"; end;
-    if err = Sys.errDenied then return "permission denied"; end;
-    if err < 0 then return "it can't be opened"; end;
-    if not info.file then return "it isn't a file"; end;
-    fd := Sys.openRead(path);
-    if fd = Sys.errNoEntry then return "there is no such file"; end;
-    if fd = Sys.errDenied then return "permission denied"; end;
-    if fd < 0 then return "it can't be opened"; end;
-    n := INT(info.size);
-    cur.buf := grab(n + 1);
-    got := 0;
-    while got < n do
-        r := Sys.read(fd, cur.buf[got..n]);
-        if r <= 0 then Diag.fatal(Diag.say("can't read {}", [Fmt.str(path)])); end;
-        got := got + r;
+    cur.cursor := MAX(INT);
+    if (LEN(stdinPath) > 0) and (path = stdinPath) then
+        cur.buf, n := readStdin();
+        if cursorLine > 0 then cur.cursor := byteAt(cur.buf, n, cursorLine, cursorCol); end;
+    else
+        info, err := Sys.info(path);
+        if err = Sys.errNoEntry then return "there is no such file"; end;
+        if err = Sys.errDenied then return "permission denied"; end;
+        if err < 0 then return "it can't be opened"; end;
+        if not info.file then return "it isn't a file"; end;
+        fd := Sys.openRead(path);
+        if fd = Sys.errNoEntry then return "there is no such file"; end;
+        if fd = Sys.errDenied then return "permission denied"; end;
+        if fd < 0 then return "it can't be opened"; end;
+        n := INT(info.size);
+        cur.buf := grab(n + 1);
+        got := 0;
+        while got < n do
+            r := Sys.read(fd, cur.buf[got..n]);
+            if r <= 0 then Diag.fatal(Diag.say("can't read {}", [Fmt.str(path)])); end;
+            got := got + r;
+        end;
+        Sys.close(fd);
     end;
-    Sys.close(fd);
     cur.buf[n] := 0;    (* the sentinel that ends every scan *)
     cur.len := n;
     cur.pos := 0;
@@ -713,6 +778,7 @@ begin
         end;
     until depth = 0;
     cur.commentEnd := cur.pos;
+    if (open < cur.cursor) and (cur.cursor < cur.pos) then cur.cursor := MAX(INT); end;   (* no names in a comment *)
 end;
 
 (* Reading a decimal real exactly: the F64 nearest to digits times 10 to
@@ -1014,6 +1080,16 @@ begin
     tok := sString;
 end;
 
+(* Makes the current symbol the name at the cursor, typed from start up
+   to at; the cursor is passed then *)
+proc cursorName(start, at: INT);
+begin
+    prefix := cur.buf[start..at];
+    cur.cursor := MAX(INT);
+    tok := sIdent;
+    id := atCursor;
+end;
+
 (* Reads the next symbol *)
 proc next*;
 var c: U8; start, h, v, i, p: INT; buf: ^U8;
@@ -1045,6 +1121,15 @@ begin
     cur.tokPos := p;
     cur.tokLine := cur.line;
     cur.tokLineStart := cur.lineStart;
+    if p >= cur.cursor then
+        (* the cursor is before this symbol: if it was between symbols, not
+           in a string or a comment, a name of nothing typed is made there *)
+        if cur.prevEnd <= cur.cursor then
+            cursorName(cur.cursor, cur.cursor);
+            return;
+        end;
+        cur.cursor := MAX(INT);
+    end;
     if single[c] # sNull then
         INC(cur.pos);
         tok := single[c];
@@ -1055,6 +1140,10 @@ begin
         start := p;
         repeat INC(p); until not nameChar[buf[p]];
         cur.pos := p;
+        if p >= cur.cursor then   (* the name the cursor is in or just after *)
+            cursorName(start, cur.cursor);
+            return;
+        end;
         if p - start > MaxIdent then
             lexError(Diag.say("a name has at most {} characters", [Fmt.int(MaxIdent)]));
         end;
@@ -1167,4 +1256,5 @@ begin
     tableMask := 2 * nameCap - 1;
     table := words64(tableMask + 1);
     for i := 0 to NumWords - 1 do _ := intern(SYSTEM.PTR(words[i]), LEN(words[i])); end;
+    atCursor := intern(SYSTEM.PTR("(cursor)"), 8);   (* no name can be written so *)
 end Scan.

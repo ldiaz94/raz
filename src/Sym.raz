@@ -388,32 +388,73 @@ begin
     return d[LEN(a)][LEN(b)];
 end;
 
+(* Whether o is a name that can be reached from here: in scope s, if
+   it is exported or of the module being compiled; or, if s < 0, in a
+   scope open *)
+proc reaches(o: ^Obj; s: INT): BOOL;
+var j: INT;
+begin
+    if (o = nil) or (o^.name < 0) or (o^.typ = tPoison) then return false; end;
+    if s >= 0 then return (o^.scope = s) and (o^.exported or (o^.home = curModule)); end;
+    for j := 0 to depth - 1 do
+        if o^.scope = scopes[j] then return true; end;
+    end;
+    return false;
+end;
+
 (* The name spelled most like name, for "did you mean": in scope s, if
    it can be reached from here, or in the scopes in reach if s < 0; nil
    if none is within an edit for every three characters. Only after an
    error, so it looks at every object. *)
 proc closest*(name, s: INT): ^Obj;
-var i, j, d, best: INT; o, found: ^Obj; n: []const U8; reach: BOOL;
+var i, d, best: INT; o, found: ^Obj; n: []const U8;
 begin
     n := Scan.nameOf(name);
     best := LEN(n) div 3 + 1;
     found := nil;
     for i := 0 to hashMask do
         o := hashTab[i];
-        if (o = nil) or (o^.name = name) or (o^.name < 0) or (o^.typ = tPoison) then
-            reach := false;
-        elsif s >= 0 then
-            reach := (o^.scope = s) and (o^.exported or (o^.home = curModule));
-        else
-            reach := false;
-            for j := 0 to depth - 1 do reach := reach or (o^.scope = scopes[j]); end;
-        end;
-        if reach then
+        if reaches(o, s) and (o^.name # name) then
             d := distance(n, Scan.nameOf(o^.name));
             if d < best then best := d; found := o; end;
         end;
     end;
     return found;
+end;
+
+proc typeName*(t: ^Type): []const U8; forward;
+
+(* What kind of declaration o is, as raz -q words says it *)
+proc kindOf(o: ^Obj): []const U8;
+begin
+    match o^.cls of
+    | oConst, oCase: return "const";
+    | oType: return "type";
+    | oVar: return "var";
+    | oProc: return "proc";
+    | oModule: return "module";
+    | oField: return "field";
+    | oBuiltin: return "builtin";
+    end;
+end;
+
+(* raz -q words: a row in out for each name in reach that starts with
+   prefix, in scope s as closest has it: its kind, the name and its
+   type, split by tabs. A name another declaration hides is left out. *)
+proc offer*(s: INT; prefix: []const U8; var out: Buf.Buf);
+var i: INT; o: ^Obj; n, t: []const U8;
+begin
+    for i := 0 to hashMask do
+        o := hashTab[i];
+        if reaches(o, s) and ((s >= 0) or (lookup(o^.name) = o)) then
+            n := Scan.nameOf(o^.name);
+            t := "";
+            if (o^.typ # nil) and (o^.cls # oModule) and (o^.cls # oBuiltin) then t := typeName(o^.typ); end;
+            if (LEN(n) >= LEN(prefix)) and (n[0..LEN(prefix)] = prefix) then
+                Fmt.write(out, "{}\t{}\t{}\n", [Fmt.str(kindOf(o)), Fmt.str(n), Fmt.str(t)]);
+            end;
+        end;
+    end;
 end;
 
 (* Types *)

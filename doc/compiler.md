@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is twelve files of raz, about 12,900 lines of code (the
+The compiler is twelve files of raz, about 13,100 lines of code (the
 budget is 14,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -16,18 +16,18 @@ library, made from `lib/` by `tools/Doc.raz`.
 
 | File | Lines | Code | What |
 |---|---|---|---|
-| `src/Diag.raz` | 423 | 325 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,170 | 966 | Symbols, literals, comments, positions |
-| `src/Sym.raz` | 815 | 652 | Types, objects, scopes, layout |
+| `src/Diag.raz` | 472 | 358 | Messages: positions, source excerpts, colour, counts |
+| `src/Scan.raz` | 1,260 | 1,036 | Symbols, literals, comments, positions |
+| `src/Sym.raz` | 856 | 682 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 364 | 280 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,777 | 1,450 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/Gen.raz` | 2,846 | 1,989 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,877 | 4,143 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,892 | 4,154 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 411 | 317 | Tree shaking, layout, patching, the places |
 | `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
 | `src/Host.raz` | 103 | 52 | The system running the compiler |
-| `src/Raz.raz` | 439 | 343 | The command line |
+| `src/Raz.raz` | 488 | 381 | The command line, and `-q` for an editor |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -2338,6 +2338,47 @@ reach it, and gives it to `Parse.setLibDir` in place of
 the library last, after `-I` and `RAZ_PATH`, and the duplicate check
 (a symbolic link to one of the two files chooses it) is as before.
 
+## raz -q: for an editor
+
+`raz -q` answers an editor's language server about the text it holds,
+saved or not, with the compiler itself, so that there is one grammar
+and one set of rules. It is a compile that writes no program, with
+three changes, each in the unit it concerns.
+
+- **The text from standard input.** `Raz.forEditor` gives `Scan` the
+  main module's path (`Scan.setStdin`); `Scan.open`, asked for that
+  path, reads standard input instead of the file. Imports are found
+  and read as ever.
+- **Messages as rows.** `Diag.form` is `pretty`, the messages a
+  person reads; `rows`, for `-q check`, where `show` writes each
+  error, warning and note as a line of tab-split fields on standard
+  output (`Diag.row`), and help, counts and the stop after
+  `MaxErrors` say nothing; or `silent`, for `-q words`, which says no
+  message at all and reads on past any number of errors, to reach the
+  cursor. After the main module is checked, `Raz.main` returns before
+  linking.
+- **The cursor is a symbol.** For `-q words`, `Scan` knows the byte
+  the cursor is at (`State.cursor`, `MAX(INT)` when there is none,
+  so that `next` pays one compare for it). When `next` comes to the
+  cursor, it makes the symbol there a name, `Scan.atCursor`, which no
+  source can spell (`(cursor)`), and keeps what is typed of the name
+  in `Scan.prefix`: the bytes from the start of the name the cursor is
+  in or just after, or none if it is between symbols. The parser reads
+  on as for any name; where `qualIdent` would look a name up, it
+  meets `atCursor` and calls `complete` instead, which writes the
+  names that reach there (`Sym.offer`, over the same test as
+  `closest`'s, `Sym.reaches`) and ends the compile. After `M.`, the
+  names are what `M` exports. A cursor inside a comment or a string
+  is dropped, so that it gives no names. Since `cursor` is part of the
+  scanner's state, a recovery or a read ahead that puts the state back
+  puts the cursor back too, and it is met again.
+
+What it leaves out: a record's fields after `r.`, which would need the
+type of an expression cut short; names declared further down, which a
+one-pass compiler hasn't met yet; and a
+main module that `Rt` imports already, as a module of `lib/` being
+edited, whose text is then the file's.
+
 ## A program with its own Rt
 
 A hosted program uses `lib/Rt.raz`. A freestanding one, a kernel's
@@ -2668,19 +2709,20 @@ fields as the code reads them.
 | `Sys.close` | `Scan` and `Parse`: closes a source or `RAZ-VERSION` file after reading |
 | `Sys.closeDir`, `Sys.openDir`, `Sys.nextEntry`, `Sys.Dir` | `Parse`: the files of a directory, to find a module's other files for the one-module-of-each-name check |
 | `Sys.env`, `Sys.envAt` | `Diag` (`NO_COLOR`) and `Raz.userLibraries` (`RAZ_PATH`, `HOME`; `envAt` tells unset from empty) |
-| `Sys.errDenied`, `Sys.errNoEntry` | `Scan`: "permission denied" and "there is no such file" in a message |
+| `Sys.errDenied`, `Sys.errNoEntry`, `Sys.errIntr` | `Scan`: "permission denied" and "there is no such file" in a message; a read of standard input a signal broke into, tried again |
 | `Sys.info`, `Sys.Info` | `Scan` and `Parse`: whether a path is a file (`file`) and its length (`size`) |
 | `Sys.isTerminal` | `Diag`: colour only when standard error is a terminal |
 | `Sys.openRead`, `Sys.read` | `Scan`: reads a source file whole; `Parse`: the library's `RAZ-VERSION` |
+| `Sys.stdin` | `Scan`: `raz -q`'s source, read from standard input |
 | `Sys.readLink` | `Host.libraryDir`: `/proc/self/exe`, to find the library beside the compiler |
-| `Sys.stderr`, `Sys.write` | `Diag`: its messages |
+| `Sys.stderr`, `Sys.stdout`, `Sys.write` | `Diag`: its messages, or `raz -q check`'s rows on standard output |
 | `Sys.workDir` | `Diag`: shows a path relative to the working directory; `Elf`: the compilation directory of the line table |
 
 `Rt`, the run time, besides `fail`, `exit` and the places (above):
 
 | Name | What for |
 |---|---|
-| `Rt.exit` | `Diag`: ends the compiler, with status 1, after an error that stops it |
+| `Rt.exit` | `Diag`: ends the compiler, with status 1, after an error that stops it; `Parse`: with 0, once `raz -q words` has written its names |
 
 `Files`, whole files and the command line:
 
@@ -2697,8 +2739,8 @@ text and `Scan` for tables:
 |---|---|
 | `Buf.Buf`, `Buf.init`, `Buf.add`, `Buf.str`, `Buf.bytes`, `Buf.reset`, `Buf.done` | A growing buffer: `Diag`'s message and working directory, a type's name in `Sym`, an instruction's text in `X64`, a name made in `Parse` |
 | `Fmt.write`, `Fmt.Arg`, `Fmt.str`, `Fmt.int`, `Fmt.char`, `Fmt.hex` | Formatting: `Diag.say`'s `{}` messages and a type's name |
-| `Out.str`, `Out.ln`, `Out.flush` | Standard output: the `-S` listing, `-h` and `--version` |
-| `Str.copy`, `Str.find`, `Str.hasPrefix`, `Str.hexVal` | A kept copy of a path (`Diag`), the one-character operators (`Scan`), a prefix of a path, a file name or a mnemonic (`Diag`, `Parse`, `X64`), and a hex digit (`Parse`) |
+| `Out.str`, `Out.ln`, `Out.flush` | Standard output: the `-S` listing, `-h`, `--version` and `raz -q words`' names |
+| `Str.copy`, `Str.find`, `Str.findLast`, `Str.hasPrefix`, `Str.hexVal`, `Str.toInt` | A kept copy of a path (`Diag`), the one-character operators (`Scan`), a prefix of a path, a file name or a mnemonic (`Diag`, `Parse`, `X64`), and a hex digit (`Parse`); `-q words`' `FILE:LINE:COL` (`Raz`) |
 | `Heap.heap`, `Mem.alloc`, `Mem.free` | The allocator that `NEW`, `Buf.init` and `Str.copy` are given, and the blocks of `Scan`'s tables and `Diag`'s lists |
 
 ## This compiler's choices

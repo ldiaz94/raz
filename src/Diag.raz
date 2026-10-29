@@ -8,6 +8,9 @@
    NO_COLOR isn't set. Diag keeps every source file it is given, so
    that a note can show a line of a module compiled earlier.
 
+   For an editor (raz -q), messages are rows on standard output
+   instead, or not given at all (form).
+
    Depends on: Sys, to write and to ask about the terminal; Buf and Fmt,
    to build what it writes.
    Leaves out: wording. The callers say what is wrong, with say; a
@@ -22,6 +25,11 @@ type
     (* A stretch of a source file: bytes a up to but not including b.
        a = b marks the place between two characters. *)
     Pos* = record f*, a*, b*: INT; end;
+
+    (* How messages are given: shown to a person on standard error; as
+       rows on standard output, for an editor (raz -q check); or not at
+       all (raz -q words, which says only names) *)
+    Form* = (pretty, rows, silent);
 
     File = record
         path: []const U8;
@@ -45,6 +53,7 @@ var
     (* The construct being read uses a name already reported as not
        declared: its errors follow from that one, and aren't shown. *)
     quiet*: BOOL;
+    form*: Form;
 
     files: ^File;        (* numFiles of them, in room for cap *)
     numFiles, cap: INT;
@@ -63,6 +72,11 @@ end;
 proc setQuiet*(yes: BOOL);
 begin
     quiet := yes;
+end;
+
+proc setForm*(f: Form);
+begin
+    form := f;
 end;
 
 (* Paths are shown from the working directory where they are under it,
@@ -177,13 +191,15 @@ begin
     paintOn(Plain);
 end;
 
-(* What has been made, written to standard error *)
+(* What has been made, written to standard error, or the rows to
+   standard output *)
 proc flush;
-var s: []const U8; n: INT;
+var s: []const U8; n, fd: INT;
 begin
     s := Buf.bytes(out);
+    if form = Form.rows then fd := Sys.stdout; else fd := Sys.stderr; end;
     while LEN(s) > 0 do
-        n := Sys.write(Sys.stderr, s);
+        n := Sys.write(fd, s);
         if n <= 0 then break; end;
         s := s[n..LEN(s)];
     end;
@@ -231,12 +247,36 @@ begin
     return n;
 end;
 
+(* A message as raz -q check gives it, a row for an editor: the file,
+   the line and the byte in the line where p starts, the same where it
+   ends, the kind and the message, split by tabs; all from 1. A message
+   about no place in a file has no file, and zeros. *)
+proc row(p: Pos; kind, msg: []const U8);
+var line, start, endLine, endStart: INT; e: Pos;
+begin
+    if p.f >= numFiles then
+        Fmt.write(out, "\t0\t0\t0\t0\t{}\t{}\n", [Fmt.str(kind), Fmt.str(msg)]);
+    else
+        line, start := locate(p);
+        e := p;
+        e.a := p.b;
+        endLine, endStart := locate(e);
+        Fmt.write(out, "{}\t{}\t{}\t{}\t{}\t{}\t{}\n", [Fmt.str(files[p.f].path), Fmt.int(line),
+            Fmt.int(p.a - start + 1), Fmt.int(endLine), Fmt.int(p.b - endStart + 1), Fmt.str(kind), Fmt.str(msg)]);
+    end;
+    flush;
+end;
+
 (* "file:line:col: kind: msg", then the line with p underlined. A tab
    before p is copied into the underline, so that the two line up
    whatever the terminal makes of tabs. *)
 proc show(p: Pos; kind, kindColour, msg: []const U8);
 var line, start, stop, lo, hi, i, n: INT; buf: ^U8; f: ^File; digits: []const U8;
 begin
+    if form # Form.pretty then
+        if form = Form.rows then row(p, kind, msg); end;
+        return;
+    end;
     if p.f >= numFiles then
         (* about no place in a file, as for Rt, which the compiler
            imports before it reads one *)
@@ -348,11 +388,14 @@ begin
     lastError := p;
     show(p, "error", Red, msg);
     INC(errors);
-    if errors >= MaxErrors then
-        put("raz: stopping after ");
-        putNum(MaxErrors);
-        put(" errors\n");
-        flush;
+    (* raz -q words reads on to the cursor, past any number of errors *)
+    if (errors >= MaxErrors) and (form # Form.silent) then
+        if form = Form.pretty then
+            put("raz: stopping after ");
+            putNum(MaxErrors);
+            put(" errors\n");
+            flush;
+        end;
         Rt.exit(1);
     end;
 end;
@@ -376,7 +419,7 @@ end;
 
 proc help*(msg: []const U8);
 begin
-    if shown then
+    if shown and (form = Form.pretty) then
         paint(Green, "help:");
         put(" ");
         put(msg);
@@ -389,10 +432,14 @@ end;
    read: it stops the compiler at once. *)
 proc fatal*(msg: []const U8);
 begin
-    put("raz: ");
-    put(msg);
-    putc('\n');
-    flush;
+    if form = Form.pretty then
+        put("raz: ");
+        put(msg);
+        putc('\n');
+        flush;
+    elsif form = Form.rows then
+        row({f: MAX(INT), a: 0, b: 0}, "error", msg);
+    end;
     Rt.exit(1);
 end;
 
@@ -406,7 +453,9 @@ end;
    if there were errors. *)
 proc finish*;
 begin
-    if (errors > 0) and (warnings > 0) then
+    if form # Form.pretty then
+        (* no count: each message was a row of its own, or none *)
+    elsif (errors > 0) and (warnings > 0) then
         put("raz: "); put(count(errors, "error")); put(", "); put(count(warnings, "warning")); putc('\n');
     elsif errors > 0 then
         put("raz: "); put(count(errors, "error")); putc('\n');

@@ -1,0 +1,15 @@
+module Words;
+import Out;
+
+var count: INT;
+
+proc main*;
+var total: INT;
+begin
+    total := co;
+    Out.st;
+    (* co *)
+    Out.str("co");
+end;
+
+end Words.

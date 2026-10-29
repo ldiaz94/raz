@@ -168,6 +168,23 @@ if [ $status = 3 ] && [ $statusFail = 2 ] && [ "$(cat $out/own/Own.out)" = hello
     && readelf -s $out/own/Own | grep -q ' Own.main$' && readelf --debug-dump=decodedline $out/own/Own | grep -q 'Own.raz'; then pass=$((pass + 1))
 else echo "FAIL own Rt: status $status, $statusFail"; cat $out/own/Own.out $out/own/OwnFail.out; fail=$((fail + 1)); fi
 
+# raz -q, for an editor: check's rows, and the names words offers at a
+# cursor after a part of a name, after a module's dot, and none in a
+# comment or a string. The text is standard input: checking an empty
+# one shows that the file on disk isn't read.
+for t in "check Check.raz check" "words Words.raz:9:16 prefix" "words Words.raz:10:11 export" \
+    "words Words.raz:11:10 none" "words Words.raz:12:15 none"; do
+    set -- $t
+    f=test/query/${2%%:*}
+    $raz -q $1 test/query/$2 < $f > $out/query.out
+    if [ "$3" = none ]; then : > $out/query.expect; else cp test/query/$3.expect $out/query.expect; fi
+    if cmp -s $out/query.out $out/query.expect; then pass=$((pass + 1))
+    else echo "FAIL raz -q $1 $2"; diff $out/query.expect $out/query.out | head -5; fail=$((fail + 1)); fi
+done
+if [ -z "$($raz -q check test/query/Words.raz < /dev/null | grep 'expected "module"')" ]; then
+    echo "FAIL raz -q check: read the file, not standard input"; fail=$((fail + 1))
+else pass=$((pass + 1)); fi
+
 # what src/ asks of lib/ is what doc/compiler.md lists (test/asks.sh)
 if sh test/asks.sh > $out/asks.out 2>&1; then pass=$((pass + 1))
 else echo "FAIL test/asks.sh:"; cat $out/asks.out; fail=$((fail + 1)); fi

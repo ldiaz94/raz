@@ -93,6 +93,8 @@ emacs is installed.
 
     raz [-I dir]... [-o file] [-Werror] [-S] [-s] [-noprofile] [-libc glibc|musl] [-base addr] [-bare] Main.raz
     raz run [option]... Main.raz [arg]...
+    raz -q check [option]... Main.raz
+    raz -q words [option]... Main.raz:LINE:COL
     raz -h
     raz --version
 
