@@ -299,3 +299,10 @@ at the time.
   labels, deferred statements, type arguments), and says that past its
   own limits it rejects the program with an error naming the limit;
   appendix A leaves how far past to it. It breaks no program.
+- **2026-11.0.** A second target, `darwin-arm64`: arm64 macOS. The
+  names of a target's files are the system's and the machine's as
+  `uname` gives them, in lower case, a machine's the same on every
+  system (section 3). Appendix A gives arm64 macOS's calling
+  convention, Apple's, and its assembly language, Arm's. The sizes the
+  report gives for x86-64 hold on arm64. It changes no language and
+  breaks no program.

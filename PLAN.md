@@ -151,7 +151,106 @@ at the cursor is declared, for raz-lsp's hover and go to definition.
 v0.25.3, 2026-10-29: `raz -q def` on a module, used or imported, gives
 its `module` line.
 
-## 5. Clean-up: v0.26.0, the last before 1.0
+## 5. arm64 macOS: v0.26.0
+
+Started by the owner's word of 2026-11-15: raz on an Apple Silicon Mac,
+natively, as a second target, `darwin-arm64`. Report 2026-11.0 names
+it and changes no language (section 3, appendix A).
+
+**The shape.** `Gen` is the only unit that knows the machine, and
+`Elf` the only one that knows the executable, so the port is new
+units beside them, not a change to `Parse` or `Item`:
+
+- `A64.raz`, beside `X64.raz`: arm64's instructions encoded, branches
+  within a procedure, and the assembler for code procedures (Arm's
+  syntax, the instructions the library's code procedures use; `db` for
+  any other).
+- `Gen.arm64.raz`, beside `Gen.raz` (to be `Gen.x86_64.raz`): the same
+  calls, the stack machine kept in arm64's registers; Apple's calling
+  convention (x18 never touched, a frame record in x29, the arguments
+  past a variadic C procedure's own on the stack); every address by
+  `adrp` and `add`, since macOS runs no executable at a fixed address;
+  the atomics by the LSE instructions every Apple processor has.
+  Two things x86 does for free and arm64 doesn't, which the report
+  binds: a division by zero, or the smallest value by -1, stops the
+  program (arm64's `sdiv` gives 0), so it is checked; a real out of an
+  `I64`'s range, or a NaN, gives the smallest `I64` (arm64's `fcvtzs`
+  saturates), so it is mended after.
+- `MachO.raz`, beside `Elf.raz`: a Mach-O executable for dyld, linked
+  to libSystem, as every macOS program must be; C's symbols bound into
+  a table of quadwords, as GLOB_DAT does now; every address in data
+  rebased, since the program is position-independent; its symbol table
+  for lldb's backtraces; and an ad-hoc code signature, SHA-256 hashes
+  of its pages, without which arm64 macOS won't run it. No line
+  numbers for a debugger at first.
+- `Host.darwin.raz`: the library beside the compiler by
+  `_NSGetExecutablePath`, C always, a program run from a file written
+  and made executable (no `memfd_create`).
+- `Link`: the places in data that hold an address, listed for
+  `MachO`'s rebasing.
+
+A compiler compiles for the system it runs on, as now: its target is
+the one it was built for, its back end and executable chosen at its
+build by the target's suffixes (section 3), `Gen.arm64.raz` and
+`Host.darwin.raz` as `Sys.linux-x86_64.raz` is today. No `-target`.
+A compiler for one system that runs on another is built by staging,
+as appendix (b) proposes for Moss: `src/cross.sh` copies `src/` with
+the other target's files in place. It is needed once, for the first
+Mac compiler, and wherever a release for one system is made on the
+other.
+
+**The library.** Over libSystem, through `lib/Sys.raz`, the C one,
+with `CAbi.darwin-arm64.raz` made by `tools/cabi.c` on the Mac, never
+by hand. `Rt.darwin-arm64.raz`: the signals and their own stack, the
+place a fault stopped at from the Mac's `ucontext`, and `framePtr`,
+`liveRegs`, `here` and `sigReturn` in arm64. `Thread.darwin.raz` over
+pthreads, its `Mutex` on `os_unfair_lock`. `Bytes.arm64.raz`. `Math`'s
+`sqrt`, `mul` and `div128` and `Str`'s code procedure move into
+`.x86_64` files with arm64 twins: no generic file keeps machine code.
+None of it breaks a program.
+
+**Steps**, one commit each, `make check` passing first (in a
+linux/amd64 container on the Mac until there is a Mac compiler):
+
+1. Report 2026-11.0, for the owner's review. (This commit.)
+2. A container to build and check in on the Mac (`make docker-check`),
+   the budget raised to 18,000 in `CLAUDE.md` and `doc/compiler.md`,
+   and the Makefile and scripts made to run on BSD's tools as on GNU's
+   (`sed -i`, `stat`, `sha256sum`).
+3. `Gen.raz` to `Gen.x86_64.raz`, `Elf` behind a unit of the target's
+   (`Exe`), `src/cross.sh`: Linux's compiler unchanged, byte for byte.
+4. `A64.raz`, its encoder checked against `llvm-mc`'s bytes.
+5. `Gen.arm64.raz`, in pieces: values and operations; jumps and
+   checks; calls and frames; reals; atomics, deferred statements, the
+   entry point.
+6. `MachO.raz` and `Link`'s rebases, its line numbers for lldb;
+   `Host.darwin.raz`.
+7. The library: `CAbi`, `Sys`, `Rt`, `Thread`, `Bytes`, `Math`, `Str`.
+8. `test/` and `conform/` passing on the Mac; what differs by target
+   (signals' words, errors' numbers) in files of the target's.
+9. The first Mac compiler, by the staged cross compiler; it builds
+   itself; `make fixpoint` on the Mac; `make bench` at 400,000 lines a
+   second there.
+10. The release: two tarballs, `linux-x86_64` and `darwin-arm64`;
+    `BOOT` names one for each host, with its sum.
+
+**The owner's answers**, 2026-11-15:
+
+a. The budget is 18,000 lines of code.
+b. The names are `darwin-arm64`.
+c. No CI for now: the Mac's tarball is made here by `make dist`.
+d. The port is v0.26.0; the clean-up and 1.0 move one on.
+e. Line numbers for lldb are in v0.26.0 (below).
+
+**Line numbers on the Mac.** `Elf` writes DWARF 4 already: the line
+table `makeLines` makes, target-blind, and the one compile unit
+`putDebug` writes. lldb reads DWARF from an executable's `__DWARF`
+segment, as it does Go's, so `MachO` writes the same three sections,
+`__debug_line`, `__debug_info` and `__debug_abbrev`, there, unloaded,
+before `__LINKEDIT`; `make gdb`'s twin drives `lldb --batch`. About 50
+lines, `makeLines` and `putDebug` shared by the two writers.
+
+## 6. Clean-up: v0.27.0, the last before 1.0
 
 The files that served the thaws are made a record, short and true:
 
@@ -169,11 +268,11 @@ The files that served the thaws are made a record, short and true:
 - The programs in `~/r` that pin an older raz (rmacs, ravite, rnet, ...)
   moved to the release.
 
-## 6. 1.0
+## 7. 1.0
 
-No date. raz is 1.0 when use shows it: programs written against v0.26.0
+No date. raz is 1.0 when use shows it: programs written against v0.27.0
 for long enough that no defect is outstanding. Until then it is
-0.26.x, mending defects only.
+0.27.x, mending defects only.
 
 ## Appendix: the Moss work, as proposed
 

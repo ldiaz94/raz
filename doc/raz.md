@@ -13,7 +13,7 @@ is the library, which sections 3 and 10 and appendix A name.
 This report defines the language. It is short on purpose. Whatever it
 doesn't allow, raz doesn't have.
 
-This is version 2026-10.38 of the report; section 11 says where each
+This is version 2026-11.0 of the report; section 11 says where each
 version's changes are told. 2026-10.11 and 2026-10.12 are a thaw the owner chose,
 for a language anyone can build again. They break programs written
 for 2026-10.10 and before: for 2026-10.9, say, the report of compiler
@@ -81,7 +81,8 @@ still took them, as before; raz 0.24 doesn't.
 is for a program on the bare machine: a code procedure names a
 procedure or a global variable in three operands (section 8), and
 section 10 gives the least an implementation accepts, and what it does
-past its own limits; it breaks no program.
+past its own limits; it breaks no program. 2026-11.0 names a second
+target, arm64 macOS, and changes no language.
 
 The language is frozen, softly, from this version on: it changes only
 to mend a defect, and its library grows only by what breaks no program
@@ -354,8 +355,10 @@ not expanded. Install a library's source files directly in one of these
 directories, with its target-specific files beside them. In each
 directory the compiler takes the
 first of `Name.OS-ARCH.raz`, `Name.OS.raz`, `Name.ARCH.raz` and
-`Name.raz` that exists, where `OS-ARCH` is the target, for now only
-`linux-x86_64`. So a module whose code depends on the machine or the
+`Name.raz` that exists, where `OS-ARCH` is the target: `linux-x86_64`
+or `darwin-arm64`. The names are the system's and the machine's as
+`uname` gives them, in lower case, and a machine has one name on every
+system: `arm64` on Linux too. So a module whose code depends on the machine or the
 system comes in one file per target, and the modules that import it
 don't change. Machine code (section 8) and system calls belong in such
 files.
@@ -530,7 +533,7 @@ QualIdent = [ ident "." ] ident .
 | Type | Size | Values |
 |---|---|---|
 | `I8` `I16` `I32` `I64` | 1, 2, 4, 8 | signed integers, two's complement |
-| `INT` | an address's: 8 on x86-64 | signed, as big as an address |
+| `INT` | an address's: 8 on x86-64 and arm64 | signed, as big as an address |
 | `UINT` | an address's | unsigned, as big as an address |
 | `U8` `U16` `U32` `U64` | 1, 2, 4, 8 | unsigned integers |
 | `BOOL` | 1 | `false` (0), `true` (1) |
@@ -552,7 +555,8 @@ name whose type is made of them, is an error; a declaration that no
 used code names isn't, so a module like `Fmt` keeps one interface on
 every target.
 
-Each is aligned as the target's C aligns it: to its size on x86-64.
+Each is aligned as the target's C aligns it: to its size on x86-64
+and arm64.
 So are `ERROR` (section 5.8), pointers
 and procedures, each as big as an address; a slice is aligned as an
 address is.
@@ -565,7 +569,7 @@ constant greater than zero. Arrays are values: assigning one copies it.
 ### 5.3 Slices
 
 `[]T` is a view of elements that live elsewhere: a pointer to the first
-and a count, two addresses' worth, 16 bytes on x86-64.
+and a count, two addresses' worth, 16 bytes on x86-64 and arm64.
 
 ```
 Slice = record ptr: ^T; len: INT; end;    (* its layout *)
@@ -657,7 +661,8 @@ on), then the space for the fields. Each case's fields are laid out
 in that space as a record's would be, after the tag, and the cases
 share it, so the variant is as big as its largest case needs, padded
 to its alignment, the largest of an `INT`'s and its fields'.
-`variant a(x: U8); b(y: I64; z: U8); end` is 24 bytes on x86-64. A
+`variant a(x: U8); b(y: I64; z: U8); end` is 24 bytes on x86-64 and
+arm64. A
 variant that starts at zero therefore holds its first case.
 
 ### 5.7 Enumerations and sets
@@ -1980,7 +1985,7 @@ that it follows this report: it passes them all, its reals aside where its targe
 `conform/check.sh` runs them.
 
 - **The target.** Which machines and systems it compiles for, and the
-  names of their files (`linux-x86_64`, section 3); for each, the size
+  names of their files (`linux-x86_64`, `darwin-arm64`, section 3); for each, the size
   of an address, and so of `INT`, whether it has reals, and which C
   library a program that uses C is linked against.
 - **Separate compilation.** Whether modules are compiled on their own,
@@ -1993,7 +1998,9 @@ that it follows this report: it passes them all, its reals aside where its targe
   on one with a single processor, by holding off interrupts while
   they run, for one.
 - **The calling convention.** On x86-64 Linux it is System V
-  (sections 8 and 9); elsewhere it is the C library's own, so that
+  (sections 8 and 9); on arm64 macOS, Apple's arm64 one, which passes
+  the arguments past a C procedure's own parameters on the stack;
+  elsewhere it is the C library's own, so that
   `extern` procedures and callbacks work. How a procedure returns
   several results, and how its frame is laid out, are the
   implementation's.
@@ -2001,10 +2008,11 @@ that it follows this report: it passes them all, its reals aside where its targe
   target's machine code, written in its assembly language, and exist
   only where the implementation says so; `SYSTEM.SYSCALL` exists only on Linux targets (section 6.8). A record's
   layout is the target's C layout (section 5.5), and the order of a
-  value's bytes is the target's (little-endian on x86-64).
+  value's bytes is the target's (little-endian on x86-64 and arm64).
 - **The assembly language.** How a code procedure's instructions are
   written (section 8). On x86-64 it is Intel's syntax, as NASM writes
-  it, destination first. Which instructions it knows is the
+  it, destination first; on arm64, Arm's, as its reference manual
+  writes it, destination first. Which instructions it knows is the
   implementation's; `db` gives any others.
 - **Sizes in the library.** How many bytes `Out` keeps before it
   writes them, `Sys.outSize` (the library volume): 4 KB on Linux, fewer on a

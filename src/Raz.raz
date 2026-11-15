@@ -38,7 +38,7 @@ import Sys, Out, Str, Version, Files, Host, Fmt, Diag, Scan, Sym, Chunk, X64, Ge
 import SYSTEM;
 
 const
-    Report = "2026-10.38";   (* the version of doc/raz.md it follows *)
+    Report = "2026-11.0";   (* the version of doc/raz.md it follows *)
 
 var
     links: [4]Gen.Link;
