@@ -187,6 +187,8 @@ begin
     A.fmovFR(2, 3, true);
     A.fmovRF(4, 5, false);
     A.fmovRF(6, 7, true);
+    A.cnt(16, 17);
+    A.addv(18, 19);
     (* addresses, calls *)
     A.adr(0, 0);
     A.adr(1, -4);

@@ -4,16 +4,9 @@
    The same stack machine as x86-64's, with the same calls, which Item
    and Parse make: they push constants, addresses and the values of
    variables, operate on the values on top, store them and jump on
-   them. What it makes so far is frames, constants, the values of
-   variables and their stores, the integer operations, comparisons and
-   jumps, jump tables, elements and slices and their checks, calls with
-   integer arguments in registers and on the stack, C's through the
-   quadword the loader fills in, results in memory, try, deferred
-   statements, the atomics, COPY, code procedures and the program's
-   entry point. What else
-   is asked is noted as "not yet on arm64" (notYet), and a program that
-   uses it fails to compile rather than run wrong; PLAN.md 5 says the
-   pieces still to come.
+   them. It makes all that x86-64's does, in arm64's instructions, but
+   SYSCALL, which is Linux's only: a program that uses it fails to
+   compile (missing).
 
    The stack is kept in registers as on x86-64: the value at depth d,
    depth 0 being the bottom, is in x9 to x14, register d mod 6, all of
@@ -25,29 +18,39 @@
    loaded when it is pushed: no instruction of arm64 but a load or a
    store takes memory.
 
+   A real, an F32 or an F64, is held as x86-64 holds it, in the
+   registers that compute with reals: the value at depth d in v16 to
+   v21, XRegs[d mod 6], d or s, so each depth has two registers, and
+   owner doesn't tell them apart. They are a call's to change and carry
+   no argument, as x9 to x14 are; v23 is Gen's scratch. A real constant
+   is made in x15 and moved across (fmov), as arm64 has no instruction
+   that holds any real.
+
    Registers outside the stack: x15 and x17, Gen's scratch, as rax and
    rcx are on x86-64; x16, the encoder's (A64); x0 to x3 for copying
    and slices, between calls, where they hold nothing; x8, which Apple's convention
    keeps for the address of a result in memory; x18, the system's,
    never touched; x19 to x23, a procedure's busiest variables (VarRegs),
-   which a called procedure gives back as it found them; x29, the frame
-   pointer, and x30, the return address.
+   and d8 to d15, its busiest reals (XVarRegs), which a called procedure
+   gives back as it found them; x29, the frame pointer, and x30, the
+   return address.
 
    Calls use Apple's arm64 convention: the first eight integer arguments
-   in x0 to x7, the rest on the machine's stack, results in x0 and x1,
-   or in memory at the address in x8, sp a multiple of 16 always, a
+   in x0 to x7, the first eight reals in v0 to v7, the rest on the
+   machine's stack, results in x0 and x1, or d0, or in memory at the
+   address in x8, sp a multiple of 16 always, a
    frame record of x29 and x30 that x29 points at, so that the chain of
    frames can be followed. A frame is made whole by the prologue, so
    nothing is pushed in a body but a call's stack arguments, for the
    call, and a deferred statement's return address: pushed is always 0.
 
-   What x86-64 catches by itself, and arm64 doesn't, the code checks: a
-   division by zero, and the smallest value by -1 (divide).
+   What x86-64 does by itself, and arm64 doesn't, the code does: it
+   checks a division by zero, and the smallest value by -1 (divide),
+   and gives the smallest I64 for a real out of range (realToInt).
 
    Depends on: Scan and Diag for errors, Sym for types, Chunk for code
    and data, A64 for instructions.
-   Leaves out, for now: reals, FILL, NEW's zeroing, the counts of bits
-   and the rotations; and SYSCALL, which is Linux's only. *)
+   Leaves out SYSCALL, which is Linux's only. *)
 module Gen;
 import Fmt, Diag, Scan, Sym, Chunk, A := A64;
 import SYSTEM;
@@ -66,6 +69,7 @@ const
     FP = A.FP; LR = A.LR; SP = A.SP; ZR = A.ZR;
     T = 15; U = 17;          (* Gen's scratch *)
     Dst = 0; Src = 1; Tmp = 2;   (* copying's *)
+    XT = 23;                 (* Gen's scratch for a real *)
 
 type
     Kind* = (kWord, kLong, kF32, kF64);
@@ -160,9 +164,14 @@ const
     StubNames: [8][]const U8 = ["check0", "check1", "check2", "check3", "check4", "check5", "check6", "check7"];
     NumRegs = 6;
     Regs: [NumRegs]INT = [9, 10, 11, 12, 13, 14];
+    XRegs: [NumRegs]INT = [16, 17, 18, 19, 20, 21];   (* v16 to v21 *)
     (* the condition codes of the comparisons, from sEql: = # < <= > >= *)
     CcSigned: [6]INT = [A.ccEQ, A.ccNE, A.ccLT, A.ccLE, A.ccGT, A.ccGE];
     CcUnsigned: [6]INT = [A.ccEQ, A.ccNE, A.ccLO, A.ccLS, A.ccHI, A.ccHS];
+    (* and of reals, after fcmp: an unordered pair, a NaN, sets C and V
+       and not N or Z, so that only # holds, as IEEE wants; lt and le
+       would hold, as they test N # V, so < is mi and <= ls *)
+    CcReal: [6]INT = [A.ccEQ, A.ccNE, A.ccMI, A.ccLS, A.ccGT, A.ccGE];
     (* sub sp, sp, #imm12 and the same shifted by 12: the prologue's two,
        whose immediates endProc patches *)
     SubSp = 0D10003FFH; SubSp12 = 0D14003FFH;
@@ -177,46 +186,32 @@ var
     retSlot: I64;
     resType: ^Sym.Type;           (* the procedure's result, or nil *)
     exitL: INT;
-    (* parameters arriving in registers, x0 to x7, and a result's address
-       in x8: where each is stored on entry *)
-    inReg: [9]INT;
-    inSlot: [9]I64;
-    inSize: [9]INT;
-    inObj: [9]^Sym.Obj;
+    (* parameters arriving in registers, x0 to x7 or, told by a negative
+       number, -1 - n, v0 to v7, and a result's address in x8: where each
+       is stored on entry *)
+    inReg: [17]INT;
+    inSlot: [17]I64;
+    inSize: [17]INT;
+    inObj: [17]^Sym.Obj;
     numIn: INT;
     procParams: ^Sym.Obj;         (* the parameters, for enterBody *)
     regMask: INT;                 (* the registers of variables, as bits (XBit) *)
     saveAt: I64;                  (* where they are saved, a quadword each *)
+    homes: [8]I64;                (* the slots of the variables in XVarRegs *)
     frameAt: [3]I64;              (* frameTop, frameMax, permTop after the declarations *)
-    pending: []const U8;          (* what beginProc found not yet made, for enterBody's chunk *)
-    pendingAt: Diag.Pos;
     (* the stubs that a failed check calls, one for each kind of failure,
        made by entryPoint for those used; and the procedure's checks *)
     failStubs: [8]INT;
     fails: [4096]Fail;
     numFails: INT;
 
-(* What this Gen can't make yet marks the procedure being compiled
+(* What this Gen won't make, SYSCALL, marks the procedure being compiled
    (Chunk.setMissing), which is an error if the program uses it, and the
    compile reads on: a module the program imports may hold what it never
-   calls, as Sys does. So each routine not yet made keeps the stack as
-   the real one would, and makes what code it likes, never run; it
-   reads into _ the parameters it doesn't use yet, so that none is
-   warned of. What this Gen will never make, SYSCALL, is marked so too,
-   with its own message. *)
+   calls. The routine keeps the stack as the real one would. *)
 proc missing(msg: []const U8);
 begin
-    if codeChunk >= 0 then
-        Chunk.setMissing(codeChunk, msg, Scan.tokPos());
-    elsif LEN(pending) = 0 then   (* beginProc's, before enterBody names the chunk *)
-        pending := msg;
-        pendingAt := Scan.tokPos();
-    end;
-end;
-
-proc notYet(what: []const U8);
-begin
-    missing(Diag.say("not yet on arm64: {}", [Fmt.str(what)]));
+    if codeChunk >= 0 then Chunk.setMissing(codeChunk, msg, Scan.tokPos()); end;
 end;
 
 (* -S: the text of each instruction is kept, and list prints it *)
@@ -258,13 +253,14 @@ proc allocTemp*(size, align: I64): I64; forward;
 proc allocPerm*(size, align: I64): I64; forward;
 proc loaded(i: INT): INT; forward;
 
-(* The value i, in its register, goes to a frame slot *)
+(* The value i, in its register, goes to a frame slot: a real as 8
+   bytes, an F32 with what lies above it *)
 proc spill(i: INT);
-var s: I64;
+var s: I64; r: INT;
 begin
-    _ := loaded(i);
+    r := loaded(i);
     s := allocTemp(8, 8);
-    A.store(Regs[i mod NumRegs], FP, INT(s), 8);
+    if isReal(i) then A.storeF(r, FP, INT(s), 8); else A.store(r, FP, INT(s), 8); end;
     stack[i].loc := lFrame;
     stack[i].val := s;
     owner[i mod NumRegs] := -1;
@@ -292,7 +288,7 @@ begin
 end;
 
 (* The value i into register r, from wherever it is; it stays where it
-   was, so r is a new copy *)
+   was, so r is a new copy. A real goes as its bits. *)
 proc valueTo(i, r: INT);
 begin
     match stack[i].loc of
@@ -300,20 +296,36 @@ begin
     | lAdr:
         if stack[i].chunk >= 0 then A.addrChunk(r, stack[i].chunk, INT(stack[i].val));
         else A.aluI(A.opAdd, r, FP, stack[i].val); end;
-    | lReg: if Regs[i mod NumRegs] # r then A.movRR(r, Regs[i mod NumRegs]); end;
+    | lReg:
+        if isReal(i) then A.fmovRF(r, XRegs[i mod NumRegs], false);
+        elsif Regs[i mod NumRegs] # r then A.movRR(r, Regs[i mod NumRegs]); end;
     | lFrame: A.load(r, FP, INT(stack[i].val), 8, false);
     end;
 end;
 
-(* The value i, in its register *)
+(* The real i into register v, as valueTo does for an integer: a
+   constant by its bits, made in x15, or the zero register's *)
+proc xValueTo(i, v: INT);
+begin
+    match stack[i].loc of
+    | lConst:
+        if stack[i].val = 0 then A.fmovFR(v, ZR, false);
+        else A.movRI(T, stack[i].val); A.fmovFR(v, T, false); end;
+    | lReg: if XRegs[i mod NumRegs] # v then A.fop1(A.fMov, v, XRegs[i mod NumRegs], false); end;
+    | else: A.loadF(v, FP, INT(stack[i].val), 8);   (* lFrame *)
+    end;
+end;
+
+(* The value i, in its register, of its kind *)
 proc loaded(i: INT): INT;
 var r: INT;
 begin
     if stack[i].loc # lReg then
         r := claim(i);
-        valueTo(i, r);
+        if isReal(i) then xValueTo(i, XRegs[i mod NumRegs]); else valueTo(i, r); end;
         stack[i].loc := lReg;
     end;
+    if isReal(i) then return XRegs[i mod NumRegs]; end;
     return Regs[i mod NumRegs];
 end;
 
@@ -339,10 +351,16 @@ begin
     INC(depth);
 end;
 
-(* The register a new value on top is computed in *)
+(* The register a new value on top is computed in, and a real's *)
 proc target: INT;
 begin
     return claim(depth);
+end;
+
+proc xTarget: INT;
+begin
+    _ := claim(depth);
+    return XRegs[depth mod NumRegs];
 end;
 
 (* The value just computed in target goes on top *)
@@ -378,9 +396,10 @@ begin
     for r := 0 to NumRegs - 1 do owner[r] := -1; end;
 end;
 
+(* A constant; a real's v is its bits, an F64's or, in the low 32, an
+   F32's *)
 proc pushConst*(k: Kind; v: I64);
 begin
-    if k in {kF32, kF64} then notYet("reals"); end;
     newEntry(k, lConst, v);
 end;
 
@@ -435,6 +454,15 @@ begin
     else A.store(r, m.base, INT(m.off), size); end;
 end;
 
+(* A real's register v loaded from m, or stored there if not load *)
+proc realMem(v: INT; m: Mem; size: INT; load: BOOL);
+begin
+    if (m.chunk >= 0) and load then A.loadChunkF(v, m.chunk, INT(m.off), size);
+    elsif m.chunk >= 0 then A.storeChunkF(v, m.chunk, INT(m.off), size);
+    elsif load then A.loadF(v, m.base, INT(m.off), size);
+    else A.storeF(v, m.base, INT(m.off), size); end;
+end;
+
 (* Register r := the address m *)
 proc adrTo(r: INT; m: Mem);
 begin
@@ -465,21 +493,21 @@ begin
 end;
 
 proc pushVar*(a: Adr; size: INT; signed: BOOL; k: Kind);
-var m: Mem; r: INT;
+var m: Mem; r: INT; fl: BOOL;
 begin
-    if k in {kF32, kF64} then notYet("reals"); end;
-    if a.base = bReg then
-        r := target();
-        A.movRR(r, regAt(a));
-        computed(k);
-        return;
-    end;
-    if a.base = bStack then
-        m := place(a, U); r := target();
+    fl := k in {kF32, kF64};
+    if (a.base = bReg) and fl then
+        A.fop1(A.fMov, xTarget(), regAt(a) - XmmVar, false);
+    elsif a.base = bReg then
+        A.movRR(target(), regAt(a));
     else
-        r := target(); m := place(a, r);
+        if a.base = bStack then
+            m := place(a, U); r := target();
+        else
+            r := target(); m := place(a, r);
+        end;
+        if fl then realMem(xTarget(), m, size, true); else loadMem(r, m, size, signed); end;
     end;
-    loadMem(r, m, size, signed);
     computed(k);
 end;
 
@@ -492,32 +520,44 @@ begin
 end;
 
 (* Pops a value into the variable at a; an address on the stack is under
-   the value. A zero is stored from the zero register. *)
+   the value. A zero is stored from the zero register, and a real
+   constant as its bits. A real variable in a register is written
+   through to its slot, as on x86-64, where the trap report finds it. *)
 proc popVar*(a: Adr; size: INT);
-var r: INT; v: I64; c: BOOL;
+var r: INT; v: I64; c, fl: BOOL;
 begin
-    if isReal(depth - 1) then notYet("reals"); end;
+    if (a.base = bReg) and isReal(depth - 1) then
+        r := regAt(a) - XmmVar;
+        xValueTo(depth - 1, r);
+        drop();
+        A.storeF(r, FP, INT(homes[r - 8]), 8);
+        return;
+    end;
     if a.base = bReg then
         popTo(regAt(a));
         return;
     end;
     c, v := topConst();
+    fl := not c and isReal(depth - 1);
     if c and (v = 0) then r := ZR;
     elsif c then r := T; A.movRI(T, v);
     else r := loaded(depth - 1); end;
     drop();
-    storeMem(r, place(a, U), size);
+    if fl then realMem(r, place(a, U), size, false); else storeMem(r, place(a, U), size); end;
 end;
 
-(* The two values on top change places, each loaded in its register *)
+(* The two values on top, of one kind, change places, each loaded in
+   its register *)
 proc swap*;
 var e: Entry; x, y: INT;
 begin
     x := loaded(depth - 2);
     y := loaded(depth - 1);
-    A.movRR(T, x);
-    A.movRR(x, y);
-    A.movRR(y, T);
+    if isReal(depth - 1) then
+        A.fop1(A.fMov, XT, x, false); A.fop1(A.fMov, x, y, false); A.fop1(A.fMov, y, XT, false);
+    else
+        A.movRR(T, x); A.movRR(x, y); A.movRR(y, T);
+    end;
     e := stack[depth - 2]; stack[depth - 2] := stack[depth - 1]; stack[depth - 1] := e;
 end;
 
@@ -740,6 +780,23 @@ begin
     if sy = Scan.sDiv then A.movRR(r, T); else A.madd(r, T, y, r, true); end;
 end;
 
+(* The two reals on top, the left op the right, in the left's
+   register: fadd d16, d16, d17 *)
+proc realOp(sy: Scan.Sym; k: Kind);
+var x, y, o: INT;
+begin
+    match sy of
+    | sPlus: o := A.fAdd;
+    | sMinus: o := A.fSub;
+    | sTimes: o := A.fMul;
+    | else: o := A.fDiv;
+    end;
+    y := loaded(depth - 1);
+    drop();
+    x := top();
+    A.fop(o, x, x, y, k = kF32);
+end;
+
 (* The two values on top, the left op the right, an integer of size
    bytes, signed or not, computed in 64 bits and brought back to its
    width, which is how a narrow integer wraps. A shift's count is taken
@@ -747,7 +804,7 @@ end;
 proc op*(sy: Scan.Sym; k: Kind; size: INT; signed: BOOL);
 var v: I64; r, y, bits, sh: INT; c, alu: BOOL;
 begin
-    if k in {kF32, kF64} then notYet("reals"); end;
+    if k in {kF32, kF64} then realOp(sy, k); return; end;
     bits := size * 8;
     alu := (sy = Scan.sPlus) or (sy = Scan.sMinus) or (sy = Scan.sAmp) or (sy = Scan.sBar) or (sy = Scan.sXor);
     (* a constant goes right, where it can be an immediate *)
@@ -780,27 +837,101 @@ begin
     stack[depth - 1].k := k;
 end;
 
+(* ROL, if left, or ROR of the integer of size bytes under the count on
+   top, at its own width, the count taken modulo it, a negative one as
+   a shift's is (Gen.x86_64.raz says more). arm64 rotates only right,
+   by ror, and only 32 or 64 bits: a left rotation is a right one by
+   minus the count, and a U8 or a U16 is first repeated through 32
+   bits, so that what leaves its low end comes back at its top, as a
+   rotation of 32 bits by any count rotates each of the copies alike.
+   ROL(x, n) of a U8:
+
+       and x9, x9, #0FFH    ; repeated: 000000AB to ABABABAB
+       orr x9, x9, x9, lsl #8
+       orr x9, x9, x9, lsl #16
+       neg x17, x10         ; left by n is right by -n
+       ror w9, w9, w17      ; the count modulo 32, so modulo 8 too
+       and x9, x9, #0FFH
+
+   A constant count is rotated by as ror x9, x9, #k, none if 0. As on
+   x86-64, a rotation of 32 bits leaves the upper ones zero; a narrow
+   one here leaves them zero too, where x86-64 leaves them as they
+   were, which differs only for a signed integer. *)
 proc rotate*(left: BOOL; size: INT);
+var c: BOOL; v: I64; r, y, w, sz: INT;
 begin
-    _ := left; _ := size;
-    notYet("ROL and ROR");
-    drop();   (* the count *)
+    w := size * 8;
+    sz := 4;
+    if size = 8 then sz := 8; end;
+    c, v := topConst();
+    v := v & I64(w - 1);
+    if left then v := (I64(w) - v) & I64(w - 1); end;
+    if c then
+        drop();
+        r := top();
+        if v = 0 then stack[depth - 1].k := kWord; return; end;
+    else
+        r, y := operands();
+        if left then A.neg(U, y); y := U; end;
+    end;
+    if w < 32 then
+        A.aluI(A.opAnd, r, r, (I64(1) shl w) - 1);
+        A.aluShift(A.opOrr, r, r, r, A.shLsl, w);
+        if w = 8 then A.aluShift(A.opOrr, r, r, r, A.shLsl, 16); end;
+    end;
+    if c then A.shiftI(A.shRor, r, r, INT(v), sz); else A.shift(A.shRor, r, r, y, sz); end;
+    if w < 32 then A.aluI(A.opAnd, r, r, (I64(1) shl w) - 1); end;
+    stack[depth - 1].k := kWord;
 end;
 
+(* CLZ, if leading, or CTZ of the unsigned integer of size bytes on top
+   (report section 6.1), whose bits above its width are zero. clz
+   counts the leading zeros of 32 or 64 bits, the whole width for 0;
+   of a U8 or a U16, those of 32 less the 24 or 16 above it. CTZ is
+   clz of the bits reversed (rbit), and of a U8 or a U16 a one bit set
+   just above its width first, so that 0 counts the width:
+
+       CLZ, a U8               CTZ, a U8
+           clz w9, w9              orr x9, x9, #100H
+           sub x9, x9, #24         rbit w9, w9
+                                   clz w9, w9 *)
 proc countZeros*(leading: BOOL; size: INT);
+var r, w, sz: INT;
 begin
-    _ := leading; _ := size;
-    notYet("CLZ and CTZ");
+    r := top();
+    w := size * 8;
+    sz := 4;
+    if size = 8 then sz := 8; end;
+    if not leading and (w < 32) then A.aluI(A.opOrr, r, r, I64(1) shl w); end;
+    if not leading then A.rbit(r, r, sz); end;
+    A.clz(r, r, sz);
+    if leading and (w < 32) then A.aluI(A.opSub, r, r, 32 - w); end;
+    stack[depth - 1].k := kWord;
 end;
 
+(* POPCOUNT of the integer or set on top (report section 6.1), by the
+   vector instructions every arm64 has, as C's compilers make it: cnt
+   counts the ones in each of the eight bytes, and addv adds them:
+
+       fmov d23, x9
+       cnt v23.8b, v23.8b
+       addv b23, v23.8b
+       fmov x9, d23 *)
 proc popCount*;
+var r: INT;
 begin
-    notYet("POPCOUNT");
+    r := top();
+    A.fmovFR(XT, r, false);
+    A.cnt(XT, XT);
+    A.addv(XT, XT);
+    A.fmovRF(r, XT, false);
+    stack[depth - 1].k := kWord;
 end;
 
-(* ABS of the signed integer on top: negated if negative, and cut back
-   to its width, so that the smallest value gives itself, as -x does
-   (Gen.x86_64.raz says more):
+(* ABS of the real, or the signed integer, on top. A real's sign bit is
+   cleared, fabs, a NaN's too, as x86-64 clears it. An integer is
+   negated if negative, and cut back to its width, so that the smallest
+   value gives itself, as -x does (Gen.x86_64.raz says more):
 
        cmp x9, #0
        cneg x9, x9, lt      ; csneg x9, x9, x9, ge
@@ -808,30 +939,43 @@ end;
 proc abs*(k: Kind; size: INT);
 var r: INT;
 begin
-    if k in {kF32, kF64} then notYet("reals"); end;
     r := top();
+    if k in {kF32, kF64} then A.fop1(A.fAbs, r, r, k = kF32); return; end;
     A.cmpI(r, 0);
     A.csel(A.csNeg, A.ccGE, r, r, r);
     if size < 8 then A.extend(r, r, size, true); end;
 end;
 
-(* The two values on top, compared: a BOOL, 1 or 0 *)
+(* The two values on top, compared: a BOOL, 1 or 0. Two reals are
+   compared by fcmp, and the BOOL is made in the left's integer
+   register: fcmp d16, d17; cset x9, mi for < (CcReal) *)
 proc compare*(sy: Scan.Sym; k: Kind; signed: BOOL);
-var r, y, i: INT;
+var r, x, y, i: INT;
 begin
-    if k in {kF32, kF64} then notYet("reals"); end;
     i := INT(sy) - INT(Scan.sEql);
+    if k in {kF32, kF64} then
+        y := loaded(depth - 1);
+        drop();
+        x := top();
+        drop();
+        r := target();
+        A.fcmp(x, y, k = kF32);
+        A.cset(CcReal[i], r);
+        computed(kWord);
+        return;
+    end;
     r, y := operands();
     A.cmp(r, y);
     if signed then A.cset(CcSigned[i], r); else A.cset(CcUnsigned[i], r); end;
     stack[depth - 1].k := kWord;
 end;
 
+(* -x; of a real, its sign bit flipped, fneg, as x86-64 flips it *)
 proc neg*(k: Kind; size: INT; signed: BOOL);
 var r: INT;
 begin
-    if k in {kF32, kF64} then notYet("reals"); end;
     r := top();
+    if k in {kF32, kF64} then A.fop1(A.fNeg, r, r, k = kF32); return; end;
     A.neg(r, r);
     if size < 8 then A.extend(r, r, size, signed); end;
 end;
@@ -860,24 +1004,53 @@ begin
     stack[depth - 1].k := kWord;
 end;
 
+(* The integer on top, as a real of kind k, in its real register: scvtf
+   of the 64 bits, or ucvtf if big, a U64 that may be above high(I64),
+   which x86-64 halves and doubles to the same value *)
 proc intToReal*(k: Kind; big: BOOL);
+var r: INT;
 begin
-    _ := big;
-    notYet("reals");
+    r := top();
+    A.scvtf(XRegs[(depth - 1) mod NumRegs], r, k = kF32, not big);
     stack[depth - 1].k := k;
 end;
 
+(* The real of kind k on top, toward zero, as an I64 (report 6.1, the
+   table of conversions); out of an I64's range, or a NaN, it is the
+   smallest I64, as x86-64's cvttsd2si gives. fcvtzs gives the nearest
+   I64 instead, and 0 for a NaN, so the result is mended: a NaN is
+   unordered with itself, which sets V, and only the largest I64, which
+   no real converts to exactly, overflows when 1 is added, setting V:
+
+       fcvtzs x9, d16
+       mov x15, #8000000000000000H
+       fcmp d16, d16
+       csel x9, x15, x9, vs      ; a NaN
+       cmn x9, #1
+       csel x9, x15, x9, vs      ; too big
+   Too small is the smallest already. *)
 proc realToInt*(k: Kind);
+var x, r: INT;
 begin
-    _ := k;
-    notYet("reals");
+    x := top();
+    r := Regs[(depth - 1) mod NumRegs];
+    A.fcvtz(r, x, k = kF32, true);
+    A.movRI(T, MIN(I64));
+    A.fcmp(x, x, k = kF32);
+    A.csel(A.csSel, A.ccVS, r, T, r);
+    A.cmpI(r, -1);
+    A.csel(A.csSel, A.ccVS, r, T, r);
     stack[depth - 1].k := kWord;
 end;
 
+(* The real of kind k on top, as the other kind: fcvt, which rounds to
+   the nearest as x86-64's cvtsd2ss does *)
 proc realToReal*(k: Kind);
+var x: INT;
 begin
-    notYet("reals");
-    stack[depth - 1].k := k;
+    x := top();
+    A.fcvt(x, x, k = kF64);
+    if k = kF32 then stack[depth - 1].k := kF64; else stack[depth - 1].k := kF32; end;
 end;
 
 (* Whether the slices in the frame at a and b (the offsets of their
@@ -966,10 +1139,18 @@ begin
     if size < 8 then A.extend(r, r, size, signed); end;
 end;
 
+(* NEW's memory, at the address on top, size bytes zeroed unless the
+   address is nil (the allocator had no room): cbz x9, L; then
+   zeroBytes from x0 *)
 proc zeroNew*(size: I64);
+var L, r: INT;
 begin
-    _ := size;
-    notYet("NEW");
+    r := top();
+    L := NoLabel;
+    A.cbz(false, r, L);
+    A.movRR(Dst, r);
+    zeroBytes(size);
+    A.fixLink(L);
 end;
 
 (* CAS(v, old, new), XCHG(v, x) or XADD(v, x), from the stack, v's
@@ -1378,11 +1559,74 @@ begin
     A.fixLink(out);
 end;
 
+(* FILL: every element of the slice in the frame at dOff, of size bytes
+   each, set to the value on top if the element is a scalar, or else to
+   the size bytes at the address on top; n is how many elements there
+   are if that is known, as of an array, else -1 (Gen.x86_64.raz says
+   more). A constant zero into an array is its bytes zeroed
+   (zeroBytes). A scalar, a real's bits as an integer's, goes into x15,
+   and is stored into each element, by a store each into an array of
+   FewFills elements or fewer, else by a loop:
+
+       ldr x0, [x29, #dOff]
+       ldr x2, [x29, #dOff + 8]
+       cbz x2, out
+   top: str w15, [x0], #4   ; a U32
+       subs x2, x2, #1
+       b.ne top
+   out:
+
+   Any other element is copied into d[0], and from there forward, from
+   d[0] on to d[1] on, as copySlice copies, by words if it is 8 bytes
+   or more, else by bytes: each is read after it is written, size
+   bytes before, so d[0] repeats through the rest.
+
+       ...                  ; d[0] := x, as for a copy, from x1
+       ldr x1, [x29, #dOff]
+       add x0, x1, #size
+       ldr x2, [x29, #dOff + 8]
+       sub x2, x2, #1
+       ...                  ; times size: the bytes of d[1..n]
+       ...                  ; copyRun(8), copyRun(1) *)
+const FewFills = 16;
+
 proc fillSlice*(dOff, size, n: I64; scalar: BOOL);
+var c: BOOL; v, i: I64; out, top: INT;
 begin
-    _ := dOff; _ := size; _ := n; _ := scalar;
-    notYet("FILL");
-    drop();
+    c, v := topConst();
+    out := NoLabel;
+    if scalar and c and (v = 0) and (n >= 0) then
+        drop();
+        A.load(Dst, FP, INT(dOff), 8, false);
+        zeroBytes(n * size);
+    elsif scalar and (n >= 0) and (n <= FewFills) then
+        popTo(T);
+        A.load(Dst, FP, INT(dOff), 8, false);
+        for i := 0 to n - 1 do A.store(T, Dst, INT(i * size), INT(size)); end;
+    elsif scalar then
+        popTo(T);
+        A.load(Dst, FP, INT(dOff), 8, false);
+        A.load(Tmp, FP, INT(dOff) + 8, 8, false);
+        A.cbz(false, Tmp, out);
+        top := Chunk.pc;
+        A.storeIdx(T, Dst, INT(size), INT(size), A.mPost);
+        A.aluI(A.opSubs, Tmp, Tmp, 1);
+        A.jccBack(A.ccNE, top);
+    else
+        popTo(Src);
+        A.load(Dst, FP, INT(dOff), 8, false);
+        A.load(Tmp, FP, INT(dOff) + 8, 8, false);
+        A.cbz(false, Tmp, out);
+        copyBytes(size);
+        A.load(Src, FP, INT(dOff), 8, false);
+        A.aluI(A.opAdd, Dst, Src, size);
+        A.load(Tmp, FP, INT(dOff) + 8, 8, false);
+        A.aluI(A.opSub, Tmp, Tmp, 1);
+        mulI(Tmp, size);
+        if size >= 8 then copyRun(8, false); end;
+        copyRun(1, false);
+    end;
+    A.fixLink(out);
 end;
 
 (* Pops hi, lo and a pointer, and makes the slice p[lo..hi] at tmp. Its
@@ -1418,23 +1662,27 @@ begin
 end;
 
 (* Calls. The arguments are the c.n values on top, each moved into the
-   next of x0 to x7 just before the call; the values under them are
-   spilled first, as the call may change their registers. As the stack's
-   registers carry no argument, the moves may go in any order. A slice
-   goes as its two words, both in registers or both on the stack, a
-   record by value as the address of a copy (Item makes it). The
-   arguments past the registers go on the machine's stack, 8 bytes
-   each, the first at sp, in an area sp is lowered by for the call, a
-   multiple of 16; and so do those past a C procedure's own parameters
-   where it ends in ..., in registers or not, as Apple's convention has
-   it (where a C procedure's own parameters past x7 narrower than 8
-   bytes would be packed, which raz doesn't do). A result in memory, a
-   record, an array or several results, goes to the caller's temporary
-   c.ret, its address in x8. A single result comes back in x0, two words
-   in x0 and x1: a slice is stored in c.ret, two results pushed as two
-   values. *)
+   next of x0 to x7, or a real into the next of v0 to v7, just before
+   the call; the values under them are spilled first, as the call may
+   change their registers. As the stack's registers carry no argument,
+   the moves may go in any order. A slice goes as its two words, both
+   in registers or both on the stack, a record by value as the address
+   of a copy (Item makes it). The arguments past the registers go on
+   the machine's stack, the first at sp, in an area sp is lowered by
+   for the call, a multiple of 16; and so do those past a C procedure's
+   own parameters where it ends in ..., in registers or not, as Apple's
+   convention has it. Each takes 8 bytes, a real as its bits, but a C
+   procedure's own parameter of an integer, BOOL, enumeration, set or
+   real, which takes its size, at a multiple of it, as Apple packs
+   them: an I32 then an I64 go at sp and sp + 8, an I32 then an I16 at
+   sp and sp + 4. A result in memory, a record, an array or several
+   results, goes to the caller's temporary c.ret, its address in x8. A
+   single result comes back in x0, or d0, two words in x0 and x1: a
+   slice is stored in c.ret, two results pushed as two values. *)
 proc call*(var c: CallInfo);
-var res: ^Sym.Type; i, ni, k, first, own, r: INT; area: I64; onStack: [64]BOOL;
+var
+    res: ^Sym.Type; q: ^Sym.Obj; i, ni, nf, first, own, r: INT; area: I64;
+    onStack: [64]BOOL; at, size: [64]INT;   (* where on the stack, and how wide *)
 begin
     first := depth - c.n;
     spillBelow(first);
@@ -1444,27 +1692,39 @@ begin
         c.ret := allocPerm(res^.size, res^.align);   (* kept, as on x86-64 (report 8) *)
     elsif (res # nil) and (Sym.behindPointer(res) or (res^.form = Sym.fSlice)) then
         c.ret := allocTemp(res^.size, res^.align);
-    elsif (res # nil) and (res^.form = Sym.fReal) then
-        notYet("reals");
     end;
     own := c.n;
     if c.sig^.variadic then own := paramWords(c.sig); end;
-    ni := 0; k := 0;
+    ni := 0; nf := 0; area := 0;
+    q := c.sig^.fields;   (* the parameter of argument i, while there is one *)
     for i := 0 to c.n - 1 do
-        if c.isF[i] then notYet("reals"); end;
+        size[i] := 8;
+        if c.ext and (q # nil) and not q^.isVar
+            and (q^.typ^.form in {Sym.fInt, Sym.fBool, Sym.fEnum, Sym.fSet, Sym.fReal}) then
+            size[i] := INT(q^.typ^.size);
+        end;
+        if (q # nil) and not c.pair[i] then q := q^.next; end;
         if i >= own then onStack[i] := true;
+        elsif c.isF[i] then onStack[i] := nf = 8;
         elsif (i > 0) and c.pair[i - 1] then onStack[i] := onStack[i - 1];
         else onStack[i] := ni + 1 + INT(c.pair[i]) > 8; end;
-        if onStack[i] then INC(k); else INC(ni); end;
+        if onStack[i] then
+            area := Sym.alignUp(area, size[i]);
+            at[i] := INT(area);
+            INC(area, size[i]);
+        elsif c.isF[i] then INC(nf);
+        else INC(ni); end;
     end;
-    area := Sym.alignUp(8 * k, 16);
+    area := Sym.alignUp(area, 16);
     if area > 0 then A.aluI(A.opSub, SP, SP, area); end;
-    k := 0; ni := 0;
+    ni := 0; nf := 0;
     for i := 0 to c.n - 1 do
         if onStack[i] then
             valueTo(first + i, T);
-            A.store(T, SP, 8 * k, 8);
-            INC(k);
+            A.store(T, SP, at[i], size[i]);
+        elsif c.isF[i] then
+            xValueTo(first + i, nf);
+            INC(nf);
         else
             valueTo(first + i, ni);
             INC(ni);
@@ -1489,6 +1749,9 @@ begin
         elsif Sym.inTwoRegs(res) then
             A.movRR(target(), 0); computed(kWord);
             A.movRR(target(), 1); computed(kWord);
+        elsif (c.ret = 0) and (res^.form = Sym.fReal) then
+            A.fop1(A.fMov, xTarget(), 0, false);
+            computed(kindOf(res));
         elsif c.ret = 0 then
             (* C leaves the bits above a narrow result as they fall *)
             r := target();
@@ -1539,10 +1802,12 @@ end;
 (* The parameters' places: each in a frame slot of its own, stored there
    from its register on entry, or above the frame where the caller put
    it, past the frame record (call). A var parameter, and a record or
-   array passed by value, holds an address (ind). The address of a
-   result in memory arrives in x8, and is kept in retSlot. *)
+   array passed by value, holds an address (ind). A real comes in the
+   next of v0 to v7, and the ninth on, as call puts them, on the stack.
+   The address of a result in memory arrives in x8, and is kept in
+   retSlot. *)
 proc beginProc*(sig: ^Sym.Type; params: ^Sym.Obj);
-var p: ^Sym.Obj; ni, k, w: INT; stackOff: I64;
+var p: ^Sym.Obj; ni, nf, k, w: INT; stackOff: I64; f: BOOL;
 begin
     frameTop := 0; frameMax := 0; permTop := 0;
     resetStack(0, 0);
@@ -1557,18 +1822,20 @@ begin
         inReg[0] := 8; inSlot[0] := retSlot; inSize[0] := 8; inObj[0] := nil;
         numIn := 1;
     end;
-    ni := 0;
+    ni := 0; nf := 0;
     stackOff := 16;
     p := params;
     while p # nil do
         p^.ind := p^.isVar or (Sym.isAggregate(p^.typ) and (p^.typ^.form # Sym.fSlice));
+        f := (p^.typ^.form = Sym.fReal) and not p^.isVar;
         k := 1;
         if (p^.typ^.form = Sym.fSlice) and not p^.isVar then k := 2; end;
-        if (p^.typ^.form = Sym.fReal) and not p^.isVar then
-            notYet("a real parameter");
+        if f and (nf < 8) then
             p^.val := allocPerm(8, 8);
+            inReg[numIn] := -1 - nf; inSlot[numIn] := p^.val; inSize[numIn] := 8; inObj[numIn] := p;
+            INC(numIn); INC(nf);
             k := 0;
-        elsif ni + k > 8 then   (* on the stack, as call puts it *)
+        elsif f or (ni + k > 8) then   (* on the stack, as call puts it *)
             p^.val := stackOff;
             INC(stackOff, 8 * k);
             k := 0;
@@ -1615,16 +1882,42 @@ begin
     zeroTop := permTop;
     regMask := mask;
     k := 0;
-    for i := 0 to 4 do
+    for i := 0 to XBit + 7 do
         if (mask & (1 shl i)) # 0 then INC(k); end;
     end;
     if k > 0 then saveAt := allocPerm(8 * k, 8); end;
     frameAt[0] := frameTop; frameAt[1] := frameMax; frameAt[2] := permTop;
 end;
 
+(* The registers of variables in regMask, saved from saveAt on, a
+   quadword each, x19 to x23 first, then d8 to d15, of which a called
+   procedure keeps the low 64 bits, and so must give them back; and
+   each zeroed, as a variable starts at zero. Or, if back, restored. *)
+proc saveRegs(back: BOOL);
+var i, n, r: INT;
+begin
+    n := 0;
+    for i := 0 to XBit + 7 do
+        if (regMask & (1 shl i)) # 0 then
+            if i < XBit then
+                r := VarRegs[i];
+                if back then A.load(r, FP, INT(saveAt) + 8 * n, 8, false);
+                else A.store(r, FP, INT(saveAt) + 8 * n, 8); A.movRI(r, 0); end;
+            else
+                r := XVarRegs[i - XBit] - XmmVar;
+                if back then A.loadF(r, FP, INT(saveAt) + 8 * n, 8);
+                else A.storeF(r, FP, INT(saveAt) + 8 * n, 8); A.fmovFR(r, ZR, false); end;
+            end;
+            INC(n);
+        end;
+    end;
+end;
+
+(* The variable in register r of XVarRegs has a slot of 8 bytes at
+   slot, which popVar writes as it writes r *)
 proc xHome*(r: INT; slot: I64);
 begin
-    _ := r; _ := slot;
+    homes[r - XVarRegs[0]] := slot;
 end;
 
 proc markCode*(var m: CodeMark);
@@ -1667,7 +1960,6 @@ var i, loop, r: INT; n: I64; p: ^Sym.Obj;
 begin
     Chunk.beginChunk(c);
     codeChunk := c;
-    if LEN(pending) > 0 then Chunk.setMissing(c, pending, pendingAt); pending := ""; end;
     Chunk.noteLine(line, 1);   (* a declaration starts a line *)
     A.stp(FP, LR, SP, -16, A.mPre);
     A.movRR(FP, SP);
@@ -1685,18 +1977,13 @@ begin
         A.aluI(A.opSubs, U, U, 1);
         A.jccBack(A.ccNE, loop);
     end;
-    if (regMask shr XBit) # 0 then notYet("reals in registers"); end;
-    Chunk.setSaves(c, regMask, INT(saveAt));
-    n := 0;
-    for i := 0 to 4 do
-        if (regMask & (1 shl i)) # 0 then
-            A.store(VarRegs[i], FP, INT(saveAt + 8 * n), 8);
-            A.movRI(VarRegs[i], 0);
-            INC(n);
-        end;
-    end;
+    Chunk.setSaves(c, regMask & ((1 shl XBit) - 1), INT(saveAt));
+    saveRegs(false);
     for i := 0 to numIn - 1 do
-        if (inObj[i] # nil) and (inObj[i]^.reg # 0) then
+        if inReg[i] < 0 then   (* a real, from v0 to v7 *)
+            A.storeF(-1 - inReg[i], FP, INT(inSlot[i]), 8);
+            if inObj[i]^.reg # 0 then A.fop1(A.fMov, inObj[i]^.reg - XmmVar, -1 - inReg[i], false); end;
+        elsif (inObj[i] # nil) and (inObj[i]^.reg # 0) then
             r := inObj[i]^.reg;
             if inSlot[i] # inObj[i]^.val then r := inObj[i]^.reg2; end;
             A.movRR(r, inReg[i]);
@@ -1711,7 +1998,9 @@ begin
     p := procParams;
     while p # nil do
         if (p^.reg # 0) and (p^.val > 0) then
-            if not p^.ind and (p^.typ^.form in {Sym.fInt, Sym.fBool, Sym.fEnum, Sym.fSet}) then
+            if not p^.ind and (p^.typ^.form = Sym.fReal) then
+                A.loadF(p^.reg - XmmVar, FP, INT(p^.val), INT(p^.typ^.size));
+            elsif not p^.ind and (p^.typ^.form in {Sym.fInt, Sym.fBool, Sym.fEnum, Sym.fSet}) then
                 A.load(p^.reg, FP, INT(p^.val), INT(p^.typ^.size), p^.typ^.signed);
             else
                 A.load(p^.reg, FP, INT(p^.val), 8, false);
@@ -1730,12 +2019,13 @@ end;
 (* Pops one of several results, a value of size bytes, into its place
    off bytes into the caller's, at the address that came in x8 *)
 proc resultTo*(off: I64; size: INT);
-var r: INT;
+var r: INT; fl: BOOL;
 begin
     r := top();
+    fl := isReal(depth - 1);
     drop();
     A.load(U, FP, INT(retSlot), 8, false);
-    A.store(r, U, INT(off), size);
+    if fl then A.storeF(r, U, INT(off), size); else A.store(r, U, INT(off), size); end;
 end;
 
 (* Pops an address, and copies size bytes from it to the result, off
@@ -1748,11 +2038,14 @@ begin
     copyBytes(size);
 end;
 
-(* return: the result, a value on top, goes in x0; two words, the two
-   values on top, in x0 and x1; one in memory is there already *)
+(* return: the result, a value on top, goes in x0, or d0; two words,
+   the two values on top, in x0 and x1; one in memory is there already *)
 proc returnJump*;
 begin
-    if (resType # nil) and not Sym.behindPointer(resType) then
+    if (resType # nil) and (resType^.form = Sym.fReal) then
+        xValueTo(depth - 1, 0);
+        drop();
+    elsif (resType # nil) and not Sym.behindPointer(resType) then
         if Sym.inTwoRegs(resType) then popTo(1); end;
         popTo(0);
     end;
@@ -1816,7 +2109,7 @@ end;
    frame's size, known only now, patched into its prologue. If it is
    open, running off its end, it returns zeros. *)
 proc endProc*(c: INT; open: BOOL): ERROR;
-var n: I64; i: INT;
+var n: I64;
 begin
     codeChunk := -1;
     if (depth # 0) or (pushed # 0) then Diag.fatal("internal error: stack depth"); end;
@@ -1826,17 +2119,12 @@ begin
     elsif open then
         A.movRI(0, 0);
         if Sym.inTwoRegs(resType) then A.movRI(1, 0); end;
+        A.fmovFR(0, ZR, false);
     else
         A.dropJumpTo(exitL);
     end;
     A.fixLink(exitL);
-    n := 0;
-    for i := 0 to 4 do
-        if (regMask & (1 shl i)) # 0 then
-            A.load(VarRegs[i], FP, INT(saveAt + 8 * n), 8, false);
-            INC(n);
-        end;
-    end;
+    saveRegs(true);
     A.movRR(SP, FP);
     A.ldp(FP, LR, SP, 16, A.mPost);
     A.ret();
@@ -1964,18 +2252,33 @@ begin
     return nil;
 end;
 
-(* A code procedure that is one instruction on a real, as Math.sqrt on
-   x86-64, is made in place of its call there; none is, yet, here *)
-proc oneRealOp*(c: INT): INT;
+(* Whether the code procedure in chunk c is a square root of d0, or of
+   s0 if single, in itself, then ret, as Math.sqrt is, which a call of
+   it does in place (realInPlace), as on x86-64: its first word, or 0. *)
+const FsqrtD = 1E61C000H; FsqrtS = 1E21C000H; Ret = 0D65F03C0H;
+
+proc oneRealOp*(c: INT; single: BOOL): INT;
+var s, i, w, want: INT; words: [2]INT;
 begin
-    _ := c;
+    s := Chunk.chunks[c].start;
+    if (Chunk.chunks[c].size # 8) or (Chunk.chunks[c].numFix # 0) then return 0; end;
+    for w := 0 to 1 do
+        words[w] := 0;
+        for i := 3 to 0 by -1 do words[w] := words[w] shl 8 | INT(Chunk.text[s + 4 * w + i]); end;
+    end;
+    want := FsqrtD;
+    if single then want := FsqrtS; end;
+    if (words[0] = want) and (words[1] = Ret) then return want; end;
     return 0;
 end;
 
+(* The square root of oneRealOp on the real on top, in its register:
+   Math.sqrt(d2) is fsqrt d16, d16, with no call *)
 proc realInPlace*(op: INT);
+var x: INT;
 begin
-    _ := op;
-    notYet("reals");
+    x := top();
+    A.fop1(A.fSqrt, x, x, op = FsqrtS);
 end;
 
 var i: INT;
@@ -1983,7 +2286,6 @@ begin
     for i := 0 to LEN(failStubs) - 1 do failStubs[i] := -1; end;
     Chunk.setPad(0D4200020H);   (* brk #1, a trap, between procedures *)
     codeChunk := -1;
-    pending := "";
     resetStack(0, 0);
     rtFail := Chunk.newChunk(Chunk.secText, internStr("Rt"), internStr("fail"));
     argcChunk := Chunk.newChunk(Chunk.secBss, -1, internStr("argc"));

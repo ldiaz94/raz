@@ -3606,8 +3606,7 @@ begin
     q := sig^.fields;
     if (q # nil) and (q^.next = nil) and not q^.isVar and (q^.typ^.form = Sym.fReal)
         and (sig^.base # nil) and Sym.same(sig^.base, q^.typ) then
-        p^.inl := Gen.oneRealOp(p^.chunk);
-        if (p^.inl shr 8 = 0F3H) # (q^.typ^.size = 4) then p^.inl := 0; end;
+        p^.inl := Gen.oneRealOp(p^.chunk, q^.typ^.size = 4);
     end;
     return expect(Scan.sEnd);
 end;

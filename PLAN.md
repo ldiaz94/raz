@@ -227,7 +227,7 @@ linux/amd64 container on the Mac until there is a Mac compiler):
    `fxPageOff12`, and `Scan.setBang` for a pre-index's `!`. What it
    left for later, `Link`'s patching of those kinds, `Gen.arm64.raz`
    importing `A64`, and padding with `brk`, came with 5a.
-5. `Gen.arm64.raz`, in pieces, each run on the Mac (owner, 2026-11-15):
+5. Done. `Gen.arm64.raz`, in pieces, each run on the Mac (owner, 2026-11-15):
    first a bare `Exe.darwin.raz` (a signed Mach-O over libSystem, no line
    numbers) and an `Rt` that only exits, built by the staged cross
    compiler in the container; then values and operations; jumps and
@@ -264,6 +264,25 @@ linux/amd64 container on the Mac until there is a Mac compiler):
    `CLZ`, `ROL`, or `SYSCALL` (`SystemImport`, Linux's only). Left of
    step 5 (5c): the reals, `FILL`, `NEW`'s zeroing, the counts of bits
    and the rotations.
+
+   5c, done: the reals, `F32` and `F64`, on the stack in v16 to v21 and
+   as variables in d8 to d15, which the prologue saves; their
+   operations, comparisons (a NaN equal to nothing), conversions both
+   ways and between widths, a real out of an `I64`'s range or a NaN
+   mended to the smallest `I64` after `fcvtzs`, `ABS` and `-`; real
+   arguments in v0 to v7 and on the stack, results in d0; a code
+   procedure that is `fsqrt` made in place of its call. `FILL`,
+   `NEW`'s zeroing, `CLZ`, `CTZ`, `POPCOUNT` (by `cnt` and `addv`),
+   `ROL` and `ROR` at every width. A C procedure's own arguments past
+   x7 packed by their size, as Apple's convention wants. Nothing of
+   `Gen.arm64.raz` is "not yet"; only `SYSCALL` is refused, so
+   `test/mac.sh` skips conform/run's `SystemImport`, with the reason.
+   conform/run passes on the Mac, 110 of 110; `test/mac` has the reals'
+   edges (`Reals`), rotations and counts of every width (`Rotate`) and
+   `fsqrt` in place (`Sqrt`). Left for later steps: `Math`'s arm64
+   twin, so that `Math.sqrt` is made in place (step 7). A rotation of a
+   negative `I8` or `I16` leaves the bits above its width zero, where
+   x86-64's `rol al, cl` leaves them as they were.
 6. `Exe.darwin.raz`'s line numbers for lldb (its rebases came with
    5a); `Host.darwin.raz`.
 7. The library: `CAbi`, `Sys`, `Rt`, `Thread`, `Bytes`, `Math`, `Str`.

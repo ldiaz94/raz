@@ -1,0 +1,104 @@
+(* Reals at their edges, as x86-64 gives them: a NaN equal to nothing,
+   a real out of an I64's range or a NaN converted to the smallest I64,
+   then cut; -0.0; F32's rounding; a U64 above high(I64); reals as
+   arguments past v7, results, in records, slices and registers *)
+module Reals;
+import Out, Fmt;
+
+type Pt = record x: F64; y: F32; n: INT; end;
+
+var zero, one: F64;
+
+proc real(x: F64);
+var b: [Fmt.ShortMost]U8;
+begin
+    Out.str(Fmt.short(x, b)); Out.str(" ");
+end;
+
+proc bool(b: BOOL);
+begin
+    if b then Out.str("T"); else Out.str("F"); end;
+end;
+
+(* every comparison of a and b *)
+proc compare(a, b: F64);
+begin
+    bool(a = b); bool(a # b); bool(a < b); bool(a <= b); bool(a > b); bool(a >= b);
+    Out.str(" ");
+end;
+
+proc compare32(a, b: F32);
+begin
+    bool(a = b); bool(a # b); bool(a < b); bool(a <= b); bool(a > b); bool(a >= b);
+    Out.str(" ");
+end;
+
+(* x converted to each integer width *)
+proc toInt(x: F64);
+begin
+    Out.int(I64(x)); Out.str(" "); Out.int(I64(I32(x))); Out.str(" ");
+    Out.int(I64(I16(x))); Out.str(" "); Out.int(I64(U8(x))); Out.str(" ");
+    Out.int(I64(F32(x))); Out.ln;
+end;
+
+(* ten reals and ten integers: the ninth and tenth of each on the stack *)
+proc many(a, b, c, d, e, f, g, h, i, j: F64; k, l, m, n, o, p, q, r: INT; s: F32; t: INT): F64;
+begin
+    return a + b * 2.0 + c * 3.0 + d * 4.0 + e * 5.0 + f * 6.0 + g * 7.0 + h * 8.0
+        + i * 9.0 + j * 10.0 + F64(k + l + m + n + o + p + q + r + t) + F64(s);
+end;
+
+proc half(x: F32): F32;
+begin
+    return x / 2.0;
+end;
+
+proc swapped(p: Pt): (F32, F64);
+begin
+    return p.y, p.x;
+end;
+
+proc main*;
+var
+    nan, inf, nz, x, sum: F64;
+    f, g: F32;
+    u: U64;
+    p: Pt;
+    a: [5]F64;
+    s: []F64;
+    i: INT;
+begin
+    nan := zero / zero;
+    inf := one / zero;
+    nz := -zero;
+    real(nan); real(inf); real(-inf); real(nz); real(ABS(nz)); real(-nz); real(one / nz); Out.ln;
+    compare(nan, nan); compare(nan, one); compare(one, nan); compare(one, one); compare(nz, zero); Out.ln;
+    f := F32(nan); g := 1.5;
+    compare32(f, g); compare32(g, f); compare32(g, g); Out.ln;
+    real(ABS(nan)); real(-nan); bool(ABS(nan) = ABS(nan)); Out.ln;
+    toInt(nan); toInt(inf); toInt(-inf); toInt(1.0E300); toInt(-1.0E300);
+    toInt(9.3E18); toInt(-9.3E18); toInt(9.2233720368547748E18); toInt(-9.2233720368547758E18);
+    toInt(2.75); toInt(-2.75); toInt(70000.9); toInt(-0.5); toInt(300.0); toInt(nz);
+    (* F32's rounding *)
+    f := F32(0.1); real(F64(f)); f := F32(16777217.0); real(F64(f));
+    f := 0.1; g := 0.2; real(F64(f + g)); real(F64(f * g)); real(F64(f / g)); real(F64(f - g));
+    f := F32(1.0E39); real(F64(f)); f := F32(1.0E-46); real(F64(f)); real(F64(F32(-1.0E-46)));
+    g := 3.4028234E38; real(F64(g * 2.0)); real(F64(half(3.0))); Out.ln;
+    (* integers to reals *)
+    u := MAX(U64); real(F64(u)); real(F64(F32(u))); u := 8000000000000401H; real(F64(u));
+    real(F64(MIN(I64))); i := 16777217; real(F64(F32(i))); real(F64(I8(-7))); Out.ln;
+    (* calls, records, slices, registers *)
+    real(many(1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 1, 2, 3, 4, 5, 6, 7, 8, 0.25, 9));
+    p.x := 2.5; p.y := -1.25; p.n := 3;
+    f, x := swapped(p); real(F64(f)); real(x);
+    for i := 0 to 4 do a[i] := F64(i) * 0.5; end;
+    s := a[1..5];
+    FILL(s[2..4], -3.5);
+    sum := 0.0;
+    for i := 0 to LEN(s) - 1 do sum := sum + s[i] * F64(i + 1); end;
+    real(sum); real(a[3]); real(a[0]); Out.ln;
+end;
+
+begin
+    one := 1.0;
+end Reals.

@@ -1,0 +1,35 @@
+(* A code procedure that is a square root of d0 and ret is made in
+   place of its call (Gen.oneRealOp), as Math.sqrt is on x86-64; F32's
+   too. Its own here, as lib/Math.raz has x86-64's yet. *)
+module Sqrt;
+import Out, Fmt;
+import SYSTEM;
+
+proc root(x: F64): F64;
+code
+    fsqrt d0, d0;
+    ret;
+end root;
+
+proc root32(x: F32): F32;
+code
+    fsqrt s0, s0;
+    ret;
+end root32;
+
+proc real(x: F64);
+var b: [Fmt.ShortMost]U8;
+begin
+    Out.str(Fmt.short(x, b)); Out.str(" ");
+end;
+
+proc main*;
+var x: F64; f: F32;
+begin
+    x := 2.0;
+    real(root(x)); real(root(x * 8.0) + 1.0);
+    f := 2.0;
+    real(F64(root32(f))); real(root(-x)); Out.ln;
+end;
+
+end Sqrt.

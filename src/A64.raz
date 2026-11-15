@@ -576,7 +576,8 @@ const Sizes: [4][]const U8 = ["b", "h", "w", ""];
 var opc: INT; s, r: []const U8;
 begin
     opc := (bits shr 22) & 3;
-    if (opc & 1) = 0 then s := "str"; else s := "ldr"; end;
+    (* opc 0 stores, and 2 a real's q; else it loads, 2 an ldrsw *)
+    if (opc = 0) or (opc = 2) and ((bits & 04000000H) # 0) then s := "str"; else s := "ldr"; end;
     if unscaled then s := Diag.say("{}ur", [Fmt.str(s[0..2])]); end;
     if (bits & 04000000H) # 0 then
         r := vreg(rt, sizeOf(bits));
@@ -838,6 +839,22 @@ end;
 proc fmovRF*(rd, vn: INT; single: BOOL);
 begin
     fconv("fmov", bit(not single), 8 - 4 * bit(single), 0, 6, rd, vn, false);
+end;
+
+(* Two of the vector instructions, on the low 8 bytes of a register,
+   for POPCOUNT: cnt vd.8b, vn.8b, the ones in each byte, and addv bd,
+   vn.8b, the eight bytes added: 0 0 0 01110 00 10000 00101 10 Rn Rd,
+   and 0 0 0 01110 00 11000 11011 10 Rn Rd *)
+proc cnt*(vd, vn: INT);
+begin
+    if listing then say(Diag.say("cnt v{}.8b, v{}.8b", [Fmt.int(vd), Fmt.int(vn)])); end;
+    emit(0E205800H | (vn shl 5) | vd);
+end;
+
+proc addv*(vd, vn: INT);
+begin
+    if listing then say(Diag.say("addv b{}, v{}.8b", [Fmt.int(vd), Fmt.int(vn)])); end;
+    emit(0E31B800H | (vn shl 5) | vd);
 end;
 
 (* Addresses, and references to other chunks *)

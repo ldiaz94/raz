@@ -9,7 +9,8 @@
 # Then conform/run's programs the same way, into build/mac/conform,
 # with their arguments (X.args): until the port is whole some fail,
 # which are counted and listed in build/mac/conform.fail, not failures
-# of the run.
+# of the run. A few of conform/run are not for this target, each named
+# in notHere with the reason, and skipped.
 #
 #     test/mac.sh build    in the container: the cross compiler, then the programs
 #     test/mac.sh run      on the Mac: each program, run with a timeout
@@ -19,6 +20,8 @@
 # written again in place with another one.
 set -e
 out=build/mac
+# conform/run's programs that are not for darwin-arm64, and why
+notHere='SystemImport: SYSTEM.SYSCALL is Linux'"'"'s only (report 6.8)'
 case $1 in
 build)
     src/cross.sh darwin-arm64
@@ -62,9 +65,11 @@ run)
     c=$out/conform
     cpass=0
     cfail=0
+    cskip=0
     : > $c.fail
     for f in conform/run/*.raz; do
         name=$(basename $f .raz)
+        if echo "$notHere" | grep -q "^$name:"; then cskip=$((cskip + 1)); continue; fi
         want=0
         [ -f conform/run/$name.status ] && want=$(cat conform/run/$name.status)
         if [ ! -x $c/$name ]; then
@@ -87,7 +92,7 @@ run)
             cpass=$((cpass + 1))
         fi
     done
-    echo "conform/run: $cpass of $((cpass + cfail)) passed; the others in $c.fail"
+    echo "conform/run: $cpass of $((cpass + cfail)) passed, $cskip not for this target; the others in $c.fail"
     [ $fail = 0 ]
     ;;
 *)

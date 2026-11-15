@@ -167,6 +167,8 @@ fmov d0, x1
 fmov s2, w3
 fmov x4, d5
 fmov w6, s7
+cnt v16.8b, v17.8b
+addv b18, v19.8b
 // addresses, calls
 adr x0, .
 adr x1, .-4

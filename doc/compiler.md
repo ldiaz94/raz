@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is fifteen files of raz, about 16,400 lines of code (the
+The compiler is fifteen files of raz, about 16,500 lines of code (the
 budget is 18,000); three of them, `A64.raz`, `Gen.arm64.raz` and
 `Exe.darwin.raz`, are the Mac's back end, begun (`PLAN.md` 5), built
 only into a compiler for `darwin-arm64` (`src/cross.sh`). It is its own compiler: a release of it, the one
@@ -23,11 +23,11 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Sym.raz` | 866 | 689 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 410 | 302 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,771 | 1,450 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/A64.raz` | 1,843 | 1,365 | The same for arm64: the encoder, jumps, the assembler |
-| `src/Gen.x86_64.raz` | 2,861 | 1,999 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Gen.arm64.raz` | 1,993 | 1,398 | The same for arm64, begun: frames, values, operations, checks, calls |
+| `src/A64.raz` | 1,860 | 1,375 | The same for arm64: the encoder, jumps, the assembler |
+| `src/Gen.x86_64.raz` | 2,863 | 2,001 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Gen.arm64.raz` | 2,295 | 1,573 | The same for arm64: values, operations, reals, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,948 | 4,198 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,947 | 4,197 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 481 | 365 | Tree shaking, layout, patching, the places |
 | `src/Exe.linux.raz` | 455 | 358 | The executable, ELF: static and dynamic, symbol table, line numbers |
 | `src/Exe.darwin.raz` | 458 | 332 | The executable for macOS, Mach-O: dyld's binds and rebases, the signature |
@@ -1313,7 +1313,8 @@ a negative one the opposite operation), `cmp`, `cmpI`, `neg`, `mvn`;
 size, register file and operation: a scaled offset, else unscaled, else
 through x16), `ldp`, `stp`; the LSE atomics `ldaddal`, `swpal` and
 `casal`, and `dmb`, `svc`, `brk`, `align`; for reals `fop`, `fop1`,
-`fcvt`, `fcmp`, `scvtf`, `fcvtz`, `fmovFR` and `fmovRF`. Two things
+`fcvt`, `fcmp`, `scvtf`, `fcvtz`, `fmovFR` and `fmovRF`; and two vector
+instructions, `cnt` and `addv`, for `POPCOUNT`. Two things
 x86 does and arm64 doesn't are Gen's to mend, as their comments say:
 `sdiv` by zero gives 0, and `fcvtzs` saturates where x86 gives the
 smallest `I64`.
@@ -1379,7 +1380,7 @@ with `-I src`, assembles `Asm.txt` and calls every routine, and prints
 each word in hex and each fixup; `expect.sh`, on an arm64 Mac, makes
 `Encode.expect` from `Asm.txt` in Apple's syntax and `Api.s`, the
 calls' instructions a line each, with `cc -c -arch arm64` and `objdump`:
-428 words and 20 relocations, the farthest jumps among them, across a
+430 words and 20 relocations, the farthest jumps among them, across a
 megabyte of `nop`.
 
 ## Gen.raz: the stack machine
@@ -1712,36 +1713,25 @@ callee-saved xmm register.
 
 ## Gen.arm64.raz: the stack machine on arm64
 
-arm64's `Gen`, for macOS on Apple Silicon (`PLAN.md` 5), is begun. It
-answers every call `Gen.x86_64.raz` answers, with the same parameters,
-as the interface check holds the two files to (report, 3), and makes
-frames, constants, the values of variables and their stores, the
-integer operations, division with its checks, comparisons and jumps,
-jump tables, elements and slices and their checks, calls with integer
-arguments in registers and on the stack, results in memory, C's calls
-and Apple's variadic ones, `try`, deferred statements, the atomics,
-`COPY`, code procedures (`A64.assemble`) and the entry point; not yet
-the reals, `FILL`, `NEW`'s zeroing, the counts of bits and the
-rotations (step 5c). `Gen.Arch` is `"arm64"`.
+arm64's `Gen`, for macOS on Apple Silicon (`PLAN.md` 5). It answers
+every call `Gen.x86_64.raz` answers, with the same parameters, as the
+interface check holds the two files to (report, 3), and makes all that
+x86-64's makes, but `SYSTEM.SYSCALL`, which the report gives only on
+Linux (6.8). `Gen.Arch` is `"arm64"`. It was made in three steps, 5a
+to 5c, each run on the Mac; conform/run passes there whole, but for
+`SystemImport`.
 
-*Not yet.* What it can't make yet isn't refused at once, since a
-library module holds much that a program never calls: the C library's
-`Sys` is compiled whole for the Mac, as the interface check of `Rt`
-reads `Rt.raz`, which imports it. So a routine not yet made calls
-`notYet`, which notes on the procedure's chunk what it is and where,
-the first only (`Chunk.setMissing`); keeps the stack as the real
-routine would, so that the compile reads on; and makes what code it
-likes, never run. Once `Link.markLive` has marked what the program
-reaches, `Raz` makes each live chunk so noted an error at its place:
+*What it won't make.* `SYSCALL` isn't refused at once, since a library
+module may hold what a program never calls. `missing` notes on the
+procedure's chunk what it is and where (`Chunk.setMissing`), and keeps
+the stack as the real routine would, so that the compile reads on.
+Once `Link.markLive` has marked what the program reaches, `Raz` makes
+each live chunk so noted an error at its place:
 
-    D.raz:8:19: error: not yet on arm64: div and mod
+    S.raz:21:25: error: SYSTEM.SYSCALL is Linux's only: call the C library
 
-A program that uses what isn't made fails to compile, and one that
-doesn't compiles. `beginProc` comes before its chunk is begun, so its
-notes wait for `enterBody` (`pending`). A routine not yet made reads
-into `_` the parameters it doesn't use yet, so that none is warned of.
-`SYSTEM.SYSCALL`, which the report gives only on Linux (6.8), is noted
-the same way, with a message of its own, and stays so.
+Until 5c every routine not yet made was noted so, which let the port
+run its first programs before the whole of `Gen` was there.
 
 *The stack* is x86-64's, kept as plainly as it can be: the value at
 depth d is in `Regs[d mod 6]`, x9 to x14, which a call may change and
@@ -1756,6 +1746,67 @@ the value's register. Outside the stack, x15 and x17 are Gen's scratch,
 as rax and rcx are x86's; x16 is A64's; x0 to x3 copy and cut slices,
 between calls; x8 is kept for the address of a result in memory, as
 Apple's convention has it, and x18, the system's, is never touched.
+
+*Reals* are held as x86-64 holds them, in the registers that compute
+with reals: the value at depth d in `XRegs[d mod 6]`, v16 to v21, as
+d or s, so that each depth has two registers, one of each file, and
+`owner` doesn't tell them apart (`loaded`, `xTarget`). Like x9 to x14
+they are a call's to change and carry no argument, so `call` moves a
+real into v0 to v7 in any order; v23 is Gen's scratch (`XT`). A spilled
+real takes 8 bytes, an F32 with what lies above it. arm64 has no
+instruction that holds any real, and `fmov`'s immediate holds few, so a
+constant is made from its bits in x15 and moved across, which for most
+constants of a program, 0.25 or 2.0, is one `movz`; 0.0 comes from the
+zero register (`xValueTo`):
+
+```
+movz x15, #16368, lsl #48      ; 1.0
+fmov d17, x15
+fadd d16, d16, d17
+```
+
+The operations are one instruction each, on two registers (`realOp`),
+the right operand loaded first. `neg` and `ABS` are `fneg` and
+`fabs`, which flip or clear the sign bit and nothing else, a NaN's
+too, as x86-64's `btc` and `btr` do. A comparison is `fcmp` and a
+`cset` of the left's integer register, by `CcReal`: an unordered pair,
+a NaN on either side, sets C and V and not N or Z, so `=` is `eq` and
+`#` is `ne`, as IEEE wants, but `<` and `<=` can't be `lt` and `le`,
+which test N # V and hold for a NaN; they are `mi` and `ls`. `>` and
+`>=`, `gt` and `ge`, don't hold for one. An integer becomes a real by
+`scvtf` of its 64 bits, or `ucvtf` for a `U64`, which rounds as
+x86-64's halving and doubling does; a real becomes the other by `fcvt`.
+A real becomes an integer by `fcvtzs`, toward zero, as the report's
+table has it; but where x86-64's `cvttsd2si` gives the smallest `I64`
+for a NaN or a real out of range, `fcvtzs` gives 0 for a NaN and the
+nearest `I64` beyond, so `realToInt` mends it. A NaN is unordered with
+itself, which sets V; the largest `I64`, which no real converts to
+exactly, is the one value 1 overflows, which sets V too; too small is
+the smallest already:
+
+```
+fcvtzs x9, d16
+mov x15, #8000000000000000H
+fcmp d16, d16
+csel x9, x15, x9, vs           ; a NaN
+cmn x9, #1
+csel x9, x15, x9, vs           ; too big
+```
+
+then cut to a narrow type's width as on x86-64, so `I32(nan)` is 0.
+
+A real argument goes in the next of v0 to v7, the ninth on the stack
+as an integer past x7 does, and a real result comes back in d0
+(`call`, `beginProc`, `returnJump`). `FILL` stores a real's bits as an
+integer's. A real variable takes one of d8 to d15 (`XVarRegs`), whose
+low 64 bits Apple's convention has a called procedure keep: so, unlike
+x86-64, where no xmm register outlives a call and each real variable
+is loaded again after one, the prologue saves those it uses, beside
+x19 to x23, the epilogue restores them (`saveRegs`), and a call leaves
+them be. `popVar` still writes each through to its slot (`homes`,
+`xHome`), as x86-64's does, where a trap report finds it. A code
+procedure that is `fsqrt d0, d0` and `ret`, as `Math.sqrt` will be, is
+made in place of its call (`oneRealOp`, `realInPlace`), as on x86-64.
 
 A place in memory is a `Mem`: a register and an offset, or a chunk and
 an offset, which A64 reaches by `adrp` and the place in the page
@@ -1786,9 +1837,9 @@ Every slot is at a negative offset from x29, and nothing is pushed in
 a body, so sp stays a multiple of 16 and `pushed` is always 0. The
 busiest variables take x19 to x23 (`VarRegs`), which a callee gives
 back; no parameter is kept where it arrives (`keepArrived` does
-nothing); the reals' variables will take d8 to d15 (`XVarRegs`,
-numbered from `XmmVar`, 32, above every x register, which `Parse` tells
-apart by it).
+nothing); the reals' variables take d8 to d15 (`XVarRegs`, numbered
+from `XmmVar`, 32, above every x register, which `Parse` tells apart by
+it).
 
 *Calls* move each argument into x0 to x7, a slice's two words into two
 of them or both onto the stack. The arguments past the registers go on
@@ -1797,9 +1848,11 @@ is lowered by for the call alone and that keeps it a multiple of 16;
 the callee finds them above its frame record, at x29 + 16 on, as x86's
 finds them above rbp. A C procedure that ends in `...` takes what comes
 past its own parameters on the stack, registers free or not, as
-Apple's convention has it (C's own parameters past x7 narrower than 8
-bytes, which Apple packs, raz doesn't make). A single result comes back
-in x0, two words in x0 and x1, and a narrow result of C's is extended,
+Apple's convention has it. On the stack each argument takes 8 bytes,
+but a C procedure's own parameter of an integer, `BOOL`, enumeration,
+set or real takes its size, at a multiple of it, as Apple packs them:
+an `I32` and an `I16` past x7 go at sp and sp + 4. A single result
+comes back in x0, or d0, two words in x0 and x1, and a narrow result of C's is extended,
 as C leaves the upper bits as they fall; a result in memory, a record
 or several results, goes to the caller's temporary, whose address the
 caller puts in x8 and the callee keeps in a slot (`retSlot`) for
@@ -1833,7 +1886,43 @@ of words; `compareSeq` a byte at a time; `jumpTable`'s table of words
 after a `br`, found by `adr`; the atomics by the LSE instructions,
 `casal`, `swpal` and `ldaddal`; `COPY` (`copySlice`) by words, then
 bytes, back from the ends when the destination starts inside the
-source; `ABS` by `cneg`.
+source; `ABS` by `cneg`; `FILL` (`fillSlice`) by a store each into an
+array of 16 elements or fewer, else a loop of stores, and a record or
+array element copied into `d[0]` and from there forward, by words for
+one of 8 bytes or more, each read after it is written; `NEW`'s zeroing
+by `zeroBytes`. `CLZ` is `clz`, of 32 or 64 bits, less 24 or 16 for a
+`U8` or a `U16`; `CTZ` is `clz` of the bits reversed, `rbit`, a one bit
+set just above a narrow value first, so that 0 counts its width.
+`POPCOUNT` is plainer than x86-64's sums of bits: every arm64 counts
+the ones of each byte of a vector register, `cnt`, and adds the bytes,
+`addv`, as C's compilers do:
+
+```
+fmov d23, x9
+cnt v23.8b, v23.8b
+addv b23, v23.8b
+fmov x9, d23
+```
+
+A rotation is `ror`, which arm64 has only to the right and only of 32
+or 64 bits: `ROL` by n is `ror` by -n, which `ror` takes modulo the
+width as x86's `rol` does, and a `U8` or a `U16` is first repeated
+through 32 bits, so that what leaves its low end comes back at its top
+and a rotation of 32 bits by any count rotates each copy alike, the
+count modulo 8 or 16 too; the result is cut back to the width:
+
+```
+and x9, x9, #0FFH              ; ROL(x, n) of a U8: 000000AB
+orr x9, x9, x9, lsl #8         ; to ABABABAB
+orr x9, x9, x9, lsl #16
+neg x17, x10
+ror w9, w9, w17
+and x9, x9, #0FFH
+```
+
+x86-64's `rol al, cl` leaves the bits above a narrow value as they
+were, here they are zero; no program sees the difference, as those bits
+aren't the value's and `ROL` takes only an unsigned type.
 
 *The entry point* (`entryPoint`) is the C `main` that dyld calls: it
 pushes a frame record, which links to dyld's, saves argc, an `int` it
@@ -2613,8 +2702,10 @@ and checks the four differences. `src/cross.sh darwin-arm64` builds the
 compiler for the Mac this way, in the linux/amd64 container, and `make
 mac-check` (`test/mac.sh`), on an Apple Silicon Mac, has it compile
 `test/mac`'s programs there and runs each here, natively, against its
-`X.expect` and `X.status`; then conform/run's, which are counted, not
-failures yet, those that fail listed in `build/mac/conform.fail`. The host changes nothing of the target:
+`X.expect` and `X.status`; then conform/run's, which are counted, those
+that fail listed in `build/mac/conform.fail`, and those not for the Mac,
+named in the script with why (`SystemImport`, as `SYSCALL` is Linux's),
+skipped. The host changes nothing of the target:
 a program for another system still needs that system's `Sys` and `Rt`,
 and for a kernel the options `-bare`, `-s` and `-base`.
 

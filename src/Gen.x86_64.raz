@@ -2816,7 +2816,7 @@ begin
 end;
 
 (* Whether the code procedure in chunk c is a square root of xmm0 in
-   itself, then ret, as Math.sqrt is:
+   itself, an F32's if single, then ret, as Math.sqrt is:
 
        sqrtsd xmm0, xmm0       F2 0F 51 C0
        ret                     C3
@@ -2825,12 +2825,14 @@ end;
    on the value's own register (realInPlace); else 0. A call would spill
    the stack's reals and reload the variables' xmm registers around it,
    as System V keeps none through one, for an instruction of four bytes. *)
-proc oneRealOp*(c: INT): INT;
-var s: INT;
+proc oneRealOp*(c: INT; single: BOOL): INT;
+var s, pfx: INT;
 begin
     s := Chunk.chunks[c].start;
     if (Chunk.chunks[c].size # 5) or (Chunk.chunks[c].numFix # 0) then return 0; end;
-    if ((Chunk.text[s] # 0F2H) and (Chunk.text[s] # 0F3H)) or (Chunk.text[s + 1] # 0FH)
+    pfx := 0F2H;
+    if single then pfx := 0F3H; end;   (* sqrtss *)
+    if (INT(Chunk.text[s]) # pfx) or (Chunk.text[s + 1] # 0FH)
         or (Chunk.text[s + 2] # 51H) or (Chunk.text[s + 3] # 0C0H) or (Chunk.text[s + 4] # 0C3H) then
         return 0;
     end;
