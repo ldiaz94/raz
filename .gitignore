@@ -9,3 +9,4 @@ build/
 !/test/*/*.*
 !/test/*/mods/
 !/test/*/lib/
+.claude/worktrees/
