@@ -317,6 +317,31 @@ segment, as it does Go's, so `Exe.darwin.raz` writes the same three sections,
 before `__LINKEDIT`; `make gdb`'s twin drives `lldb --batch`. About 50
 lines, `makeLines` and `putDebug` shared by the two writers.
 
+**Where it stands**, 2026-11-15, stopped by the owner's word:
+
+- Done and pushed: steps 1 to 7. A cross compiler, built in the
+  container by `src/cross.sh darwin-arm64`, makes Mach-O programs that
+  run on the Mac: `make mac-check` passes test/mac, all of conform/run
+  (SystemImport aside, SYSCALL being Linux's), the library's tests and
+  test/libc (ExecveC aside, /proc being Linux's); lldb stops at a line.
+  `HOST=darwin src/cross.sh darwin-arm64` stages a native compiler that
+  runs on the Mac. Linux is unchanged: `make docker-check`, the
+  fixpoint, and x86-64's output byte for byte.
+- Step 9, half done, unchecked, on the local branch `wip-darwin-step9`
+  (f87c668, not pushed): `make raz` on the Mac through
+  `src/bootstrap.sh`, `BOOT` naming a tarball per host, the fixpoint and
+  bench on the Mac, `raz run`'s temporary file, `make dist` for the Mac.
+  To resume: check it out, read `git diff main`, run `make docker-check`
+  and `make mac-check`, finish what's missing, merge.
+- Not started: step 8 (`make check` natively on the Mac, `test/`'s
+  expectations per target where the Mac differs) and step 10 (the
+  release).
+- Known limits on the Mac: a frame of at most 16 MB
+  (test/run/ThreadOverflowC doesn't compile); `Thread.Mutex` is
+  `os_unfair_lock`, unlocked by the thread that locked it; `Bytes` is
+  plain raz, no NEON; `raz run` leaves its file in `$TMPDIR` (fixed on
+  the branch). The compiler is about 16,700 lines of code of 18,000.
+
 ## 6. Clean-up: v0.27.0, the last before 1.0
 
 The files that served the thaws are made a record, short and true:
