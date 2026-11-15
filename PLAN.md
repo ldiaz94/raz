@@ -181,8 +181,8 @@ units beside them, not a change to `Parse` or `Item`:
   a table of quadwords, as GLOB_DAT does now; every address in data
   rebased, since the program is position-independent; its symbol table
   for lldb's backtraces; and an ad-hoc code signature, SHA-256 hashes
-  of its pages, without which arm64 macOS won't run it. No line
-  numbers for a debugger at first.
+  of its pages, without which arm64 macOS won't run it; and line
+  numbers for lldb, as DWARF in `__DWARF` (below).
 - `Host.darwin.raz`: the library beside the compiler by
   `_NSGetExecutablePath`, C always, a program run from a file written
   and made executable (no `memfd_create`).
@@ -213,7 +213,7 @@ None of it breaks a program.
 linux/amd64 container on the Mac until there is a Mac compiler):
 
 1. Report 2026-11.0, for the owner's review. (This commit.)
-2. A container to build and check in on the Mac (`make docker-check`),
+2. Done. A container to build and check in on the Mac (`make docker-check`),
    the budget raised to 18,000 in `CLAUDE.md` and `doc/compiler.md`,
    and the Makefile and scripts made to run on BSD's tools as on GNU's
    (`sed -i`, `stat`, `sha256sum`).

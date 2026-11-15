@@ -1,7 +1,7 @@
 # Reading the raz compiler
 
 The compiler is twelve files of raz, about 13,100 lines of code (the
-budget is 14,000). It is its own compiler: a release of it, the one
+budget is 18,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
 one before it, back to v0.19.0, which the Pascal compiler it was ported

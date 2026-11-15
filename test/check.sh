@@ -30,6 +30,26 @@ ulimit -c 0   # the tests stopped by a signal leave no core
 ulimit -s 8192   # Linux's usual stack: StackOverflow's depth depends on it, and CI's runner gives more
 pass=0
 fail=0
+skipped=0
+
+# Rosetta, which runs x86 programs on an Apple Silicon Mac, differs from
+# Linux in these ways; the tests that can't tell so are skipped there,
+# each with its reason, until raz runs natively on the Mac. Elsewhere
+# nothing is skipped.
+rosetta=
+grep -q VirtualApple /proc/cpuinfo 2>/dev/null && rosetta=1
+skip() {   # skip name: whether to skip it, saying why
+    [ -n "$rosetta" ] || return 1
+    case $1 in
+    test/run/ExecOpened|test/libc/ExecOpenedC) why='keeps descriptors 3 to 6 open' ;;
+    test/libc/SysTest|lib/Sys.linux-x86_64.raz) why='takes descriptor 9 in a child' ;;
+    test/run/StackOverflow|test/run/ThreadOverflow) why='reads a trap local as 0 after a stack fault' ;;
+    "Thread under a memory limit") why="aborts under ulimit -v" ;;
+    *) return 1 ;;
+    esac
+    echo "SKIP $1: Rosetta $why"
+    skipped=$((skipped + 1))
+}
 
 conform/check.sh $raz test/msg > $out/conform.out
 grep -v '^[0-9]* passed' $out/conform.out
@@ -38,6 +58,7 @@ pass=$1; fail=$3
 
 run() {   # run dir name
     dir=$1; name=$2
+    skip $dir/$name && return
     flags=
     [ $dir = examples ] || [ $dir = test/libc ] && flags=-Werror
     if ! $raz $flags $libc -I $dir/mods -o $out/$name $dir/$name.raz 2>$out/$name.cerr; then
@@ -335,8 +356,12 @@ fi
 # raztest, which says what it counted on its last line; Sys over C is
 # tested in test/libc
 if $raz -Werror -o $out/raztest tools/Test.raz 2>$out/raztest.cerr; then
-    RAZ=$raz $out/raztest -j $(nproc 2>/dev/null || echo 1) -o $out/lib \
-        $(for f in lib/*.raz; do [ $f != lib/Sys.raz ] && grep -q '^proc main\*' $f && echo $f; done) \
+    libtests=
+    for f in lib/*.raz; do
+        [ $f != lib/Sys.raz ] && grep -q '^proc main\*' $f && ! skip $f && libtests="$libtests $f"
+    done
+    RAZ=$raz $out/raztest -j $(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1) -o $out/lib \
+        $libtests \
         > $out/raztest.out 2>&1
     set -- $(tail -1 $out/raztest.out)   # N passed, F failed, T timed out, S
     if [ "$2" = passed, ] && [ "$6" = timed ]; then
@@ -347,8 +372,8 @@ if $raz -Werror -o $out/raztest tools/Test.raz 2>$out/raztest.cerr; then
     fi
     # and again with the debug heap, RAZ_HEAP=debug: guards after blocks,
     # freed blocks filled and quarantined
-    RAZ_HEAP=debug RAZ=$raz $out/raztest -j $(nproc 2>/dev/null || echo 1) -o $out/libdebug \
-        $(for f in lib/*.raz; do [ $f != lib/Sys.raz ] && grep -q '^proc main\*' $f && echo $f; done) \
+    RAZ_HEAP=debug RAZ=$raz $out/raztest -j $(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1) -o $out/libdebug \
+        $libtests \
         > $out/raztest-debug.out 2>&1
     set -- $(tail -1 $out/raztest-debug.out)
     if [ "$2" = passed, ] && [ "$6" = timed ]; then
@@ -427,7 +452,8 @@ done
 
 # Thread's test again, with too little memory for all its threads:
 # spawn must fail, with Thread.Failed
-if (ulimit -v 60000; $out/lib/Thread.linux-x86_64 fail) > /dev/null 2>&1; then pass=$((pass + 1))
+if skip "Thread under a memory limit"; then :
+elif (ulimit -v 60000; $out/lib/Thread.linux-x86_64 fail) > /dev/null 2>&1; then pass=$((pass + 1))
 else echo "FAIL Thread under a memory limit"; fail=$((fail + 1)); fi
 
 # the compiler's way of going on after an error, in small: a parser
@@ -463,5 +489,7 @@ if test/library-path.sh "$raz"; then pass=$((pass + 1)); else fail=$((fail + 1))
 # The compiler built with another host (test/host/Host.raz).
 if test/compiler-host.sh "$raz"; then pass=$((pass + 1)); else fail=$((fail + 1)); fi
 
-echo "$pass passed, $fail failed"
+summary="$pass passed, $fail failed"
+[ $skipped = 0 ] || summary="$summary, $skipped skipped"
+echo "$summary"
 [ $fail = 0 ]

@@ -10,7 +10,7 @@ mkdir -p $out
 best() {   # best program: the fewest milliseconds of five runs
     b=0
     for i in 1 2 3 4 5; do
-        s=$(date +%s%N); $1 > /dev/null; e=$(date +%s%N)
+        s=$(sh test/nanos.sh); $1 > /dev/null; e=$(sh test/nanos.sh)
         t=$(( (e - s) / 1000000 ))
         if [ $b = 0 ] || [ $t -lt $b ]; then b=$t; fi
     done

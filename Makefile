@@ -54,9 +54,9 @@ gdb: raz
 # the best of three runs; fails below 400,000 lines a second
 bench: raz | build
 	sh test/genbench.sh 12000 > build/Bench.raz
-	@lines=$$(wc -l < build/Bench.raz); best=0; \
+	@lines=$$(($$(wc -l < build/Bench.raz))); best=0; \
 	for i in 1 2 3; do \
-	    start=$$(date +%s%N); ./raz build/Bench.raz || exit 1; end=$$(date +%s%N); \
+	    start=$$(sh test/nanos.sh); ./raz build/Bench.raz || exit 1; end=$$(sh test/nanos.sh); \
 	    t=$$((end - start)); if [ $$best = 0 ] || [ $$t -lt $$best ]; then best=$$t; fi; \
 	done; \
 	rate=$$((lines * 1000000000 / best)); \
@@ -207,4 +207,18 @@ site-source: build/site/Source
 site-check: build/site/Verify
 	build/site/Verify
 
-.PHONY: prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site site-source site-check clean install uninstall
+.PHONY: docker-image docker-check docker-shell prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site site-source site-check clean install uninstall
+
+# `make check` in a linux/amd64 container, for a machine that isn't one
+# (the repository is mounted at its own path, so git and the tests see
+# the same names). DOCKERFLAGS is for what a host's runtime needs.
+DOCKER = docker run --rm --platform linux/amd64 $(DOCKERFLAGS) -v $(CURDIR):$(CURDIR) -w $(CURDIR)
+DOCKERIMAGE = raz-check
+docker-image:
+	docker build --platform linux/amd64 -t $(DOCKERIMAGE) containers/check
+
+docker-check: docker-image
+	$(DOCKER) $(DOCKERIMAGE) sh -c "git config --global --add safe.directory '*' && make check"
+
+docker-shell: docker-image
+	$(DOCKER) -it $(DOCKERIMAGE) sh -c "git config --global --add safe.directory '*' && exec bash"

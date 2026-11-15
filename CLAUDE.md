@@ -10,6 +10,7 @@ defines the language.
 
     make raz       # the compiler, ./raz, built from src/ by the release BOOT names; its library is lib/
     make check     # every example and test against its expected output
+    make docker-check  # make check in a linux/amd64 container, on a Mac; under Rosetta it skips 9 tests, each saying why
     make bench     # must report at least 400,000 lines a second
     make prev-bench  # the compiler's speed against BOOT's: more than a tenth slower fails
     make kernels   # test/bench's kernels against FPC -O2's twins (apt-get install -y fp-compiler)
@@ -60,8 +61,8 @@ tools and the library's tests: they must have no warnings.
   `Luis <42945842+ldiaz94@users.noreply.github.com>`, unsigned
   (`--no-gpg-sign`), no attribution trailer. Push to `main`. No pull
   requests unless asked.
-- Budget: never past 14,000 lines of code (raised from 8,500, then
-  from 11,000, by the owner's word, who dropped the soft limit; blank and
+- Budget: never past 18,000 lines of code (raised from 8,500, then
+  from 11,000 and 14,000, the last for the arm64 macOS port, by the owner's word, who dropped the soft limit; blank and
   comment lines not counted), with the compiler documented and
   commented throughout, most of all where it is obscure or needs a
   compiler writer's knowledge; at least 400,000 lines of raz a second;

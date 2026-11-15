@@ -34,7 +34,9 @@ if [ ! -f $d/$t ]; then
             { rm -f $d/$t; echo "boot: can't fetch $t; put it in $d" >&2; exit 1; }
     fi
 fi
-if ! echo "$sum  $d/$t" | sha256sum -c --quiet - >/dev/null 2>&1; then
+# macOS has shasum, not sha256sum
+if command -v sha256sum >/dev/null; then got=$(sha256sum < $d/$t); else got=$(shasum -a 256 < $d/$t); fi
+if [ "${got%% *}" != "$sum" ]; then
     echo "boot: $d/$t isn't $tag's tarball: its SHA-256 isn't BOOT's" >&2
     exit 1
 fi

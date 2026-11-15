@@ -8,12 +8,12 @@ set -e
 mkdir -p build/cmp/bench
 ln -sfn ../../lib build/cmp/lib
 sh test/genbench.sh 12000 >build/cmp/bench/Bench.raz
-echo "$(wc -l <build/cmp/bench/Bench.raz) lines"
+echo "$(($(wc -l <build/cmp/bench/Bench.raz))) lines"
 for t in prev this; do
     if [ $t = prev ]; then cp build/boot/raz build/cmp/raz; else cp raz build/cmp/raz; fi
     best=0
     for i in 1 2 3 4 5; do
-        s=$(date +%s%N); build/cmp/raz -o build/cmp/bench/Bench.$t build/cmp/bench/Bench.raz; e=$(date +%s%N)
+        s=$(sh test/nanos.sh); build/cmp/raz -o build/cmp/bench/Bench.$t build/cmp/bench/Bench.raz; e=$(sh test/nanos.sh)
         d=$(( (e - s) / 1000000 )); if [ $best = 0 ] || [ $d -lt $best ]; then best=$d; fi
     done
     echo "$t: $best ms"
