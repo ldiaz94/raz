@@ -1,0 +1,1848 @@
+(* A64: machine code for arm64, X64's twin.
+
+   The encoder writes arm64's instructions into the text of Chunk, each
+   one word of 32 bits, least significant byte first. Registers are
+   numbered as the hardware numbers them: x0 to x30, and 31, which is sp
+   in some places and the zero register, xzr, in others, as each
+   instruction says (SP and ZR below are both 31; a routine's comment
+   says which it means). The reals' registers, v0 to v31, have numbers
+   of their own, 0 to 31, and a size: s for an F32, d for an F64, q for
+   16 bytes. Jumps within a procedure are patched here, as soon as their
+   target is known; calls and addresses of other chunks are fixups,
+   patched by Link.
+
+   Apple's arm64 convention is the target's: x18 is the system's and
+   never touched, x29 is the frame pointer, x30 the link register, sp
+   is kept a multiple of 16. x16 (IP0) is this encoder's own scratch
+   register: a routine given an immediate or an offset too big for its
+   instruction builds it in x16 first, so Gen keeps nothing there.
+
+   Each encoding's comment gives its fields, most significant first, as
+   Arm's reference manual draws them: `sf 0 0 100010 sh imm12 Rn Rd` is
+   add (immediate), sf the bit for 64 bits, then constant bits, then the
+   fields, Rd in the low five bits. Every encoding was checked against
+   Apple's assembler; test/a64 checks them all again.
+
+   Depends on: Scan, for errors and the assembler's symbols; Diag, for
+   positions and text; Chunk, for the code buffer and fixups.
+   Leaves out: choosing instructions; that is Gen (Gen.arm64.raz, to
+   come). Only what Gen and the library's code procedures need is here;
+   `db` and `dd` give any other instruction. *)
+module A64;
+import Out, Fmt, Str, Diag, Scan, Chunk;
+import SYSTEM;
+
+const
+    FP* = 29; LR* = 30;
+    SP* = 31; ZR* = 31;       (* the same number: the instruction tells which *)
+    X16* = 16; X17* = 17;     (* IP0 and IP1, the scratch registers; X16 is the encoder's *)
+
+    (* condition codes, as b.cond and csel take them; cc xor 1 is the
+       opposite of cc (invert) *)
+    ccEQ* = 0; ccNE* = 1; ccHS* = 2; ccLO* = 3; ccMI* = 4; ccPL* = 5; ccVS* = 6; ccVC* = 7;
+    ccHI* = 8; ccLS* = 9; ccGE* = 10; ccLT* = 11; ccGT* = 12; ccLE* = 13; ccAL* = 14;
+
+    (* the operations of two registers, alu's op: AluBits gives each its bits *)
+    opAdd* = 0; opAdds* = 1; opSub* = 2; opSubs* = 3;
+    opAnd* = 4; opOrr* = 5; opEor* = 6; opAnds* = 7; opBic* = 8; opOrn* = 9;
+
+    (* shifts: of a register operand, and lsl, lsr, asr and ror themselves *)
+    shLsl* = 0; shLsr* = 1; shAsr* = 2; shRor* = 3;
+
+    (* csel's op: rd := rn if the condition holds, else rm, rm + 1, ~rm or -rm *)
+    csSel* = 0; csInc* = 1; csInv* = 2; csNeg* = 3;
+
+    (* the addressing of ldp, stp and the indexed loads, bits 23 and 24 of
+       a pair: [rn, #off]; [rn, #off]!, rn changed first; [rn], #off, after *)
+    mPost* = 1; mOff* = 2; mPre* = 3;
+
+    (* reals: fop's op (the opcode field of two sources) and fop1's (of one) *)
+    fMul* = 0; fDiv* = 1; fAdd* = 2; fSub* = 3; fMax* = 4; fMin* = 5;
+    fMov* = 0; fAbs* = 1; fNeg* = 2; fSqrt* = 3;
+
+    NoLabel* = -1;
+
+    AluBits: [10]INT = [0B000000H, 2B000000H, 4B000000H, 6B000000H,
+        0A000000H, 2A000000H, 4A000000H, 6A000000H, 0A200000H, 2A200000H];
+    AluNames: [10][]const U8 = ["add", "adds", "sub", "subs", "and", "orr", "eor", "ands", "bic", "orn"];
+    ShiftNames: [4][]const U8 = ["lsl", "lsr", "asr", "ror"];
+    CselBits: [4]INT = [1A800000H, 1A800400H, 5A800000H, 5A800400H];
+    CselNames: [4][]const U8 = ["csel", "csinc", "csinv", "csneg"];
+    CondNames*: [16][]const U8 = ["eq", "ne", "hs", "lo", "mi", "pl", "vs", "vc",
+        "hi", "ls", "ge", "lt", "gt", "le", "al", "nv"];
+    FopNames: [6][]const U8 = ["fmul", "fdiv", "fadd", "fsub", "fmax", "fmin"];
+    Fop1Names: [4][]const U8 = ["fmov", "fabs", "fneg", "fsqrt"];
+    Nop = 0D503201FH;
+
+type
+    (* The parser's reader of an integer constant in a code procedure: a
+       whole expression, or, when whole is false, a single factor *)
+    ConstFn* = proc(whole: BOOL): (I64, ERROR);
+
+    (* The parser's reader of a name that stands for an address: a
+       procedure or a module variable. Its chunk, the name read; or -1,
+       nothing read, if the name is anything else *)
+    NameFn* = proc: (INT, ERROR);
+
+    (* The text of the instruction that starts at at, for the listing *)
+    Said = record
+        at: INT;
+        text: []const U8;
+    end;
+
+var
+    listing*: BOOL;      (* -S: each instruction's text is kept, for list *)
+    said: ^Said;
+    numSaid, saidCap: INT;
+    labelAt: INT;        (* where a jump was last fixed to the place it was at *)
+
+(* The listing, as X64's *)
+
+proc setListing*(yes: BOOL);
+begin
+    listing := yes;
+end;
+
+proc saidCount*: INT;
+begin
+    return numSaid;
+end;
+
+proc unsay*(n: INT);
+begin
+    numSaid := n;
+end;
+
+proc sayAt*(at: INT; s: []const U8);
+begin
+    if not listing then return; end;
+    if numSaid = saidCap then
+        said := ^Said(Scan.regrab(^U8(said), numSaid * SIZE(Said), (saidCap * 2 + 1024) * SIZE(Said)));
+        saidCap := saidCap * 2 + 1024;
+    end;
+    said[numSaid].at := at;
+    said[numSaid].text := s;
+    INC(numSaid);
+end;
+
+proc say*(s: []const U8);
+begin
+    sayAt(Chunk.pc, s);
+end;
+
+proc restate*(at: INT; s: []const U8);
+var i: INT;
+begin
+    i := numSaid - 1;
+    while (i >= 0) and (said[i].at # at) do DEC(i); end;
+    if i >= 0 then said[i].text := s; end;
+end;
+
+(* "op a, b, c": an instruction's text, from its operands' *)
+proc sayOps(op: []const U8; ops: []const []const U8);
+var s: []const U8; i: INT;
+begin
+    s := op;
+    for i := 0 to LEN(ops) - 1 do
+        if i = 0 then s := Diag.say("{} {}", [Fmt.str(s), Fmt.str(ops[i])]);
+        else s := Diag.say("{}, {}", [Fmt.str(s), Fmt.str(ops[i])]); end;
+    end;
+    say(s);
+end;
+
+(* 1 for true *)
+proc bit(f: BOOL): INT;
+begin
+    if f then return 1; end;
+    return 0;
+end;
+
+(* log2 of a size of 1, 2, 4, 8 or 16 bytes *)
+proc scaleOf(size: INT): INT;
+var s: INT;
+begin
+    s := 0;
+    while (1 shl s) < size do INC(s); end;
+    return s;
+end;
+
+(* Register r's name: x or w by sf, 31 sp if sp, else the zero register *)
+proc reg(r, sf: INT; sp: BOOL): []const U8;
+const Pfx: [2][]const U8 = ["w", "x"];
+begin
+    if (r = 31) and sp and (sf = 1) then return "sp"; end;
+    if (r = 31) and sp then return "wsp"; end;
+    if r = 31 then return Diag.say("{}zr", [Fmt.str(Pfx[sf])]); end;
+    return Diag.say("{}{}", [Fmt.str(Pfx[sf]), Fmt.int(r)]);
+end;
+
+proc x(r: INT): []const U8;
+begin
+    return reg(r, 1, false);
+end;
+
+proc xsp(r: INT): []const U8;
+begin
+    return reg(r, 1, true);
+end;
+
+(* A real's register, by its size: s, d or q *)
+proc vreg(v, size: INT): []const U8;
+const Pfx: [5][]const U8 = ["b", "h", "s", "d", "q"];
+begin
+    return Diag.say("{}{}", [Fmt.str(Pfx[scaleOf(size)]), Fmt.int(v)]);
+end;
+
+proc imm(v: I64): []const U8;
+begin
+    return Diag.say("#{}", [Fmt.int(v)]);
+end;
+
+(* [rn, #off], or [rn, #off]! and [rn], #off by mode *)
+proc memText(rn, off, mode: INT): []const U8;
+begin
+    if mode = mPre then return Diag.say("[{}, #{}]!", [Fmt.str(xsp(rn)), Fmt.int(off)]); end;
+    if mode = mPost then return Diag.say("[{}], #{}", [Fmt.str(xsp(rn)), Fmt.int(off)]); end;
+    return Diag.say("[{}, #{}]", [Fmt.str(xsp(rn)), Fmt.int(off)]);
+end;
+
+proc emit(insn: INT);
+begin
+    Chunk.put4(insn);
+end;
+
+proc invert*(cc: INT): INT;
+begin
+    return cc xor 1;
+end;
+
+(* Immediates and moves *)
+
+(* v as a logical instruction's immediate, its fields N:immr:imms, or -1
+   if it can't be one. Such an immediate is an element of 2, 4, 8, 16, 32
+   or 64 bits repeated across the register, the element a run of ones
+   rotated: N says 64 bits, imms holds the element's size and the run's
+   length less one (imms 0xxxxx for 32 bits, 10xxxx for 16, ... 11110x
+   for 2), and immr the rotation right. Of 32 bits (sf 0) the low half is
+   taken, and seen as repeated. *)
+proc bitmask*(v: I64; sf: INT): INT;
+var u, elem, pat, m, rot: U64; e, ones, r: INT;
+begin
+    u := U64(v);
+    if sf = 0 then u := (u & 0FFFFFFFFH) | ((u & 0FFFFFFFFH) shl 32); end;
+    if (u = 0) or (u = MAX(U64)) then return -1; end;
+    (* the smallest element: u is made of halves alike while turning it
+       round by half its element changes nothing *)
+    e := 64;
+    while (e > 2) and (ROR(u, e div 2) = u) do e := e div 2; end;
+    if e = 64 then m := MAX(U64); else m := (U64(1) shl e) - 1; end;
+    elem := u & m;
+    ones := POPCOUNT(elem);
+    pat := (U64(1) shl ones) - 1;
+    for r := 0 to e - 1 do
+        rot := ((pat shr r) | (pat shl ((e - r) & 63))) & m;
+        if rot = elem then
+            return (bit(e = 64) shl 12) | (r shl 6) | ((~(e * 2 - 1)) & 3FH) | (ones - 1);
+        end;
+    end;
+    return -1;
+end;
+
+(* movn, movz or movk (opc 0, 2, 3): sf opc 100101 hw imm16 Rd, imm16
+   shifted left by 16 * hw; movn writes its inverse, movk keeps the rest *)
+proc movWide(sf, opc, rd, imm16, hw: INT);
+const Names: [4][]const U8 = ["movn", "", "movz", "movk"];
+begin
+    if listing then sayOps(Names[opc], [reg(rd, sf, false), imm(imm16 & 0FFFFH), Diag.say("lsl #{}", [Fmt.int(hw * 16)])]); end;
+    emit((sf shl 31) | (opc shl 29) | 12800000H | (hw shl 21) | ((imm16 & 0FFFFH) shl 5) | rd);
+end;
+
+(* A logical instruction with an immediate, enc as bitmask gives it:
+   sf opc 100100 N immr imms Rn Rd, opc 00 and, 01 orr, 10 eor, 11 ands.
+   Rd is sp (but for ands), Rn the zero register. *)
+proc logicImm(sf, op, rd, rn, enc: INT; v: I64);
+begin
+    if listing then sayOps(AluNames[op], [reg(rd, sf, op # opAnds), reg(rn, sf, false), imm(v)]); end;
+    emit((sf shl 31) | (AluBits[op] + 08000000H) | (enc shl 10) | (rn shl 5) | rd);
+end;
+
+(* rd := v, of 64 bits (sf 1) or 32, in as few instructions as it
+   takes: movz #0 or movn #0 for all zeros or all ones; a single movz
+   when v is one halfword of 16 bits and zeros, a movn when it is one
+   halfword and ones, an orr of the zero register when it is a logical
+   immediate; else a movz (or movn, if more of its halfwords are ones)
+   of the first halfword that isn't all zeros (ones), and a movk for
+   each other such halfword. Apple's assembler chooses the same. *)
+proc movImm(sf, rd: INT; v: I64);
+var n, zeros, ones, i, h, first, enc: INT;
+begin
+    n := 2 + 2 * sf;
+    if sf = 0 then v := v & 0FFFFFFFFH; end;
+    zeros := 0; ones := 0;
+    for i := 0 to n - 1 do
+        h := INT((v shr (16 * i)) & 0FFFFH);
+        if h = 0 then INC(zeros); elsif h = 0FFFFH then INC(ones); end;
+    end;
+    if (zeros = n) or (ones = n) then
+        movWide(sf, 2 * bit(zeros = n), rd, 0, 0);
+        return;
+    end;
+    enc := bitmask(v, sf);
+    if (zeros < n - 1) and (ones < n - 1) and (enc >= 0) then
+        logicImm(sf, opOrr, rd, ZR, enc, v);
+        return;
+    end;
+    first := -1;
+    for i := 0 to n - 1 do
+        h := INT((v shr (16 * i)) & 0FFFFH);
+        if (zeros >= ones) and (h # 0) or (zeros < ones) and (h # 0FFFFH) then
+            if first >= 0 then movWide(sf, 3, rd, h, i);
+            elsif zeros >= ones then movWide(sf, 2, rd, h, i);
+            else movWide(sf, 0, rd, ~h, i); end;
+            first := i;
+        end;
+    end;
+end;
+
+proc movRI*(rd: INT; v: I64);
+begin
+    movImm(1, rd, v);
+end;
+
+(* Add, subtract and the logical operations *)
+
+(* add, adds, sub or subs with an immediate of 12 bits, shifted left by
+   12 if sh: sf op S 100010 sh imm12 Rn Rd. Rn is sp; so is Rd, but for
+   adds and subs, whose Rd 31 is the zero register (cmp, cmn). *)
+proc addImm(sf, op, rd, rn, imm12, sh: INT);
+begin
+    if listing then sayOps(AluNames[op], [reg(rd, sf, (op & 1) = 0), reg(rn, sf, true), imm(imm12), Diag.say("lsl #{}", [Fmt.int(12 * sh)])]); end;
+    emit((sf shl 31) | (AluBits[op] + 06000000H) | (sh shl 22) | (imm12 shl 10) | (rn shl 5) | rd);
+end;
+
+(* op of two registers, rm shifted by n: sf op S 01011 shift 0 Rm imm6 Rn
+   Rd for add and sub, sf opc 01010 shift N Rm imm6 Rn Rd for the logical
+   ones (N 1 for bic and orn, which invert rm). 31 is the zero register. *)
+proc aluShifted(sf, op, rd, rn, rm, sh, n: INT);
+begin
+    if listing then sayOps(AluNames[op], [reg(rd, sf, false), reg(rn, sf, false), reg(rm, sf, false), Diag.say("{} #{}", [Fmt.str(ShiftNames[sh]), Fmt.int(n)])]); end;
+    emit((sf shl 31) | AluBits[op] | (sh shl 22) | (rm shl 16) | (n shl 10) | (rn shl 5) | rd);
+end;
+
+(* add or sub of a register extended, here only uxtx (uxtw for 32
+   bits), shifted left by n up to 4: sf op S 01011 00 1 Rm option imm3
+   Rn Rd. The form that takes sp, as Rn, and as Rd but for adds and subs *)
+proc addExt(sf, op, rd, rn, rm, n: INT);
+begin
+    if listing then sayOps(AluNames[op], [reg(rd, sf, (op & 1) = 0), reg(rn, sf, true), reg(rm, sf, false), Diag.say("uxtx #{}", [Fmt.int(n)])]); end;
+    emit((sf shl 31) | AluBits[op] | 200000H | (rm shl 16) | ((2 + sf) shl 13) | (n shl 10) | (rn shl 5) | rd);
+end;
+
+(* rd := rn op rm, of 64 bits; 31 is the zero register, so tst a, b is
+   alu(opAnds, ZR, a, b) *)
+proc alu*(op, rd, rn, rm: INT);
+begin
+    aluShifted(1, op, rd, rn, rm, shLsl, 0);
+end;
+
+(* rd := rn op (rm shifted by n), as an element's address, rn + rm lsl 3 *)
+proc aluShift*(op, rd, rn, rm, sh, n: INT);
+begin
+    aluShifted(1, op, rd, rn, rm, sh, n);
+end;
+
+(* rd := rn op v, of 64 bits. For add and sub, rn and rd may be sp:
+   v in 12 bits, or 12 bits shifted by 12, is one instruction, a
+   negative v the opposite one; below 2^24, without flags, two; else v
+   is built in x16 and added as a register. For the logical operations,
+   v as an immediate if it can be one, else built in x16. *)
+proc aluI*(op, rd, rn: INT; v: I64);
+var enc: INT;
+begin
+    if op <= opSubs then
+        if (v < 0) and (v > MIN(I64)) then v := -v; op := op xor 2; end;
+        if (v >= 0) and (v < 1000H) then
+            addImm(1, op, rd, rn, INT(v), 0);
+        elsif (v > 0) and (v < 1000000H) and ((v & 0FFFH) = 0) then
+            addImm(1, op, rd, rn, INT(v shr 12), 1);
+        elsif (v > 0) and (v < 1000000H) and ((op & 1) = 0) then
+            addImm(1, op, rd, rn, INT(v shr 12), 1);
+            addImm(1, op, rd, rd, INT(v & 0FFFH), 0);
+        else
+            movRI(X16, v);
+            addExt(1, op, rd, rn, X16, 0);
+        end;
+        return;
+    end;
+    enc := bitmask(v, 1);
+    if (enc >= 0) and (op <= opAnds) then
+        logicImm(1, op, rd, rn, enc, v);
+    else
+        movRI(X16, v);
+        aluShifted(1, op, rd, rn, X16, shLsl, 0);
+    end;
+end;
+
+(* rd := rn, by orr of the zero register; by add of 0 when either is sp *)
+proc movRR*(rd, rn: INT);
+begin
+    if (rd = SP) or (rn = SP) then addImm(1, opAdd, rd, rn, 0, 0); else aluShifted(1, opOrr, rd, ZR, rn, shLsl, 0); end;
+end;
+
+(* the flags of rn - rm; and of rn - v, where rn 31 is sp *)
+proc cmp*(rn, rm: INT);
+begin
+    aluShifted(1, opSubs, ZR, rn, rm, shLsl, 0);
+end;
+
+proc cmpI*(rn: INT; v: I64);
+begin
+    aluI(opSubs, ZR, rn, v);
+end;
+
+(* neg: sub from the zero register; mvn: orn of it *)
+proc neg*(rd, rm: INT);
+begin
+    aluShifted(1, opSub, rd, ZR, rm, shLsl, 0);
+end;
+
+proc mvn*(rd, rm: INT);
+begin
+    aluShifted(1, opOrn, rd, ZR, rm, shLsl, 0);
+end;
+
+(* Shifts and bit fields *)
+
+(* sbfm, bfm or ubfm (opc 0, 1, 2): sf opc 100110 N immr imms Rn Rd, N
+   as sf. The bits imms down to immr of rn, or, if imms < immr, the low
+   imms + 1 bits put at width - immr; the rest of rd is the sign, kept,
+   or zeros. Every shift by a constant, extension and field is one. *)
+proc bitfield(sf, opc, rd, rn, immr, imms: INT);
+const Names: [3][]const U8 = ["sbfm", "bfm", "ubfm"];
+begin
+    if listing then sayOps(Names[opc], [reg(rd, sf, false), reg(rn, sf, false), imm(immr), imm(imms)]); end;
+    emit((sf shl 31) | (opc shl 29) | 13000000H | (sf shl 22) | (immr shl 16) | (imms shl 10) | (rn shl 5) | rd);
+end;
+
+(* A shift by n, 0 to the width less one, of size 4 or 8 bytes: lsl is
+   ubfm by width - n of the low width - 1 - n bits, lsr ubfm and asr
+   sbfm of the bits from n up, ror extr of rn and rn from bit n:
+   sf 00 100111 N 0 Rm imms Rn Rd *)
+proc shiftI*(op, rd, rn, n, size: INT);
+var sf, w: INT;
+begin
+    sf := bit(size = 8); w := 32 + 32 * sf;
+    match op of
+    | shLsl: bitfield(sf, 2, rd, rn, (w - n) & (w - 1), w - 1 - n);
+    | shLsr: bitfield(sf, 2, rd, rn, n, w - 1);
+    | shAsr: bitfield(sf, 0, rd, rn, n, w - 1);
+    | else:
+        if listing then sayOps("ror", [reg(rd, sf, false), reg(rn, sf, false), imm(n)]); end;
+        emit((sf shl 31) | 13800000H | (sf shl 22) | (rn shl 16) | (n shl 10) | (rn shl 5) | rd);
+    end;
+end;
+
+(* rd := the width bits of rn from bit lsb, as ubfx, or sbfx if signed:
+   ubfm or sbfm of the bits lsb + width - 1 down to lsb *)
+proc field*(signed: BOOL; rd, rn, lsb, width: INT);
+begin
+    bitfield(1, 2 - 2 * bit(signed), rd, rn, lsb, lsb + width - 1);
+end;
+
+(* rd := the low size bytes of rn, brought to 64 bits by their sign or
+   zeros: sxtb, sxth, sxtw (sbfm, 64 bits); uxtb and uxth (ubfm, 32 bits,
+   which zeroes the upper half), mov wd, wn for 4 *)
+proc extend*(rd, rn, size: INT; signed: BOOL);
+begin
+    if signed then
+        bitfield(1, 0, rd, rn, 0, size * 8 - 1);
+    elsif size < 4 then
+        bitfield(0, 2, rd, rn, 0, size * 8 - 1);
+    else
+        aluShifted(0, opOrr, rd, ZR, rn, shLsl, 0);
+    end;
+end;
+
+(* The instructions of only registers, each its bits and n registers,
+   Rd, Rn, Rm and Ra, in their places; a field an instruction hasn't is
+   0, or set in its bits:
+     madd, msub          sf 00 11011 000 Rm o0 Ra Rn Rd    rd := ra + rn * rm, ra - rn * rm
+     smulh, umulh        1 00 11011 U10 Rm 0 11111 Rn Rd   the high 64 bits of the product
+     sdiv, udiv          sf 0 0 11010110 Rm 00001 o1 Rn Rd
+     lslv ... rorv       sf 0 0 11010110 Rm 0010 op2 Rn Rd by rm, modulo the width
+     clz, rbit, rev      sf 1 0 11010110 00000 0000 opc Rn Rd
+   A division by zero gives 0, and the smallest value by -1 itself: Gen
+   checks for both. *)
+proc regOp(name: []const U8; n, sf, bits, rd, rn, rm, ra: INT);
+var t: [4][]const U8;
+begin
+    if listing then
+        t := [reg(rd, sf, false), reg(rn, sf, false), reg(rm, sf, false), reg(ra, sf, false)];
+        sayOps(name, t[0..n]);
+    end;
+    emit((sf shl 31) | bits | (rm shl 16) | (ra shl 10) | (rn shl 5) | rd);
+end;
+
+proc mul*(rd, rn, rm: INT);
+begin
+    regOp("mul", 3, 1, 1B007C00H, rd, rn, rm, 0);
+end;
+
+(* rd := ra + rn * rm, or ra - rn * rm if sub *)
+proc madd*(rd, rn, rm, ra: INT; sub: BOOL);
+const Names: [2][]const U8 = ["madd", "msub"];
+begin
+    regOp(Names[bit(sub)], 4, 1, 1B000000H | (bit(sub) shl 15), rd, rn, rm, ra);
+end;
+
+proc mulHigh*(signed: BOOL; rd, rn, rm: INT);
+const Names: [2][]const U8 = ["umulh", "smulh"];
+begin
+    regOp(Names[bit(signed)], 3, 1, 1B407C00H | (bit(not signed) shl 23), rd, rn, rm, 0);
+end;
+
+proc divide*(signed: BOOL; rd, rn, rm: INT);
+const Names: [2][]const U8 = ["udiv", "sdiv"];
+begin
+    regOp(Names[bit(signed)], 3, 1, 1AC00800H | (bit(signed) shl 10), rd, rn, rm, 0);
+end;
+
+(* lsl, lsr, asr or ror of size 4 or 8 bytes, by rm *)
+proc shift*(op, rd, rn, rm, size: INT);
+begin
+    regOp(ShiftNames[op], 3, bit(size = 8), 1AC02000H | (op shl 10), rd, rn, rm, 0);
+end;
+
+(* the leading zeros of rn, of size 4 or 8 bytes: 64 for 0; and rn's
+   bits in the opposite order, of which clz counts trailing zeros *)
+proc clz*(rd, rn, size: INT);
+begin
+    regOp("clz", 2, bit(size = 8), 5AC01000H, rd, rn, 0, 0);
+end;
+
+proc rbit*(rd, rn, size: INT);
+begin
+    regOp("rbit", 2, bit(size = 8), 5AC00000H, rd, rn, 0, 0);
+end;
+
+(* csel, csinc, csinv or csneg (op), on condition cc:
+   sf op 0 11010100 Rm cond 0 o2 Rn Rd *)
+proc condSel(sf, op, cc, rd, rn, rm: INT);
+begin
+    if listing then sayOps(CselNames[op], [reg(rd, sf, false), reg(rn, sf, false), reg(rm, sf, false), CondNames[cc]]); end;
+    emit((sf shl 31) | CselBits[op] | (rm shl 16) | (cc shl 12) | (rn shl 5) | rd);
+end;
+
+proc csel*(op, cc, rd, rn, rm: INT);
+begin
+    condSel(1, op, cc, rd, rn, rm);
+end;
+
+(* rd := 1 if cc holds, else 0: cset, csinc of the zero register on the
+   opposite condition *)
+proc cset*(cc, rd: INT);
+begin
+    condSel(1, csInc, invert(cc), rd, ZR, ZR);
+end;
+
+(* Loads and stores. ldst and its kin make them all from the bits that
+   tell size, register file and operation, (size << 30 | V << 26 | opc
+   << 22), and the form:
+     unsigned offset   size 111 V 01 opc imm12 Rn Rt, imm12 = off / size
+     unscaled          size 111 V 00 opc 0 imm9 00 Rn Rt   (ldur, stur)
+     post-index        size 111 V 00 opc 0 imm9 01 Rn Rt
+     pre-index         size 111 V 00 opc 0 imm9 11 Rn Rt
+     register          size 111 V 00 opc 1 Rm option S 10 Rn Rt
+   Rn 31 is sp; Rt 31 is the zero register. *)
+
+(* The bits of a load (or store) of size bytes; signed sign-extends to
+   64 bits (to 32 if sf is 0), fp is a real's register. For an integer
+   opc is 00 store, 01 load, 10 load signed to x, 11 load signed to w;
+   for a real the same but q, 16 bytes, which is size 00 and opc 1x. *)
+proc ldstBits(size: INT; load, signed, fp: BOOL; sf: INT): INT;
+begin
+    if fp and (size = 16) then return 04000000H | ((2 + bit(load)) shl 22); end;
+    if fp then return (scaleOf(size) shl 30) | 04000000H | (bit(load) shl 22); end;
+    if signed and (size < 8) then return (scaleOf(size) shl 30) | ((3 - sf) shl 22); end;
+    return (scaleOf(size) shl 30) | (bit(load) shl 22);
+end;
+
+(* The size of the load or store with these bits, 16 for q *)
+proc sizeOf(bits: INT): INT;
+begin
+    if (bits & 04800000H) = 04800000H then return 16; end;
+    return 1 shl INT(bits shr 30);
+end;
+
+(* The text of a load or store, its name from its bits (ldrsh, sturb,
+   ...), its register's and its address m *)
+proc sayLdst(bits, rt: INT; unscaled: BOOL; m: []const U8);
+const Sizes: [4][]const U8 = ["b", "h", "w", ""];
+var opc: INT; s, r: []const U8;
+begin
+    opc := (bits shr 22) & 3;
+    if (opc & 1) = 0 then s := "str"; else s := "ldr"; end;
+    if unscaled then s := Diag.say("{}ur", [Fmt.str(s[0..2])]); end;
+    if (bits & 04000000H) # 0 then
+        r := vreg(rt, sizeOf(bits));
+    else
+        r := reg(rt, bit((opc = 2) or (bits shr 30 = 3)), false);
+        if opc >= 2 then s := Diag.say("{}s", [Fmt.str(s)]); end;
+        if (opc >= 2) or (bits shr 30 < 2) then s := Diag.say("{}{}", [Fmt.str(s), Fmt.str(Sizes[bits shr 30])]); end;
+    end;
+    sayOps(s, [r, m]);
+end;
+
+(* rt at [rn, rm], or [rn, rm, lsl #scale] if scaled: option 011, S *)
+proc ldstReg(bits, rt, rn, rm: INT; scaled: BOOL);
+begin
+    if listing then sayLdst(bits, rt, false, Diag.say("[{}, {}, lsl #{}]", [Fmt.str(xsp(rn)), Fmt.str(x(rm)), Fmt.int(bit(scaled) * scaleOf(sizeOf(bits)))])); end;
+    emit(38206800H | bits | (rm shl 16) | (bit(scaled) shl 12) | (rn shl 5) | rt);
+end;
+
+(* rt at [rn, #off]: by its unsigned offset if off is a multiple of the
+   size below 4096 of them, else unscaled if off is in -256 to 255; else
+   off is built in x16 for the register form *)
+proc ldst(bits, rt, rn, off: INT);
+var sc: INT;
+begin
+    sc := scaleOf(sizeOf(bits));
+    if (off >= 0) and ((off & ((1 shl sc) - 1)) = 0) and ((off shr sc) < 4096) then
+        if listing then sayLdst(bits, rt, false, memText(rn, off, mOff)); end;
+        emit(39000000H | bits | ((off shr sc) shl 10) | (rn shl 5) | rt);
+    elsif (off >= -256) and (off <= 255) then
+        if listing then sayLdst(bits, rt, true, memText(rn, off, mOff)); end;
+        emit(38000000H | bits | ((off & 1FFH) shl 12) | (rn shl 5) | rt);
+    else
+        movRI(X16, off);
+        ldstReg(bits, rt, rn, X16, false);
+    end;
+end;
+
+(* rt at [rn, #off]!, rn changed first, or [rn], #off, after; off in
+   -256 to 255 *)
+proc ldstIdx(bits, rt, rn, off, mode: INT);
+begin
+    if (off < -256) or (off > 255) then _ := Scan.mark("an index beyond -256 to 255"); end;
+    if listing then sayLdst(bits, rt, false, memText(rn, off, mode)); end;
+    emit(38000000H | bits | ((off & 1FFH) shl 12) | ((2 * bit(mode = mPre) + 1) shl 10) | (rn shl 5) | rt);
+end;
+
+(* rt := the size bytes at [rn, #off], 1, 2, 4 or 8, by their sign or
+   zeros; and the store *)
+proc load*(rt, rn, off, size: INT; signed: BOOL);
+begin
+    ldst(ldstBits(size, true, signed, false, 1), rt, rn, off);
+end;
+
+proc store*(rt, rn, off, size: INT);
+begin
+    ldst(ldstBits(size, false, false, false, 1), rt, rn, off);
+end;
+
+(* [rn + rm], or [rn + rm * size] if scaled *)
+proc loadR*(rt, rn, rm, size: INT; signed, scaled: BOOL);
+begin
+    ldstReg(ldstBits(size, true, signed, false, 1), rt, rn, rm, scaled);
+end;
+
+proc storeR*(rt, rn, rm, size: INT; scaled: BOOL);
+begin
+    ldstReg(ldstBits(size, false, false, false, 1), rt, rn, rm, scaled);
+end;
+
+(* with rn changed, mPre or mPost, as a push is str x0, [sp, #-16]! *)
+proc loadIdx*(rt, rn, off, size, mode: INT);
+begin
+    ldstIdx(ldstBits(size, true, false, false, 1), rt, rn, off, mode);
+end;
+
+proc storeIdx*(rt, rn, off, size, mode: INT);
+begin
+    ldstIdx(ldstBits(size, false, false, false, 1), rt, rn, off, mode);
+end;
+
+(* A real's register, of size 4, 8 or 16 *)
+proc loadF*(vt, rn, off, size: INT);
+begin
+    ldst(ldstBits(size, true, false, true, 1), vt, rn, off);
+end;
+
+proc storeF*(vt, rn, off, size: INT);
+begin
+    ldst(ldstBits(size, false, false, true, 1), vt, rn, off);
+end;
+
+(* ldp and stp: two registers at [rn, #off], off a multiple of the size
+   in -64 to 63 of them: opc 101 V mode L imm7 Rt2 Rn Rt, opc 00 for w or
+   s, 10 for x, 01 for d, 10 for q *)
+proc pair(load, fp: BOOL; size, rt, rt2, rn, off, mode: INT);
+const Names: [2][]const U8 = ["stp", "ldp"];
+var opc: INT;
+begin
+    if fp then opc := scaleOf(size) - 2; else opc := 2 * bit(size = 8); end;
+    if ((off & (size - 1)) # 0) or (off < -64 * size) or (off > 63 * size) then
+        _ := Scan.mark("a pair's offset beyond -64 to 63 of its size");
+    end;
+    if listing then sayOps(Names[bit(load)], [x(rt), x(rt2), memText(rn, off, mode)]); end;
+    emit((opc shl 30) | 28000000H | (bit(fp) shl 26) | (mode shl 23) | (bit(load) shl 22)
+        | (((off div size) & 7FH) shl 15) | (rt2 shl 10) | (rn shl 5) | rt);
+end;
+
+proc ldp*(rt, rt2, rn, off, mode: INT);
+begin
+    pair(true, false, 8, rt, rt2, rn, off, mode);
+end;
+
+proc stp*(rt, rt2, rn, off, mode: INT);
+begin
+    pair(false, false, 8, rt, rt2, rn, off, mode);
+end;
+
+(* Atomics, by the LSE instructions every Apple processor has, of size 4
+   or 8 bytes, each with acquire and release, so sequentially consistent:
+     ldaddal rs, rt, [rn]   size 111 0 00 1 1 1 Rs 0 000 00 Rn Rt: rt := [rn], [rn] += rs
+     swpal rs, rt, [rn]     size 111 0 00 1 1 1 Rs 1 000 00 Rn Rt: rt := [rn], [rn] := rs
+     casal rs, rt, [rn]     size 001000 1 1 1 Rs 1 11111 Rn Rt: if [rn] = rs, [rn] := rt; rs := old [rn]
+   The assembler knows the exclusive pair too, for a loop of its own:
+     ldaxr rt, [rn]         size 001000 0 1 0 11111 1 11111 Rn Rt
+     stlxr ws, rt, [rn]     size 001000 0 0 0 Rs 1 11111 Rn Rt, ws 0 if it stored *)
+const
+    AtomNames: [5][]const U8 = ["ldaddal", "swpal", "casal", "ldaxr", "stlxr"];
+    AtomBits: [5]INT = [38E00000H, 38E08000H, 08E0FC00H, 085FFC00H, 0800FC00H];
+
+proc atomic(op, size, rs, rt, rn: INT);
+begin
+    if listing then sayOps(AtomNames[op], [reg(rs, bit(size = 8), false), reg(rt, bit(size = 8), false), memText(rn, 0, mOff)]); end;
+    emit(80000000H | (bit(size = 8) shl 30) | AtomBits[op] | (rs shl 16) | (rn shl 5) | rt);
+end;
+
+proc ldaddal*(rs, rt, rn, size: INT);
+begin
+    atomic(0, size, rs, rt, rn);
+end;
+
+proc swpal*(rs, rt, rn, size: INT);
+begin
+    atomic(1, size, rs, rt, rn);
+end;
+
+proc casal*(rs, rt, rn, size: INT);
+begin
+    atomic(2, size, rs, rt, rn);
+end;
+
+(* The rest of the system's: a barrier, the inner shareable domain's,
+   which is every processor's (dmb ish, 1101010100 0 00 011 0011 CRm 1 01
+   11111, CRm 1011); a call of the system, svc #imm; a trap, brk #imm *)
+proc dmb*;
+begin
+    if listing then say("dmb ish"); end;
+    emit(0D5033BBFH);
+end;
+
+proc svc*(n: INT);
+begin
+    if listing then sayOps("svc", [imm(n)]); end;
+    emit(0D4000001H | ((n & 0FFFFH) shl 5));
+end;
+
+proc brk*(n: INT);
+begin
+    if listing then sayOps("brk", [imm(n)]); end;
+    emit(0D4200000H | ((n & 0FFFFH) shl 5));
+end;
+
+(* Code made up to a multiple of n bytes with nop *)
+proc align*(n: INT);
+begin
+    while Chunk.pc mod n # 0 do
+        if listing then say("nop"); end;
+        emit(Nop);
+    end;
+end;
+
+(* Reals: type 00 is single, an F32, 01 double *)
+
+(* fmul, fdiv, fadd, fsub, fmax and fmin, vd := vn op vm:
+   0 0 0 11110 type 1 Rm opcode 10 Rn Rd *)
+proc fop*(op, vd, vn, vm: INT; single: BOOL);
+var s: INT;
+begin
+    s := 8 - 4 * bit(single);
+    if listing then sayOps(FopNames[op], [vreg(vd, s), vreg(vn, s), vreg(vm, s)]); end;
+    emit(1E200800H | (bit(not single) shl 22) | (vm shl 16) | (op shl 12) | (vn shl 5) | vd);
+end;
+
+(* fmov, fabs, fneg and fsqrt, of one register:
+   0 0 0 11110 type 1 opcode 10000 Rn Rd *)
+proc fop1*(op, vd, vn: INT; single: BOOL);
+var s: INT;
+begin
+    s := 8 - 4 * bit(single);
+    if listing then sayOps(Fop1Names[op], [vreg(vd, s), vreg(vn, s)]); end;
+    emit(1E204000H | (bit(not single) shl 22) | (op shl 15) | (vn shl 5) | vd);
+end;
+
+(* vd := vn converted, to an F32 if toSingle, else to an F64: fop1's form
+   with opcode 0001, then the type made, 00 single or 01 double *)
+proc fcvt*(vd, vn: INT; toSingle: BOOL);
+begin
+    if listing then sayOps("fcvt", [vreg(vd, 8 - 4 * bit(toSingle)), vreg(vn, 4 + 4 * bit(toSingle))]); end;
+    emit(1E204000H | (bit(toSingle) shl 22) | ((5 - bit(toSingle)) shl 15) | (vn shl 5) | vd);
+end;
+
+(* fcmp vn, vm, or vn with 0.0 if vm < 0: the flags as an unsigned
+   compare sets them, but for unordered (a NaN), which is C and V:
+   0 0 0 11110 type 1 Rm 00 1000 Rn 0 opc 000, opc 01 for 0.0 *)
+proc fcmp*(vn, vm: INT; single: BOOL);
+var s: INT;
+begin
+    s := 8 - 4 * bit(single);
+    if vm < 0 then
+        if listing then sayOps("fcmp", [vreg(vn, s), "#0.0"]); end;
+        emit(1E202008H | (bit(not single) shl 22) | (vn shl 5));
+    else
+        if listing then sayOps("fcmp", [vreg(vn, s), vreg(vm, s)]); end;
+        emit(1E202000H | (bit(not single) shl 22) | (vm shl 16) | (vn shl 5));
+    end;
+end;
+
+(* Between the register files: sf 0 0 11110 type 1 rmode opcode 000000
+   Rn Rd, the real of size 4 or 8 bytes, to it if toFp. rmode 00 opcode
+   010 scvtf, 011 ucvtf, 110 fmov to a general register, 111 fmov from
+   one; rmode 11 opcode 000 fcvtzs, 001 fcvtzu, which round toward zero *)
+proc fconv(name: []const U8; sf, size, rmode, opcode, rd, rn: INT; toFp: BOOL);
+begin
+    if listing and toFp then sayOps(name, [vreg(rd, size), reg(rn, sf, false)]); end;
+    if listing and not toFp then sayOps(name, [reg(rd, sf, false), vreg(rn, size)]); end;
+    emit((sf shl 31) | 1E200000H | (bit(size = 8) shl 22) | (rmode shl 19) | (opcode shl 16) | (rn shl 5) | rd);
+end;
+
+(* vd := the 64-bit integer in rn, signed or not, as a real *)
+proc scvtf*(vd, rn: INT; single, signed: BOOL);
+const Names: [2][]const U8 = ["ucvtf", "scvtf"];
+begin
+    fconv(Names[bit(signed)], 1, 8 - 4 * bit(single), 0, 3 - bit(signed), vd, rn, true);
+end;
+
+(* rd := vn toward zero as a 64-bit integer; out of range it is the
+   nearest, and a NaN 0, where x86 gives the smallest I64: Gen mends it *)
+proc fcvtz*(rd, vn: INT; single, signed: BOOL);
+const Names: [2][]const U8 = ["fcvtzu", "fcvtzs"];
+begin
+    fconv(Names[bit(signed)], 1, 8 - 4 * bit(single), 3, bit(not signed), rd, vn, false);
+end;
+
+(* The bits of a real between the files: s and w, d and x *)
+proc fmovFR*(vd, rn: INT; single: BOOL);
+begin
+    fconv("fmov", bit(not single), 8 - 4 * bit(single), 0, 7, vd, rn, true);
+end;
+
+proc fmovRF*(rd, vn: INT; single: BOOL);
+begin
+    fconv("fmov", bit(not single), 8 - 4 * bit(single), 0, 6, rd, vn, false);
+end;
+
+(* Addresses, and references to other chunks *)
+
+(* rd := the address of this instruction plus off, within 1 MB (adr),
+   or its page of 4 KB plus off pages (adrp): op immlo 10000 immhi Rd *)
+proc adrOp(page, rd, off: INT);
+begin
+    emit((page shl 31) | 10000000H | ((off & 3) shl 29) | (((off shr 2) & 7FFFFH) shl 5) | rd);
+end;
+
+proc adr*(rd, off: INT);
+begin
+    if listing then sayOps("adr", [x(rd), Diag.say(". + {}", [Fmt.int(off)])]); end;
+    adrOp(0, rd, off);
+end;
+
+(* adrp rd with a fixup to the page of chunk c plus addend *)
+proc adrpChunk(rd, c, addend: INT);
+begin
+    if listing then sayOps("adrp", [x(rd), Diag.say("{}@PAGE", [Fmt.str(Chunk.chunkName(c))])]); end;
+    Chunk.addKindFixup(Chunk.pc, c, addend, Chunk.fxPage21);
+    adrOp(1, rd, 0);
+end;
+
+(* rd := the address of chunk c plus addend, wherever the linker puts
+   it, since macOS loads a program anywhere: adrp of its page, then add
+   of its place in the page, each with its fixup *)
+proc addrChunk*(rd, c, addend: INT);
+begin
+    adrpChunk(rd, c, addend);
+    if listing then sayOps("add", [x(rd), x(rd), Diag.say("{}@PAGEOFF", [Fmt.str(Chunk.chunkName(c))])]); end;
+    Chunk.addKindFixup(Chunk.pc, c, addend, Chunk.fxPageOff12);
+    emit(91000000H | (rd shl 5) | rd);
+end;
+
+(* A load or store of the bits ldstBits gives at chunk c plus addend:
+   adrp x16, then the load's or store's unsigned offset is the place in
+   the page, divided by the size, which the linker reads from the
+   instruction, as Apple's linker does for ARM64_RELOC_PAGEOFF12. That
+   offset must then be a multiple of the size: when the chunk's
+   alignment doesn't make it one, the address is made whole first. As a
+   C symbol's quadword is read: loadChunk(rt, externChunk(name), 0, 8). *)
+proc chunkMem(bits, rt, c, addend: INT);
+begin
+    if ((addend & (sizeOf(bits) - 1)) # 0) or (Chunk.chunks[c].align < sizeOf(bits)) then
+        addrChunk(X16, c, addend);
+        ldst(bits, rt, X16, 0);
+        return;
+    end;
+    adrpChunk(X16, c, addend);
+    if listing then sayLdst(bits, rt, false, Diag.say("[x16, {}@PAGEOFF]", [Fmt.str(Chunk.chunkName(c))])); end;
+    Chunk.addKindFixup(Chunk.pc, c, addend, Chunk.fxPageOff12);
+    emit(39000000H | bits | (X16 shl 5) | rt);
+end;
+
+proc loadChunk*(rt, c, addend, size: INT; signed: BOOL);
+begin
+    chunkMem(ldstBits(size, true, signed, false, 1), rt, c, addend);
+end;
+
+proc storeChunk*(rt, c, addend, size: INT);
+begin
+    chunkMem(ldstBits(size, false, false, false, 1), rt, c, addend);
+end;
+
+proc loadChunkF*(vt, c, addend, size: INT);
+begin
+    chunkMem(ldstBits(size, true, false, true, 1), vt, c, addend);
+end;
+
+proc storeChunkF*(vt, c, addend, size: INT);
+begin
+    chunkMem(ldstBits(size, false, false, true, 1), vt, c, addend);
+end;
+
+(* bl or b to the start of chunk c, a fixup: 1 00101 imm26 for bl, 0
+   00101 for b, imm26 the distance in words, within 128 MB *)
+proc branchChunk(call: BOOL; c: INT);
+const Names: [2][]const U8 = ["b", "bl"];
+begin
+    if listing then sayOps(Names[bit(call)], [Chunk.chunkName(c)]); end;
+    Chunk.addKindFixup(Chunk.pc, c, 0, Chunk.fxBranch26);
+    emit(14000000H | (bit(call) shl 31));
+end;
+
+proc callChunk*(c: INT);
+begin
+    branchChunk(true, c);
+end;
+
+(* a tail call *)
+proc jmpChunk*(c: INT);
+begin
+    branchChunk(false, c);
+end;
+
+(* bl to target, a place in text already written *)
+proc callBack*(target: INT);
+begin
+    if listing then say("bl ->"); end;
+    emit(94000000H | (((target - Chunk.pc) div 4) & 3FFFFFFH));
+end;
+
+(* blr, br and ret, to the address in rn:
+   1101011 0 0 opc 11111 000000 Rn 00000, opc 01 blr, 00 br, 10 ret *)
+proc callR*(rn: INT);
+begin
+    if listing then sayOps("blr", [x(rn)]); end;
+    emit(0D63F0000H | (rn shl 5));
+end;
+
+proc jmpR*(rn: INT);
+begin
+    if listing then sayOps("br", [x(rn)]); end;
+    emit(0D61F0000H | (rn shl 5));
+end;
+
+proc ret*;
+begin
+    if listing then say("ret"); end;
+    emit(0D65F03C0H);
+end;
+
+(* Jumps within a procedure. A label not yet placed is the chain of the
+   jumps to it, as in X64, each jump's offset field holding the place
+   of the one before, in words from the start of the procedure's chunk,
+   plus one: 0 ends the chain. Placing the label walks the chain and
+   puts each jump's distance in its field. The fields are of three
+   widths:
+     b, bl            0 00101 imm26                    within 128 MB
+     b.cond           0101010 0 imm19 0 cond           within 1 MB
+     cbz, cbnz        sf 011010 op imm19 Rt            within 1 MB
+     tbz, tbnz        b5 011011 op b40 imm14 Rt        within 32 KB
+   A b.cond or a cbz reaches 1 MB, a procedure of a quarter of a million
+   instructions; past that the compile ends with an error, rather than
+   make every conditional jump two instructions for a procedure no one
+   writes. A tbz reaches only 32 KB, which a long procedure passes: so
+   Gen's tbz is the opposite tbz over a b, which reaches as far as any b
+   (tbz below); only the assembler's tbz is one instruction, in a code
+   procedure that is never that long. *)
+
+(* Where the offset field of the branch insn is, its lowest bit and its
+   width *)
+proc fieldOf(insn: INT): (INT, INT);
+begin
+    if (insn & 7C000000H) = 14000000H then return 0, 26; end;
+    if (insn & 7E000000H) = 36000000H then return 5, 14; end;
+    return 5, 19;
+end;
+
+(* The jump before the one at L on its chain, from the link in its field *)
+proc before(L: INT): INT;
+var insn, lo, w, prev: INT;
+begin
+    insn := Chunk.get4At(L) & 0FFFFFFFFH;
+    lo, w := fieldOf(insn);
+    prev := (insn shr lo) & ((1 shl w) - 1);
+    if prev = 0 then return NoLabel; end;
+    return Chunk.chunks[Chunk.curChunk].start + (prev - 1) * 4;
+end;
+
+(* insn with its field set: to the distance d in words if back, else to
+   the link to the jump at d, or to none if d is NoLabel; either must fit *)
+proc withField(insn, d: INT; back: BOOL): INT;
+var lo, w: INT;
+begin
+    lo, w := fieldOf(insn);
+    if not back and (d = NoLabel) then
+        d := 0;
+    elsif not back then
+        d := (d - Chunk.chunks[Chunk.curChunk].start) div 4 + 1;
+    end;
+    if back and ((d < -(1 shl (w - 1))) or (d >= (1 shl (w - 1)))) or not back and (d >= (1 shl w)) then
+        _ := Scan.mark("a jump within a procedure beyond what its instruction reaches (b.cond and cbz: 1 MB)");
+    end;
+    return (insn & ~(((1 shl w) - 1) shl lo)) | ((d & ((1 shl w) - 1)) shl lo);
+end;
+
+(* insn, a branch to L: back to the place L if back, else on L's chain;
+   the chain's new first jump *)
+proc branch(insn, L: INT; back: BOOL): INT;
+begin
+    if back then emit(withField(insn, (L - Chunk.pc) div 4, true)); return L; end;
+    emit(withField(insn, L, false));
+    return Chunk.pc - 4;
+end;
+
+proc jmp*(var L: INT);
+begin
+    if listing then say("b ->"); end;
+    L := branch(14000000H, L, false);
+end;
+
+proc jcc*(cc: INT; var L: INT);
+begin
+    if listing then say(Diag.say("b.{} ->", [Fmt.str(CondNames[cc])])); end;
+    L := branch(54000000H | cc, L, false);
+end;
+
+(* to L if the 64 bits of r are zero (cbz), or not (cbnz) *)
+proc cbz*(nonzero: BOOL; r: INT; var L: INT);
+const Names: [2][]const U8 = ["cbz", "cbnz"];
+begin
+    if listing then sayOps(Names[bit(nonzero)], [x(r), "->"]); end;
+    L := branch(0B4000000H | (bit(nonzero) shl 24) | r, L, false);
+end;
+
+(* to L if bit b of r is zero (tbz) or one (tbnz): the opposite test
+   over the next instruction, a b to L: b5 011011 op b40 imm14 Rt, b's
+   number split as b5 and b40, imm14 2 *)
+proc tbz*(nonzero: BOOL; r, b: INT; var L: INT);
+const Names: [2][]const U8 = ["tbnz", "tbz"];
+begin
+    if listing then sayOps(Names[bit(nonzero)], [x(r), imm(b), ". + 8"]); end;
+    emit(36000000H | (bit(not nonzero) shl 24) | ((b shr 5) shl 31) | ((b & 31) shl 19) | (2 shl 5) | r);
+    jmp(L);
+end;
+
+proc jmpBack*(target: INT);
+begin
+    if listing then say("b ->"); end;
+    _ := branch(14000000H, target, true);
+end;
+
+proc jccBack*(cc, target: INT);
+begin
+    if listing then say(Diag.say("b.{} ->", [Fmt.str(CondNames[cc])])); end;
+    _ := branch(54000000H | cc, target, true);
+end;
+
+proc fixLinkTo*(L, target: INT);
+var next: INT;
+begin
+    while L # NoLabel do
+        next := before(L);
+        Chunk.put4At(L, withField(Chunk.get4At(L) & 0FFFFFFFFH, (target - L) div 4, true));
+        L := next;
+    end;
+end;
+
+proc fixLink*(L: INT);
+begin
+    if L # NoLabel then labelAt := Chunk.pc; end;
+    fixLinkTo(L, Chunk.pc);
+end;
+
+(* If the last instruction made is a b to L, it is taken back, as in
+   X64: L is that b when it is the last word and an unconditional b
+   (000101 in the top bits), and no jump was fixed to just after it.
+   L becomes the jump before it on the chain. *)
+proc dropJumpTo*(var L: INT);
+begin
+    if (L = NoLabel) or (L # Chunk.pc - 4) or (labelAt = Chunk.pc) or ((Chunk.get4At(L) & 0FC000000H) # 14000000H) then return; end;
+    L := before(L);
+    Chunk.takeBack(4);
+    if listing and (numSaid > 0) and (said[numSaid - 1].at = Chunk.pc) then DEC(numSaid); end;
+end;
+
+(* The jumps of chains L1 and L2, as one chain: the last of L2's links to
+   L1's first *)
+proc joinLinks*(L1, L2: INT): INT;
+var L: INT;
+begin
+    if L2 = NoLabel then return L1; end;
+    if L1 # NoLabel then
+        L := L2;
+        while before(L) # NoLabel do L := before(L); end;
+        Chunk.put4At(L, withField(Chunk.get4At(L) & 0FFFFFFFFH, L1, false));
+    end;
+    return L2;
+end;
+
+(* The assembler, for code procedures: arm64 in Arm's syntax, as its
+   reference manual writes it, destination first (report, appendix A):
+   `add x0, x1, #16;`, `ldr w2, [x0, #4];`, `stp x29, x30, [sp, #-16]!;`,
+   `b.ne loop;`. The # before an immediate may be left out; numbers are
+   raz's, 10H and not 0x10, and a constant of the module stands where a
+   number does. A procedure or a module variable stands for its address
+   in `bl p`, `b p` and `adr xN, v`, the last made as adrp and add, two
+   instructions, since the variable may lie beyond adr's 1 MB. It reads
+   instructions with the scanner up to end, as X64's assembler does, and
+   encodes them with the routines above, the listing off: an immediate
+   or offset out of an instruction's range is an error here, where Gen's
+   routines build it in x16. *)
+
+const
+    NameOnly = "a procedure or a variable stands for its address only in bl p, b p and adr r, v";
+
+type
+    OpKind = (oReg, oFp, oImm, oMem, oShift, oName, oLabel, oWord);
+    Operand = record
+        kind: OpKind;
+        r, sf: INT;       (* oReg: the register, and 1 for x, 0 for w; oFp, oMem: the register *)
+        sp: BOOL;         (* oReg: 31 written sp or wsp, not xzr or wzr *)
+        size: INT;        (* oFp: 4, 8 or 16 *)
+        v: I64;           (* oImm; oShift: the amount; oMem: the offset, or the index's shift *)
+        sh: INT;          (* oShift: lsl, lsr, asr or ror *)
+        index, mode: INT; (* oMem: an index register or -1, mOff, mPre or mPost *)
+        scaled: BOOL;     (* oMem: the index shifted by lsl *)
+        c: INT;           (* oName: the chunk; oLabel: the label *)
+        w: []const U8;    (* oWord: a condition or a barrier's option *)
+        at: Diag.Pos;
+    end;
+
+var
+    (* the labels of the procedure *)
+    lnames, lplaces, lchains: [64]INT;
+    lusedAt: [64]Diag.Pos;
+    numLabels: INT;
+    (* the instruction being assembled *)
+    aw: []const U8;
+    ao: [6]Operand;
+    an, acc: INT;     (* how many operands; b.cond's condition *)
+    aat: Diag.Pos;
+
+proc asmWord: []const U8;
+begin
+    if Scan.tok = Scan.sIdent then return Scan.nameOf(Scan.id); end;
+    if Scan.tok = Scan.sAnd then return "and"; end;
+    return "";
+end;
+
+(* The number w spells from its second letter, one or two digits, below
+   lim; else -1 *)
+proc numberIn(w: []const U8; lim: INT): INT;
+var i, n: INT;
+begin
+    if (LEN(w) < 2) or (LEN(w) > 3) then return -1; end;
+    n := 0;
+    for i := 1 to LEN(w) - 1 do
+        if (w[i] < '0') or (w[i] > '9') then return -1; end;
+        n := n * 10 + INT(w[i] - '0');
+    end;
+    if n >= lim then return -1; end;
+    return n;
+end;
+
+(* Whether w names a general register, x0 to x30, w0 to w30, sp, wsp,
+   xzr, wzr, fp or lr, or a real's, s, d or q and 0 to 31: o is set if so *)
+proc isReg(w: []const U8; var o: Operand): BOOL;
+begin
+    o.kind := oReg; o.sf := 1;
+    if LEN(w) < 2 then
+        return false;
+    elsif (w = "sp") or (w = "xzr") or (w = "wsp") or (w = "wzr") then
+        o.r := 31; o.sf := bit(w[0] # 'w'); o.sp := (w = "sp") or (w = "wsp");
+    elsif (w = "fp") or (w = "lr") then
+        o.r := 29 + bit(w = "lr");
+    elsif ((w[0] = 'x') or (w[0] = 'w')) and (numberIn(w, 31) >= 0) then
+        o.r := numberIn(w, 31); o.sf := bit(w[0] = 'x');
+    elsif ((w[0] = 's') or (w[0] = 'd') or (w[0] = 'q')) and (numberIn(w, 32) >= 0) then
+        o.kind := oFp; o.r := numberIn(w, 32); o.sf := 0;
+        if w[0] = 's' then o.size := 4; elsif w[0] = 'd' then o.size := 8; else o.size := 16; end;
+    else
+        return false;
+    end;
+    return true;
+end;
+
+proc wordIndex(w: []const U8; list: []const []const U8): INT;
+var i: INT;
+begin
+    for i := 0 to LEN(list) - 1 do
+        if list[i] = w then return i; end;
+    end;
+    return -1;
+end;
+
+(* The condition w names, cs and cc as hs and lo; -1 if none *)
+proc cond(w: []const U8): INT;
+begin
+    if w = "cs" then return ccHS; end;
+    if w = "cc" then return ccLO; end;
+    return wordIndex(w, CondNames);
+end;
+
+proc labelIndex(n: INT): INT;
+var i: INT;
+begin
+    for i := 0 to numLabels - 1 do
+        if lnames[i] = n then return i; end;
+    end;
+    return -1;
+end;
+
+proc lab(n: INT): (INT, ERROR);
+var i: INT;
+begin
+    i := labelIndex(n);
+    if i >= 0 then return i, nil; end;
+    if numLabels > 63 then return 0, Scan.mark("more than 64 labels"); end;
+    lnames[numLabels] := n; lplaces[numLabels] := -1; lchains[numLabels] := NoLabel;
+    lusedAt[numLabels] := Scan.tokPos();
+    INC(numLabels);
+    return numLabels - 1, nil;
+end;
+
+(* Every label, entered before an instruction is read, as in X64 *)
+proc findLabels;
+var st: Scan.State; wasQuiet, start: BOOL; w: []const U8;
+begin
+    Scan.saveScan(st);
+    wasQuiet := Diag.quiet;
+    Diag.setQuiet(true);
+    start := true;
+    while (Scan.tok # Scan.sEnd) and (Scan.tok # Scan.sEof) do
+        w := "";
+        if start then w := asmWord(); end;
+        start := Scan.tok = Scan.sSemicolon;
+        Scan.next;
+        if (LEN(w) > 0) and (Scan.tok = Scan.sColon) and (numLabels < 64) then
+            _, _ := lab(Scan.intern(SYSTEM.PTR(w), LEN(w)));
+            start := true;
+            Scan.next;
+        end;
+    end;
+    Diag.setQuiet(wasQuiet);
+    Scan.restoreScan(st);
+end;
+
+(* An immediate, with or without its #: # is raz's "not equal" *)
+proc immediate(constExpr: ConstFn): (I64, ERROR);
+begin
+    if Scan.tok = Scan.sNeq then Scan.next; end;
+    return constExpr(true);
+end;
+
+(* [xn], [xn, #off], [xn, xm], [xn, xm, lsl #s], then ! for pre-index,
+   or , #off after for post-index *)
+proc memory(var o: Operand; constExpr: ConstFn): ERROR;
+var b: Operand; st: Scan.State;
+begin
+    Scan.next;
+    o.kind := oMem; o.index := -1; o.mode := mOff;
+    if not isReg(asmWord(), b) or (b.kind # oReg) or (b.sf = 0) or ((b.r = 31) and not b.sp) then
+        return Scan.mark("expected a memory operand, [xn, #offset] or [xn, xm]");
+    end;
+    o.r := b.r;
+    Scan.next;
+    if Scan.tok = Scan.sComma then
+        Scan.next;
+        if isReg(asmWord(), b) then
+            if (b.kind # oReg) or (b.sf = 0) or (b.r = 31) then return Scan.mark("expected an index register, x0 to x30"); end;
+            o.index := b.r;
+            Scan.next;
+            if Scan.tok = Scan.sComma then
+                Scan.next;
+                if asmWord() # "lsl" then return Scan.mark("expected lsl"); end;
+                Scan.next;
+                o.scaled := true;
+            end;
+        end;
+        if (o.index < 0) or o.scaled then o.v := try immediate(constExpr); end;
+    end;
+    if Scan.tok # Scan.sRbrak then return Scan.mark("expected \"]\""); end;
+    Scan.next;
+    if Scan.tok = Scan.sNot then
+        o.mode := mPre;
+        Scan.next;
+    elsif (Scan.tok = Scan.sComma) and (o.v = 0) and (o.index < 0) then
+        Scan.saveScan(st);
+        Scan.next;
+        if (Scan.tok = Scan.sNeq) or (Scan.tok = Scan.sInt) or (Scan.tok = Scan.sMinus) then
+            o.mode := mPost;
+            o.v := try immediate(constExpr);
+        else
+            Scan.restoreScan(st);
+        end;
+    end;
+    return nil;
+end;
+
+(* An operand: a register, a memory operand, a shift (lsl #12), an
+   immediate; a label, where target is set (a jump's last operand),
+   entered if new, which assemble finds undefined; a name, a procedure or
+   a variable, by nameFn; or, where word is set, a condition or a
+   barrier's option. *)
+proc operand(var o: Operand; target, word: BOOL; constExpr: ConstFn; nameFn: NameFn): ERROR;
+var w: []const U8; k: INT;
+begin
+    o := {};
+    w := asmWord();
+    o.at := Scan.tokPos();
+    if Scan.tok = Scan.sLbrak then
+        try memory(o, constExpr);
+    elsif isReg(w, o) then
+        Scan.next;
+    elsif wordIndex(w, ShiftNames) >= 0 then
+        o.kind := oShift; o.sh := wordIndex(w, ShiftNames);
+        Scan.next;
+        o.v := try immediate(constExpr);
+    elsif word and (Scan.tok = Scan.sIdent) then
+        o.kind := oWord; o.w := w;
+        Scan.next;
+    else
+        o.c := -1;
+        k := -1;
+        if Scan.tok = Scan.sIdent then
+            k := labelIndex(Scan.id);
+            if (k >= 0) and not target then return Scan.mark(Diag.say("label {} is only for a jump", [Fmt.str(w)])); end;
+            if k < 0 then o.c := try nameFn(); end;
+        end;
+        if (k >= 0) or target and (o.c < 0) and (Scan.tok = Scan.sIdent) then
+            o.kind := oLabel;
+            o.c := try lab(Scan.id);
+            Scan.next;
+        elsif o.c >= 0 then
+            o.kind := oName;
+        else
+            o.kind := oImm;
+            o.v := try immediate(constExpr);
+        end;
+    end;
+    return nil;
+end;
+
+proc bad: ERROR;
+begin
+    return Scan.markAt(aat, Diag.say("can't assemble {} with these operands", [Fmt.str(aw)]));
+end;
+
+(* Whether the operands are kinds, one letter each: r a general
+   register, f a real's, i an immediate, m memory, s a shift, n a name,
+   l a label, w a word; and as many *)
+proc are(kinds: []const U8): BOOL;
+const Letters = "rfimsnlw";
+var i: INT;
+begin
+    if an # LEN(kinds) then return false; end;
+    for i := 0 to an - 1 do
+        if Letters[INT(ao[i].kind)] # kinds[i] then return false; end;
+    end;
+    return true;
+end;
+
+(* Whether the n operands from first are general registers of the
+   width of operand 0, none of them written sp *)
+proc regs(first, n: INT): BOOL;
+var i: INT;
+begin
+    for i := first to first + n - 1 do
+        if (i >= an) or (ao[i].kind # oReg) or (ao[i].sf # ao[0].sf) or ao[i].sp then return false; end;
+    end;
+    return true;
+end;
+
+proc fits(v, lo, hi: I64): BOOL;
+begin
+    return (v >= lo) and (v <= hi);
+end;
+
+(* The zero register, of operand 0's width, put in as operand i: mov is
+   orr of it, neg sub from it, cmp subs to it *)
+proc insertZR(i: INT);
+var j, sf: INT;
+begin
+    sf := ao[0].sf;
+    for j := an to i + 1 by -1 do ao[j] := ao[j - 1]; end;
+    ao[i] := {}; ao[i].kind := oReg; ao[i].r := ZR; ao[i].sf := sf;
+    INC(an);
+end;
+
+(* a branch to label k: back if it is placed, else on its chain *)
+proc toLabel(insn, k: INT);
+begin
+    if lplaces[k] >= 0 then
+        _ := branch(insn, lplaces[k], true);
+    else
+        lchains[k] := branch(insn, lchains[k], false);
+    end;
+end;
+
+(* The shift that is operand i, if there is one, the last: its kind and
+   amount, or lsl 0; false if it isn't a shift within the width *)
+proc shiftAt(i: INT; var sh, n: INT): BOOL;
+begin
+    sh := shLsl; n := 0;
+    if an = i then return true; end;
+    if (an # i + 1) or (ao[i].kind # oShift) or not fits(ao[i].v, 0, 31 + 32 * ao[0].sf) then return false; end;
+    sh := ao[i].sh; n := INT(ao[i].v);
+    return true;
+end;
+
+(* add, adds, sub, subs, and, orr, eor, ands, bic and orn, op, of
+   operands 0, 1 and 2: of an immediate, 12 bits with lsl #12 or
+   negative for the opposite operation, or a logical immediate; or of a
+   register, shifted, or extended where sp is one *)
+proc alu3(op: INT): ERROR;
+var sh, n, enc: INT; v: I64; d: Operand;
+begin
+    d := ao[0];
+    if (d.kind # oReg) or (an < 3) or (ao[1].kind # oReg) or (ao[1].sf # d.sf) or ao[1].sp and (op > opSubs) then return bad(); end;
+    if ao[2].kind = oImm then
+        v := ao[2].v;
+        if op > opSubs then
+            enc := bitmask(v, d.sf);
+            if (an # 3) or (op > opAnds) or (enc < 0) or (d.sf = 0) and not fits(v, -80000000H, 0FFFFFFFFH)
+                or (d.r = 31) and (d.sp = (op = opAnds)) then return bad(); end;
+            logicImm(d.sf, op, d.r, ao[1].r, enc, v);
+            return nil;
+        end;
+        if not shiftAt(3, sh, n) or (sh # shLsl) or (n # 0) and (n # 12) then return bad(); end;
+        if (v < 0) and (n = 0) then v := -v; op := op xor 2; end;
+        if not fits(v, 0, 4095) or (d.r = 31) and (d.sp = ((op & 1) = 1)) or (ao[1].r = 31) and not ao[1].sp then return bad(); end;
+        addImm(d.sf, op, d.r, ao[1].r, INT(v), n div 12);
+        return nil;
+    end;
+    if not regs(2, 1) or not shiftAt(3, sh, n) then return bad(); end;
+    if (op <= opSubs) and (d.sp or ao[1].sp) then
+        if (sh # shLsl) or (n > 4) or (d.r = 31) and (d.sp = ((op & 1) = 1)) then return bad(); end;
+        addExt(d.sf, op, d.r, ao[1].r, ao[2].r, n);
+    elsif d.sp or (sh = shRor) and (op <= opSubs) then
+        return bad();
+    else
+        aluShifted(d.sf, op, d.r, ao[1].r, ao[2].r, sh, n);
+    end;
+    return nil;
+end;
+
+(* ldr, str and their kin: the size from the name's end (b, h, sb, sh,
+   sw) or from the register; ldur and stur, and an offset that can't
+   be scaled, are unscaled *)
+proc loadStore(): ERROR;
+var name, sfx: []const U8; size, sf, bits, sc: INT; load, signed, fp, unscaled: BOOL; m: Operand;
+begin
+    unscaled := aw[2] = 'u';
+    name := aw;
+    if unscaled then name := Diag.say("{}{}", [Fmt.str(aw[0..2]), Fmt.str(aw[3..LEN(aw)])]); end;
+    load := name[0] = 'l';
+    sfx := name[3..LEN(name)];
+    if not are("rm") and not are("fm") then return bad(); end;
+    m := ao[1];
+    fp := ao[0].kind = oFp;
+    sf := ao[0].sf;
+    signed := (LEN(sfx) = 2) and (sfx[0] = 's');
+    if fp and (LEN(sfx) = 0) then size := ao[0].size;
+    elsif sfx = "" then size := 4 + 4 * sf;
+    elsif (sfx = "b") or (sfx = "sb") then size := 1;
+    elsif (sfx = "h") or (sfx = "sh") then size := 2;
+    elsif sfx = "sw" then size := 4;
+    else return bad();
+    end;
+    if fp and (LEN(sfx) # 0) or signed and not load or (sfx = "sw") and (sf = 0) or (LEN(sfx) = 1) and (sf = 1) or ao[0].sp then return bad(); end;
+    bits := ldstBits(size, load, signed, fp, sf);
+    sc := scaleOf(size);
+    if (m.mode # mOff) or unscaled then
+        if (m.index >= 0) or (m.mode # mOff) and unscaled or not fits(m.v, -256, 255) then return bad(); end;
+        if m.mode # mOff then ldstIdx(bits, ao[0].r, m.r, INT(m.v), m.mode);
+        else emit(38000000H | bits | (INT(m.v & 1FFH) shl 12) | (m.r shl 5) | ao[0].r); end;
+    elsif m.index >= 0 then
+        if m.scaled and (m.v # sc) and (m.v # 0) then return bad(); end;
+        ldstReg(bits, ao[0].r, m.r, m.index, m.scaled and (m.v = sc));
+    elsif fits(m.v, 0, 4095 shl sc) and ((m.v & ((1 shl sc) - 1)) = 0) or fits(m.v, -256, 255) then
+        ldst(bits, ao[0].r, m.r, INT(m.v));
+    else
+        return bad();
+    end;
+    return nil;
+end;
+
+const
+    (* the aliases of alu3's operations with the zero register put in:
+       cmp and cmn as subs and adds to it, tst ands to it, neg sub from
+       it, mvn orn of it *)
+    Aliases: [5][]const U8 = ["cmp", "cmn", "tst", "neg", "mvn"];
+    AliasOps: [5]INT = [opSubs, opAdds, opAnds, opSub, opOrn];
+    (* the instructions of only registers, regOp's: their bits and how
+       many registers *)
+    RegNames: [14][]const U8 = ["mul", "madd", "msub", "smulh", "umulh", "sdiv", "udiv",
+        "lsl", "lsr", "asr", "ror", "clz", "rbit", "rev"];
+    RegBits: [14]INT = [1B007C00H, 1B000000H, 1B008000H, 9B407C00H, 9BC07C00H, 1AC00C00H, 1AC00800H,
+        1AC02000H, 1AC02400H, 1AC02800H, 1AC02C00H, 5AC01000H, 5AC00000H, 5AC00800H];
+    RegCount: [14]INT = [3, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3, 2, 2, 2];
+    Extends: [5][]const U8 = ["sxtb", "sxth", "sxtw", "uxtb", "uxth"];
+    Barriers: [6][]const U8 = ["sy", "ish", "ishld", "ishst", "osh", "nsh"];
+    BarrierCodes: [6]INT = [15, 11, 9, 10, 3, 7];
+    (* the instructions of no operands *)
+    Plain: [4][]const U8 = ["nop", "yield", "isb", "ret"];
+    PlainBits: [4]INT = [0D503201FH, 0D503203FH, 0D5033FDFH, 0D65F03C0H];
+    (* between the register files, as fconv takes them: rmode * 8 +
+       opcode; the first two into a real's register *)
+    Convs: [4][]const U8 = ["scvtf", "ucvtf", "fcvtzs", "fcvtzu"];
+    ConvCodes: [4]INT = [02H, 03H, 18H, 19H];
+
+(* The instruction aw with its operands, in ao and an *)
+proc instruction(): ERROR;
+var k, sf, size, bits, g, f: INT; d: Operand; v: I64;
+begin
+    d := ao[0];
+    sf := d.sf;
+    if wordIndex(aw, Aliases) >= 0 then
+        insertZR(bit(wordIndex(aw, Aliases) >= 3));
+        return alu3(AliasOps[wordIndex(aw, Aliases)]);
+    elsif wordIndex(aw, AluNames) >= 0 then
+        return alu3(wordIndex(aw, AluNames));
+    elsif aw = "mov" then
+        (* movImm's choice for an immediate; add #0 with sp, else orr *)
+        if are("ri") and not d.sp and ((sf = 1) or fits(ao[1].v, -80000000H, 0FFFFFFFFH)) then
+            movImm(sf, d.r, ao[1].v);
+            return nil;
+        elsif are("rr") and (d.sp or ao[1].sp) then
+            ao[2] := {}; ao[2].kind := oImm; an := 3;
+            return alu3(opAdd);
+        end;
+        insertZR(1);
+        return alu3(opOrr);
+    elsif (aw = "movz") or (aw = "movk") or (aw = "movn") then
+        k := 0;
+        if (an = 3) and (ao[2].kind = oShift) and (ao[2].sh = shLsl) and ((ao[2].v & 15) = 0) and fits(ao[2].v, 0, 16 + 32 * sf) then
+            k := INT(ao[2].v) div 16;
+            DEC(an);
+        end;
+        if not are("ri") or d.sp or not fits(ao[1].v, 0, 0FFFFH) then return bad(); end;
+        movWide(sf, wordIndex(aw, ["movn", "", "movz", "movk"]), d.r, INT(ao[1].v), k);
+    elsif (wordIndex(aw, ShiftNames) >= 0) and are("rri") then
+        if not regs(1, 1) or not fits(ao[2].v, 0, 31 + 32 * sf) then return bad(); end;
+        shiftI(wordIndex(aw, ShiftNames), d.r, ao[1].r, INT(ao[2].v), 4 + 4 * sf);
+    elsif wordIndex(aw, RegNames) >= 0 then
+        (* smulh and umulh are of x only; rev's opc is 11 for x, 10 for w *)
+        k := wordIndex(aw, RegNames);
+        if (an # RegCount[k]) or not regs(0, an) or ((k = 3) or (k = 4)) and (sf = 0) then return bad(); end;
+        bits := RegBits[k];
+        if aw = "rev" then bits := bits | (sf shl 10); end;
+        while an < 4 do ao[an].r := 0; INC(an); end;
+        regOp(aw, RegCount[k], sf, bits & 7FFFFFFFH, d.r, ao[1].r, ao[2].r, ao[3].r);
+    elsif wordIndex(aw, CselNames) >= 0 then
+        if (an # 4) or not regs(0, 3) or (ao[3].kind # oWord) or (cond(ao[3].w) < 0) then return bad(); end;
+        condSel(sf, wordIndex(aw, CselNames), cond(ao[3].w), d.r, ao[1].r, ao[2].r);
+    elsif (aw = "cset") or (aw = "csetm") then
+        (* csinc and csinv of the zero register on the opposite condition *)
+        if (an # 2) or not regs(0, 1) or (ao[1].kind # oWord) or (cond(ao[1].w) < 0) then return bad(); end;
+        condSel(sf, csInc + bit(aw = "csetm"), invert(cond(ao[1].w)), d.r, ZR, ZR);
+    elsif wordIndex(aw, Extends) >= 0 then
+        k := wordIndex(aw, Extends);
+        if (an # 2) or (d.kind # oReg) or d.sp or (ao[1].kind # oReg) or (ao[1].sf # 0) or ao[1].sp
+            or (k >= 3) and (sf = 1) or (k = 2) and (sf = 0) then return bad(); end;
+        bitfield(sf, 2 * bit(k >= 3), d.r, ao[1].r, 0, 8 * (1 shl (k mod 3)) - 1);
+    elsif (aw = "ubfm") or (aw = "sbfm") or (aw = "ubfx") or (aw = "sbfx") then
+        if (an # 4) or not regs(0, 2) or (ao[2].kind # oImm) or (ao[3].kind # oImm) then return bad(); end;
+        v := ao[3].v;
+        if aw[3] = 'x' then v := ao[2].v + v - 1; end;   (* ubfx's width, as ubfm's last bit *)
+        if not fits(ao[2].v, 0, 31 + 32 * sf) or not fits(v, 0, 31 + 32 * sf) then return bad(); end;
+        bitfield(sf, 2 * bit(aw[0] = 'u'), d.r, ao[1].r, INT(ao[2].v), INT(v));
+    elsif Str.hasPrefix(aw, "ldr") or Str.hasPrefix(aw, "str") or Str.hasPrefix(aw, "ldur") or Str.hasPrefix(aw, "stur") then
+        return loadStore();
+    elsif (aw = "ldp") or (aw = "stp") then
+        if not are("rrm") and not are("ffm") then return bad(); end;
+        size := 4 + 4 * sf;
+        if d.kind = oFp then size := d.size; end;
+        if (ao[1].sf # sf) or (ao[1].size # d.size) or d.sp or ao[1].sp or (ao[2].index >= 0)
+            or ((ao[2].v & (size - 1)) # 0) or not fits(ao[2].v, -64 * size, 63 * size) then return bad(); end;
+        pair(aw[0] = 'l', d.kind = oFp, size, d.r, ao[1].r, ao[2].r, INT(ao[2].v), ao[2].mode);
+    elsif wordIndex(aw, AtomNames) >= 0 then
+        (* ldaxr has no rs, which is 31 in its bits; stlxr's is a w *)
+        k := wordIndex(aw, AtomNames);
+        if aw = "ldaxr" then insertZR(0); end;
+        if not are("rrm") or ao[0].sp or ao[1].sp or (ao[2].index >= 0) or (ao[2].v # 0) or (ao[2].mode # mOff)
+            or (k < 3) and (ao[1].sf # sf) or (k = 4) and (sf = 1) then return bad(); end;
+        atomic(k, 4 + 4 * ao[1].sf, ao[0].r, ao[1].r, ao[2].r);
+    elsif aw = "adr" then
+        if not are("rn") or (sf = 0) or d.sp then return bad(); end;
+        addrChunk(d.r, ao[1].c, 0);
+    elsif ((aw = "b") or (aw = "bl")) and are("n") then
+        branchChunk(aw = "bl", d.c);
+    elsif (aw = "b") and are("l") then
+        toLabel(14000000H, d.c);
+    elsif (aw = "b.") and are("l") then
+        toLabel(54000000H | acc, d.c);
+    elsif ((aw = "cbz") or (aw = "cbnz")) and are("rl") and not d.sp then
+        toLabel((sf shl 31) | 34000000H | (bit(aw = "cbnz") shl 24) | d.r, ao[1].c);
+    elsif ((aw = "tbz") or (aw = "tbnz")) and are("ril") and not d.sp and fits(ao[1].v, 0, 31 + 32 * sf) then
+        k := INT(ao[1].v);
+        toLabel(36000000H | (bit(aw = "tbnz") shl 24) | ((k shr 5) shl 31) | ((k & 31) shl 19) | d.r, ao[2].c);
+    elsif (aw = "br") or (aw = "blr") or (aw = "ret") and (an = 1) then
+        (* opc in bits 21 and 22: 00 br, 01 blr, 10 ret *)
+        if not are("r") or (sf = 0) or d.sp then return bad(); end;
+        emit(0D61F0000H | (wordIndex(aw, ["br", "blr", "ret"]) shl 21) | (d.r shl 5));
+    elsif (aw = "svc") or (aw = "brk") then
+        if not are("i") or not fits(d.v, 0, 0FFFFH) then return bad(); end;
+        if aw = "svc" then svc(INT(d.v)); else brk(INT(d.v)); end;
+    elsif (aw = "dmb") or (aw = "dsb") then
+        if not are("w") or (wordIndex(d.w, Barriers) < 0) then return bad(); end;
+        emit(0D503309FH | (bit(aw = "dmb") shl 5) | (BarrierCodes[wordIndex(d.w, Barriers)] shl 8));
+    elsif wordIndex(aw, Plain) >= 0 then
+        if an # 0 then return bad(); end;
+        emit(PlainBits[wordIndex(aw, Plain)]);
+    elsif wordIndex(aw, FopNames) >= 0 then
+        if not are("fff") or (d.size = 16) or (ao[1].size # d.size) or (ao[2].size # d.size) then return bad(); end;
+        fop(wordIndex(aw, FopNames), d.r, ao[1].r, ao[2].r, d.size = 4);
+    elsif (wordIndex(aw, Fop1Names) >= 0) and are("ff") and (d.size # 16) and (ao[1].size = d.size) then
+        fop1(wordIndex(aw, Fop1Names), d.r, ao[1].r, d.size = 4);
+    elsif (aw = "fmov") and are("fr") and (d.size = 4 + 4 * ao[1].sf) and not ao[1].sp then
+        fmovFR(d.r, ao[1].r, d.size = 4);
+    elsif (aw = "fmov") and are("rf") and (ao[1].size = 4 + 4 * sf) and not d.sp then
+        fmovRF(d.r, ao[1].r, ao[1].size = 4);
+    elsif (aw = "fcmp") and are("ff") and (ao[1].size = d.size) and (d.size # 16) then
+        fcmp(d.r, ao[1].r, d.size = 4);
+    elsif (aw = "fcmp") and are("fi") and (ao[1].v = 0) and (d.size # 16) then
+        fcmp(d.r, -1, d.size = 4);
+    elsif (aw = "fcvt") and are("ff") and (d.size + ao[1].size = 12) then
+        fcvt(d.r, ao[1].r, d.size = 4);
+    elsif wordIndex(aw, Convs) >= 0 then
+        (* scvtf and ucvtf from operand g, a general register, into f, a
+           real's; fcvtzs and fcvtzu the other way *)
+        k := wordIndex(aw, Convs);
+        g := bit(k < 2); f := 1 - g;
+        if (ao[g].kind # oReg) or (ao[f].kind # oFp) or (an # 2) or ao[g].sp or (ao[f].size = 16) then return bad(); end;
+        fconv(aw, ao[g].sf, ao[f].size, ConvCodes[k] shr 3, ConvCodes[k] & 7, d.r, ao[1].r, k < 2);
+    else
+        return Scan.markAt(aat, Diag.say("unknown instruction {}", [Fmt.str(aw)]));
+    end;
+    return nil;
+end;
+
+(* Which operand of instruction w is a jump's target, which may be a
+   label: -1 if none *)
+proc targetOf(w: []const U8): INT;
+begin
+    if (w = "b") or (w = "bl") or (w = "b.") then return 0; end;
+    if (w = "cbz") or (w = "cbnz") then return 1; end;
+    if (w = "tbz") or (w = "tbnz") then return 2; end;
+    return -1;
+end;
+
+(* Whether operand i of instruction w is a word: a condition or a
+   barrier's option *)
+proc wordAt(w: []const U8; i: INT): BOOL;
+begin
+    return (wordIndex(w, CselNames) >= 0) and (i = 3) or ((w = "cset") or (w = "csetm")) and (i = 1)
+        or ((w = "dmb") or (w = "dsb")) and (i = 0);
+end;
+
+(* db's bytes or dd's words, each a constant *)
+proc data(constExpr: ConstFn): ERROR;
+var v: I64; start: Diag.Pos; n: INT;
+begin
+    n := 1 + 3 * bit(aw = "dd");
+    repeat
+        start := Scan.tokPos();
+        v := try constExpr(true);
+        if (v < -(I64(1) shl (8 * n - 1))) or (v >= I64(1) shl (8 * n)) then
+            return Scan.markAt(Scan.spanFrom(start), Diag.say("{} doesn't fit in {} bits", [Fmt.int(v), Fmt.int(8 * n)]));
+        end;
+        if n = 1 then Chunk.put1(INT(v & 0FFH)); else Chunk.put4(INT(v & 0FFFFFFFFH)); end;
+        if Scan.tok # Scan.sComma then break; end;
+        Scan.next;
+    until false;
+    return nil;
+end;
+
+(* One instruction or label *)
+proc statement(constExpr: ConstFn; nameFn: NameFn): ERROR;
+var i, k, first: INT; wasListing: BOOL;
+begin
+    aat := Scan.tokPos();
+    aw := asmWord();
+    if LEN(aw) = 0 then return Scan.mark("expected an instruction"); end;
+    Scan.next;
+    if Scan.tok = Scan.sColon then
+        sayAt(Chunk.pc, Diag.say("{}:", [Fmt.str(aw)]));
+        k := try lab(Scan.intern(SYSTEM.PTR(aw), LEN(aw)));
+        if lplaces[k] >= 0 then
+            return Scan.markAt(aat, Diag.say("label {} is defined twice", [Fmt.str(aw)]));
+        end;
+        lplaces[k] := Chunk.pc;
+        fixLink(lchains[k]);
+        Scan.next;
+        return nil;
+    end;
+    if (aw = "b") and (Scan.tok = Scan.sPeriod) then
+        (* b.cond: the condition, after the period *)
+        Scan.next;
+        acc := cond(asmWord());
+        if acc < 0 then return Scan.mark("expected a condition, as eq of b.eq"); end;
+        aw := "b.";
+        Scan.next;
+    end;
+    first := Chunk.pc;
+    wasListing := listing;
+    listing := false;   (* the instruction is said as it is written *)
+    if (aw = "db") or (aw = "dd") then
+        try data(constExpr);
+    else
+        an := 0;
+        if Scan.tok # Scan.sSemicolon then
+            repeat
+                if an > 3 then return Scan.mark("too many operands"); end;
+                try operand(ao[an], an = targetOf(aw), wordAt(aw, an), constExpr, nameFn);
+                INC(an);
+                if Scan.tok # Scan.sComma then break; end;
+                Scan.next;
+            until false;
+        end;
+        (* a name stands only in bl p, b p and adr r, v *)
+        for i := 0 to an - 1 do
+            if (ao[i].kind = oName) and not ((i = 0) and ((aw = "b") or (aw = "bl")) or (i = 1) and (aw = "adr")) then
+                return Scan.markAt(ao[i].at, NameOnly);
+            end;
+        end;
+        try instruction();
+    end;
+    if Scan.tok # Scan.sSemicolon then return Scan.mark("expected \";\""); end;
+    listing := wasListing;
+    sayAt(first, Diag.source(Scan.spanFrom(aat)));
+    Scan.next;
+    return nil;
+end;
+
+(* A code procedure's instructions, up to end. ! of a pre-index is a
+   symbol of its own meanwhile (Scan.setBang), where elsewhere it is a
+   slip for not. *)
+proc assemble*(constExpr: ConstFn; nameFn: NameFn): ERROR;
+var k: INT;
+begin
+    Scan.setBang(true);
+    defer Scan.setBang(false);
+    numLabels := 0;
+    findLabels();
+    while (Scan.tok # Scan.sEnd) and (Scan.tok # Scan.sEof) do
+        if Scan.tok = Scan.sSemicolon then
+            Scan.next;
+        else
+            try statement(constExpr, nameFn);
+        end;
+    end;
+    for k := 0 to numLabels - 1 do
+        if lplaces[k] < 0 then
+            return Scan.markAt(lusedAt[k], Diag.say("label {} isn't defined", [Fmt.str(Scan.nameOf(lnames[k]))]));
+        end;
+    end;
+    return nil;
+end;
+
+(* n, in decimal, at least w wide *)
+proc padded(n, w: INT);
+var s: []const U8; i: INT;
+begin
+    s := Diag.say("{}", [Fmt.int(n)]);
+    for i := LEN(s) to w - 1 do Out.str(" "); end;
+    Out.str(s);
+end;
+
+(* The listing, raz -S, as X64's: a jump within the procedure, said with
+   -> for its target, says where to by its offset, read from its field *)
+proc list*(home: INT);
+var order: ^INT; n, i, j, k, c, t, line, insn, lo, w, d: INT; text: []const U8;
+begin
+    order := ^INT(Scan.grab(Chunk.numChunks * SIZE(INT)));
+    n := 0;
+    for c := 0 to Chunk.numChunks - 1 do
+        if Chunk.chunks[c].live and (Chunk.chunks[c].sec = Chunk.secText) and (Chunk.chunks[c].home = home) then
+            i := n;
+            while (i > 0) and (Chunk.chunks[order[i - 1]].start > Chunk.chunks[c].start) do
+                order[i] := order[i - 1];
+                DEC(i);
+            end;
+            order[i] := c;
+            INC(n);
+        end;
+    end;
+    i := 0; j := 0;
+    for k := 0 to n - 1 do
+        c := order[k];
+        Out.ln;
+        Out.str(Chunk.chunkName(c)); Out.str(":\n");
+        line := -1;
+        while (i < numSaid) and (said[i].at < Chunk.chunks[c].start) do INC(i); end;
+        while (i < numSaid) and (said[i].at < Chunk.chunks[c].start + Chunk.chunks[c].size) do
+            while (j < Chunk.numLines) and (Chunk.lines[j].at <= said[i].at) do
+                if (Chunk.lines[j].chunk = c) and (Chunk.lines[j].line # line) then
+                    line := Chunk.lines[j].line;
+                    padded(line, 6);
+                    Out.str("  ");
+                    Out.str(Diag.lineText(Scan.nameOf(Chunk.lines[j].path), line));
+                    Out.ln;
+                end;
+                INC(j);
+            end;
+            text := said[i].text;
+            t := said[i].at;
+            if (LEN(text) > 2) and (text[LEN(text) - 2..LEN(text)] = "->") then
+                insn := Chunk.get4At(t) & 0FFFFFFFFH;
+                lo, w := fieldOf(insn);
+                d := (insn shr lo) & ((1 shl w) - 1);
+                if d >= (1 shl (w - 1)) then d := d - (1 shl w); end;
+                text := Diag.say("{}{}", [Fmt.str(text[0..LEN(text) - 2]), Fmt.int(t + 4 * d - Chunk.chunks[c].start)]);
+            end;
+            padded(t - Chunk.chunks[c].start, 14);
+            Out.str("  ");
+            Out.str(text);
+            Out.ln;
+            INC(i);
+        end;
+    end;
+end;
+
+begin
+    listing := false;
+    numSaid := 0;
+    saidCap := 0;
+    said := nil;
+end A64.

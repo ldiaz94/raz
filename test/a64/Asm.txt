@@ -1,0 +1,58 @@
+(* A64's assembler on a code procedure's instructions, from just after
+   proc ... code, to end. expect.sh turns it into Apple's syntax. *)
+Lat:
+mov x0, x1; mov sp, x29; mov x29, sp; mov w2, w3; mov x4, 1234H; mov w5, -1;
+mov x6, 0FFFF0000H; mov x7, -2; mov x8, #00FF00FF00FF00FFH;
+movz x8, 0FFFFH, lsl 48; movk w9, 1, lsl 16; movn x10, 5; movz w11, #7;
+add x0, x1, #16; add x0, x1, 1, lsl 12; add sp, sp, #32; sub sp, sp, #4095;
+add x2, x3, -8; adds w4, w5, #1; cmp x6, #0; cmn w7, #3; cmp sp, #16;
+add x8, x9, x10; add x11, x12, x13, lsl #2; sub w14, w15, w16, asr #31;
+adds x17, x19, x20; subs x21, x22, x23, lsr #63; add sp, sp, x16;
+add x0, sp, x1, lsl #3; cmp x1, x2; cmp w3, w4, lsl #4; cmn x5, x6;
+neg x7, x8; neg w9, w10, lsl #2; mvn x11, x12; mvn w13, w14, ror #3;
+and x0, x1, #0FFH; orr w2, w3, #0F0F0F0F0H; eor x4, x5, #5555555555555555H;
+ands x6, x7, #1; tst x8, #8000000000000000H; tst w9, #0FFFFH;
+and sp, x0, #-16; orr x10, x11, x12; eor w13, w14, w15, ror #8;
+bic x16, x17, x19; orn w20, w21, w22, lsl #1; ands x23, x24, x25; tst x26, x27;
+lsl x0, x1, x2; lsr w3, w4, w5; asr x6, x7, x8; ror w9, w10, w11;
+lsl x0, x1, #12; lsr w2, w3, #31; asr x4, x5, #63; ror x6, x7, #1; ror w8, w9, #31;
+mul x0, x1, x2; mul w3, w4, w5; madd x6, x7, x8, x9; msub w10, w11, w12, w13;
+smulh x14, x15, x16; umulh x0, x1, x2; sdiv x3, x4, x5; udiv w6, w7, w8;
+csel x0, x1, x2, eq; csinc w3, w4, w5, ne; csinv x6, x7, x8, hs;
+csneg x9, x10, x11, lo; cset x12, mi; cset w13, ge; csetm x14, lt;
+csel x15, x16, x17, cs; csel x0, x1, x2, cc; csel w3, wzr, w4, vs;
+sxtb x0, w1; sxth w2, w3; sxtw x4, w5; uxtb w6, w7; uxth w8, w9;
+ubfm x10, x11, #4, #7; sbfm w12, w13, #0, #15; ubfx x14, x15, #8, #16; sbfx x16, x17, #3, #61;
+clz x0, x1; clz w2, w3; rbit x4, x5; rev x6, x7; rev w8, w9;
+ldr x0, [x1]; ldr x2, [x3, #8]; ldr x4, [sp, #32760]; ldr w5, [x6, #16380];
+ldrb w7, [x8, #4095]; ldrh w9, [x10, #2]; ldrsb x11, [x12, #1]; ldrsb w13, [x14];
+ldrsh x15, [x16, #6]; ldrsh w17, [x19]; ldrsw x20, [x21, #4]; ldr x22, [x23, #-8];
+ldr x24, [x25, #3]; ldur x26, [x27, #8]; ldurb w0, [x1, #-1]; ldursw x2, [x3, #-256];
+ldr x4, [x5, x6]; ldr x7, [x8, x9, lsl #3]; ldrb w10, [x11, x12];
+ldrh w13, [x14, x15, lsl #1]; ldr w16, [x17, x19, lsl #2];
+ldr x0, [sp], #16; ldr x1, [x2, #-8]!; ldrb w3, [x4], #1; ldrsw x5, [x6, #255]!;
+ldr d0, [x1, #8]; ldr s2, [x3]; ldr q4, [x5, #16]; ldr d6, [x7, x8, lsl #3]; ldur q9, [x10, #-16];
+str x0, [x1]; str w2, [sp, #4]; strb w3, [x4, #4095]; strh w5, [x6, #8190];
+str x7, [sp, #-16]!; str x8, [x9], #8; stur w10, [x11, #-4]; sturb w12, [x13, #255];
+str x14, [x15, x16, lsl #3]; str xzr, [x17]; str d0, [sp, #8]; str s1, [x2, #-4]; str q3, [x4, #65520];
+ldp x29, x30, [sp], #16; stp x29, x30, [sp, #-16]!; stp x19, x20, [sp, #504];
+ldp w0, w1, [x2, #-256]; ldp x3, x4, [x5]; stp d8, d9, [sp, #-512]!;
+ldp q0, q1, [x0, #1008]; stp s2, s3, [x1], #-256;
+ldaddal x0, x1, [x2]; ldaddal w3, w4, [sp]; swpal x5, x6, [x7]; swpal w8, w9, [x10];
+casal x11, x12, [x13]; casal w14, w15, [x16]; ldaxr x0, [x1]; ldaxr w2, [x3];
+stlxr w4, x5, [x6]; stlxr w7, w8, [x9];
+dmb ish; dmb sy; dsb ish; isb; nop; yield; svc #80H; svc 0; brk #1; brk 0F000H;
+fmov d0, d1; fmov s2, s3; fmov d4, x5; fmov s6, w7; fmov x8, d9; fmov w10, s11;
+fadd d0, d1, d2; fsub s3, s4, s5; fmul d6, d7, d8; fdiv s9, s10, s11;
+fmax d12, d13, d14; fmin s15, s16, s17; fsqrt d0, d0; fsqrt s1, s2; fneg d3, d4; fabs s5, s6;
+fcmp d0, d1; fcmp s2, s3; fcmp d4, #0; fcvt d0, s1; fcvt s2, d3;
+scvtf d0, x1; scvtf s2, w3; ucvtf d4, w5; ucvtf s6, x7;
+fcvtzs x0, d1; fcvtzs w2, s3; fcvtzu x4, s5; fcvtzu w6, d7;
+Lloop:
+cbz x0, Ldone; cbnz w1, Lloop; tbz x2, #3, Ldone; tbnz w3, #31, Lloop; tbz x4, #63, Ldone;
+b.eq Lloop; b.ne Ldone; b.cs Lloop; b.hs Ldone; b.lo Lloop; b.al Ldone;
+b Lloop; b Ldone; bl proc1; b proc1; adr x0, glob; adr x5, proc1;
+br x1; blr x2; ret; ret x3;
+Ldone:
+db 1, 2, 3, 4; dd 0D503201FH, 12345678H, -1;
+end

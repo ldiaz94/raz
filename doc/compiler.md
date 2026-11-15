@@ -1,7 +1,8 @@
 # Reading the raz compiler
 
-The compiler is twelve files of raz, about 13,200 lines of code (the
-budget is 18,000). It is its own compiler: a release of it, the one
+The compiler is thirteen files of raz, about 14,600 lines of code (the
+budget is 18,000); one of them, `A64.raz`, arm64's encoder, waits for
+the back end that will use it (`PLAN.md` 5). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
 one before it, back to v0.19.0, which the Pascal compiler it was ported
@@ -17,10 +18,11 @@ library, made from `lib/` by `tools/Doc.raz`.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/Diag.raz` | 479 | 363 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,267 | 1,040 | Symbols, literals, comments, positions |
+| `src/Scan.raz` | 1,279 | 1,048 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 866 | 689 | Types, objects, scopes, layout |
-| `src/Chunk.raz` | 364 | 280 | The compiled program: chunks, fixups, line notes |
+| `src/Chunk.raz` | 389 | 288 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,777 | 1,450 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/A64.raz` | 1,848 | 1,365 | The same for arm64, not yet imported: the encoder, jumps, the assembler |
 | `src/Gen.x86_64.raz` | 2,860 | 1,998 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,938 | 4,191 | Declarations, statements, expressions, built-ins, recovery, warnings |
@@ -51,7 +53,7 @@ add the two on top, store the top in a variable, jump if it is false),
 each with the kind of the value (a word, a 64-bit integer, an `F32`,
 an `F64`). `Gen` is the only one that knows x86-64; a port to
 another machine is a new `Gen`, with an encoder of its own in place
-of `X64.raz`. Likewise `Exe` is the only one that knows the executable's
+of `X64.raz`, as `A64.raz` is arm64's. Likewise `Exe` is the only one that knows the executable's
 format, and `Host` the host's services. Each is a unit with a file per
 target, which the suffixes of the report's section 3 choose
 (`Gen.x86_64.raz`, `Exe.linux.raz`, `Host.linux.raz`); `Gen.Arch` and
@@ -1146,7 +1148,14 @@ make data chunks.
 
 A *fixup* (`Fixup`) is a 32-bit field in the code that will hold the
 distance to another chunk: a call's target, or a rip-relative address.
-`addFixup` records one; `Link.raz` fills them in. A constant's addresses
+`addFixup` records one; `Link.raz` fills them in. arm64's fixups
+(`addKindFixup`) are fields of an instruction, of a kind each
+(`FixKind`): `fxBranch26`, a `bl`'s or `b`'s distance in words;
+`fxPage21`, an `adrp`'s distance in pages of 4 KB; `fxPageOff12`, an
+address's place in its page, in an `add` or, divided by the size the
+instruction reads, a load's or store's offset; as the Mach-O relocations
+of the same names. `Link.raz` patches only x86-64's yet; arm64's come
+with the Mac's executable. A constant's addresses
 are *data fixups*, `addDataFixup`'s: 64-bit fields in rodata that will
 hold a chunk's address itself, since the executable is loaded where the
 linker placed it. `noteLine` records which line and column of the source
@@ -1266,6 +1275,106 @@ trick from Wirth's compilers, and it means a label is one integer.
 placed after it, so a `return` that ends a procedure doesn't jump to
 the next instruction; the line notes made after it move back with it
 (`takeBack`, in `Chunk.raz`).
+
+## A64.raz: arm64's machine code
+
+X64's twin, for arm64: what `Gen.arm64.raz` will call, and the
+assembler of a code procedure on the Mac. No compiler imports it yet;
+`test/a64` checks every routine against Apple's assembler.
+
+Every instruction is one word of 32 bits, which `emit` writes. A
+routine builds the word from its fields with shifts and ors, and its
+comment draws the fields as Arm's manual does, most significant first:
+`sf op S 100010 sh imm12 Rn Rd` for add with an immediate. Registers
+are numbers: x0 to x30, and 31, which an instruction reads as sp or as
+the zero register by its kind (`SP` and `ZR` are both 31, and each
+routine says which it takes); the reals' v0 to v31, with a size, s, d
+or q. x18 is Apple's and never named; x16 is the encoder's own: a
+routine given an immediate or an offset its instruction can't hold
+builds it in x16 first, so Gen needn't know the limits.
+
+The routines, by family: `movRI` makes a constant as Apple's assembler
+would, a `movz` or `movn` when one halfword of 16 bits differs from
+zeros or ones, an `orr` of a logical immediate (`bitmask`, a run of
+ones rotated and repeated), else a `movz` or `movn` and a `movk` for
+each other halfword; `movRR`, `alu`, `aluShift`, `aluI` (an add of 12
+bits, of 12 bits shifted by 12, two adds below 2^24, else through x16;
+a negative one the opposite operation), `cmp`, `cmpI`, `neg`, `mvn`;
+`shift`, `shiftI` (every shift by a constant is a `ubfm`, `sbfm` or
+`extr`), `field`, `extend`; `mul`, `madd`, `mulHigh`, `divide`, `clz`,
+`rbit`, `csel`, `cset`; `load`, `store`, `loadR`, `storeR`, `loadIdx`,
+`storeIdx`, `loadF`, `storeF` (one routine, `ldst`, from bits that tell
+size, register file and operation: a scaled offset, else unscaled, else
+through x16), `ldp`, `stp`; the LSE atomics `ldaddal`, `swpal` and
+`casal`, and `dmb`, `svc`, `brk`, `align`; for reals `fop`, `fop1`,
+`fcvt`, `fcmp`, `scvtf`, `fcvtz`, `fmovFR` and `fmovRF`. Two things
+x86 does and arm64 doesn't are Gen's to mend, as their comments say:
+`sdiv` by zero gives 0, and `fcvtzs` saturates where x86 gives the
+smallest `I64`.
+
+*Other chunks.* macOS loads a program anywhere, so every address is
+made from the code's own: `addrChunk` is `adrp` of the chunk's page and
+`add` of its place in it, each with a fixup (`Chunk.raz`); `loadChunk`
+and `storeChunk`, and their reals' twins, put the page in x16 and the
+place in the load's offset, which the linker divides by the size it
+reads in the instruction; when the chunk's alignment doesn't make the
+place a multiple of the size, the address is made whole first. A C
+symbol's quadword is read so. `callChunk` and `jmpChunk` are `bl` and
+`b` with a fixup, within 128 MB.
+
+*Jumps within a procedure* are chains, as in X64, but the field that
+links a jump to the one before holds that one's place in words from the
+procedure's chunk, plus one, 0 ending the chain, since the fields are
+narrow: 26 bits in `b`, 19 in `b.cond`, `cbz` and `cbnz` (1 MB either
+way), 14 in `tbz` and `tbnz` (32 KB). A procedure of more than 1 MB of
+code, a quarter of a million instructions, is an error, rather than
+every conditional jump two instructions for a procedure no one writes.
+Gen's `tbz`, which a long procedure would outrun, is the opposite `tbz`
+over a `b`, two instructions that reach as far as `b`; the assembler's
+is one, in a code procedure that is never that long. `fixLink`,
+`fixLinkTo`, `dropJumpTo` and `joinLinks` are X64's.
+
+*The assembler*, `assemble`, has X64's interface: the parser's
+`ConstFn` and `NameFn`, labels found first (`findLabels`), and the
+listing. It reads Arm's syntax, destination first: `add x0, x1, #16`,
+`ldr w2, [x0, #4]`, `ldr x1, [x2, x3, lsl #3]`, `stp x29, x30, [sp,
+#-16]!`, `ldr x0, [sp], #16`, `b.ne loop`, `csel x0, x1, x2, lt`,
+`dmb ish`. The `#` is raz's "not equal", read and passed over, and may
+be left out; numbers are raz's, `10H` and not `0x10`; `!` is a slip for
+`not` elsewhere, and a symbol of its own while `assemble` runs
+(`Scan.setBang`). A procedure or a module variable stands for its
+address as in X64, in three places, written as Arm writes them:
+
+    bl triple            94000000           fxBranch26 to triple
+    b AsmNamed.twice     14000000           fxBranch26 to AsmNamed.twice
+    adr x9, total        adrp x9; add x9    fxPage21 and fxPageOff12 to total
+
+`adr x9, total` is two instructions, `adrp` and `add`, since a variable
+may lie beyond `adr`'s 1 MB: it is the plain form of an address, as `lea
+r9, [total]` is on x86. The instructions are those of the routines
+above in all their forms, of x or w registers, and `movz`, `movk`,
+`movn`, `cmn`, `tst`, `bic`, `orn`, `eor`, `csinc`, `csinv`, `csneg`,
+`csetm`, `sxtb` to `uxth`, `ubfm`, `sbfm`, `ubfx`, `sbfx`, `rev`, every
+`ldr`, `str`, `ldur` and `stur` of a size, `ldp` and `stp` of w, x, s, d
+and q, `ldaxr` and `stlxr`, `dsb`, `isb`, `nop`, `yield`, `br`, `blr`,
+`ret` of a register, `cbz`, `cbnz`, `tbz`, `tbnz`, `fmax` and `fmin`,
+enough for the library's code procedures as they will be on the Mac;
+`db` gives bytes and `dd` words for any other. The assembler checks
+what it reads: a register where its instruction takes one of its width,
+sp only where sp goes, an immediate in its field's range; where Gen's
+routines would go through x16, the assembler says it can't.
+
+The listing is X64's: each routine says its instruction, as the
+assembler would read it, and a jump to a label says `->`, which `list`
+makes its target's offset from the jump's field.
+
+`test/a64` is its test, run by `make check`: `Encode.raz`, compiled
+with `-I src`, assembles `Asm.txt` and calls every routine, and prints
+each word in hex and each fixup; `expect.sh`, on an arm64 Mac, makes
+`Encode.expect` from `Asm.txt` in Apple's syntax and `Api.s`, the
+calls' instructions a line each, with `cc -c -arch arm64` and `objdump`:
+428 words and 20 relocations, the farthest jumps among them, across a
+megabyte of `nop`.
 
 ## Gen.raz: the stack machine
 
@@ -2920,6 +3029,9 @@ this one does.
 - **An instruction:** a routine in `X64.raz` built on `opM` or `opR`,
   its encoding checked against `objdump -d` once, and a program in
   `conform/` or `test/` that uses it.
+  In `A64.raz`, a routine that builds its word, and a line in
+  `test/a64` (`Encode.raz` and `Api.s`, or `Asm.txt`), whose
+  `expect.sh` checks it against Apple's assembler.
 - **A machine:** a new `Gen.ARCH.raz`, answering the same calls, and an
   encoder and assembler for it in place of `X64.raz`; and `Exe.OS.raz` if
   the system's executable differs.

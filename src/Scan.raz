@@ -89,6 +89,10 @@ var
        error, so slips in it aren't reported again. *)
     skipping*: BOOL;
 
+    (* In arm64's code procedure, ! is a symbol, sNot, of a pre-index, as
+       in [sp, #-16]!, not a slip for not (A64.assemble) *)
+    bang: BOOL;
+
     atCursor*: INT;         (* the name the symbol at the cursor has *)
     prefix*: []const U8;    (* what is typed of the name at the cursor *)
     word*: []const U8;      (* the whole name at the cursor, as raz -q def asks of it *)
@@ -120,6 +124,11 @@ var
 proc setSkipping*(yes: BOOL);
 begin
     skipping := yes;
+end;
+
+proc setBang*(yes: BOOL);
+begin
+    bang := yes;
 end;
 
 (* The bytes of the string just read, without the zero after them *)
@@ -1232,7 +1241,10 @@ begin
             tok := sBar;
         end;
     | '!':
-        if cur.buf[cur.pos + 1] = '=' then
+        if bang then
+            INC(cur.pos);
+            tok := sNot;
+        elsif cur.buf[cur.pos + 1] = '=' then
             slip(2, sNeq, "\"not equal\" is written #, not !=");
         else
             slip(1, sNot, "\"not\" is written not, not !");

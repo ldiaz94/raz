@@ -9,10 +9,10 @@
    point on is for.
 
    Nothing here depends on the machine: text is bytes, written by the
-   encoder for the target (X64).
+   encoder for the target (X64, or A64 for arm64).
 
    Depends on: Scan, for names and memory; Diag, for positions.
-   Leaves out: the instructions; that is X64.
+   Leaves out: the instructions; that is X64 or A64.
 
    Exported variables can't be set from outside, so the setters at the
    end do what the seed's other units do to these. *)
@@ -52,12 +52,29 @@ type
         kind*: INT;                   (* how Rt shows it: see Link *)
     end;
 
+    (* How a fixup's field is patched. fxRel32 is x86-64's: 32 bits, the
+       distance from the field's end, or with abs the address itself. The
+       others are arm64's (A64), each a field of the instruction at at,
+       as the Mach-O relocations of the same names:
+         fxBranch26    b or bl: the distance in words, in imm26
+         fxPage21      adrp: the distance in 4 KB pages from the
+                       instruction's page, in immhi:immlo
+         fxPageOff12   add, or a load or store's unsigned offset: the
+                       address's place in its page, in imm12, divided
+                       by the size a load or store reads from its own
+                       bits (31 and 30, or 16 for a q register), as
+                       ARM64_RELOC_PAGEOFF12 is
+       Link patches only fxRel32 yet: arm64's come with Exe.darwin.raz
+       (PLAN.md 5, step 6). *)
+    FixKind* = (fxRel32, fxBranch26, fxPage21, fxPageOff12);
+
     Fixup* = record
         at*: INT;                     (* the 32-bit field, as an offset in text; in
                                          dataFixups, the 64-bit one, from its chunk's start *)
         chunk*: INT;                  (* the chunk it refers to *)
         addend*: INT;                 (* added to the chunk's address *)
         abs*: BOOL;                   (* text: the address itself, not from the field's end *)
+        kind*: FixKind;               (* text: how the field is patched *)
     end;
 
 var
@@ -249,7 +266,15 @@ begin
     fixups[numFixups].chunk := chunk;
     fixups[numFixups].addend := addend;
     fixups[numFixups].abs := false;
+    fixups[numFixups].kind := fxRel32;
     INC(numFixups);
+end;
+
+(* The same, of an arm64 kind: the instruction at at *)
+proc addKindFixup*(at, chunk, addend: INT; kind: FixKind);
+begin
+    addFixup(at, chunk, addend);
+    fixups[numFixups - 1].kind := kind;
 end;
 
 (* The same, for X64.memAbs: the field holds the address itself *)

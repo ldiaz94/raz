@@ -16,7 +16,8 @@
 # the compiler's own version in a library's note written as N); there
 # X.args holds the compiler's options. The examples, test/libc, the
 # tools and the library's tests are compiled with -Werror, so warnings
-# fail them. Then the version, tools/Doc.raz, the report's examples,
+# fail them. test/a64/Encode.raz checks arm64's encoder, src/A64.raz,
+# against Apple's assembler. Then the version, tools/Doc.raz, the report's examples,
 # the tutorial's, tools/Pretty.raz, and the library's own tests.
 
 raz=./raz
@@ -101,6 +102,17 @@ if [ -e /lib/ld-musl-x86_64.so.1 ]; then
     libc=' -libc musl'
     for f in test/libc/*.raz; do run test/libc $(basename $f .raz); done
     libc=
+fi
+
+# A64, arm64's encoder, which no compiler for this target imports: its
+# test is compiled with src/ for its modules, and prints what Apple's
+# assembler makes of the same instructions (test/a64/expect.sh)
+if $raz -Werror -I src -I build/src -o $out/Encode test/a64/Encode.raz 2>$out/Encode.cerr &&
+        $out/Encode > $out/Encode.out 2>&1 && cmp -s $out/Encode.out test/a64/Encode.expect; then
+    pass=$((pass + 1))
+else
+    echo "FAIL test/a64/Encode"; cat $out/Encode.cerr; diff $out/Encode.out test/a64/Encode.expect | head -10
+    fail=$((fail + 1))
 fi
 
 # raz run: a static program and one over C, from memory, with their

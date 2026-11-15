@@ -1,0 +1,306 @@
+(* A64's encodings, checked against Apple's assembler: its assembler on
+   Asm.txt, then every routine of its interface (api), into one
+   procedure's chunk, which is printed a word to a line in hex (a run of
+   nop as one line), then the fixups. Api.s holds the same instructions
+   as api's calls, a line for each, and expect.sh makes Encode.expect
+   from Asm.txt and it with cc and objdump on an arm64 Mac. The
+   assembler goes first, at the chunk's start, as a code procedure is:
+   a tbz's link, the place of the jump before it on its label's chain,
+   counts from there in 14 bits. The interface's last jumps are the
+   farthest b.cond and cbz reach, 1 MB. test/check.sh compiles this with
+   -I src, as A64 isn't in the compiler yet. *)
+module Encode;
+import Fmt, Diag, Scan, Chunk, A := A64;
+import SYSTEM;
+
+var
+    body, proc1, glob, byte: INT;    (* chunks: the code, and three it names *)
+
+(* The calls, in Api.s's order *)
+proc api;
+var L, L2, top: INT;
+begin
+    (* moves *)
+    A.movRI(0, 0);
+    A.movRI(1, 1234H);
+    A.movRI(2, 12340000H);
+    A.movRI(3, -1);
+    A.movRI(4, -10001H);
+    A.movRI(5, 00FF00FF00FF00FFH);
+    A.movRI(6, 123456789ABCDEF0H);
+    A.movRI(7, I64(0FFFF1234FFFF5678H));
+    A.movRI(8, 100000001H);
+    A.movRI(9, 5555555555555555H);
+    A.movRI(10, I64(8000000000000000H));
+    A.movRI(11, 7FFFFFFFFFFFFFFFH);
+    A.movRI(12, 0FFFFFFFFH);
+    A.movRI(13, 0FFFF0000ABCDH);
+    A.movRR(0, 1);
+    A.movRR(A.SP, A.FP);
+    A.movRR(A.FP, A.SP);
+    (* two registers *)
+    A.alu(A.opAdd, 0, 1, 2);
+    A.alu(A.opAdds, 3, 4, 5);
+    A.alu(A.opSub, 6, 7, 8);
+    A.alu(A.opSubs, 9, 10, 11);
+    A.alu(A.opAnd, 12, 13, 14);
+    A.alu(A.opOrr, 15, 16, 17);
+    A.alu(A.opEor, 19, 20, 21);
+    A.alu(A.opAnds, 22, 23, 24);
+    A.alu(A.opBic, 25, 26, 27);
+    A.alu(A.opOrn, 28, 29, 30);
+    A.aluShift(A.opAdd, 0, 1, 2, A.shLsl, 3);
+    A.aluShift(A.opSub, 3, 4, 5, A.shAsr, 63);
+    A.aluShift(A.opOrr, 6, 7, 8, A.shRor, 1);
+    (* immediates *)
+    A.aluI(A.opAdd, 0, 1, 4095);
+    A.aluI(A.opAdd, 0, 1, 4096);
+    A.aluI(A.opAdd, A.SP, A.SP, 16);
+    A.aluI(A.opSub, A.SP, A.SP, 123000H);
+    A.aluI(A.opAdd, 0, 1, -8);
+    A.aluI(A.opSub, 2, 3, 12345H);
+    A.aluI(A.opAdd, 4, A.SP, 1234567H);
+    A.aluI(A.opAdds, 5, 6, 12345H);
+    A.aluI(A.opAnd, 0, 1, 0FFH);
+    A.aluI(A.opOrr, A.SP, 1, 0F0H);
+    A.aluI(A.opEor, 2, 3, 1234H);
+    A.cmp(0, 1);
+    A.cmpI(A.SP, 32);
+    A.cmpI(2, -5);
+    A.cmpI(3, 1001001H);
+    A.alu(A.opAnds, A.ZR, 4, 5);
+    A.aluI(A.opAnds, A.ZR, 6, 1);
+    A.aluI(A.opAnds, A.ZR, 7, I64(8000000000000000H));
+    A.neg(0, 1);
+    A.mvn(2, 3);
+    (* shifts and fields *)
+    A.shift(A.shLsl, 0, 1, 2, 8);
+    A.shift(A.shLsr, 3, 4, 5, 8);
+    A.shift(A.shAsr, 6, 7, 8, 8);
+    A.shift(A.shRor, 9, 10, 11, 8);
+    A.shift(A.shLsl, 3, 4, 5, 4);
+    A.shiftI(A.shLsl, 0, 1, 3, 8);
+    A.shiftI(A.shLsr, 0, 1, 63, 8);
+    A.shiftI(A.shAsr, 2, 3, 1, 8);
+    A.shiftI(A.shRor, 4, 5, 7, 8);
+    A.shiftI(A.shLsl, 6, 7, 31, 4);
+    A.shiftI(A.shRor, 8, 9, 16, 4);
+    A.shiftI(A.shLsl, 0, 1, 0, 8);
+    A.field(false, 0, 1, 8, 8);
+    A.field(true, 2, 3, 0, 32);
+    A.extend(0, 1, 1, true);
+    A.extend(2, 3, 2, true);
+    A.extend(4, 5, 4, true);
+    A.extend(6, 7, 1, false);
+    A.extend(8, 9, 2, false);
+    A.extend(10, 11, 4, false);
+    (* multiply, divide, select, count *)
+    A.mul(0, 1, 2);
+    A.madd(3, 4, 5, 6, false);
+    A.madd(7, 8, 9, 10, true);
+    A.mulHigh(true, 0, 1, 2);
+    A.mulHigh(false, 3, 4, 5);
+    A.divide(true, 3, 4, 5);
+    A.divide(false, 6, 7, 8);
+    A.csel(A.csSel, A.ccEQ, 0, 1, 2);
+    A.csel(A.csInc, A.ccNE, 3, 4, 5);
+    A.csel(A.csNeg, A.ccLT, 6, 7, 8);
+    A.cset(A.ccGT, 9);
+    A.clz(0, 1, 8);
+    A.clz(2, 3, 4);
+    A.rbit(4, 5, 8);
+    (* loads and stores *)
+    A.load(0, 1, 0, 8, false);
+    A.load(0, 1, 32760, 8, false);
+    A.load(2, 3, 32768, 8, false);
+    A.load(4, 5, -8, 8, false);
+    A.load(4, 5, -256, 8, false);
+    A.load(6, 7, 3, 8, false);
+    A.load(8, 9, 4095, 1, false);
+    A.load(10, 11, 4, 1, true);
+    A.load(12, 13, 8190, 2, false);
+    A.load(14, 15, 6, 2, true);
+    A.load(0, A.SP, 16380, 4, false);
+    A.load(1, 2, 4, 4, true);
+    A.load(3, 4, -1, 1, true);
+    A.store(0, 1, 8, 8);
+    A.store(2, A.SP, 0, 4);
+    A.store(3, 4, 1, 2);
+    A.store(5, 6, 4095, 1);
+    A.store(A.ZR, 7, 0, 8);
+    A.loadR(0, 1, 2, 8, false, true);
+    A.loadR(3, 4, 5, 1, true, false);
+    A.loadR(6, 7, 8, 4, false, true);
+    A.storeR(9, 10, 11, 2, true);
+    A.storeR(12, 13, 14, 8, false);
+    A.loadIdx(0, A.SP, 16, 8, A.mPost);
+    A.storeIdx(1, A.SP, -16, 8, A.mPre);
+    A.storeIdx(2, 3, -256, 4, A.mPre);
+    A.loadIdx(4, 5, 255, 1, A.mPost);
+    A.loadF(0, 1, 8, 8);
+    A.loadF(2, 3, 4, 4);
+    A.loadF(4, 5, 32, 16);
+    A.storeF(6, A.SP, 65520, 16);
+    A.storeF(7, 8, -4, 8);
+    A.storeF(9, 10, 0, 4);
+    A.stp(A.FP, A.LR, A.SP, -16, A.mPre);
+    A.ldp(A.FP, A.LR, A.SP, 16, A.mPost);
+    A.stp(19, 20, A.SP, 504, A.mOff);
+    A.ldp(21, 22, 1, -512, A.mOff);
+    (* atomics and the system's *)
+    A.ldaddal(1, 0, 2, 8);
+    A.ldaddal(3, 4, 5, 4);
+    A.swpal(6, 7, 8, 8);
+    A.swpal(9, 10, 11, 4);
+    A.casal(12, 13, 14, 8);
+    A.casal(15, 16, 17, 4);
+    A.dmb();
+    A.svc(80H);
+    A.svc(0);
+    A.brk(1);
+    A.brk(0F000H);
+    (* reals *)
+    A.fop(A.fMul, 0, 1, 2, false);
+    A.fop(A.fDiv, 0, 1, 2, false);
+    A.fop(A.fAdd, 0, 1, 2, false);
+    A.fop(A.fSub, 0, 1, 2, false);
+    A.fop(A.fMax, 0, 1, 2, false);
+    A.fop(A.fMin, 0, 1, 2, false);
+    A.fop(A.fAdd, 3, 4, 5, true);
+    A.fop1(A.fMov, 0, 1, false);
+    A.fop1(A.fAbs, 0, 1, false);
+    A.fop1(A.fNeg, 0, 1, false);
+    A.fop1(A.fSqrt, 0, 1, false);
+    A.fop1(A.fSqrt, 6, 7, true);
+    A.fcvt(0, 1, false);
+    A.fcvt(2, 3, true);
+    A.fcmp(0, 1, false);
+    A.fcmp(2, 3, true);
+    A.fcmp(4, -1, false);
+    A.fcmp(5, -1, true);
+    A.scvtf(0, 1, false, true);
+    A.scvtf(2, 3, true, true);
+    A.scvtf(4, 5, false, false);
+    A.fcvtz(0, 1, false, true);
+    A.fcvtz(2, 3, true, false);
+    A.fmovFR(0, 1, false);
+    A.fmovFR(2, 3, true);
+    A.fmovRF(4, 5, false);
+    A.fmovRF(6, 7, true);
+    (* addresses, calls *)
+    A.adr(0, 0);
+    A.adr(1, -4);
+    A.adr(2, 1048572);
+    A.addrChunk(0, glob, 0);
+    A.loadChunk(1, glob, 0, 8, false);
+    A.storeChunk(2, glob, 0, 4);
+    A.loadChunkF(3, glob, 0, 8);
+    A.storeChunkF(4, glob, 0, 4);
+    A.loadChunk(5, byte, 0, 8, false);
+    A.callChunk(proc1);
+    A.jmpChunk(proc1);
+    A.callBack(0);
+    A.callR(5);
+    A.jmpR(6);
+    A.ret();
+    (* jumps within the procedure: forward on a chain, back *)
+    L := A.NoLabel;
+    A.jcc(A.ccEQ, L);
+    A.cbz(false, 3, L);
+    A.cbz(true, 4, L);
+    A.tbz(false, 5, 3, L);
+    A.tbz(true, 6, 40, L);
+    A.jmp(L);
+    A.fixLink(L);
+    top := Chunk.pc;
+    A.movRR(0, 1);
+    A.jccBack(A.ccNE, top);
+    A.jmpBack(top);
+    L := A.NoLabel; L2 := A.NoLabel;
+    A.jmp(L);
+    A.jcc(A.ccLO, L2);
+    A.jmp(L);
+    A.fixLink(A.joinLinks(L, L2));
+    L := A.NoLabel;
+    A.movRR(1, 2);
+    A.jmp(L);
+    A.dropJumpTo(L);
+    A.fixLink(L);
+    A.align(16);
+    (* the farthest: b.cond and cbz to 1 MB on, and b.cond 1 MB back *)
+    L := A.NoLabel;
+    A.jcc(A.ccNE, L);
+    A.cbz(false, 1, L);
+    A.align(100000H);
+    A.fixLink(L);
+    A.jccBack(A.ccEQ, 0);
+end;
+
+(* The test's reader of a constant: a number, perhaps negative *)
+proc konst(_whole: BOOL): (I64, ERROR);
+var neg: BOOL; v: I64;
+begin
+    neg := Scan.tok = Scan.sMinus;
+    if neg then Scan.next; end;
+    if Scan.tok # Scan.sInt then return 0, Scan.mark("expected a number"); end;
+    v := Scan.ival;
+    Scan.next;
+    if neg then return -v, nil; end;
+    return v, nil;
+end;
+
+(* and of a name: proc1 and glob *)
+proc name: (INT, ERROR);
+begin
+    if Scan.nameOf(Scan.id) = "proc1" then Scan.next; return proc1, nil; end;
+    if Scan.nameOf(Scan.id) = "glob" then Scan.next; return glob, nil; end;
+    return -1, nil;
+end;
+
+proc chunk(n: []const U8; sec: Chunk.Section): INT;
+begin
+    return Chunk.newChunk(sec, -1, Scan.intern(SYSTEM.PTR(n), LEN(n)));
+end;
+
+const
+    Kinds: [4][]const U8 = ["", "ARM64_RELOC_BRANCH26", "ARM64_RELOC_PAGE21", "ARM64_RELOC_PAGEOFF12"];
+    Nop = 0D503201FH;
+
+var
+    err: ERROR;
+    i, n, w: INT;
+    why: []const U8;
+
+begin
+    body := chunk("code", Chunk.secText);
+    proc1 := chunk("proc1", Chunk.secText);
+    glob := chunk("glob", Chunk.secBss);
+    Chunk.setBss(glob, 8, 8);
+    byte := chunk("byte", Chunk.secBss);
+    Chunk.setBss(byte, 8, 1);
+    Chunk.beginChunk(body);
+    why := Scan.open("test/a64/Asm.txt");
+    if LEN(why) > 0 then Fmt.print("test/a64/Asm.txt: {}\n", [Fmt.str(why)]); end;
+    Scan.next;
+    err := A.assemble(konst, name);
+    if err # nil then Fmt.print("the assembler failed\n", []); end;
+    api();
+    Chunk.endChunk(body);
+    i := 0;
+    while i < Chunk.pc do
+        w := Chunk.get4At(i) & 0FFFFFFFFH;
+        n := 0;
+        while (i < Chunk.pc) and (w = Nop) and ((Chunk.get4At(i) & 0FFFFFFFFH) = Nop) do INC(n); INC(i, 4); end;
+        if n > 0 then
+            Fmt.print("nop * {}\n", [Fmt.int(n)]);
+        else
+            Fmt.print("{08}\n", [Fmt.lowHex(U64(w))]);
+            INC(i, 4);
+        end;
+    end;
+    for i := 0 to Chunk.numFixups - 1 do
+        Fmt.print("reloc {016} {} _{}\n", [Fmt.lowHex(U64(Chunk.fixups[i].at)),
+            Fmt.str(Kinds[INT(Chunk.fixups[i].kind)]), Fmt.str(Scan.nameOf(Chunk.chunks[Chunk.fixups[i].chunk].name))]);
+    end;
+    Diag.finish;
+end Encode.
