@@ -1,0 +1,192 @@
+(* Threads, for macOS, with Thread.linux-x86_64.raz's interface: made
+   by C's pthread_create, as every program on a Mac uses C. The
+   compiler's entry point finds cCreate and cJoin by name and stores
+   C's pthread_create and pthread_join in them, as on Linux in a
+   program that uses C. Each thread runs on C's stack, of Stack bytes
+   asked for, below which C keeps a page that can't be touched, so
+   that running off the stack stops the program rather than spoiling
+   what lies below; beside it, in a mapping of Thread's own, a little
+   stack for Rt's signal handlers, so that they can say so, and the
+   Thread.
+
+   A Mutex is os_unfair_lock, macOS's lock whose waiters sleep in the
+   kernel, the plainest it supports: __ulock_wait and __ulock_wake,
+   which it is made of, a futex's twins, are not for programs, and
+   pthread_mutex_t needs its initializer. As os_unfair_lock asks, the
+   thread that takes a Mutex gives it up; one that gives up another
+   thread's stops the program.
+
+   Depends on Sys and Rt, and Check for its test. *)
+module Thread;
+import Sys, Rt, Check;
+import SYSTEM;
+
+const
+    Failed*: ERROR = "can't start a thread";
+    Stack = 1 shl 20;   (* each thread's, as on Linux without C *)
+    Alt = 65536;        (* the signal handlers' stack, more than macOS's least, MINSIGSTKSZ *)
+    Page = 16384;       (* arm64 macOS's *)
+
+type
+    (* A thread, as spawn gives it, until join. *)
+    Thread* = record
+        tid: UINT;       (* C's pthread_t *)
+        ended: INT;      (* 1 once its procedure has returned *)
+        base: ^U8;       (* the mapping it is in, the handlers' stack first *)
+        size: INT;
+        fn: proc(arg: ^U8);   (* what it runs, and with what *)
+        arg: ^U8;
+    end;
+    (* What sigaltstack takes, as macOS lays it out *)
+    AltStack = record sp: ^U8; size: INT; flags: I32; end;
+    (* A lock whose waiters sleep, free when zeroed: an os_unfair_lock *)
+    Mutex* = record lock: U32; end;
+
+extern proc pthread_attr_init(attr: ^U8): I32;
+extern proc pthread_attr_setstacksize(attr: ^U8; size: UINT): I32;
+extern proc pthread_attr_destroy(attr: ^U8): I32;
+extern proc pthread_kill(t: UINT; sig: I32): I32;
+extern proc sigaltstack(ss, old: ^U8): I32;
+extern proc os_unfair_lock_lock(lock: ^U32);
+extern proc os_unfair_lock_unlock(lock: ^U32);
+
+var
+    (* C's pthread_create and pthread_join, given by the entry point *)
+    cCreate: proc(t: ^UINT; attr: ^U8; start: proc(arg: ^U8): ^U8; arg: ^U8): I32;
+    cJoin: proc(t: UINT; result: ^^U8): I32;
+
+(* Where a new thread starts, as pthread_create calls it: the signal
+   handlers' stack is a thread's own, so it is set here; then the
+   thread runs its procedure, and notes that it has ended, for signal. *)
+proc run(arg: ^U8): ^U8;
+var t: ^Thread; alt: AltStack;
+begin
+    t := ^Thread(arg);
+    alt := {sp: t^.base, size: Alt};
+    _ := sigaltstack(^U8(SYSTEM.ADR(alt)), nil);
+    t^.fn(t^.arg);
+    _ := XCHG(t^.ended, 1);
+    return nil;
+end;
+
+(* Starts p(arg) in a new thread. *)
+proc spawn*(p: proc(arg: ^U8); arg: ^U8): (^Thread, ERROR);
+var base: ^U8; t: ^Thread; size: INT; tid: UINT; attr: [8]U64; r: I32;
+begin
+    size := Alt + Page;
+    base := Sys.mmap(size);
+    if base = nil then return nil, Failed; end;
+    (* the handlers' stack, then the Thread in the last page *)
+    t := ^Thread(base + Alt);
+    t^.base := base;
+    t^.size := size;
+    t^.fn := p;
+    t^.arg := arg;
+    _ := pthread_attr_init(^U8(SYSTEM.ADR(attr)));
+    _ := pthread_attr_setstacksize(^U8(SYSTEM.ADR(attr)), Stack);
+    r := cCreate(SYSTEM.ADR(tid), ^U8(SYSTEM.ADR(attr)), run, ^U8(t));
+    _ := pthread_attr_destroy(^U8(SYSTEM.ADR(attr)));
+    if r # 0 then
+        Sys.munmap(base, size);
+        return nil, Failed;
+    end;
+    t^.tid := tid;
+    return t, nil;
+end;
+
+(* Waits for t to end, then frees what spawn took for it. *)
+proc join*(t: ^Thread);
+var base: ^U8; size: INT;
+begin
+    _ := cJoin(t^.tid, nil);
+    base := t^.base;
+    size := t^.size;
+    Sys.munmap(base, size);
+end;
+
+(* Sends the signal sig to t alone, not to any thread of the program
+   as Sys.kill does: 0, or minus an errno, -3 (ESRCH) if t has ended.
+   With Sys.handle(sig), a system call t waits in fails with -4, so
+   another thread can break into a read. By pthread_kill, whose errnos,
+   ESRCH and EINVAL, are Linux's numbers too. *)
+proc signal*(t: ^Thread; sig: INT): INT;
+begin
+    if XADD(t^.ended, 0) # 0 then return -3; end;
+    return -INT(pthread_kill(t^.tid, I32(sig)));
+end;
+
+(* Takes m, sleeping while another thread holds it. *)
+proc lock*(var m: Mutex);
+begin
+    os_unfair_lock_lock(SYSTEM.ADR(m.lock));
+end;
+
+(* Gives up m, which the calling thread took, waking a thread that
+   waits for it. *)
+proc unlock*(var m: Mutex);
+begin
+    os_unfair_lock_unlock(SYSTEM.ADR(m.lock));
+end;
+
+(* The module's test, and make stress's. It starts n threads, in waves
+   of up to alive at a time, all waiting on one Mutex the test holds
+   until the wave is out; each, given it, adds one to a count. Every
+   thread is joined, so that a stack join didn't free would, over
+   enough of them, run the process out of mappings. With "fail", it
+   starts threads, all waiting, until spawn fails, which it must do
+   with Failed: make stress and make check run it with little memory.
+       Thread [n alive], Thread fail *)
+var
+    testLock: Mutex;
+    testCount: INT;
+    wave: [1000]^Thread;
+
+proc testWork(_arg: ^U8);
+begin
+    lock(testLock);
+    INC(testCount);
+    unlock(testLock);
+end;
+
+proc testArg(i: INT): INT;
+var s: ^U8; n, v: INT;
+begin
+    s := SYSTEM.ARGV()[i];
+    v := 0;
+    n := 0;
+    while s[n] # 0 do v := v * 10 + INT(s[n]) - '0'; INC(n); end;
+    return v;
+end;
+
+(* The module's test: starts threads in waves, and counts that each ran. *)
+proc main*;
+var n, alive, started, k, i: INT; t: ^Thread; err: ERROR; fail: BOOL;
+begin
+    n := 2000; alive := 50;
+    fail := (ARGC() = 2) and (SYSTEM.ARGV()[1][0] = 'f');
+    if ARGC() = 3 then n := testArg(1); alive := testArg(2); end;
+    if fail then n := LEN(wave); alive := LEN(wave); end;
+    if (alive < 1) or (alive > LEN(wave)) then Rt.stop("Thread: alive is 1 to 1000"); end;
+    started := 0;
+    while started < n do
+        lock(testLock);
+        k := 0;
+        while (k < alive) and (started + k < n) do
+            t, err := spawn(testWork, nil);
+            if err # nil then
+                if not fail or (err # Failed) then Rt.stop("Thread.spawn failed"); end;
+                n := started + k;
+                break;
+            end;
+            wave[k] := t;
+            INC(k);
+        end;
+        unlock(testLock);
+        for i := 0 to k - 1 do join(wave[i]); end;
+        started := started + k;
+    end;
+    Check.int("Thread: every thread ran", testCount, started);
+    Check.ok(not (fail and (started = LEN(wave))), "Thread: spawn never failed");
+end;
+
+end Thread.

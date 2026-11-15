@@ -1,7 +1,7 @@
 (* CAbi: what the C library fixes for Sys over C on linux-x86_64: the
    numbers of its flags, requests, signals and limits, where the
    fields of its structs lie, an At the offset and a Len the width,
-   its errnos beside Linux's, and errno and closeFrom.
+   its errnos beside Linux's, and the procedures that differ.
 
    Written by tools/cabi.c, from the system's own headers; not to be
    edited, but written again. *)
@@ -86,6 +86,7 @@ const
     tiocgwinsz* = 21523;
     tiocswinsz* = 21524;
     tiocsctty* = 21518;
+    ptyHeld* = 0;
     pollin* = 1;
     pollout* = 4;
     clockRealtime* = 0;
@@ -115,6 +116,7 @@ const
     sockaddrUnLen* = 110;
     sunPathAt* = 2;
     sunPathLen* = 108;
+    unixAbstract* = 1;
     sockaddrInLen* = 16;
     sinPortAt* = 2;
     sinAddrAt* = 4;
@@ -205,6 +207,14 @@ const
 
 extern proc __errno_location: ^I32;
 extern proc syscall(n: INT; ...): INT;
+extern proc pipe2(fds: ^I32; flags: I32): I32;
+extern proc accept4(fd: I32; addr: ^U8; len: ^U32; flags: I32): I32;
+extern proc getrandom(buf: ^U8; n: UINT; flags: U32): INT;
+extern proc memfd_create(name: ^U8; flags: U32): I32;
+extern proc clock_nanosleep(clock, flags: I32; t, left: ^U8): I32;
+extern proc sched_getaffinity(pid: I32; size: UINT; mask: ^U8): I32;
+extern proc getsockopt(fd, level, name: I32; value: ^U8; len: ^U32): I32;
+extern proc send(fd: I32; buf: ^U8; n: UINT; flags: I32): INT;
 
 (* errno, this thread's *)
 proc errno*: ^I32;
@@ -218,6 +228,77 @@ proc closeFrom*(lo, hi: INT);
 begin
     if hi < 0 then hi := 0FFFFFFFFH; end;
     _ := syscall(436, lo, hi, 0);
+end;
+
+(* A pipe, its two fds put at fds, taking flags, oCloexec and
+   oNonblock, at once: 0, or -1 with errno set, as C's calls are. *)
+proc makePipe*(fds: ^I32; flags: I32): I32;
+begin
+    return pipe2(fds, flags);
+end;
+
+(* The next connection to the socket fd, closed on exec; or -1. *)
+proc accepted*(fd: I32): I32;
+begin
+    return accept4(fd, nil, nil, sockCloexec);
+end;
+
+(* The kernel's random bytes, at most n, put at buf: how many, or -1. *)
+proc random*(buf: ^U8; n: UINT): INT;
+begin
+    return getrandom(buf, n, 0);
+end;
+
+(* A file in memory, of no bytes, with no name, closed on exec: its
+   fd, or -1. *)
+proc memFile*: I32;
+begin
+    return memfd_create(SYSTEM.PTR("raz\0"), mfdCloexec);   (* the name /proc shows *)
+end;
+
+(* Waits until t, a struct timespec of the monotonic clock, again
+   after EINTR. *)
+proc sleepUntil*(t: ^U8);
+begin
+    repeat until clock_nanosleep(clockMonotonic, timerAbstime, t, nil) # eIntr;
+end;
+
+(* The number of processors this program may run on, or 0 if the
+   system doesn't say. *)
+proc processors*: INT;
+var mask: [1024]U8; i, b, count: INT;
+begin
+    for i := 0 to LEN(mask) - 1 do mask[i] := 0; end;   (* the C library fills in as many bytes as the system has processors' bits *)
+    if sched_getaffinity(0, UINT(LEN(mask)), SYSTEM.ADR(mask[0])) # 0 then return 0; end;
+    count := 0;
+    for i := 0 to LEN(mask) - 1 do
+        for b := 0 to 7 do
+            if (INT(mask[i]) shr b) & 1 = 1 then INC(count); end;
+        end;
+    end;
+    return count;
+end;
+
+(* The process and the user at the other end of the Unix socket fd,
+   as the system recorded them when it connected, and 0; or -1. *)
+proc peer*(fd: I32; var pid, uid: INT): I32;
+var cred: [16]U64; size: U32; p: ^U8; q: ^U32;
+begin
+    p := ^U8(SYSTEM.ADR(cred[0]));
+    size := U32(SIZE([16]U64));
+    if getsockopt(fd, solSocket, soPeercred, p, SYSTEM.ADR(size)) # 0 then return -1; end;
+    q := ^U32(p + ucPidAt);
+    pid := INT(I32(q^));
+    q := ^U32(p + ucUidAt);
+    uid := INT(q^);
+    return 0;
+end;
+
+(* Sends n bytes at buf on the socket fd, without waiting, and without
+   SIGPIPE where the other end is gone: how many were sent, or -1. *)
+proc sendNow*(fd: I32; buf: ^U8; n: UINT): INT;
+begin
+    return send(fd, buf, n, msgNosignal | msgDontwait);
 end;
 
 end CAbi.

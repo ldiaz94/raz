@@ -1,15 +1,31 @@
 (* The run time, for macOS on arm64, with lib/Rt.raz's interface, which
-   every file of Rt keeps. The compiler finds exit, fail and cExit by
-   these names. exit runs the procedures atExit registered, then ends
-   the program by C's exit, which the entry point gives cExit, as every
-   program on a Mac reaches the kernel through libSystem; fail says
-   what failed, with its values, and stop its message, and they end it
-   with status 2; and a fault the machine catches, a nil pointer or
-   procedure or a stack overflow, is told by a handler, on a stack of
-   its own, as on Linux, and ends it so too. A failure is told by its
-   address, as on Linux in a program built with raz -s: the places, the
-   calls under way and the profiler are what PLAN.md 5's step 7 brings
-   here; place, trace and startProfile do nothing yet. *)
+   every file of Rt keeps, and its work: ending the program; fail, which
+   the compiler's code calls when a check fails; stop, for the library's
+   own failures; the handlers that say where the program was when a
+   signal stopped it; trace; and the profiler. The compiler finds fail,
+   exit, cExit, places, profiler, startProfile, teller, calls, placer
+   and place by these names.
+
+   It is lib/Rt.raz's, but for what the Mac does otherwise:
+   - Every program reaches the kernel through libSystem, so Rt calls C,
+     by extern, and exit ends the program by C's exit, which the entry
+     point gives cExit. Rt imports nothing, so its body runs first.
+   - macOS loads a program at an address of its choosing, the same
+     image moved by a slide that dyld says, so an address the program
+     meets is the slide past the one the compiler laid out, which the
+     places hold (linked).
+   - The frames' chain is x29's: a frame record of x29 and x30, the
+     caller's frame and the return address, that x29 points at. A call
+     is the bl 4 bytes before the return address. A procedure's busiest
+     variables are in x19 to x23 (regs), as Gen.arm64.raz keeps them.
+   - The kernel hands a handler a siginfo and a ucontext laid out as
+     <sys/signal.h> and <mach/arm/_structs.h> have them (onSignal), and
+     the handler returns through libSystem's _sigtramp, which needs no
+     sigReturn of Rt's; nor is a division fault a signal on arm64,
+     where the code checks for it (Gen.divide) and calls fail.
+   A program built with raz -s has no places, so a failure is told by
+   its address, and no calls; one built with -noprofile no profiler.
+   -bare is not for a Mac. *)
 module Rt;
 import SYSTEM;
 
@@ -17,13 +33,40 @@ const
     Full*: ERROR = "too many procedures to run at exit";   (* atExit's *)
     MaxAtExit = 32;
     Digits = "0123456789abcdef";
-    (* the signals a fault raises, and sigaction's flags SA_ONSTACK,
-       SA_RESETHAND and SA_SIGINFO, as macOS's <signal.h> has them *)
-    SigIll = 4; SigTrap = 5; SigFpe = 8; SigBus = 10; SigSegv = 11;
+    (* the signals a fault raises, and SIGPROF, as macOS's <signal.h>
+       has them *)
+    SigIll = 4; SigTrap = 5; SigFpe = 8; SigBus = 10; SigSegv = 11; SigProf = 27;
+    (* sigaction's flags: SA_ONSTACK, SA_RESETHAND and SA_SIGINFO; and
+       for the profiler, SA_ONSTACK, SA_RESTART, so that a call a sample
+       breaks into goes on, and SA_SIGINFO *)
     Flags = 1H + 4H + 40H;
+    ProfFlags = 1H + 2H + 40H;
     Low = 100000000H;   (* page zero: no address below this is ever mapped *)
+    MaxSamples = 100000;
+    MaxProcs = 8192;
+    MaxPlaces = 65536;
+    (* the line table's special opcodes, as the compiler makes them *)
+    LineBase = -5;
+    LineRange = 14;
+    OpcodeBase = 13;
+    Depth = 24;   (* the callers noted with each sample, at most *)
+    (* mmap's PROT_READ | PROT_WRITE and MAP_PRIVATE | MAP_ANON *)
+    Prot = 3;
+    Map = 1002H;
 
 type
+    (* A row of the line table: the code from address at on comes from
+       line and column col of file, numbered from 1 *)
+    Row = record at: UINT; file, line, col: INT; end;
+    (* A procedure, from address start to stop, called name, and its
+       count variables from first on; it saves the registers of its
+       variables, bits of regs, a quadword each from saveAt in its frame *)
+    Proc = record start, stop, name, first, count, saves: U32; saveAt: I32; end;
+    (* A variable of a procedure, at off from its frame, shown by kind:
+       1 a signed integer, 2 an unsigned one, 3 a BOOL, 4 an address,
+       5 a real; plus its size times 16, and 256 if the frame holds its
+       address, or 512 times 1 + i if it is in register i of regs *)
+    Local = record name: U32; off: I32; kind: U32; end;
     (* What sigaction and sigaltstack take, as macOS lays them out *)
     Action = record handler: proc(sig: I32; info, ctx: ^U8); mask, flags: I32; end;
     Stack = record sp: ^U8; size: INT; flags: I32; end;
@@ -31,19 +74,51 @@ type
 extern proc write(fd: I32; buf: ^U8; n: UINT): INT;
 extern proc sigaction(sig: I32; act, old: ^U8): I32;
 extern proc sigaltstack(ss, old: ^U8): I32;
+extern proc _dyld_get_image_vmaddr_slide(image: U32): INT;
+extern proc getenv(name: ^U8): ^U8;
+extern proc mmap(addr: ^U8; n: UINT; prot, flags, fd: I32; off: I64): ^U8;
+extern proc setitimer(which: I32; value, old: ^U8): I32;
 
 var
     atExits: [MaxAtExit]proc;
     numAtExit: INT;
     ending: INT;                (* the status exit was given, once it has been *)
     cExit: proc(status: I32);   (* C's exit, set first thing *)
-    placer: proc(a: UINT);      (* place, set first thing, or nil under raz -s *)
-    profiler: proc;             (* startProfile, set first thing, or nil *)
+    (* Set first thing too: where the line table is in them, where the
+       program's code starts and stops, as the compiler laid it out, the
+       numbers of procedures and variables; the procedures and variables,
+       and their names; and the line table, DWARF's line program. The
+       linker makes them. *)
+    places: ^INT;
+    slide: UINT;                (* how far dyld moved the program from where the places have it *)
     line: [256]U8;              (* the message being made *)
+    (* x19 to x23 in the frame being told of, where the compiler keeps a
+       procedure's busiest variables *)
+    regs: [5]UINT;
+    known: BOOL;                (* regs are as the code a signal stopped had them *)
+    (* the frame record a procedure stopped at its first instruction
+       would have made, the caller's fp and lr, made by onSignal *)
+    unmade: [2]UINT;
     lineLen: INT;
     act: Action;
     alt: Stack;
-    altStack: [65536]U8;        (* where the handler runs, even when the stack is full *)
+    altStack: [65536]U8;        (* where the handlers run, even when the stack is full *)
+    (* the profile: where the program was at each sample, and how many
+       samples fell in each procedure and at each place *)
+    samples: [MaxSamples]UINT;
+    (* the callers at each sample, by their return addresses: a row of
+       Depth for each, a short one ended by 0; mapped when profiling *)
+    chains: ^UINT;
+    numSamples: INT;
+    profiler: proc;   (* startProfile, put here by the entry point, or nil *)
+    (* calls, put here by the entry point, or nil under raz -s *)
+    teller: proc(ip, bp: UINT; vars: BOOL);
+    (* place, put here by the entry point, or nil, as teller *)
+    placer: proc(a: UINT);
+    procCount: [MaxProcs]INT;
+    procTotal: [MaxProcs]INT;    (* the samples each procedure was on the chain of *)
+    placeCount: [MaxPlaces]INT;
+    timerv: [4]INT;              (* setitimer's interval and value *)
 
 (* Registers p to run when the program ends by exit *)
 proc atExit*(p: proc): ERROR;
@@ -54,6 +129,8 @@ begin
     return nil;
 end;
 
+proc profile; forward;
+
 (* The status exit was given, while the procedures atExit registered
    run; 0 before *)
 proc exitStatus*: INT;
@@ -63,7 +140,7 @@ end;
 
 (* Runs the procedures registered with atExit, the last first, each
    taken off first so that it runs once, then ends the program with
-   status *)
+   status, through C's exit *)
 proc exit*(status: INT);
 var p: proc;
 begin
@@ -85,8 +162,8 @@ begin
     exit(2);
 end;
 
-(* Messages, made in line, as lib/Rt.raz makes them, one byte kept for
-   the line feed, and written by say in one piece *)
+(* Messages, made in line, one byte kept for the line feed, and
+   written by say in one piece *)
 proc put(s: []const U8);
 var i: INT;
 begin
@@ -142,37 +219,378 @@ begin
     lineLen := 0;
 end;
 
-(* Puts where the code at address a is: its address, for now *)
-proc where(a: UINT);
+(* The address the compiler laid out for the code at address a *)
+proc linked(a: UINT): UINT;
 begin
-    if placer # nil then placer(a); end;
-    put("at ");
-    putHex(a);
+    return a - slide;
+end;
+
+(* Whether a is in the program's own code, not C's *)
+proc inCode(a: UINT): BOOL;
+begin
+    return (linked(a) >= UINT(places[1])) and (linked(a) < UINT(places[2]));
+end;
+
+(* The names, after the procedures and variables *)
+proc names: ^U8;
+begin
+    return ^U8(places + 5) + 28 * places[3] + 12 * places[4];
+end;
+
+(* The line table *)
+proc lines: ^U8;
+begin
+    return ^U8(places) + places[0];
+end;
+
+(* The number p points at, in LEB128, unsigned, and where the next
+   thing starts *)
+proc uleb(p: ^U8): (INT, ^U8);
+var n, shift: INT;
+begin
+    n := 0;
+    shift := 0;
+    while p^ >= 80H do
+        n := n | INT(p^ & 7FH) shl shift;
+        INC(shift, 7);
+        p := p + 1;
+    end;
+    return n | INT(p^) shl shift, p + 1;
+end;
+
+(* The same, signed *)
+proc sleb(p: ^U8): (INT, ^U8);
+var n, shift, b: INT;
+begin
+    n := 0;
+    shift := 0;
+    repeat
+        b := INT(p^);
+        p := p + 1;
+        n := n | (b & 7FH) shl shift;
+        INC(shift, 7);
+    until b < 80H;
+    if (shift < 64) and (b & 40H # 0) then n := n | (-1 shl shift); end;   (* its sign *)
+    return n, p;
+end;
+
+(* The path of the line table's file f, as a C string: the files'
+   names follow the table's header of 29 bytes, each ending in a zero
+   and followed by three numbers *)
+proc path(f: INT): ^U8;
+var p: ^U8; i, k: INT;
+begin
+    p := lines() + 29;
+    for i := 2 to f do
+        while p^ # 0 do p := p + 1; end;
+        p := p + 1;
+        for k := 1 to 3 do _, p := uleb(p); end;
+    end;
+    return p;
+end;
+
+(* The row of the line table that the code at address a, as linked,
+   comes from, the one with the highest address up to a, and its
+   number; or, if k >= 0, row number k. The number is -1 if there is
+   none. As lib/Rt.raz's row, whose comment says how. *)
+proc row(a: UINT; k: INT): (Row, INT);
+var p, stop: ^U8; q: ^U32; at: ^UINT; r, best: Row; n, found, op, v: INT;
+begin
+    p := lines();
+    q := ^U32(p);
+    stop := p + 4 + INT(q^);
+    q := ^U32(p + 6);
+    p := p + 10 + INT(q^);   (* the program, past the header *)
+    r := {file: 1, line: 1};
+    n := 0;
+    found := -1;
+    while p < stop do
+        op := INT(p^);
+        p := p + 1;
+        if op >= OpcodeBase then
+            op := op - OpcodeBase;
+            r.at := r.at + UINT(op div LineRange);
+            r.line := r.line + LineBase + op mod LineRange;
+            op := 1;
+        elsif op = 0 then   (* extended: its length, then which *)
+            v, p := uleb(p);
+            if p^ = 1 then r := {file: 1, line: 1};   (* end_sequence *)
+            elsif p^ = 2 then at := ^UINT(p + 1); r.at := at^;   (* set_address *)
+            end;
+            p := p + v;
+        elsif op = 2 then v, p := uleb(p); r.at := r.at + UINT(v);   (* advance_pc *)
+        elsif op = 3 then v, p := sleb(p); r.line := r.line + v;     (* advance_line *)
+        elsif op = 4 then r.file, p := uleb(p);   (* set_file *)
+        elsif op = 5 then r.col, p := uleb(p);    (* set_column *)
+        end;
+        if op = 1 then   (* copy, or a special opcode: the row r *)
+            if n = k then return r, n; end;
+            if (k < 0) and (r.at <= a) and ((found < 0) or (r.at >= best.at)) then
+                best := r;
+                found := n;
+            end;
+            INC(n);
+        end;
+    end;
+    return best, found;
+end;
+
+(* Puts where row r comes from, as file:line:col *)
+proc putRow(r: Row);
+begin
+    putStr(path(r.file));
+    put(":");
+    putInt(r.line);
+    put(":");
+    putInt(r.col);
+end;
+
+(* The compiler's, as fail is: puts where the code at address a comes
+   from, as file:line:col: and a space, if a is in the program's code *)
+proc place*(a: UINT);
+var r: Row; n: INT;
+begin
+    if not inCode(a) then return; end;
+    r, n := row(linked(a), -1);
+    if n < 0 then return; end;
+    putRow(r);
     put(": ");
 end;
 
-(* Where the code at address a comes from: not told yet *)
-proc place*(a: UINT);
+(* Puts where the code at address a is: place, or, in a program built
+   with raz -s, which keeps no places, the address *)
+proc where(a: UINT);
 begin
-    _ := a;
+    if placer # nil then placer(a);
+    else
+        put("at ");
+        putHex(a);
+        put(": ");
+    end;
 end;
 
-(* The calls under way: not told yet *)
-proc trace*;
+(* The frame pointer of the procedure that calls it, which a code
+   procedure leaves as it is. Rt's code procedures are written as their
+   words' bytes, in db, each instruction in a comment beside it: when
+   BOOT's release builds src/, it reads this file for Rt's interface,
+   and knows only x86-64's instructions, but db is in both assemblers.
+   Written so until BOOT names a release that skips a code procedure
+   in a file read for its interface. *)
+proc framePtr: UINT;
+code
+    db 0E0H, 03H, 1DH, 0AAH;    (* mov x0, x29 *)
+    db 0C0H, 03H, 5FH, 0D6H;    (* ret *)
+end framePtr;
+
+(* The frame of the procedure that called the one calling this *)
+proc callerFrame: UINT;
+var q: ^UINT;
 begin
+    q := ^UINT(framePtr());   (* callerFrame's own: its caller's frame is in it *)
+    q := ^UINT(q^);
+    return q^;
+end;
+
+(* The procedure whose code holds address a, or nil. The places keep
+   the low 32 bits of a procedure's start and stop; the program lies
+   at 4 GB and up, as linked, within one stretch of 4 GB, so the low
+   32 bits of an address in its code are in the same order as the
+   address. *)
+proc procAt(a: UINT): ^Proc;
+var p: ^Proc; i: INT;
+begin
+    if (places = nil) or not inCode(a) then return nil; end;
+    p := ^Proc(places + 5);
+    a := linked(a) & 0FFFFFFFFH;
+    for i := 0 to places[3] - 1 do
+        if (UINT(p[i].start) <= a) and (a < UINT(p[i].stop)) then return p + i; end;
+    end;
+    return nil;
+end;
+
+(* x with six figures after the point, or as m e n beyond them *)
+proc putReal(x: F64);
+var e, i: INT; f: U64;
+begin
+    if x # x then put("nan"); return; end;
+    if x < 0.0 then put("-"); x := -x; end;
+    if (x > 1.0) and (x * 2.0 = x) then put("inf"); return; end;
+    e := 0;
+    while x >= 1.0E15 do x := x / 10.0; INC(e); end;
+    while (x # 0.0) and (x < 0.001) do x := x * 10.0; DEC(e); end;
+    f := U64(x * 1000000.0 + 0.5);
+    putInt(INT(f div 1000000));
+    put(".");
+    for i := 1 to 6 do
+        f := f mod 1000000 * 10;
+        put(Digits[INT(f div 1000000)..INT(f div 1000000) + 1]);
+    end;
+    if e # 0 then put("e"); putInt(e); end;
+end;
+
+(* The value of variable l of the frame at bp *)
+proc putValue(bp: UINT; l: ^Local);
+var a: ^U8; w: ^UINT; h: ^U16; s: ^U32; f: ^F32; d: ^F64; v: UINT; bits: INT;
+begin
+    a := ^U8(bp) + INT(l^.off);
+    if l^.kind shr 9 # 0 then a := ^U8(SYSTEM.ADR(regs[INT(l^.kind shr 9) - 1])); end;
+    w := ^UINT(a);
+    if l^.kind & 256 # 0 then a := ^U8(w^); w := ^UINT(a); end;
+    h := ^U16(a); s := ^U32(a); f := ^F32(a); d := ^F64(a);
+    bits := INT(l^.kind shr 4 & 15) * 8;
+    match bits of
+    | 8: v := UINT(a^);
+    | 16: v := UINT(h^);
+    | 32: v := UINT(s^);
+    | else: v := w^;
+    end;
+    match l^.kind & 15 of
+    | 1:
+        if (bits < 64) and (v shr (bits - 1) # 0) then putInt(INT(v) - INT(1) shl bits);
+        else putInt(INT(v));
+        end;
+    | 2: putInt(INT(v));
+    | 3: if v # 0 then put("true"); else put("false"); end;
+    | 4: if v = 0 then put("nil"); else putHex(v); end;
+    | else: if bits = 32 then putReal(F64(f^)); else putReal(d^); end;
+    end;
+end;
+
+(* Says that n more calls are as the one before, if there are any;
+   the lines it takes *)
+proc more(n: INT): INT;
+begin
+    if n = 0 then return 0; end;
+    put("  and ");
+    putInt(n);
+    put(" more the same");
+    say;
+    return 1;
+end;
+
+(* x19 to x23, into p[0] to p[4] *)
+proc liveRegs(p: ^UINT);
+code
+    db 13H, 50H, 00H, 0A9H;     (* stp x19, x20, [x0] *)
+    db 15H, 58H, 01H, 0A9H;     (* stp x21, x22, [x0, #16] *)
+    db 17H, 10H, 00H, 0F9H;     (* str x23, [x0, #32] *)
+    db 0C0H, 03H, 5FH, 0D6H;    (* ret *)
+end liveRegs;
+
+(* An address in the code of the procedure that calls it: the return
+   address, in x30 *)
+proc here: UINT;
+code
+    db 0E0H, 03H, 1EH, 0AAH;    (* mov x0, x30 *)
+    db 0C0H, 03H, 5FH, 0D6H;    (* ret *)
+end here;
+
+(* regs as the caller of p's frame at bp left them, where p saved them *)
+proc restore(p: ^Proc; bp: UINT);
+var i, j: INT; q: ^UINT;
+begin
+    if p = nil then return; end;
+    j := 0;
+    for i := 0 to 4 do
+        if p^.saves shr i & 1 # 0 then
+            q := ^UINT(^U8(bp) + INT(p^.saveAt) + 8 * j);
+            regs[i] := q^;
+            INC(j);
+        end;
+    end;
+end;
+
+(* Says the calls under way, a line each, from the one at address ip
+   whose frame is at bp: where each is, and its variables, unless vars
+   is false for the first. At most 20 lines; a frame that isn't the
+   program's ends them. Calls of one procedure from one place, as in a
+   recursion that overflowed the stack, are told once, and counted. *)
+proc calls(ip, bp: UINT; vars: BOOL);
+var p, last: ^Proc; l: ^Local; i, n, same: INT; q: ^UINT; lastIp, x, xip: UINT; saved: BOOL;
+begin
+    (* the registers as they are, then as each frame from this one out
+       to bp's found them; or as a signal's context had them *)
+    if not known then
+        liveRegs(SYSTEM.ADR(regs[0]));
+        x := framePtr();
+        xip := here();
+        while (x # bp) and (x & 7 = 0) and (x # 0) do
+            restore(procAt(xip), x);
+            q := ^UINT(x);
+            if q[0] <= x then break; end;
+            xip := q[1] - 4;
+            x := q[0];
+        end;
+    end;
+    saved := vars;    (* not in a prologue: the frame has saved them *)
+    n := 0;
+    same := 0;
+    last := nil;
+    lastIp := 0;
+    while n < 20 do
+        p := procAt(ip);
+        if p = nil then break; end;
+        if (p = last) and (ip = lastIp) then
+            INC(same);
+        else
+            n := n + more(same);
+            same := 0;
+            last := p;
+            lastIp := ip;
+            put("  in ");
+            putStr(names() + INT(p^.name));
+            put(" at ");
+            where(ip);
+            l := ^Local(^U8(places + 5) + 28 * places[3]) + INT(p^.first);
+            if not vars or (p^.count = 0) then DEC(lineLen, 2); end;   (* where's ": " *)
+            for i := 0 to INT(p^.count) - 1 do
+                if vars then
+                    if i > 0 then put(", "); end;
+                    putStr(names() + INT(l[i].name));
+                    put(" = ");
+                    putValue(bp, l + i);
+                end;
+            end;
+            say;
+            INC(n);
+            vars := true;
+        end;
+        if saved then restore(p, bp); end;
+        saved := true;
+        (* each frame is above the one it called, which ends a chain gone
+           wrong; but unmade, wherever it is, leads to the stack *)
+        q := ^UINT(bp);
+        if (bp & 7 # 0) or ((q[0] <= bp) and (bp # UINT(SYSTEM.ADR(unmade[0])))) then break; end;
+        ip := q[1] - 4;   (* the call, the bl before its return address *)
+        bp := q[0];
+    end;
+    _ := more(same);
+end;
+
+(* Says on standard error the calls under way, from the one that calls
+   it, each with its variables, as after a failed check. *)
+proc trace*;
+var q: ^UINT;
+begin
+    q := ^UINT(framePtr());
+    calls(q[1] - 4, q[0], true);
 end;
 
 (* A check failed in the code at address at: says where, and what
-   failed, as lib/Rt.raz's fail, whose comment says what each kind is,
-   then ends the program by exit with status 2. The registers that
-   x86-64's trap report shows are none here. *)
+   failed, then the calls under way, as lib/Rt.raz's fail, whose
+   comment says what each kind is, then ends the program by exit with
+   status 2. The registers that x86-64's trap report shows, rdi and
+   rsi, are none here. *)
 proc fail*(what, a, b, len: INT; at: UINT; name: ^U8; rdi, rsi: UINT);
 begin
     _ := rdi; _ := rsi;
     where(at);
-    if what = 4 then put("stopped by a nil pointer");
-    elsif what = 5 then put("stopped by a division fault");
-    elsif what = 6 then put("stopped by a stack overflow");
+    if (what >= 4) and (what <= 6) then
+        put("stopped by ");
+        if what = 4 then put("a nil pointer");
+        elsif what = 5 then put("a division fault");
+        else put("a stack overflow");
+        end;
     elsif what = 0 then put("index "); putInt(a);
     elsif what = 7 then
         put("a view at index "); putInt(a);
@@ -185,28 +603,36 @@ begin
     end;
     if what < 2 then put(" is out of range for a length of "); putInt(len); end;
     say;
+    if teller # nil then teller(at, callerFrame(), true); end;
     exit(2);
 end;
 
-(* A fault stops the program: says where it was and why on standard
-   error, then ends it by exit with status 2, as a failed check does.
-   info and ctx are the kernel's siginfo and ucontext: the address that
-   faulted is at 24 in siginfo, and the registers at uc_mcontext, a
-   pointer at 48 in ucontext, past 16 bytes of the exception's state:
-   x0 to x28, then fp, lr, sp and pc. *)
+(* A fault stops the program: says where it was and why, and the calls
+   under way, on standard error, then ends it by exit with status 2, as
+   a failed check does. info and ctx are the kernel's siginfo and
+   ucontext: the address that faulted is at 24 in siginfo, and the
+   registers at uc_mcontext, a pointer at 48 in ucontext, past the 16
+   bytes of the exception's state: x0 to x28, then fp, lr, sp and pc.
+   A stack overflow can stop a procedure at its first instruction, the
+   stp that makes its frame record: it has no frame yet, so the calls
+   are told from one made of the fp and lr it found, unmade. *)
 proc onSignal(sig: I32; info, ctx: ^U8);
-var adr, sp, pc: UINT; q: ^UINT; why: []const U8;
+var adr, sp, pc, fp, lr: UINT; q: ^UINT; p: ^Proc; why: []const U8;
 begin
     q := ^UINT(info + 24);
     adr := q^;
     q := ^UINT(ctx + 48);
     q := ^UINT(q^ + 16);
+    regs := [q[19], q[20], q[21], q[22], q[23]];
+    known := true;
+    fp := q[29];
+    lr := q[30];
     sp := q[31];
     pc := q[32];
     if sig = SigFpe then why := "a division fault";
     elsif pc < Low then
         why := "a nil procedure";
-        pc := q[30] - 4;   (* the call, by its return address in lr *)
+        pc := lr - 4;   (* the call, by its return address *)
     elsif adr < Low then why := "a nil pointer";
     elsif adr - sp + 100000H < 200000H then why := "a stack overflow";   (* within a megabyte of sp *)
     elsif (sig = SigIll) or (sig = SigTrap) then why := "a trap";
@@ -216,16 +642,161 @@ begin
     put("stopped by ");
     put(why);
     say;
+    if teller # nil then
+        p := procAt(pc);
+        if (p # nil) and (linked(pc) & 0FFFFFFFFH = UINT(p^.start)) then
+            unmade := [fp, lr];
+            fp := UINT(SYSTEM.ADR(unmade[0]));
+        end;
+        (* the variables of a frame the stack overflowed in may be past it *)
+        teller(pc, fp, why # "a stack overflow");
+    end;
     exit(2);
 end;
 
-(* The profiler: none yet *)
-proc startProfile*;
+(* SIGPROF, every millisecond the program runs, in any of its threads:
+   notes where it was, and the calls under way, up the chain of frames.
+   The chain is followed only through the program's own code, whose
+   frames all keep it in x29: C's code may not. *)
+proc onProf(_sig: I32; _info, ctx: ^U8);
+var n, k: INT; q, f, row: ^UINT; ip, bp: UINT;
 begin
+    n := XADD(numSamples, 1);
+    if n >= MaxSamples then return; end;
+    q := ^UINT(ctx + 48);
+    q := ^UINT(q^ + 16);
+    bp := q[29];
+    ip := q[32];
+    samples[n] := ip;
+    row := chains + n * Depth;
+    k := 0;
+    if (places # nil) and inCode(ip) then
+        while (k < Depth) and (bp # 0) and (bp & 7 = 0) do
+            f := ^UINT(bp);
+            if not inCode(f[1]) then break; end;
+            row[k] := f[1] - 4;   (* the call, by its return address *)
+            INC(k);
+            if f[0] <= bp then break; end;
+            bp := f[0];
+        end;
+    end;
+    if k < Depth then row[k] := 0; end;
+end;
+
+(* The number of the procedure the code at address a is in, or -1 *)
+proc procNum(a: UINT): INT;
+var p: ^Proc;
+begin
+    p := procAt(a);
+    if p = nil then return -1; end;
+    return p - ^Proc(places + 5);
+end;
+
+(* The number of the line table's row the code at address a comes
+   from, or -1 *)
+proc placeAt(a: UINT): INT;
+var n: INT;
+begin
+    if not inCode(a) then return -1; end;
+    _, n := row(linked(a), -1);
+    return n;
+end;
+
+(* Puts the share of n that k is, as a percentage four wide *)
+proc putShare(k, n: INT);
+var i: INT;
+begin
+    i := k * 100 div n;
+    if i < 10 then put("    "); elsif i < 100 then put("   "); else put("  "); end;
+    putInt(i);
+    put("%");
+end;
+
+(* Says the ten that took most of count's n samples, by name, with
+   their totals beside them if total isn't empty *)
+proc top(count: []INT; total: []const INT; n: INT; byPlace: BOOL);
+var i, k, best: INT; p: ^Proc; r: Row;
+begin
+    p := ^Proc(places + 5);
+    for k := 1 to 10 do
+        best := 0;
+        for i := 1 to LEN(count) - 1 do
+            if count[i] > count[best] then best := i; end;
+        end;
+        if count[best] = 0 then return; end;
+        putShare(count[best], n);
+        if LEN(total) > 0 then put("  "); putShare(total[best], n); end;
+        put("  ");
+        if byPlace then
+            r, _ := row(0, best);
+            putRow(r);
+        else putStr(names() + INT(p[best].name));
+        end;
+        say;
+        count[best] := 0;
+    end;
+end;
+
+(* The compiler's, as fail is: if RAZ_PROFILE is set, samples the
+   program every millisecond of its time, and says at its end what took
+   it (profile) *)
+proc startProfile*;
+var e: ^U8; pa: Action;
+begin
+    e := getenv(SYSTEM.PTR("RAZ_PROFILE\0"));
+    if (e = nil) or (e^ = 0) then return; end;
+    chains := ^UINT(mmap(nil, UINT(MaxSamples * Depth * SIZE(UINT)), Prot, Map, -1, 0));
+    if INT(chains) = -1 then chains := nil; return; end;
+    pa := {handler: onProf, flags: ProfFlags};
+    _ := sigaction(SigProf, ^U8(SYSTEM.ADR(pa)), nil);
+    timerv := [0, 1000, 0, 1000];   (* every millisecond, from one on *)
+    _ := setitimer(2, ^U8(SYSTEM.ADR(timerv)), nil);   (* ITIMER_PROF *)
+    _ := atExit(profile);
+end;
+
+(* At the end of a profiled run: which procedures, and which places in
+   the source, took the time, as shares of the samples *)
+proc profile;
+var t: [4]INT; i, n, k, j, m, s: INT; seen: [Depth + 1]INT; row: ^UINT;
+begin
+    t := [0, 0, 0, 0];
+    _ := setitimer(2, ^U8(SYSTEM.ADR(t)), nil);   (* no more *)
+    n := numSamples;
+    if n > MaxSamples then n := MaxSamples; end;
+    if (places = nil) or (n = 0) then return; end;
+    for i := 0 to n - 1 do
+        k := procNum(samples[i]);
+        if (k >= 0) and (k < MaxProcs) then INC(procCount[k]); end;
+        (* each procedure on the sample's chain counts once in its
+           total, however often it is there *)
+        row := chains + i * Depth;
+        m := 0;
+        for j := -1 to Depth - 1 do
+            if j < 0 then k := procNum(samples[i]);
+            elsif row[j] = 0 then break;
+            else k := procNum(row[j]);
+            end;
+            if (k >= 0) and (k < MaxProcs) then
+                s := 0;
+                while (s < m) and (seen[s] # k) do INC(s); end;
+                if s = m then seen[m] := k; INC(m); INC(procTotal[k]); end;
+            end;
+        end;
+        k := placeAt(samples[i]);
+        if (k >= 0) and (k < MaxPlaces) then INC(placeCount[k]); end;
+    end;
+    put("profile: ");
+    putInt(n);
+    put(" samples of a millisecond; each procedure's own, then with its calls'");
+    say;
+    top(procCount[0..places[3]], procTotal[0..places[3]], n, false);
+    put("by place:");
+    say;
+    top(placeCount, placeCount[0..0], n, true);
 end;
 
 begin
-    _ := profiler;   (* started here when RAZ_PROFILE is set, by step 7's Rt *)
+    slide := UINT(_dyld_get_image_vmaddr_slide(0));   (* image 0 is the program *)
     alt := {sp: SYSTEM.ADR(altStack[0]), size: LEN(altStack)};
     _ := sigaltstack(^U8(SYSTEM.ADR(alt)), nil);
     act := {handler: onSignal, flags: Flags};
@@ -234,4 +805,5 @@ begin
     _ := sigaction(SigFpe, ^U8(SYSTEM.ADR(act)), nil);
     _ := sigaction(SigIll, ^U8(SYSTEM.ADR(act)), nil);
     _ := sigaction(SigTrap, ^U8(SYSTEM.ADR(act)), nil);
+    if profiler # nil then profiler(); end;
 end Rt.

@@ -587,7 +587,9 @@ var outR, outW, errR, errW, pid, status, no, ne: INT; st: Sys.Status; out, err: 
 begin
     outR, outW := Sys.pipe();
     errR, errW := Sys.pipe();
-    pid := Sys.spawn({path: "/proc/self/exe", args: c.args, env: [c.mode], fds: [0, outW, errW]});
+    (* this program again, by the path it was run by, which has a slash in
+       it: raztest gives one, and Linux's /proc/self/exe is no Mac's *)
+    pid := Sys.spawn({path: Files.arg(0), args: c.args, env: [c.mode], fds: [0, outW, errW]});
     Sys.close(outW);
     Sys.close(errW);
     if pid < 0 then Rt.stop("Opt: can't run the test's cases"); end;

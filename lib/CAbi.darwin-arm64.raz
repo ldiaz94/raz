@@ -1,7 +1,7 @@
 (* CAbi: what the C library fixes for Sys over C on darwin-arm64: the
    numbers of its flags, requests, signals and limits, where the
    fields of its structs lie, an At the offset and a Len the width,
-   its errnos beside Linux's, and errno and closeFrom.
+   its errnos beside Linux's, and the procedures that differ.
 
    Written by tools/cabi.c, from the system's own headers; not to be
    edited, but written again. *)
@@ -86,6 +86,7 @@ const
     tiocgwinsz* = 1074295912;
     tiocswinsz* = 2148037735;
     tiocsctty* = 536900705;
+    ptyHeld* = 1;
     pollin* = 1;
     pollout* = 4;
     clockRealtime* = 0;
@@ -115,6 +116,7 @@ const
     sockaddrUnLen* = 106;
     sunPathAt* = 2;
     sunPathLen* = 104;
+    unixAbstract* = 0;
     sockaddrInLen* = 16;
     sinPortAt* = 2;
     sinAddrAt* = 4;
@@ -206,6 +208,20 @@ const
 extern proc __error: ^I32;
 extern proc close(fd: I32): I32;
 extern proc getdtablesize: I32;
+extern proc pipe(fds: ^I32): I32;
+extern proc fcntl(fd, cmd: I32; ...): I32;
+extern proc accept(fd: I32; addr: ^U8; len: ^U32): I32;
+extern proc getentropy(buf: ^U8; n: UINT): I32;
+extern proc getpid: I32;
+extern proc shm_open(name: ^U8; flags: I32; ...): I32;
+extern proc shm_unlink(name: ^U8): I32;
+extern proc clock_gettime(clock: I32; t: ^U8): I32;
+extern proc nanosleep(t, left: ^U8): I32;
+extern proc sysconf(name: I32): INT;
+extern proc getsockopt(fd, level, name: I32; value: ^U8; len: ^U32): I32;
+extern proc send(fd: I32; buf: ^U8; n: UINT; flags: I32): INT;
+
+var shmCount: INT;   (* the shared memory objects memFile has made *)
 
 (* errno, this thread's *)
 proc errno*: ^I32;
@@ -220,6 +236,139 @@ var fd: INT;
 begin
     if hi < 0 then hi := INT(getdtablesize()) - 1; end;
     for fd := lo to hi do _ := close(I32(fd)); end;
+end;
+
+(* fd closed on exec, and nonblocking, as flags, oCloexec and
+   oNonblock, say: macOS has no flags for them where a pipe or a
+   socket is made, so another thread's exec in between keeps the fd
+   open, a gap Linux hasn't. *)
+proc setFlags(fd, flags: I32);
+begin
+    if flags & oCloexec # 0 then _ := fcntl(fd, fSetfd, fdCloexec); end;
+    if flags & oNonblock # 0 then _ := fcntl(fd, fSetfl, fcntl(fd, fGetfl) | oNonblock); end;
+end;
+
+(* A pipe, its two fds put at fds, taking flags, oCloexec and
+   oNonblock: 0, or -1 with errno set, as C's calls are. *)
+proc makePipe*(fds: ^I32; flags: I32): I32;
+begin
+    if pipe(fds) # 0 then return -1; end;
+    setFlags(fds[0], flags);
+    setFlags(fds[1], flags);
+    return 0;
+end;
+
+(* The next connection to the socket fd, closed on exec; or -1. *)
+proc accepted*(fd: I32): I32;
+var r: I32;
+begin
+    r := accept(fd, nil, nil);
+    if r >= 0 then setFlags(r, oCloexec); end;
+    return r;
+end;
+
+(* The kernel's random bytes, at most n, put at buf: how many, or -1.
+   getentropy gives 256 at most at a time. *)
+proc random*(buf: ^U8; n: UINT): INT;
+begin
+    if n > 256 then n := 256; end;
+    if getentropy(buf, n) # 0 then return -1; end;
+    return INT(n);
+end;
+
+(* v in hexadecimal into name from i on: where its digits end *)
+proc hex(var name: [32]U8; i, v: INT): INT;
+var n, k, d: INT;
+begin
+    n := v;
+    repeat INC(i); n := n shr 4; until n = 0;
+    k := i;
+    repeat
+        DEC(k);
+        d := v & 15;
+        if d < 10 then name[k] := U8(d) + '0'; else name[k] := U8(d - 10) + 'a'; end;
+        v := v shr 4;
+    until v = 0;
+    return i;
+end;
+
+(* A file in memory, of no bytes, with no name, closed on exec: its
+   fd, or -1. macOS has no memfd_create: it is a POSIX shared memory
+   object, made with a name of its own, /raz.PID.N, which is removed
+   at once. Such an object can be given its size once, and mapped, but
+   not read or written. *)
+proc memFile*: I32;
+var name: [32]U8; fd: I32; i: INT;
+begin
+    COPY(name[0..5], "/raz.");
+    i := hex(name, 5, INT(getpid()));
+    name[i] := '.';
+    i := hex(name, i + 1, XADD(shmCount, 1));
+    name[i] := 0;
+    fd := shm_open(SYSTEM.ADR(name[0]), oRdwr | oCreat | oExcl, 384);   (* rw------- *)
+    if fd < 0 then return -1; end;
+    _ := shm_unlink(SYSTEM.ADR(name[0]));
+    setFlags(fd, oCloexec);
+    return fd;
+end;
+
+(* Waits until t, a struct timespec of the monotonic clock: macOS has
+   no clock_nanosleep, so nanosleep sleeps what is left, again after
+   EINTR. *)
+proc sleepUntil*(t: ^U8);
+var now, left: [2]I64; at: ^I64; d: I64;
+begin
+    at := ^I64(t);
+    repeat
+        _ := clock_gettime(clockMonotonic, ^U8(SYSTEM.ADR(now[0])));
+        d := (at[0] - now[0]) * 1000000000 + at[1] - now[1];
+        if d <= 0 then return; end;
+        left := [d div 1000000000, d mod 1000000000];
+        _ := nanosleep(^U8(SYSTEM.ADR(left[0])), nil);
+    until false;
+end;
+
+(* The number of processors this program may run on, or 0 if the
+   system doesn't say: those online, as macOS binds a program to none
+   of them. *)
+proc processors*: INT;
+begin
+    return sysconf(58);   (* _SC_NPROCESSORS_ONLN *)
+end;
+
+(* The process and the user at the other end of the Unix socket fd,
+   as the system recorded them when it connected, and 0; or -1. The
+   user is in a struct xucred, LOCAL_PEERCRED's, and the process is
+   asked for alone, LOCAL_PEERPID. *)
+proc peer*(fd: I32; var pid, uid: INT): I32;
+var cred: [16]U64; size: U32; p: ^U8; q: ^U32; id: I32;
+begin
+    p := ^U8(SYSTEM.ADR(cred[0]));
+    size := U32(SIZE([16]U64));
+    if getsockopt(fd, 0, 1, p, SYSTEM.ADR(size)) # 0 then return -1; end;
+    q := ^U32(p + ucUidAt);
+    uid := INT(q^);
+    size := 4;
+    if getsockopt(fd, 0, 2, ^U8(SYSTEM.ADR(id)), SYSTEM.ADR(size)) # 0 then return -1; end;
+    pid := INT(id);
+    return 0;
+end;
+
+(* Sends n bytes at buf on the socket fd, without waiting, and without
+   SIGPIPE where the other end is gone: how many were sent, or -1.
+   macOS's send waits on a Unix socket though MSG_DONTWAIT is given, so
+   the socket is made nonblocking for it, as it was before after. *)
+proc sendNow*(fd: I32; buf: ^U8; n: UINT): INT;
+var f: I32; r: INT; e: ^I32; err: I32;
+begin
+    f := fcntl(fd, fGetfl);
+    if (f >= 0) and (f & oNonblock = 0) then _ := fcntl(fd, fSetfl, f | oNonblock); end;
+    r := send(fd, buf, n, msgNosignal | msgDontwait);
+    e := __error();
+    err := e^;
+    if (f >= 0) and (f & oNonblock = 0) then _ := fcntl(fd, fSetfl, f); end;
+    e^ := err;
+    return r;
 end;
 
 end CAbi.

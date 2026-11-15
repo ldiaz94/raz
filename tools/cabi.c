@@ -1,8 +1,10 @@
 /* cabi: writes lib/CAbi.OS-ARCH.raz, what the C library it is compiled
    against fixes for Sys over C (lib/Sys.raz): the numbers of flags,
    requests, signals, limits and errnos, where the fields Sys reads and
-   writes lie in the C library's structs, and the two procedures whose
-   names differ between systems. Nothing in that file is typed by hand:
+   writes lie in the C library's structs, and the procedures that differ
+   between systems: errno and closeFrom, and the calls Linux has and
+   another system makes otherwise (makePipe, accepted, random, memFile,
+   sleepUntil, processors, peer and sendNow). Nothing in that file is typed by hand:
    it is all this program's output, from the system's own headers.
 
        cc -o build/cabi tools/cabi.c && build/cabi linux-x86_64 > lib/CAbi.linux-x86_64.raz
@@ -24,11 +26,16 @@
    flag; an option -1, as saLenAt is -1 where a sockaddr has no sa_len.
    On macOS (darwin-arm64), st_mtim is st_mtimespec, a peer's
    credentials are struct xucred, which has no pid (0 bytes at 0), and
-   errno and closeFrom are its own.
+   the procedures are its own: no pipe2, accept4 or SOCK_CLOEXEC, so
+   fcntl after; getentropy for getrandom; a shared memory object for
+   memfd_create; nanosleep for clock_nanosleep; sysconf for
+   sched_getaffinity; LOCAL_PEERCRED and LOCAL_PEERPID for SO_PEERCRED;
+   and a socket made nonblocking for a send, whose MSG_DONTWAIT macOS
+   doesn't keep on a Unix socket.
 
        cc -o build/cabi tools/cabi.c && build/cabi darwin-arm64 > lib/CAbi.darwin-arm64.raz
 
-   Leaves out: systems but Linux and macOS, for errno and closeFrom; a
+   Leaves out: systems but Linux and macOS, for the procedures; a
    port adds them where the #error is. */
 #define _GNU_SOURCE
 #include <dirent.h>
@@ -133,7 +140,7 @@ int main(int argc, char **argv) {
     printf("(* CAbi: what the C library fixes for Sys over C on %s: the\n"
            "   numbers of its flags, requests, signals and limits, where the\n"
            "   fields of its structs lie, an At the offset and a Len the width,\n"
-           "   its errnos beside Linux's, and errno and closeFrom.\n\n"
+           "   its errnos beside Linux's, and the procedures that differ.\n\n"
            "   Written by tools/cabi.c, from the system's own headers; not to be\n"
            "   edited, but written again. *)\n", target);
     printf("module CAbi;\nimport SYSTEM;\n\nconst\n");
@@ -176,6 +183,11 @@ int main(int argc, char **argv) {
     K("tcsanow", TCSANOW); K("tcsadrain", TCSADRAIN);
     K("tiocgwinsz", TIOCGWINSZ); K("tiocswinsz", TIOCSWINSZ);
     K("tiocsctty", TIOCSCTTY);
+#ifdef __APPLE__
+    K("ptyHeld", 1);   /* a pseudo-terminal's controlling side works only while its terminal is open */
+#else
+    K("ptyHeld", 0);
+#endif
     K("pollin", POLLIN); K("pollout", POLLOUT);
     K("clockRealtime", CLOCK_REALTIME); K("clockMonotonic", CLOCK_MONOTONIC);
     K("timerAbstime", TIMER_ABSTIME);
@@ -198,6 +210,11 @@ int main(int argc, char **argv) {
 #endif
     K("sockaddrUnLen", sizeof(struct sockaddr_un));
     READ("sunPath", struct sockaddr_un, sun_path);
+#ifdef __linux__
+    K("unixAbstract", 1);   /* a Unix socket's name may start with a zero: no file */
+#else
+    K("unixAbstract", 0);
+#endif
     K("sockaddrInLen", sizeof(struct sockaddr_in));
     AT("sinPort", struct sockaddr_in, sin_port);
     AT("sinAddr", struct sockaddr_in, sin_addr);
@@ -257,28 +274,126 @@ int main(int argc, char **argv) {
 
 #ifdef __linux__
     printf("extern proc __errno_location: ^I32;\n"
-           "extern proc syscall(n: INT; ...): INT;\n\n"
+           "extern proc syscall(n: INT; ...): INT;\n"
+           "extern proc pipe2(fds: ^I32; flags: I32): I32;\n"
+           "extern proc accept4(fd: I32; addr: ^U8; len: ^U32; flags: I32): I32;\n"
+           "extern proc getrandom(buf: ^U8; n: UINT; flags: U32): INT;\n"
+           "extern proc memfd_create(name: ^U8; flags: U32): I32;\n"
+           "extern proc clock_nanosleep(clock, flags: I32; t, left: ^U8): I32;\n"
+           "extern proc sched_getaffinity(pid: I32; size: UINT; mask: ^U8): I32;\n"
+           "extern proc getsockopt(fd, level, name: I32; value: ^U8; len: ^U32): I32;\n"
+           "extern proc send(fd: I32; buf: ^U8; n: UINT; flags: I32): INT;\n"
+           "\n"
            "(* errno, this thread's *)\n"
            "proc errno*: ^I32;\n"
            "begin\n"
            "    return __errno_location();\n"
-           "end;\n\n"
+           "end;\n"
+           "\n"
            "(* Closes the fds from lo to hi, or every one from lo if hi < 0: by\n"
            "   close_range's system call, since musl has no close_range. *)\n"
            "proc closeFrom*(lo, hi: INT);\n"
            "begin\n"
            "    if hi < 0 then hi := 0FFFFFFFFH; end;\n"
            "    _ := syscall(436, lo, hi, 0);\n"
-           "end;\n\n");
+           "end;\n"
+           "\n"
+           "(* A pipe, its two fds put at fds, taking flags, oCloexec and\n"
+           "   oNonblock, at once: 0, or -1 with errno set, as C's calls are. *)\n"
+           "proc makePipe*(fds: ^I32; flags: I32): I32;\n"
+           "begin\n"
+           "    return pipe2(fds, flags);\n"
+           "end;\n"
+           "\n"
+           "(* The next connection to the socket fd, closed on exec; or -1. *)\n"
+           "proc accepted*(fd: I32): I32;\n"
+           "begin\n"
+           "    return accept4(fd, nil, nil, sockCloexec);\n"
+           "end;\n"
+           "\n"
+           "(* The kernel's random bytes, at most n, put at buf: how many, or -1. *)\n"
+           "proc random*(buf: ^U8; n: UINT): INT;\n"
+           "begin\n"
+           "    return getrandom(buf, n, 0);\n"
+           "end;\n"
+           "\n"
+           "(* A file in memory, of no bytes, with no name, closed on exec: its\n"
+           "   fd, or -1. *)\n"
+           "proc memFile*: I32;\n"
+           "begin\n"
+           "    return memfd_create(SYSTEM.PTR(\"raz\\0\"), mfdCloexec);   (* the name /proc shows *)\n"
+           "end;\n"
+           "\n"
+           "(* Waits until t, a struct timespec of the monotonic clock, again\n"
+           "   after EINTR. *)\n"
+           "proc sleepUntil*(t: ^U8);\n"
+           "begin\n"
+           "    repeat until clock_nanosleep(clockMonotonic, timerAbstime, t, nil) # eIntr;\n"
+           "end;\n"
+           "\n"
+           "(* The number of processors this program may run on, or 0 if the\n"
+           "   system doesn't say. *)\n"
+           "proc processors*: INT;\n"
+           "var mask: [1024]U8; i, b, count: INT;\n"
+           "begin\n"
+           "    for i := 0 to LEN(mask) - 1 do mask[i] := 0; end;   (* the C library fills in as many bytes as the system has processors' bits *)\n"
+           "    if sched_getaffinity(0, UINT(LEN(mask)), SYSTEM.ADR(mask[0])) # 0 then return 0; end;\n"
+           "    count := 0;\n"
+           "    for i := 0 to LEN(mask) - 1 do\n"
+           "        for b := 0 to 7 do\n"
+           "            if (INT(mask[i]) shr b) & 1 = 1 then INC(count); end;\n"
+           "        end;\n"
+           "    end;\n"
+           "    return count;\n"
+           "end;\n"
+           "\n"
+           "(* The process and the user at the other end of the Unix socket fd,\n"
+           "   as the system recorded them when it connected, and 0; or -1. *)\n"
+           "proc peer*(fd: I32; var pid, uid: INT): I32;\n"
+           "var cred: [16]U64; size: U32; p: ^U8; q: ^U32;\n"
+           "begin\n"
+           "    p := ^U8(SYSTEM.ADR(cred[0]));\n"
+           "    size := U32(SIZE([16]U64));\n"
+           "    if getsockopt(fd, solSocket, soPeercred, p, SYSTEM.ADR(size)) # 0 then return -1; end;\n"
+           "    q := ^U32(p + ucPidAt);\n"
+           "    pid := INT(I32(q^));\n"
+           "    q := ^U32(p + ucUidAt);\n"
+           "    uid := INT(q^);\n"
+           "    return 0;\n"
+           "end;\n"
+           "\n"
+           "(* Sends n bytes at buf on the socket fd, without waiting, and without\n"
+           "   SIGPIPE where the other end is gone: how many were sent, or -1. *)\n"
+           "proc sendNow*(fd: I32; buf: ^U8; n: UINT): INT;\n"
+           "begin\n"
+           "    return send(fd, buf, n, msgNosignal | msgDontwait);\n"
+           "end;\n"
+           "\n");
 #elif defined(__APPLE__)
     printf("extern proc __error: ^I32;\n"
            "extern proc close(fd: I32): I32;\n"
-           "extern proc getdtablesize: I32;\n\n"
+           "extern proc getdtablesize: I32;\n"
+           "extern proc pipe(fds: ^I32): I32;\n"
+           "extern proc fcntl(fd, cmd: I32; ...): I32;\n"
+           "extern proc accept(fd: I32; addr: ^U8; len: ^U32): I32;\n"
+           "extern proc getentropy(buf: ^U8; n: UINT): I32;\n"
+           "extern proc getpid: I32;\n"
+           "extern proc shm_open(name: ^U8; flags: I32; ...): I32;\n"
+           "extern proc shm_unlink(name: ^U8): I32;\n"
+           "extern proc clock_gettime(clock: I32; t: ^U8): I32;\n"
+           "extern proc nanosleep(t, left: ^U8): I32;\n"
+           "extern proc sysconf(name: I32): INT;\n"
+           "extern proc getsockopt(fd, level, name: I32; value: ^U8; len: ^U32): I32;\n"
+           "extern proc send(fd: I32; buf: ^U8; n: UINT; flags: I32): INT;\n"
+           "\n"
+           "var shmCount: INT;   (* the shared memory objects memFile has made *)\n"
+           "\n"
            "(* errno, this thread's *)\n"
            "proc errno*: ^I32;\n"
            "begin\n"
            "    return __error();\n"
-           "end;\n\n"
+           "end;\n"
+           "\n"
            "(* Closes the fds from lo to hi, or every one from lo if hi < 0: one\n"
            "   by one, as macOS has no close_range. *)\n"
            "proc closeFrom*(lo, hi: INT);\n"
@@ -286,9 +401,144 @@ int main(int argc, char **argv) {
            "begin\n"
            "    if hi < 0 then hi := INT(getdtablesize()) - 1; end;\n"
            "    for fd := lo to hi do _ := close(I32(fd)); end;\n"
-           "end;\n\n");
+           "end;\n"
+           "\n"
+           "(* fd closed on exec, and nonblocking, as flags, oCloexec and\n"
+           "   oNonblock, say: macOS has no flags for them where a pipe or a\n"
+           "   socket is made, so another thread's exec in between keeps the fd\n"
+           "   open, a gap Linux hasn't. *)\n"
+           "proc setFlags(fd, flags: I32);\n"
+           "begin\n"
+           "    if flags & oCloexec # 0 then _ := fcntl(fd, fSetfd, fdCloexec); end;\n"
+           "    if flags & oNonblock # 0 then _ := fcntl(fd, fSetfl, fcntl(fd, fGetfl) | oNonblock); end;\n"
+           "end;\n"
+           "\n"
+           "(* A pipe, its two fds put at fds, taking flags, oCloexec and\n"
+           "   oNonblock: 0, or -1 with errno set, as C's calls are. *)\n"
+           "proc makePipe*(fds: ^I32; flags: I32): I32;\n"
+           "begin\n"
+           "    if pipe(fds) # 0 then return -1; end;\n"
+           "    setFlags(fds[0], flags);\n"
+           "    setFlags(fds[1], flags);\n"
+           "    return 0;\n"
+           "end;\n"
+           "\n"
+           "(* The next connection to the socket fd, closed on exec; or -1. *)\n"
+           "proc accepted*(fd: I32): I32;\n"
+           "var r: I32;\n"
+           "begin\n"
+           "    r := accept(fd, nil, nil);\n"
+           "    if r >= 0 then setFlags(r, oCloexec); end;\n"
+           "    return r;\n"
+           "end;\n"
+           "\n"
+           "(* The kernel's random bytes, at most n, put at buf: how many, or -1.\n"
+           "   getentropy gives 256 at most at a time. *)\n"
+           "proc random*(buf: ^U8; n: UINT): INT;\n"
+           "begin\n"
+           "    if n > 256 then n := 256; end;\n"
+           "    if getentropy(buf, n) # 0 then return -1; end;\n"
+           "    return INT(n);\n"
+           "end;\n"
+           "\n"
+           "(* v in hexadecimal into name from i on: where its digits end *)\n"
+           "proc hex(var name: [32]U8; i, v: INT): INT;\n"
+           "var n, k, d: INT;\n"
+           "begin\n"
+           "    n := v;\n"
+           "    repeat INC(i); n := n shr 4; until n = 0;\n"
+           "    k := i;\n"
+           "    repeat\n"
+           "        DEC(k);\n"
+           "        d := v & 15;\n"
+           "        if d < 10 then name[k] := U8(d) + '0'; else name[k] := U8(d - 10) + 'a'; end;\n"
+           "        v := v shr 4;\n"
+           "    until v = 0;\n"
+           "    return i;\n"
+           "end;\n"
+           "\n"
+           "(* A file in memory, of no bytes, with no name, closed on exec: its\n"
+           "   fd, or -1. macOS has no memfd_create: it is a POSIX shared memory\n"
+           "   object, made with a name of its own, /raz.PID.N, which is removed\n"
+           "   at once. Such an object can be given its size once, and mapped, but\n"
+           "   not read or written. *)\n"
+           "proc memFile*: I32;\n"
+           "var name: [32]U8; fd: I32; i: INT;\n"
+           "begin\n"
+           "    COPY(name[0..5], \"/raz.\");\n"
+           "    i := hex(name, 5, INT(getpid()));\n"
+           "    name[i] := '.';\n"
+           "    i := hex(name, i + 1, XADD(shmCount, 1));\n"
+           "    name[i] := 0;\n"
+           "    fd := shm_open(SYSTEM.ADR(name[0]), oRdwr | oCreat | oExcl, 384);   (* rw------- *)\n"
+           "    if fd < 0 then return -1; end;\n"
+           "    _ := shm_unlink(SYSTEM.ADR(name[0]));\n"
+           "    setFlags(fd, oCloexec);\n"
+           "    return fd;\n"
+           "end;\n"
+           "\n"
+           "(* Waits until t, a struct timespec of the monotonic clock: macOS has\n"
+           "   no clock_nanosleep, so nanosleep sleeps what is left, again after\n"
+           "   EINTR. *)\n"
+           "proc sleepUntil*(t: ^U8);\n"
+           "var now, left: [2]I64; at: ^I64; d: I64;\n"
+           "begin\n"
+           "    at := ^I64(t);\n"
+           "    repeat\n"
+           "        _ := clock_gettime(clockMonotonic, ^U8(SYSTEM.ADR(now[0])));\n"
+           "        d := (at[0] - now[0]) * 1000000000 + at[1] - now[1];\n"
+           "        if d <= 0 then return; end;\n"
+           "        left := [d div 1000000000, d mod 1000000000];\n"
+           "        _ := nanosleep(^U8(SYSTEM.ADR(left[0])), nil);\n"
+           "    until false;\n"
+           "end;\n"
+           "\n"
+           "(* The number of processors this program may run on, or 0 if the\n"
+           "   system doesn't say: those online, as macOS binds a program to none\n"
+           "   of them. *)\n"
+           "proc processors*: INT;\n"
+           "begin\n"
+           "    return sysconf(%d);   (* _SC_NPROCESSORS_ONLN *)\n"
+           "end;\n"
+           "\n"
+           "(* The process and the user at the other end of the Unix socket fd,\n"
+           "   as the system recorded them when it connected, and 0; or -1. The\n"
+           "   user is in a struct xucred, LOCAL_PEERCRED's, and the process is\n"
+           "   asked for alone, LOCAL_PEERPID. *)\n"
+           "proc peer*(fd: I32; var pid, uid: INT): I32;\n"
+           "var cred: [16]U64; size: U32; p: ^U8; q: ^U32; id: I32;\n"
+           "begin\n"
+           "    p := ^U8(SYSTEM.ADR(cred[0]));\n"
+           "    size := U32(SIZE([16]U64));\n"
+           "    if getsockopt(fd, %d, %d, p, SYSTEM.ADR(size)) # 0 then return -1; end;\n"
+           "    q := ^U32(p + ucUidAt);\n"
+           "    uid := INT(q^);\n"
+           "    size := 4;\n"
+           "    if getsockopt(fd, %d, %d, ^U8(SYSTEM.ADR(id)), SYSTEM.ADR(size)) # 0 then return -1; end;\n"
+           "    pid := INT(id);\n"
+           "    return 0;\n"
+           "end;\n"
+           "\n"
+           "(* Sends n bytes at buf on the socket fd, without waiting, and without\n"
+           "   SIGPIPE where the other end is gone: how many were sent, or -1.\n"
+           "   macOS's send waits on a Unix socket though MSG_DONTWAIT is given, so\n"
+           "   the socket is made nonblocking for it, as it was before after. *)\n"
+           "proc sendNow*(fd: I32; buf: ^U8; n: UINT): INT;\n"
+           "var f: I32; r: INT; e: ^I32; err: I32;\n"
+           "begin\n"
+           "    f := fcntl(fd, fGetfl);\n"
+           "    if (f >= 0) and (f & oNonblock = 0) then _ := fcntl(fd, fSetfl, f | oNonblock); end;\n"
+           "    r := send(fd, buf, n, msgNosignal | msgDontwait);\n"
+           "    e := __error();\n"
+           "    err := e^;\n"
+           "    if (f >= 0) and (f & oNonblock = 0) then _ := fcntl(fd, fSetfl, f); end;\n"
+           "    e^ := err;\n"
+           "    return r;\n"
+           "end;\n"
+           "\n",
+           _SC_NPROCESSORS_ONLN, SOL_LOCAL, LOCAL_PEERCRED, SOL_LOCAL, LOCAL_PEERPID);
 #else
-#error "a CAbi for this system needs its errno and closeFrom: add them here"
+#error "a CAbi for this system needs its procedures: add them here"
 #endif
     printf("end CAbi.\n");
     return 0;

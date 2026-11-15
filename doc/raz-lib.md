@@ -24,7 +24,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Rt` | ending the program, `exit`, `exitStatus` and `atExit`; `stop`, which ends it with a message; `trace`, the calls under way; what the compiler's checks call when they fail |
 | `Sys` | system calls: `open`, `openMode`, `openRead`, `create`, `read`, `write`, `seek`, `position`, `truncate`, `sync`, `syncAll`, `lock`, `lockShared`, `close`, `closeChecked`, `dup`, `dupTo`, `dupAbove`, `keepOnExec`, `mmap`, `munmap`, `mapRead`, `protect`, `isTerminal`, `yield`, `exit`; files and directories, `rename`, `remove`, `removeDir`, `makeDir`, `makeDirMode`, `chmod`, `setTime`, `access`, `umask`, `symlink`, `readLink`, `info`, `linkInfo`, `infoOf`, `openDir`, `nextEntry`, `entryKind`, `closeDir`; the terminal, `rawMode`, `restoreMode`, `getMode`, `setMode`, `termSize`, `ready`; the environment, `env`, `findEnv`, `envAt`, `setEnv`, `workDir`, `setWorkDir`; programs, `spawn`, `exec` and `execve`, pipes and signals; the user, the machine, time used and limits; time, `clock`, `now`, `sleep`; `random`; errors, by name, and what one means, `errorText`; sockets, among them datagrams served and files passed; and memory shared through a file. One file per target, and `Sys.raz` over the C library for the others, which takes what each C library fixes from `CAbi` |
 | `Out` | writing text and numbers to standard output, buffered; safe to call from several threads |
-| `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C |
+| `C` | the parts of the C library the others use, and `printf`, `fflush`, `stdout`, `pthread_create`; a program that imports it uses C. On macOS, a call only Linux's C library has fails with ENOSYS |
 | `Lock` | a lock for short sections, for C's threads and `Thread`'s alike |
 | `Thread` | threads, `spawn`, `join` and `signal`, and `Mutex`, in any program; in one that uses C, made by C's `pthread_create` |
 | `Task` | a thread given a value of its own, `Task(T)`: `spawn` copies it, with no cast |
@@ -41,6 +41,7 @@ Modules written in raz, in the compiler's `lib` directory:
 | `Vec` | a generic growable array, `Vec(T)`, indexed as a slice |
 | `Sort` | sorting a slice in place, `Sort(T; less)` |
 | `Math` | roots, powers, logarithms, rounding and trigonometry, and `pi`, for `F64` |
+| `Arith` | the machine's own arithmetic that `Math` gives: `sqrt`, the 128-bit product `mul`, and `div128`; one file per machine |
 | `Files` | an argument as a string, and a whole file read or written |
 | `Opt` | a command line read through one table, by `getopt`'s rules with long options; its help and its mistakes |
 | `Width` | how many columns of a terminal a character, or a string, takes: 0, 1 or 2, as `wcwidth` says |
@@ -176,7 +177,10 @@ that can't be touched, so that running off the stack stops the program
 with a message, as in the main thread. In a program that uses C,
 `Thread` makes its threads with C's `pthread_create`, so that C's
 library knows of them; in one that doesn't, with the system's own
-calls. The program is the same either way.
+calls. The program is the same either way. On macOS every program uses
+C; a thread's stack is 1 MB, as on Linux without C, and a `Mutex` is
+the system's `os_unfair_lock`, which the thread that took it must give
+up: one that unlocks another's stops the program.
 
 `Sys.kill` signals a program, and the system gives the signal to any
 of its threads; `signal` gives it to `t` alone, until `t` is joined,
@@ -514,8 +518,9 @@ false, and `open` with `nonblocking` doesn't wait for its other end.
 `makeDirMode` is `makeDir` that gives the
 directory the bits `mode`, less those the umask takes away, as
 `openMode` gives a file: 1C0H (700) for one only its owner may enter.
-Of the three above them, Linux gives a new directory only sticky; it
-takes set-group-id from the directory it is made in. `setTime` sets
+Of the three above them, Linux gives a new directory only sticky, and
+macOS none, which `chmod` gives after; Linux takes set-group-id from
+the directory it is made in. `setTime` sets
 the file's time, following a symbolic link, and the time it was last
 read with it, as a program that copies or restores a file keeps its
 time, so that a later run sees it unchanged: `sec` seconds and `nsec`,
@@ -524,12 +529,18 @@ time in nanoseconds, which an `I64` holds from 1677 to 2262 only;
 `Info.seconds` holds it in whole seconds, rounded down, whatever it
 is, so a program that copies times exactly takes `Info.seconds`, and
 the nanoseconds as `mtime - seconds * 1000000000`, which is right in
-any year, since the wrapping cancels out (section 6.1).
+any year, since the wrapping cancels out (section 6.1). That is as far
+as the file system keeps the time: macOS's APFS keeps it in
+nanoseconds too, and gives a time past 2262 as its last second there.
 
 **Programs.** `openPty` makes a pseudo-terminal, a terminal that a
 program, a terminal emulator, plays the screen and the keyboard of:
 what it writes to the fd is typed, and what the programs on the
-terminal write it reads.
+terminal write it reads. On macOS, whose pseudo-terminal takes no
+modes and no size until its terminal has been opened, and reads an end
+once that is closed again, `openPty` opens the terminal and holds it
+until the first program `spawn` starts on it with `p.tty` takes it
+over, or the fd is closed with `close` or `closeChecked`.
 
 `spawn` starts the program at `p.path`, with `p.args` as its
 arguments, the first being its name. A `p.path` without a `/` is
@@ -745,7 +756,10 @@ program exec starts. `memFile` makes a file that lives in memory, of
 `size` zeroed bytes, and `mapFile` maps it, or any file, so that
 what one program writes there another sees at once: so a program hands
 an X server or a Wayland compositor its pixels, by `sendFds` of a
-`memFile` both map, rather than by copying them down a socket.
+`memFile` both map, rather than by copying them down a socket. On
+macOS, which has no `memfd_create`, a `memFile` is a POSIX shared memory
+object whose name is gone at once: it can be mapped, but not read or
+written with `read` and `write`.
 `mapFile` needs a file open to read and write; `mapRead` maps one that
 is open only to read, a dictionary that isn't the user's to write, for
 reading only: a write there stops the program. `protect` changes what
@@ -763,7 +777,9 @@ the first 64 of `fds`, and `connect` and `listen` take a path of at
 most 107 bytes, as `struct sockaddr_un` holds; a longer one is -36
 (ENAMETOOLONG). A path that starts with a zero byte is one of Linux's
 abstract names (D-Bus's `unix:abstract=`), which has no file: the
-address is as long as the name, with no zero after it.
+address is as long as the name, with no zero after it. A system that
+has no abstract names, as macOS, refuses one with -22 (EINVAL); and
+there `struct sockaddr_un` holds 103 bytes of a path.
 
 `poll` is `readyFor` without its limits. Each `Poll` names a
 descriptor `fd` and whether to wait to `read` from it, to `write` to
@@ -934,7 +950,18 @@ proc fromBits*(u: U64): F64;          (* the F64 whose bits are u *)
 proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
 proc divMod*(hi, lo, d: U64): (U64, U64); (* hi, lo divided by d: the quotient and the remainder; hi < d *)
 proc toReal*(s: []const U8): (F64, BOOL);   (* s as a real, the F64 nearest it; false if it isn't one *)
+
+module Arith;
+proc sqrt*(x: F64): F64;              (* the square root, the machine's instruction *)
+proc mul*(a, b: U64): (U64, U64);     (* a times b: the low 64 bits of the product, and the high *)
+proc div128*(hi, lo, d: U64): (U64, U64); (* hi, lo divided by d, which must be more than hi *)
 ```
+
+`Math` keeps no machine code: its `sqrt`, `mul` and `divMod` are
+`Arith`'s, a file for each machine. `div128` doesn't check that `hi < d`,
+as `Math.divMod` does: on x86-64 the machine faults if it isn't, and on
+arm64, which has no such division, it is long division in raz, whose
+quotient is then wrong.
 
 A `Buf`, a `List`, a `Map` and a `Vec` take their memory from the
 allocator `init` gives them. `Buf.add`, `str` and `spare` stop the program, as a

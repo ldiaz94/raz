@@ -8,12 +8,15 @@
    two procedures whose names differ, it takes from CAbi, one file per
    target, which tools/cabi.c writes; so a struct the C library fills
    in or reads is bytes here, its fields read and written at CAbi's
-   offsets by field and setField. A failure is minus Linux's errno, on
+   offsets by field and setField. So do the calls that Linux's C
+   library has and another system's lacks (pipe2, accept4, getrandom,
+   memfd_create, clock_nanosleep, sched_getaffinity, SO_PEERCRED), which
+   CAbi makes there of what it has. A flag CAbi gives as 0, that system
+   lacking it, is done after: a socket closed on exec by keepOnExec. A failure is minus Linux's errno, on
    every target: linux maps the C library's, and errorText maps back.
    A terminal's modes, Mode, are its struct termios whole, which cabi
-   checks fits in 256 bytes. Still Linux's: memfd_create, getrandom,
-   pipe2 and accept4, which glibc and musl have, and what a wait
-   status holds, which every Unix encodes alike. *)
+   checks fits in 256 bytes. Still Linux's: what a wait status holds,
+   which every Unix encodes alike. *)
 module Sys;
 import C, CAbi;
 import SYSTEM;
@@ -131,6 +134,8 @@ type
     end;
 
     Winsize = record rows, cols, xpixel, ypixel: U16; end;
+    (* A pseudo-terminal's terminal, tty, opened and held for pty *)
+    Held = record pty, tty: INT; end;
     Pollfd = record fd: I32; events, revents: I16; end;
 
     (* a socket's address, struct sockaddr_storage, which holds any:
@@ -166,6 +171,12 @@ var
     sigRead, sigWrite: I32;   (* the pipe the handler of caught signals writes their numbers to, once open *)
     noted: [CAbi.sigMax + 1]INT;   (* 1 at sig when a signal handle took has come, until came asks *)
     broke: INT;       (* 1 when one has come since a call that ready or readyFor makes again began *)
+    (* On macOS, where the controlling side of a pseudo-terminal takes
+       no modes and no size until its terminal is opened, and reads an
+       end once it has been and is closed again, openPty opens the
+       terminal and holds it, until spawn's child takes it over or the
+       pty is closed (CAbi.ptyHeld). A pty of 0 or less is none. *)
+    held: [16]Held;
 
 (* err, minus an errno of the C library's, as minus Linux's errno of
    the same name; err itself if it has none *)
@@ -374,8 +385,11 @@ begin
 end;
 
 (* Closes the file descriptor fd. *)
+proc release(pty: INT); forward;
+
 proc close*(fd: INT);
 begin
+    if CAbi.ptyHeld = 1 then release(fd); end;
     _ := C.close(I32(fd));
 end;
 
@@ -387,6 +401,7 @@ end;
    closed again, after -4 (EINTR) too. *)
 proc closeChecked*(fd: INT): INT;
 begin
+    if CAbi.ptyHeld = 1 then release(fd); end;
     if C.close(I32(fd)) # 0 then return failed(); end;
     return 0;
 end;
@@ -456,10 +471,9 @@ end;
 (* A file in memory, with no name, of size zeroed bytes: its fd, or
    minus an errno. It is closed in a program exec starts. *)
 proc memFile*(size: INT): INT;
-var name: [4]U8; fd: I32; err: INT;
+var fd: I32; err: INT;
 begin
-    _ := cstr("raz", name);                     (* the name /proc shows *)
-    fd := C.memfd_create(SYSTEM.ADR(name[0]), CAbi.mfdCloexec);
+    fd := CAbi.memFile();
     if fd < 0 then return failed(); end;
     if C.ftruncate(fd, I64(size)) # 0 then
         err := failed();                        (* before close can change errno *)
@@ -854,8 +868,7 @@ var t: Timespec; at: I64;
 begin
     at := clock() + I64(ms) * 1000000;
     t := {sec: at div 1000000000, nsec: at mod 1000000000};
-    (* until t, again after EINTR, which it returns, the C library's *)
-    repeat until C.clock_nanosleep(CAbi.clockMonotonic, CAbi.timerAbstime, ^U8(SYSTEM.ADR(t)), nil) # CAbi.eIntr;
+    CAbi.sleepUntil(^U8(SYSTEM.ADR(t)));
 end;
 
 (* Ends the program: random bytes can't be faked. *)
@@ -874,7 +887,7 @@ var n, r: INT;
 begin
     n := 0;
     while n < LEN(b) do                                 (* a signal may cut it short *)
-        r := C.getrandom(SYSTEM.ADR(b[n]), UINT(LEN(b) - n), 0);
+        r := CAbi.random(SYSTEM.ADR(b[n]), UINT(LEN(b) - n));
         if r > 0 then INC(n, r);
         elsif (r >= 0) or (failed() # errIntr) then noRandom();   (* r = 0 can't be, and is no progress *)
         end;
@@ -890,6 +903,7 @@ var fd, r, one: I32; err: INT;
 begin
     fd := C.socket(I32(family), I32(kind) | CAbi.sockCloexec, 0);
     if fd < 0 then return failed(); end;
+    if CAbi.sockCloexec = 0 then _ := keepOnExec(INT(fd), false); end;
     if serving then
         one := 1;                                       (* so that a server can start again at once *)
         _ := C.setsockopt(fd, CAbi.solSocket, CAbi.soReuseaddr, ^U8(SYSTEM.ADR(one)), 4);
@@ -925,11 +939,13 @@ end;
 (* path as a Unix socket's address in a, and the address's length, or
    -36 (ENAMETOOLONG) if it is too long. A path that starts with a zero
    byte is one of Linux's abstract names, which has no file and no
-   trailing zero: its length ends with the name's. *)
+   trailing zero: its length ends with the name's; on a system that has
+   none, -22 (EINVAL). *)
 proc unixAddr(path: []const U8; a: ^Sockaddr): INT;
 var p: ^U8;
 begin
     if LEN(path) >= CAbi.sunPathLen then return -36; end;
+    if (LEN(path) > 0) and (path[0] = 0) and (CAbi.unixAbstract = 0) then return -22; end;
     p := ^U8(a);
     setFamily(p, CAbi.afUnix, CAbi.sockaddrUnLen);
     COPY(p[CAbi.sunPathAt..CAbi.sunPathAt + LEN(path)], path);
@@ -1035,7 +1051,7 @@ end;
 proc accept*(fd: INT): INT;
 var r: I32;
 begin
-    r := C.accept4(I32(fd), nil, nil, CAbi.sockCloexec);
+    r := CAbi.accepted(I32(fd));
     if r < 0 then return failed(); end;
     return INT(r);
 end;
@@ -1052,20 +1068,15 @@ end;
 (* Who is at the other end of the connected socket fd, and 0; or minus
    an errno. *)
 proc peer*(fd: INT): (Remote, INT);
-var r: Remote; a: Sockaddr; size, credSize: U32; cred: [CAbi.ucUidAt + CAbi.ucUidLen]U8; p: ^U8;
+var r: Remote; a: Sockaddr; size: U32; p: ^U8;
 begin
     r := {unix: false, ipv6: false};
     size := U32(SIZE(Sockaddr));
     p := ^U8(SYSTEM.ADR(a));
     if C.getpeername(I32(fd), p, SYSTEM.ADR(size)) # 0 then return r, failed(); end;
     if familyOf(p) = CAbi.afUnix then                   (* ask who made the connection *)
-        credSize := U32(LEN(cred));
-        if C.getsockopt(I32(fd), CAbi.solSocket, CAbi.soPeercred, SYSTEM.ADR(cred[0]), SYSTEM.ADR(credSize)) # 0 then
-            return r, failed();
-        end;
+        if CAbi.peer(I32(fd), r.pid, r.uid) # 0 then return r, failed(); end;
         r.unix := true;
-        r.pid := INT(field(SYSTEM.ADR(cred[0]), CAbi.ucPidAt, CAbi.ucPidLen));
-        r.uid := INT(field(SYSTEM.ADR(cred[0]), CAbi.ucUidAt, CAbi.ucUidLen));
     else
         r.port := portOf(p);
         if familyOf(p) = CAbi.afInet6 then
@@ -1086,6 +1097,10 @@ var fds: [2]I32;
 begin
     if C.socketpair(CAbi.afUnix, CAbi.sockStream | CAbi.sockCloexec, 0, SYSTEM.ADR(fds[0])) # 0 then
         return -1, -1, failed();
+    end;
+    if CAbi.sockCloexec = 0 then
+        _ := keepOnExec(INT(fds[0]), false);
+        _ := keepOnExec(INT(fds[1]), false);
     end;
     return INT(fds[0]), INT(fds[1]), 0;
 end;
@@ -1108,7 +1123,7 @@ proc sendNow*(fd: INT; s: []const U8): INT;
 var r: INT;
 begin
     if LEN(s) = 0 then return 0; end;
-    r := C.send(I32(fd), SYSTEM.PTR(s), UINT(LEN(s)), CAbi.msgNosignal | CAbi.msgDontwait);
+    r := CAbi.sendNow(I32(fd), SYSTEM.PTR(s), UINT(LEN(s)));
     if r < 0 then return failed(); end;
     return r;
 end;
@@ -1222,6 +1237,8 @@ begin
     if size = 0 then return -22; end;
     fd := C.socket(I32(familyOf(^U8(SYSTEM.ADR(a)))), CAbi.sockStream | CAbi.sockCloexec | CAbi.sockNonblock, 0);
     if fd < 0 then return failed(); end;
+    if CAbi.sockCloexec = 0 then _ := keepOnExec(INT(fd), false); end;
+    if CAbi.sockNonblock = 0 then _ := setBlocking(INT(fd), false); end;
     r := 0;
     if C.connect(fd, ^U8(SYSTEM.ADR(a)), U32(size)) # 0 then r := failed(); end;
     if r = -115 then                                    (* EINPROGRESS *)
@@ -1326,6 +1343,7 @@ begin
         for i := 0 to (size - CAbi.cmsgDataAt) div 4 - 1 do
             if k < LEN(fds) then
                 fds[k] := INT(got[i]);
+                if CAbi.msgCmsgCloexec = 0 then _ := keepOnExec(fds[k], false); end;
                 INC(k);
             else
                 _ := C.close(got[i]);
@@ -1409,11 +1427,13 @@ begin
     return 0;
 end;
 
+proc ptyName(fd: INT; name: []U8): INT; forward;
+
 (* A pseudo-terminal: the file descriptor of its controlling side, or
    minus an errno. Its other side, the terminal its programs run on, is
    unlocked, for spawn to open. *)
 proc openPty*: INT;
-var fd: I32; err: INT;
+var fd, t: I32; err, i, k: INT; name: [256]U8;
 begin
     fd := C.posix_openpt(CAbi.oRdwr | CAbi.oNoctty);
     if fd < 0 then return failed(); end;
@@ -1422,7 +1442,43 @@ begin
         _ := C.close(fd);
         return err;
     end;
+    if CAbi.ptyHeld = 1 then                          (* macOS: its terminal held (held) *)
+        release(INT(fd));                             (* one an fd closed since had *)
+        k := -1;
+        for i := 0 to LEN(held) - 1 do
+            if (held[i].pty <= 0) and (k < 0) then k := i; end;
+        end;
+        err := -24;                                   (* EMFILE: none free *)
+        if k >= 0 then err := ptyName(INT(fd), name); end;
+        if err = 0 then
+            t := C.open(SYSTEM.ADR(name[0]), CAbi.oRdwr | CAbi.oNoctty | CAbi.oCloexec);
+            if t < 0 then err := failed(); else held[k] := {pty: INT(fd), tty: INT(t)}; end;
+        end;
+        if err # 0 then _ := C.close(fd); return err; end;
+    end;
     return INT(fd);
+end;
+
+(* The terminal openPty holds for pty, or -1 *)
+proc heldTty(pty: INT): INT;
+var i: INT;
+begin
+    for i := 0 to LEN(held) - 1 do
+        if held[i].pty = pty then return held[i].tty; end;
+    end;
+    return -1;
+end;
+
+(* The terminal openPty holds for pty, if any, closed *)
+proc release(pty: INT);
+var i: INT;
+begin
+    for i := 0 to LEN(held) - 1 do
+        if held[i].pty = pty then
+            _ := C.close(I32(held[i].tty));
+            held[i].pty := -1;
+        end;
+    end;
 end;
 
 (* Tells the terminal of the pseudo-terminal fd that it has cols
@@ -1515,7 +1571,7 @@ end;
 proc pipe*: (INT, INT);
 var fds: [2]I32;
 begin
-    if C.pipe2(SYSTEM.ADR(fds[0]), CAbi.oCloexec) # 0 then return failed(), -1; end;
+    if CAbi.makePipe(SYSTEM.ADR(fds[0]), CAbi.oCloexec) # 0 then return failed(), -1; end;
     return INT(fds[0]), INT(fds[1]);
 end;
 
@@ -1552,16 +1608,9 @@ end;
 
 (* The number of processors this program may run on, at least 1. *)
 proc processors*: INT;
-var mask: [1024]U8; i, b, count: INT;
+var count: INT;
 begin
-    for i := 0 to LEN(mask) - 1 do mask[i] := 0; end;   (* the C library fills in as many bytes as the system has processors' bits *)
-    if C.sched_getaffinity(0, UINT(LEN(mask)), SYSTEM.ADR(mask[0])) # 0 then return 1; end;
-    count := 0;
-    for i := 0 to LEN(mask) - 1 do
-        for b := 0 to 7 do
-            if (INT(mask[i]) shr b) & 1 = 1 then INC(count); end;
-        end;
-    end;
+    count := CAbi.processors();
     if count < 1 then return 1; end;
     return count;
 end;
@@ -1776,7 +1825,8 @@ var fd: I32; i: INT;
 begin
     if p.tty # 0 then
         _ := C.setsid();
-        fd := C.open(SYSTEM.PTR(name), CAbi.oRdwr);
+        fd := I32(heldTty(p.tty));                    (* the terminal openPty holds, on macOS *)
+        if fd < 0 then fd := C.open(SYSTEM.PTR(name), CAbi.oRdwr); end;
         if fd < 0 then return failed(); end;
         if C.ioctl(fd, CAbi.tiocsctty, 0) # 0 then return failed(); end;
         for i := 0 to 2 do _ := C.dup2(fd, I32(i)); end;
@@ -1855,6 +1905,9 @@ begin
         C._exit(127);
     end;
     err := failed();
+    if (pid > 0) and (p.tty # 0) and (CAbi.ptyHeld = 1) then
+        release(p.tty);                               (* the child holds the terminal now *)
+    end;
     if (pid > 0) and (p.tty = 0) then
         (* as the program does, for whichever of the two runs first *)
         g := p.group;
@@ -1946,7 +1999,10 @@ end;
 proc waitFor(pid: INT; options: I32): (INT, Status, INT);
 var status, r: I32;
 begin
-    r := C.waitpid(I32(pid), SYSTEM.ADR(status), options);
+    (* again after EINTR, unless a signal handle took broke in: macOS
+       breaks into a wait for a SIGCHLD that nothing catches *)
+    _ := XCHG(broke, 0);
+    repeat r := C.waitpid(I32(pid), SYSTEM.ADR(status), options); until (r >= 0) or not again();
     if r < 0 then return failed(), running, 0; end;
     if r = 0 then return 0, running, 0; end;
     if status & 7FH = 0 then return INT(r), exited, INT(status) shr 8 & 0FFH; end;
@@ -2025,7 +2081,7 @@ begin
         if not takable(sigs[i]) then return -22; end;    (* EINVAL *)
     end;
     if sigWrite = 0 then
-        if C.pipe2(SYSTEM.ADR(fds[0]), CAbi.oNonblock | CAbi.oCloexec) # 0 then return failed(); end;
+        if CAbi.makePipe(SYSTEM.ADR(fds[0]), CAbi.oNonblock | CAbi.oCloexec) # 0 then return failed(); end;
         sigRead := fds[0];
         sigWrite := fds[1];
     end;
@@ -2165,8 +2221,9 @@ begin
 
     r, w := pipe();
     if w < 0 then exit(2); end;
+    (* in /usr, which is no link, on macOS too, where /tmp is one *)
     child := spawn({path: "/bin/sh", args: ["sh", "-c", "echo $X $HOME; pwd"], env: ["X=x"], onlyEnv: true,
-        dir: "/tmp", fds: [0, w, 0]});
+        dir: "/usr", fds: [0, w, 0]});
     close(w);
     n := 0;
     repeat
@@ -2174,7 +2231,7 @@ begin
         if m > 0 then INC(n, m); end;
     until m <= 0;
     close(r);
-    if buf[0..n] # "x\n/tmp\n" then exit(2); end;
+    if buf[0..n] # "x\n/usr\n" then exit(2); end;
     r, st, c := wait(child, true);
     if (r # child) or (st # exited) or (c # 0) then exit(2); end;
 
@@ -2252,8 +2309,10 @@ begin
         if m > 0 then INC(n, m); end;
     until m <= 0;
     close(r);
-    r, st, c := waitExit(child);
+    (* the pty closed first: macOS's last close of a terminal, the
+       child's at its exit, waits until what was written to it is read *)
     close(pty);
+    r, st, c := waitExit(child);
     if (buf[0..n] # "out\n") or (r # child) or (st # exited) or (c # 0) then exit(2); end;
 
     sigs := catch([sigChld, sigHup]);
@@ -2280,7 +2339,7 @@ end;
 proc testShell;
 var
     r, w, fd, n, k, child, c, err, pty, sigs, mask, parent: INT; t: I64; st: Status; buf: [64]U8;
-    m, raw: Mode; soft, hard, s2, h2, user, system: I64; e: []const U8; ok, path: BOOL;
+    m, raw, back: Mode; soft, hard, s2, h2, user, system: I64; e: []const U8; ok, path: BOOL;
 begin
     r, w := pipe();
     if w < 0 then exit(2); end;
@@ -2331,8 +2390,11 @@ begin
     if (err # 0) or not rawMode(pty) then exit(2); end;
     raw, err := getMode(pty);
     if (err # 0) or (raw.t = m.t) or (setMode(pty, m) # 0) then exit(2); end;
-    raw, err := getMode(pty);
-    if (err # 0) or (raw.t # m.t) then exit(2); end;
+    (* not raw again, and as it was, but for what the system notes
+       itself, as macOS's PENDIN after raw mode *)
+    back, err := getMode(pty);
+    if (err # 0) or (back.t = raw.t) then exit(2); end;
+    if (CAbi.ptyHeld = 0) and (back.t # m.t) then exit(2); end;
     m, err := getMode(-1);
     if err # -9 then exit(2); end;                  (* EBADF *)
     r, w := pipe();
@@ -2578,15 +2640,16 @@ begin
     munmap(p, 5);
     close(fd);
     _ := remove("/tmp/raz-sys-map");
-    p := mmap(8192);
+    (* by 16 KB, a page of arm64 macOS's and four of x86-64's *)
+    p := mmap(32768);
     if p = nil then exit(2); end;
     p[0] := 1;
-    q := p + 4096;
-    if (protect(q, 4096, true, false) # 0) or (q[0] # 0) then exit(2); end;
-    if protect(q, 4096, true, true) # 0 then exit(2); end;
+    q := p + 16384;
+    if (protect(q, 16384, true, false) # 0) or (q[0] # 0) then exit(2); end;
+    if protect(q, 16384, true, true) # 0 then exit(2); end;
     q[0] := 2;
-    if (protect(p, 4096, false, false) # 0) or (protect(p, 4096, true, true) # 0) or (p[0] # 1) then exit(2); end;   (* its bytes stay *)
-    munmap(p, 8192);
+    if (protect(p, 16384, false, false) # 0) or (protect(p, 16384, true, true) # 0) or (p[0] # 1) then exit(2); end;   (* its bytes stay *)
+    munmap(p, 32768);
 end;
 
 (* poll over 100 socket pairs with a byte sent on three, so that all
@@ -2624,6 +2687,10 @@ begin
     nm[0] := 0;                                             (* an abstract name: a zero byte, then 17 *)
     COPY(nm[1..18], "raz-abstract-test");
     l := listen(nm);
+    if CAbi.unixAbstract = 0 then                           (* not Linux: none *)
+        if (l # -22) or (connect(nm) # -22) then exit(2); end;
+        return;
+    end;
     c := connect(nm);
     if (l < 0) or (c < 0) or (readyOf([c, l], 1000) # l) then exit(2); end;
     s := accept(l);
@@ -2752,7 +2819,9 @@ begin
     if (i.mtime # -1500000000) or (i.seconds # -2) then exit(2); end;
     if setTime("/tmp/raz-sys-dir/h", 10413792000, 0) # 0 then exit(2); end;   (* 2300, past mtime's reach *)
     i, err := info("/tmp/raz-sys-dir/h");
-    if i.seconds # 10413792000 then exit(2); end;
+    (* exact, or, where the file system keeps no time past 2262, as
+       APFS, which holds nanoseconds in 64 bits, its last second *)
+    if (i.seconds # 10413792000) and (i.seconds # 9223372036) then exit(2); end;
     if setTime("/tmp/raz-sys-dir/h", 0, 1000000000) # -22 then exit(2); end;
     if setTime("/no/such/file", 0, 0) # -2 then exit(2); end;
     (* the special bits: set-user-id by chmod, and sticky by makeDirMode *)
@@ -2761,7 +2830,11 @@ begin
     if (i.mode # 1EDH) or (i.special # 800H) then exit(2); end;
     if makeDirMode("/tmp/raz-sys-dir/m", 3C0H) # 0 then exit(2); end;
     i, err := info("/tmp/raz-sys-dir/m");
-    if (err # 0) or not i.dir or (i.mode # 1C0H) or (i.special # 200H) then exit(2); end;
+    (* Linux gives it sticky, macOS doesn't, and chmod does *)
+    if (err # 0) or not i.dir or (i.mode # 1C0H) or (i.special & ~200H # 0) then exit(2); end;
+    if chmod("/tmp/raz-sys-dir/m", 3C0H) # 0 then exit(2); end;
+    i, err := info("/tmp/raz-sys-dir/m");
+    if (err # 0) or (i.special # 200H) then exit(2); end;
     if removeDir("/tmp/raz-sys-dir/m") # 0 then exit(2); end;
     _ := remove("/tmp/raz-sys-dir/h");
     fd := openMode("/tmp/raz-sys-dir/h", {writing, creating}, 1C0H);   (* rwx------ *)
@@ -2792,8 +2865,9 @@ begin
     (* the environment set: refused, added, set again, grown past its first array *)
     if (setEnv("", "x") # -22) or (setEnv("A=B", "x") # -22) or (setEnv("A", "\x00") # -22) then exit(2); end;
     if (setEnv("RAZ_SYS_TEST", "one") # 0) or (env("RAZ_SYS_TEST") # "one") then exit(2); end;
-    name := env("RAZ_SYS_TEST");
-    if (setEnv("RAZ_SYS_TEST", "") # 0) or (env("RAZ_SYS_TEST") # "") or (name # "one") then exit(2); end;
+    (* what env gave before may be gone now: macOS's setenv writes the
+       new value over the old where it fits *)
+    if (setEnv("RAZ_SYS_TEST", "") # 0) or (env("RAZ_SYS_TEST") # "") then exit(2); end;
     buf := "RAZ_SYS_TEST_..";
     for k := 0 to 99 do
         buf[13] := U8('0' + k div 10);

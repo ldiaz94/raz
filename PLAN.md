@@ -292,7 +292,7 @@ linux/amd64 container on the Mac until there is a Mac compiler):
    x7, a variadic call and a callback; `Host.darwin.raz`, and `HOST=darwin
    src/cross.sh darwin-arm64`, which stages the first Mac compiler: it
    runs on the Mac, compiles and runs programs, and builds `Procs`.
-7. The library: `CAbi`, `Sys`, `Rt`, `Thread`, `Bytes`, `Math`, `Str`.
+7. Done. The library: `CAbi`, `Sys`, `Rt`, `Thread`, `Bytes`, `Math`, `Str`.
 8. `test/` and `conform/` passing on the Mac; what differs by target
    (signals' words, errors' numbers) in files of the target's.
 9. The first Mac compiler, by the staged cross compiler; it builds

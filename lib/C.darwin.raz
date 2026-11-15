@@ -1,0 +1,181 @@
+(* The C library: what raz's own library calls in it, and what most
+   programs reach for; this file is macOS's, libSystem's, C.raz the
+   others'. A program that imports C uses C, as every program on a Mac
+   does.
+
+   libSystem has every call of C.raz but those Linux's C library alone
+   has, which are procedures here that fail as C's calls do, -1 with
+   errno ENOSYS, as an unknown system call does: memfd_create,
+   clock_nanosleep, getrandom, accept4, close_range, sched_getaffinity
+   and pipe2 (Sys makes them of what libSystem has, in CAbi). errno is
+   __error here, and __errno_location gives it. stdout and stderr are
+   __stdoutp and __stderrp, put in variables of those names first. *)
+module C;
+import SYSTEM;
+
+extern proc write*(fd: I32; buf: ^U8; n: UINT): INT;
+extern proc read*(fd: I32; buf: ^U8; n: UINT): INT;
+extern proc open*(path: ^U8; flags: I32; ...): I32;
+extern proc creat*(path: ^U8; mode: U32): I32;
+extern proc close*(fd: I32): I32;
+extern proc mmap*(addr: ^U8; n: UINT; prot, flags, fd: I32; off: I64): ^U8;
+extern proc munmap*(addr: ^U8; n: UINT): I32;
+extern proc mprotect*(addr: ^U8; n: UINT; prot: I32): I32;
+extern proc isatty*(fd: I32): I32;
+extern proc exit*(status: I32);
+extern proc _exit*(status: I32);
+extern proc __error: ^I32;
+extern proc sched_yield*: I32;
+extern proc pthread_create*(t: ^UINT; attr: ^U8;
+    start: proc(arg: ^U8): ^U8; arg: ^U8): I32;
+extern proc pthread_join*(t: UINT; result: ^^U8): I32;
+extern proc rename*(old, new: ^U8): I32;
+extern proc unlink*(path: ^U8): I32;
+extern proc mkdir*(path: ^U8; mode: U32): I32;
+extern proc rmdir*(path: ^U8): I32;
+extern proc chmod*(path: ^U8; mode: U32): I32;
+extern proc chown*(path: ^U8; uid, gid: U32): I32;
+extern proc mkfifo*(path: ^U8; mode: U32): I32;
+extern proc utimensat*(dir: I32; path, times: ^U8; flags: I32): I32;
+extern proc readlink*(path, buf: ^U8; n: UINT): INT;
+extern proc lseek*(fd: I32; off: I64; whence: I32): I64;
+extern proc opendir*(path: ^U8): ^U8;        (* DIR * *)
+extern proc readdir*(d: ^U8): ^U8;           (* struct dirent * *)
+extern proc closedir*(d: ^U8): I32;
+extern proc tcgetattr*(fd: I32; t: ^U8): I32;
+extern proc tcsetattr*(fd: I32; when: I32; t: ^U8): I32;
+extern proc cfmakeraw*(t: ^U8);
+extern proc ioctl*(fd: I32; request: UINT; ...): I32;
+extern proc poll*(fds: ^U8; n: UINT; ms: I32): I32;
+extern proc fcntl*(fd, cmd: I32; ...): I32;
+extern proc socket*(domain, kind, protocol: I32): I32;
+extern proc connect*(fd: I32; addr: ^U8; len: U32): I32;
+extern proc send*(fd: I32; buf: ^U8; n: UINT; flags: I32): INT;
+extern proc bind*(fd: I32; addr: ^U8; len: U32): I32;
+extern proc listen*(fd, backlog: I32): I32;
+extern proc accept*(fd: I32; addr: ^U8; len: ^U32): I32;
+extern proc setsockopt*(fd, level, name: I32; value: ^U8; len: U32): I32;
+extern proc getsockopt*(fd, level, name: I32; value: ^U8; len: ^U32): I32;
+extern proc getpeername*(fd: I32; addr: ^U8; len: ^U32): I32;
+extern proc shutdown*(fd, how: I32): I32;
+extern proc socketpair*(domain, kind, protocol: I32; fds: ^I32): I32;
+extern proc getsockname*(fd: I32; addr: ^U8; len: ^U32): I32;
+extern proc recvfrom*(fd: I32; buf: ^U8; n: UINT; flags: I32; addr: ^U8; len: ^U32): INT;
+extern proc sendto*(fd: I32; buf: ^U8; n: UINT; flags: I32; addr: ^U8; len: U32): INT;
+extern proc sendmsg*(fd: I32; msg: ^U8; flags: I32): INT;
+extern proc recvmsg*(fd: I32; msg: ^U8; flags: I32): INT;
+extern proc ftruncate*(fd: I32; size: I64): I32;
+extern proc inet_pton*(family: I32; src, dst: ^U8): I32;
+extern proc clock_gettime*(clock: I32; t: ^U8): I32;
+extern proc getenv*(name: ^U8): ^U8;
+extern proc setenv*(name, value: ^U8; overwrite: I32): I32;
+extern proc strerror*(err: I32): ^U8;
+extern proc getcwd*(buf: ^U8; n: UINT): ^U8;
+extern proc chdir*(path: ^U8): I32;
+extern proc stat*(path, st: ^U8): I32;
+extern proc fstat*(fd: I32; st: ^U8): I32;
+extern proc fsync*(fd: I32): I32;
+extern proc sync*;
+extern proc flock*(fd, how: I32): I32;
+extern proc lstat*(path, st: ^U8): I32;
+extern proc statvfs*(path, st: ^U8): I32;
+extern proc symlink*(target, path: ^U8): I32;
+extern proc posix_openpt*(flags: I32): I32;
+extern proc grantpt*(fd: I32): I32;
+extern proc unlockpt*(fd: I32): I32;
+extern proc ptsname*(fd: I32): ^U8;
+extern proc fork*: I32;
+extern proc setsid*: I32;
+extern proc dup2*(fd, fd2: I32): I32;
+extern proc dup*(fd: I32): I32;
+extern proc execve*(path: ^U8; argv, envp: ^^U8): I32;
+extern proc waitpid*(pid: I32; status: ^I32; options: I32): I32;
+extern proc kill*(pid, signal: I32): I32;
+extern proc getpid*: I32;
+extern proc getuid*: U32;
+extern proc geteuid*: U32;
+extern proc gethostname*(name: ^U8; n: UINT): I32;
+extern proc access*(path: ^U8; how: I32): I32;
+extern proc umask*(mask: U32): U32;
+extern proc getrusage*(who: I32; usage: ^U8): I32;
+extern proc getrlimit*(which: I32; limit: ^U8): I32;
+extern proc setrlimit*(which: I32; limit: ^U8): I32;
+extern proc getpgrp*: I32;
+extern proc setpgid*(pid, group: I32): I32;
+extern proc tcsetpgrp*(fd, group: I32): I32;
+extern proc tcgetpgrp*(fd: I32): I32;
+extern proc sigaction*(sig: I32; act, old: ^U8): I32;
+extern proc sigprocmask*(how: I32; mask, old: ^U8): I32;
+extern proc printf*(format: ^U8; ...): I32;
+extern proc fflush*(f: ^U8): I32;
+extern var environ*: ^^U8;
+extern var __stdoutp: ^U8;
+extern var __stderrp: ^U8;
+
+var
+    stdout*: ^U8;     (* FILE *: __stdoutp *)
+    stderr*: ^U8;     (* __stderrp *)
+
+(* What a call Linux alone has does here, as each below: -1, errno
+   ENOSYS. Their parameters are named as in C.raz, as the interface
+   check wants, and dropped. *)
+proc none: I32;
+var e: ^I32;
+begin
+    e := __error();
+    e^ := 78;   (* ENOSYS *)
+    return -1;
+end;
+
+(* errno, this thread's *)
+proc __errno_location*: ^I32;
+begin
+    return __error();
+end;
+
+proc accept4*(fd: I32; addr: ^U8; len: ^U32; flags: I32): I32;
+begin
+    _ := fd; _ := addr; _ := len; _ := flags;
+    return none();
+end;
+
+proc memfd_create*(name: ^U8; flags: U32): I32;
+begin
+    _ := name; _ := flags;
+    return none();
+end;
+
+proc clock_nanosleep*(clock, flags: I32; t, left: ^U8): I32;
+begin
+    _ := clock; _ := flags; _ := t; _ := left;
+    return none();
+end;
+
+proc getrandom*(buf: ^U8; n: UINT; flags: U32): INT;
+begin
+    _ := buf; _ := n; _ := flags;
+    return INT(none());
+end;
+
+proc close_range*(first, last: U32; flags: I32): I32;
+begin
+    _ := first; _ := last; _ := flags;
+    return none();
+end;
+
+proc sched_getaffinity*(pid: I32; size: UINT; mask: ^U8): I32;
+begin
+    _ := pid; _ := size; _ := mask;
+    return none();
+end;
+
+proc pipe2*(fds: ^I32; flags: I32): I32;
+begin
+    _ := fds; _ := flags;
+    return none();
+end;
+
+begin
+    stdout := __stdoutp;
+    stderr := __stderrp;
+end C.

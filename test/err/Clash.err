@@ -1,5 +1,5 @@
-lib/Sys.raz:18:8: error: module C is in test/err/mods/clash/C.raz and lib/C.raz
-   18 | import C, CAbi;
+lib/Sys.raz:21:8: error: module C is in test/err/mods/clash/C.raz and lib/C.raz
+   21 | import C, CAbi;
       |        ^
 help: a program has one module of each name; a symbolic link to one of these files chooses it
 raz: 1 error

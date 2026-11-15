@@ -1,0 +1,50 @@
+(* Arith: the machine's arithmetic that raz has no operator for, which
+   Math gives as sqrt, mul and divMod: an F64's square root, the 128-bit
+   product of two U64s, and a 128-bit number divided by a U64. Each is
+   one instruction of the machine, so each is a code procedure, one
+   file per machine: this one for x86-64, Arith.arm64.raz for arm64. A
+   call of sqrt, a sqrtsd and ret, is made in place (Gen.oneRealOp).
+   Depends on Check, for its test. *)
+module Arith;
+import Check;
+import SYSTEM;
+
+(* The square root of x, exact to the last bit; NaN for x below 0. *)
+proc sqrt*(x: F64): F64;
+code
+    sqrtsd xmm0, xmm0;
+    ret;
+end sqrt;
+
+(* a times b: the low 64 bits of the product, and the high. *)
+proc mul*(a, b: U64): (U64, U64);
+code
+    mov rax, rdi;
+    mul rsi;
+    ret;
+end mul;
+
+(* hi, lo divided by d: the quotient and the remainder, by the
+   machine's one instruction; it faults if hi >= d, which the caller
+   checks first. *)
+proc div128*(hi, lo, d: U64): (U64, U64);
+code
+    mov rcx, rdx;
+    mov rdx, rdi;
+    mov rax, rsi;
+    div rcx;
+    ret;
+end div128;
+
+(* The module's test; Math's tests these more. *)
+proc main*;
+var lo, hi, q, r: U64;
+begin
+    Check.ok(sqrt(2.0) = 1.4142135623730951, "Arith.sqrt");
+    lo, hi := mul(0FFFFFFFFFFFFFFFFH, 0FFFFFFFFFFFFFFFFH);
+    Check.ok((lo = 1) and (hi = 0FFFFFFFFFFFFFFFEH), "Arith.mul");
+    q, r := div128(5, 9, 6);
+    Check.ok((q = 0D555555555555556H) and (r = 5), "Arith.div128");
+end;
+
+end Arith.

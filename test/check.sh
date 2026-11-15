@@ -370,6 +370,9 @@ fi
 if $raz -Werror -o $out/raztest tools/Test.raz 2>$out/raztest.cerr; then
     libtests=
     for f in lib/*.raz; do
+        case $f in   # another target's file is tested there (test/mac.sh)
+        *.darwin-arm64.raz|*.darwin.raz|*.arm64.raz) continue;;
+        esac
         [ $f != lib/Sys.raz ] && grep -q '^proc main\*' $f && ! skip $f && libtests="$libtests $f"
     done
     RAZ=$raz $out/raztest -j $(nproc 2>/dev/null || getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1) -o $out/lib \

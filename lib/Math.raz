@@ -5,10 +5,12 @@
    polynomials' coefficients are fdlibm's. Each is within an ulp, a
    unit in the result's last place.
 
+   The square root, mul and divMod's division are the machine's own,
+   from Arith, one file per machine; this file keeps no machine code.
+
    Left out: sinh, cosh, fmod and hypot, until a program needs them. *)
 module Math;
-import Check, Rt;
-import SYSTEM;
+import Arith, Check, Rt;
 
 const
     pi* = 3.141592653589793;   (* the F64 nearest to pi *)
@@ -33,12 +35,13 @@ begin
     return bits(x) shr 63 = 1;
 end;
 
-(* The square root of x, exact to the last bit; NaN for x below 0. *)
+(* The square root of x, exact to the last bit; NaN for x below 0: the
+   machine's own. A procedure that only returns is made in place, and
+   then Arith.sqrt's one instruction is too, with no call. *)
 proc sqrt*(x: F64): F64;
-code
-    sqrtsd xmm0, xmm0;
-    ret;
-end sqrt;
+begin
+    return Arith.sqrt(x);
+end;
 
 (* The largest whole number not above x. One of 2^52 or more is whole
    already, and so are an infinity and NaN. *)
@@ -437,28 +440,16 @@ end;
 
 (* a times b: the low 64 bits of the product, and the high. *)
 proc mul*(a, b: U64): (U64, U64);
-code
-    mov rax, rdi;
-    mul rsi;
-    ret;
-end mul;
-
-(* hi, lo divided by d, by the machine's one instruction; it faults if hi >= d. *)
-proc div128(hi, lo, d: U64): (U64, U64);
-code
-    mov rcx, rdx;
-    mov rdx, rdi;
-    mov rax, rsi;
-    div rcx;
-    ret;
-end div128;
+begin
+    return Arith.mul(a, b);
+end;
 
 (* hi, lo (a 128-bit number, hi its high word) divided by d: the quotient and the remainder.
    hi >= d, whose quotient doesn't fit a word, and d = 0 stop the program, as a division by zero does. *)
 proc divMod*(hi, lo, d: U64): (U64, U64);
 begin
     if hi >= d then Rt.stop("Math.divMod: hi >= d, the quotient doesn't fit a word"); end;
-    return div128(hi, lo, d);
+    return Arith.div128(hi, lo, d);
 end divMod;
 
 (* 64 bits of t from bit s on, the first bit of t[0] being 0. *)

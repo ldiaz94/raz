@@ -1880,6 +1880,18 @@ kind 5, a division fault, as SIGFPE does on Linux. What the Mac does
 catch, `Rt`'s handler tells: a nil pointer within page zero, 4 GB
 (`NilPage`), a call to nil, and a stack overflow at the guard page,
 each a SIGSEGV or SIGBUS, on a stack of its own (`lib/Rt.darwin-arm64.raz`).
+That `Rt` is Linux's in all it tells: the place, from the places, and
+the calls under way with their variables, up x29's chain of frame
+records, a call being the `bl` 4 bytes before its return address, and
+x19 to x23 (`VarRegs`) read back from where each frame saved them, or,
+after a signal, from the context the kernel handed the handler. A stack
+overflow can stop a procedure at its first instruction, the `stp` of
+its frame record, so the handler makes that record itself, from the fp
+and lr it found. Its code procedures (`framePtr`, `liveRegs`, `here`)
+are written in `db`, since `BOOT`'s release reads `Rt`'s every file
+for its interface when it builds `src/` and knows only x86-64's
+instructions; no `sigReturn`, as libSystem's `_sigtramp` returns from a
+handler.
 
 The rest is x86's, in arm64's instructions, each shown in its
 routine's comment: `copyBytes` and `zeroBytes` past 256 bytes by a loop
@@ -2571,8 +2583,10 @@ since macOS loads a program anywhere and dyld moves them with it.
 arm64's fixups are patched by `patchArm`: a branch's distance in words,
 an `adrp`'s in pages of 4 KB, and an address's place in its page, in an
 `add` or, divided by the size it moves, in a load or a store, as
-`Chunk.FixKind` says. The places keep the addresses the linker gave;
-the Mac's `Rt` will take dyld's slide from what it looks up.
+`Chunk.FixKind` says. The places keep the addresses the linker gave,
+and are not rebased; the Mac's `Rt` takes dyld's slide,
+`_dyld_get_image_vmaddr_slide(0)`, from each address before it looks it
+up (`linked`).
 
 ## Exe.linux.raz: the executable
 
@@ -2748,7 +2762,9 @@ mac-check` (`test/mac.sh`), on an Apple Silicon Mac, has it compile
 must be `X.expect`, so C itself says what is right); then conform/run's, which are counted, those
 that fail listed in `build/mac/conform.fail`, and those not for the Mac,
 named in the script with why (`SystemImport`, as `SYSCALL` is Linux's),
-skipped; and last `test/lldb.sh`, if lldb is there (`make lldb` is that
+skipped; then each library module's own test, by the file the target
+takes, and `test/libc`'s programs, which count as `test/mac`'s do, but
+those named in `libNotHere`; and last `test/lldb.sh`, if lldb is there (`make lldb` is that
 alone, after `make mac-build`, the container's half). The host changes nothing of the target:
 a program for another system still needs that system's `Sys` and `Rt`,
 and for a kernel the options `-bare`, `-s` and `-base`.

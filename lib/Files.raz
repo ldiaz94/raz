@@ -270,13 +270,22 @@ begin
 end;
 
 (* realPath and removeTree in a scratch tree, with links in it and one
-   out of it. *)
+   out of it. What realPath gives is under /tmp as realPath gives it,
+   which on a Mac is /private/tmp, /tmp being a link to it. *)
 proc testTree;
 const T = "/tmp/raz-files-test.d"; Out = "/tmp/raz-files-test.out";
-var p, q: Buf.Buf; here, now: []const U8; r: INT;
+var p, q, rt, ro: Buf.Buf; here, now, realT, realOut: []const U8; r: INT;
 begin
     Buf.init(p, Heap.heap);
     Buf.init(q, Heap.heap);
+    Buf.init(rt, Heap.heap);
+    Buf.init(ro, Heap.heap);
+    if realPath("/tmp", rt) # 0 then Rt.stop("realPath: /tmp"); end;
+    Buf.str(ro, Buf.bytes(rt));
+    Buf.str(rt, "/raz-files-test.d");
+    Buf.str(ro, "/raz-files-test.out");
+    realT := Buf.bytes(rt);
+    realOut := Buf.bytes(ro);
     _ := removeTree(T);
     _ := removeTree(Out);
     if (Sys.makeDir(T) # 0) or (Sys.makeDir(join(p, T, "/a")) # 0)
@@ -293,12 +302,12 @@ begin
         or (Sys.symlink(Out, join(p, T, "/a/ex")) # 0) then
         Rt.stop("Files: links");
     end;
-    wantReal(join(p, T, "/rel/f"), join(q, T, "/a/b/f"), 0, "realPath: a relative link");
-    wantReal(join(p, T, "/abs/b/../b/./f"), join(q, T, "/a/b/f"), 0, "realPath: absolute link, .. and .");
-    wantReal(join(p, T, "/a/up/f"), join(q, T, "/a/b/f"), 0, "realPath: a link read from its directory");
-    wantReal(join(p, T, "/a/"), join(q, T, "/a"), 0, "realPath: a trailing slash");
-    wantReal(join(p, T, "/a/b/../../abs/b"), join(q, T, "/a/b"), 0, "realPath: .. then a link");
-    wantReal(join(p, T, "/a/ex/keep"), join(q, Out, "/keep"), 0, "realPath: a link out of the tree");
+    wantReal(join(p, T, "/rel/f"), join(q, realT, "/a/b/f"), 0, "realPath: a relative link");
+    wantReal(join(p, T, "/abs/b/../b/./f"), join(q, realT, "/a/b/f"), 0, "realPath: absolute link, .. and .");
+    wantReal(join(p, T, "/a/up/f"), join(q, realT, "/a/b/f"), 0, "realPath: a link read from its directory");
+    wantReal(join(p, T, "/a/"), join(q, realT, "/a"), 0, "realPath: a trailing slash");
+    wantReal(join(p, T, "/a/b/../../abs/b"), join(q, realT, "/a/b"), 0, "realPath: .. then a link");
+    wantReal(join(p, T, "/a/ex/keep"), join(q, realOut, "/keep"), 0, "realPath: a link out of the tree");
     wantReal(join(p, T, "/a/nope"), "", Sys.errNoEntry, "realPath: a missing part");
     wantReal(join(p, T, "/a/b/f/.."), "", -20, "realPath: .. of a file");
     wantReal(join(p, T, "/loop"), "", -40, "realPath: a link loop");
@@ -320,6 +329,8 @@ begin
     if removeTree(Out) # 0 then Rt.stop("removeTree: the outside"); end;
     Buf.done(p);
     Buf.done(q);
+    Buf.done(rt);
+    Buf.done(ro);
 end;
 
 (* The module's test. *)
