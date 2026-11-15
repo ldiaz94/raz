@@ -15,6 +15,12 @@
 #     test/mac.sh build    in the container: the cross compiler, then the programs
 #     test/mac.sh run      on the Mac: each program, run with a timeout
 #
+# A test with a C file, test/mac/X.c, links the library that file makes:
+# run builds it by cc into build/mac/libX.dylib, where the program finds
+# it by @executable_path (Exe.darwin's libPath), and, built as a program
+# with -DMAIN, it must print what X.expect holds, as C itself says it.
+# Then lldb, if there is one, must find a line (test/lldb.sh).
+#
 # build/mac is made anew each time: macOS keeps a file's code signature
 # while the file is open or cached, and kills a program whose file was
 # written again in place with another one.
@@ -41,6 +47,14 @@ build)
 run)
     pass=0
     fail=0
+    for f in test/mac/*.c; do
+        name=$(basename $f .c)
+        cc -dynamiclib -o $out/lib$name.dylib $f
+        cc -DMAIN -o $out/$name.cmain $f
+        if ! $out/$name.cmain | cmp -s - test/mac/$name.expect; then
+            echo "FAIL $f: C's own output differs from $name.expect"; fail=$((fail + 1))
+        fi
+    done
     for f in test/mac/*.raz; do
         name=$(basename $f .raz)
         want=0
@@ -93,6 +107,7 @@ run)
         fi
     done
     echo "conform/run: $cpass of $((cpass + cfail)) passed, $cskip not for this target; the others in $c.fail"
+    if command -v lldb > /dev/null; then test/lldb.sh || fail=$((fail + 1)); fi
     [ $fail = 0 ]
     ;;
 *)

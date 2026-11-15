@@ -50,6 +50,11 @@ fixpoint: raz | build
 gdb: raz
 	test/gdb.sh
 
+# the same for lldb, on a Mac: a program made for darwin-arm64 by the
+# container's cross compiler (mac-build), stopped at a line
+lldb: mac-build
+	test/lldb.sh
+
 # the compiler's speed, on a generated program of about 350,000 lines,
 # the best of three runs; fails below 400,000 lines a second
 bench: raz | build
@@ -207,7 +212,7 @@ site-source: build/site/Source
 site-check: build/site/Verify
 	build/site/Verify
 
-.PHONY: docker-image docker-check mac-check docker-shell prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site site-source site-check clean install uninstall
+.PHONY: docker-image docker-check mac-build mac-check lldb docker-shell prev-bench fixpoint check gdb bench kernels stress alpine fmt loc man pdf dist site site-source site-check clean install uninstall
 
 # `make check` in a linux/amd64 container, for a machine that isn't one
 # (the repository is mounted at its own path, so git and the tests see
@@ -222,8 +227,10 @@ docker-check: docker-image
 
 # test/mac's programs (test/mac.sh), on an Apple Silicon Mac: compiled
 # for darwin-arm64 by the cross compiler in the container, then run here
-mac-check: docker-image
+mac-build: docker-image
 	$(DOCKER) $(DOCKERIMAGE) sh -c "git config --global --add safe.directory '*' && timeout 1200 test/mac.sh build"
+
+mac-check: mac-build
 	test/mac.sh run
 
 docker-shell: docker-image

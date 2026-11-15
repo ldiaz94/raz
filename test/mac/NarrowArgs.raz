@@ -1,0 +1,48 @@
+(* Calling C with arguments of every width past the registers (PLAN.md 5,
+   step 6): Apple's convention packs a C procedure's own arguments on the
+   stack by their natural size, where a raz procedure's take 8 bytes
+   each. narrow has eight integers in x0 to x7, six more on the stack
+   (an I8, a U8, an I16, an I32, an I8, an I64), eight reals in v0 to v7
+   and an F32, an F64 and an I8 past them. varsum is variadic, whose
+   arguments past its own go on the stack, 8 bytes each. callback has C
+   call a raz procedure of ten integers. Each answer is a hash C makes of
+   what it received; NarrowArgs.c, built as a program, prints the same. *)
+module NarrowArgs;
+import Out;
+import SYSTEM;
+link "NarrowArgs";
+
+extern proc narrow(a: I8; b: U8; c: I16; d: I32; e: I64; f: U8; g: I16; h: I32;
+    i: I8; j: U8; k: I16; l: I32; m: I8; n: I64;
+    p: F32; q: F64; r: F32; s: F64; t: F32; u: F64; v: F32; w: F64;
+    y: F32; z: F64; last: I8): I64;
+extern proc varsum(n: I32; ...): I64;
+extern proc callback(cb: proc(a, b, c, d, e, f, g, h, i, j: I64): I64): I64;
+
+(* the same hash as C's mix *)
+proc mix(h, v: I64): I64;
+begin
+    return I64(U64(h) * 1000003 + U64(v));
+end;
+
+proc mine(a, b, c, d, e, f, g, h, i, j: I64): I64;
+var x: I64;
+begin
+    x := 7;
+    x := mix(x, a); x := mix(x, b); x := mix(x, c); x := mix(x, d); x := mix(x, e);
+    x := mix(x, f); x := mix(x, g); x := mix(x, h); x := mix(x, i); x := mix(x, j);
+    return x;
+end;
+
+proc main*;
+begin
+    Out.int(narrow(-1, 200, -300, -70000, -5000000000, 255, -32768, 2147483647,
+        -128, 129, -2, -100000, 127, 9000000000,
+        1.5, -2.25, 3.5, 4.75, -5.5, 6.25, 7.5, -8.75,
+        9.5, 10.25, -100)); Out.ln;
+    Out.int(varsum(5, 1, 1.5, -3, -2.25, 5)); Out.ln;
+    Out.int(callback(mine)); Out.ln;
+    Out.flush;
+end;
+
+end NarrowArgs.

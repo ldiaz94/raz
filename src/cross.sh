@@ -4,6 +4,13 @@
 # is whatever files the compiler was built from (doc/raz.md, 3).
 #
 #     src/cross.sh TARGET [OUT]        run from the repository root
+#     HOST=darwin src/cross.sh darwin-arm64 [OUT]
+#
+# The second makes the compiler that runs on a Mac and compiles for it,
+# the first Mac compiler (PLAN.md 5, step 9): the stage has the host's
+# own Host.darwin.raz, and it is built by the cross compiler of the
+# first form, which must be there, since BOOT's makes programs for this
+# system, and a stage for another host can't be run here to be built.
 #
 # Stage build/cross/TARGET/src/ holds src/'s generic files and, under
 # the plain names, the target's own: Gen.ARCH.raz as Gen.raz and
@@ -12,18 +19,18 @@
 # With only plain names there, module lookup has one choice each. BOOT's
 # release builds the stage as the Makefile builds raz, from a directory
 # where src/Raz.raz is again at src/, so the paths a program holds are
-# the same. The compiler is OUT, build/cross/TARGET/raz if not said;
+# the same. The compiler is OUT, build/cross/TARGET/raz (or TARGET-on-HOST) if not said;
 # its library is lib/, beside it.
 set -e
 target=$1
-out=${2:-build/cross/$target/raz}
 case $target in
 *-*) ;;
 *) echo "usage: src/cross.sh OS-ARCH [OUT]" >&2; exit 2;;
 esac
 os=${target%%-*}
 arch=${target#*-}
-host=$(uname -s | tr A-Z a-z)    # the OS that runs the compiler
+here=$(uname -s | tr A-Z a-z)
+host=${HOST:-$here}              # the OS that runs the compiler
 
 # Each unit with files by target, and the file this build takes of it
 missing=
@@ -38,6 +45,8 @@ fi
 [ -x build/boot/raz ] || make build/boot/raz
 
 d=build/cross/$target
+[ $host != $here ] && d=$d-on-$host
+out=${2:-$d/raz}
 rm -rf $d
 mkdir -p $d/src $d/v
 for f in src/*.raz; do
@@ -52,8 +61,9 @@ cp src/Host.$host.raz $d/src/Host.raz
 cp build/src/Version.raz $d/v/
 ln -s ../../../lib $d/lib
 boot=$PWD/build/boot/raz
+[ $host != $here ] && boot=$PWD/build/cross/$target/raz   # the cross compiler, run here
 (cd $d && $boot -Werror -I src -I v -o raz src/Raz.raz)
 case $out in
-build/cross/$target/raz) ;;
+$d/raz) ;;
 *) cp $d/raz "$out";;
 esac

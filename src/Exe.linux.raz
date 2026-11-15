@@ -16,8 +16,8 @@
    There is no PLT and no lazy binding, and the program exports nothing.
 
    Depends on: Link for the images and addresses, Chunk for the chunks,
-   Scan for names and memory, Diag for errors, Sys for the working
-   directory, and Host to write the file.
+   Scan for names and memory, Diag for errors, and Host to write the
+   file; Link also makes the DWARF's compile unit.
    Leaves out: position independent executables, symbol versions, the
    rest of DWARF.
 
@@ -27,7 +27,7 @@
    Exported variables can't be set from outside, so needLib, setMusl,
    setMainPath and setStripped do it. *)
 module Exe;
-import Sys, Host, Fmt, Diag, Scan, Chunk, Link;
+import Host, Fmt, Diag, Scan, Chunk, Link;
 import SYSTEM;
 
 const
@@ -176,47 +176,22 @@ begin
     putN(0, 1);
 end;
 
-(* LEB128, unsigned *)
-proc putU(v: INT);
-begin
-    while v >= 80H do
-        putN(v & 7FH | 80H, 1);
-        v := v shr 7;
-    end;
-    putN(v, 1);
-end;
-
-(* The compile unit, which names the line table, and its abbreviation;
-   the table itself is in the places, in rodata (Link). Section
-   offsets go in off, sizes in size: line, info, abbrev. *)
+(* The compile unit, which names the line table, and its abbreviation
+   (Link makes them); the table itself is in the places, in rodata.
+   Section offsets go in off, sizes in size: line, info, abbrev. *)
 proc putDebug(off, size: []INT);
-var cwd: []const U8; err: INT;
+var info, abbrev: []const U8;
 begin
     off[0] := Chunk.chunks[Link.placesChunk].adr - Link.roAdr + Link.roOff + Link.linesOff;
     size[0] := Link.linesSize;
+    info := Link.debugInfo(mainPath);
     off[1] := len;
-    putN(0, 4); putN(4, 2); putN(0, 4); putN(8, 1);   (* length, version, abbrev, address size *)
-    putU(1);
-    putStr(mainPath);
-    cwd, err := Sys.workDir();
-    if err # 0 then cwd := ""; end;
-    putStr(cwd);
-    putStr("raz");
-    putN(0, 4);                                  (* the line table, at 0 *)
-    putN(Link.base + Link.textOff, 8); putN(Link.textSize, 8);   (* the code, all of it *)
-    patch(off[1], len - off[1] - 4, 4);
-    size[1] := len - off[1];
-
+    putBytes(SYSTEM.PTR(info), LEN(info));
+    size[1] := LEN(info);
+    abbrev := Link.debugAbbrev();
     off[2] := len;
-    putU(1); putU(11H); putN(0, 1);    (* 1: a compile unit, no children *)
-    putU(03H); putU(08H);              (* name, a string *)
-    putU(1BH); putU(08H);              (* comp_dir, a string *)
-    putU(25H); putU(08H);              (* producer, a string *)
-    putU(10H); putU(17H);              (* stmt_list, a section offset *)
-    putU(11H); putU(01H);              (* low_pc, an address *)
-    putU(12H); putU(07H);              (* high_pc, a length in 8 bytes *)
-    putN(0, 2); putN(0, 1);
-    size[2] := len - off[2];
+    putBytes(SYSTEM.PTR(abbrev), LEN(abbrev));
+    size[2] := LEN(abbrev);
 end;
 
 const

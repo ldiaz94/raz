@@ -1,8 +1,8 @@
 # Reading the raz compiler
 
-The compiler is fifteen files of raz, about 16,500 lines of code (the
+The compiler is fifteen files of raz, about 16,700 lines of code (the
 budget is 18,000); three of them, `A64.raz`, `Gen.arm64.raz` and
-`Exe.darwin.raz`, are the Mac's back end, begun (`PLAN.md` 5), built
+`Exe.darwin.raz`, with `Host.darwin.raz` for a compiler that runs on a Mac, are the Mac's back end, begun (`PLAN.md` 5), built
 only into a compiler for `darwin-arm64` (`src/cross.sh`). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -28,10 +28,11 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Gen.arm64.raz` | 2,295 | 1,573 | The same for arm64: values, operations, reals, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,947 | 4,197 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/Link.raz` | 481 | 365 | Tree shaking, layout, patching, the places |
-| `src/Exe.linux.raz` | 455 | 358 | The executable, ELF: static and dynamic, symbol table, line numbers |
-| `src/Exe.darwin.raz` | 458 | 332 | The executable for macOS, Mach-O: dyld's binds and rebases, the signature |
+| `src/Link.raz` | 531 | 400 | Tree shaking, layout, patching, the places |
+| `src/Exe.linux.raz` | 430 | 336 | The executable, ELF: static and dynamic, symbol table, line numbers |
+| `src/Exe.darwin.raz` | 559 | 394 | The executable for macOS, Mach-O: dyld's binds and rebases, libraries, line numbers, the signature |
 | `src/Host.linux.raz` | 103 | 52 | The system running the compiler |
+| `src/Host.darwin.raz` | 105 | 60 | The same, for a compiler that runs on a Mac |
 | `src/Raz.raz` | 499 | 390 | The command line, and `-q` for an editor |
 
 Every file opens with a comment that says what it is, what it depends
@@ -2601,8 +2602,11 @@ at the end of rodata.
 
 Line numbers are DWARF 4: the line table `makeLines` made from the
 notes `Chunk.noteLine` made, and the single compile unit gdb needs to find
-it, which `putDebug` writes. There are no types or variables in it;
-gdb can stop at a line and show where it is, not print a variable.
+it, which `Link.debugInfo` and `Link.debugAbbrev` make, shared with
+`Exe.darwin.raz`, and `putDebug` places. There are no types or variables
+in it; gdb can stop at a line and show where it is, not print a variable.
+The table counts addresses in bytes (`minimum_instruction_length` 1),
+which suits arm64 too, where every row is a multiple of 4.
 
 ## Exe.darwin.raz: the Mac's executable
 
@@ -2610,8 +2614,7 @@ gdb can stop at a line and show where it is, not print a variable.
 takes it and the kernel runs it, with the same calls as Linux's: the
 driver's `needLib`, `setStripped` and `write` mean what they mean
 there, and `setMusl` refuses musl. `-base` is refused, since macOS
-loads a program where it chooses, and a library besides libSystem
-isn't linked yet. The file:
+loads a program where it chooses. The file:
 
 | Part | What |
 |---|---|
@@ -2620,6 +2623,7 @@ isn't linked yet. The file:
 | `__TEXT` | the header again, at 0, and the code, read and run |
 | `__DATA_CONST` | rodata, which dyld makes read-only once it has rebased it (`SG_READ_ONLY`) |
 | `__DATA` | the variables and C's symbols' quadwords, zeros, not in the file |
+| `__DWARF` | the line numbers for lldb, three sections (below); not for `-s` |
 | `__LINKEDIT` | dyld's opcodes, the symbol table, and the code signature |
 
 and its load commands: `LC_DYLD_INFO_ONLY` for the rebases and binds;
@@ -2627,20 +2631,57 @@ and its load commands: `LC_DYLD_INFO_ONLY` for the rebases and binds;
 for lldb, and `LC_DYSYMTAB`, which says all are local;
 `LC_LOAD_DYLINKER` naming `/usr/lib/dyld`; `LC_UUID`, the first 16
 bytes of the SHA-256 of what follows the header; `LC_BUILD_VERSION`,
-macOS 11.0 and up; `LC_MAIN`, the entry point's offset; `LC_LOAD_DYLIB`,
-`/usr/lib/libSystem.B.dylib`; and `LC_CODE_SIGNATURE`. The header has
+macOS 11.0 and up; `LC_MAIN`, the entry point's offset; an
+`LC_LOAD_DYLIB` for `/usr/lib/libSystem.B.dylib` and one for each
+other library (below); four `LC_RPATH`s; and `LC_CODE_SIGNATURE`. The header has
 the room of every command, `HeaderRoom`, as the code's place is fixed
 before the commands' sizes are known.
 
 Rodata holds the addresses of other chunks (a constant's data fixups),
 and macOS loads a program anywhere, so dyld must move each: a rebase.
-C's symbols are bound into their quadwords from libSystem by name,
-with Mach-O's `_` before it. Both are dyld's opcodes, the plainest form
+C's symbols are bound into their quadwords by name, with Mach-O's `_`
+before it, by flat lookup (below). Both are dyld's opcodes, the plainest form
 it still takes: a rebase is `SET_SEGMENT_AND_OFFSET_ULEB` and
 `DO_REBASE_IMM_TIMES`, two bytes and the offset; a bind the symbol's
 name, its segment and offset, and `DO_BIND`. The other form, chained
 fixups, which Apple's linker writes now, threads them through the data
 itself with tables of where each chain starts on each page.
+
+**Line numbers.** lldb reads DWARF from a `__DWARF` segment, as it does
+Go's. `Link.makePlaces` has made the line table in the places, in
+rodata, where `Rt` reads it; `Exe.darwin.raz` copies it into
+`__debug_line`, and puts `Link.debugInfo`'s compile unit in
+`__debug_info` and `Link.debugAbbrev`'s in `__debug_abbrev`, the same
+bytes Linux's writes. The segment sits after `__DATA` and before
+`__LINKEDIT`, which must stay last, for the signature, and is page
+aligned like the others. dyld refuses a segment bigger in the file than
+in memory (`filesize exceeds vmsize`), so it is mapped, read only,
+with its sections flagged `S_ATTR_DEBUG`; nothing touches its pages
+unless lldb reads them from the file. `make lldb` (`test/lldb.sh`) and
+`make mac-check` run `lldb --batch -o 'b Procs.raz:13' -o run -o bt`
+on conform's `Procs` and check that it stops at the line and names each
+caller's. `dwarfdump --debug-line` reads the table too.
+
+**Libraries.** Every program loads libSystem, first. `link "name";`
+loads another, by the path `libPath` makes of the name. A name with a
+`/` is that path, as it is (`@executable_path/libx.dylib` works). A name
+that ends in `.dylib` is `@rpath/` that name. Any other is a library
+written as on Linux or bare: it is cut at its first dot and given
+`lib` before it if it has none, so `X11`, `libX11` and `libX11.so.6`
+are all `@rpath/libX11.dylib`, and so are `m` and `libm.so.6` for
+`libm.dylib`, which dyld finds in its cache. Two names of one library
+load it once. The program has four `LC_RPATH`s: `@executable_path`, so
+that a program can ship its libraries beside it, `/usr/local/lib`,
+`/opt/homebrew/lib`, where Homebrew keeps them, and `/usr/lib`. The
+compiler looks for nothing when it compiles: a program can be made
+where its libraries aren't, as the cross compiler does, and dyld says,
+when the program starts, which one it didn't find. Each C symbol is
+bound by `BIND_SPECIAL_DYLIB_FLAT_LOOKUP` (ordinal -2), and dyld looks
+for it in all the libraries the program loaded, in order, as Linux's
+loader does. A two-level namespace wants the library of each symbol,
+which `extern` doesn't say (it is found "in the C libraries the program
+links", section 9 of the report); flat lookup says exactly that.
+`test/mac/NarrowArgs` links a library `cc -dynamiclib` makes.
 
 arm64 macOS runs nothing unsigned, so the file ends with an ad-hoc
 code signature, which the kernel checks as it maps each page: a
@@ -2702,12 +2743,40 @@ and checks the four differences. `src/cross.sh darwin-arm64` builds the
 compiler for the Mac this way, in the linux/amd64 container, and `make
 mac-check` (`test/mac.sh`), on an Apple Silicon Mac, has it compile
 `test/mac`'s programs there and runs each here, natively, against its
-`X.expect` and `X.status`; then conform/run's, which are counted, those
+`X.expect` and `X.status` (a test with a C file, `X.c`, has it built into
+`libX.dylib` here by `cc`, and as a program, with `-DMAIN`, whose output
+must be `X.expect`, so C itself says what is right); then conform/run's, which are counted, those
 that fail listed in `build/mac/conform.fail`, and those not for the Mac,
 named in the script with why (`SystemImport`, as `SYSCALL` is Linux's),
-skipped. The host changes nothing of the target:
+skipped; and last `test/lldb.sh`, if lldb is there (`make lldb` is that
+alone, after `make mac-build`, the container's half). The host changes nothing of the target:
 a program for another system still needs that system's `Sys` and `Rt`,
 and for a kernel the options `-bare`, `-s` and `-base`.
+
+## Host.darwin.raz: a compiler that runs on a Mac
+
+`Host.darwin.raz` is `Host.linux.raz` for the compiler running on macOS
+(step 9 of `PLAN.md` 5 builds the first); it has the same five
+procedures and `CLib`. Four things differ. There is no `/proc`:
+`libraryDir` asks `_NSGetExecutablePath` for the compiler's path and
+`realpath` follows its links, then takes the `lib` beside it (argument
+0 if either fails). There is one C library, so `cLibrary` says `glibc`,
+meaning the system's, and there is no musl. There is no `memfd_create`:
+`prepareRun` is a file in `$TMPDIR` (`/tmp` if it isn't set), named by
+the compiler's process number, an error if that directory isn't
+writable; `execute` runs it with `Sys.execve`, and the file stays,
+for macOS to clear. And a file's code signature belongs to the file, so
+a program written in place over one that has run is killed:
+`writeExecutable` removes what is there first, then writes and sets
+mode 755. It uses `Sys` and `Files`, the C ones, and declares two
+externs of its own, `_NSGetExecutablePath` and `realpath`.
+
+`HOST=darwin src/cross.sh darwin-arm64` stages it: the Mac's `Host`, `Gen` and
+`Exe` in a directory of their own, `build/cross/darwin-arm64-on-darwin`,
+built by the cross compiler `src/cross.sh darwin-arm64` made, since
+BOOT's makes programs for Linux. The result is a Mac executable: on a
+Mac, `raz --version`, `raz -o hello Hello.raz` and `raz run` work, and
+it builds conform's `Procs`, which lldb stops in.
 
 ## Raz.raz: the command line
 
@@ -3144,15 +3213,19 @@ fields as the code reads them.
 | `Sys.chmod` | `Host.writeExecutable`: makes the program's file executable (mode 755) |
 | `Sys.close` | `Scan` and `Parse`: closes a source or `RAZ-VERSION` file after reading |
 | `Sys.closeDir`, `Sys.openDir`, `Sys.nextEntry`, `Sys.Dir` | `Parse`: the files of a directory, to find a module's other files for the one-module-of-each-name check |
-| `Sys.env`, `Sys.envAt` | `Diag` (`NO_COLOR`) and `Raz.userLibraries` (`RAZ_PATH`, `HOME`; `envAt` tells unset from empty) |
+| `Sys.env`, `Sys.envAt` | `Diag` (`NO_COLOR`), `Raz.userLibraries` (`RAZ_PATH`, `HOME`; `envAt` tells unset from empty) and `Host.darwin.raz` (`TMPDIR`, and the environment `execute` hands on) |
 | `Sys.errDenied`, `Sys.errNoEntry`, `Sys.errIntr` | `Scan`: "permission denied" and "there is no such file" in a message; a read of standard input a signal broke into, tried again |
+| `Sys.execve` | `Host.darwin.raz`'s `execute`: runs the program `raz run` wrote, in the compiler's place |
 | `Sys.info`, `Sys.Info` | `Scan` and `Parse`: whether a path is a file (`file`) and its length (`size`) |
 | `Sys.isTerminal` | `Diag`: colour only when standard error is a terminal |
+| `Sys.pid` | `Host.darwin.raz`'s `prepareRun`: the name of the file a program is written to |
+| `Sys.remove` | `Host.darwin.raz`'s `writeExecutable`: a program's file is never written over in place |
 | `Sys.openRead`, `Sys.read` | `Scan`: reads a source file whole; `Parse`: the library's `RAZ-VERSION` |
 | `Sys.stdin` | `Scan`: `raz -q`'s source, read from standard input |
 | `Sys.readLink` | `Host.libraryDir`: `/proc/self/exe`, to find the library beside the compiler |
 | `Sys.stderr`, `Sys.stdout`, `Sys.write` | `Diag`: its messages, or `raz -q check`'s rows on standard output |
-| `Sys.workDir` | `Diag`: shows a path relative to the working directory; `Exe`: the compilation directory of the line table |
+| `Sys.workDir` | `Diag`: shows a path relative to the working directory; `Link`: the compilation directory of the line table |
+| `Sys.writing` | `Host.darwin.raz`'s `prepareRun`: whether `$TMPDIR` is a directory the compiler may write to |
 
 `Rt`, the run time, besides `fail`, `exit` and the places (above):
 

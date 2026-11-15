@@ -283,8 +283,15 @@ linux/amd64 container on the Mac until there is a Mac compiler):
    twin, so that `Math.sqrt` is made in place (step 7). A rotation of a
    negative `I8` or `I16` leaves the bits above its width zero, where
    x86-64's `rol al, cl` leaves them as they were.
-6. `Exe.darwin.raz`'s line numbers for lldb (its rebases came with
-   5a); `Host.darwin.raz`.
+6. Done. `Exe.darwin.raz`'s line numbers for lldb, in a `__DWARF`
+   segment (mapped, read only: dyld refuses a segment bigger in the file
+   than in memory), the compile unit and its abbreviation made by `Link`
+   for both formats, `make lldb`; other C libraries (`link "X11";` is
+   `@rpath/libX11.dylib`, four rpaths, binds by flat lookup);
+   `test/mac/NarrowArgs`, a C library `cc` builds, narrow arguments past
+   x7, a variadic call and a callback; `Host.darwin.raz`, and `HOST=darwin
+   src/cross.sh darwin-arm64`, which stages the first Mac compiler: it
+   runs on the Mac, compiles and runs programs, and builds `Procs`.
 7. The library: `CAbi`, `Sys`, `Rt`, `Thread`, `Bytes`, `Math`, `Str`.
 8. `test/` and `conform/` passing on the Mac; what differs by target
    (signals' words, errors' numbers) in files of the target's.

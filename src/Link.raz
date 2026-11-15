@@ -19,11 +19,14 @@
    loader to move with it. arm64's fixups, fields of an instruction,
    are patched here too.
 
+   Also here, shared by both executable formats, the DWARF the line table
+   needs (debugInfo, debugAbbrev): the one compile unit that points to it.
+
    Depends on: Chunk for chunks and fixups, Scan for names and memory,
-   Diag for errors and paths.
+   Diag for errors and paths, Sys for the working directory.
    Leaves out: the file format; that is Exe. *)
 module Link;
-import Fmt, Diag, Scan, Chunk;
+import Sys, Fmt, Diag, Scan, Chunk;
 import SYSTEM;
 
 const
@@ -339,6 +342,53 @@ begin
     patch8(buf, 24, np);
     patch8(buf, 32, nv);
     Chunk.setData(placesChunk, buf, names + lpLen, 8);
+end;
+
+(* The compile unit that names the line table, and its abbreviation, DWARF
+   4's .debug_info and .debug_abbrev: the main module's file and the
+   directory it was compiled in, the producer, the line table (at 0 of its
+   section), and the code, all of it. No types and no variables. Each is
+   made in lp, which the line table has left, and returned: copy it
+   before the next call. The address unit of the line table is a byte
+   (minimum_instruction_length 1, in makeLines), so its rows hold, and
+   its advances count, bytes, on arm64 too, where every row is a multiple
+   of 4: DWARF takes that, and no row needs dividing. *)
+proc putStr(s: []const U8);
+var i: INT;
+begin
+    for i := 0 to LEN(s) - 1 do putB(INT(s[i])); end;
+    putB(0);
+end;
+
+proc debugInfo*(name: []const U8): []const U8;
+var cwd: []const U8; err: INT;
+begin
+    lpLen := 0;
+    putN(0, 4); putN(4, 2); putN(0, 4); putN(8, 1);   (* length, version, abbrev, address size *)
+    putU(1);                                      (* abbreviation 1 *)
+    putStr(name);
+    cwd, err := Sys.workDir();
+    if err # 0 then cwd := ""; end;
+    putStr(cwd);
+    putStr("raz");
+    putN(0, 4);                                   (* the line table, at 0 *)
+    putN(base + textOff, 8); putN(textSize, 8);   (* the code, all of it *)
+    patch4(lp, 0, lpLen - 4);
+    return lp[0..lpLen];
+end;
+
+proc debugAbbrev*: []const U8;
+begin
+    lpLen := 0;
+    putU(1); putU(11H); putB(0);       (* 1: a compile unit, no children *)
+    putU(03H); putU(08H);              (* name, a string *)
+    putU(1BH); putU(08H);              (* comp_dir, a string *)
+    putU(25H); putU(08H);              (* producer, a string *)
+    putU(10H); putU(17H);              (* stmt_list, a section offset *)
+    putU(11H); putU(01H);              (* low_pc, an address *)
+    putU(12H); putU(07H);              (* high_pc, a length in 8 bytes *)
+    putN(0, 2); putB(0);
+    return lp[0..lpLen];
 end;
 
 (* The address a as raz writes it, in hexadecimal: 0FFFFFFFF80000000H *)

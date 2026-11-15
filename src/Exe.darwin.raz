@@ -13,6 +13,7 @@
                  addresses in it (rebases)
      __DATA      the variables, zeros, and C's symbols' quadwords, which
                  dyld fills in (binds)
+     __DWARF     the line numbers lldb reads (below), in the file only
      __LINKEDIT  what dyld reads, unmapped by the program: the rebases
                  and binds, the symbol table, and the code signature
 
@@ -32,10 +33,27 @@
    its pages of 4 KB, in a CodeDirectory, which the kernel checks as it
    maps them.
 
+   Line numbers are DWARF 4, the same as Linux's: Link makes the line
+   table (in the places, in rodata, where Rt reads it too) and the one
+   compile unit; here they are copied into __DWARF, a segment of three
+   sections, __debug_line, __debug_info and __debug_abbrev, which lldb
+   finds there as it does Go's. dyld refuses a segment bigger in the file
+   than in memory, so it is mapped, read only, and never touched: its
+   pages are read only if the program is stopped in lldb. It lies before __LINKEDIT, which must stay last, for the signature.
+   -s leaves it out, and the symbols.
+
+   Libraries. Every program loads libSystem, first. A program that says
+   `link "name";` loads that library too, by the path libPath makes of
+   the name (below), and every C symbol is bound by flat lookup, as the
+   ordinal -2 (BIND_SPECIAL_DYLIB_FLAT_LOOKUP): dyld looks for it in all
+   the libraries the program loaded, in order, as Linux's loader does.
+   The compiler doesn't know which library defines a symbol, as `extern`
+   doesn't say, and the two-level namespace wants it to say; flat lookup
+   is how a Mac's program says "wherever it is".
+
    Depends on: Link for the images and addresses, Chunk for the chunks,
    Scan for names and memory, Diag for errors, Host to write the file.
-   Leaves out: line numbers (DWARF, in __DWARF, PLAN.md 5), libraries
-   besides libSystem, an export trie (the program exports nothing).
+   Leaves out: an export trie (the program exports nothing).
 
    Exported variables can't be set from outside, so needLib, setMusl,
    setMainPath and setStripped do it. *)
@@ -49,14 +67,20 @@ const
     Page = 4000H;        (* arm64 macOS's page, 16 KB, on which each segment starts *)
     HashPage = 1000H;    (* the signature hashes pages of 4 KB *)
     Dyld = "/usr/lib/dyld";
-    (* room for the header and the most load commands: see write *)
-    HeaderRoom = 32 + 72 + 3 * 152 + 72 + 48 + 24 + 80 + 32 + 24 + 24 + 24 + 56 + 16;
+    Rpaths: [4][]const U8 = ["@executable_path", "/usr/local/lib", "/opt/homebrew/lib", "/usr/lib"];
+    (* room for the header and the load commands but the libraries': see
+       write. The most segments: __PAGEZERO, __TEXT, __DATA_CONST, __DATA,
+       __DWARF (three sections), __LINKEDIT; then dyld info, symbols and
+       the rest; the four rpaths of libPath. *)
+    HeaderRoom = 32 + 72 + 3 * 152 + (72 + 3 * 80) + 72 + 48 + 24 + 80 + 32 + 24 + 24 + 24 + 16
+        + 32 + 32 + 32 + 24;
 
 var
     needed: [32]INT;     (* the libraries to load, names interned *)
     numNeeded*: INT;
     stripped*: BOOL;     (* -s: no symbols *)
     libc*: []const U8;   (* the C library, libSystem *)
+    mainPath: []const U8;   (* the main module's file, which lldb will name *)
 
     buf: ^U8;
     len, cap: INT;
@@ -89,7 +113,34 @@ end;
 (* The main module's file, which line numbers will name *)
 proc setMainPath*(path: []const U8);
 begin
-    _ := path;
+    mainPath := path;
+end;
+
+(* The path a `link` name loads from. A name with a / is a path, used as
+   it is (it may start with @executable_path/). Otherwise the name is a
+   library's, written as on Linux or without its decoration: "X11",
+   "libX11" and "libX11.so.6" all mean libX11.dylib, the name cut at its
+   first dot, "lib" put before it if it isn't there; a name that ends in
+   .dylib is kept whole. The file is then looked for, at run time, by
+   @rpath, which the program gives four places: its own directory, so
+   that a program can ship its libraries, /usr/local/lib and
+   /opt/homebrew/lib, where Homebrew keeps them, and /usr/lib. Nothing
+   is looked for when compiling, so a program can be compiled where its
+   libraries are not, as for another machine. *)
+proc libPath(name: []const U8): []const U8;
+var i, stem: INT;
+begin
+    stem := 0;
+    for i := LEN(name) - 1 to 0 by -1 do
+        if name[i] = '/' then return name; end;
+        if name[i] = '.' then stem := i; end;
+    end;
+    if (LEN(name) > 6) and (name[LEN(name) - 6..LEN(name)] = ".dylib") then
+        return Diag.say("@rpath/{}", [Fmt.str(name)]);
+    end;
+    if stem = 0 then stem := LEN(name); end;
+    if (stem > 3) and (name[0..3] = "lib") then return Diag.say("@rpath/{}.dylib", [Fmt.str(name[0..stem])]); end;
+    return Diag.say("@rpath/lib{}.dylib", [Fmt.str(name[0..stem])]);
 end;
 
 proc setStripped*(yes: BOOL);
@@ -230,7 +281,7 @@ end;
 const
     LcSegment = 19H; LcSymtab = 2H; LcDysymtab = 0BH; LcLoadDylinker = 0EH; LcLoadDylib = 0CH;
     LcUuid = 1BH; LcBuildVersion = 32H; LcMain = 80000028H; LcDyldInfoOnly = 80000022H;
-    LcCodeSignature = 1DH;
+    LcCodeSignature = 1DH; LcRpath = 8000001CH;
 
 (* A segment of 64 bits, followed by its nsects sections; prot is the
    access, 1 read, 2 write, 4 run *)
@@ -275,20 +326,36 @@ var
     rebaseOff, rebaseSize, bindOff, bindSize, symOff, nsyms, strOff, strSize, sigOff, sigSize, slots: INT;
     ident: []const U8;
     uuidAt, end0, sigRoom: INT;
+    dwarfOff, dwarfSize, dwarfAdr, libsRoom: INT;
+    dbgOff, dbgSize: [3]INT;
+    libs: [33][]const U8;   (* the paths to load, libSystem first *)
+    nlibs: INT;
+    debug: BOOL;
 begin
     if Link.base # 400000H then Diag.fatal("-base: macOS loads a program where it chooses"); end;
-    for i := 1 to numNeeded - 1 do
-        Diag.fatal(Diag.say("not yet on darwin-arm64: a library besides libSystem, {}", [Fmt.str(Scan.nameOf(needed[i]))]));
+    libs[0] := libc;
+    nlibs := 1;
+    libsRoom := roundUp(24 + LEN(libc) + 1, 8);
+    for i := 0 to numNeeded - 1 do
+        libs[nlibs] := libPath(Scan.nameOf(needed[i]));
+        n := 0;   (* several names may mean one library: "m" and "libm.so.6" *)
+        while libs[n] # libs[nlibs] do INC(n); end;
+        if n = nlibs then   (* new *)
+            libsRoom := libsRoom + roundUp(24 + LEN(libs[nlibs]) + 1, 8);
+            INC(nlibs);
+        end;
     end;
+    debug := not stripped and (Link.placesChunk >= 0);
     cap := 1 shl 16;
     buf := Scan.grab(cap);
     len := 0;
     Link.setBase(Base);
     Link.setPaged(Page);
-    Link.linkAll(HeaderRoom, 0, 0);
+    Link.linkAll(HeaderRoom + libsRoom, 0, 0);
     textSize := roundUp(Link.textOff + Link.textSize, Page);   (* __TEXT's, the header in it *)
-    leOff := Link.bssOff;   (* the next page in the file: __DATA has no bytes there *)
+    dwarfOff := Link.bssOff;   (* the next page in the file: __DATA has no bytes there *)
     leAdr := Link.bssAdr + roundUp(Link.bssSize, Page);
+    dwarfAdr := leAdr;
     (* the segments' numbers, as the opcodes name them, and the
        sections', as the symbols do: __PAGEZERO 0, __TEXT 1 (__text, 1) *)
     segRo := 2;
@@ -301,6 +368,24 @@ begin
     putBytes(Link.textImg, Link.textSize);
     padTo(Link.roOff);
     putBytes(Link.roImg, Link.roSize);
+    padTo(dwarfOff);
+
+    (* the line numbers: the line table, copied from the places, then the
+       compile unit and its abbreviation; each section's file offset and size *)
+    if debug then
+        dbgOff[0] := len;
+        dbgSize[0] := Link.linesSize;
+        putBytes(Link.roImg + (Chunk.chunks[Link.placesChunk].adr - Link.roAdr + Link.linesOff), Link.linesSize);
+        ident := Link.debugInfo(mainPath);
+        dbgOff[1] := len; dbgSize[1] := LEN(ident);
+        putBytes(SYSTEM.PTR(ident), LEN(ident));
+        ident := Link.debugAbbrev();
+        dbgOff[2] := len; dbgSize[2] := LEN(ident);
+        putBytes(SYSTEM.PTR(ident), LEN(ident));
+    end;
+    dwarfSize := len - dwarfOff;
+    leOff := roundUp(len, Page);   (* __LINKEDIT, a page of its own *)
+    leAdr := leAdr + roundUp(dwarfSize, Page);   (* in memory, after __DWARF *)
     padTo(leOff);
 
     (* rebases: each word in rodata that holds an address, a pointer
@@ -315,10 +400,10 @@ begin
     padTo(roundUp(len, 8));
     rebaseSize := len - rebaseOff;
 
-    (* binds: each C symbol's quadword, from library 1, libSystem, by
-       its name, which in Mach-O begins with _ *)
+    (* binds: each C symbol's quadword, by flat lookup (above), by its
+       name, which in Mach-O begins with _ *)
     bindOff := len;
-    putN(11H, 1);                                  (* BIND_OPCODE_SET_DYLIB_ORDINAL_IMM, 1 *)
+    putN(3EH, 1);                                  (* BIND_OPCODE_SET_DYLIB_SPECIAL_IMM, -2 *)
     putN(51H, 1);                                  (* SET_TYPE_IMM, pointer *)
     for c := 0 to Chunk.numChunks - 1 do
         if isExt(c) then
@@ -397,6 +482,13 @@ begin
         segment("__DATA", Link.bssAdr, roundUp(Link.bssSize, Page), 0, 0, 3, 1, 0); INC(ncmds);
         section("__bss", "__DATA", Link.bssAdr, Link.bssSize, 0, 3, 1);   (* S_ZEROFILL *)
     end;
+    if debug then
+        (* read only, flags 0 *)
+        segment("__DWARF", dwarfAdr, roundUp(dwarfSize, Page), dwarfOff, dwarfSize, 1, 3, 0); INC(ncmds);
+        section("__debug_line", "__DWARF", dwarfAdr + dbgOff[0] - dwarfOff, dbgSize[0], dbgOff[0], 0, 02000000H);   (* S_ATTR_DEBUG *)
+        section("__debug_info", "__DWARF", dwarfAdr + dbgOff[1] - dwarfOff, dbgSize[1], dbgOff[1], 0, 02000000H);
+        section("__debug_abbrev", "__DWARF", dwarfAdr + dbgOff[2] - dwarfOff, dbgSize[2], dbgOff[2], 0, 02000000H);
+    end;
     segment("__LINKEDIT", leAdr, roundUp(sigOff + sigRoom - leOff, Page), leOff, sigOff + sigRoom - leOff, 1, 0, 0); INC(ncmds);
     putN(LcDyldInfoOnly, 4); putN(48, 4);
     putN(rebaseOff, 4); putN(rebaseSize, 4); putN(bindOff, 4); putN(bindSize, 4);
@@ -412,12 +504,20 @@ begin
     putN(1, 4); putN(0B0000H, 4); putN(0B0000H, 4); putN(0, 4);   (* macOS, 11.0 and up, SDK 11.0, no tools *)
     INC(ncmds);
     putN(LcMain, 4); putN(24, 4); putN(Chunk.chunks[entry].adr - Base, 8); putN(0, 8); INC(ncmds);
-    (* libSystem, version 1.0.0 and compatible with 1.0.0, which any is *)
-    n := roundUp(24 + LEN(libc) + 1, 8);
-    putN(LcLoadDylib, 4); putN(n, 4); putN(24, 4); putN(2, 4); putN(10000H, 4); putN(10000H, 4);
-    putName(libc, n - 24); INC(ncmds);
+    (* each library, version 1.0.0 and compatible with 1.0.0, which any is
+       (dyld checks those of the library's own; the timestamp is 2) *)
+    for i := 0 to nlibs - 1 do
+        n := roundUp(24 + LEN(libs[i]) + 1, 8);
+        putN(LcLoadDylib, 4); putN(n, 4); putN(24, 4); putN(2, 4); putN(10000H, 4); putN(10000H, 4);
+        putName(libs[i], n - 24); INC(ncmds);
+    end;
+    (* where @rpath looks, in order (libPath) *)
+    for i := 0 to 3 do
+        n := roundUp(12 + LEN(Rpaths[i]) + 1, 8);
+        putN(LcRpath, 4); putN(n, 4); putN(12, 4); putName(Rpaths[i], n - 12); INC(ncmds);
+    end;
     putN(LcCodeSignature, 4); putN(16, 4); putN(sigOff, 4); putN(sigRoom, 4); INC(ncmds);
-    if len > HeaderRoom then Diag.fatal("internal error: the Mach-O header outgrew its room"); end;
+    if len > HeaderRoom + libsRoom then Diag.fatal("internal error: the Mach-O header outgrew its room"); end;
     i := len;
     len := 16; putN(ncmds, 4); putN(i - 32, 4);
     len := end0;
@@ -454,5 +554,6 @@ begin
 end;
 
 begin
+    mainPath := "";
     libc := "/usr/lib/libSystem.B.dylib";
 end Exe.

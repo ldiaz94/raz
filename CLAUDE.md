@@ -17,6 +17,8 @@ defines the language.
     make loc       # lines of the compiler, by rloc; the last, code, is the budget
     make fixpoint  # BOOT's release builds src, that builds src, that again: the last two agree
     make gdb       # gdb stops at a line of a test and names it
+    make lldb      # the same for lldb, on a Mac (a program made for darwin-arm64, in the container)
+    make mac-check # on an Apple Silicon Mac: test/mac and conform/run cross-compiled in the container, run natively, and lldb
     make stress    # 40,000 native threads; make check runs a small version
     make alpine    # test/libc in an Alpine container, over musl (docker)
     make fmt       # lib/, examples/ and tools/ are formatted

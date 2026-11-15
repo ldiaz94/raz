@@ -1,0 +1,105 @@
+(* Host: what the compiler asks of the system it runs on, beyond the
+   library. The host is the system running raz; the target, the one its
+   program will run on. This file is macOS's, for the compiler running
+   on a Mac (a cross compiler built for one is staged with it, as
+   src/cross.sh does); Host.linux.raz says what each procedure is for
+   and what a host must give, and this one gives the same five.
+
+   macOS differs from Linux in four things the compiler asks:
+   - there is no /proc: the compiler's own path is _NSGetExecutablePath,
+     which may name it through a link, so realpath follows them;
+   - there is one C library, libSystem, so cLibrary says glibc, which
+     here means "the C library the system has", and there is no musl;
+   - there is no memfd_create: a program raz run starts is written to a
+     file, in $TMPDIR (/tmp if it is not set), named by the compiler's
+     process number, and the file stays after the program replaces the
+     compiler, which macOS clears out of $TMPDIR in time;
+   - a file's code signature belongs to the file: a program written
+     in place over one that has run is killed. prepareRun's name is new
+     each time, and writeExecutable removes a file that is there first.
+
+   Depends on: Sys and Files for the system's services, Scan for memory
+   that lasts until exit, Diag and Fmt for paths.
+   Leaves out: compiling and the executable format, which are Parse and
+   Exe's. *)
+module Host;
+import Sys, Files, Fmt, Diag, Scan;
+import SYSTEM;
+
+type
+    CLib* = (none, glibc, musl);   (* the C library to link against *)
+
+const
+    Mode755 = 1EDH;       (* rwxr-xr-x *)
+    PathMax = 4096;       (* more than macOS's 1024, which realpath needs *)
+    NoRoom: ERROR = "no writable directory for the program";
+
+extern proc _NSGetExecutablePath(buf: ^U8; size: ^U32): I32;
+extern proc realpath(path, resolved: ^U8): ^U8;
+
+(* The directory of the library, ending in what the name of raz leaves,
+   "lib": the one beside raz as the system says it, links followed, or,
+   if it won't say, beside argument 0 as it was typed *)
+proc libraryDir*: []const U8;
+var raw, real: ^U8; size: U32; path: []const U8; n, i: INT;
+begin
+    raw := Scan.grab(PathMax);
+    real := Scan.grab(PathMax);
+    size := U32(PathMax);
+    path := Files.arg(0);
+    if (_NSGetExecutablePath(raw, SYSTEM.ADR(size)) = 0) and (realpath(raw, real) # nil) then
+        n := 0;
+        while real[n] # 0 do INC(n); end;
+        path := real[0..n];
+    end;
+    i := LEN(path);
+    while (i > 0) and (path[i - 1] # '/') do DEC(i); end;
+    if i = 0 then return "lib"; end;
+    return Diag.say("{}lib", [Fmt.str(path[0..i])]);
+end;
+
+(* The C library a program is linked against: the Mac's one, libSystem *)
+proc cLibrary*: CLib;
+begin
+    return glibc;
+end;
+
+(* The file at path made to hold data, an executable: any file there
+   removed first (see above), then written and given mode 755. False if
+   it failed. *)
+proc writeExecutable*(path, data: []const U8): BOOL;
+begin
+    _ := Sys.remove(path);
+    return Files.write(path, data) and (Sys.chmod(path, Mode755) >= 0);
+end;
+
+(* The path raz run writes its program to: a file in $TMPDIR, if that
+   is a directory the compiler may write to *)
+proc prepareRun*: ([]const U8, ERROR);
+var dir: []const U8;
+begin
+    dir := Sys.env("TMPDIR");
+    if LEN(dir) = 0 then dir := "/tmp"; end;
+    if dir[LEN(dir) - 1] = '/' then dir := dir[0..LEN(dir) - 1]; end;
+    if Sys.access(dir, {Sys.writing}) # 0 then return "", NoRoom; end;
+    return Diag.say("{}/raz-run-{}", [Fmt.str(dir), Fmt.int(Sys.pid())]), nil;
+end;
+
+(* The program at path runs in the compiler's place, with the compiler's
+   arguments from number first on as its own, first as its argument 0,
+   and the environment. It returns only if that failed: minus the errno. *)
+proc execute*(path: []const U8; first: INT): INT;
+var args, env: ^[]const U8; n, m, i: INT; more: BOOL;
+begin
+    n := Files.argCount() - first;
+    args := ^[]const U8(Scan.grab((n + 1) * SIZE([]const U8)));
+    for i := 0 to n - 1 do args[i] := Files.arg(first + i); end;
+    m := 0;
+    _, more := Sys.envAt(0);
+    while more do INC(m); _, more := Sys.envAt(m); end;
+    env := ^[]const U8(Scan.grab((m + 1) * SIZE([]const U8)));
+    for i := 0 to m - 1 do env[i], _ := Sys.envAt(i); end;
+    return Sys.execve(path, args[0..n], env[0..m]);
+end;
+
+end Host.

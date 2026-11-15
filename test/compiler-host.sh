@@ -31,7 +31,7 @@ lacks() { ! grep -q -F -- "$2" "$1"; }
 mkdir "$top/src" "$top/work"
 cp src/*.raz "$top/src"
 # staged as src/cross.sh does: the plain name takes the place of Linux's
-rm "$top/src/Host.linux.raz"
+rm "$top"/src/Host.*.raz
 cp test/host/Host.raz "$top/src/Host.raz"
 "$raz" -Werror -I "$top/src" -I build/src -o "$top/compiler" "$top/src/Raz.raz" 2>"$top/build.err" || {
     cat "$top/build.err"
