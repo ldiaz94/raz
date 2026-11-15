@@ -9,7 +9,7 @@ when the port is done.
 - **`main`**, pushed: steps 1 to 7, each checked before its commit
   (`make docker-check` 0 failed, 9 skipped; `make mac-check` all
   passing; the fixpoint; x86-64's output unchanged byte for byte).
-- **`wip-darwin-step9`**, a local branch, not pushed (f87c668): step 9
+- **`wip-darwin-step9`**, a branch, pushed to origin (f87c668): step 9
   as far as it got, never checked; it was stopped during its last
   `make docker-check`. It holds:
   - `src/bootstrap.sh`: `make raz` on the Mac through the container,

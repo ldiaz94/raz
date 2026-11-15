@@ -327,8 +327,8 @@ lines, `makeLines` and `putDebug` shared by the two writers.
   `HOST=darwin src/cross.sh darwin-arm64` stages a native compiler that
   runs on the Mac. Linux is unchanged: `make docker-check`, the
   fixpoint, and x86-64's output byte for byte.
-- Step 9, half done, unchecked, on the local branch `wip-darwin-step9`
-  (f87c668, not pushed): `make raz` on the Mac through
+- Step 9, half done, unchecked, on the branch `wip-darwin-step9`
+  (f87c668, pushed): `make raz` on the Mac through
   `src/bootstrap.sh`, `BOOT` naming a tarball per host, the fixpoint and
   bench on the Mac, `raz run`'s temporary file, `make dist` for the Mac.
   To resume: check it out, read `git diff main`, run `make docker-check`
