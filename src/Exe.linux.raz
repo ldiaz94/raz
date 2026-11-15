@@ -1,6 +1,8 @@
-(* Elf: the executable file.
+(* Exe: the executable file, for Linux: ELF.
 
-   Writes an ELF64 executable for x86-64 Linux: the ELF header, the
+   Exe.darwin.raz, for macOS, will be Mach-O; a target has one Exe, chosen
+   by the suffix of its file (doc/raz.md, 3), and no other unit knows the
+   format. This one writes an ELF64 executable: the ELF header, the
    program headers, the linked text and rodata, and section headers
    with a symbol table, so that objdump and gdb can name each procedure
    and variable. For gdb's line numbers there is DWARF 4: a line table
@@ -24,9 +26,12 @@
 
    Exported variables can't be set from outside, so needLib, setMusl,
    setMainPath and setStripped do it. *)
-module Elf;
+module Exe;
 import Sys, Host, Fmt, Diag, Scan, Chunk, Link;
 import SYSTEM;
+
+const
+    Os* = "linux";   (* the target's operating system, as a file's suffix says it *)
 
 var
     needed: [32]INT;     (* the libraries to load, names interned *)
@@ -311,7 +316,7 @@ begin
     putN(0, 16);                                     (* DT_NULL *)
 end;
 
-proc writeElf*(path: []const U8; entry: INT);
+proc write*(path: []const U8; entry: INT);
 var
     nph, nsh, c, nsyms, sec, strsCap: INT;
     roExtra, dynSize, symOff, strOff, shstrOff, shOff, strsLen: INT;
@@ -447,4 +452,4 @@ end;
 
 begin
     mainPath := "";
-end Elf.
+end Exe.

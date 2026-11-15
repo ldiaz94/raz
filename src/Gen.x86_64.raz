@@ -1,4 +1,5 @@
-(* Gen: the code generator, for x86-64.
+(* Gen: the code generator, for x86-64 (Gen.x86_64.raz; another machine has
+   a Gen of its own, chosen by the suffix of its file, doc/raz.md, 3).
 
    Item and Parse drive a stack machine: they push constants, addresses
    and the values of variables, operate on the values on top, store
@@ -62,6 +63,7 @@ import Fmt, Diag, Scan, Sym, Chunk, X := X64;
 import SYSTEM;
 
 const
+    Arch* = "x86_64";   (* the target's machine, as a file's suffix says it *)
     NoLabel* = -1;
     WordSize* = 8;   (* the size of an address, and of INT *)
     (* What the machine catches by itself, which the code needn't test for
@@ -231,6 +233,18 @@ var
     frameAt: [3]I64;              (* frameTop, frameMax, permTop after the declarations *)
     fails: [4096]Fail;
     numFails: INT;
+
+(* -S: the text of each instruction is kept, and list prints it. Raz asks
+   Gen, not the encoder, so that no unit but Gen names the machine. *)
+proc setListing*(yes: BOOL);
+begin
+    X.setListing(yes);
+end;
+
+proc list*(home: INT);
+begin
+    X.list(home);
+end;
 
 proc setInPlace*(r: INT);
 begin

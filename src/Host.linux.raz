@@ -5,7 +5,7 @@
    Another host stages its own file in its place: copy src/ to a
    directory, put that host's Host.raz there instead of this one, and
    build the copy with the host's library (doc/compiler.md says how).
-   Raz and Elf import only this module for what follows, so a host
+   Raz and Exe import only this module for what follows, so a host
    gives these five procedures and keeps every export:
 
      libraryDir     where the standard library is, as a directory path
@@ -23,7 +23,7 @@
 
    Depends on: Sys and Files for Linux's services, Scan for memory that
    lasts until exit, Diag and Fmt for paths. Leaves out: compiling and
-   the ELF format, which are Parse and Elf's. *)
+   the executable format, which are Parse and Exe's. *)
 module Host;
 import Sys, Files, Fmt, Diag, Scan;
 import SYSTEM;

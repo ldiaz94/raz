@@ -77,8 +77,8 @@ What the port found in the seed, which the seed kept; a record now.
   32 bits and goes on, since an operand has nowhere to return an error
   to; the compile ends with the message shown. The listing's text is
   made by `Diag.say`, which keeps it, and only when `-S` asks for it.
-- **`Link` and `Elf`.** What `raz.pas` set there has a setter each:
-  `Link.setPlaces`, `Elf.needLib`, `noLibs`, `setMainPath`,
+- **`Link` and `Exe`.** What `raz.pas` set there has a setter each:
+  `Link.setPlaces`, `Exe.needLib`, `noLibs`, `setMainPath`,
   `setStripped` and `X64.setListing`. The file is written by
   `Files.write` and made executable by `Sys.chmod`, in place of one
   `open` with mode 755 (which the umask would trim).
@@ -134,7 +134,7 @@ What the port found in the seed, which the seed kept; a record now.
   library beside it, it reads from `/proc/self/exe` as FPC's `ParamStr(0)`
   does: `Files.arg(0)` is what the shell was typed, and `./raz` made the
   library `./lib`, so the same program held other paths in its file.
-  `raz run` writes the memfd with `Elf.writeElf` and executes it with
+  `raz run` writes the memfd with `Exe.write` and executes it with
   the system call, `execve`, which `Sys` has no procedure for. The
   version is the module `Version`, which `check.sh` makes in
   `build/src/` from `build/version.inc`, as the seed's `{$I}` is.

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the compiler with another host, test/host/Host.raz in place of
-# src/Host.raz (the staging doc/compiler.md describes), and checks what
+# src/Host.linux.raz (the staging doc/compiler.md describes), and checks what
 # that host changes: the library it names, a refused raz run, no C, and
 # a refused write.
 # Usage: test/compiler-host.sh path/to/raz
@@ -30,6 +30,8 @@ lacks() { ! grep -q -F -- "$2" "$1"; }
 # The staged sources and the compiler built from them.
 mkdir "$top/src" "$top/work"
 cp src/*.raz "$top/src"
+# staged as src/cross.sh does: the plain name takes the place of Linux's
+rm "$top/src/Host.linux.raz"
 cp test/host/Host.raz "$top/src/Host.raz"
 "$raz" -Werror -I "$top/src" -I build/src -o "$top/compiler" "$top/src/Raz.raz" 2>"$top/build.err" || {
     cat "$top/build.err"

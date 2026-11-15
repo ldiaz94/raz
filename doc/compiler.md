@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is twelve files of raz, about 13,100 lines of code (the
+The compiler is twelve files of raz, about 13,200 lines of code (the
 budget is 18,000). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
@@ -21,13 +21,13 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Sym.raz` | 866 | 689 | Types, objects, scopes, layout |
 | `src/Chunk.raz` | 364 | 280 | The compiled program: chunks, fixups, line notes |
 | `src/X64.raz` | 1,777 | 1,450 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/Gen.raz` | 2,846 | 1,989 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Gen.x86_64.raz` | 2,860 | 1,998 | The stack machine, for x86-64: values, operations, checks, calls, frames |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,922 | 4,179 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Parse.raz` | 4,938 | 4,191 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 411 | 317 | Tree shaking, layout, patching, the places |
-| `src/Elf.raz` | 450 | 356 | Static and dynamic ELF, symbol table, line numbers |
-| `src/Host.raz` | 103 | 52 | The system running the compiler |
-| `src/Raz.raz` | 492 | 384 | The command line, and `-q` for an editor |
+| `src/Exe.linux.raz` | 455 | 358 | The executable, ELF: static and dynamic, symbol table, line numbers |
+| `src/Host.linux.raz` | 103 | 52 | The system running the compiler |
+| `src/Raz.raz` | 493 | 385 | The command line, and `-q` for an editor |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -46,12 +46,18 @@ Three layers do it. `Parse.raz` knows the language's syntax. `Item.raz`
 knows what the program means: each operand is an *item*, as in Wirth's
 compilers, and the routines there check the items' types, fold
 constants and work out where variables are. Neither knows the machine:
-they drive a stack machine, `Gen.raz`, by its calls (push a value,
+they drive a stack machine, `Gen.x86_64.raz`, by its calls (push a value,
 add the two on top, store the top in a variable, jump if it is false),
 each with the kind of the value (a word, a 64-bit integer, an `F32`,
-an `F64`). `Gen.raz` is the only one that knows x86-64; a port to
-another machine is a new `Gen.raz`, with an encoder of its own in place
-of `X64.raz`.
+an `F64`). `Gen` is the only one that knows x86-64; a port to
+another machine is a new `Gen`, with an encoder of its own in place
+of `X64.raz`. Likewise `Exe` is the only one that knows the executable's
+format, and `Host` the host's services. Each is a unit with a file per
+target, which the suffixes of the report's section 3 choose
+(`Gen.x86_64.raz`, `Exe.linux.raz`, `Host.linux.raz`); `Gen.Arch` and
+`Exe.Os` name the target, `"x86_64"` and `"linux"`, and `Raz` gives them
+to `Parse`, whose lookup of a module's file is by them. `src/cross.sh`
+builds a compiler for another target by staging (see Host below).
 
 On x86-64 the stack lives in registers, as in Wirth's compilers
 (Niklaus Wirth's Pascal and Oberon compilers): the value at depth `d`,
@@ -102,11 +108,11 @@ files, no symbol files, and nothing to keep up to date.
 4. Each procedure becomes a chunk of code; `Out.str("hello, world\n")`
    becomes a string chunk, a call, and a fixup to `Out.str`'s chunk.
 5. Back in `Raz.raz`, `use` marks the modules the program uses; the
-   entry point, `_start`, is written by `Gen.raz`'s `entryPoint` as one
+   entry point, `_start`, is written by `Gen.x86_64.raz`'s `entryPoint` as one
    more chunk: save `argc` and `argv` and the address of the places
    (below), call every used module's body, call `main`, call `Rt.exit`.
 6. `markLive` (`Link.raz`) marks what `_start` reaches; then
-   `writeElf` (`Elf.raz`) has `Link.linkAll` place it and patch it, and
+   `Exe.write` (`Exe.linux.raz`) has `Link.linkAll` place it and patch it, and
    writes headers, code, data, symbols and line numbers.
 
 ## A procedure, compiled
@@ -137,7 +143,7 @@ ret
 `scale` calls nothing, so its parameters stay in `rdi` and `rsi`,
 where they arrive (`keepArrived`): they are register variables that
 cost nothing to keep. Every line of it can be traced to a routine in
-`Gen.raz`: the moves are `loaded`'s, the shift and the add `op`'s, the
+`Gen.x86_64.raz`: the moves are `loaded`'s, the shift and the add `op`'s, the
 result `returnJump`'s, and the frame is `enterBody`'s and `endProc`'s.
 It is not the fastest code. It is code whose every instruction you
 can account for, which is the point.
@@ -1529,7 +1535,7 @@ bytes of address 0. `Rt`'s handlers say where and why. What is left is a
 field of a `nil` pointer past that page: an item reached through `^` is
 `deref` until `nilTest` (`Item.raz`) has it used, and Gen's `checkNil`
 tests the pointer only if the use reaches past `NilPage`. A port whose
-machine catches less tests for more, in its own `Gen.raz`: `Rt.fail`
+machine catches less tests for more, in its own `Gen.x86_64.raz`: `Rt.fail`
 stops for a nil pointer, a division by zero and a stack overflow as the
 signals would.
 
@@ -1826,7 +1832,7 @@ own hidden pointer names.
 ## Parse.raz: the parser
 
 A recursive descent parser, one routine for each rule of the grammar in
-the report, calling `Item.raz`, and for jumps `Gen.raz`, as it goes.
+the report, calling `Item.raz`, and for jumps `Gen.x86_64.raz`, as it goes.
 Like the other modules it is written in raz: the Free Pascal seed built
 it the first time, and it builds itself now. Its routines begin in
 lower case, and each one that can find an error ends in an `ERROR`
@@ -2199,7 +2205,7 @@ The entry point gives Rt what the program has (`Gen.Link`): the places,
 address is, and the profiler's start. What it isn't given, nothing
 reaches, so the linker leaves it out: `raz -noprofile` gives no
 profiler, and `raz -s` none of them, whose failures say only their
-address (and `Elf.raz` writes no symbols or line numbers). Hello is 28
+address (and `Exe.linux.raz` writes no symbols or line numbers). Hello is 28
 KB, 21 KB without the profiler, and 7 KB stripped.
 
 The layout is chosen so the file can be mapped as it lies, with no
@@ -2209,9 +2215,11 @@ from its place in the file than the one before, so that no two
 segments, with their different permissions, share a page. bss follows
 the loader's table, or begins a page of its own.
 
-## Elf.raz: the executable
+## Exe.linux.raz: the executable
 
-`writeElf` writes the ELF header, the program headers, the text and
+`Exe`, the executable, is the one unit that knows the file format of
+the target's system; this is Linux's, ELF. A macOS `Exe.darwin.raz`
+will be Mach-O. `Exe.write` writes the ELF header, the program headers, the text and
 rodata images, and then what isn't loaded: section headers, a symbol
 table with every live procedure and variable by `Module.name`, and
 the compile unit that names the line table. The line table is in the
@@ -2226,7 +2234,7 @@ through that quadword. There is no PLT and no lazy binding. The
 loader and the first library are glibc's,
 `/lib64/ld-linux-x86-64.so.2` and `libc.so.6`, or musl's,
 `/lib/ld-musl-x86_64.so.1` and `libc.so`, which musl's loader, being
-the library itself, takes to mean itself (`Elf.setMusl`). `-libc`
+the library itself, takes to mean itself (`Exe.setMusl`). `-libc`
 chooses; left out, `Host.cLibrary` does: musl where the machine has
 its loader and not glibc's, as Alpine does. A symbol that isn't live
 gets no relocation, so a program runs over a C library that lacks a
@@ -2238,11 +2246,11 @@ notes `Chunk.noteLine` made, and the single compile unit gdb needs to find
 it, which `putDebug` writes. There are no types or variables in it;
 gdb can stop at a line and show where it is, not print a variable.
 
-## Host.raz: the system running the compiler
+## Host.linux.raz: the system running the compiler
 
 The host is the system running raz; the target is the system its
 program will run on. Everything the compiler asks of its host that the
-library doesn't give is in `Host.raz`, five procedures, each a real
+library doesn't give is in `Host` (`Host.linux.raz`), five procedures, each a real
 difference between hosts. Nothing else in `src/` makes a system call,
 reads `argv`, opens `/proc` or sets a file's mode; it reads, writes and
 lists files, the environment and the working directory through the
@@ -2258,9 +2266,9 @@ its command line.
   host can't make such a program, and `Raz` refuses one when it finds
   the program uses C. Linux's is glibc, or musl where only its loader
   is there.
-- `writeExecutable`: the bytes `Elf` made, written as an executable.
+- `writeExecutable`: the bytes `Exe` made, written as an executable.
   Linux's writes the file and sets mode 755. It returns false on any
-  failure, which `Elf` reports.
+  failure, which `Exe` reports.
 - `prepareRun`: the path `raz run` writes to, or an error, which is the
   refusal of a host that can't run a program. Linux's is a memfd,
   `/proc/self/fd/N`, kept open until `execute`.
@@ -2268,11 +2276,18 @@ its command line.
   arguments are the compiler's from number `first` on (so its argument 0
   is `Main.raz`), and the environment. It returns only on failure.
 
-**Building for another host.** Stage the sources: copy `src/` to a
-directory, put that host's `Host.raz` there in place of raz's, and
-build `Raz.raz` from the copy with that host's library. This is the one
-way; raz knows no host but Linux. A module in the main file's
-directory is found first, so `-I` alone can't replace `Host.raz`, which
+**Building for another host, or another target.** Stage the sources:
+copy `src/` to a directory with only plain names, a target's file under
+the name of its unit (`Gen.x86_64.raz` as `Gen.raz`, `Exe.linux.raz` as
+`Exe.raz`) and the host's `Host.linux.raz`, or another host's, as
+`Host.raz`, and build `Raz.raz` from the copy with that host's library.
+`src/cross.sh TARGET` does it for a target (`darwin-arm64`) and the
+host's Host: the compiler it makes runs here and compiles for TARGET,
+and it names the files that are missing for one that has none. With
+`TARGET` the one raz is built for, its compiler is `./raz`'s but for
+the paths it holds. This is the one way; raz knows no target or host
+but the files it was built from. A module in the main file's
+directory is found first, so `-I` alone can't replace `Host`, which
 is right: a module is never replaced silently. The new file keeps every
 export, `CLib` too, and opens with what it is, as raz's does.
 `test/host/Host.raz` is such a file (its library from the environment,
@@ -2518,9 +2533,9 @@ facts; each was read in the source, where it says.
   above `rsp`. **The code never writes below `rsp`**, no red zone:
   where it looked, `rsp`-relative operands are in only two places,
   `[rsp]` and `[rsp + 8]` read by the entry point and by the fail
-  stubs (`Gen.entryPoint`, all `X.mem(RSP, ...)` in `Gen.raz`), and
+  stubs (`Gen.entryPoint`, all `X.mem(RSP, ...)` in `Gen.x86_64.raz`), and
   `X64.raz` and the assembler address only through the operands
-  `Gen.raz` gives them. Every other use of the stack is a `push` or
+  `Gen.x86_64.raz` gives them. Every other use of the stack is a `push` or
   a `sub rsp`, which move `rsp` first, and a procedure with no calls
   still makes its frame. An interrupt, then, needs no stack of its own
   (IST) for that reason; it still needs room above the frame for its
@@ -2724,7 +2739,7 @@ fields as the code reads them.
 | `Sys.stdin` | `Scan`: `raz -q`'s source, read from standard input |
 | `Sys.readLink` | `Host.libraryDir`: `/proc/self/exe`, to find the library beside the compiler |
 | `Sys.stderr`, `Sys.stdout`, `Sys.write` | `Diag`: its messages, or `raz -q check`'s rows on standard output |
-| `Sys.workDir` | `Diag`: shows a path relative to the working directory; `Elf`: the compilation directory of the line table |
+| `Sys.workDir` | `Diag`: shows a path relative to the working directory; `Exe`: the compilation directory of the line table |
 
 `Rt`, the run time, besides `fail`, `exit` and the places (above):
 
@@ -2790,7 +2805,7 @@ this one does.
   | | report's least | this compiler |
   |---|---|---|
   | statements, expressions and types nested | 63 levels of statements, 63 of parentheses and calls | 256 together (`MaxNest`) |
-  | values waiting in one expression | none given | 1,024 (`MaxStack`, `Gen.raz`) |
+  | values waiting in one expression | none given | 1,024 (`MaxStack`, `Gen.x86_64.raz`) |
   | chain of imports | 15 modules | 63 (`MaxPending`) |
   | names declared together | 31 | 64 (`MaxNames`) |
   | variables assigned together | 15 | 16 |
@@ -2900,17 +2915,18 @@ this one does.
 ## Where to start changing it
 
 - **A built-in procedure:** an entry in `Sym.raz`'s universe (`enter`),
-  a case in `builtin` in `Parse.raz`, and the code, in `Gen.raz` if it is an
+  a case in `builtin` in `Parse.raz`, and the code, in `Gen.x86_64.raz` if it is an
   instruction, or of calls to gen right there.
 - **An instruction:** a routine in `X64.raz` built on `opM` or `opR`,
   its encoding checked against `objdump -d` once, and a program in
   `conform/` or `test/` that uses it.
-- **A machine:** a new `Gen.raz`, answering the same calls, and an
-  encoder and assembler for it in place of `X64.raz`.
+- **A machine:** a new `Gen.ARCH.raz`, answering the same calls, and an
+  encoder and assembler for it in place of `X64.raz`; and `Exe.OS.raz` if
+  the system's executable differs.
 - **A statement:** a reserved word in `Scan.raz` (in `Sym` and `words`,
   in the same order), a case in `oneStatement`, and a routine beside the
   others.
-- **A check that fails:** `check` in `Gen.raz`, and the message in
+- **A check that fails:** `check` in `Gen.x86_64.raz`, and the message in
   `lib/Rt.raz`'s `fail`; a reason a signal gives, `onSignal` there.
 
 The compiler is in raz. `make raz` builds it with the release `BOOT`

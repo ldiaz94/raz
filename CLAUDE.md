@@ -208,7 +208,8 @@ proposal, an awkwardness or a note, in raz or in any program or library
 written in it. A name that is taken is renamed, and nothing is said of
 it.
 
-The parser reaches the machine only through `Gen.raz`. Keep
+The parser reaches the machine only through `Gen` (`src/Gen.x86_64.raz`),
+and the executable's format only through `Exe` (`src/Exe.linux.raz`). Keep
 `doc/compiler.md`'s table of lines and its routine names true when the
 compiler changes.
 

@@ -34,7 +34,7 @@
    Leaves out: the work itself; the other units compile, link and
    write, and this only reads the command line and runs them in order. *)
 module Raz;
-import Sys, Out, Str, Version, Files, Host, Fmt, Diag, Scan, Sym, Chunk, X64, Gen, Parse, Link, Elf;
+import Sys, Out, Str, Version, Files, Host, Fmt, Diag, Scan, Sym, Chunk, Gen, Parse, Link, Exe;
 import SYSTEM;
 
 const
@@ -72,20 +72,20 @@ begin
 end;
 
 (* Whether the program uses C: if so, the libraries it needs go to
-   Elf, the C library first. *)
+   Exe, the C library first. *)
 proc usesC: BOOL;
 var m, st, c: ^Sym.Module; l: ^Sym.Lib;
 begin
     st := nil; c := nil;
-    Elf.noLibs();
-    _ := Elf.needLib(internStr(Elf.libc));
+    Exe.noLibs();
+    _ := Exe.needLib(internStr(Exe.libc));
     m := Parse.firstModule;
     while m # nil do
         if m^.used and m^.linkStatic then st := m; end;
         if m^.used and m^.usesC then c := m; end;
         l := m^.libs;
         while m^.used and (l # nil) do
-            if not Elf.needLib(l^.name) then Diag.fatal("more than 32 libraries"); end;
+            if not Exe.needLib(l^.name) then Diag.fatal("more than 32 libraries"); end;
             l := l^.next;
         end;
         m := m^.next;
@@ -93,7 +93,7 @@ begin
     if (st # nil) and (c # nil) then
         Diag.fatal(Diag.say("{} says link static, but {} uses C", [Fmt.str(Scan.nameOf(st^.name)), Fmt.str(Scan.nameOf(c^.name))]));
     end;
-    if c = nil then Elf.noLibs(); end;
+    if c = nil then Exe.noLibs(); end;
     return c # nil;
 end;
 
@@ -350,9 +350,9 @@ begin
             Diag.setWerror(true);
         elsif s = "-S" then
             listing := true;
-            X64.setListing(true);
+            Gen.setListing(true);
         elsif s = "-s" then
-            Elf.setStripped(true);
+            Exe.setStripped(true);
         elsif s = "-base" then
             INC(i);
             base, ok := address(Files.arg(i));
@@ -371,7 +371,7 @@ begin
             INC(i);
             s := Files.arg(i);
             if (s # "glibc") and (s # "musl") then Diag.fatal(say1("unknown C library {}: glibc or musl", s)); end;
-            Elf.setMusl(s = "musl");
+            Exe.setMusl(s = "musl");
             libcSaid := true;
         elsif (s = "-h") or (s = "--help") then
             usage();
@@ -400,8 +400,9 @@ begin
         outPath, err := Host.prepareRun();
         if err # nil then Diag.fatal(MSG(err)); end;
     end;
-    if not libcSaid then Elf.setMusl(Host.cLibrary() = Host.musl); end;
+    if not libcSaid then Exe.setMusl(Host.cLibrary() = Host.musl); end;
     Parse.setVersion(Version.Text);
+    Parse.setTarget(Exe.Os, Gen.Arch);
     if LEN(libDir) = 0 then libDir := Host.libraryDir(); end;
     Parse.setLibDir(libDir);
     userLibraries();
@@ -446,7 +447,7 @@ begin
        -noprofile no profiler, and -bare no profiler, since Rt's body,
        which starts it, doesn't run. *)
     numLinks := 0;
-    if not Elf.stripped then giveRtPlaces(rt, not noProfile and not bare); end;
+    if not Exe.stripped then giveRtPlaces(rt, not noProfile and not bare); end;
     (* what a program that uses C is given of C: Rt its exit, and
        Thread, if the program has it, the calls that make and join C's
        threads, so that the C library knows of them *)
@@ -475,17 +476,17 @@ begin
     end;
     if Diag.errors > 0 then Diag.finish(); end;
     if listing then
-        X64.list(m^.sname);
+        Gen.list(m^.sname);
         return 0;
     end;
 
-    Elf.setMainPath(path);
+    Exe.setMainPath(path);
     if run then
-        Elf.writeElf(outPath, entry);
+        Exe.write(outPath, entry);
         _ := Host.execute(outPath, first);   (* the program's argv is ours from Main.raz on *)
         Diag.fatal(say1("can't run {}", path));
     end;
-    Elf.writeElf(outPath, entry);
+    Exe.write(outPath, entry);
     return 0;
 end;
 

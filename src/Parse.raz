@@ -82,7 +82,6 @@ const
     MaxPending = 64;      (* modules being compiled at once *)
     MaxFors = 256;        (* for loops of a procedure whose limit may go in a register *)
     MaxNest = 256;        (* statements, expressions and types nested; each level is a few recursive calls of the parser *)
-    Suffixes: [4][]const U8 = [".linux-x86_64", ".linux", ".x86_64", ""];
 
 var
     libDir*, mainDir: []const U8;
@@ -90,6 +89,7 @@ var
     numInc*: INT;
     userDirs: [][]const U8;    (* RAZ_PATH, or HOME/.raz/lib; set by the driver *)
     thisVersion: []const U8;   (* the compiler's version; set by the driver *)
+    targetOs, targetArch: []const U8;   (* the target's names, Exe.Os and Gen.Arch; set by the driver *)
     originNote: []const U8;    (* for the module about to be opened, see libraryNote *)
     firstModule*, lastModule*: PModule;   (* in the order they were finished *)
 
@@ -172,6 +172,14 @@ end;
 proc setUserDirs*(dirs: [][]const U8);
 begin
     userDirs := dirs;
+end;
+
+(* The target's operating system and machine, as the suffixes of a
+   module's files say them: Exe.Os and Gen.Arch, which the driver gives *)
+proc setTarget*(os, arch: []const U8);
+begin
+    targetOs := os;
+    targetArch := arch;
 end;
 
 (* The driver's version of the compiler, which a library's note names *)
@@ -4715,11 +4723,19 @@ begin
     return libDir;
 end;
 
-(* The file of module n in dir that suffix j says: Name.linux-x86_64.raz
-   for a file of this target alone, and so on to Name.raz *)
+(* The file of module n in dir that suffix j says: Name.OS-ARCH.raz for
+   a file of this target alone (Name.linux-x86_64.raz, say), then
+   Name.OS.raz, Name.ARCH.raz, and Name.raz *)
 proc fileName(n, j: INT): []const U8;
 begin
-    return Diag.say("{}{}.raz", [Fmt.str(nameOf(n)), Fmt.str(Suffixes[j])]);
+    if j = 0 then
+        return Diag.say("{}.{}-{}.raz", [Fmt.str(nameOf(n)), Fmt.str(targetOs), Fmt.str(targetArch)]);
+    elsif j = 1 then
+        return Diag.say("{}.{}.raz", [Fmt.str(nameOf(n)), Fmt.str(targetOs)]);
+    elsif j = 2 then
+        return Diag.say("{}.{}.raz", [Fmt.str(nameOf(n)), Fmt.str(targetArch)]);
+    end;
+    return Diag.say("{}.raz", [Fmt.str(nameOf(n))]);
 end;
 
 proc moduleFile(n: INT): ([]const U8, []const U8, BOOL);

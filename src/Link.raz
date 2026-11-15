@@ -9,12 +9,12 @@
    text right after the headers, rodata on the next page, then a
    writable page that starts with the table the dynamic loader reads
    (none in a static program) and goes on as bss, in memory only. The
-   loader's other tables come at the end of rodata; Elf writes them
+   loader's other tables come at the end of rodata; Exe writes them
    in the room left there.
 
    Depends on: Chunk for chunks and fixups, Scan for names and memory,
    Diag for errors and paths.
-   Leaves out: the file format; that is Elf. *)
+   Leaves out: the file format; that is Exe. *)
 module Link;
 import Fmt, Diag, Scan, Chunk;
 import SYSTEM;
