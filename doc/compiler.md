@@ -1,8 +1,9 @@
 # Reading the raz compiler
 
-The compiler is thirteen files of raz, about 14,600 lines of code (the
-budget is 18,000); one of them, `A64.raz`, arm64's encoder, waits for
-the back end that will use it (`PLAN.md` 5). It is its own compiler: a release of it, the one
+The compiler is fifteen files of raz, about 16,100 lines of code (the
+budget is 18,000); three of them, `A64.raz`, `Gen.arm64.raz` and
+`Exe.darwin.raz`, are the Mac's back end, begun (`PLAN.md` 5), built
+only into a compiler for `darwin-arm64` (`src/cross.sh`). It is its own compiler: a release of it, the one
 `BOOT` names, builds `src/`, and `make fixpoint` checks that what it
 makes makes itself again, byte for byte. Each release was built by the
 one before it, back to v0.19.0, which the Pascal compiler it was ported
@@ -18,18 +19,20 @@ library, made from `lib/` by `tools/Doc.raz`.
 | File | Lines | Code | What |
 |---|---|---|---|
 | `src/Diag.raz` | 479 | 363 | Messages: positions, source excerpts, colour, counts |
-| `src/Scan.raz` | 1,279 | 1,048 | Symbols, literals, comments, positions |
+| `src/Scan.raz` | 1,288 | 1,050 | Symbols, literals, comments, positions |
 | `src/Sym.raz` | 866 | 689 | Types, objects, scopes, layout |
-| `src/Chunk.raz` | 389 | 288 | The compiled program: chunks, fixups, line notes |
-| `src/X64.raz` | 1,777 | 1,450 | The instruction encoder, jumps within a procedure, the assembler |
-| `src/A64.raz` | 1,848 | 1,365 | The same for arm64, not yet imported: the encoder, jumps, the assembler |
-| `src/Gen.x86_64.raz` | 2,860 | 1,998 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Chunk.raz` | 410 | 302 | The compiled program: chunks, fixups, line notes |
+| `src/X64.raz` | 1,771 | 1,450 | The instruction encoder, jumps within a procedure, the assembler |
+| `src/A64.raz` | 1,843 | 1,365 | The same for arm64: the encoder, jumps, the assembler |
+| `src/Gen.x86_64.raz` | 2,861 | 1,999 | The stack machine, for x86-64: values, operations, checks, calls, frames |
+| `src/Gen.arm64.raz` | 1,468 | 1,107 | The same for arm64, begun: frames, values, operations, jumps, calls |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
-| `src/Parse.raz` | 4,938 | 4,191 | Declarations, statements, expressions, built-ins, recovery, warnings |
-| `src/Link.raz` | 411 | 317 | Tree shaking, layout, patching, the places |
+| `src/Parse.raz` | 4,948 | 4,198 | Declarations, statements, expressions, built-ins, recovery, warnings |
+| `src/Link.raz` | 481 | 365 | Tree shaking, layout, patching, the places |
 | `src/Exe.linux.raz` | 455 | 358 | The executable, ELF: static and dynamic, symbol table, line numbers |
+| `src/Exe.darwin.raz` | 458 | 332 | The executable for macOS, Mach-O: dyld's binds and rebases, the signature |
 | `src/Host.linux.raz` | 103 | 52 | The system running the compiler |
-| `src/Raz.raz` | 493 | 385 | The command line, and `-q` for an editor |
+| `src/Raz.raz` | 499 | 390 | The command line, and `-q` for an editor |
 
 Every file opens with a comment that says what it is, what it depends
 on and what it leaves out. Read those first; they are the map.
@@ -1154,8 +1157,7 @@ distance to another chunk: a call's target, or a rip-relative address.
 `fxPage21`, an `adrp`'s distance in pages of 4 KB; `fxPageOff12`, an
 address's place in its page, in an `add` or, divided by the size the
 instruction reads, a load's or store's offset; as the Mach-O relocations
-of the same names. `Link.raz` patches only x86-64's yet; arm64's come
-with the Mac's executable. A constant's addresses
+of the same names, which `Link.raz` patches. A constant's addresses
 are *data fixups*, `addDataFixup`'s: 64-bit fields in rodata that will
 hold a chunk's address itself, since the executable is loaded where the
 linker placed it. `noteLine` records which line and column of the source
@@ -1165,7 +1167,11 @@ will fill with that symbol's address. `takeBack` and `rewindTo` undo the
 end of what was made, for a body compiled a second time. What other
 modules set in a chunk, such as `live` or `adr`, has a setter each
 (`setLive`, `setAdr`), since an exported variable can't be set from
-outside. None of this depends on the machine.
+outside. None of this depends on the machine, but two things a `Gen`
+gives it: `pad`, the word that fills the gaps between procedures, a
+trap if ever run (`setPad`: int3 on x86-64, brk on arm64); and, on a
+chunk, what that `Gen` can't make yet (`setMissing`), an error if the
+chunk is live (`Gen.arm64.raz` says more).
 
 ## X64.raz: machine code
 
@@ -1278,9 +1284,9 @@ the next instruction; the line notes made after it move back with it
 
 ## A64.raz: arm64's machine code
 
-X64's twin, for arm64: what `Gen.arm64.raz` will call, and the
-assembler of a code procedure on the Mac. No compiler imports it yet;
-`test/a64` checks every routine against Apple's assembler.
+X64's twin, for arm64: what `Gen.arm64.raz` calls, and the assembler
+of a code procedure on the Mac. Only a compiler for `darwin-arm64`
+imports it; `test/a64` checks every routine against Apple's assembler.
 
 Every instruction is one word of 32 bits, which `emit` writes. A
 routine builds the word from its fields with shifts and ors, and its
@@ -1704,6 +1710,96 @@ writes the register (`xHome`): the trap report finds it there, and
 `call` loads the register from it after each call, as System V has no
 callee-saved xmm register.
 
+## Gen.arm64.raz: the stack machine on arm64
+
+arm64's `Gen`, for macOS on Apple Silicon (`PLAN.md` 5), is begun. It
+answers every call `Gen.x86_64.raz` answers, with the same parameters,
+as the interface check holds the two files to (report, 3), and makes
+frames, constants, the values of variables and their stores, the
+integer operations but division, comparisons and jumps, elements and
+slices unchecked, calls with integer arguments in registers, C's
+calls, code procedures (`A64.assemble`) and the entry point. `Gen.Arch`
+is `"arm64"`.
+
+*Not yet.* What it can't make yet isn't refused at once, since a
+library module holds much that a program never calls: the C library's
+`Sys` is compiled whole for the Mac, as the interface check of `Rt`
+reads `Rt.raz`, which imports it. So a routine not yet made calls
+`notYet`, which notes on the procedure's chunk what it is and where,
+the first only (`Chunk.setMissing`); keeps the stack as the real
+routine would, so that the compile reads on; and makes what code it
+likes, never run. Once `Link.markLive` has marked what the program
+reaches, `Raz` makes each live chunk so noted an error at its place:
+
+    D.raz:8:19: error: not yet on arm64: div and mod
+
+A program that uses what isn't made fails to compile, and one that
+doesn't compiles. `beginProc` comes before its chunk is begun, so its
+notes wait for `enterBody` (`pending`). A routine not yet made reads
+into `_` the parameters it doesn't use yet, so that none is warned of.
+
+*The stack* is x86-64's, kept as plainly as it can be: the value at
+depth d is in `Regs[d mod 6]`, x9 to x14, which a call may change and
+which carry no argument, so `call` moves the arguments into x0 to x7 in
+any order, with none held back as x86's r8 and r9 are. A value is a
+constant (`lConst`), an address in the frame or of a chunk not yet
+made (`lAdr`), in its register (`lReg`) or spilled to a slot
+(`lFrame`). There is no `lMem`, `lIdx`, `lHeld` or `lInto`: arm64 takes
+memory only in a load or a store, so `pushVar` loads at once, an
+operand is always a register, and a register variable is copied into
+the value's register. Outside the stack, x15 and x17 are Gen's scratch,
+as rax and rcx are x86's; x16 is A64's; x0 to x3 copy and cut slices,
+between calls; x8 is kept for the address of a result in memory, as
+Apple's convention has it, and x18, the system's, is never touched.
+
+A place in memory is a `Mem`: a register and an offset, or a chunk and
+an offset, which A64 reaches by `adrp` and the place in the page
+(`loadChunk`, `storeChunk`), since macOS loads a program anywhere.
+`place` makes one of an `Adr`, as x86's makes an operand.
+
+*Frames* follow Apple's convention. The prologue pushes the frame
+record, x29 and x30, points x29 at it, and lowers sp by the frame, whose
+size `endProc` patches into two `sub`s, of its bits from 12 up and of
+its low 12, so that a frame is less than 16 MB. `Loop.main` of
+`test/mac`, with `i` in x19:
+
+```
+stp x29, x30, [sp, #-16]!
+mov x29, sp
+sub sp, sp, #0, lsl #12        ; the frame, patched in by endProc
+sub sp, sp, #32
+stur xzr, [x29, #-8]           ; sum, a local in memory, zeroed
+stur x19, [x29, #-24]          ; i's register, saved and zeroed
+mov x19, #0
+...
+mov sp, x29                    ; endProc's
+ldp x29, x30, [sp], #16
+ret
+```
+
+Every slot is at a negative offset from x29, and nothing is pushed in
+a body, so sp stays a multiple of 16 and `pushed` is always 0. The
+busiest variables take x19 to x23 (`VarRegs`), which a callee gives
+back; no parameter is kept where it arrives (`keepArrived` does
+nothing); the reals' variables will take d8 to d15 (`XVarRegs`,
+numbered from `XmmVar`, 32, above every x register, which `Parse` tells
+apart by it).
+
+*Calls* move each argument into x0 to x7; a single result comes back in
+x0, two words in x0 and x1, and a narrow result of C's is extended, as
+C leaves the upper bits as they fall. C's procedure is called through
+the quadword the loader fills in, `adrp x16` of its page, `ldr x17,
+[x16, ...]` and `blr x17`; a procedure value from its slot, `blr x17`
+too.
+
+*The entry point* (`entryPoint`) is the C `main` that dyld calls: it
+pushes a frame record, which links to dyld's, saves argc, an `int` it
+extends to 64 bits, and argv, gives `Rt` C's `exit` in `cExit` and the
+addresses it is given, runs every used module's body and `main`, and
+calls `Rt.exit` with `main`'s result or 0. `brk #1` follows it, and
+fills the gaps between procedures (`Chunk.setPad`). A program for the
+Mac always uses C, so `dynamic` is always true; `-bare` is refused.
+
 ## Item.raz: items
 
 An operand is an *item* (`Item`), as in Wirth's compilers. Its `mode`
@@ -2093,7 +2189,13 @@ later directory has the module too, unless the file is a link to one
 of its files there (a file's identity is its device and inode from `Sys.info`,
 which follows a symbolic link, as on every target); `checkSiblings` then reads the files for other
 targets beside it, declarations only, and `compareIface` holds them
-to the same exports by their fingerprints. A generic module is
+to the same exports by their fingerprints: a parameter's name is part
+of a procedure's, and a named type's module part of the type's, so the
+assemblers' readers, which both `Gen`s take, are `Scan`'s
+(`Scan.ConstFn`, `Scan.NameFn`). A code procedure of such a file is
+skipped to its `end`, not assembled, as it is in another machine's
+assembly. The modules such a file imports are compiled whole, as any
+import is: on the Mac, `Rt.raz`'s `Sys`. A generic module is
 compiled once per distinct list of arguments, where it is first used.
 The import only notes where its arguments are (`skipArgs`, `deferred`);
 `firstUse`, from `qualIdent`, has `makeInstance` go back there, where
@@ -2324,11 +2426,26 @@ from its place in the file than the one before, so that no two
 segments, with their different permissions, share a page. bss follows
 the loader's table, or begins a page of its own.
 
+Mach-O is laid out otherwise. `Exe.darwin.raz` sets the base to
+100000000H, past the 4 GB `__PAGEZERO` that arm64 macOS demands, and
+`Link.setPaged` to its page of 16 KB: each segment then starts on a
+page of its own, in the file as in memory, at the base plus its offset
+in the file (`paged`), rodata on the page after the code and bss on the
+page after rodata, with no bytes in the file. The 2 GB check, which is
+for `X64.memAbs`'s 32-bit addresses, isn't made. The words of rodata
+that a data fixup patches are listed by their addresses (`rebases`),
+since macOS loads a program anywhere and dyld moves them with it.
+arm64's fixups are patched by `patchArm`: a branch's distance in words,
+an `adrp`'s in pages of 4 KB, and an address's place in its page, in an
+`add` or, divided by the size it moves, in a load or a store, as
+`Chunk.FixKind` says. The places keep the addresses the linker gave;
+the Mac's `Rt` will take dyld's slide from what it looks up.
+
 ## Exe.linux.raz: the executable
 
 `Exe`, the executable, is the one unit that knows the file format of
-the target's system; this is Linux's, ELF. A macOS `Exe.darwin.raz`
-will be Mach-O. `Exe.write` writes the ELF header, the program headers, the text and
+the target's system; this is Linux's, ELF. macOS's, `Exe.darwin.raz`,
+is Mach-O (below). `Exe.write` writes the ELF header, the program headers, the text and
 rodata images, and then what isn't loaded: section headers, a symbol
 table with every live procedure and variable by `Module.name`, and
 the compile unit that names the line table. The line table is in the
@@ -2354,6 +2471,54 @@ Line numbers are DWARF 4: the line table `makeLines` made from the
 notes `Chunk.noteLine` made, and the single compile unit gdb needs to find
 it, which `putDebug` writes. There are no types or variables in it;
 gdb can stop at a line and show where it is, not print a variable.
+
+## Exe.darwin.raz: the Mac's executable
+
+`Exe` for macOS on arm64 writes Mach-O as dyld, the dynamic loader,
+takes it and the kernel runs it, with the same calls as Linux's: the
+driver's `needLib`, `setStripped` and `write` mean what they mean
+there, and `setMusl` refuses musl. `-base` is refused, since macOS
+loads a program where it chooses, and a library besides libSystem
+isn't linked yet. The file:
+
+| Part | What |
+|---|---|
+| header | `MH_EXECUTE` for `CPU_TYPE_ARM64`, flags `MH_PIE` and the dynamic loader's |
+| `__PAGEZERO` | 4 GB at address 0, no access: arm64 macOS runs no program without it |
+| `__TEXT` | the header again, at 0, and the code, read and run |
+| `__DATA_CONST` | rodata, which dyld makes read-only once it has rebased it (`SG_READ_ONLY`) |
+| `__DATA` | the variables and C's symbols' quadwords, zeros, not in the file |
+| `__LINKEDIT` | dyld's opcodes, the symbol table, and the code signature |
+
+and its load commands: `LC_DYLD_INFO_ONLY` for the rebases and binds;
+`LC_SYMTAB` with each named live chunk, as on Linux, a local symbol
+for lldb, and `LC_DYSYMTAB`, which says all are local;
+`LC_LOAD_DYLINKER` naming `/usr/lib/dyld`; `LC_UUID`, the first 16
+bytes of the SHA-256 of what follows the header; `LC_BUILD_VERSION`,
+macOS 11.0 and up; `LC_MAIN`, the entry point's offset; `LC_LOAD_DYLIB`,
+`/usr/lib/libSystem.B.dylib`; and `LC_CODE_SIGNATURE`. The header has
+the room of every command, `HeaderRoom`, as the code's place is fixed
+before the commands' sizes are known.
+
+Rodata holds the addresses of other chunks (a constant's data fixups),
+and macOS loads a program anywhere, so dyld must move each: a rebase.
+C's symbols are bound into their quadwords from libSystem by name,
+with Mach-O's `_` before it. Both are dyld's opcodes, the plainest form
+it still takes: a rebase is `SET_SEGMENT_AND_OFFSET_ULEB` and
+`DO_REBASE_IMM_TIMES`, two bytes and the offset; a bind the symbol's
+name, its segment and offset, and `DO_BIND`. The other form, chained
+fixups, which Apple's linker writes now, threads them through the data
+itself with tables of where each chain starts on each page.
+
+arm64 macOS runs nothing unsigned, so the file ends with an ad-hoc
+code signature, which the kernel checks as it maps each page: a
+SuperBlob holding one CodeDirectory, big-endian, of version 20400H
+(with the executable segment, `__TEXT`), flags ad hoc and the linker's,
+the program's name, and a SHA-256 hash of each page of 4 KB of the
+file before the signature. `putHash` is SHA-256 (FIPS 180-4), as
+`site/Sha256.raz` has it, made for bytes rather than hex. `otool -l`,
+`codesign -v -v` and `vtool -show` read the file as Apple's tools
+make it.
 
 ## Host.linux.raz: the system running the compiler
 
@@ -2401,7 +2566,11 @@ is right: a module is never replaced silently. The new file keeps every
 export, `CLib` too, and opens with what it is, as raz's does.
 `test/host/Host.raz` is such a file (its library from the environment,
 no run, no C), and `test/compiler-host.sh` builds the compiler with it
-and checks the four differences. The host changes nothing of the target:
+and checks the four differences. `src/cross.sh darwin-arm64` builds the
+compiler for the Mac this way, in the linux/amd64 container, and `make
+mac-check` (`test/mac.sh`), on an Apple Silicon Mac, has it compile
+`test/mac`'s programs there and runs each here, natively, against its
+`X.expect` and `X.status`. The host changes nothing of the target:
 a program for another system still needs that system's `Sys` and `Rt`,
 and for a kernel the options `-bare`, `-s` and `-base`.
 

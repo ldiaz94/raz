@@ -467,6 +467,12 @@ begin
         objIn(rt, "exit")^.chunk, links[0..numLinks], numLinks);
 
     Link.markLive(entry);
+    (* what the target's Gen can't make yet stops a program that uses it *)
+    for i := 0 to Chunk.numChunks - 1 do
+        if Chunk.chunks[i].live and (LEN(Chunk.chunks[i].missing) > 0) then
+            Diag.error(Chunk.chunks[i].missingAt, Chunk.chunks[i].missing);
+        end;
+    end;
     if not Parse.HasReals then
         for i := 0 to Chunk.numChunks - 1 do
             if Chunk.chunks[i].live and Chunk.chunks[i].reals then

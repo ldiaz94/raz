@@ -44,15 +44,9 @@ type
         chunk*: INT;    (* with RIP: the chunk addressed *)
     end;
 
-    (* The parser's reader of an integer constant in a code procedure: a
-       whole expression, or, when whole is false, a single factor *)
-    ConstFn* = proc(whole: BOOL): (I64, ERROR);
-
-    (* The parser's reader of a name in a code procedure that stands for an
-       address: a procedure or a module variable, bare or qualified. Its
-       chunk, the name read; or -1, nothing read, if the name at the scan
-       is anything else, which is then read as a constant *)
-    NameFn* = proc: (INT, ERROR);
+    (* The parser's readers of a constant and of a name (Scan says) *)
+    ConstFn* = Scan.ConstFn;
+    NameFn* = Scan.NameFn;
 
     (* The text of the instruction that starts at at, for the listing *)
     Said = record

@@ -1,6 +1,6 @@
 (* Exe: the executable file, for Linux: ELF.
 
-   Exe.darwin.raz, for macOS, will be Mach-O; a target has one Exe, chosen
+   Exe.darwin.raz, for macOS, is Mach-O; a target has one Exe, chosen
    by the suffix of its file (doc/raz.md, 3), and no other unit knows the
    format. This one writes an ELF64 executable: the ELF header, the
    program headers, the linked text and rodata, and section headers

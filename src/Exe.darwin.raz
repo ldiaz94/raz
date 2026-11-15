@@ -1,0 +1,458 @@
+(* Exe: the executable file, for macOS on arm64: Mach-O.
+
+   Exe.linux.raz, for Linux, is ELF; a target has one Exe, chosen by the
+   suffix of its file (doc/raz.md, 3), and no other unit knows the
+   format. This one writes a Mach-O executable as dyld, macOS's dynamic
+   loader, takes one, and the kernel runs one on arm64:
+
+     the header and load commands
+     __PAGEZERO  4 GB at address 0, no access: arm64 macOS runs no
+                 program without it, so a nil pointer faults
+     __TEXT      the header again, and the code, read and run
+     __DATA_CONST  rodata, made read-only once dyld has moved the
+                 addresses in it (rebases)
+     __DATA      the variables, zeros, and C's symbols' quadwords, which
+                 dyld fills in (binds)
+     __LINKEDIT  what dyld reads, unmapped by the program: the rebases
+                 and binds, the symbol table, and the code signature
+
+   Each segment starts on a page of 16 KB, in the file as in memory, at
+   its offset in the file from __TEXT's address (Link.setPaged). macOS
+   loads a program at an address of its own choosing (MH_PIE), so every
+   address held in data is listed for dyld to move with it: those in
+   rodata, which Link lists (Link.rebases); code makes its addresses by
+   adrp from its own. Every program is linked to libSystem, through
+   which a Mac's program reaches the kernel; C's symbols are bound from
+   it, as Linux's GLOB_DAT does it, into quadwords the code reads. The
+   rebases and binds are dyld's opcodes (LC_DYLD_INFO_ONLY), the
+   plainest form dyld still takes: a few bytes for each address, where
+   chained fixups would thread them through the data with tables to say
+   where each chain starts. arm64 macOS runs nothing unsigned, so the
+   file ends with an ad-hoc code signature: a SHA-256 hash of each of
+   its pages of 4 KB, in a CodeDirectory, which the kernel checks as it
+   maps them.
+
+   Depends on: Link for the images and addresses, Chunk for the chunks,
+   Scan for names and memory, Diag for errors, Host to write the file.
+   Leaves out: line numbers (DWARF, in __DWARF, PLAN.md 5), libraries
+   besides libSystem, an export trie (the program exports nothing).
+
+   Exported variables can't be set from outside, so needLib, setMusl,
+   setMainPath and setStripped do it. *)
+module Exe;
+import Host, Fmt, Diag, Scan, Chunk, Link;
+import SYSTEM;
+
+const
+    Os* = "darwin";      (* the target's operating system, as a file's suffix says it *)
+    Base = 100000000H;   (* __TEXT's address, past __PAGEZERO; dyld moves it *)
+    Page = 4000H;        (* arm64 macOS's page, 16 KB, on which each segment starts *)
+    HashPage = 1000H;    (* the signature hashes pages of 4 KB *)
+    Dyld = "/usr/lib/dyld";
+    (* room for the header and the most load commands: see write *)
+    HeaderRoom = 32 + 72 + 3 * 152 + 72 + 48 + 24 + 80 + 32 + 24 + 24 + 24 + 56 + 16;
+
+var
+    needed: [32]INT;     (* the libraries to load, names interned *)
+    numNeeded*: INT;
+    stripped*: BOOL;     (* -s: no symbols *)
+    libc*: []const U8;   (* the C library, libSystem *)
+
+    buf: ^U8;
+    len, cap: INT;
+
+(* The library name, to be loaded, unless it is already: false if there
+   are too many *)
+proc needLib*(name: INT): BOOL;
+var i: INT;
+begin
+    for i := 0 to numNeeded - 1 do
+        if needed[i] = name then return true; end;
+    end;
+    if numNeeded = 32 then return false; end;
+    needed[numNeeded] := name;
+    INC(numNeeded);
+    return true;
+end;
+
+proc noLibs*;
+begin
+    numNeeded := 0;
+end;
+
+(* -libc chooses Linux's C library; a Mac has one, libSystem *)
+proc setMusl*(yes: BOOL);
+begin
+    if yes then Diag.fatal("-libc musl: a program for macOS is linked to libSystem"); end;
+end;
+
+(* The main module's file, which line numbers will name *)
+proc setMainPath*(path: []const U8);
+begin
+    _ := path;
+end;
+
+proc setStripped*(yes: BOOL);
+begin
+    stripped := yes;
+end;
+
+proc room(n: INT);
+begin
+    if len + n > cap then
+        buf := Scan.regrab(buf, len, cap * 2 + n);
+        cap := cap * 2 + n;
+    end;
+end;
+
+(* The n low bytes of v, least significant first, as Mach-O is *)
+proc putN(v: INT; n: INT);
+var i: INT;
+begin
+    room(n);
+    for i := 0 to n - 1 do
+        buf[len] := U8(v & 0FFH);
+        v := v shr 8;
+        INC(len);
+    end;
+end;
+
+(* The n low bytes of v, most significant first, as the signature is *)
+proc putBE(v: INT; n: INT);
+var i: INT;
+begin
+    for i := n - 1 to 0 by -1 do putN(v shr (8 * i), 1); end;
+end;
+
+proc putBytes(p: ^U8; n: INT);
+begin
+    room(n);
+    if n > 0 then COPY(buf[len..len + n], p[0..n]); end;
+    len := len + n;
+end;
+
+proc padTo(off: INT);
+begin
+    while len < off do putN(0, 1); end;
+end;
+
+(* s and a zero byte *)
+proc putStr(s: []const U8);
+begin
+    putBytes(SYSTEM.PTR(s), LEN(s));
+    putN(0, 1);
+end;
+
+(* s in a field of n bytes, the rest zeros, as a segment's name *)
+proc putName(s: []const U8; n: INT);
+var at: INT;
+begin
+    at := len;
+    putBytes(SYSTEM.PTR(s), LEN(s));
+    padTo(at + n);
+end;
+
+(* LEB128, unsigned, as dyld's opcodes take their operands *)
+proc putU(v: INT);
+begin
+    while v >= 80H do
+        putN(v & 7FH | 80H, 1);
+        v := v shr 7;
+    end;
+    putN(v, 1);
+end;
+
+(* n, up to a multiple of m *)
+proc roundUp(n, m: INT): INT;
+begin
+    return (n + m - 1) div m * m;
+end;
+
+(* SHA-256 (FIPS 180-4), for the signature's hashes: the message in
+   blocks of 64 bytes, the last ones padded with a one bit, zeros and
+   the message's length in bits *)
+
+const
+    (* the first 32 bits of the cube roots of the first 64 primes *)
+    K: [64]U32 = [
+        0428A2F98H, 071374491H, 0B5C0FBCFH, 0E9B5DBA5H, 03956C25BH, 059F111F1H, 0923F82A4H, 0AB1C5ED5H,
+        0D807AA98H, 012835B01H, 0243185BEH, 0550C7DC3H, 072BE5D74H, 080DEB1FEH, 09BDC06A7H, 0C19BF174H,
+        0E49B69C1H, 0EFBE4786H, 00FC19DC6H, 0240CA1CCH, 02DE92C6FH, 04A7484AAH, 05CB0A9DCH, 076F988DAH,
+        0983E5152H, 0A831C66DH, 0B00327C8H, 0BF597FC7H, 0C6E00BF3H, 0D5A79147H, 006CA6351H, 014292967H,
+        027B70A85H, 02E1B2138H, 04D2C6DFCH, 053380D13H, 0650A7354H, 0766A0ABBH, 081C2C92EH, 092722C85H,
+        0A2BFE8A1H, 0A81A664BH, 0C24B8B70H, 0C76C51A3H, 0D192E819H, 0D6990624H, 0F40E3585H, 0106AA070H,
+        019A4C116H, 01E376C08H, 02748774CH, 034B0BCB5H, 0391C0CB3H, 04ED8AA4AH, 05B9CCA4FH, 0682E6FF3H,
+        0748F82EEH, 078A5636FH, 084C87814H, 08CC70208H, 090BEFFFAH, 0A4506CEBH, 0BEF9A3F7H, 0C67178F2H];
+
+type Hash = [8]U32;
+
+(* Mixes the 64 bytes p into the running hash h *)
+proc block(var h: Hash; p: []const U8);
+var w: [64]U32; v: Hash; t1, t2: U32; i: INT;
+begin
+    for i := 0 to 15 do
+        w[i] := (U32(p[4 * i]) shl 24) | (U32(p[4 * i + 1]) shl 16) | (U32(p[4 * i + 2]) shl 8) | U32(p[4 * i + 3]);
+    end;
+    for i := 16 to 63 do
+        w[i] := w[i - 16] + (ROR(w[i - 15], 7) xor ROR(w[i - 15], 18) xor (w[i - 15] shr 3))
+            + w[i - 7] + (ROR(w[i - 2], 17) xor ROR(w[i - 2], 19) xor (w[i - 2] shr 10));
+    end;
+    v := h;   (* a to h, as the standard names them, are v[0] to v[7] *)
+    for i := 0 to 63 do
+        t1 := v[7] + (ROR(v[4], 6) xor ROR(v[4], 11) xor ROR(v[4], 25)) + ((v[4] & v[5]) xor (~v[4] & v[6])) + K[i] + w[i];
+        t2 := (ROR(v[0], 2) xor ROR(v[0], 13) xor ROR(v[0], 22)) + ((v[0] & v[1]) xor (v[0] & v[2]) xor (v[1] & v[2]));
+        v[7] := v[6]; v[6] := v[5]; v[5] := v[4]; v[4] := v[3] + t1;
+        v[3] := v[2]; v[2] := v[1]; v[1] := v[0]; v[0] := t1 + t2;
+    end;
+    for i := 0 to 7 do h[i] := h[i] + v[i]; end;
+end;
+
+(* The SHA-256 of data, its 32 bytes put at the end of buf *)
+proc putHash(data: []const U8);
+var h: Hash; tail: [128]U8; whole, rest, n, i: INT;
+begin
+    h := [06A09E667H, 0BB67AE85H, 03C6EF372H, 0A54FF53AH, 0510E527FH, 09B05688CH, 01F83D9ABH, 05BE0CD19H];
+    whole := LEN(data) div 64 * 64;
+    for i := 0 to whole - 64 by 64 do block(h, data[i..i + 64]); end;
+    rest := LEN(data) - whole;
+    FILL(tail, 0);
+    COPY(tail[0..rest], data[whole..LEN(data)]);
+    tail[rest] := 80H;
+    n := 64;
+    if rest >= 56 then n := 128; end;
+    for i := 0 to 7 do tail[n - 1 - i] := U8(((LEN(data) * 8) shr (8 * i)) & 0FFH); end;
+    for i := 0 to n - 64 by 64 do block(h, tail[i..i + 64]); end;
+    for i := 0 to 7 do putBE(INT(h[i]), 4); end;
+end;
+
+(* Load commands *)
+
+const
+    LcSegment = 19H; LcSymtab = 2H; LcDysymtab = 0BH; LcLoadDylinker = 0EH; LcLoadDylib = 0CH;
+    LcUuid = 1BH; LcBuildVersion = 32H; LcMain = 80000028H; LcDyldInfoOnly = 80000022H;
+    LcCodeSignature = 1DH;
+
+(* A segment of 64 bits, followed by its nsects sections; prot is the
+   access, 1 read, 2 write, 4 run *)
+proc segment(name: []const U8; adr, vmSize, off, fileSize, prot, nsects, flags: INT);
+begin
+    putN(LcSegment, 4); putN(72 + 80 * nsects, 4);
+    putName(name, 16);
+    putN(adr, 8); putN(vmSize, 8);     (* where it is loaded, and its size there *)
+    putN(off, 8); putN(fileSize, 8);   (* where it is in the file, and its size there *)
+    putN(prot, 4); putN(prot, 4);      (* the most access it may have, and what it has *)
+    putN(nsects, 4); putN(flags, 4);
+end;
+
+(* A section, what otool and lldb see of a segment: its name, its
+   segment's, address, size, file offset, alignment as a power of two,
+   no relocations, flags *)
+proc section(name, seg: []const U8; adr, size, off, align, flags: INT);
+begin
+    putName(name, 16); putName(seg, 16);
+    putN(adr, 8); putN(size, 8);
+    putN(off, 4); putN(align, 4);
+    putN(0, 4); putN(0, 4);            (* relocations: none *)
+    putN(flags, 4);
+    putN(0, 12);                       (* reserved *)
+end;
+
+(* Whether chunk c is a live C symbol, and a live chunk with a name the
+   symbol table gives *)
+proc isExt(c: INT): BOOL;
+begin
+    return Chunk.chunks[c].live and Chunk.chunks[c].ext;
+end;
+
+proc isNamed(c: INT): BOOL;
+begin
+    return not stripped and Chunk.chunks[c].live and (Chunk.chunks[c].name >= 0) and not Chunk.chunks[c].ext;
+end;
+
+proc write*(path: []const U8; entry: INT);
+var
+    c, i, n, textSize, leOff, leAdr, ncmds, segRo, segData, sectData: INT;
+    rebaseOff, rebaseSize, bindOff, bindSize, symOff, nsyms, strOff, strSize, sigOff, sigSize, slots: INT;
+    ident: []const U8;
+    uuidAt, end0, sigRoom: INT;
+begin
+    if Link.base # 400000H then Diag.fatal("-base: macOS loads a program where it chooses"); end;
+    for i := 1 to numNeeded - 1 do
+        Diag.fatal(Diag.say("not yet on darwin-arm64: a library besides libSystem, {}", [Fmt.str(Scan.nameOf(needed[i]))]));
+    end;
+    cap := 1 shl 16;
+    buf := Scan.grab(cap);
+    len := 0;
+    Link.setBase(Base);
+    Link.setPaged(Page);
+    Link.linkAll(HeaderRoom, 0, 0);
+    textSize := roundUp(Link.textOff + Link.textSize, Page);   (* __TEXT's, the header in it *)
+    leOff := Link.bssOff;   (* the next page in the file: __DATA has no bytes there *)
+    leAdr := Link.bssAdr + roundUp(Link.bssSize, Page);
+    (* the segments' numbers, as the opcodes name them, and the
+       sections', as the symbols do: __PAGEZERO 0, __TEXT 1 (__text, 1) *)
+    segRo := 2;
+    segData := 2;
+    sectData := 2;
+    if Link.roSize > 0 then INC(segData); INC(sectData); end;
+
+    (* the code and rodata, after the room for the header *)
+    padTo(Link.textOff);
+    putBytes(Link.textImg, Link.textSize);
+    padTo(Link.roOff);
+    putBytes(Link.roImg, Link.roSize);
+    padTo(leOff);
+
+    (* rebases: each word in rodata that holds an address, a pointer
+       (type 1), at its segment and offset; then done *)
+    rebaseOff := len;
+    putN(11H, 1);                                  (* REBASE_OPCODE_SET_TYPE_IMM, pointer *)
+    for i := 0 to Link.numRebases - 1 do
+        putN(20H | segRo, 1); putU(Link.rebases[i] - Link.roAdr);   (* SET_SEGMENT_AND_OFFSET_ULEB *)
+        putN(51H, 1);                              (* DO_REBASE_IMM_TIMES, once *)
+    end;
+    putN(0, 1);                                    (* DONE *)
+    padTo(roundUp(len, 8));
+    rebaseSize := len - rebaseOff;
+
+    (* binds: each C symbol's quadword, from library 1, libSystem, by
+       its name, which in Mach-O begins with _ *)
+    bindOff := len;
+    putN(11H, 1);                                  (* BIND_OPCODE_SET_DYLIB_ORDINAL_IMM, 1 *)
+    putN(51H, 1);                                  (* SET_TYPE_IMM, pointer *)
+    for c := 0 to Chunk.numChunks - 1 do
+        if isExt(c) then
+            putN(40H, 1);                          (* SET_SYMBOL_TRAILING_FLAGS_IMM, none *)
+            putN(INT('_'), 1); putStr(Scan.nameOf(Chunk.chunks[c].name));
+            putN(70H | segData, 1); putU(Chunk.chunks[c].adr - Link.bssAdr);   (* SET_SEGMENT_AND_OFFSET_ULEB *)
+            putN(90H, 1);                          (* DO_BIND *)
+        end;
+    end;
+    putN(0, 1);                                    (* DONE *)
+    padTo(roundUp(len, 8));
+    bindSize := len - bindOff;
+
+    (* the symbol table: a local symbol (N_SECT, 0EH) for each named
+       live chunk, nlist_64: its name's offset, type, section, no
+       description, its address; the names follow, after a 0 *)
+    symOff := len;
+    nsyms := 0;
+    strSize := 1;
+    for c := 0 to Chunk.numChunks - 1 do
+        if isNamed(c) then
+            putN(strSize, 4);
+            putN(0EH, 1);
+            match Chunk.chunks[c].sec of
+            | secText: putN(1, 1);
+            | secRodata: putN(2, 1);
+            | secBss: putN(sectData, 1);
+            end;
+            putN(0, 2);
+            putN(Chunk.chunks[c].adr, 8);
+            strSize := strSize + LEN(Chunk.chunkName(c)) + 1;
+            INC(nsyms);
+        end;
+    end;
+    strOff := len;
+    putN(0, 1);
+    for c := 0 to Chunk.numChunks - 1 do
+        if isNamed(c) then putStr(Chunk.chunkName(c)); end;
+    end;
+    padTo(roundUp(len, 16));
+    strSize := len - strOff;
+
+    (* the signature's size: a SuperBlob of one blob, the CodeDirectory,
+       of 88 bytes, the program's name, and a hash of each page up to
+       the signature *)
+    sigOff := len;
+    i := LEN(path);
+    while (i > 0) and (path[i - 1] # '/') do DEC(i); end;
+    ident := path[i..LEN(path)];
+    slots := roundUp(sigOff, HashPage) div HashPage;
+    sigSize := 12 + 8 + 88 + LEN(ident) + 1 + 32 * slots;
+    sigRoom := roundUp(sigSize, 16);
+    room(sigRoom);
+
+    (* The header, in the room left for it, and the load commands. The
+       UUID, which names this build for lldb, is the first 16 bytes of
+       the hash of what follows the header. *)
+    end0 := len;
+    len := 0;
+    putN(0FEEDFACFH, 4);                           (* MH_MAGIC_64 *)
+    putN(0100000CH, 4); putN(0, 4);                (* CPU_TYPE_ARM64, any of them *)
+    putN(2, 4);                                    (* MH_EXECUTE *)
+    putN(0, 4); putN(0, 4);                        (* the commands' count and size, patched below *)
+    putN(200085H, 4);                              (* MH_PIE, TWOLEVEL, DYLDLINK, NOUNDEFS *)
+    putN(0, 4);
+    ncmds := 0;
+    segment("__PAGEZERO", 0, Base, 0, 0, 0, 0, 0); INC(ncmds);
+    segment("__TEXT", Base, textSize, 0, textSize, 5, 1, 0); INC(ncmds);
+    section("__text", "__TEXT", Base + Link.textOff, Link.textSize, Link.textOff, 5, 80000400H);   (* instructions only *)
+    if Link.roSize > 0 then
+        (* SG_READ_ONLY, 10H: dyld takes write away once it has rebased *)
+        segment("__DATA_CONST", Link.roAdr, roundUp(Link.roSize, Page), Link.roOff, roundUp(Link.roSize, Page), 3, 1, 10H); INC(ncmds);
+        section("__const", "__DATA_CONST", Link.roAdr, Link.roSize, Link.roOff, 3, 0);
+    end;
+    if Link.bssSize > 0 then
+        segment("__DATA", Link.bssAdr, roundUp(Link.bssSize, Page), 0, 0, 3, 1, 0); INC(ncmds);
+        section("__bss", "__DATA", Link.bssAdr, Link.bssSize, 0, 3, 1);   (* S_ZEROFILL *)
+    end;
+    segment("__LINKEDIT", leAdr, roundUp(sigOff + sigRoom - leOff, Page), leOff, sigOff + sigRoom - leOff, 1, 0, 0); INC(ncmds);
+    putN(LcDyldInfoOnly, 4); putN(48, 4);
+    putN(rebaseOff, 4); putN(rebaseSize, 4); putN(bindOff, 4); putN(bindSize, 4);
+    putN(0, 24);                                   (* weak and lazy binds, exports: none *)
+    INC(ncmds);
+    putN(LcSymtab, 4); putN(24, 4); putN(symOff, 4); putN(nsyms, 4); putN(strOff, 4); putN(strSize, 4); INC(ncmds);
+    (* every symbol is local; none is defined for others or wanted *)
+    putN(LcDysymtab, 4); putN(80, 4); putN(0, 4); putN(nsyms, 4); putN(nsyms, 4); putN(0, 4);
+    putN(nsyms, 4); putN(0, 4); putN(0, 48); INC(ncmds);
+    putN(LcLoadDylinker, 4); putN(32, 4); putN(12, 4); putName(Dyld, 20); INC(ncmds);
+    putN(LcUuid, 4); putN(24, 4); uuidAt := len; putN(0, 16); INC(ncmds);
+    putN(LcBuildVersion, 4); putN(24, 4);
+    putN(1, 4); putN(0B0000H, 4); putN(0B0000H, 4); putN(0, 4);   (* macOS, 11.0 and up, SDK 11.0, no tools *)
+    INC(ncmds);
+    putN(LcMain, 4); putN(24, 4); putN(Chunk.chunks[entry].adr - Base, 8); putN(0, 8); INC(ncmds);
+    (* libSystem, version 1.0.0 and compatible with 1.0.0, which any is *)
+    n := roundUp(24 + LEN(libc) + 1, 8);
+    putN(LcLoadDylib, 4); putN(n, 4); putN(24, 4); putN(2, 4); putN(10000H, 4); putN(10000H, 4);
+    putName(libc, n - 24); INC(ncmds);
+    putN(LcCodeSignature, 4); putN(16, 4); putN(sigOff, 4); putN(sigRoom, 4); INC(ncmds);
+    if len > HeaderRoom then Diag.fatal("internal error: the Mach-O header outgrew its room"); end;
+    i := len;
+    len := 16; putN(ncmds, 4); putN(i - 32, 4);
+    len := end0;
+    putHash(buf[Link.textOff..sigOff]);
+    COPY(buf[uuidAt..uuidAt + 16], buf[len - 32..len - 16]);
+    len := sigOff;
+
+    (* the signature, big-endian: the SuperBlob (CSMAGIC_EMBEDDED_SIGNATURE),
+       its length and count, the index of its one blob, the
+       CodeDirectory, at 20 *)
+    putBE(0FADE0CC0H, 4); putBE(sigSize, 4); putBE(1, 4);
+    putBE(0, 4); putBE(20, 4);                     (* CSSLOT_CODEDIRECTORY *)
+    putBE(0FADE0C02H, 4); putBE(sigSize - 20, 4);  (* CSMAGIC_CODEDIRECTORY *)
+    putBE(20400H, 4);                              (* the version with the executable segment *)
+    putBE(20002H, 4);                              (* ad hoc, and the linker's: no identity behind it *)
+    putBE(88 + LEN(ident) + 1, 4); putBE(88, 4);   (* where the hashes and the name are *)
+    putBE(0, 4); putBE(slots, 4);                  (* no special slots; a slot a page *)
+    putBE(sigOff, 4);                              (* what is hashed: all before the signature *)
+    putN(32, 1); putN(2, 1); putN(0, 1); putN(12, 1);   (* SHA-256's 32 bytes; no platform; pages of 2^12 *)
+    putN(0, 4 + 4 + 4 + 4 + 8);                    (* no scatter, no team, a 32-bit limit *)
+    putBE(0, 8); putBE(textSize, 8);               (* the executable segment: __TEXT, from 0 *)
+    putBE(1, 8);                                   (* CS_EXECSEG_MAIN_BINARY *)
+    putStr(ident);
+    for i := 0 to slots - 1 do
+        n := (i + 1) * HashPage;
+        if n > sigOff then n := sigOff; end;
+        putHash(buf[i * HashPage..n]);
+    end;
+    padTo(sigOff + sigRoom);
+
+    if not Host.writeExecutable(path, buf[0..len]) then
+        Diag.fatal(Diag.say("can't write {}", [Fmt.str(path)]));
+    end;
+end;
+
+begin
+    libc := "/usr/lib/libSystem.B.dylib";
+end Exe.

@@ -3651,7 +3651,17 @@ begin
         _ := Item.needSystem(Scan.tokPos(), "a code procedure");   (* said, and the declaration read on *)
         Scan.next;
         p^.isCode := true;
-        try codeBody(p, sig, at);
+        if checkMode then
+            (* a file of another target's, read for its interface: its code
+               is in that machine's assembly, which this one's can't read;
+               ! is a symbol there, as A64's assembler has it *)
+            Scan.setBang(true);
+            while (Scan.tok # Scan.sEnd) and (Scan.tok # Scan.sEof) do Scan.next; end;
+            Scan.setBang(false);
+            try expect(Scan.sEnd);
+        else
+            try codeBody(p, sig, at);
+        end;
     elsif checkMode then
         try skipBody();
     else

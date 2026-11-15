@@ -25,6 +25,15 @@ import SYSTEM;
 type
     NamePtr = ^U8;
 
+    (* The parser's readers for a code procedure's assembler, X64's or
+       A64's, here so that both Gens take the same types: of an integer
+       constant, a whole expression or, when whole is false, a single
+       factor; and of a name that stands for an address, a procedure or a
+       module variable, bare or qualified, its chunk, or -1, nothing read,
+       if the name is anything else, which is then read as a constant *)
+    ConstFn* = proc(whole: BOOL): (I64, ERROR);
+    NameFn* = proc: (INT, ERROR);
+
     Sym* = (sNull, sIdent, sInt, sReal, sChar, sString,
         sPlus, sMinus, sTimes, sSlash, sEql, sNeq, sLss, sLeq, sGtr, sGeq,
         sBecomes, sColon, sSemicolon, sComma, sPeriod, sUpto, sEllipsis,

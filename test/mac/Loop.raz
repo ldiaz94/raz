@@ -1,0 +1,27 @@
+(* Variables, a loop, calls with arguments and a narrow integer: the
+   status is the sum of 1 to 10, 55, plus 200 cut to a U8, 255 *)
+module Loop;
+
+var total: INT;
+
+proc add(var t: INT; n: INT);
+begin
+    t := t + n;
+end;
+
+proc main*: INT;
+var i, sum: INT; b: U8;
+begin
+    i := 1;
+    while i <= 10 do
+        add(sum, i);
+        INC(i);
+    end;
+    total := sum;
+    b := 200;
+    b := b + 200;
+    if total = 55 then return total + INT(b) - 144; end;
+    return 1;
+end;
+
+end Loop.

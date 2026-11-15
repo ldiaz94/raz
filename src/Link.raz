@@ -12,6 +12,13 @@
    loader's other tables come at the end of rodata; Exe writes them
    in the room left there.
 
+   Mach-O, Exe.darwin.raz's, is laid out otherwise (setPaged): each
+   segment starts on a page of its own, in the file as in memory, at
+   base plus its offset in the file; and, since macOS loads a program
+   anywhere, every address held in rodata is listed (rebases), for the
+   loader to move with it. arm64's fixups, fields of an instruction,
+   are patched here too.
+
    Depends on: Chunk for chunks and fixups, Scan for names and memory,
    Diag for errors and paths.
    Leaves out: the file format; that is Exe. *)
@@ -34,10 +41,19 @@ var
     textImg*, roImg*: ^U8;
     placesChunk*: INT;           (* the rodata chunk of the places, made by the caller *)
     linesOff*, linesSize*: INT;  (* the line table, in the places: .debug_line *)
+    paged*: INT;                 (* 0, ELF's layout; or Mach-O's page, each segment on one *)
+    rebases*: ^INT;              (* the addresses of rodata's words that hold an address *)
+    numRebases*: INT;
 
 proc setBase*(a: INT);
 begin
     base := a;
+end;
+
+(* Mach-O's layout, its segments on pages of page bytes *)
+proc setPaged*(page: INT);
+begin
+    paged := page;
 end;
 
 proc setPlaces*(c: INT);
@@ -334,6 +350,42 @@ begin
     return s;
 end;
 
+(* The arm64 instruction at at in text, at address pc, made to reach
+   the address v, as its kind says (Chunk.FixKind):
+     fxBranch26    b, bl: (v - pc) / 4 in imm26, bits 0 to 25
+     fxPage21      adrp: v's page less pc's, in pages of 4 KB, its low
+                   two bits in immlo (29, 30), the rest in immhi (5 to 23)
+     fxPageOff12   add: v's place in its page in imm12 (10 to 21); a load
+                   or store (bits 27 to 29 111, 24 and 25 01) that place
+                   divided by the size it moves, 1 shl its bits 30 and 31,
+                   or 16 for a q register (bit 26, the reals', with bit 23)
+   The fields hold zeros, as A64 left them. *)
+proc patchArm(at: INT; kind: Chunk.FixKind; pc, v: INT);
+var insn, d, sc: INT;
+begin
+    insn := 0;
+    for d := 3 to 0 by -1 do insn := insn * 256 + INT(textImg[at + d]); end;
+    match kind of
+    | fxBranch26:
+        d := (v - pc) div 4;
+        if (d < -(1 shl 25)) or (d >= 1 shl 25) then Diag.fatal("the program's code is more than 128 MB"); end;
+        insn := insn | (d & 3FFFFFFH);
+    | fxPage21:
+        d := (v shr 12) - (pc shr 12);
+        insn := insn | ((d & 3) shl 29) | (((d shr 2) & 7FFFFH) shl 5);
+    | fxPageOff12:
+        d := v & 0FFFH;
+        if (insn & 3B000000H) = 39000000H then
+            sc := (insn shr 30) & 3;
+            if (insn & 04800000H) = 04800000H then sc := 4; end;
+            d := d shr sc;
+        end;
+        insn := insn | (d shl 10);
+    | else:
+    end;
+    patch4(textImg, at, insn);
+end;
+
 (* Places the live chunks, leaving roExtra bytes at the end of rodata
    and dynSize at the start of the writable segment. The segments follow
    each other in the file with no padding, and each is loaded a page
@@ -352,12 +404,19 @@ begin
     if placesChunk >= 0 then makePlaces(base + textOff, e); end;
     roOff := (textOff + textSize + 31) div 32 * 32;
     roAdr := base + Page + roOff;
+    if paged > 0 then   (* Mach-O: rodata on a page of its own, at its offset *)
+        roOff := (textOff + textSize + paged - 1) div paged * paged;
+        roAdr := base + roOff;
+    end;
     e := place(Chunk.secRodata, roAdr);
     extraAdr := (e + 7) div 8 * 8;
     if roExtra > 0 then e := extraAdr + roExtra; end;
     roSize := e - roAdr;
     bssOff := (roOff + roSize + 31) div 32 * 32;
-    if dynSize > 0 then
+    if paged > 0 then
+        bssOff := (roOff + roSize + paged - 1) div paged * paged;
+        bssAdr := base + bssOff;
+    elsif dynSize > 0 then
         bssAdr := base + 2 * Page + bssOff;
     else
         bssAdr := (roAdr + roSize + Page - 1) div Page * Page;
@@ -368,17 +427,21 @@ begin
        by their sign, so the image must lie where such an address reaches:
        the low 2 GB, as at 400000H, or the top 2 GB, as a higher-half
        kernel at 0FFFFFFFF80000000H. The places keep each procedure's
-       start and stop in 32 bits too, which Rt.procAt reads so. *)
+       start and stop in 32 bits too, which Rt.procAt reads so. Mach-O's
+       image lies at 4 GB and up, which arm64's code reaches by adrp, and
+       whose places, below 4 GB of it, keep their order in 32 bits. *)
     (* By the size, e - base, which can't overflow, where e itself might *)
-    if not (((base >= 0) and (base <= Low - (e - base))) or ((base >= -Low) and (base <= -(e - base)))) then
+    if (paged = 0) and not (((base >= 0) and (base <= Low - (e - base))) or ((base >= -Low) and (base <= -(e - base)))) then
         Diag.fatal(Diag.say("-base {}: the program must lie in the low or the top 2 GB, where a 32-bit address reaches, and from there it doesn't",
             [Fmt.str(literal(base))]));
     end;
 
     textImg := Scan.grab(textSize + 1);
-    (* the gaps between code chunks are int3, a trap if ever run *)
-    for p := 0 to textSize do textImg[p] := 0CCH; end;
+    (* the gaps between code chunks are Gen's trap, as in Chunk *)
+    for p := 0 to textSize do textImg[p] := U8((Chunk.pad shr (8 * ((textOff + p) & 3))) & 0FFH); end;
     roImg := Scan.grab(roSize + 1);
+    rebases := ^INT(Scan.grab(Chunk.numDataFixups * SIZE(INT) + SIZE(INT)));
+    numRebases := 0;
     for p := 0 to roSize do roImg[p] := 0; end;
     for c := 0 to Chunk.numChunks - 1 do
         if Chunk.chunks[c].live then
@@ -387,11 +450,15 @@ begin
                 COPY(textImg[p..p + Chunk.chunks[c].size], Chunk.text[Chunk.chunks[c].start..Chunk.chunks[c].start + Chunk.chunks[c].size]);
                 for f := Chunk.chunks[c].firstFix to Chunk.chunks[c].firstFix + Chunk.chunks[c].numFix - 1 do
                     at := Chunk.fixups[f].at - Chunk.chunks[c].start;
-                    (* rel32: from the end of the field to the target;
-                       or, X64.memAbs's, the target's address *)
                     v := Chunk.chunks[Chunk.fixups[f].chunk].adr + Chunk.fixups[f].addend;
-                    if not Chunk.fixups[f].abs then v := v - (Chunk.chunks[c].adr + at + 4); end;
-                    patch4(textImg, p + at, v);
+                    if Chunk.fixups[f].kind # Chunk.fxRel32 then
+                        patchArm(p + at, Chunk.fixups[f].kind, Chunk.chunks[c].adr + at, v);
+                    else
+                        (* rel32: from the end of the field to the target;
+                           or, X64.memAbs's, the target's address *)
+                        if not Chunk.fixups[f].abs then v := v - (Chunk.chunks[c].adr + at + 4); end;
+                        patch4(textImg, p + at, v);
+                    end;
                 end;
             elsif Chunk.chunks[c].sec = Chunk.secRodata then
                 p := Chunk.chunks[c].adr - roAdr;
@@ -399,6 +466,8 @@ begin
                 for f := Chunk.chunks[c].firstFix to Chunk.chunks[c].firstFix + Chunk.chunks[c].numFix - 1 do
                     patch8(roImg, p + Chunk.dataFixups[f].at,
                         Chunk.chunks[Chunk.dataFixups[f].chunk].adr + Chunk.dataFixups[f].addend);
+                    rebases[numRebases] := Chunk.chunks[c].adr + Chunk.dataFixups[f].at;
+                    INC(numRebases);
                 end;
             end;
         end;
@@ -408,4 +477,5 @@ end;
 begin
     placesChunk := -1;
     base := 400000H;
+    paged := 0;
 end Link.

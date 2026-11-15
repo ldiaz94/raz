@@ -1,0 +1,4 @@
+(* The least program: it does nothing, and ends with status 0 *)
+module Exit;
+begin
+end Exit.

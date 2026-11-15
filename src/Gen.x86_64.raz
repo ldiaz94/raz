@@ -2849,6 +2849,7 @@ end;
 var i: INT;
 begin
     for i := 0 to LEN(failStubs) - 1 do failStubs[i] := -1; end;
+    Chunk.setPad(0CCCCCCCCH);   (* int3, a trap, between procedures *)
     inPlace := -1;
     codeChunk := -1;
     resetStack(0, 0);

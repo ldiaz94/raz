@@ -1,0 +1,9 @@
+(* main's result is the program's status *)
+module Status;
+
+proc main*: INT;
+begin
+    return 3;
+end;
+
+end Status.

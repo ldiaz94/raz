@@ -19,8 +19,17 @@
    file pairs each with the C library's own; on Linux,
    each is checked against the headers before anything is written.
 
-   Leaves out: systems but Linux, for errno and closeFrom; a port adds
-   them where the #error is. */
+   What a system hasn't, Linux's alone, is given a value that keeps Sys
+   over C compiling there, and that it must not count on: a flag 0, no
+   flag; an option -1, as saLenAt is -1 where a sockaddr has no sa_len.
+   On macOS (darwin-arm64), st_mtim is st_mtimespec, a peer's
+   credentials are struct xucred, which has no pid (0 bytes at 0), and
+   errno and closeFrom are its own.
+
+       cc -o build/cabi tools/cabi.c && build/cabi darwin-arm64 > lib/CAbi.darwin-arm64.raz
+
+   Leaves out: systems but Linux and macOS, for errno and closeFrom; a
+   port adds them where the #error is. */
 #define _GNU_SOURCE
 #include <dirent.h>
 #include <errno.h>
@@ -42,6 +51,30 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+
+#ifndef MFD_CLOEXEC
+#define MFD_CLOEXEC 0
+#endif
+#ifndef TIMER_ABSTIME
+#define TIMER_ABSTIME 0
+#endif
+#ifndef SOCK_CLOEXEC
+#define SOCK_CLOEXEC 0
+#endif
+#ifndef SOCK_NONBLOCK
+#define SOCK_NONBLOCK 0
+#endif
+#ifndef MSG_CMSG_CLOEXEC
+#define MSG_CMSG_CLOEXEC 0
+#endif
+#ifndef SO_PEERCRED
+#define SO_PEERCRED -1
+#endif
+#ifdef __APPLE__
+#include <sys/ucred.h>
+#define st_mtim st_mtimespec
+#define CMSG_ALIGN(n) __DARWIN_ALIGN32(n)
+#endif
 
 /* Sys keeps a terminal's modes in 256 bytes, and struct rusage, whose
    size C libraries differ in, in 512 */
@@ -171,7 +204,12 @@ int main(int argc, char **argv) {
     K("sockaddrIn6Len", sizeof(struct sockaddr_in6));
     AT("sin6Port", struct sockaddr_in6, sin6_port);
     AT("sin6Addr", struct sockaddr_in6, sin6_addr);
+#ifdef __linux__
     READ("ucPid", struct ucred, pid); READ("ucUid", struct ucred, uid);
+#else
+    K("ucPidAt", 0); K("ucPidLen", 0);
+    READ("ucUid", struct xucred, cr_uid);
+#endif
     K("msghdrLen", sizeof(struct msghdr));
     AT("msgIov", struct msghdr, msg_iov);
     WRITE("msgIovlen", struct msghdr, msg_iovlen, msg_control);
@@ -231,6 +269,23 @@ int main(int argc, char **argv) {
            "begin\n"
            "    if hi < 0 then hi := 0FFFFFFFFH; end;\n"
            "    _ := syscall(436, lo, hi, 0);\n"
+           "end;\n\n");
+#elif defined(__APPLE__)
+    printf("extern proc __error: ^I32;\n"
+           "extern proc close(fd: I32): I32;\n"
+           "extern proc getdtablesize: I32;\n\n"
+           "(* errno, this thread's *)\n"
+           "proc errno*: ^I32;\n"
+           "begin\n"
+           "    return __error();\n"
+           "end;\n\n"
+           "(* Closes the fds from lo to hi, or every one from lo if hi < 0: one\n"
+           "   by one, as macOS has no close_range. *)\n"
+           "proc closeFrom*(lo, hi: INT);\n"
+           "var fd: INT;\n"
+           "begin\n"
+           "    if hi < 0 then hi := INT(getdtablesize()) - 1; end;\n"
+           "    for fd := lo to hi do _ := close(I32(fd)); end;\n"
            "end;\n\n");
 #else
 #error "a CAbi for this system needs its errno and closeFrom: add them here"

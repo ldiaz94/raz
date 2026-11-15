@@ -1,0 +1,8 @@
+(* Rt.fail says a check failed, through libSystem's write, and ends the
+   program with status 2 *)
+module Fail;
+import Rt;
+
+begin
+    Rt.fail(0, 1, 2, 3, 0, nil, 0, 0);
+end Fail.

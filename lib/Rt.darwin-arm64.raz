@@ -1,0 +1,93 @@
+(* The run time, for macOS on arm64: for now the least a program needs
+   to end, with lib/Rt.raz's interface, which every file of Rt keeps.
+   The compiler finds exit, fail and cExit by these names. exit runs
+   the procedure atExit registered, then ends the program by C's exit,
+   which the entry point gives cExit, as every program on a Mac reaches
+   the kernel through libSystem; fail and stop say what failed and end
+   it with status 2. It leaves out what lib/Rt.raz does on Linux, which
+   PLAN.md 5's step 7 brings here: more than one procedure at exit, the
+   places a failure is told by, the signals' handlers, the trace of
+   calls and the profiler; place, trace and startProfile do nothing. *)
+module Rt;
+import SYSTEM;
+
+const
+    Full*: ERROR = "too many procedures to run at exit";   (* atExit's *)
+    Failed = "raz: a check failed\n";
+
+extern proc write(fd: I32; buf: ^U8; n: UINT): INT;
+
+var
+    atExitProc: proc;           (* the procedure atExit registered, or nil *)
+    ending: INT;                (* the status exit was given, once it has been *)
+    cExit: proc(status: I32);   (* C's exit, set first thing *)
+    placer: proc(a: UINT);      (* place, set first thing, or nil under raz -s *)
+    profiler: proc;             (* startProfile, set first thing, or nil *)
+
+(* Registers p to run when the program ends by exit: one, for now *)
+proc atExit*(p: proc): ERROR;
+begin
+    if atExitProc # nil then return Full; end;
+    atExitProc := p;
+    return nil;
+end;
+
+(* The status exit was given, while the procedure atExit registered
+   runs; 0 before *)
+proc exitStatus*: INT;
+begin
+    return ending;
+end;
+
+(* Runs the procedure atExit registered, taken off first so that it
+   runs once, then ends the program with status *)
+proc exit*(status: INT);
+var p: proc;
+begin
+    ending := status;
+    if atExitProc # nil then
+        p := atExitProc;
+        atExitProc := nil;
+        p();
+    end;
+    cExit(I32(status));
+end;
+
+(* Says msg, and then a line feed, on standard error, then ends the
+   program by exit with status 2 *)
+proc stop*(msg: []const U8);
+begin
+    _ := write(2, SYSTEM.PTR(msg), UINT(LEN(msg)));
+    _ := write(2, SYSTEM.PTR("\n"), 1);
+    exit(2);
+end;
+
+(* Where the code at address a comes from: not told yet *)
+proc place*(a: UINT);
+begin
+    _ := a;
+end;
+
+(* The calls under way: not told yet *)
+proc trace*;
+begin
+end;
+
+(* A check failed: the compiler's code calls this with what failed,
+   its values and where, none of which it tells yet *)
+proc fail*(what, a, b, len: INT; at: UINT; name: ^U8; rdi, rsi: UINT);
+begin
+    _ := what; _ := a; _ := b; _ := len; _ := name; _ := rdi; _ := rsi;
+    if placer # nil then placer(at); end;
+    _ := write(2, SYSTEM.PTR(Failed), LEN(Failed));
+    exit(2);
+end;
+
+(* The profiler: none yet *)
+proc startProfile*;
+begin
+end;
+
+begin
+    _ := profiler;   (* started here when RAZ_PROFILE is set, by step 7's Rt *)
+end Rt.

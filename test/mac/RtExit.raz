@@ -1,0 +1,8 @@
+(* Rt.exit, from a module's body, ends the program there *)
+module RtExit;
+import Rt;
+
+begin
+    Rt.exit(5);
+    Rt.exit(6);
+end RtExit.

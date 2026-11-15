@@ -224,19 +224,37 @@ linux/amd64 container on the Mac until there is a Mac compiler):
    the assembler in Arm's syntax (`bl p`, `b p`, `adr xN, v` for names),
    checked against Apple's assembler (clang's, `llvm-mc`'s bytes) by
    `test/a64`; Chunk's arm64 fixup kinds, `fxBranch26`, `fxPage21` and
-   `fxPageOff12`, and `Scan.setBang` for a pre-index's `!`. Left for
-   later: `Link`'s patching of those kinds comes with step 6; no
-   compiler imports `A64` until step 5's `Gen.arm64.raz`, and
-   `Chunk.beginChunk` still pads code with x86's `int3`, which arm64's
-   Gen will want as `brk`.
+   `fxPageOff12`, and `Scan.setBang` for a pre-index's `!`. What it
+   left for later, `Link`'s patching of those kinds, `Gen.arm64.raz`
+   importing `A64`, and padding with `brk`, came with 5a.
 5. `Gen.arm64.raz`, in pieces, each run on the Mac (owner, 2026-11-15):
    first a bare `Exe.darwin.raz` (a signed Mach-O over libSystem, no line
    numbers) and an `Rt` that only exits, built by the staged cross
    compiler in the container; then values and operations; jumps and
    checks; calls and frames; reals; atomics, deferred statements, the
    entry point.
-6. `Exe.darwin.raz` and `Link`'s rebases, its line numbers for lldb;
-   `Host.darwin.raz`.
+
+   5a, done: programs made by the cross compiler (`src/cross.sh
+   darwin-arm64`) run on the Mac, `test/mac` by `make mac-check`. In
+   `Gen.arm64.raz`: frames, constants, variables, the integer
+   operations but division, comparisons and jumps, elements and slices
+   unchecked, calls with arguments in registers, C's calls, code
+   procedures and the entry point; every other routine notes "not yet
+   on arm64" on its procedure, an error if the program uses it.
+   `Exe.darwin.raz`: a signed Mach-O over libSystem, its rebases and
+   binds dyld's opcodes, no line numbers. `Link`: arm64's fixups, Mach-O's
+   paged layout, the rebases. `lib/Rt.darwin-arm64.raz`: exit through C's
+   exit, one procedure at exit, fail and stop by `write`. As the interface
+   check of `Rt` reads `Rt.raz`, and so compiles `Sys` over C, also
+   `lib/CAbi.darwin-arm64.raz`, from `tools/cabi.c` on the Mac, and a
+   code procedure skipped in a file read only for its interface. Left of
+   step 5: division and its check, the other checks and their stubs for
+   `Rt.fail`, the reals, arguments and results past the registers or in
+   memory (`x8`), Apple's variadic calls, `try`, deferred statements,
+   atomics and system calls, `COPY`, `FILL`, `NEW`'s zeroing, the bit
+   counts and rotations, copies past 256 bytes.
+6. `Exe.darwin.raz`'s line numbers for lldb (its rebases came with
+   5a); `Host.darwin.raz`.
 7. The library: `CAbi`, `Sys`, `Rt`, `Thread`, `Bytes`, `Math`, `Str`.
 8. `test/` and `conform/` passing on the Mac; what differs by target
    (signals' words, errors' numbers) in files of the target's.

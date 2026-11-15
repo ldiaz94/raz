@@ -25,8 +25,8 @@
 
    Depends on: Scan, for errors and the assembler's symbols; Diag, for
    positions and text; Chunk, for the code buffer and fixups.
-   Leaves out: choosing instructions; that is Gen (Gen.arm64.raz, to
-   come). Only what Gen and the library's code procedures need is here;
+   Leaves out: choosing instructions; that is Gen (Gen.arm64.raz, which
+   calls it). Only what Gen and the library's code procedures need is here;
    `db` and `dd` give any other instruction. *)
 module A64;
 import Out, Fmt, Str, Diag, Scan, Chunk;
@@ -75,14 +75,9 @@ const
     Nop = 0D503201FH;
 
 type
-    (* The parser's reader of an integer constant in a code procedure: a
-       whole expression, or, when whole is false, a single factor *)
-    ConstFn* = proc(whole: BOOL): (I64, ERROR);
-
-    (* The parser's reader of a name that stands for an address: a
-       procedure or a module variable. Its chunk, the name read; or -1,
-       nothing read, if the name is anything else *)
-    NameFn* = proc: (INT, ERROR);
+    (* The parser's readers of a constant and of a name (Scan says) *)
+    ConstFn* = Scan.ConstFn;
+    NameFn* = Scan.NameFn;
 
     (* The text of the instruction that starts at at, for the listing *)
     Said = record
