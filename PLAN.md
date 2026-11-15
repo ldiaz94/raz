@@ -247,12 +247,23 @@ linux/amd64 container on the Mac until there is a Mac compiler):
    exit, one procedure at exit, fail and stop by `write`. As the interface
    check of `Rt` reads `Rt.raz`, and so compiles `Sys` over C, also
    `lib/CAbi.darwin-arm64.raz`, from `tools/cabi.c` on the Mac, and a
-   code procedure skipped in a file read only for its interface. Left of
-   step 5: division and its check, the other checks and their stubs for
-   `Rt.fail`, the reals, arguments and results past the registers or in
-   memory (`x8`), Apple's variadic calls, `try`, deferred statements,
-   atomics and system calls, `COPY`, `FILL`, `NEW`'s zeroing, the bit
-   counts and rotations, copies past 256 bytes.
+   code procedure skipped in a file read only for its interface.
+
+   5b, done: division and its checks (by zero, the smallest by -1, in
+   every width), the checks of indexes, slices, views and enumerations
+   with their stubs for `Rt.fail`, arguments past x7 on the stack,
+   results in memory through x8, Apple's variadic calls, `try`, deferred
+   statements, jump tables, `compareSeq`, copies past 256 bytes, `ABS`
+   of an integer; and, since `Out` needs them, the atomics and `COPY`.
+   `SYSTEM.SYSCALL` is an error on the Mac, Linux's only (report 6.8).
+   `lib/Rt.darwin-arm64.raz` says what failed with its values, by its
+   address, runs 32 procedures at exit, and tells a nil pointer or
+   procedure and a stack overflow by a handler of SIGSEGV and SIGBUS.
+   `make mac-check` runs conform/run too and counts it: 91 of 111 pass,
+   the others needing reals (13), `FILL` (4, `Heap`'s among them),
+   `CLZ`, `ROL`, or `SYSCALL` (`SystemImport`, Linux's only). Left of
+   step 5 (5c): the reals, `FILL`, `NEW`'s zeroing, the counts of bits
+   and the rotations.
 6. `Exe.darwin.raz`'s line numbers for lldb (its rebases came with
    5a); `Host.darwin.raz`.
 7. The library: `CAbi`, `Sys`, `Rt`, `Thread`, `Bytes`, `Math`, `Str`.

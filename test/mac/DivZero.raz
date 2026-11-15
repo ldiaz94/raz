@@ -1,0 +1,14 @@
+(* A U8 divided by zero, in mod, stops the program *)
+module DivZero;
+import Out;
+
+proc main*;
+var a, b: U8;
+begin
+    a := 7;
+    Out.str("before\n");
+    Out.int(I64(a mod b));
+    Out.ln();
+end;
+
+end DivZero.

@@ -1,0 +1,76 @@
+(* Calls past the registers (PLAN.md 5, 5b): arguments past x7 on the
+   machine's stack, a slice among them; a record and several results
+   through x8; two results in x0 and x1; a procedure value; C's printf,
+   whose arguments past its own go on the stack; and copies past 256
+   bytes. *)
+module Calls;
+import Out;
+import SYSTEM;
+
+extern proc printf(fmt: ^U8; ...): I32;
+extern proc fflush(f: ^U8): I32;
+
+type
+    Big = record a: [40]INT; n: INT; end;
+
+proc ten(a, b, c, d, e, f, g, h, i, j: INT): INT;
+begin
+    return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + 9 * i + 10 * j;
+end;
+
+(* the slice takes x7 and the stack's first word, or both on the stack *)
+proc late(a, b, c, d, e, f, g: INT; s: []const U8; n: I8): INT;
+begin
+    return a + b + c + d + e + f + g + LEN(s) * 100 + INT(s[1]) * 1000 + INT(n) * 100000;
+end;
+
+proc big(n: INT): Big;
+var r: Big; i: INT;
+begin
+    for i := 0 to 39 do r.a[i] := i * n; end;
+    r.n := n;
+    return r;
+end;
+
+proc three(x: INT): (INT, INT, INT);
+begin
+    return x, x * 2, x * 3;
+end;
+
+proc passOn(x: INT): (INT, INT, INT);
+begin
+    return three(x + 1);
+end;
+
+proc two(x: INT): (INT, INT);
+begin
+    return x + 1, x - 1;
+end;
+
+proc twice(x: INT): INT;
+begin
+    return 2 * x;
+end;
+
+proc main*;
+var b, c: Big; p, q, r: INT; f: proc(x: INT): INT;
+begin
+    Out.int(ten(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)); Out.ln();
+    Out.int(late(1, 2, 3, 4, 5, 6, 7, "xyz", -3)); Out.ln();
+    b := big(3);
+    c := b;
+    Out.int(c.a[39] + c.n); Out.ln();
+    p, q, r := three(5);
+    Out.int(p + q * 10 + r * 100); Out.ln();
+    p, q, r := passOn(5);
+    Out.int(p + q * 10 + r * 100); Out.ln();
+    p, q := two(7);
+    Out.int(p * 10 + q); Out.ln();
+    f := twice;
+    Out.int(f(21)); Out.ln();
+    Out.flush();
+    _ := printf("%d %s %ld %d\n", 42, "and", 1234567890123, -5);
+    _ := fflush(nil);
+end;
+
+end Calls.

@@ -1,6 +1,6 @@
 # Reading the raz compiler
 
-The compiler is fifteen files of raz, about 16,100 lines of code (the
+The compiler is fifteen files of raz, about 16,400 lines of code (the
 budget is 18,000); three of them, `A64.raz`, `Gen.arm64.raz` and
 `Exe.darwin.raz`, are the Mac's back end, begun (`PLAN.md` 5), built
 only into a compiler for `darwin-arm64` (`src/cross.sh`). It is its own compiler: a release of it, the one
@@ -25,7 +25,7 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/X64.raz` | 1,771 | 1,450 | The instruction encoder, jumps within a procedure, the assembler |
 | `src/A64.raz` | 1,843 | 1,365 | The same for arm64: the encoder, jumps, the assembler |
 | `src/Gen.x86_64.raz` | 2,861 | 1,999 | The stack machine, for x86-64: values, operations, checks, calls, frames |
-| `src/Gen.arm64.raz` | 1,468 | 1,107 | The same for arm64, begun: frames, values, operations, jumps, calls |
+| `src/Gen.arm64.raz` | 1,993 | 1,398 | The same for arm64, begun: frames, values, operations, checks, calls |
 | `src/Item.raz` | 2,553 | 2,051 | Items: types, constants, variables, operators, conversions, calls |
 | `src/Parse.raz` | 4,948 | 4,198 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 481 | 365 | Tree shaking, layout, patching, the places |
@@ -1716,10 +1716,13 @@ arm64's `Gen`, for macOS on Apple Silicon (`PLAN.md` 5), is begun. It
 answers every call `Gen.x86_64.raz` answers, with the same parameters,
 as the interface check holds the two files to (report, 3), and makes
 frames, constants, the values of variables and their stores, the
-integer operations but division, comparisons and jumps, elements and
-slices unchecked, calls with integer arguments in registers, C's
-calls, code procedures (`A64.assemble`) and the entry point. `Gen.Arch`
-is `"arm64"`.
+integer operations, division with its checks, comparisons and jumps,
+jump tables, elements and slices and their checks, calls with integer
+arguments in registers and on the stack, results in memory, C's calls
+and Apple's variadic ones, `try`, deferred statements, the atomics,
+`COPY`, code procedures (`A64.assemble`) and the entry point; not yet
+the reals, `FILL`, `NEW`'s zeroing, the counts of bits and the
+rotations (step 5c). `Gen.Arch` is `"arm64"`.
 
 *Not yet.* What it can't make yet isn't refused at once, since a
 library module holds much that a program never calls: the C library's
@@ -1737,6 +1740,8 @@ A program that uses what isn't made fails to compile, and one that
 doesn't compiles. `beginProc` comes before its chunk is begun, so its
 notes wait for `enterBody` (`pending`). A routine not yet made reads
 into `_` the parameters it doesn't use yet, so that none is warned of.
+`SYSTEM.SYSCALL`, which the report gives only on Linux (6.8), is noted
+the same way, with a message of its own, and stays so.
 
 *The stack* is x86-64's, kept as plainly as it can be: the value at
 depth d is in `Regs[d mod 6]`, x9 to x14, which a call may change and
@@ -1785,12 +1790,50 @@ nothing); the reals' variables will take d8 to d15 (`XVarRegs`,
 numbered from `XmmVar`, 32, above every x register, which `Parse` tells
 apart by it).
 
-*Calls* move each argument into x0 to x7; a single result comes back in
-x0, two words in x0 and x1, and a narrow result of C's is extended, as
-C leaves the upper bits as they fall. C's procedure is called through
-the quadword the loader fills in, `adrp x16` of its page, `ldr x17,
-[x16, ...]` and `blr x17`; a procedure value from its slot, `blr x17`
-too.
+*Calls* move each argument into x0 to x7, a slice's two words into two
+of them or both onto the stack. The arguments past the registers go on
+the machine's stack, 8 bytes each, the first at sp, in an area that sp
+is lowered by for the call alone and that keeps it a multiple of 16;
+the callee finds them above its frame record, at x29 + 16 on, as x86's
+finds them above rbp. A C procedure that ends in `...` takes what comes
+past its own parameters on the stack, registers free or not, as
+Apple's convention has it (C's own parameters past x7 narrower than 8
+bytes, which Apple packs, raz doesn't make). A single result comes back
+in x0, two words in x0 and x1, and a narrow result of C's is extended,
+as C leaves the upper bits as they fall; a result in memory, a record
+or several results, goes to the caller's temporary, whose address the
+caller puts in x8 and the callee keeps in a slot (`retSlot`) for
+`resultTo`, `copyResult` and `try`'s `returnError`. C's procedure is
+called through the quadword the loader fills in, `adrp x16` of its
+page, `ldr x17, [x16, ...]` and `blr x17`; a procedure value from its
+slot, `blr x17` too. A deferred statement is a subroutine of its
+procedure, called by `bl`, as on x86-64; since its own calls would
+change x30, it keeps x30 on the machine's stack, 16 bytes, for its
+`ret`.
+
+*Checks* are x86-64's (`check`, `endFails`): a branch, not taken when
+the check holds, to code at the procedure's end that puts `Rt.fail`'s
+values in x1, x2 (a slice's b), x3 (the length) and x5 (an
+enumeration's name) and calls a stub of its kind, `check0` to `check7`,
+which `entryPoint` makes: `sub x4, x30, #4`, the place of the check's
+`bl`; the kind in x0; x6 and x7, the registers x86's trap report shows,
+zero; and `bl Rt.fail`. A slice in memory has its length loaded into x3
+first, where the failing code finds it. Two things x86 catches and
+arm64 doesn't are checked as they are made: a division by zero, and
+the smallest value of a signed type divided by -1, which `sdiv` takes
+without a fault (`divide`), both stopping the program as `Rt.fail`'s
+kind 5, a division fault, as SIGFPE does on Linux. What the Mac does
+catch, `Rt`'s handler tells: a nil pointer within page zero, 4 GB
+(`NilPage`), a call to nil, and a stack overflow at the guard page,
+each a SIGSEGV or SIGBUS, on a stack of its own (`lib/Rt.darwin-arm64.raz`).
+
+The rest is x86's, in arm64's instructions, each shown in its
+routine's comment: `copyBytes` and `zeroBytes` past 256 bytes by a loop
+of words; `compareSeq` a byte at a time; `jumpTable`'s table of words
+after a `br`, found by `adr`; the atomics by the LSE instructions,
+`casal`, `swpal` and `ldaddal`; `COPY` (`copySlice`) by words, then
+bytes, back from the ends when the destination starts inside the
+source; `ABS` by `cneg`.
 
 *The entry point* (`entryPoint`) is the C `main` that dyld calls: it
 pushes a frame record, which links to dyld's, saves argc, an `int` it
@@ -2570,7 +2613,8 @@ and checks the four differences. `src/cross.sh darwin-arm64` builds the
 compiler for the Mac this way, in the linux/amd64 container, and `make
 mac-check` (`test/mac.sh`), on an Apple Silicon Mac, has it compile
 `test/mac`'s programs there and runs each here, natively, against its
-`X.expect` and `X.status`. The host changes nothing of the target:
+`X.expect` and `X.status`; then conform/run's, which are counted, not
+failures yet, those that fail listed in `build/mac/conform.fail`. The host changes nothing of the target:
 a program for another system still needs that system's `Sys` and `Rt`,
 and for a kernel the options `-bare`, `-s` and `-base`.
 

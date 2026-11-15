@@ -4,13 +4,14 @@
    The same stack machine as x86-64's, with the same calls, which Item
    and Parse make: they push constants, addresses and the values of
    variables, operate on the values on top, store them and jump on
-   them. This one is begun: what it makes so far is frames, constants,
-   the values of variables and their stores, the integer operations but
-   division, comparisons and jumps, elements and slices unchecked,
-   calls of procedures with integer arguments in registers, C's through
-   the quadword the loader fills in, code procedures and the program's
-   entry point. What else is
-   asked is noted as "not yet on arm64" (notYet), and a program that
+   them. What it makes so far is frames, constants, the values of
+   variables and their stores, the integer operations, comparisons and
+   jumps, jump tables, elements and slices and their checks, calls with
+   integer arguments in registers and on the stack, C's through the
+   quadword the loader fills in, results in memory, try, deferred
+   statements, the atomics, COPY, code procedures and the program's
+   entry point. What else
+   is asked is noted as "not yet on arm64" (notYet), and a program that
    uses it fails to compile rather than run wrong; PLAN.md 5 says the
    pieces still to come.
 
@@ -33,17 +34,20 @@
    pointer, and x30, the return address.
 
    Calls use Apple's arm64 convention: the first eight integer arguments
-   in x0 to x7, results in x0 and x1, sp a multiple of 16 always, a
+   in x0 to x7, the rest on the machine's stack, results in x0 and x1,
+   or in memory at the address in x8, sp a multiple of 16 always, a
    frame record of x29 and x30 that x29 points at, so that the chain of
    frames can be followed. A frame is made whole by the prologue, so
-   nothing is pushed in a body: sp stays where the prologue put it, and
-   pushed is always 0.
+   nothing is pushed in a body but a call's stack arguments, for the
+   call, and a deferred statement's return address: pushed is always 0.
+
+   What x86-64 catches by itself, and arm64 doesn't, the code checks: a
+   division by zero, and the smallest value by -1 (divide).
 
    Depends on: Scan and Diag for errors, Sym for types, Chunk for code
    and data, A64 for instructions.
-   Leaves out, for now: reals, division, checks, COPY and FILL,
-   arguments and parameters on the machine's stack, results in memory,
-   try, deferred statements, atomics and system calls. *)
+   Leaves out, for now: reals, FILL, NEW's zeroing, the counts of bits
+   and the rotations; and SYSCALL, which is Linux's only. *)
 module Gen;
 import Fmt, Diag, Scan, Sym, Chunk, A := A64;
 import SYSTEM;
@@ -53,9 +57,11 @@ const
     NoLabel* = -1;
     WordSize* = 8;     (* the size of an address, and of INT *)
     (* What the machine catches by itself: a load or store within
-       NilPage bytes of address 0 (the Mac's page zero is 4 GB; this is
-       Linux's figure until Rt tells the Mac's faults) *)
-    NilPage* = 4096;
+       NilPage bytes of address 0, in the Mac's page zero of 4 GB, which
+       Rt's handler tells as a nil pointer; and a call to nil, and a
+       stack overflow at the guard page under the stack. A division by
+       zero it doesn't catch: op checks for it. *)
+    NilPage* = 100000000H;
 
     FP = A.FP; LR = A.LR; SP = A.SP; ZR = A.ZR;
     T = 15; U = 17;          (* Gen's scratch *)
@@ -140,8 +146,18 @@ type
        into that chunk, reached by adrp (A64.loadChunk) *)
     Mem = record base, chunk: INT; off: I64; end;
 
+    (* a check of the procedure, whose failure endFails makes: what
+       failed, a's register, the length's (or -1 for the constant n),
+       the enumeration's name, and the place *)
+    Fail = record
+        L, what, ra, lenReg, name: INT;
+        n: I64;
+        path, line, col: INT;
+    end;
+
 const
     MaxStack = 1024;   (* values waiting in one expression *)
+    StubNames: [8][]const U8 = ["check0", "check1", "check2", "check3", "check4", "check5", "check6", "check7"];
     NumRegs = 6;
     Regs: [NumRegs]INT = [9, 10, 11, 12, 13, 14];
     (* the condition codes of the comparisons, from sEql: = # < <= > >= *)
@@ -161,17 +177,24 @@ var
     retSlot: I64;
     resType: ^Sym.Type;           (* the procedure's result, or nil *)
     exitL: INT;
-    (* parameters arriving in registers: where each is stored on entry *)
-    inReg: [8]INT;
-    inSlot: [8]I64;
-    inSize: [8]INT;
-    inObj: [8]^Sym.Obj;
+    (* parameters arriving in registers, x0 to x7, and a result's address
+       in x8: where each is stored on entry *)
+    inReg: [9]INT;
+    inSlot: [9]I64;
+    inSize: [9]INT;
+    inObj: [9]^Sym.Obj;
     numIn: INT;
+    procParams: ^Sym.Obj;         (* the parameters, for enterBody *)
     regMask: INT;                 (* the registers of variables, as bits (XBit) *)
     saveAt: I64;                  (* where they are saved, a quadword each *)
     frameAt: [3]I64;              (* frameTop, frameMax, permTop after the declarations *)
     pending: []const U8;          (* what beginProc found not yet made, for enterBody's chunk *)
     pendingAt: Diag.Pos;
+    (* the stubs that a failed check calls, one for each kind of failure,
+       made by entryPoint for those used; and the procedure's checks *)
+    failStubs: [8]INT;
+    fails: [4096]Fail;
+    numFails: INT;
 
 (* What this Gen can't make yet marks the procedure being compiled
    (Chunk.setMissing), which is an error if the program uses it, and the
@@ -179,21 +202,21 @@ var
    calls, as Sys does. So each routine not yet made keeps the stack as
    the real one would, and makes what code it likes, never run; it
    reads into _ the parameters it doesn't use yet, so that none is
-   warned of. *)
-proc notYetAt(what: []const U8; p: Diag.Pos);
+   warned of. What this Gen will never make, SYSCALL, is marked so too,
+   with its own message. *)
+proc missing(msg: []const U8);
 begin
     if codeChunk >= 0 then
-        Chunk.setMissing(codeChunk, Diag.say("not yet on arm64: {}", [Fmt.str(what)]), p);
+        Chunk.setMissing(codeChunk, msg, Scan.tokPos());
     elsif LEN(pending) = 0 then   (* beginProc's, before enterBody names the chunk *)
-        pending := Diag.say("not yet on arm64: {}", [Fmt.str(what)]);
-        pendingAt := p;
+        pending := msg;
+        pendingAt := Scan.tokPos();
     end;
 end;
 
-(* The same, at the place being read *)
 proc notYet(what: []const U8);
 begin
-    notYetAt(what, Scan.tokPos());
+    missing(Diag.say("not yet on arm64: {}", [Fmt.str(what)]));
 end;
 
 (* -S: the text of each instruction is kept, and list prints it *)
@@ -499,14 +522,40 @@ begin
 end;
 
 (* Copying, by loads and stores of 8, 4, 2 and 1 bytes, from [x1] to
-   [x0], through x2 *)
+   [x0], through x2. Past MaxMoves bytes the words go by a loop, which
+   moves x0 and x1 on, counting down in x3, and the last few bytes
+   after it as before:
+
+       mov x3, #words
+   top: ldr x2, [x1], #8
+       str x2, [x0], #8
+       subs x3, x3, #1
+       b.ne top
+       ...                  ; the size mod 8 bytes left, from [x1] to [x0]
+
+   zeroBytes is the same, storing the zero register. *)
 
 const MaxMoves = 256;
+
+(* The loop's head and tail, of the words of size bytes, by store and
+   load if load; returns what is left after the words *)
+proc wordLoop(size: I64; load: BOOL): I64;
+var top: INT;
+begin
+    if size <= MaxMoves then return size; end;
+    A.movRI(3, size div 8);
+    top := Chunk.pc;
+    if load then A.loadIdx(Tmp, Src, 8, 8, A.mPost); A.storeIdx(Tmp, Dst, 8, 8, A.mPost);
+    else A.storeIdx(ZR, Dst, 8, 8, A.mPost); end;
+    A.aluI(A.opSubs, 3, 3, 1);
+    A.jccBack(A.ccNE, top);
+    return size mod 8;
+end;
 
 proc copyBytes(size: I64);
 var o, n: I64;
 begin
-    if size > MaxMoves then notYet("a copy of more than 256 bytes"); return; end;
+    size := wordLoop(size, true);
     o := 0;
     while o < size do
         n := 8;
@@ -520,7 +569,7 @@ end;
 proc zeroBytes(size: I64);
 var o, n: I64;
 begin
-    if size > MaxMoves then notYet("zeroing more than 256 bytes"); return; end;
+    size := wordLoop(size, false);
     o := 0;
     while o < size do
         n := 8;
@@ -560,6 +609,71 @@ begin
     zeroBytes(size);
 end;
 
+(* Checks *)
+
+(* The name s, interned *)
+proc internStr(s: []const U8): INT;
+begin
+    return Scan.intern(SYSTEM.PTR(s), LEN(s));
+end;
+
+(* The program goes on if the condition cc holds, and otherwise stops
+   in Rt.fail(what, a, b, len, at, name), as on x86-64, whose check says
+   what each is (Gen.x86_64.raz). Here a is in register ra and b, where
+   there is one, in x2; len is in register lenReg, or the constant n if
+   lenReg is -1. The failing code is out of the way, at the procedure's
+   end (endFails), so that a check that holds is a branch not taken; it
+   has p for its place, worked out now. *)
+proc check(cc, what: INT; p: Diag.Pos; ra, lenReg: INT; n: I64; name: INT);
+var f: INT;
+begin
+    if numFails > LEN(fails) - 1 then
+        _ := Scan.mark(Diag.say("more than {} checks in one procedure", [Fmt.int(LEN(fails))]));
+        return;
+    end;
+    f := numFails;
+    fails[f].L := NoLabel;
+    A.jcc(A.invert(cc), fails[f].L);
+    fails[f].what := what;
+    fails[f].ra := ra;
+    fails[f].lenReg := lenReg;
+    fails[f].n := n;
+    fails[f].name := name;
+    fails[f].path := Chunk.curFilePath();
+    fails[f].line, fails[f].col := Scan.lineCol(p.a);
+    INC(numFails);
+end;
+
+(* The failures of the procedure's checks: each puts Rt.fail's values in
+   the registers it takes them in, x3 first, since a is never there,
+   then x1 and x5, and calls the stub for its kind, which adds what
+   failed and where (entryPoint):
+
+       mov x3, x10          ; the length, or mov x3, #n
+       mov x1, x15          ; a
+       adrp x5, name; add x5 ...   ; an enumeration's name
+       bl check0 *)
+proc endFails;
+var i, path: INT; f: Fail;
+begin
+    path := Chunk.curFilePath();
+    for i := 0 to numFails - 1 do
+        f := fails[i];
+        A.fixLink(f.L);
+        Chunk.setCurFile(f.path);
+        Chunk.noteLine(f.line, f.col);
+        Chunk.setCurFile(path);
+        if f.lenReg < 0 then A.movRI(3, f.n); elsif f.lenReg # 3 then A.movRR(3, f.lenReg); end;
+        if f.ra # 1 then A.movRR(1, f.ra); end;
+        if f.name >= 0 then A.addrChunk(5, f.name, 0); end;
+        if failStubs[f.what] < 0 then
+            failStubs[f.what] := Chunk.newChunk(Chunk.secText, internStr("Rt"), internStr(StubNames[f.what]));
+        end;
+        A.callChunk(failStubs[f.what]);
+    end;
+    numFails := 0;
+end;
+
 (* Operations *)
 
 (* The right operand of the two values on top, popped, in register y:
@@ -586,6 +700,46 @@ begin
     end;
 end;
 
+(* r div y, or r mod y, of bits bits, signed or not, y being the
+   constant v if c. x86's idiv stops the program for a division by
+   zero, and for the smallest value divided by -1, which overflows; the
+   report binds both (6.1), and arm64's sdiv and udiv give a value for
+   each, so the code checks first, as Rt.fail's kind 5, a division
+   fault. The smallest value is that of the type's width, for a narrow
+   one, an I32's -2^31, sign-extended in 64 bits. Of an I64:
+
+       cmp x17, #0
+       b.eq fail            ; by zero
+       cmn x17, #1
+       b.ne L
+       mov x15, #8000000000000000H
+       cmp x9, x15
+       b.eq fail            ; the smallest by -1
+   L:  sdiv x15, x9, x17
+       mov x9, x15          ; div; for mod, msub x9, x15, x17, x9
+
+   msub is x9 - x15 * x17, what is left. A constant divisor other than
+   0 needs no first check, and other than -1 no second. *)
+proc divide(sy: Scan.Sym; r, y, bits: INT; signed, c: BOOL; v: I64);
+var L: INT;
+begin
+    if not c or (v = 0) then
+        A.cmpI(y, 0);
+        check(A.ccNE, 5, Scan.tokPos(), r, -1, 0, -1);
+    end;
+    if signed and (not c or (v = -1)) then
+        L := NoLabel;
+        A.cmpI(y, -1);
+        A.jcc(A.ccNE, L);
+        A.movRI(T, I64(-1) shl (bits - 1));
+        A.cmp(r, T);
+        check(A.ccNE, 5, Scan.tokPos(), r, -1, 0, -1);
+        A.fixLink(L);
+    end;
+    A.divide(signed, T, r, y);
+    if sy = Scan.sDiv then A.movRR(r, T); else A.madd(r, T, y, r, true); end;
+end;
+
 (* The two values on top, the left op the right, an integer of size
    bytes, signed or not, computed in 64 bits and brought back to its
    width, which is how a narrow integer wraps. A shift's count is taken
@@ -594,7 +748,6 @@ proc op*(sy: Scan.Sym; k: Kind; size: INT; signed: BOOL);
 var v: I64; r, y, bits, sh: INT; c, alu: BOOL;
 begin
     if k in {kF32, kF64} then notYet("reals"); end;
-    if (sy = Scan.sDiv) or (sy = Scan.sMod) then notYet("div and mod"); end;
     bits := size * 8;
     alu := (sy = Scan.sPlus) or (sy = Scan.sMinus) or (sy = Scan.sAmp) or (sy = Scan.sBar) or (sy = Scan.sXor);
     (* a constant goes right, where it can be an immediate *)
@@ -616,6 +769,8 @@ begin
             A.alu(aluOf(sy), r, r, y);
         elsif sy = Scan.sTimes then
             A.mul(r, r, y);
+        elsif (sy = Scan.sDiv) or (sy = Scan.sMod) then
+            divide(sy, r, y, bits, signed, c, v);
         else   (* sShl, sShr: the machine takes the count modulo 64 *)
             if bits < 64 then A.aluI(A.opAnd, U, y, bits - 1); y := U; end;
             A.shift(sh, r, r, y, 8);
@@ -643,10 +798,21 @@ begin
     notYet("POPCOUNT");
 end;
 
+(* ABS of the signed integer on top: negated if negative, and cut back
+   to its width, so that the smallest value gives itself, as -x does
+   (Gen.x86_64.raz says more):
+
+       cmp x9, #0
+       cneg x9, x9, lt      ; csneg x9, x9, x9, ge
+       sxtw x9, w9          ; an I32 *)
 proc abs*(k: Kind; size: INT);
+var r: INT;
 begin
-    _ := k; _ := size;
-    notYet("ABS");
+    if k in {kF32, kF64} then notYet("reals"); end;
+    r := top();
+    A.cmpI(r, 0);
+    A.csel(A.csNeg, A.ccGE, r, r, r);
+    if size < 8 then A.extend(r, r, size, true); end;
 end;
 
 (* The two values on top, compared: a BOOL, 1 or 0 *)
@@ -714,11 +880,48 @@ begin
     stack[depth - 1].k := k;
 end;
 
+(* Whether the slices in the frame at a and b (the offsets of their
+   pointers, the lengths 8 bytes on) are equal (or not, if not eq): the
+   lengths, then the bytes, len shl shift of them, a byte at a time. The
+   flags say equal or not, where the loop leaves it:
+
+       ldr x2, [x29, #b + 8]
+       ldr x15, [x29, #a + 8]
+       cmp x2, x15
+       b.ne out             ; the lengths differ
+       ldr x1, [x29, #b]
+       ldr x0, [x29, #a]
+       lsl x2, x2, #shift
+   top: cmp x2, #0
+       b.eq out             ; no bytes left: equal
+       ldrb w15, [x0], #1
+       ldrb w17, [x1], #1
+       sub x2, x2, #1
+       cmp x15, x17
+       b.eq top
+   out: cset x9, eq         ; or ne *)
 proc compareSeq*(a, b: I64; shift: INT; eq: BOOL);
+var r, out, loop: INT;
 begin
-    _ := a; _ := b; _ := shift; _ := eq;
-    notYet("comparing slices");
-    _ := target();
+    r := target();
+    out := NoLabel;
+    A.load(Tmp, FP, INT(b) + 8, 8, false);
+    A.load(T, FP, INT(a) + 8, 8, false);
+    A.cmp(Tmp, T);
+    A.jcc(A.ccNE, out);
+    A.load(Src, FP, INT(b), 8, false);
+    A.load(Dst, FP, INT(a), 8, false);
+    if shift > 0 then A.shiftI(A.shLsl, Tmp, Tmp, shift, 8); end;
+    loop := Chunk.pc;
+    A.cmpI(Tmp, 0);
+    A.jcc(A.ccEQ, out);
+    A.loadIdx(T, Dst, 1, 1, A.mPost);
+    A.loadIdx(U, Src, 1, 1, A.mPost);
+    A.aluI(A.opSub, Tmp, Tmp, 1);
+    A.cmp(T, U);
+    A.jccBack(A.ccEQ, loop);
+    A.fixLink(out);
+    if eq then A.cset(A.ccEQ, r); else A.cset(A.ccNE, r); end;
     computed(kWord);
 end;
 
@@ -769,18 +972,38 @@ begin
     notYet("NEW");
 end;
 
+(* CAS(v, old, new), XCHG(v, x) or XADD(v, x), from the stack, v's
+   address under the rest: the result where the address was. By the
+   LSE instructions every Apple processor has, each with acquire and
+   release, as x86's lock does: casal stores new if [v] holds old,
+   leaving what [v] held where old was, which says whether it did:
+
+       mov x17, x15         ; old
+       casal x17, x10, [x9] ; x10, new
+       cmp x17, x15
+       cset x9, eq
+
+   swpal and ldaddal leave what [v] held in x17, the result. *)
 proc atomic*(which: INT);
+var r, n: INT;
 begin
-    notYet("CAS, XCHG and XADD");
-    if which = Sym.bCas then drop(); end;
-    drop();
+    if which = Sym.bCas then n := top(); drop(); end;
+    popTo(T);
+    r := top();
+    match which of
+    | Sym.bCas: A.movRR(U, T); A.casal(U, n, r, 8); A.cmp(U, T); A.cset(A.ccEQ, r);
+    | Sym.bXchg: A.swpal(T, U, r, 8); A.movRR(r, U);
+    | else: A.ldaddal(T, U, r, 8); A.movRR(r, U);
+    end;
     stack[depth - 1].k := kWord;
 end;
 
+(* SYSTEM.SYSCALL is Linux's only (report 6.8): macOS has no stable
+   system calls, and a program calls the C library there *)
 proc sysCall*(n: INT);
 var i: INT;
 begin
-    notYet("SYSCALL");
+    missing("SYSTEM.SYSCALL is Linux's only: call the C library");
     for i := 1 to n do drop(); end;
     _ := target();
     computed(kWord);
@@ -856,14 +1079,45 @@ begin
     A.fixLink(L);
 end;
 
+(* A jump table, for a match on the integer in frame slot slot, whose
+   labels run from lo up for n values. The selector less lo, compared
+   unsigned (so below lo is above n too), is out of the table if it
+   isn't below n, and goes to the else arm at elseAt, or, if there is
+   none, to endL, the end of the match. Else it picks a word of the
+   table that follows the jump, an offset from the table's start, which
+   adr finds four instructions on:
+
+       ldr x15, [x29, #slot]
+       sub x15, x15, #lo
+       cmp x15, #n - 1
+       b.hi else
+       adr x17, table
+       ldrsw x15, [x17, x15, lsl #2]
+       add x15, x17, x15
+       br x15
+   table: .word arm0 - table, arm1 - table, ...
+
+   It returns the table's start; the caller then makes the n entries
+   with tableEntry. *)
 proc jumpTable*(slot, lo: I64; n, elseAt: INT; var endL: INT): INT;
+const TableAt = 16;
+var start: INT;
 begin
-    _ := slot; _ := lo; _ := n; _ := elseAt; _ := endL;
-    notYet("a jump table");
-    return Chunk.pc;
+    A.load(T, FP, INT(slot), 8, false);
+    if lo # 0 then A.aluI(A.opSub, T, T, lo); end;
+    A.cmpI(T, n - 1);
+    if elseAt # NoLabel then A.jccBack(A.ccHI, elseAt); else A.jcc(A.ccHI, endL); end;
+    start := Chunk.pc + TableAt;
+    A.adr(U, TableAt);
+    A.loadR(T, U, T, 4, true, true);
+    A.alu(A.opAdd, T, U, T);
+    A.jmpR(T);
+    if Chunk.pc # start then Diag.fatal("internal error: the jump table is not where it was said"); end;
+    return start;
 end;
 
-(* The next entry of the table that jumpTable started at table *)
+(* The next entry of the table that jumpTable started at table: the
+   code at target *)
 proc tableEntry*(table, target: INT);
 begin
     Chunk.put4(target - table);
@@ -884,30 +1138,55 @@ begin
     A.fixLinkTo(L, top);
 end;
 
-(* Checks, and what checks as it goes *)
+(* Checks, and what checks as it goes, as on x86-64, whose comments
+   say more; a comparison is unsigned, so that a negative index is a
+   huge one *)
 
+(* The index on top is below n *)
 proc checkIndex*(n: I64; p: Diag.Pos);
+var r: INT;
 begin
-    _ := n;
-    notYetAt("checks", p);
+    r := top();
+    A.cmpI(r, n);
+    check(A.ccLO, 0, p, r, -1, n, -1);
 end;
 
+(* The index on top is where a view starts in an array of n elements,
+   below below *)
 proc checkView*(n, below: I64; p: Diag.Pos);
+var r: INT;
 begin
-    _ := n; _ := below;
-    notYetAt("checks", p);
+    r := top();
+    A.cmpI(r, below);
+    check(A.ccLO, 7, p, r, -1, n, -1);
 end;
 
+(* The integer on top is a position of an enumeration of n names *)
 proc checkEnum*(n: I64; name: INT; p: Diag.Pos);
+var r: INT;
 begin
-    _ := n; _ := name;
-    notYetAt("checks", p);
+    r := top();
+    A.cmpI(r, n);
+    check(A.ccLO, 2, p, r, -1, n, name);
 end;
 
+(* The address on top, to be used reach bytes past, isn't nil, unless
+   the machine would stop it, within page zero *)
 proc checkNil*(reach: I64; p: Diag.Pos);
+var r: INT;
 begin
-    _ := reach;
-    notYetAt("checks", p);
+    if reach <= NilPage then return; end;
+    r := top();
+    A.cmpI(r, 0);
+    check(A.ccNE, 4, p, r, -1, 0, -1);
+end;
+
+(* What a failed index check is: an index past the length (0), or a
+   view that runs past it (7) when it needs room elements more *)
+proc kindOfIndex(room: I64): INT;
+begin
+    if room > 0 then return 7; end;
+    return 0;
 end;
 
 (* r times v, an element's size: by a shift where v is a power of two,
@@ -927,17 +1206,42 @@ end;
 
 (* Pops an index, and the address of the slice at a if it is on the
    stack, and makes the address of the element it picks: the slice's
-   pointer plus the index times size *)
+   pointer plus the index times size. The index is checked against the
+   length, in its register or loaded into x3; a view, which needs room
+   elements after the one indexed, against the length less the index,
+   which can't wrap once the index is below it:
+
+       ldr x3, [x29, #-24]   ; the length
+       cmp x15, x3
+       b.hs fail
+       sub x2, x3, x15
+       cmp x2, #room
+       b.ls fail *)
 proc indexSlice*(a: Adr; size, room: I64; checked: BOOL; p: Diag.Pos);
-var m: Mem; r: INT;
+var m, ml: Mem; r, len: INT;
 begin
-    if checked or (room > 0) then notYetAt("checks", p); end;
     popTo(T);
+    if a.base = bReg then
+        len := a.hi;
+    else
+        m := place(a, U);
+        ml := m; ml.off := ml.off + 8;
+        len := 3;
+        if checked then loadMem(len, ml, 8, false); end;
+    end;
+    if checked then
+        A.cmp(T, len);
+        check(A.ccLO, kindOfIndex(room), p, T, len, 0, -1);
+        if room > 0 then
+            A.alu(A.opSub, Tmp, len, T);
+            A.cmpI(Tmp, room);
+            check(A.ccHI, 7, p, T, len, 0, -1);
+        end;
+    end;
     mulI(T, size);
     if a.base = bReg then
         A.alu(A.opAdd, T, T, a.chunk);
     else
-        m := place(a, U);
         loadMem(U, m, 8, false);
         A.alu(A.opAdd, T, T, U);
     end;
@@ -966,20 +1270,32 @@ end;
 (* Pops hi and lo, and the address of the array or slice at a if it is
    on the stack, and makes the slice lo..hi of it, of elements of size
    bytes, in the frame at tmp: its pointer, the start plus lo times size,
-   and its length, hi - lo *)
+   and its length, hi - lo. The array has n elements. Two checks, both
+   unsigned, so that a negative bound fails too: hi against the length,
+   then lo against hi; lo is in x1 and hi in x2, as Rt.fail takes a and
+   b. *)
 proc slice*(a: Adr; isArray: BOOL; n, size, tmp: I64; checked: BOOL; p: Diag.Pos);
-var m: Mem;
+var m, ml: Mem; len: INT;
 begin
-    _ := n;
-    if checked then notYetAt("checks", p); end;
     popTo(Tmp);      (* hi *)
     popTo(Src);      (* lo *)
-    if a.base = bReg then
-        A.movRR(U, a.chunk);
-    else
-        m := place(a, U);
-        if isArray then adrTo(U, m); else loadMem(U, m, 8, false); end;
+    if a.base # bReg then m := place(a, U); end;
+    if checked then
+        if isArray then
+            len := -1;
+            A.cmpI(Tmp, n);
+        else
+            len := a.hi;
+            if a.base # bReg then len := 3; ml := m; ml.off := ml.off + 8; loadMem(len, ml, 8, false); end;
+            A.cmp(Tmp, len);
+        end;
+        check(A.ccLS, 1, p, Src, len, n, -1);
+        A.cmp(Src, Tmp);
+        check(A.ccLS, 1, p, Src, len, n, -1);
     end;
+    if a.base = bReg then A.movRR(U, a.chunk);
+    elsif isArray then adrTo(U, m);
+    else loadMem(U, m, 8, false); end;
     A.alu(A.opSub, Tmp, Tmp, Src);
     A.store(Tmp, FP, INT(tmp) + 8, 8);
     mulI(Src, size);
@@ -987,10 +1303,79 @@ begin
     A.store(U, FP, INT(tmp), 8);
 end;
 
-proc copySlice*(dOff, sOff, size: I64; checked: BOOL; p: Diag.Pos);
+(* The x2 bytes from [x1] to [x0], n at a time while x2 holds n or more,
+   through x15: forward, moving x1 and x0 on after each, or back, from
+   the ends, moving them down first *)
+proc copyRun(n: INT; back: BOOL);
+var top, out: INT;
 begin
-    _ := dOff; _ := sOff; _ := size; _ := checked;
-    notYetAt("COPY", p);
+    top := Chunk.pc;
+    out := NoLabel;
+    A.cmpI(Tmp, n);
+    A.jcc(A.ccLO, out);
+    if back then
+        A.loadIdx(T, Src, -n, n, A.mPre); A.storeIdx(T, Dst, -n, n, A.mPre);
+    else
+        A.loadIdx(T, Src, n, n, A.mPost); A.storeIdx(T, Dst, n, n, A.mPost);
+    end;
+    A.aluI(A.opSub, Tmp, Tmp, n);
+    A.jmpBack(top);
+    A.fixLink(out);
+end;
+
+(* COPY: the elements of the slice in the frame at sOff, of size bytes
+   each, to the start of the one at dOff, which must be at least as long
+   (the source may be shorter): slice 0..LEN(s) of d, checked. They go
+   by words, then the last few bytes one by one, forward; but back, from
+   the ends, when the destination starts inside the source, so that an
+   overlap comes out right (report 6.8):
+
+       ldr x2, [x29, #sOff + 8]
+       ldr x3, [x29, #dOff + 8]
+       cmp x2, x3
+       b.hi fail            ; the source longer than the destination
+       ldr x1, [x29, #sOff]
+       ldr x0, [x29, #dOff]
+       cmp x0, x1
+       b.ls fwd             ; the destination not above: forward
+       add x15, x1, x2
+       cmp x0, x15
+       b.hs fwd             ; nor inside the source
+       add x1, x1, x2       ; back, from the ends
+       add x0, x0, x2
+       ...                  ; copyRun(8, back), copyRun(1, back)
+       b out
+   fwd: ...                 ; copyRun(8), copyRun(1)
+   out: *)
+proc copySlice*(dOff, sOff, size: I64; checked: BOOL; p: Diag.Pos);
+var fwd, out: INT;
+begin
+    A.load(Tmp, FP, INT(sOff) + 8, 8, false);
+    if checked then
+        A.load(3, FP, INT(dOff) + 8, 8, false);
+        A.movRI(Src, 0);   (* a, the slice's start *)
+        A.cmp(Tmp, 3);
+        check(A.ccLS, 1, p, Src, 3, 0, -1);
+    end;
+    mulI(Tmp, size);
+    A.load(Src, FP, INT(sOff), 8, false);
+    A.load(Dst, FP, INT(dOff), 8, false);
+    fwd := NoLabel;
+    A.cmp(Dst, Src);
+    A.jcc(A.ccLS, fwd);
+    A.alu(A.opAdd, T, Src, Tmp);
+    A.cmp(Dst, T);
+    A.jcc(A.ccHS, fwd);
+    A.alu(A.opAdd, Src, Src, Tmp);
+    A.alu(A.opAdd, Dst, Dst, Tmp);
+    copyRun(8, true);
+    copyRun(1, true);
+    out := NoLabel;
+    A.jmp(out);
+    A.fixLink(fwd);
+    copyRun(8, false);
+    copyRun(1, false);
+    A.fixLink(out);
 end;
 
 proc fillSlice*(dOff, size, n: I64; scalar: BOOL);
@@ -1000,13 +1385,17 @@ begin
     drop();
 end;
 
-(* Pops hi, lo and a pointer, and makes the slice p[lo..hi] at tmp *)
+(* Pops hi, lo and a pointer, and makes the slice p[lo..hi] at tmp. Its
+   bounds can't be known, but it can't run backwards. *)
 proc slicePtr*(size, tmp: I64; checked: BOOL; p: Diag.Pos);
 begin
-    if checked then notYetAt("checks", p); end;
     popTo(Tmp);      (* hi *)
     popTo(Src);      (* lo *)
     popTo(U);        (* the pointer *)
+    if checked then
+        A.cmp(Src, Tmp);
+        check(A.ccLE, 3, p, Src, -1, 0, -1);
+    end;
     A.alu(A.opSub, Tmp, Tmp, Src);
     A.store(Tmp, FP, INT(tmp) + 8, 8);
     mulI(Src, size);
@@ -1014,36 +1403,74 @@ begin
     A.store(U, FP, INT(tmp), 8);
 end;
 
+(* The words the parameters of procedure type sig take: two for a
+   slice passed by value, one for anything else *)
+proc paramWords(sig: ^Sym.Type): INT;
+var q: ^Sym.Obj; n: INT;
+begin
+    n := 0;
+    q := sig^.fields;
+    while q # nil do
+        if (q^.typ^.form = Sym.fSlice) and not q^.isVar then INC(n, 2); else INC(n); end;
+        q := q^.next;
+    end;
+    return n;
+end;
+
 (* Calls. The arguments are the c.n values on top, each moved into the
    next of x0 to x7 just before the call; the values under them are
    spilled first, as the call may change their registers. As the stack's
    registers carry no argument, the moves may go in any order. A slice
-   goes as its two words, a record by value as the address of a copy
-   (Item makes it). A single result comes back in x0, two words in x0
-   and x1: a slice is stored in the temporary c.ret, two results pushed
-   as two values. *)
+   goes as its two words, both in registers or both on the stack, a
+   record by value as the address of a copy (Item makes it). The
+   arguments past the registers go on the machine's stack, 8 bytes
+   each, the first at sp, in an area sp is lowered by for the call, a
+   multiple of 16; and so do those past a C procedure's own parameters
+   where it ends in ..., in registers or not, as Apple's convention has
+   it (where a C procedure's own parameters past x7 narrower than 8
+   bytes would be packed, which raz doesn't do). A result in memory, a
+   record, an array or several results, goes to the caller's temporary
+   c.ret, its address in x8. A single result comes back in x0, two words
+   in x0 and x1: a slice is stored in c.ret, two results pushed as two
+   values. *)
 proc call*(var c: CallInfo);
-var res: ^Sym.Type; i, ni, first, r: INT;
+var res: ^Sym.Type; i, ni, k, first, own, r: INT; area: I64; onStack: [64]BOOL;
 begin
     first := depth - c.n;
     spillBelow(first);
     res := c.sig^.base;
     c.ret := 0;
-    if c.sig^.variadic then notYet("a call of a C procedure that takes ..."); end;
-    if (res # nil) and (Sym.holdsArray(res) or Sym.behindPointer(res)) then
-        notYet("a result in memory");
-        c.ret := allocPerm(res^.size, res^.align);
-    elsif (res # nil) and (res^.form = Sym.fSlice) then
+    if (res # nil) and Sym.holdsArray(res) then
+        c.ret := allocPerm(res^.size, res^.align);   (* kept, as on x86-64 (report 8) *)
+    elsif (res # nil) and (Sym.behindPointer(res) or (res^.form = Sym.fSlice)) then
         c.ret := allocTemp(res^.size, res^.align);
     elsif (res # nil) and (res^.form = Sym.fReal) then
         notYet("reals");
     end;
-    ni := 0;
+    own := c.n;
+    if c.sig^.variadic then own := paramWords(c.sig); end;
+    ni := 0; k := 0;
     for i := 0 to c.n - 1 do
         if c.isF[i] then notYet("reals"); end;
-        if ni < 8 then valueTo(first + i, ni); else notYet("an argument past x7"); end;
-        INC(ni);
+        if i >= own then onStack[i] := true;
+        elsif (i > 0) and c.pair[i - 1] then onStack[i] := onStack[i - 1];
+        else onStack[i] := ni + 1 + INT(c.pair[i]) > 8; end;
+        if onStack[i] then INC(k); else INC(ni); end;
     end;
+    area := Sym.alignUp(8 * k, 16);
+    if area > 0 then A.aluI(A.opSub, SP, SP, area); end;
+    k := 0; ni := 0;
+    for i := 0 to c.n - 1 do
+        if onStack[i] then
+            valueTo(first + i, T);
+            A.store(T, SP, 8 * k, 8);
+            INC(k);
+        else
+            valueTo(first + i, ni);
+            INC(ni);
+        end;
+    end;
+    if (c.ret # 0) and Sym.behindPointer(res) then A.aluI(A.opAdd, 8, FP, c.ret); end;
     for i := 1 to c.n do drop(); end;
     if c.ext then
         A.loadChunk(U, c.chunk, 0, 8, false);
@@ -1054,6 +1481,7 @@ begin
         A.load(U, FP, INT(c.target), 8, false);
         A.callR(U);
     end;
+    if area > 0 then A.aluI(A.opAdd, SP, SP, area); end;
     if res # nil then
         if res^.form = Sym.fSlice then
             A.store(0, FP, INT(c.ret), 8);
@@ -1109,10 +1537,12 @@ begin
 end;
 
 (* The parameters' places: each in a frame slot of its own, stored there
-   from its register on entry. A var parameter, and a record or array
-   passed by value, holds an address (ind). *)
+   from its register on entry, or above the frame where the caller put
+   it, past the frame record (call). A var parameter, and a record or
+   array passed by value, holds an address (ind). The address of a
+   result in memory arrives in x8, and is kept in retSlot. *)
 proc beginProc*(sig: ^Sym.Type; params: ^Sym.Obj);
-var p: ^Sym.Obj; ni, k, w: INT;
+var p: ^Sym.Obj; ni, k, w: INT; stackOff: I64;
 begin
     frameTop := 0; frameMax := 0; permTop := 0;
     resetStack(0, 0);
@@ -1120,21 +1550,30 @@ begin
     numIn := 0;
     lost := false;
     resType := sig^.base;
+    procParams := params;
     regMask := 0;
     if (resType # nil) and Sym.behindPointer(resType) then
-        notYet("a result in memory");
         retSlot := allocPerm(8, 8);
+        inReg[0] := 8; inSlot[0] := retSlot; inSize[0] := 8; inObj[0] := nil;
+        numIn := 1;
     end;
     ni := 0;
+    stackOff := 16;
     p := params;
     while p # nil do
         p^.ind := p^.isVar or (Sym.isAggregate(p^.typ) and (p^.typ^.form # Sym.fSlice));
         k := 1;
         if (p^.typ^.form = Sym.fSlice) and not p^.isVar then k := 2; end;
-        p^.val := allocPerm(8 * k, 8);
-        if (p^.typ^.form = Sym.fReal) and not p^.isVar or (ni + k > 8) then
-            notYet("a real parameter, or one past x7");
+        if (p^.typ^.form = Sym.fReal) and not p^.isVar then
+            notYet("a real parameter");
+            p^.val := allocPerm(8, 8);
             k := 0;
+        elsif ni + k > 8 then   (* on the stack, as call puts it *)
+            p^.val := stackOff;
+            INC(stackOff, 8 * k);
+            k := 0;
+        else
+            p^.val := allocPerm(8 * k, 8);
         end;
         for w := 0 to k - 1 do   (* a slice's two words, in two slots *)
             inReg[numIn] := ni; inSlot[numIn] := p^.val + I64(8 * w); inObj[numIn] := p;
@@ -1191,7 +1630,7 @@ end;
 proc markCode*(var m: CodeMark);
 begin
     m.pc := Chunk.pc; m.fixups := Chunk.numFixups; m.lines := Chunk.numLines; m.said := A.saidCount();
-    m.fails := 0; m.exit := exitL;
+    m.fails := numFails; m.exit := exitL;
 end;
 
 (* The code made since m taken back; the frame is left as it is *)
@@ -1199,6 +1638,7 @@ proc rewind*(m: CodeMark);
 begin
     Chunk.rewindTo(m.pc, m.fixups, m.lines);
     A.unsay(m.said);
+    numFails := m.fails;
     exitL := m.exit;
 end;
 
@@ -1208,6 +1648,7 @@ proc redo*(m: CodeMark);
 begin
     Chunk.rewindTo(m.pc, m.fixups, m.lines);
     A.unsay(m.said);
+    numFails := 0;
     frameTop := frameAt[0]; frameMax := frameAt[1]; permTop := frameAt[2];
     exitL := NoLabel;
 end;
@@ -1222,7 +1663,7 @@ end;
    parameters stored from their registers to their slots, or moved to
    their registers. *)
 proc enterBody*(c, line: INT);
-var i, loop, r: INT; n: I64;
+var i, loop, r: INT; n: I64; p: ^Sym.Obj;
 begin
     Chunk.beginChunk(c);
     codeChunk := c;
@@ -1255,7 +1696,7 @@ begin
         end;
     end;
     for i := 0 to numIn - 1 do
-        if inObj[i]^.reg # 0 then
+        if (inObj[i] # nil) and (inObj[i]^.reg # 0) then
             r := inObj[i]^.reg;
             if inSlot[i] # inObj[i]^.val then r := inObj[i]^.reg2; end;
             A.movRR(r, inReg[i]);
@@ -1264,6 +1705,21 @@ begin
             A.store(inReg[i], FP, INT(inSlot[i]), inSize[i]);
         end;
     end;
+    (* a register variable's parameter that came on the stack, above the
+       frame (val > 0), is loaded from there: one passed by its address
+       (ind) is the address, 8 bytes, whatever its type *)
+    p := procParams;
+    while p # nil do
+        if (p^.reg # 0) and (p^.val > 0) then
+            if not p^.ind and (p^.typ^.form in {Sym.fInt, Sym.fBool, Sym.fEnum, Sym.fSet}) then
+                A.load(p^.reg, FP, INT(p^.val), INT(p^.typ^.size), p^.typ^.signed);
+            else
+                A.load(p^.reg, FP, INT(p^.val), 8, false);
+                if not p^.ind and (p^.typ^.form = Sym.fSlice) then A.load(p^.reg2, FP, INT(p^.val) + 8, 8, false); end;
+            end;
+        end;
+        p := p^.next;
+    end;
 end;
 
 proc resultSlot*: I64;
@@ -1271,27 +1727,32 @@ begin
     return retSlot;
 end;
 
+(* Pops one of several results, a value of size bytes, into its place
+   off bytes into the caller's, at the address that came in x8 *)
 proc resultTo*(off: I64; size: INT);
+var r: INT;
 begin
-    _ := off; _ := size;
-    notYet("a result in memory");
+    r := top();
     drop();
+    A.load(U, FP, INT(retSlot), 8, false);
+    A.store(r, U, INT(off), size);
 end;
 
+(* Pops an address, and copies size bytes from it to the result, off
+   bytes into it *)
 proc copyResult*(off, size: I64);
 begin
-    _ := off; _ := size;
-    notYet("a result in memory");
-    drop();
+    popTo(Src);
+    A.load(Dst, FP, INT(retSlot), 8, false);
+    if off # 0 then A.aluI(A.opAdd, Dst, Dst, off); end;
+    copyBytes(size);
 end;
 
 (* return: the result, a value on top, goes in x0; two words, the two
-   values on top, in x0 and x1 *)
+   values on top, in x0 and x1; one in memory is there already *)
 proc returnJump*;
 begin
-    if (resType # nil) and Sym.behindPointer(resType) then
-        A.load(0, FP, INT(retSlot), 8, false);   (* not yet made: marked by beginProc *)
-    elsif resType # nil then
+    if (resType # nil) and not Sym.behindPointer(resType) then
         if Sym.inTwoRegs(resType) then popTo(1); end;
         popTo(0);
     end;
@@ -1304,10 +1765,35 @@ proc tryAlign*;
 begin
 end;
 
+(* The procedure returns the error in register r, and a zero for each
+   of its other results; r isn't x0, x1 or x2, which this uses. *)
+proc returnError(r: INT);
+var f: ^Sym.Obj;
+begin
+    if Sym.behindPointer(resType) then
+        A.load(Dst, FP, INT(retSlot), 8, false);
+        zeroBytes(resType^.size);
+        f := resType^.fields;
+        while f^.next # nil do f := f^.next; end;
+        A.load(Dst, FP, INT(retSlot), 8, false);
+        A.store(r, Dst, INT(f^.val), 8);
+    elsif Sym.inTwoRegs(resType) then
+        A.movRR(1, r);
+        A.movRI(0, 0);
+    else
+        A.movRR(0, r);
+    end;
+    A.jmp(exitL);
+end;
+
+(* The rest of what try does where the error isn't nil: the procedure
+   returns the error in the frame slot. Only code is made: the stack of
+   values is left as it is, for the code that follows, where the error
+   is nil. *)
 proc tryReturn*(slot: I64);
 begin
-    _ := slot;
-    notYet("try");
+    A.load(U, FP, INT(slot), 8, false);
+    returnError(U);
 end;
 
 (* try, with no deferred statement to run: the error on top is tested in
@@ -1323,8 +1809,7 @@ end;
 
 proc tryReturnFrom*(r: INT);
 begin
-    _ := r;
-    notYet("try");
+    returnError(r);
 end;
 
 (* The end of the procedure in chunk c: the code that returns, and the
@@ -1335,7 +1820,10 @@ var n: I64; i: INT;
 begin
     codeChunk := -1;
     if (depth # 0) or (pushed # 0) then Diag.fatal("internal error: stack depth"); end;
-    if open then
+    if open and Sym.behindPointer(resType) then
+        A.load(Dst, FP, INT(retSlot), 8, false);
+        zeroBytes(resType^.size);
+    elsif open then
         A.movRI(0, 0);
         if Sym.inTwoRegs(resType) then A.movRI(1, 0); end;
     else
@@ -1352,6 +1840,7 @@ begin
     A.movRR(SP, FP);
     A.ldp(FP, LR, SP, 16, A.mPost);
     A.ret();
+    endFails();
     n := Sym.alignUp(frameMax, 16);
     if n >= 1000000H then return Scan.mark("frame too big: 16 MB or more"); end;
     Chunk.put4At(frameFix, SubSp12 | INT((n shr 12) shl 10));
@@ -1364,29 +1853,40 @@ begin
     return nil;
 end;
 
+(* A deferred statement is compiled where it stands, as a subroutine of
+   its procedure that the code jumps over, in the procedure's own frame
+   (the same x29), so that it sees all its variables; deferBegin gives
+   its address and what pushed was. bl, which runs it, leaves its return
+   address in x30, which its own calls would change: so it keeps x30 on
+   the machine's stack, 16 bytes, so that sp stays a multiple of 16:
+
+       b over
+   at: str x30, [sp, #-16]!
+       ...                  ; the statement
+       ldr x30, [sp], #16
+       ret
+   over: *)
 proc deferBegin*(var L: INT): (INT, INT);
+var at: INT;
 begin
-    _ := L;
-    notYet("defer");
-    return Chunk.pc, pushed;
+    A.jmp(L);
+    at := Chunk.pc;
+    A.storeIdx(LR, SP, -16, 8, A.mPre);
+    return at, pushed;
 end;
 
 proc deferEnd*(L, saved: INT);
 begin
-    _ := L; _ := saved;
     keepTemps();
+    A.loadIdx(LR, SP, 16, 8, A.mPost);
+    A.ret();
+    A.fixLink(L);
+    pushed := saved;
 end;
 
 proc runDefer*(at: INT);
 begin
-    _ := at;
-    notYet("defer");
-end;
-
-(* The name s, interned *)
-proc internStr(s: []const U8): INT;
-begin
-    return Scan.intern(SYSTEM.PTR(s), LEN(s));
+    A.callBack(at);
 end;
 
 (* The entry point, main, and its chunk. macOS starts every program in
@@ -1428,6 +1928,29 @@ begin
     A.callChunk(exitProc);
     A.brk(1);   (* exit never returns: trap if it does *)
     Chunk.endChunk(entry);
+    (* Rt.fail, for the failures of each kind, given a, b, len and name
+       by the check's code (endFails), which called the stub by bl: the
+       place is that bl's, 4 bytes before the return address. Rt.fail's
+       last two arguments, the registers x86-64's trap report shows, are
+       none here.
+
+           sub x4, x30, #4
+           mov x0, #kind
+           mov x6, #0
+           mov x7, #0
+           bl Rt.fail *)
+    for i := 0 to LEN(failStubs) - 1 do
+        if failStubs[i] >= 0 then
+            Chunk.beginChunk(failStubs[i]);
+            A.aluI(A.opSub, 4, LR, 4);
+            A.movRI(0, i);
+            A.movRI(6, 0);
+            A.movRI(7, 0);
+            A.callChunk(rtFail);
+            A.brk(1);
+            Chunk.endChunk(failStubs[i]);
+        end;
+    end;
     return entry;
 end;
 
@@ -1455,7 +1978,9 @@ begin
     notYet("reals");
 end;
 
+var i: INT;
 begin
+    for i := 0 to LEN(failStubs) - 1 do failStubs[i] := -1; end;
     Chunk.setPad(0D4200020H);   (* brk #1, a trap, between procedures *)
     codeChunk := -1;
     pending := "";

@@ -1,0 +1,16 @@
+(* The smallest I16 divided by -1 stops the program, as an I64's does:
+   arm64's sdiv wouldn't, so the code checks *)
+module DivNarrow;
+import Out;
+
+proc main*;
+var a, b: I16;
+begin
+    a := -32767 - 1;
+    b := -1;
+    Out.str("before\n");
+    Out.int(I64(a div b));
+    Out.ln();
+end;
+
+end DivNarrow.

@@ -1,0 +1,61 @@
+(* Division and mod in every width, signed and unsigned, by constants
+   and variables, and a jump table, deferred statements and try *)
+module Divide;
+import Out;
+
+const Odd: ERROR = "odd";
+
+proc show(n: I64);
+begin
+    Out.int(n); Out.str(" ");
+end;
+
+proc even(n: INT): ERROR;
+begin
+    if n mod 2 # 0 then return Odd; end;
+    return nil;
+end;
+
+proc halve(n: INT): (INT, ERROR);
+begin
+    defer Out.str("[halve]");
+    try even(n);
+    return n div 2, nil;
+end;
+
+proc name(n: INT): []const U8;
+begin
+    match n of
+    | 1: return "one";
+    | 2: return "two";
+    | 3, 4: return "three or four";
+    | 5: return "five";
+    | 7: return "seven";
+    | else: return "many";
+    end;
+end;
+
+proc main*;
+var a, b: I64; c, d: I32; e, f: I16; g, h: I8; u, v: U8; w, x: U32; m, k: INT; err: ERROR;
+begin
+    a := -17; b := 5;
+    show(a div b); show(a mod b); show(a div 4); show(a mod 4); show(a div (-1)); Out.ln();
+    c := -2147483647; d := 2;
+    show(I64(c div d)); show(I64(c mod d)); show(I64(c div 1000)); Out.ln();
+    e := -32767; f := -2;
+    show(I64(e div f)); show(I64(e mod f)); Out.ln();
+    g := -127; h := 3;
+    show(I64(g div h)); show(I64(g mod h)); show(I64(g div (-1))); Out.ln();
+    u := 250; v := 7;
+    show(I64(u div v)); show(I64(u mod v)); show(I64(u div 16)); show(I64(u mod 16)); Out.ln();
+    w := 4000000000; x := 3;
+    show(I64(w div x)); show(I64(w mod x)); Out.ln();
+    for m := 0 to 8 do Out.str(name(m)); Out.str(" "); end;
+    Out.ln();
+    k, err := halve(10); show(k); Out.ln();
+    k, err := halve(7);
+    if err = Odd then Out.str("odd"); end;
+    Out.ln();
+end;
+
+end Divide.
