@@ -30,9 +30,9 @@ library, made from `lib/` by `tools/Doc.raz`.
 | `src/Parse.raz` | 4,947 | 4,197 | Declarations, statements, expressions, built-ins, recovery, warnings |
 | `src/Link.raz` | 531 | 400 | Tree shaking, layout, patching, the places |
 | `src/Exe.linux.raz` | 430 | 336 | The executable, ELF: static and dynamic, symbol table, line numbers |
-| `src/Exe.darwin.raz` | 559 | 394 | The executable for macOS, Mach-O: dyld's binds and rebases, libraries, line numbers, the signature |
+| `src/Exe.darwin.raz` | 568 | 399 | The executable for macOS, Mach-O: dyld's binds and rebases, libraries, line numbers, the signature |
 | `src/Host.linux.raz` | 103 | 52 | The system running the compiler |
-| `src/Host.darwin.raz` | 105 | 60 | The same, for a compiler that runs on a Mac |
+| `src/Host.darwin.raz` | 139 | 82 | The same, for a compiler that runs on a Mac |
 | `src/Raz.raz` | 499 | 390 | The command line, and `-q` for an editor |
 
 Every file opens with a comment that says what it is, what it depends
@@ -2644,7 +2644,9 @@ and its load commands: `LC_DYLD_INFO_ONLY` for the rebases and binds;
 `LC_SYMTAB` with each named live chunk, as on Linux, a local symbol
 for lldb, and `LC_DYSYMTAB`, which says all are local;
 `LC_LOAD_DYLINKER` naming `/usr/lib/dyld`; `LC_UUID`, the first 16
-bytes of the SHA-256 of what follows the header; `LC_BUILD_VERSION`,
+bytes of the SHA-256 of the signature's page hashes, made with the UUID
+zero (the first page is hashed again once it holds it), so derived from
+the whole file with one pass over it; `LC_BUILD_VERSION`,
 macOS 11.0 and up; `LC_MAIN`, the entry point's offset; an
 `LC_LOAD_DYLIB` for `/usr/lib/libSystem.B.dylib` and one for each
 other library (below); four `LC_RPATH`s; and `LC_CODE_SIGNATURE`. The header has
@@ -2780,8 +2782,11 @@ procedures and `CLib`. Four things differ. There is no `/proc`:
 meaning the system's, and there is no musl. There is no `memfd_create`:
 `prepareRun` is a file in `$TMPDIR` (`/tmp` if it isn't set), named by
 the compiler's process number, an error if that directory isn't
-writable; `execute` runs it with `Sys.execve`, and the file stays,
-for macOS to clear. And a file's code signature belongs to the file, so
+writable. dyld reads that file by name as the program starts, so it
+can't go when the program replaces the compiler: `execute` forks, the
+copy runs it with `Sys.execve`, and the compiler waits, ignoring
+Ctrl-C and Ctrl-\ as C's `system()` does, removes the file, and ends
+with the program's status, or by its signal. And a file's code signature belongs to the file, so
 a program written in place over one that has run is killed:
 `writeExecutable` removes what is there first, then writes and sets
 mode 755. It uses `Sys` and `Files`, the C ones, and declares two
@@ -3231,11 +3236,13 @@ fields as the code reads them.
 | `Sys.closeDir`, `Sys.openDir`, `Sys.nextEntry`, `Sys.Dir` | `Parse`: the files of a directory, to find a module's other files for the one-module-of-each-name check |
 | `Sys.env`, `Sys.envAt` | `Diag` (`NO_COLOR`), `Raz.userLibraries` (`RAZ_PATH`, `HOME`; `envAt` tells unset from empty) and `Host.darwin.raz` (`TMPDIR`, and the environment `execute` hands on) |
 | `Sys.errDenied`, `Sys.errNoEntry`, `Sys.errIntr` | `Scan`: "permission denied" and "there is no such file" in a message; a read of standard input a signal broke into, tried again |
-| `Sys.execve` | `Host.darwin.raz`'s `execute`: runs the program `raz run` wrote, in the compiler's place |
+| `Sys.execve` | `Host.darwin.raz`'s `execute`: runs the program `raz run` wrote, in the compiler's copy |
+| `Sys.fork`, `Sys.waitExit`, `Sys.Status`, `Sys.exit`, `Sys.kill` | `Host.darwin.raz`'s `execute`: the copy that runs the program, waited for, then the compiler ends with its status or by its signal |
+| `Sys.ignore`, `Sys.ignored`, `Sys.sigInt`, `Sys.sigQuit` | `Host.darwin.raz`'s `execute`: Ctrl-C and Ctrl-\ ignored while the compiler waits, given back in the copy |
 | `Sys.info`, `Sys.Info` | `Scan` and `Parse`: whether a path is a file (`file`) and its length (`size`) |
 | `Sys.isTerminal` | `Diag`: colour only when standard error is a terminal |
-| `Sys.pid` | `Host.darwin.raz`'s `prepareRun`: the name of the file a program is written to |
-| `Sys.remove` | `Host.darwin.raz`'s `writeExecutable`: a program's file is never written over in place |
+| `Sys.pid` | `Host.darwin.raz`'s `prepareRun`: the name of the file a program is written to; `execute`: the compiler, sent the signal that ended the program |
+| `Sys.remove` | `Host.darwin.raz`'s `writeExecutable`: a program's file is never written over in place; `execute`: the file `raz run` wrote, once the program ends |
 | `Sys.openRead`, `Sys.read` | `Scan`: reads a source file whole; `Parse`: the library's `RAZ-VERSION` |
 | `Sys.stdin` | `Scan`: `raz -q`'s source, read from standard input |
 | `Sys.readLink` | `Host.libraryDir`: `/proc/self/exe`, to find the library beside the compiler |
@@ -3435,8 +3442,9 @@ this one does.
   `lib/Rt.raz`'s `fail`; a reason a signal gives, `onSignal` there.
 
 The compiler is in raz. `make raz` builds it with the release `BOOT`
-names, by its tag and its tarball's SHA-256: `src/boot.sh` fetches the
-tarball into `build/boot/`, checks the sum, and puts its `raz` there
+names, by its tag and a SHA-256 for each host's tarball (`linux-x86_64`,
+`darwin-arm64`): `src/boot.sh` fetches this host's tarball into
+`build/boot/`, checks the sum, and puts its `raz` there
 with this `lib/` beside it, so that `src/` is built against today's
 library. So `src/`, and the modules of `lib/` it imports, use only what
 that release knows: v0.25.0 has `const` parameters, views, the
@@ -3451,3 +3459,17 @@ slower. Each unit of `src/` was once tested against the seed's, while it
 was ported; that test was dropped after v0.17.0, as the two had grown
 apart, and the seed itself after v0.19.0. After any change: `make
 check`, `make bench`, `make loc`.
+
+**On a Mac.** While `BOOT`'s release has no `darwin-arm64` tarball, its
+sum is empty and `src/boot.sh` runs `src/bootstrap.sh`: in the
+linux/amd64 container, BOOT's Linux compiler builds the cross compiler
+(`src/cross.sh darwin-arm64`), and that builds the Mac compiler
+(`HOST=darwin src/cross.sh darwin-arm64`), which is kept as
+`build/boot/bootstrap-V/raz` and copied to `build/boot/raz`; `make raz`
+then builds `src/` with it natively, and `make fixpoint` shows that
+what that makes makes itself again (a Mac's executable names itself in
+its signature, so each stage is written as `build/fix/out/raz`).
+`make prev-bench` compares with the bootstrap's compiler and says so.
+`build/host` holds the system `build/boot/raz` and `raz` were made for:
+the container shares `build/` with the Mac, and a change of system
+makes both again. Removing `build/boot` makes the bootstrap again.

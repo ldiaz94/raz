@@ -325,7 +325,7 @@ var
     c, i, n, textSize, leOff, leAdr, ncmds, segRo, segData, sectData: INT;
     rebaseOff, rebaseSize, bindOff, bindSize, symOff, nsyms, strOff, strSize, sigOff, sigSize, slots: INT;
     ident: []const U8;
-    uuidAt, end0, sigRoom: INT;
+    uuidAt, hashAt, sigRoom: INT;
     dwarfOff, dwarfSize, dwarfAdr, libsRoom: INT;
     dbgOff, dbgSize: [3]INT;
     libs: [33][]const U8;   (* the paths to load, libSystem first *)
@@ -459,9 +459,8 @@ begin
     room(sigRoom);
 
     (* The header, in the room left for it, and the load commands. The
-       UUID, which names this build for lldb, is the first 16 bytes of
-       the hash of what follows the header. *)
-    end0 := len;
+       UUID, which names this build for lldb, is put in with the hashes
+       of the pages, below. *)
     len := 0;
     putN(0FEEDFACFH, 4);                           (* MH_MAGIC_64 *)
     putN(0100000CH, 4); putN(0, 4);                (* CPU_TYPE_ARM64, any of them *)
@@ -520,9 +519,6 @@ begin
     if len > HeaderRoom + libsRoom then Diag.fatal("internal error: the Mach-O header outgrew its room"); end;
     i := len;
     len := 16; putN(ncmds, 4); putN(i - 32, 4);
-    len := end0;
-    putHash(buf[Link.textOff..sigOff]);
-    COPY(buf[uuidAt..uuidAt + 16], buf[len - 32..len - 16]);
     len := sigOff;
 
     (* the signature, big-endian: the SuperBlob (CSMAGIC_EMBEDDED_SIGNATURE),
@@ -541,11 +537,24 @@ begin
     putBE(0, 8); putBE(textSize, 8);               (* the executable segment: __TEXT, from 0 *)
     putBE(1, 8);                                   (* CS_EXECSEG_MAIN_BINARY *)
     putStr(ident);
+    (* The pages' hashes, the UUID still zero; the UUID is the first 16
+       bytes of the hash of those hashes, so derived from the whole file
+       with no second pass over it; then the first page, which holds the
+       UUID, is hashed again. *)
+    hashAt := len;
     for i := 0 to slots - 1 do
         n := (i + 1) * HashPage;
         if n > sigOff then n := sigOff; end;
         putHash(buf[i * HashPage..n]);
     end;
+    room(32);
+    putHash(buf[hashAt..len]);
+    COPY(buf[uuidAt..uuidAt + 16], buf[len - 32..len - 16]);
+    len := hashAt;
+    n := HashPage;
+    if n > sigOff then n := sigOff; end;
+    putHash(buf[0..n]);
+    len := hashAt + 32 * slots;
     padTo(sigOff + sigRoom);
 
     if not Host.writeExecutable(path, buf[0..len]) then

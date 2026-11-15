@@ -42,7 +42,7 @@ if [ -n "$missing" ]; then
     exit 1
 fi
 [ -f build/src/Version.raz ] || make build/src/Version.raz
-[ -x build/boot/raz ] || make build/boot/raz
+make -s build/boot/raz          # this system's: build/ may be shared with another
 
 d=build/cross/$target
 [ $host != $here ] && d=$d-on-$host

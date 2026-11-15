@@ -12,8 +12,8 @@
      here means "the C library the system has", and there is no musl;
    - there is no memfd_create: a program raz run starts is written to a
      file, in $TMPDIR (/tmp if it is not set), named by the compiler's
-     process number, and the file stays after the program replaces the
-     compiler, which macOS clears out of $TMPDIR in time;
+     process number; the compiler runs it as a child and removes the
+     file when it ends (execute);
    - a file's code signature belongs to the file: a program written
      in place over one that has run is killed. prepareRun's name is new
      each time, and writeExecutable removes a file that is there first.
@@ -85,11 +85,23 @@ begin
     return Diag.say("{}/raz-run-{}", [Fmt.str(dir), Fmt.int(Sys.pid())]), nil;
 end;
 
-(* The program at path runs in the compiler's place, with the compiler's
-   arguments from number first on as its own, first as its argument 0,
-   and the environment. It returns only if that failed: minus the errno. *)
+(* The program at path runs with the compiler's arguments from number
+   first on as its own, first as its argument 0, and the environment;
+   its file is removed when it ends. It returns only if that failed:
+   minus the errno.
+
+   Linux's runs the program in the compiler's place, from a memfd that
+   goes with it. Here the file must stay while the program runs, since
+   dyld reads it by name as the program starts, so the compiler forks:
+   the copy runs the program, and the compiler waits for it, removes the
+   file and ends as it ended, by the same status or the same signal.
+   Ctrl-C and Ctrl-\ are for the program, so the compiler ignores them
+   while it waits, as C's system() does; the copy gives them back what
+   they did, unless the compiler was started with them ignored. If the
+   program can't be run, the copy returns, and says so, and the
+   compiler ends with its status. *)
 proc execute*(path: []const U8; first: INT): INT;
-var args, env: ^[]const U8; n, m, i: INT; more: BOOL;
+var args, env: ^[]const U8; n, m, i, pid, sig: INT; more, intWas, quitWas: BOOL; st: Sys.Status;
 begin
     n := Files.argCount() - first;
     args := ^[]const U8(Scan.grab((n + 1) * SIZE([]const U8)));
@@ -99,7 +111,29 @@ begin
     while more do INC(m); _, more := Sys.envAt(m); end;
     env := ^[]const U8(Scan.grab((m + 1) * SIZE([]const U8)));
     for i := 0 to m - 1 do env[i], _ := Sys.envAt(i); end;
-    return Sys.execve(path, args[0..n], env[0..m]);
+    intWas := Sys.ignored(Sys.sigInt);
+    quitWas := Sys.ignored(Sys.sigQuit);
+    _ := Sys.ignore(Sys.sigInt, true);
+    _ := Sys.ignore(Sys.sigQuit, true);
+    pid := Sys.fork();
+    if pid = 0 then
+        if not intWas then _ := Sys.ignore(Sys.sigInt, false); end;
+        if not quitWas then _ := Sys.ignore(Sys.sigQuit, false); end;
+        return Sys.execve(path, args[0..n], env[0..m]);
+    end;
+    if pid < 0 then
+        _ := Sys.remove(path);
+        return pid;
+    end;
+    _, st, sig := Sys.waitExit(pid);
+    _ := Sys.remove(path);
+    if st = Sys.Status.killed then
+        _ := Sys.ignore(sig, false);
+        _ := Sys.kill(Sys.pid(), sig);
+        sig := 128 + sig;     (* the shell's status, if the signal didn't end the compiler *)
+    end;
+    Sys.exit(sig);
+    return 0;
 end;
 
 end Host.

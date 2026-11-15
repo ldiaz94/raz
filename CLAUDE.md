@@ -239,7 +239,9 @@ compiled (`examples/Window.raz` needs a display).
 
 `src/` is the compiler, in raz: one module to a unit of the Pascal
 compiler it was ported from, the same names. The release `BOOT` names,
-by its tag and its tarball's SHA-256, builds it: `src/boot.sh` fetches
+by its tag and a tarball's SHA-256 for each host (`linux-x86_64`,
+`darwin-arm64`; a Mac with no sum is bootstrapped through the
+container, `src/bootstrap.sh`), builds it: `src/boot.sh` fetches
 the tarball into `build/boot/` (curl, or `gh api` for a private
 repository: CI gives it `GH_TOKEN`), checks the sum and puts its `raz`
 there with today's `lib/` beside it. Each release is built by the one

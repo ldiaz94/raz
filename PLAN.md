@@ -298,6 +298,27 @@ linux/amd64 container on the Mac until there is a Mac compiler):
 9. The first Mac compiler, by the staged cross compiler; it builds
    itself; `make fixpoint` on the Mac; `make bench` at 400,000 lines a
    second there.
+
+   Done: `BOOT` names its tag and then a sum for each host's tarball,
+   `linux-x86_64` and `darwin-arm64`, the Mac's empty until a release
+   has one; `src/boot.sh` picks the tarball by `uname`, and Linux's
+   path is as it was. With no Mac sum, `src/bootstrap.sh` makes the
+   first Mac compiler in the container (the cross compiler, then the
+   Mac compiler it builds), kept as `build/boot/bootstrap-V/raz`, and
+   `make raz` builds `src/` with it natively. `build/host` notes the
+   system `build/boot/raz` and `raz` were made for, so moving between
+   the Mac and the container makes them again. `make fixpoint` passes
+   on the Mac (it runs `make bench`, not yet `make check`), and `make
+   bench` gives about 528,000 lines a second there, since the UUID is
+   now the hash of the pages' hashes, not a second pass over the file.
+   `make prev-bench` compares with the bootstrap's compiler and says
+   so. `raz run` on the Mac forks, waits, removes its file and ends as
+   the program ended. `make install` works on the Mac.
+
+   Left: `make dist` on the Mac, a `darwin-arm64` tarball made the same
+   twice over with BSD's tar (a sorted list of files, their times and
+   modes set first, no Mac metadata); and the Mac's build in
+   `README.md` and `CLAUDE.md`.
 10. The release: two tarballs, `linux-x86_64` and `darwin-arm64`;
     `BOOT` names one for each host, with its sum.
 

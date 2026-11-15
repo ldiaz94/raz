@@ -5,11 +5,20 @@
 # has its library), so that src/ is built against today's library. The
 # one module the build makes, Version, holds what git says the version is.
 
-raz: build/boot/raz src/*.raz build/src/Version.raz
+raz: build/boot/raz src/*.raz build/src/Version.raz build/host
 	build/boot/raz -Werror -I src -I build/src -o raz src/Raz.raz
 
-build/boot/raz: BOOT src/boot.sh | build
+build/boot/raz: BOOT src/boot.sh src/bootstrap.sh build/host | build
 	src/boot.sh
+
+# The system make runs on, as a release's tarball names it: linux-x86_64
+# or darwin-arm64. build/host holds the one build/boot/raz and raz were
+# made for, and changes only when that does: the container (make
+# docker-check) shares build/ with the Mac it runs on, so moving from one
+# to the other makes both again, for the system that runs them.
+HOSTSYS := $(shell uname -s | tr A-Z a-z)-$(shell uname -m)
+build/host: FORCE | build
+	@echo $(HOSTSYS) | cmp -s - $@ || echo $(HOSTSYS) >$@
 
 build/src/Version.raz: build/version.inc | build
 	mkdir -p build/src

@@ -1,10 +1,22 @@
 #!/bin/sh
 # The compiler that builds src/: the release BOOT names, by its tag and
-# its tarball's SHA-256. A release's tarball is the same, byte for byte,
-# wherever it is made (the Makefile's dist), so the sum pins the very
-# compiler; and since that release was built by the one before it, back
-# to v0.19.0, which the Pascal seed built (git has it at that tag),
-# raz can always be built again from source alone.
+# a tarball's SHA-256 for each system it runs on. A release's tarball is
+# the same, byte for byte, wherever it is made (the Makefile's dist), so
+# the sum pins the very compiler; and since that release was built by
+# the one before it, back to v0.19.0, which the Pascal seed built (git
+# has it at that tag), raz can always be built again from source alone.
+#
+# BOOT is the tag on its first line, then a line for each system, its
+# name as the tarball has it and the tarball's SHA-256:
+#
+#     v0.25.0
+#     linux-x86_64 b0aea003...
+#     darwin-arm64
+#
+# The system is this one's, uname's names: Linux on x86_64 is
+# linux-x86_64, a Mac on Apple Silicon darwin-arm64. A system with no
+# sum has no tarball in that release: on a Mac, the compiler is then
+# bootstrapped (src/bootstrap.sh) from Linux's, in a container.
 #
 # The tarball is taken from build/boot/ if it is there; else from the
 # website's downloads in this checkout, site/public/download/, where
@@ -16,12 +28,24 @@
 # this repository's lib/ beside it, since src/ is built against today's
 # library. Run from the repository root, by make.
 set -e
-read tag sum < BOOT
+tag=$(sed -n 1p BOOT)
 v=${tag#v}
-t=raz-$v-linux-x86_64.tar.gz
+host=$(uname -s | tr A-Z a-z)-$(uname -m)
 d=build/boot
 repo=ldiaz94/raz
 mkdir -p $d
+if ! sum=$(awk -v h=$host '$1 == h { print $2; found = 1 } END { exit !found }' BOOT); then
+    echo "boot: BOOT names no tarball for $host" >&2
+    exit 1
+fi
+if [ -z "$sum" ]; then
+    case $host in
+    darwin-arm64) src/bootstrap.sh; exit;;
+    esac
+    echo "boot: $tag has no tarball for $host, and there is no bootstrap for it" >&2
+    exit 1
+fi
+t=raz-$v-$host.tar.gz
 if [ ! -f $d/$t ] && [ -f site/public/download/$t ]; then
     cp site/public/download/$t $d/$t
 fi
@@ -40,7 +64,7 @@ if [ "${got%% *}" != "$sum" ]; then
     echo "boot: $d/$t isn't $tag's tarball: its SHA-256 isn't BOOT's" >&2
     exit 1
 fi
-rm -rf $d/raz-$v-linux-x86_64
+rm -rf $d/raz-$v-$host
 tar -xzf $d/$t -C $d
-cp $d/raz-$v-linux-x86_64/raz $d/raz
+cp $d/raz-$v-$host/raz $d/raz
 ln -sfn ../../lib $d/lib
