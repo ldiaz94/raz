@@ -1,3 +1,5 @@
+<p align="center"><img src="doc/img/banner.svg" alt="raz: a small systems language in Wirth's tradition" width="800"></p>
+
 # raz
 
 raz (Polish for *one*, as in counting) is a small systems language in Wirth's
@@ -24,10 +26,35 @@ end Hello.
     $ examples/Hello
     hello, world
 
-The compiler is about 11,500 lines of raz, written in itself: one pass, no
+The compiler is about 16,700 lines of raz, written in itself: one pass, no
 intermediate form, no optimizer. It writes x86-64 machine code and the
 ELF executable itself, with no assembler or linker, and compiles about
 500,000 lines a second.
+
+**Learn it:** the website, <https://raz.lucela.com>, has two tours,
+[Raz, Set, Go](https://raz.lucela.com/tour/) and
+[More Raz](https://raz.lucela.com/advanced/), and the report, the
+language's definition, [as a page](https://raz.lucela.com/spec.html) and
+as PDFs ([language](https://raz.lucela.com/raz.pdf),
+[library](https://raz.lucela.com/raz-lib.pdf)).
+
+**Status:** before 1.0, and the language is frozen: it changes only
+to mend a defect. Releases run on x86-64 Linux; a port to arm64 macOS
+is under way, unreleased. Defect reports are welcome;
+[CONTRIBUTING.md](CONTRIBUTING.md) says how.
+
+## Get it
+
+A release is one tarball holding the compiler, its library, its tools
+and its manual pages. The compiler finds the library beside itself, so
+it runs from wherever the tarball is unpacked:
+
+    $ curl -fsSL https://raz.lucela.com/download/latest | tar xz
+    $ raz-*/raz --version
+
+Every release, each with its SHA-256, is on the
+[releases page](https://raz.lucela.com/source/releases/) and on GitHub.
+To build raz from source instead, read on.
 
 ## What's here
 
@@ -53,8 +80,7 @@ ELF executable itself, with no assembler or linker, and compiles about
 
 The compiler is written in raz, so building it takes a raz: the
 release `BOOT` names. `make` fetches that release's tarball into
-`build/boot/` (by curl, or by `gh` where the repository is private),
-checks its SHA-256 against `BOOT`'s, and has its `raz` build the
+`build/boot/` by curl, checks its SHA-256 against `BOOT`'s, and has its `raz` build the
 compiler, `src/`, in the repository's root, against this `lib/`. On a
 machine with no network, put the tarball in `build/boot/` by hand.
 Each release is built by the one before it, back to v0.19.0, which the
@@ -240,20 +266,6 @@ after `,` and `;`, and keeps every line break and comment where it is.
 Two editors are written in raz, each in a repository of its own that
 pins the raz it is built with: rmacs, with emacs's keys, and ravite,
 with vim's. Both colour raz through `tools/Scan.raz`.
-
-## CI image
-
-`containers/ci/` builds an x86-64 Linux image with released raz 0.21.0,
-its library and tools, pinned concha and robbie, and Debian build tools.
-Its [README](containers/ci/README.md) gives the build and checks.
-The image revision is `0.21.0-debian12-r1`.
-
-`registry/` prepares a separate Cloudflare Worker and R2 registry for
-public Docker pulls and authenticated pushes. Its [README](registry/README.md)
-gives deployment and publishing steps. The container workflow validates
-the image and registry; publishing is an explicit manual option and
-needs a deployed registry and its publisher secret.
-
 ## Versions
 
 The compiler says its own version and that of the report it follows:
@@ -263,61 +275,32 @@ The compiler says its own version and that of the report it follows:
 
 The compiler's version is git's name for the commit it was built from:
 `0.25.3` at the tag `v0.25.3`, `0.25.3-5-g38d29a8` five commits past it.
-To release, check `main` and tag it; the tag's message is what
-`raz --version` will print:
-
-    $ make check
-    $ git tag -a v0.25.3 -m 'raz 0.25.3, report 2026-10.38'
-    $ git push origin v0.25.3
-
-GitHub then builds and checks the tag, and makes a release of it with
-a tarball of `raz`, its `lib/` and its manual pages, made by `make
-dist`. A tag pushed before the workflow existed is released from the
-Actions tab: run "ci" with its name. Then `make site` adds the new
-tag's tarball to the website's `download/` (it builds it from the tag,
-apart from the tree at hand); commit `site/public/` and push to publish
-it. A release whose tag isn't pushed yet goes there too, by `make site
-RELEASES="v0.25.3=COMMIT"`: `make dist REV=COMMIT VERSION=0.25.3` makes
-the tarball the tag will, byte for byte. Every release since 0.7.1 stays there, at its own name, and is
-never made again, so that its SHA-256 holds: programs pin raz by it.
-From 0.15.0 on, `make dist` makes the same tarball, byte for byte,
-wherever it runs, so GitHub's and the website's agree. Once a release
-is out, `BOOT` may name it, and the next one is built by it: then
-`src/` may use what it brought.
-
-The website's [source browser](https://raz.lucelad.workers.dev/source/)
-has the files, history and [release pages](https://raz.lucelad.workers.dev/source/releases/).
-Each supported version has its compiler archive, a separate source
-archive and SHA-256s. The same address is a git remote:
-
-    git clone https://raz.lucelad.workers.dev/source/
-
-`site/releases` records existing website distributions whose tags
-are not pushed yet, so a plain `make site` keeps offering them. Both
-the home page and ladle's release pages use this list. Existing
-`download/` URLs and compiler archives keep their exact bytes.
-[Building the site](site/README.md) gives the complete procedure.
-`make site` runs ladle after building the normal pages and merges its
-headers under `/source/`. The source output stays ignored; Wrangler's
-build hook regenerates it before `npx wrangler deploy` uploads the
-site. Commit the main pages, scripts and pinned builder, then push
-`main` for the existing Cloudflare deployment.
-
 A version of the report is named by its month and a count; the report's
-last section says what each version changed.
+last section says what each version changed. Every release since 0.7.1
+stays on the website at its own name and is never made again, so that
+its SHA-256 holds: programs pin raz by it.
+
+The website's [source browser](https://raz.lucela.com/source/)
+has the files, history and [release pages](https://raz.lucela.com/source/releases/).
+The same address is a git remote:
+
+    git clone https://raz.lucela.com/source/
 
 Since v0.5.0 the language is frozen, softly: it changes only to mend a
 defect, and the library grows only by what breaks no program. A library
 change that must break programs keeps the old form for one minor version
-beside the new; the release notes list the old forms, and the next
-version removes them. Thaws, by the owner's word, changed it since;
-the last, for safety, was v0.24.0, and v0.25.0 the last change. It is
-now frozen hard: no more thaws, the language mended only where it does
-other than the report says.
+beside the new; the release notes list the old forms. Thaws, by
+the owner's word, changed it since; the last, for safety, was v0.24.0,
+and v0.25.0 the last change. It is now frozen hard: no more thaws, the
+language mended only where it does other than the report says.
+
+[Building the site](site/README.md) says how a release is made and
+published. `containers/ci/` builds a CI image with a released raz, and
+`registry/` serves it; their READMEs say how.
 
 ## Not here
 
-Other systems and processors (Mach-O, PE, aarch64), an optimizer,
+Systems and processors beyond these two (PE, Linux on arm64), an optimizer,
 separate compilation, records passed to C by value, thread-local
 variables, and type information for debuggers.
 

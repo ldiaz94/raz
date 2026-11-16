@@ -53,7 +53,7 @@ import Rels := Vec(Releases.Release);
 import Tars := Vec(Tarball);
 
 const
-    SiteUrl = "https://raz.lucelad.workers.dev";   (* where the pages live, for the preview image *)
+    SiteUrl = "https://raz.lucela.com";   (* where the pages live, for the preview image *)
     Usage = "usage: Build [vX.Y.Z=COMMIT ...]";
     (* the head of every page: the arguments are the title (twice), the
        site's address, then the way up to the root (six times), the

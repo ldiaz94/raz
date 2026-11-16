@@ -5,5 +5,7 @@
   "name": "raz",
   "compatibility_date": "2026-10-01",
   "build": { "command": "make site-source" },
-  "assets": { "directory": "./site/public" }
+  "assets": { "directory": "./site/public" },
+  "workers_dev": true,
+  "routes": [{ "pattern": "raz.lucela.com", "custom_domain": true }]
 }

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" width="800" height="200">
+  <title>raz: a small systems language in Wirth's tradition</title>
+  <defs>
+    <linearGradient id="bg-raz" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b3533"/>
+      <stop offset="100%" stop-color="#2a2624"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="200" rx="12" fill="url(#bg-raz)"/>
+  <g transform="translate(56 36) scale(1.28)">
+    <rect width="100" height="100" rx="22" fill="#E07A5F"/>
+    <rect x="22" y="24" width="14" height="52" rx="7" fill="#fff"/>
+    <rect x="43" y="24" width="14" height="52" rx="7" fill="#fff" opacity=".55"/>
+    <rect x="64" y="24" width="14" height="52" rx="7" fill="#fff" opacity=".28"/>
+  </g>
+  <text x="220" y="96" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', Helvetica, Arial, sans-serif" font-size="56" font-weight="600" fill="#f6f2f0" letter-spacing="2">raz</text>
+  <text x="222" y="132" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans', Helvetica, Arial, sans-serif" font-size="18" fill="#b5aba7">a small systems language in Wirth's tradition</text>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" text-anchor="middle">
+    <rect x="222" y="150" width="112" height="24" rx="12" fill="#2a2624" stroke="#4d4542"/>
+    <text x="278" y="166" fill="#f2c4b6">x86-64 Linux</text>
+    <rect x="344" y="150" width="112" height="24" rx="12" fill="#2a2624" stroke="#4d4542"/>
+    <text x="400" y="166" fill="#f2c4b6">self-hosting</text>
+    <rect x="466" y="150" width="184" height="24" rx="12" fill="#2a2624" stroke="#4d4542"/>
+    <text x="558" y="166" fill="#f2c4b6">no assembler, no linker</text>
+    <rect x="660" y="150" width="96" height="24" rx="12" fill="#2a2624" stroke="#4d4542"/>
+    <text x="708" y="166" fill="#f2c4b6">raz: one</text>
+  </g>
+</svg>

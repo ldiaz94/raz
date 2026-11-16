@@ -37,7 +37,7 @@ files and the generated source site do not enter it. In particular,
 output would publish a copy of the previous output on the next build.
 
 The result lives at `public/source/`, browsed and cloned at
-<https://raz.lucelad.workers.dev/source/>. To build just this part,
+<https://raz.lucela.com/source/>. To build just this part,
 after the normal downloads exist:
 
 ```sh
@@ -50,6 +50,30 @@ another absolute address ending in `/source/`, for
 previewing the feeds and clone line. `source.theme` starts from
 ladle's paper theme, with raz's page and link colours; ladle checks
 its light and dark contrast when it runs.
+
+## Cutting a release
+
+To release, check `main` and tag it; the tag's message is what
+`raz --version` will print:
+
+    $ make check
+    $ git tag -a v0.25.3 -m 'raz 0.25.3, report 2026-10.38'
+    $ git push origin v0.25.3
+
+GitHub then builds and checks the tag, and makes a release of it with
+a tarball of `raz`, its `lib/` and its manual pages, made by `make
+dist`. A tag pushed before the workflow existed is released from the
+Actions tab: run "ci" with its name. Then `make site` adds the new
+tag's tarball to the website's `download/` (it builds it from the tag,
+apart from the tree at hand); commit `site/public/` and push to publish
+it. A release whose tag isn't pushed yet goes there too, by `make site
+RELEASES="v0.25.3=COMMIT"`: `make dist REV=COMMIT VERSION=0.25.3` makes
+the tarball the tag will, byte for byte. Every release since 0.7.1 stays there, at its own name, and is
+never made again, so that its SHA-256 holds: programs pin raz by it.
+From 0.15.0 on, `make dist` makes the same tarball, byte for byte,
+wherever it runs, so GitHub's and the website's agree. Once a release
+is out, `BOOT` may name it, and the next one is built by it: then
+`src/` may use what it brought.
 
 ## Releases and downloads
 
