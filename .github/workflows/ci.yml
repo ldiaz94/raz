@@ -1,6 +1,7 @@
 # Checks every push to main. A pushed tag vX.Y.Z is checked too and
 # becomes a GitHub release, with a tarball of raz, the lib/ it reads
 # beside itself, and the manual pages. Run by hand with a tag, it releases an older tag.
+# Actions are pinned by commit; only the release job may write.
 name: ci
 on:
   push:
@@ -12,30 +13,37 @@ on:
         description: the tag to release
         required: true
 permissions:
-  contents: write
+  contents: read
+env:
+  TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
 jobs:
   check:
     runs-on: ubuntu-24.04
-    env:
-      TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.tag || github.ref }}
           fetch-depth: 0    # git describe needs the tags
+          persist-credentials: false
       # musl and musl-tools: test/libc over musl, and cabi with musl-gcc
       - run: sudo apt-get update && sudo apt-get install -y musl musl-tools
-      # src/boot.sh fetches the release BOOT names, by gh where the
-      # repository is private
       - run: make check
-        env:
-          GH_TOKEN: ${{ github.token }}
       - run: make alpine
-      - name: release
-        if: env.TAG != ''
-        env:
+  release:
+    needs: check
+    if: inputs.tag || github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          make dist
+          make raz dist
           gh release create "$TAG" build/raz-${TAG#v}-linux-x86_64.tar.gz --verify-tag \
             --title "raz ${TAG#v}" --notes "$(./raz --version)"
