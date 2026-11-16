@@ -7,5 +7,5 @@
   "build": { "command": "make site-source" },
   "assets": { "directory": "./site/public" },
   "workers_dev": true,
-  "routes": [{ "pattern": "raz.lucela.com", "zone_name": "lucela.com", "custom_domain": true }]
+  "routes": [{ "pattern": "raz.lucela.org", "zone_name": "lucela.org", "custom_domain": true }]
 }

@@ -31,12 +31,12 @@ intermediate form, no optimizer. It writes x86-64 machine code and the
 ELF executable itself, with no assembler or linker, and compiles about
 500,000 lines a second.
 
-**Learn it:** the website, <https://raz.lucela.com>, has two tours,
-[Raz, Set, Go](https://raz.lucela.com/tour/) and
-[More Raz](https://raz.lucela.com/advanced/), and the report, the
-language's definition, [as a page](https://raz.lucela.com/spec.html) and
-as PDFs ([language](https://raz.lucela.com/raz.pdf),
-[library](https://raz.lucela.com/raz-lib.pdf)).
+**Learn it:** the website, <https://raz.lucela.org>, has two tours,
+[Raz, Set, Go](https://raz.lucela.org/tour/) and
+[More Raz](https://raz.lucela.org/advanced/), and the report, the
+language's definition, [as a page](https://raz.lucela.org/spec.html) and
+as PDFs ([language](https://raz.lucela.org/raz.pdf),
+[library](https://raz.lucela.org/raz-lib.pdf)).
 
 **Status:** before 1.0, and the language is frozen: it changes only
 to mend a defect. Releases run on x86-64 Linux; a port to arm64 macOS
@@ -49,11 +49,11 @@ A release is one tarball holding the compiler, its library, its tools
 and its manual pages. The compiler finds the library beside itself, so
 it runs from wherever the tarball is unpacked:
 
-    $ curl -fsSL https://raz.lucela.com/download/latest | tar xz
+    $ curl -fsSL https://raz.lucela.org/download/latest | tar xz
     $ raz-*/raz --version
 
 Every release, each with its SHA-256, is on the
-[releases page](https://raz.lucela.com/source/releases/) and on GitHub.
+[releases page](https://raz.lucela.org/source/releases/) and on GitHub.
 To build raz from source instead, read on.
 
 ## What's here
@@ -280,11 +280,11 @@ last section says what each version changed. Every release since 0.7.1
 stays on the website at its own name and is never made again, so that
 its SHA-256 holds: programs pin raz by it.
 
-The website's [source browser](https://raz.lucela.com/source/)
-has the files, history and [release pages](https://raz.lucela.com/source/releases/).
+The website's [source browser](https://raz.lucela.org/source/)
+has the files, history and [release pages](https://raz.lucela.org/source/releases/).
 The same address is a git remote:
 
-    git clone https://raz.lucela.com/source/
+    git clone https://raz.lucela.org/source/
 
 Since v0.5.0 the language is frozen, softly: it changes only to mend a
 defect, and the library grows only by what breaks no program. A library

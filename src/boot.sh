@@ -30,7 +30,7 @@ if [ ! -f $d/$t ]; then
         id=$(gh api repos/$repo/releases/tags/$tag --jq ".assets[] | select(.name == \"$t\") | .id" 2>/dev/null) &&
             [ -n "$id" ] &&
             gh api -H 'Accept: application/octet-stream' repos/$repo/releases/assets/$id >$d/$t 2>/dev/null ||
-            curl -fsSL -o $d/$t https://raz.lucela.com/download/$t 2>/dev/null ||
+            curl -fsSL -o $d/$t https://raz.lucela.org/download/$t 2>/dev/null ||
             { rm -f $d/$t; echo "boot: can't fetch $t; put it in $d" >&2; exit 1; }
     fi
 fi

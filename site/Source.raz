@@ -17,7 +17,7 @@ import Rels := Vec(Releases.Release);
 import Sizes := Vec(Sized);
 
 const
-    Url = "https://raz.lucela.com/source/";   (* where the browser is, unless --url says *)
+    Url = "https://raz.lucela.org/source/";   (* where the browser is, unless --url says *)
     BeginHeaders = "# BEGIN ladle source\n";   (* the block of ladle's header rules in the root _headers *)
     EndHeaders = "# END ladle source\n";
     MaxFiles = 20000;                  (* files the host takes *)

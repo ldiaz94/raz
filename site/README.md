@@ -37,7 +37,7 @@ files and the generated source site do not enter it. In particular,
 output would publish a copy of the previous output on the next build.
 
 The result lives at `public/source/`, browsed and cloned at
-<https://raz.lucela.com/source/>. To build just this part,
+<https://raz.lucela.org/source/>. To build just this part,
 after the normal downloads exist:
 
 ```sh
