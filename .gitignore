@@ -10,3 +10,5 @@ build/
 !/test/*/mods/
 !/test/*/lib/
 .claude/worktrees/
+# the owner's agent notes, local only; AGENTS.md is the shared part
+/CLAUDE.md
